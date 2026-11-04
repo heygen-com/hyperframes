@@ -1,53 +1,45 @@
 ---
 title: "Edit timing on the timeline"
-description: "Move, trim, split, align, and inspect clips in HyperFrames Studio."
+description: "Move, trim, split and align clips in the HyperFrames browser editor, and what each timeline button does."
 ---
 
-The timeline controls when elements appear and how long they remain.
+The timeline sets when each thing appears and how long it stays. Every change saves straight to the project files.
 
 <Frame caption="The selected clip edge changes its duration while the canvas and neighboring tracks remain visible.">
   <img
     src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/timeline-v1.jpg"
-    alt="HyperFrames Studio timeline with the edge of a selected clip ready to trim"
+    alt="HyperFrames browser editor timeline with the edge of a selected clip ready to trim"
   />
 </Frame>
 
-## Move a clip
+## Move, trim, split
 
-Drag the body of a clip left or right. Its start time changes while its duration stays the same.
+- **Move:** drag the middle of a clip. Its length stays the same.
+- **Trim:** drag the left edge to change when it starts, the right edge to change when it ends.
+- **Split:** put the playhead where you want the cut and choose **Split at playhead**, or press **B** for the Split tool
+  and click the clip (Shift-click splits every clip at that time). Press **V** to go back to Select.
+- **Copy, Duplicate, Delete:** right-click a clip.
 
-Use snapping to align the clip with the playhead, another boundary, or a useful beat.
+After any change, play across it: entrances, exits and narration don't rewrite themselves.
 
-## Trim a clip
+## The toolbar
 
-Drag the left or right edge.
+| Button | What it does |
+| --- | --- |
+| **Linked Selection** | Clicks and edits reach every clip linked to the one you touch, such as a video and its sound |
+| **Snapping** | Edges snap to the playhead, other clips and beats |
+| **Ripple edit** | On by default: deleting a clip on the main track closes the gap instead of leaving one |
+| **Audio meters** | Shows levels while it plays |
+| **Add keyframe at playhead** / **Auto-record** | Keyframes for animation; see [animation](/studio/canvas#animate-with-keyframes) |
+| **Add beat at playhead** | A timing marker to cut to, handy with music |
+| **Select leftward / rightward** (**[** and **]**, in the tool menu) | Selects every clip that starts before, or after, the playhead, to shift a whole section |
 
-- Trimming the left edge changes when the clip begins.
-- Trimming the right edge changes when it ends.
+To add media, drop a file on the timeline (**Drop media here**). To work inside a nested scene, expand it or open it
+and use the breadcrumb to come back; check whether you're changing its inner timing or its place in the whole video.
 
-Trimming does not automatically rewrite the story. Play the surrounding section to check entrances, exits, media continuity, and narration.
+Undo (⌘Z) covers moves, trims and splits.
 
-## Split a clip
-
-Splitting is supported for eligible timeline elements.
-
-You can:
-
-- place the playhead, open the clip menu, and choose **Split at…**;
-- switch to the razor tool and click the clip;
-- hold Shift while using the razor to split every eligible clip under that time.
-
-Use the **B** shortcut to switch to the razor tool. Return to the selection tool when you finish cutting.
-
-<Note>
-  A split must happen inside the clip, not exactly on its start or end. Some element types cannot be split safely.
-</Note>
-
-## Zoom and navigate
-
-Zoom in for keyframes and short edits. Zoom out to understand the complete sequence.
-
-Use the playhead for the exact edit moment. Use playback and frame stepping to check what happens immediately before and after it.
+<Accordion title="Keyboard and screen reader navigation">
 
 Tab into the timeline to reach its current logical focus target. Use Left and Right to move within that row. Use Up and Down to move to the nearest target at the same time in the previous or next row.
 
@@ -55,30 +47,16 @@ Home and End move to the start or end of the focused row. Hold Command or Ctrl t
 
 On an expandable track row, Right expands collapsed keyframe property lanes and Left collapses expanded lanes. From a keyframe property row, Left returns to its parent track row. Enter or Space toggles the same lanes. Use the Context Menu key or Shift + F10 to open the focused target's menu when it has one.
 
-The timeline keeps only one logical timeline target in the Tab order. Native header controls, such as visibility and keyframe actions, remain separate Tab stops. When the logical target is outside the virtualized viewport, Studio keeps it mounted, scrolls it into view, and then restores focus.
+The timeline keeps only one logical timeline target in the Tab order. Native header controls, such as visibility and keyframe actions, remain separate Tab stops. When the logical target is outside the virtualized viewport, the browser editor keeps it mounted, scrolls it into view, and then restores focus.
 
 Screen readers receive the timeline as a treegrid. Track rows announce their level and expanded state. Clips and keyframes announce their names, times, and selection state. Easing controls announce their names and times.
 
-See [Keyboard shortcuts](/studio/shortcuts#timeline-navigation) for the complete command table.
+The full list is in [keyboard shortcuts](/studio/index#timeline-navigation).
 
-## Work with beats
-
-Beat markers provide timing landmarks, especially for music-driven work. Snap edits to them when the audio should drive the cut; ignore them when the story or voiceover needs a different rhythm.
-
-## Move several items
-
-Select multiple eligible timeline elements when they need to remain aligned. Drag them together, then check for collisions or gaps on their tracks.
-
-## Open a nested scene
-
-Expand a nested composition to see its children, or open it and use the breadcrumb to return. Be clear whether you are changing the scene’s internal timing or its timing in the parent video.
-
-## Undo mistakes
-
-Move, trim, split, and many other timeline actions participate in Studio history. Undo immediately when a result is unexpected, then retry with a closer zoom or a more precise playhead position.
+</Accordion>
 
 ## Related topics
 
 - [Edit the frame](/studio/canvas)
-- [Edit animation and keyframes](/studio/animation)
-- [Use Studio keyboard shortcuts](/studio/shortcuts)
+- [Edit animation and keyframes](/studio/canvas#animate-with-keyframes)
+- [Keyboard shortcuts](/studio/index#keyboard-shortcuts)

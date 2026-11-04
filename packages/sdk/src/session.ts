@@ -36,7 +36,12 @@ import type { PersistAdapter, PreviewAdapter } from "./adapters/types.js";
 import { parseMutable } from "./engine/model.js";
 import type { ParsedDocument } from "./engine/model.js";
 import { applyOp, validateOp, type MutationResult } from "./engine/mutate.js";
-import { getGsapScripts, resolveScoped, declarationCarriers } from "./engine/model.js";
+import {
+  getGsapScripts,
+  resolveScoped,
+  declarationCarriers,
+  getSiblingIndex,
+} from "./engine/model.js";
 import { extractGsapLabels } from "@hyperframes/core/gsap-parser-acorn";
 import { stripEmbeddedRuntimeScripts } from "@hyperframes/core/compiler/html-document";
 import { readClipTiming, type ClipTiming } from "@hyperframes/core/composition-contract";
@@ -48,7 +53,11 @@ import {
 import type { CompositionVariable, VariableValidationIssue } from "@hyperframes/core/variables";
 import { readVariableDeclarations } from "./engine/variableModel.js";
 import { serializeDocument } from "./engine/serialize.js";
-import { applyPatchesToDocument, applyOverrideSet } from "./engine/apply-patches.js";
+import {
+  applyPatchesToDocument,
+  applyOverrideSet,
+  isElementSnapshotOverride,
+} from "./engine/apply-patches.js";
 import { buildPatchEvent, pathToKey } from "./engine/patches.js";
 import { createHistory } from "./history.js";
 import type { HistoryModule } from "./history.js";
@@ -81,8 +90,18 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function isProduction(): boolean {
+  try {
+    return process.env.NODE_ENV === "production";
+  } catch {
+    return false; // no process in a browser without a bundler define
+  }
+}
+
 class CompositionImpl implements Composition {
-  private readonly parsed: ParsedDocument;
+  private parsedDoc: ParsedDocument;
+  private disposed = false;
+  private warnedDisposedRead = false;
   private readonly persist: PersistAdapter | undefined;
   readonly preview: PreviewAdapter | undefined;
 
@@ -107,6 +126,7 @@ class CompositionImpl implements Composition {
   private selectionHandlers: Array<(ids: string[]) => void> = [];
   private patchHandlers: Array<(e: PatchEvent) => void> = [];
   private errorHandlers: Array<(e: PersistErrorEvent) => void> = [];
+  private persistErrorUnsubscribes = new Set<() => void>();
   private previewSelectionUnsubscribe: (() => void) | null = null;
 
   /** Attached by openComposition() for standalone mode. */
@@ -127,7 +147,7 @@ class CompositionImpl implements Composition {
     opts: OpenCompositionOptions,
     baseVariableDefaults: Record<string, unknown> = {},
   ) {
-    this.parsed = parsed;
+    this.parsedDoc = parsed;
     this.persist = opts.persist;
     this.preview = opts.preview;
     this.overrides = { ...(opts.overrides ?? {}) };
@@ -381,9 +401,9 @@ class CompositionImpl implements Composition {
       this._gsapLabelCache = scripts.length ? { scripts: [...scripts], labels: allLabels } : null;
     }
 
-    // refId remains a bare global id, matching runtime resolution. The shared
-    // contract owns parsing, canonical duration preference, clamping, and
-    // legacy data-end compatibility; this adapter only supplies document lookup.
+    // refId resolves as a bare hf-id (top level first), unlike the runtime's
+    // composition-scoped `id` lookup. The shared contract owns parsing, canonical
+    // duration preference, clamping, and legacy data-end; this adapter only supplies lookup.
     const timingCache = new Map<Element, ClipTiming>();
     const visiting = new Set<Element>();
     const resolveTiming = (el: Element): ClipTiming => {
@@ -645,6 +665,7 @@ class CompositionImpl implements Composition {
     for (const p of forward) {
       const key = pathToKey(p.path);
       if (key !== null) {
+        delete this.overrides[key];
         this.overrides[key] =
           p.op === "remove"
             ? null
@@ -797,9 +818,10 @@ class CompositionImpl implements Composition {
       const typedH = h as (e: PersistErrorEvent) => void;
       this.errorHandlers.push(typedH);
       const offPersist = this.persist?.on("persist:error", typedH);
+      if (offPersist) this.persistErrorUnsubscribes.add(offPersist);
       return () => {
         this.errorHandlers = this.errorHandlers.filter((x) => x !== typedH);
-        offPersist?.();
+        if (offPersist && this.persistErrorUnsubscribes.delete(offPersist)) offPersist();
       };
     }
     return () => {};
@@ -820,7 +842,19 @@ class CompositionImpl implements Composition {
   // ── T3 embedded-mode extras ──────────────────────────────────────────────────
 
   getOverrides(): OverrideSet {
-    return { ...this.overrides };
+    const overrides = { ...this.overrides };
+    for (const [key, value] of Object.entries(overrides)) {
+      if (!isElementSnapshotOverride(key, value)) continue;
+      const el = resolveScoped(this.parsed.document, key);
+      if (el?.parentElement) {
+        overrides[key] = {
+          ...value,
+          siblingIndex: getSiblingIndex(el),
+          childNodeIndex: Array.from(el.parentElement.childNodes).indexOf(el),
+        };
+      }
+    }
+    return overrides;
   }
 
   // fallow-ignore-next-line complexity
@@ -839,6 +873,7 @@ class CompositionImpl implements Composition {
     for (const p of patches) {
       const key = pathToKey(p.path);
       if (key !== null) {
+        delete this.overrides[key];
         this.overrides[key] =
           p.op === "remove"
             ? null
@@ -854,6 +889,20 @@ class CompositionImpl implements Composition {
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
+  /** The single read path; a read after dispose means a stale reference is still in use. */
+  private get parsed(): ParsedDocument {
+    if (this.disposed) this.warnDisposedRead();
+    return this.parsedDoc;
+  }
+
+  private warnDisposedRead(): void {
+    if (this.warnedDisposedRead || isProduction()) return;
+    this.warnedDisposedRead = true;
+    console.warn(
+      `[hyperframes] a disposed Composition was read and answered from an empty document; something still holds the stale session.\n${new Error().stack}`,
+    );
+  }
+
   async flush(): Promise<void> {
     await this.persistQueueModule?.flush();
   }
@@ -861,12 +910,20 @@ class CompositionImpl implements Composition {
   dispose(): void {
     this.previewSelectionUnsubscribe?.();
     this.previewSelectionUnsubscribe = null;
+    for (const unsubscribe of this.persistErrorUnsubscribes) unsubscribe();
+    this.persistErrorUnsubscribes.clear();
     this.persistQueueModule?.dispose();
     this.historyModule?.dispose();
     this.changeHandlers = [];
     this.selectionHandlers = [];
     this.patchHandlers = [];
     this.errorHandlers = [];
+    // A disposed session is still referenced by stale closures; without this each
+    // one keeps its whole parsed document alive.
+    this.elementsCache = null;
+    this.rootsCache = null;
+    if (!this.disposed) this.parsedDoc = parseMutable("");
+    this.disposed = true;
   }
 }
 
@@ -902,8 +959,6 @@ export async function openComposition(
   // serves them for the rest of the session (undo-to-base restores).
   const baseVariableDefaults = declaredDefaults(parsed);
 
-  // T3 embedded: replay the stored override-set onto the base in one pass,
-  // so the session exposes the user's exact edited state — not the template.
   if (opts?.overrides) applyOverrideSet(parsed, opts.overrides);
 
   const session = new CompositionImpl(parsed, opts ?? {}, baseVariableDefaults);

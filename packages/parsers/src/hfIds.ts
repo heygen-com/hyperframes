@@ -9,7 +9,7 @@
  * so inserting a non-identical sibling never shifts another element's id.
  */
 import { parseHTML } from "linkedom";
-import { assignHfIds, getChildElements } from "./hfIdAssignment.js";
+import { EXCLUDED_TAGS, assignHfIds, getChildElements } from "./hfIdAssignment.js";
 export {
   EXCLUDED_TAGS,
   mintHfId,
@@ -18,17 +18,63 @@ export {
 } from "./hfIdAssignment.js";
 
 export function ensureHfIds(html: string): string {
+  if (alreadyStamped(html)) return html;
   const { document, wrapped } = parseFragmentOrDocument(html);
   if (!document.body) return html;
   assignHfIds(document.body);
   return wrapped ? document.body.innerHTML || "" : document.toString();
 }
 
+const isFragment = (html: string) =>
+  !/^(?:<!doctype|<html[\s>/])/i.test(html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""));
+
+function alreadyStamped(html: string): boolean {
+  const tags = startTags(html);
+  if (!tags) return false;
+  const body = isFragment(html) ? -1 : tags.findIndex((tag) => tag.name === "body");
+  if (!isFragment(html) && !opensHeadThenBody(html, tags, body)) return false;
+  return tags
+    .slice(body + 1)
+    .every(
+      (tag) =>
+        !IMPLIED.has(tag.name) &&
+        tag.name !== "table" &&
+        (EXCLUDED_TAGS.has(tag.name) || hasHfId(html, tag)),
+    );
+}
+
+const HEAD_CONTENT = new Set(["meta", "link", "base", "title", "style", "script"]);
+
+// The parse path's document.body read adds any missing <head>/<body>, and callers re-parsing its output expect both.
+function opensHeadThenBody(html: string, tags: StartTag[], body: number): boolean {
+  const [first, head] = tags;
+  if (body < 0 || first?.name !== "html" || head?.name !== "head") return false;
+  const inHead = tags.slice(2, body);
+  return (
+    inHead.every((tag) => HEAD_CONTENT.has(tag.name)) &&
+    closesHead(html, inHead.at(-1) ?? head, tags[body]!)
+  );
+}
+
+function closesHead(html: string, last: StartTag, body: StartTag): boolean {
+  const from = RAW_TEXT.has(last.name) ? rawTextEnd(html, last.name, last.bracket) : last.bracket;
+  const between = html.slice(from, html.lastIndexOf("<", body.nameEnd));
+  const marks = between.matchAll(/<!--[\s\S]*?-->|<\/head\s*>/gi);
+  return from >= 0 && [...marks].some((mark) => !mark[0].startsWith("<!--"));
+}
+
+function hasHfId(html: string, tag: StartTag): boolean {
+  const open = html.slice(tag.nameEnd, tag.bracket);
+  const name = /\sdata-hf-id\s*=\s*/i.exec(outsideQuotes(open));
+  if (!name) return false;
+  const value = open.slice(name.index + name[0].length);
+  const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
+  return quote ? value.length > 1 && value[1] !== quote : /^[^\s>]/.test(value);
+}
+
 function parseFragmentOrDocument(html: string) {
   // Wrap fragments so every body element participates in stable ID assignment.
-  const wrapped = !/^(?:<!doctype|<html[\s>/])/i.test(
-    html.replace(/^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/, ""),
-  );
+  const wrapped = isFragment(html);
   const { document } = wrapped
     ? parseHTML(`<!DOCTYPE html><html><head></head><body>${html}</body></html>`)
     : parseHTML(html);
@@ -62,7 +108,6 @@ const IMPLIED = new Set(["html", "head", "body", "tbody"]);
 type StartTag = { name: string; nameEnd: number; bracket: number };
 
 function startTags(html: string): StartTag[] | null {
-  const lower = html.toLowerCase();
   const tags: StartTag[] = [];
   let i = html.indexOf("<");
   while (i >= 0) {
@@ -77,23 +122,16 @@ function startTags(html: string): StartTag[] | null {
     if (end < 0) return null;
     const tag = name[1]!.toLowerCase();
     tags.push({ name: tag, nameEnd: i + name[0].length, bracket: end });
-    const after = RAW_TEXT.has(tag) ? rawTextEnd(lower, tag, end) : end;
+    const after = RAW_TEXT.has(tag) ? rawTextEnd(html, tag, end) : end;
     i = after < 0 ? -1 : html.indexOf("<", after + 1);
   }
   return tags;
 }
 
-function rawTextEnd(lower: string, tag: string, from: number): number {
-  const marker = `</${tag}`;
-  for (
-    let at = lower.indexOf(marker, from);
-    at >= 0;
-    at = lower.indexOf(marker, at + marker.length)
-  ) {
-    const next = lower[at + marker.length];
-    if (next !== undefined && /[\s/>]/.test(next)) return at;
-  }
-  return -1;
+function rawTextEnd(html: string, tag: string, from: number): number {
+  const endTag = new RegExp(`</${tag}(?=[\\s/>]|$)`, "gi");
+  endTag.lastIndex = from;
+  return endTag.exec(html)?.index ?? -1;
 }
 
 function nextTagAfter(html: string, lt: number): number {

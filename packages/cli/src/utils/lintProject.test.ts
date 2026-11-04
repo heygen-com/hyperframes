@@ -1007,6 +1007,19 @@ describe("multiple_root_compositions", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("ignores HyperFrames Desktop's root-level podcast-lanes.html camera lanes page", async () => {
+    const project = makeProject(validHtml());
+    writeFileSync(
+      join(project, "podcast-lanes.html"),
+      '<div id="root" data-composition-id="podcast-lanes" data-no-timeline data-start="0" data-duration="60" data-width="1280" data-height="720"></div>',
+    );
+    const { results } = await lintProject(project);
+    const finding = results[0]?.result.findings.find(
+      (f) => f.code === "multiple_root_compositions",
+    );
+    expect(finding).toBeUndefined();
+  });
+
   it("ignores macOS AppleDouble HTML metadata files", async () => {
     const project = makeProject(validHtml());
     writeFileSync(join(project, "._index.html"), validHtml());
@@ -1076,7 +1089,7 @@ describe("duplicate_audio_track", () => {
     expect(finding).toBeUndefined();
   });
 
-  it("deduplicates same audio found in root + sub-composition", async () => {
+  it("ignores audio in a sub-composition the root never mounts", async () => {
     const project = makeProject(validHtmlWithAudio(), {
       "scene.html": validHtmlWithAudio("scene"),
     });
@@ -1102,7 +1115,7 @@ describe("duplicate_audio_track", () => {
 
   it("formats Infinity end times as 'end' without crashing", async () => {
     const html = `<html><body>
-  <div data-composition-id="main" data-width="1920" data-height="1080" data-duration="30">
+  <div data-composition-id="main" data-width="1920" data-height="1080">
     <audio id="a" src="a.wav" data-track-index="0" data-start="0">
     <audio id="b" src="b.wav" data-track-index="0" data-start="5">
   </div>
@@ -1117,7 +1130,8 @@ describe("duplicate_audio_track", () => {
   });
 
   it("finds audio across multiple HTML sources (g-flag regression)", async () => {
-    const project = makeProject(validHtmlWithAudio(), {
+    const mountScene = `</audio><div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0"></div>`;
+    const project = makeProject(validHtmlWithAudio().replace("</audio>", mountScene), {
       "scene.html": `<html><body>
   <div data-composition-id="scene" data-width="1920" data-height="1080">
     <audio id="overlap" src="music.wav" data-track-index="0" data-start="5" data-duration="20">

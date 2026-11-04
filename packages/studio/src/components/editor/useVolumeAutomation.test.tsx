@@ -59,20 +59,14 @@ describe("useVolumeAutomation", () => {
     expect(bind({ volume: "0.55", automation }).binding.volumeAutomated).toBe(false);
   });
 
-  it("seeds a new lane at the level the slider already shows", () => {
+  it("seeds a new lane at unity, which data-volume then multiplies", () => {
     // Automating a track must not change how loud it is.
     const { binding, onSetAttributeQuiet } = bind({ volume: "0.55" });
     act(() => binding.onAutomateVolume());
     expect(onSetAttributeQuiet).toHaveBeenCalledWith(
       "data-automation",
-      JSON.stringify({ version: 1, lanes: [{ target: "volume", points: [{ t: 0, v: 0.55 }] }] }),
+      JSON.stringify({ version: 1, lanes: [{ target: "volume", points: [{ t: 0, v: 1 }] }] }),
     );
-  });
-
-  it("treats a missing data-volume as unity", () => {
-    const { binding, onSetAttributeQuiet } = bind({});
-    act(() => binding.onAutomateVolume());
-    expect(writtenAutomation(onSetAttributeQuiet).lanes[0].points[0].v).toBe(1);
   });
 
   it("keeps FX lanes when adding the volume one", () => {

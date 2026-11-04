@@ -6,9 +6,9 @@ import { CliRuntimeError } from "../../utils/commandResult.js";
 import {
   buildLambdaBatchRenderConfig,
   parseBatchFile,
-  runWithConcurrencyLimit,
   type RenderBatchArgs,
 } from "./render-batch.js";
+import { runWithConcurrencyLimit } from "../../utils/concurrency.js";
 
 let tmpDir: string;
 
@@ -166,6 +166,12 @@ describe("buildLambdaBatchRenderConfig — aspect-agnostic wire threading", () =
     const config = buildLambdaBatchRenderConfig({ ...baseArgs, outputResolution: "portrait-4k" });
     expect(config.outputResolution).toBe("portrait-4k");
     expect(config.outputResolutionAspectAgnostic).toBeUndefined();
+  });
+
+  it("sends the delivery options to every batch entry", () => {
+    expect(
+      buildLambdaBatchRenderConfig({ ...baseArgs, keyframeIntervalSeconds: 2, maxBitrate: "8M" }),
+    ).toMatchObject({ keyframeIntervalSeconds: 2, maxBitrate: "8M" });
   });
 
   it("hands the deploy's reserved concurrency to the planner", () => {

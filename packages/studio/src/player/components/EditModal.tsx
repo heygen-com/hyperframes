@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlayerStore } from "../store/playerStore";
 import { formatTime } from "../lib/time";
@@ -126,7 +127,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
     zIndex: 200,
   };
 
-  return (
+  return createPortal(
     <div ref={popoverRef} style={style}>
       <div className="w-80 bg-neutral-900 border border-neutral-700/60 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
         {/* Header */}
@@ -205,6 +206,7 @@ export function EditPopover({ rangeStart, rangeEnd, anchorX, anchorY, onClose }:
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

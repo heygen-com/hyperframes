@@ -207,6 +207,9 @@ describe("stripJsStringLiterals scaling", () => {
   // output string's growth adds its own cost and 8x input measures ~20x even
   // for the linear scan. Inside that range 8x input measures ~8x; a quadratic
   // scan measures 60x or more.
+  //
+  // Each sample repeats the scan until it has spent at least 50ms: Windows
+  // updates `process.cpuUsage` in ~15.6ms ticks, so one fast scan can read 0.
   it("stays linear in slash-dense input", { timeout: 30_000 }, () => {
     const cpuMs = (n: number) => {
       const src = "a=b/c;".repeat(n);
@@ -214,9 +217,15 @@ describe("stripJsStringLiterals scaling", () => {
       let best = Infinity;
       for (let run = 0; run < 5; run += 1) {
         const started = process.cpuUsage();
-        stripJsStringLiterals(src);
-        const spent = process.cpuUsage(started);
-        best = Math.min(best, (spent.user + spent.system) / 1000);
+        let iterations = 0;
+        let spentMs = 0;
+        while (spentMs < 50) {
+          stripJsStringLiterals(src);
+          iterations += 1;
+          const spent = process.cpuUsage(started);
+          spentMs = (spent.user + spent.system) / 1000;
+        }
+        best = Math.min(best, spentMs / iterations);
       }
       return best;
     };

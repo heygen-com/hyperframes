@@ -26,6 +26,7 @@ function setupMocks(opts: {
   config?: ConfigShape;
   env?: Record<string, string | undefined>;
   writeFails?: boolean;
+  unattended?: boolean;
 }): {
   writeSpy: ReturnType<typeof vi.fn>;
   spawnSpy: ReturnType<typeof vi.fn>;
@@ -50,6 +51,10 @@ function setupMocks(opts: {
     writeConfig: writeSpy,
   }));
   vi.doMock("./env.js", () => ({ isDevMode: () => !!opts.devMode }));
+  vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
+    isUnattended: () => opts.unattended ?? false,
+  }));
   vi.doMock("./installerDetection.js", () => ({
     detectInstaller: () => ({
       kind: opts.installer.kind,
@@ -145,6 +150,42 @@ describe("scheduleBackgroundInstall", () => {
     expect(spawnSpy).not.toHaveBeenCalled();
   });
 
+  // Before 1.0 a minor bump may break (semver), so 0.8.x -> 0.9.x is a "major"
+  // jump: notify only. Comparing the first number alone auto-installed it.
+  it("does NOT schedule across a 0.x minor jump", async () => {
+    const { spawnSpy, config } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.9.3" },
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.9.3", "0.8.231")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(config.pendingUpdate).toBeUndefined();
+  });
+
+  it.each([
+    ["0.8.232", "0.8.231"],
+    ["1.3.0", "1.2.5"],
+  ])("still schedules %s over %s (same breaking line)", async (latest, current) => {
+    const { spawnSpy } = setupMocks({
+      installer: { kind: "npm", command: `npm install -g hyperframes@${latest}` },
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall(latest, current)).toBe(true);
+    expect(spawnSpy).toHaveBeenCalledOnce();
+  });
+
+  it("does NOT schedule across a major jump from 1.0 on", async () => {
+    const { spawnSpy } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@2.0.0" },
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("2.0.0", "1.9.4")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
   it("skips in dev mode", async () => {
     const { spawnSpy } = setupMocks({
       installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
@@ -165,6 +206,18 @@ describe("scheduleBackgroundInstall", () => {
 
     expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
     expect(spawnSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips when the run is unattended (an agent, no terminal)", async () => {
+    const { spawnSpy, config } = setupMocks({
+      installer: { kind: "npm", command: "npm install -g hyperframes@0.4.4" },
+      unattended: true,
+    });
+    const { scheduleBackgroundInstall } = await import("./autoUpdate.js");
+
+    expect(scheduleBackgroundInstall("0.4.4", "0.4.3")).toBe(false);
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(config.pendingUpdate).toBeUndefined();
   });
 
   it("skips when HYPERFRAMES_NO_AUTO_INSTALL=1", async () => {

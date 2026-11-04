@@ -1,17 +1,19 @@
 import { setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Lint the current project", "hyperframes lint"],
   ["Lint a specific directory", "hyperframes lint ./my-video"],
+  ["Lint one composition file", "hyperframes lint ./my-video/compositions/intro.html"],
   ["Output findings as JSON", "hyperframes lint --json"],
   ["Include info-level findings", "hyperframes lint --verbose"],
 ];
 import { formatLintFindings } from "../utils/lintFormat.js";
 import { lintProject } from "../utils/lintProject.js";
-import { resolveProject } from "../utils/project.js";
+import { isUnderCompositions, resolveLintTarget } from "../utils/project.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -24,7 +26,7 @@ export default defineCommand({
   args: {
     dir: {
       type: "positional",
-      description: "Project directory",
+      description: "Project directory, or one composition .html file",
       required: false,
     },
     json: {
@@ -46,9 +48,15 @@ export default defineCommand({
     // first, then Node exits with the set code — the pattern the other commands
     // (publish/transcribe/upgrade/play/present) already use.
     try {
-      const project = resolveProject(args.dir);
+      const { project, entryFile } = resolveLintTarget(args.dir);
       const startedAt = Date.now();
-      const lintResult = await lintProject(project.dir);
+      const lintResult = await lintProject(
+        project.dir,
+        entryFile,
+        entryFile && isUnderCompositions(project.dir, entryFile)
+          ? { isSubComposition: true }
+          : undefined,
+      );
       trackLintRun(project.dir, lintResult, {
         command: "lint",
         durationMs: Date.now() - startedAt,
@@ -91,13 +99,12 @@ export default defineCommand({
       setCommandExitCode(lintResult.totalErrors > 0 ? 1 : 0);
       return;
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = failureMessage(err);
       if (args.json) {
         console.log(
           JSON.stringify(
             withMeta({
-              ok: false,
-              error: message,
+              ...jsonFailure("runtime_error", message),
               findings: [],
               errorCount: 0,
               warningCount: 0,

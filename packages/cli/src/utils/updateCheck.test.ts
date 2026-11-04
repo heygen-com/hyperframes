@@ -32,9 +32,15 @@ async function noticeWith(opts: {
   latestVersion?: string;
   isTTY?: boolean;
   env?: Record<string, string | undefined>;
+  unattended?: boolean;
+  pendingVersion?: string;
 }): Promise<string> {
   vi.resetModules();
   vi.doMock("./env.js", () => ({ isDevMode: () => false }));
+  vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
+    isUnattended: () => opts.unattended ?? false,
+  }));
   vi.doMock("./installerDetection.js", () => ({
     detectInstaller: () => ({
       kind: opts.installerCommand ? "npm" : "skip",
@@ -43,7 +49,14 @@ async function noticeWith(opts: {
     }),
   }));
   vi.doMock("../telemetry/config.js", () => ({
-    readConfig: () => ({ latestVersion: opts.latestVersion ?? "9.9.9" }),
+    readConfig: () => ({
+      latestVersion: opts.latestVersion ?? "9.9.9",
+      pendingUpdate: opts.pendingVersion && {
+        version: opts.pendingVersion,
+        command: "npm install -g hyperframes",
+        startedAt: new Date().toISOString(),
+      },
+    }),
     writeConfig: () => {},
   }));
 
@@ -83,6 +96,7 @@ async function noticeWith(opts: {
 describe("printUpdateNotice — install-method-aware command", () => {
   afterEach(() => {
     vi.doUnmock("./env.js");
+    vi.doUnmock("./attendedTerminal.js");
     vi.doUnmock("./installerDetection.js");
     vi.doUnmock("../telemetry/config.js");
     vi.resetModules();
@@ -102,6 +116,19 @@ describe("printUpdateNotice — install-method-aware command", () => {
 
   it("is suppressed on a non-TTY stderr", async () => {
     const out = await noticeWith({ installerCommand: "brew upgrade hyperframes", isTTY: false });
+    expect(out).toBe("");
+  });
+
+  it("is suppressed when the run is unattended", async () => {
+    const out = await noticeWith({ installerCommand: "npm i -g hyperframes", unattended: true });
+    expect(out).toBe("");
+  });
+
+  it("does not tell the user to install a version a background install is already installing", async () => {
+    const out = await noticeWith({
+      installerCommand: "npm i -g hyperframes",
+      pendingVersion: "9.9.9",
+    });
     expect(out).toBe("");
   });
 
@@ -376,6 +403,7 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
     vi.doUnmock("./env.js");
+    vi.doUnmock("../version.js");
     vi.resetModules();
     vi.unstubAllEnvs();
   });
@@ -443,7 +471,19 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     },
   );
 
-  it.each(["0.0.1", "999.0.0", "999.0.0-beta.1+build.5"])(
+  it("treats a cached latest older than the running CLI as unknown, without re-checking sooner than the daily cadence", async () => {
+    vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
+    const mod = await load({ lastUpdateCheck: hoursAgo(1), latestVersion: "0.9.5" });
+    expect(mod.updateCheckDue()).toBe(false);
+    expect(mod.getUpdateMeta()).toEqual({
+      version: "0.9.6",
+      latestVersion: undefined,
+      updateAvailable: false,
+    });
+    expect(mod.cachedUpdateCheck().latest).toBe("0.9.6");
+  });
+
+  it.each(["999.0.0", "999.0.0-beta.1+build.5"])(
     "preserves safe cached version %s and the update-check result in metadata",
     async (latestVersion) => {
       const mod = await load({ latestVersion });

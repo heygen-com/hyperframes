@@ -1,17 +1,52 @@
 ---
-title: "HyperFrames or Remotion?"
-description: "The same three-second title card written in Remotion React and in HyperFrames HTML, plus an honest read on which tool fits your project."
+title: "HyperFrames vs Remotion"
+sidebarTitle: "vs Remotion"
+description: "The same launch video made by an agent with Remotion and with HyperFrames, side by side; the same title card in both codes; and an honest read on which fits your project."
 ---
+
+import { DocsVideo } from "/snippets/docs-video.jsx";
 
 Both tools make video out of web pages. Both open a real browser, draw each
 frame, and encode the result. The difference is what you write.
 
 Remotion asks for a React component. HyperFrames asks for an HTML file.
 
+## Same request, two agents
+
+We gave Claude Code (Opus 5.5) the same one-paragraph request twice: once with only Remotion's official agent skills
+installed, once with only HyperFrames'. One run each, no retries, nothing edited afterwards.
+
+> Make a 15-second 1920x1080 launch video for a fictional note-taking app called Inkwell (tagline: "Write it down. Find
+> it later."). Logo reveal, three short feature lines, then an end card with the tagline. No voice. Render the final MP4
+> to out.mp4 in this folder. Don't ask me questions; make the choices yourself.
+
+<div className="hf-versus">
+  <div>
+    <p><strong>Remotion</strong></p>
+    <DocsVideo title="Inkwell, made with Remotion" src="https://static.heygen.ai/hyperframes-oss/docs/films/vs-remotion-v1.mp4" poster="/public/images/films/vs-remotion-v1.jpg" />
+  </div>
+  <div>
+    <p><strong>HyperFrames</strong></p>
+    <DocsVideo title="Inkwell, made with HyperFrames" src="https://static.heygen.ai/hyperframes-oss/docs/films/vs-hyperframes-v1.mp4" poster="/public/images/films/vs-hyperframes-v1.jpg" />
+  </div>
+</div>
+
+| | Remotion | HyperFrames |
+| --- | --- | --- |
+| Time to a rendered MP4 | 12 min 30 s | 11 min 50 s |
+| What it wrote | 10 TypeScript files, 1,037 lines | 4 HTML files, 822 lines |
+| Installed into the project | about 950 MB of `node_modules` | nothing |
+| Sound | none | a music bed and five sound effects it chose |
+
+Both are good videos; a single run decides nothing about quality. The difference that lasts is what you are left
+holding: a React project to keep building in code, or HTML files you can open in a browser, edit with an agent, or
+keep changing in the [Studio app](/studio-app/index).
+
+## The same title card, written both ways
+
 Here is the same three seconds — a title that fades in, holds, and fades out —
 written both ways. Neither version is padded or crippled to make a point.
 
-## The same title card, twice
 
 **Remotion.** The component is a function of the current frame number. You do
 the timing math yourself, in frames.
@@ -78,7 +113,6 @@ it is registered on `window.__timelines` under the same id as the root element.
 Miss the last one and you get a still frame with no motion. The
 [HTML schema](/reference/html-schema) lists every attribute.
 
-{/* VISUAL: side-by-side stills of both renders of this title card. No approved asset exists yet — do not add a URL until one does. */}
 
 Neither file is obviously better. The Remotion one is a pure function you can
 reason about in your head. The HyperFrames one is a page you can open in a
@@ -100,7 +134,7 @@ every time. See [Frame adapters](/concepts/frame-adapters) and
 [Deterministic rendering](/concepts/determinism).
 
 Both projects ship a visual editor and both save changes back to source.
-[HyperFrames Studio](/studio) edits the same DOM the renderer captures. Remotion
+[The HyperFrames browser editor](/studio) edits the same DOM the renderer captures. Remotion
 Studio edits React compositions. They are not interchangeable, and neither
 replaces editing the source for real structural changes.
 
@@ -133,7 +167,7 @@ close to a composition.
 
 It is built for an AI agent to author. The [agent skills](/guides/skills)
 encode the framework's rules, so the agent writes valid compositions instead of
-guessing, and a human can then edit the same file in Studio.
+guessing, and a human can then edit the same file in the browser editor.
 
 And Apache 2.0 means no seat count and no license review.
 
@@ -147,9 +181,9 @@ npx skills add heygen-com/hyperframes --skill remotion-to-hyperframes
 
 Then ask your agent to port the composition. It maps `useCurrentFrame` and
 `interpolate` onto timeline tweens, `Sequence` onto clips, and converts frames
-to seconds. Roughly 80% of a typical composition translates mechanically.
+to seconds.
 
-The other 20% is the point of the skill. It refuses to translate what does not
+The harder cases are the point of the skill. It refuses to translate what does not
 fit: React state machines built on `useState` or `useEffect`, async metadata,
 third-party React UI libraries. Those get flagged instead of silently
 mistranslated. It also grades its own output — it renders both versions and

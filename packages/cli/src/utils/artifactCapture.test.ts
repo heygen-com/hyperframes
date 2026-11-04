@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { createAdaptorServer } from "@hono/node-server";
 import {
   createStudioApi,
@@ -80,6 +82,43 @@ it("does not assign results when inputs change during capture", async () => {
   await captureArtifactRevision(f.dir);
   expect(f.state().snapshots.unversioned[0]?.attribution).toBe("inputs-changed");
   expect(f.state().snapshots.latest?.revision).toBeNull();
+});
+
+it("a check run while the app keeps the history open is still recorded, never under an unfiled revision", async () => {
+  const f = await fixture();
+  // Held here as the desktop app holds every open project's history; the CLI runs as the app runs it, a child.
+  const held = await openProjectHistory({
+    projectDir: f.dir,
+    historyRoot: historyDeps.historyRoot,
+    undoScope: "everyone",
+  });
+  const cli = resolve(fileURLToPath(import.meta.url), "..", "..", "cli.ts");
+  const checkFromChild = () => {
+    const run = spawnSync("bun", ["run", cli, "check", "--json", f.dir], {
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HYPERFRAMES_HISTORY_ROOT: historyDeps.historyRoot,
+        HYPERFRAMES_SKIP_UPDATE_CHECK: "1",
+        HYPERFRAMES_NO_TELEMETRY: "1",
+      },
+    });
+    expect(run.stderr).not.toContain("not recorded");
+  };
+  try {
+    writeFileSync(join(f.dir, "index.html"), "<html>filed</html>");
+    await held.checkpoint();
+    checkFromChild();
+    expect(f.state().currentRevision).toBeTruthy();
+    expect(f.state().checks.latest?.revision).toBe(f.state().currentRevision);
+
+    writeFileSync(join(f.dir, "index.html"), "<html>not filed yet</html>");
+    checkFromChild();
+    expect(f.state().checks.latest?.revision).toBeNull();
+    expect(f.state().checks.unversioned).toHaveLength(1);
+  } finally {
+    await held.close();
+  }
 });
 
 it("posts a preview checkpoint instead of sending GET", async () => {

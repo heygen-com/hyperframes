@@ -1,3 +1,4 @@
+import { isFontValue, isImageValue } from "@hyperframes/parsers/composition";
 import type { CompositionVariable } from "../core.types";
 
 export type VariableValidationIssue =
@@ -96,10 +97,7 @@ function checkType(value: unknown, decl: CompositionVariable): VariableValidatio
           actual: jsTypeOf(value),
         };
       }
-      // Object form: require the discriminant fields so a malformed brand-kit
-      // value ({name: 42} / {}) is caught here rather than surfacing as a bogus
-      // font-family at render time.
-      if (typeof value.name !== "string" || typeof value.source !== "string") {
+      if (!isFontValue(value)) {
         return {
           kind: "type-mismatch",
           variableId: decl.id,
@@ -120,13 +118,15 @@ function checkType(value: unknown, decl: CompositionVariable): VariableValidatio
           actual: jsTypeOf(value),
         };
       }
-      // Object form: require the discriminant field.
-      if (typeof value.url !== "string") {
+      if (!isImageValue(value)) {
         return {
           kind: "type-mismatch",
           variableId: decl.id,
           expected: "image object {url: string}",
-          actual: "object missing string url",
+          actual:
+            typeof value.url !== "string"
+              ? "object missing string url"
+              : "object with invalid alt/fit",
         };
       }
       return null;

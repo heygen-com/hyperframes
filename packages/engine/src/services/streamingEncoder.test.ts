@@ -103,6 +103,18 @@ describe("buildStreamingArgs", () => {
       expectSingleHvc1Tag(args);
     });
 
+    it("gives an NVENC build that lists only legacy presets a legacy preset, not p4", () => {
+      const legacy = new Set(["default", "slow", "medium", "fast", "hp", "hq"]);
+      const args = buildStreamingArgs(
+        { ...baseSdr, codec: "h265", useGpu: true, preset: "medium" },
+        "/tmp/out.mp4",
+        "nvenc",
+        legacy,
+      );
+
+      expect(args[args.indexOf("-preset") + 1]).toBe("medium");
+    });
+
     it("keeps the software tag when a detected GPU is disabled", () => {
       const args = buildStreamingArgs({ ...baseSdr, codec: "h265" }, "/tmp/out.mp4", "nvenc");
 
@@ -981,6 +993,33 @@ describe("spawnStreamingEncoder lifecycle and cleanup", () => {
     await encoder.close();
   });
 
+  it("reports how long writeFrame waited for FFmpeg to drain", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+
+      const { spawnStreamingEncoder } = await import("./streamingEncoder.js");
+      const dir = mkdtempSync(join(tmpdir(), "se-drain-wait-"));
+      const encoder = await spawnStreamingEncoder(join(dir, "out.mp4"), baseOptions);
+      const proc = calls[0]!.proc;
+
+      expect(await encoder.writeFrame(validJpeg)).toBe(true);
+      proc.stdin.write = (_chunk: Buffer): boolean => false;
+      const writePromise = encoder.writeFrame(validJpeg);
+      await Promise.resolve();
+      vi.setSystemTime(Date.now() + 40);
+      proc.stdin.emit("drain");
+      expect(await writePromise).toBe(true);
+
+      process.nextTick(() => proc.emit("close", 0));
+      expect((await encoder.close()).drainWaitMs).toBe(40);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not accumulate process close listeners across repeated back-pressured writes", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -1229,6 +1268,70 @@ describe("createFrameReorderBuffer abort (interleaved parallel drain)", () => {
 });
 
 describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
+  "buildStreamingArgs frame tags",
+  () => {
+    // VideoToolbox, like a libx264/libx265 given no colour options, writes only the colour its frames carry.
+    const streamTagsThrough = (args: string[], encoder: string[]): string => {
+      const dir = mkdtempSync(join(tmpdir(), "se-frame-tags-"));
+      try {
+        const out = join(dir, "out.mp4");
+        const vfAt = args.indexOf("-vf");
+        const vf = vfAt === -1 ? [] : ["-vf", args[vfAt + 1]!];
+        const source = ["-f", "lavfi", "-i", "color=c=0x808080:s=64x16:d=0.1"];
+        const encode = spawnSync("ffmpeg", [
+          "-y",
+          "-v",
+          "error",
+          ...source,
+          ...vf,
+          ...encoder,
+          out,
+        ]);
+        expect(encode.status).toBe(0);
+        const entries = "stream=color_space,color_transfer,color_primaries";
+        const probe = ["-v", "error", "-show_entries", entries, "-of", "csv=p=0", "--", out];
+        return spawnSync("ffprobe", probe).stdout.toString().trim();
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const tiny = { width: 64, height: 16 };
+
+    it.each([
+      ["captured frames", {}],
+      ["raw RGB frames", { rawInputFormat: "rgb48le" as const }],
+    ])("tags BT.709 on %s, so an encoder that reads only them tags the stream", (_, extra) => {
+      const args = buildStreamingArgs({ ...baseSdr, ...tiny, ...extra }, "o.mp4");
+
+      expect(streamTagsThrough(args, ["-c:v", "libx264", "-preset", "ultrafast"])).toBe(
+        "bt709,bt709,bt709",
+      );
+    });
+
+    it.each([
+      [baseHdrPq, "smpte2084", null],
+      [baseHdrHlg, "arib-std-b67", null],
+      [baseHdrPq, "smpte2084", "videotoolbox"],
+    ] as const)(
+      "tags raw HDR frames %#, so an encoder that reads only them tags the stream",
+      (base, trc, gpu) => {
+        const args = buildStreamingArgs({ ...base, ...tiny, useGpu: gpu !== null }, "o.mp4", gpu);
+        const x265 = [
+          "-c:v",
+          "libx265",
+          "-pix_fmt",
+          "yuv420p10le",
+          "-x265-params",
+          "log-level=error",
+        ];
+
+        expect(streamTagsThrough(args, x265)).toBe(`bt2020nc,${trc},bt2020`);
+      },
+    );
+  },
+);
+
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
   "buildStreamingArgs raw SDR colour",
   () => {
     // ffmpeg 7 and older convert raw RGB with the BT.601 matrix unless told otherwise.
@@ -1305,3 +1408,29 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)(
     }, 30_000);
   },
 );
+
+describe("buildStreamingArgs video layer", () => {
+  const layer = { inputArgs: ["-ss", "0", "-i", "film.mp4", "-t", "10"], filters: ["fps=30"] };
+  const withLayer = { ...baseSdr, imageFormat: "png" as const, videoLayer: layer };
+
+  it("overlays the piped frames on the source video and maps the result", () => {
+    const args = buildStreamingArgs(withLayer, "/tmp/out.mp4");
+    expect(args.indexOf("-i")).toBeLessThan(args.indexOf("film.mp4"));
+    const graph = args[args.indexOf("-filter_complex") + 1] ?? "";
+    expect(graph).toMatch(
+      /^\[1:v\]fps=30,format=gbrp\[v\];\[0:v\]format=rgba\[o\];\[v\]\[o\]overlay=/,
+    );
+    expect(args[args.indexOf("-map") + 1]).toBe("[vout]");
+    expect(args).not.toContain("-vf");
+  });
+
+  it.each([
+    ["JPEG frames", { imageFormat: "jpeg" as const }],
+    ["GPU encode", { useGpu: true }],
+    ["vp9", { codec: "vp9" as const }],
+  ])("refuses %s", (_name, over) => {
+    expect(() => buildStreamingArgs({ ...withLayer, ...over }, "/tmp/out.mp4", "nvenc")).toThrow(
+      /videoLayer needs/,
+    );
+  });
+});

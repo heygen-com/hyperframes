@@ -35,7 +35,7 @@ same job, keep the clearer one.
 
 ## Bring it into the project
 
-In Studio, open **Assets**, choose **Import media**, or drop files into the
+In the browser editor, open **Assets**, choose **Import media**, or drop files into the
 panel. Preview the file before placing it on the timeline. You can also ask the
 agent to capture a website, prepare supplied footage, generate a derivative, or
 copy an approved file into the project.
@@ -53,6 +53,18 @@ make later revisions much easier for both people and agents.
 
 The original and prepared file should remain easy to distinguish.
 
+## Remember confirmed preferences
+
+The media-use skill records confirmed choices in `.media/preferences.json`.
+Concurrent records preserve each choice, including confirmations that promote a
+preference to your personal defaults after use in two projects.
+
+Add `.media/*.lock` to the project's `.gitignore`, while keeping
+`preferences.json` committed. If recording reports "Settings are locked…",
+confirm that no HyperFrames process is recording preferences before deleting
+the named lock file and retrying. A locked personal tier leaves the project
+record intact and postpones personal promotion until a later record.
+
 ## Check the final timeline
 
 Watch once from beginning to end and check:
@@ -62,6 +74,16 @@ Watch once from beginning to end and check:
 - caption timing against the spoken words;
 - voice clarity on ordinary headphones and laptop speakers;
 - missing files, temporary URLs, and late-loading media.
+
+## Reuse an approved recipe
+
+Ask the agent to save an approved video's design and storyboard as a named
+recipe for later projects. Saving the same name again creates a new version
+and archives the previous project version.
+
+If the new version has no `BRIEF.md`, importing that recipe into another
+project does not restore the older brief. The earlier brief remains available
+in the archived version.
 
 ## Choose a media task
 
@@ -78,7 +100,7 @@ Watch once from beginning to end and check:
   <Card title="Remove a background" icon="person-rays" href="/guides/remove-background">
     Isolate a person from a real image or clip.
   </Card>
-  <Card title="Color grading" icon="palette" href="/guides/color-grading">
+  <Card title="Color grading" icon="palette" href="/guides/media-effects#fix-and-grade-the-color">
     Correct footage or establish a deliberate look.
   </Card>
   <Card title="Media effects" icon="wand-magic-sparkles" href="/guides/media-effects">
@@ -88,5 +110,5 @@ Watch once from beginning to end and check:
 
 ## Related topics
 
-- [Use assets and Catalog items in Studio](/studio/assets-and-blocks)
+- [Use assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Finish, render, and share](/guides/export-and-share)

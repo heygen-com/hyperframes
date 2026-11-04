@@ -60,6 +60,16 @@ describe("assignMediaRenderIds", () => {
     ).toEqual(["clip", "clip__hf2"]);
   });
 
+  it("repairs duplicate existing stamps while reserving later unique stamps", () => {
+    expect(
+      stamp(
+        '<video id="clip" data-hf-render-id="clip" src="a.mp4">' +
+          '<video id="clip" data-hf-render-id="clip" src="b.mp4">' +
+          '<video id="clip" data-hf-render-id="clip__hf2" src="c.mp4">',
+      ),
+    ).toEqual(["clip", "clip__hf3", "clip__hf2"]);
+  });
+
   it("does not claim an id that a later element already holds as its render id", () => {
     // Re-running over a partially stamped document must not hand `clip__hf2`
     // to the first element and collide with the element already holding it.
@@ -126,6 +136,23 @@ describe("assignMediaRenderIds", () => {
 });
 
 describe("audio group render ids", () => {
+  it("repairs duplicate bus stamps and reserves existing bus identities before new media", () => {
+    const { document } = parseHTML(
+      '<video id="bed" src="a.mp4"></video>' +
+        '<hf-audio-group id="bed" data-hf-render-id="bed"></hf-audio-group>' +
+        '<hf-audio-group id="bed" data-hf-render-id="bed"></hf-audio-group>' +
+        '<hf-audio-group id="bed" data-hf-render-id="bed__hf2"></hf-audio-group>',
+    );
+    assignMediaRenderIds(document);
+    const identities = () =>
+      [...document.querySelectorAll("video, hf-audio-group")].map((element) =>
+        element.getAttribute(MEDIA_RENDER_ID_ATTR),
+      );
+    expect(identities()).toEqual(["bed__hf3", "bed", "bed__hf4", "bed__hf2"]);
+    assignMediaRenderIds(document);
+    expect(identities()).toEqual(["bed__hf3", "bed", "bed__hf4", "bed__hf2"]);
+  });
+
   /**
    * A sub-composition declaring a bus AND its members, used twice. The author id
    * `bed` is unique per FILE and duplicated once inlined, and the two instances

@@ -44,15 +44,17 @@ The Lambda adapter wraps the distributed producer primitives behind one dispatch
 
 <Steps>
   <Step title="Plan">
-    Downloads the project archive from S3, runs the producer planner, and uploads the plan directory.
+    Fetches the project inputs from S3, probes the composition, prepares audio, and publishes the plan artifacts. Plan v2 defers eligible constant-frame-rate SDR video extraction to the chunk workers; variable-frame-rate sources and required HDR color conversions still run during planning.
   </Step>
   <Step title="Render chunks">
-    Step Functions fans out chunk jobs. Each Lambda invocation downloads the plan assets, renders one chunk, and uploads the result.
+    Step Functions fans out chunk jobs. Each Lambda invocation downloads the assets it needs, extracts its deferred video frames, renders one chunk, and uploads the result.
   </Step>
   <Step title="Assemble">
     Downloads all rendered chunks plus audio assets, assembles the final output, and writes the finished file to S3.
   </Step>
 </Steps>
+
+All three phases must fit the configured per-invocation Lambda timeout, at most 15 minutes, and the function's temporary storage. Smaller chunks can reduce each worker's extraction and rendering work, but do not divide video extraction that still happens in Plan. See [long-video planning limits](/deploy/aws-lambda#long-video-planning-times-out) for FFmpeg frame-stall timeouts and how to split jobs that cannot fit.
 
 The handler uses `@sparticuz/chromium` by default, with a build-time fallback for bundling `chrome-headless-shell` directly when needed.
 
@@ -87,16 +89,15 @@ const progress = await getRenderProgress({ executionArn: handle.executionArn });
 console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
 ```
 
-Plan v2 is the default because workers fetch manifest-selected
-content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
-omitted. Deprecated v1 compatibility remains available by passing
-`planProtocol: "v1"`.
+Plan v2 is the only supported distributed plan transport. Workers fetch
+manifest-selected content-addressed artifacts, and the SDK sends explicit v2
+without requiring a protocol option.
 
 <Warning>
   For an existing installation, pause new renders and drain active Step
   Functions executions. Redeploy the Lambda handler and SAM/CDK state machine
   from the same package version before upgrading the application SDK. Older
-  infrastructure may default omission to v1 or lack v2 support.
+  infrastructure may lack the Plan v2-only request and locator contract.
 </Warning>
 
 `renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.

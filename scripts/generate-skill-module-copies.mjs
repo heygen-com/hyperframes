@@ -3,7 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const workflows = ["faceless-explainer", "pr-to-video", "product-launch-video"];
 export const skillModuleCopies = [
   [
     "packages/cli/src/media-use/lib/media-fetch.mjs",
@@ -14,27 +13,11 @@ export const skillModuleCopies = [
     ["skills/media-use/audio/scripts/lib/openverse.mjs"],
   ],
   [
-    "skills/media-use/audio/scripts/lib/bgm-volume.mjs",
-    workflows.map((skill) => `skills/${skill}/scripts/lib/bgm-volume.mjs`),
-  ],
-  [
-    "skills/media-use/audio/scripts/lib/host-audio.mjs",
-    workflows.map((skill) => `skills/${skill}/scripts/lib/host-audio.mjs`),
-  ],
-  [
     "skills/hyperframes/scripts/lib/main-module.mjs",
     [
-      ...[...workflows, "general-video", "hyperframes-audio", "media-use/audio"].map(
-        (skill) => `skills/${skill}/scripts/lib/main-module.mjs`,
-      ),
+      "skills/media-use/audio/scripts/lib/main-module.mjs",
       "packages/cli/src/media-use/lib/main-module.mjs",
     ],
-  ],
-  [
-    "skills/hyperframes/scripts/lib/frame-packets-core.mjs",
-    [...workflows, "general-video"].map(
-      (skill) => `skills/${skill}/scripts/lib/frame-packets-core.mjs`,
-    ),
   ],
 ];
 

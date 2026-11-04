@@ -115,6 +115,50 @@ function buildLiveIframe(bodyHtml: string) {
 describe("applyUndoRestoreToPreview", () => {
   const ROOT = "index.html";
 
+  it("takes GSAP's composed transform off the preview it is about to reload", () => {
+    // Undoing "enable keyframes" removes the script: no in-place patch expresses that, so the
+    // preview reloads — and until it lands it shows where the timeline last put the box, though
+    // the file it is going back to places it with CSS and no inline transform at all.
+    const tween = `window.__timelines["root"]=gsap.timeline().to("#a",{x:139.893,y:-195.508});`;
+    const film = (box: string, script: string) =>
+      `<div data-composition-id="root"><div id="a"${box}>a</div></div>${script}`;
+    const composed = ` style="transform: translate(139.893px, -195.508px)"`;
+    const { iframe, doc } = buildLiveIframe(film(composed, `<script>${tween}</script>`));
+    recordLiveSet(doc.getElementById("a")!, { x: 139.893, y: -195.508 });
+    const files = {
+      [ROOT]: {
+        previous: wrap(film("", `<script>${tween}</script>`)),
+        restored: wrap(film("", "")),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("full");
+
+    expect(doc.getElementById("a")!.style.transform).toBe("");
+  });
+
+  it("leaves a still-animated element alone when the restore only removes another", () => {
+    // Nothing about the animation changed: #a is where the live timeline put it, and the reload
+    // re-renders it. Clearing it here would flash the box back to its authored place first.
+    const script = `window.__timelines["root"]=gsap.timeline().to("#a",{x:100});`;
+    const film = (body: string) =>
+      `<div data-composition-id="root">${body}</div><script>${script}</script>`;
+    const { iframe, doc } = buildLiveIframe(
+      film(`<div id="a" style="transform: translate(100px, 0px)">a</div><div id="b">b</div>`),
+    );
+    recordLiveSet(doc.getElementById("a")!, { x: 100 });
+    const files = {
+      [ROOT]: {
+        previous: wrap(film(`<div id="a">a</div><div id="b">b</div>`)),
+        restored: wrap(film(`<div id="a">a</div>`)),
+      },
+    };
+
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("full");
+
+    expect(doc.getElementById("a")!.style.transform).toBe("translate(100px, 0px)");
+  });
+
   it("never stamps an undo whose sides are both already stamped", () => {
     const film = (color: string) =>
       `<div id="root" data-composition-id="root"><div id="target" style="background-color: ${color}">T</div><p>caption</p></div>`;

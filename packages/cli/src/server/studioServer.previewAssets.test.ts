@@ -83,3 +83,61 @@ describe("studio preview document", () => {
     expect(response.headers.get("ETag")).toBeNull();
   });
 });
+
+describe("bundled GSAP", () => {
+  const plugin = "/api/vendor/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js";
+
+  function writeMotionPathComposition(): void {
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html>
+<html><head><script src="vendor/gsap.min.js"></script></head>
+<body><div id="root" data-composition-id="main" data-width="320" data-height="180">
+<div id="card"></div>
+<script>gsap.to("#card", { motionPath: { path: [{ x: 10, y: 10 }] } });</script>
+</div></body></html>`,
+    );
+  }
+
+  it("serves Studio's GSAP dependencies same-origin instead of from jsDelivr", async () => {
+    writeMotionPathComposition();
+    expect(server.adapter.gsapLocalRoot).toBe("/api/vendor/npm");
+    const html = await (await server.app.request("/api/projects/film/preview")).text();
+    expect(html).toContain(`src="${plugin}"`);
+    expect(html).toContain('<meta name="hyperframes-gsap-base-url" content="/api/vendor/npm">');
+    expect(html).not.toContain("jsdelivr");
+
+    for (const file of ["gsap.min.js", "CustomEase.min.js", "MotionPathPlugin.min.js"]) {
+      const response = await server.app.request(`/api/vendor/npm/gsap@3.15.0/dist/${file}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toContain("javascript");
+      expect(await response.text()).toMatch(/^\/\*!\n \* \w+ 3\.15\.0/);
+    }
+  });
+
+  it.each([
+    "/api/vendor/npm/gsap@3.14.2/dist/gsap.min.js",
+    "/api/vendor/npm/gsap@3.15.0/dist/package.json",
+    "/api/vendor/npm/gsap@3.15.0/dist/..%2Fpackage.json",
+    "/api/vendor/npm/react@3.15.0/dist/gsap.min.js",
+  ])("serves only the bundled GSAP files: %s", async (url) => {
+    expect((await server.app.request(url)).status).toBe(404);
+  });
+
+  it("uses HYPERFRAMES_GSAP_BASE_URL over the bundled copy", async () => {
+    writeMotionPathComposition();
+    const mirror = "https://mirror.example/npm";
+    const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = mirror;
+    try {
+      server.watcher.close();
+      server = createStudioServer({ projectDir, projectName: "film" });
+      const html = await (await server.app.request("/api/projects/film/preview")).text();
+      expect(html).toContain(`src="${mirror}/gsap@3.15.0/dist/MotionPathPlugin.min.js"`);
+      expect(html).not.toContain("/api/vendor/npm");
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
+      else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
+    }
+  });
+});

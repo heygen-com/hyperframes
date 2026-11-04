@@ -1,7 +1,9 @@
-import { cpus, freemem, platform, release } from "node:os";
+import { cpus, platform, release } from "node:os";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { getSystemTotalMb } from "@hyperframes/engine/system-memory";
+
+export { getAvailableMemoryMb } from "@hyperframes/engine/system-memory";
 import {
   detectAgentRuntime,
   detectAgentHints,
@@ -251,54 +253,4 @@ export function getPowerState(): PowerState {
     // Same: absence of the reading is itself acceptable.
   }
   return { on_battery, low_power_mode };
-}
-
-/**
- * Get available memory in MB, accounting for OS-level page caching.
- *
- * `os.freemem()` on macOS returns only truly free pages — ignoring
- * inactive/purgeable/speculative pages that the kernel reclaims on demand.
- * On a 24 GB Mac this reports ~0.1 GB "free" when ~5 GB is actually
- * available. Linux has a similar (milder) issue; its kernel exposes the
- * correct value via `MemAvailable` in /proc/meminfo.
- */
-export function getAvailableMemoryMb(): number {
-  const fallback = bytesToMb(freemem());
-
-  if (platform() === "darwin") {
-    try {
-      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
-      const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
-      if (!pageSize) return fallback;
-
-      const pages = (key: string) =>
-        parseInt(raw.match(new RegExp(`${key}:\\s+(\\d+)`))?.[1] ?? "0", 10);
-
-      const available =
-        (pages("Pages free") +
-          pages("Pages inactive") +
-          pages("Pages purgeable") +
-          pages("Pages speculative")) *
-        pageSize;
-
-      return available > 0 ? bytesToMb(available) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  if (platform() === "linux") {
-    try {
-      const meminfo = readFileSync("/proc/meminfo", "utf-8");
-      const match = meminfo.match(/MemAvailable:\s+(\d+)\s+kB/);
-      if (match) {
-        return Math.trunc(parseInt(match[1]!, 10) / 1024);
-      }
-      return fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  return fallback;
 }

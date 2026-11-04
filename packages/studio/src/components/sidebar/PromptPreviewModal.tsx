@@ -91,6 +91,7 @@ export function PromptPreviewModal({
           </p>
           <textarea
             ref={textareaRef}
+            aria-label="Prompt"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => {

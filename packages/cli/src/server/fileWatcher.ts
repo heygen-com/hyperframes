@@ -1,6 +1,7 @@
 import { lstatSync, readdirSync, watch, type Dirent, type FSWatcher } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isAtomicTempPath } from "@hyperframes/core/atomic-file";
+import { isProjectIgnoredDir } from "@hyperframes/core/project-folders";
 import {
   affectsProjectSignature,
   STUDIO_SIGNATURE_MANIFEST_PATHS,
@@ -14,22 +15,6 @@ export interface ProjectWatcher {
   close(): void;
 }
 
-const WATCHER_EXCLUDED_DIRS = new Set([
-  ".cache",
-  ".git",
-  ".hyperframes",
-  ".next",
-  ".thumbnails",
-  ".transcode-cache",
-  ".vite",
-  ".waveform-cache",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "outputs",
-  "renders",
-]);
 // A save reaches the preview QUIET_MS after the writes go quiet, but at most once per BURST_MS,
 // so a checkout or a multi-file tool doesn't start a rebuild for every file.
 const QUIET_MS = 30;
@@ -38,7 +23,7 @@ const BURST_MS = 300;
 export function shouldWatchProjectFile(filename: string): boolean {
   if (!filename || isAtomicTempPath(filename)) return false;
   const parts = filename.split(/[\\/]+/);
-  return !parts.some((part) => WATCHER_EXCLUDED_DIRS.has(part));
+  return !parts.some(isProjectIgnoredDir);
 }
 
 function isDirectory(path: string): boolean {

@@ -1,6 +1,6 @@
-import { TimeoutError } from "puppeteer-core";
-
 export const PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS = 180_000;
+export const SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS =
+  PUPPETEER_DEFAULT_PROTOCOL_TIMEOUT_MS - 10_000;
 
 export class StageBudgetTimeoutError extends Error {
   readonly budgetMs: number;
@@ -23,6 +23,10 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function isPuppeteerTimeoutError(err: unknown): err is Error {
+  return err instanceof Error && err.constructor.name === "TimeoutError";
+}
+
 function hasNavigationTimeoutMessage(msg: string): boolean {
   return /navigation timeout/i.test(msg);
 }
@@ -32,7 +36,7 @@ function hasProtocolEvaluateTimeoutMessage(msg: string): boolean {
 }
 
 export function isNavigationTimeoutError(err: unknown): boolean {
-  if (err instanceof TimeoutError) {
+  if (isPuppeteerTimeoutError(err)) {
     return hasNavigationTimeoutMessage(err.message);
   }
   // String path used by BLOCKED.md formatting.
@@ -44,7 +48,7 @@ function isStageBudgetTimeoutError(err: unknown): boolean {
 }
 
 export function isProtocolEvaluateTimeoutError(err: unknown): boolean {
-  if (err instanceof TimeoutError) {
+  if (isPuppeteerTimeoutError(err)) {
     return !hasNavigationTimeoutMessage(err.message);
   }
   return hasProtocolEvaluateTimeoutMessage(errorMessage(err));

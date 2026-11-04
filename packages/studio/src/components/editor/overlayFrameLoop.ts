@@ -30,11 +30,14 @@ import { usePlayerStore } from "../../player/store/playerStore";
 const AWAKE_MS = 400;
 /** How often a parked loop runs one frame anyway, in case a wake was missed. */
 export const IDLE_POLL_MS = 250;
+/** The longest a parked loop waits between polls; each idle poll doubles the wait up to this. */
+export const MAX_IDLE_POLL_MS = 4000;
 
 const subscribers = new Set<() => void>();
 
 let frameId: number | null = null;
 let idleTimerId: ReturnType<typeof setTimeout> | null = null;
+let idlePollMs = IDLE_POLL_MS;
 let awakeUntil = 0;
 let listenersAttached = false;
 let stopBootWake: (() => void) | null = null;
@@ -137,10 +140,13 @@ function schedule(): void {
     frameId = requestAnimationFrame(runFrame);
     return;
   }
+  if (typeof document !== "undefined" && document.hidden) return;
+  const wait = idlePollMs;
+  idlePollMs = Math.min(idlePollMs * 2, MAX_IDLE_POLL_MS);
   idleTimerId = setTimeout(() => {
     idleTimerId = null;
     frameId = requestAnimationFrame(runFrame);
-  }, IDLE_POLL_MS);
+  }, wait);
 }
 
 /** Longest idle slice, so input that arrives during one waits at most this long for its frame. */
@@ -167,6 +173,7 @@ export function runWhenInputIdle(step: (timeLeft: () => number) => boolean): voi
 /** Something moved, or might have. Run frames at full rate for a moment. */
 export function requestOverlayFrames(): void {
   awakeUntil = performance.now() + AWAKE_MS;
+  idlePollMs = IDLE_POLL_MS;
   if (idleTimerId != null) {
     clearTimeout(idleTimerId);
     idleTimerId = null;
@@ -199,8 +206,8 @@ function detachListeners(): void {
 
 /**
  * Run `update` on the shared loop. The subscriber must be a pure poll: it is
- * called on an ordinary animation frame while the editor is active and roughly
- * four times a second while it is not.
+ * called on an ordinary animation frame while the editor is active, then
+ * less often the longer it stays idle, down to once every four seconds.
  */
 export function subscribeOverlayFrame(update: () => void): () => void {
   subscribers.add(update);
@@ -230,6 +237,7 @@ export function resetOverlayFrameLoopForTests(): void {
   frameId = null;
   idleTimerId = null;
   awakeUntil = 0;
+  idlePollMs = IDLE_POLL_MS;
   lastPreviewFrame = null;
   lastPreviewPlaying = null;
   detachListeners();

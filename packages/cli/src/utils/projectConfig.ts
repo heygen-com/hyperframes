@@ -7,7 +7,7 @@
  * point at custom registries or reshape their project layout.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
@@ -60,7 +60,7 @@ export interface ProjectConfig {
   /** Media handling options (e.g. auto-proxying of browser-hostile codecs). */
   media?: ProjectConfigMedia;
   /**
-   * Owning authoring-workflow skill slug (e.g. "product-launch-video"). Stamped
+   * Owning authoring skill slug (e.g. "hyperframes"). Stamped
    * by `hyperframes init --skill` or seeded from the first `hyperframes render
    * --skill`, then read back so every later render of this project — re-render,
    * `npm run render`, `--batch`, preview — is attributed to it on anonymous
@@ -74,6 +74,12 @@ export interface ProjectConfig {
    * silently forgetting it was ever tried.
    */
   registryItems?: RegistryItemRecord[];
+  /**
+   * The reverse session `hyperframes reverse start` got from the server. Only a
+   * server that answered that call accepts it, so `cloud render` sends it only
+   * when it is here.
+   */
+  reverseSessionId?: string;
 }
 
 export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
@@ -119,7 +125,10 @@ export function readProjectConfigWithStatus(projectDir: string): {
     return { status: isFileNotFound(error) ? "missing" : "unreadable" };
   }
   try {
-    return { status: "ok", config: normalizeConfig(JSON.parse(text) as Partial<ProjectConfig>) };
+    return {
+      status: "ok",
+      config: normalizeConfig(JSON.parse(text.replace(/^\uFEFF/, "")) as Partial<ProjectConfig>),
+    };
   } catch {
     return { status: "unreadable" };
   }
@@ -158,7 +167,14 @@ export function normalizeConfig(partial: Partial<ProjectConfig>): ProjectConfig 
     // every config round-trip, which would read as "this project never
     // installed a catalog item".
     registryItems: normalizeRegistryItems(partial.registryItems),
+    reverseSessionId: normalizeReverseSessionId(partial.reverseSessionId),
   };
+}
+
+const REVERSE_SESSION_ID = /^rvs_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export function normalizeReverseSessionId(raw: unknown): string | undefined {
+  return typeof raw === "string" && REVERSE_SESSION_ID.test(raw) ? raw : undefined;
 }
 
 /**
@@ -225,6 +241,16 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Write a patched config back with the file's own indentation and byte order mark. */
+function rewriteConfig(path: string, text: string, parsed: Record<string, unknown>): void {
+  const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
+  writeFileSync(
+    path,
+    (text.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(parsed, null, indent) + "\n",
+    "utf-8",
+  );
+}
+
 /** True when a thrown filesystem error reports the path as absent. */
 function isFileNotFound(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
@@ -242,8 +268,9 @@ function isFileNotFound(error: unknown): boolean {
  * empty slug is ignored. Best effort: a read-only or missing project directory
  * never fails the render it rode in on.
  *
- * One of two writers that touch an ALREADY EXISTING `hyperframes.json` (the
- * other is {@link recordProjectRegistryItems}; absent-only callers use
+ * One of the writers that touch an ALREADY EXISTING `hyperframes.json` (the
+ * others are {@link recordProjectRegistryItems} and
+ * {@link recordProjectReverseSession}; absent-only callers use
  * {@link createProjectConfig}), so it must not
  * round-trip through {@link normalizeConfig}:
  * that rebuilds the object from a field whitelist, which would drop keys it
@@ -277,15 +304,14 @@ export function seedProjectAuthoringSkill(projectDir: string, rawSkill: unknown)
   }
 
   try {
-    const parsed: unknown = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
     // A malformed config is left untouched rather than clobbered by a render.
     if (!isJsonObject(parsed)) return;
     // Seed-once. Normalized so a hand-edited garbage slug neither reaches
     // telemetry nor wedges the seed — the next `--skill` render heals it.
     if (normalizeSkillSlug(parsed.authoringSkill)) return;
     parsed.authoringSkill = skill;
-    const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
+    rewriteConfig(path, text, parsed);
   } catch {
     // Corrupt JSON, or a read-only file: attribution is best-effort telemetry,
     // never a render blocker.
@@ -323,7 +349,7 @@ export function recordProjectRegistryItems(
   }
 
   try {
-    const parsed: unknown = JSON.parse(text);
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
     if (!isJsonObject(parsed)) return;
     const existing = normalizeRegistryItems(parsed.registryItems) ?? [];
     const byName = new Map(existing.map((item) => [item.name, item]));
@@ -345,10 +371,54 @@ export function recordProjectRegistryItems(
       });
     if (unchanged) return;
     parsed.registryItems = merged;
-    const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-    writeFileSync(path, JSON.stringify(parsed, null, indent) + "\n", "utf-8");
+    rewriteConfig(path, text, parsed);
   } catch {
     // Corrupt JSON or a read-only file: the manifest is telemetry provenance,
     // never an install blocker.
+  }
+}
+
+/**
+ * Save the reverse session into the project, creating the folder and a default
+ * `hyperframes.json` when neither exists yet (`init` keeps that file). An
+ * existing config is patched in place, like {@link seedProjectAuthoringSkill}.
+ * Returns the config path, or undefined when nothing could be written.
+ */
+export function recordProjectReverseSession(
+  projectDir: string,
+  sessionId: string,
+  authoringSkill: string,
+): string | undefined {
+  if (!normalizeReverseSessionId(sessionId)) return undefined;
+  const path = projectConfigPath(projectDir);
+  let text: string;
+  try {
+    text = readFileSync(path, "utf-8");
+  } catch (error) {
+    if (!isFileNotFound(error)) return undefined;
+    try {
+      mkdirSync(resolve(projectDir), { recursive: true });
+      createProjectConfig(projectDir, {
+        ...DEFAULT_PROJECT_CONFIG,
+        authoringSkill: normalizeSkillSlug(authoringSkill),
+        reverseSessionId: sessionId,
+      });
+      return path;
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    const parsed: unknown = JSON.parse(text.replace(/^\uFEFF/, ""));
+    if (!isJsonObject(parsed)) return undefined;
+    parsed.reverseSessionId = sessionId;
+    if (!normalizeSkillSlug(parsed.authoringSkill)) {
+      const skill = normalizeSkillSlug(authoringSkill);
+      if (skill) parsed.authoringSkill = skill;
+    }
+    rewriteConfig(path, text, parsed);
+    return path;
+  } catch {
+    return undefined;
   }
 }

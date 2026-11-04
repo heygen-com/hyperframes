@@ -5,7 +5,7 @@ description: "Transcribe motion, iterate with absolute targets, distill the cons
 
 import { DocsVideo } from "/snippets/docs-video.jsx";
 
-[Iterating](/prompting/iterating) covered the correction loop in general. This page is its hardest test: matching a specific reference you watched, rather than a look you're inventing.
+[Iterating](/prompting/overview#iterate-toward-the-look) covered the correction loop in general. This page is its hardest test: matching a specific reference you watched, rather than a look you're inventing.
 
 From text alone, you can reach roughly 90% of a reference. That takes a specific workflow, and it takes knowing where the ceiling is. Both are below.
 
@@ -32,8 +32,8 @@ Compare your render against the reference frame by frame. Then correct one axis 
 
 State each correction as an absolute value, not a relative nudge:
 
-- ❌ `make dots 2x finer`
-- ✅ `dot radius = 25% of row spacing`
+- **Avoid:** `make dots 2x finer`
+- **Instead:** `dot radius = 25% of row spacing`
 
 Relative corrections pendulum — too big, then too small, then too big again. Expect a handful of rounds to converge.
 
@@ -99,7 +99,7 @@ Here is a distilled spec that one-shots a broadcast-style animated globe:
   > No audio.
 
     <DocsVideo
-      title="HyperFrames video: Recreate Globe Oneshot"
+      title="Recreate globe oneshot"
       src="https://static.heygen.ai/hyperframes-oss/docs/images/prompting/recreate-globe-oneshot.mp4#t=0.1"
       loop
     />
@@ -115,10 +115,9 @@ That last 10% doesn't close from text. It oscillates instead. If pixel-exact mat
 ## Related
 
 <CardGroup cols={2}>
-  <Card title="Iterating" href="/prompting/iterating">The correction loop this page pushes to its limit</Card>
-  <Card title="High-fidelity looks" href="/prompting/visual-specs">Writing the spec density a recreation needs</Card>
-  <Card title="Runtimes and 3D" href="/prompting/runtimes-and-3d">The adapter the worked example uses</Card>
+  <Card title="Iterating" href="/prompting/overview#iterate-toward-the-look">The correction loop this page pushes to its limit</Card>
+  <Card title="High-fidelity looks" href="/prompting/color-grading#high-fidelity-looks">Writing the spec density a recreation needs</Card>
+  <Card title="Runtimes and 3D" href="/prompting/color-grading#3d-and-other-animation-runtimes">The adapter the worked example uses</Card>
   <Card title="Capstone" href="/prompting/capstone">Every technique composed into one film</Card>
 </CardGroup>
 
-*Next: [Rendering and output](/prompting/rendering-and-output) — once the cut is locked, the words that pick the right export.*

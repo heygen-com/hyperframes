@@ -1,13 +1,17 @@
 ---
 title: "@hyperframes/studio"
-description: "React components and hooks used to build the HyperFrames Studio editing interface."
+description: "For developers: the React components and hooks behind the HyperFrames browser editor. Looking for the Studio app? See Get the Studio app."
 ---
 
-`@hyperframes/studio` contains the React application, editor components, player,
-timeline, and hooks that power HyperFrames Studio.
+<Note>
+  Looking for the **HyperFrames Studio app**, the one you download to make videos? It's here:
+  [Get the Studio app](/studio-app). This page is for developers building on the editor's code.
+</Note>
 
-Most people should not install this package directly. To open a project in the
-complete Studio application, run:
+`@hyperframes/studio` contains the React application, editor components, player, timeline, and hooks behind the
+HyperFrames browser editor.
+
+To open a project in the browser editor, you don't need this package:
 
 ```bash
 npx hyperframes preview
@@ -23,7 +27,7 @@ npm install @hyperframes/studio react react-dom zustand
 <Warning>
   The exported components are building blocks, not a drop-in embedded editor. Components such as
   `EditorShell`, `NLEPreview`, `Timeline`, `PropertyPanel`, and `FileTree` require project state,
-  callbacks, or Studio contexts. Use `StudioApp` when you need the complete application, or inspect
+  callbacks, or Studio contexts. Use `StudioApp` when you need the whole editor, or inspect
   the component types before composing a custom host.
 </Warning>
 
@@ -105,6 +109,31 @@ import studioPreset from "@hyperframes/studio/tailwind-preset";
 export default {
   presets: [studioPreset],
 };
+```
+
+## Preview guides in your own app
+
+Host apps can compose the same rulers, safe margins, grid, and snap toolbar that
+Studio uses over their own preview iframe. The provider owns the iframe geometry
+and shared preferences, so the host supplies its current iframe element and chooses the
+parts to render:
+
+```tsx
+import {
+  GridOverlay,
+  PreviewGuides,
+  PreviewOverlayProvider,
+  SnapToolbar,
+} from "@hyperframes/studio";
+function Preview({ iframe }: { iframe: HTMLIFrameElement | null }) {
+  return (
+    <PreviewOverlayProvider iframe={iframe}>
+      <PreviewGuides />
+      <GridOverlay />
+      <SnapToolbar />
+    </PreviewOverlayProvider>
+  );
+}
 ```
 
 ## Related topics

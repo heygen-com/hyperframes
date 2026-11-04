@@ -7,6 +7,8 @@ import {
 } from "../utils/desktopApp.js";
 import { identityAllowed } from "./telemetryIdentity.js";
 
+const CTA_ID = /^[A-Za-z0-9-]{1,64}$/;
+
 /** A bodiless POST is a simple request, so any page can send one to localhost: it has to come from this Studio. */
 export function sameOriginPost(headers: {
   host?: string;
@@ -19,22 +21,29 @@ export function sameOriginPost(headers: {
   return origin === undefined || origin === `http://${host}`;
 }
 
-/** Edit with Framey's route: whether to show it, where to download, and whether the app takes the project. */
+/** The desktop-app button's route: show it or not, the download, and whether the app here takes the project. */
 export function mountDesktopRoutes(
   app: Hono,
   projectDir: string,
   {
     ready = HANDOFF_READY,
-    open = openInDesktop,
+    open = (dir: string, cta?: string) => openInDesktop(dir, { cta, src: "browser-editor" }),
     platform = process.platform,
     installed = () => desktopInstalled({ platform }),
   } = {},
 ): void {
-  const downloadUrl = desktopDownloadUrl(platform);
-  app.get("/api/open-in-desktop", (c) =>
-    c.json({ available: downloadUrl !== null || installed(), handoff: ready, downloadUrl }),
-  );
-  app.post("/api/open-in-desktop", (c) => {
+  const downloadUrl = desktopDownloadUrl(platform, "browser-editor");
+  app.get("/api/open-in-desktop", (c) => {
+    const here = installed();
+    return c.json({
+      available: downloadUrl !== null || here,
+      handoff: ready && here,
+      downloadUrl,
+      os: platform,
+      installed: here,
+    });
+  });
+  app.post("/api/open-in-desktop", async (c) => {
     const allowed = sameOriginPost({
       host: c.req.header("host"),
       origin: c.req.header("origin"),
@@ -47,6 +56,8 @@ export function mountDesktopRoutes(
         reason: "handoff-unavailable",
         downloadUrl,
       });
-    return c.json(open(projectDir));
+    const body: unknown = await c.req.json().catch(() => null);
+    const cta = (body as { cta?: unknown } | null)?.cta;
+    return c.json(open(projectDir, typeof cta === "string" && CTA_ID.test(cta) ? cta : undefined));
   });
 }

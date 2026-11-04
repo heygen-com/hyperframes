@@ -1,47 +1,11 @@
 /**
- * Read/write the shared `~/.heygen/credentials` file (JSON contents,
- * no `.json` extension — the path matches heygen-cli).
+ * The HyperFrames store accepts legacy API-key text and JSON credentials.
+ * JSON keeps an optional API key, OAuth grant and display-only user metadata.
  *
- * Current format:
- *   {
- *     "api_key": "hg_...",
- *     "oauth": {
- *       "access_token": "...",
- *       "refresh_token": "...",
- *       "expires_at": "<ISO-8601 UTC>",
- *       "scope": "openid profile",
- *       "token_type": "Bearer"
- *     },
- *     "user": {
- *       "email": "...",
- *       "first_name": "...",
- *       "last_name": "...",
- *       "username": "..."
- *     }
- *   }
- *
- * Legacy: a single-line plaintext API key (the format heygen-cli has
- * written historically). If `JSON.parse` rejects the file, we treat the
- * trimmed contents as an API key; the next write upgrades to JSON.
- *
- * Writes go to a temp file + rename, 0600 mode, parent dir 0700.
- *
- * Cross-CLI forward compatibility: this file is SHARED with the Go
- * `heygen` CLI (and any future tool). Either CLI may write keys this
- * version doesn't model yet. To avoid one CLI silently clobbering the
- * other's data on round-trip, the reader stashes every unrecognized
- * top-level key (and every unrecognized key inside the `oauth` / `user`
- * sub-objects) into a hidden passthrough bag, and the writer re-emits
- * them verbatim. Known fields are still strictly validated; the
- * passthrough is purely additive and never feeds an HTTP header.
- *
- * The same contract binds the destructive paths (`clearOAuth`,
- * `clearUserInfo`, and the failed `auth login --api-key` rollback): when
- * removing a credential would leave the file with no known credential but
- * a surviving unknown/foreign top-level (or user-block) key, they write
- * the credential-less remnant rather than deleting the file — see
- * `hasPreservedUnknownData`. Deleting there would clobber exactly the
- * cross-CLI data this machinery exists to preserve.
+ * Atomic rename plus 0600 files/0700 directories protects credential writes.
+ * OAuth callers verify the client/environment binding before using stored grants.
+ * Unknown JSON fields survive round-trips so older versions preserve newer data;
+ * known fields are validated before they can enter an HTTP header.
  */
 
 import { promises as fs } from "node:fs";
@@ -70,6 +34,8 @@ const KNOWN_OAUTH_KEYS = new Set([
   "expires_at",
   "scope",
   "token_type",
+  "client_id",
+  "token_endpoint",
 ]);
 /** Keys this CLI version models inside the `user` sub-object. */
 const KNOWN_USER_KEYS = new Set(["email", "first_name", "last_name", "username"]);
@@ -81,6 +47,8 @@ export interface OAuthTokens {
   expires_at?: string;
   scope?: string;
   token_type?: string;
+  client_id?: string;
+  token_endpoint?: string;
   /** Unknown/future keys captured for cross-CLI round-trip. */
   [UNKNOWN]?: Record<string, unknown>;
 }
@@ -284,6 +252,8 @@ function assignOptionalStrings(
 }
 
 const OAUTH_OPTIONAL: readonly [string, FieldPicker][] = [
+  ["client_id", "header_safe"],
+  ["token_endpoint", "non_empty"],
   ["refresh_token", "header_safe"],
   ["expires_at", "non_empty"],
   ["scope", "non_empty"],
@@ -433,6 +403,8 @@ function serializeOAuth(o: OAuthTokens): Record<string, unknown> {
   if (o.expires_at) oauth["expires_at"] = o.expires_at;
   if (o.scope) oauth["scope"] = o.scope;
   if (o.token_type) oauth["token_type"] = o.token_type;
+  if (o.client_id) oauth["client_id"] = o.client_id;
+  if (o.token_endpoint) oauth["token_endpoint"] = o.token_endpoint;
   return oauth;
 }
 

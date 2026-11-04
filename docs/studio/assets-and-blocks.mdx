@@ -1,6 +1,7 @@
 ---
-title: "Use Assets and Catalog"
-description: "Import project media, reuse existing files, and add ready-made visuals."
+title: "Captions, assets and variables"
+description: "In the browser editor: import and reuse media, add Catalog visuals, restyle caption words, and turn values into variables for templates."
+sidebarTitle: "Captions, assets and variables"
 ---
 
 Use **Assets** for media files. Use **Catalog** for reusable visual scenes and components.
@@ -40,14 +41,10 @@ If a large video is still preparing a preview or proxy, wait for that process be
 
 ## Add a Catalog item
 
-1. Open **Catalog**.
-2. Browse or search for the visual you need.
-3. Preview the result.
-4. If the item supports direct insertion, choose **Add** to place it at the current time.
-5. Otherwise, copy the generated prompt into your agent chat.
-6. Replace sample content and match the project’s timing and design.
-
-Not every Catalog item can be inserted directly. Some are patterns that an agent adapts to the current composition.
+Open **Catalog**, search or pick a category (**Captions**, **Code Animations**, **VFX**, **Transitions**, **Effects**)
+and preview what you need. Choose **Add** where it's offered to place it at the playhead, or **Ask agent** to copy a
+ready request for your agent, which adapts the item to your composition. Then swap the sample content for yours and
+match the project's timing and look.
 
 Browse the full [Catalog](/catalog) when you want to compare categories and individual examples.
 
@@ -56,8 +53,98 @@ Browse the full [Catalog](/catalog) when you want to compare categories and indi
   your story.
 </Tip>
 
+## Edit captions
+
+When a composition has captions, the editor switches to caption editing: click a word on the frame, or find it in the
+caption track under the preview.
+
+<Frame caption="A selected word connects the canvas, caption rail, and the controls that the browser editor currently saves.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio-captions-panel-v1.jpg"
+    alt="HyperFrames browser editor with one caption word selected, word blocks in the caption rail, and position and transform controls"
+  />
+</Frame>
+
+### What you can change here
+
+Select a word (Shift-click for more), then drag, resize or rotate it on the frame. Arrow keys nudge it by 1 pixel,
+Shift + arrow by 10. Color, opacity, font size, weight and family are in the panel. These edits are saved for you, in
+`caption-overrides.json`, a moment after you make them.
+
+### What to ask the agent for
+
+Wording, timing, how words are grouped into lines and the caption style itself live in the caption source, not in
+the editor. Ask your agent ("break the captions into two-word groups", "fix the spelling of HeyGen") or change the
+source.
+
+Then watch once with sound and once muted: names and numbers right, nothing covering a face or a button, and the last
+caption clearing cleanly. For reusable styles, browse [caption components](/catalog/components/caption-highlight).
+
+## Use variables
+
+Variables let one project produce many versions without rebuilding its layout or animation.
+
+<Frame caption="The current Variables panel previews values beside the real composition.">
+  <img
+    src="https://static.heygen.ai/hyperframes-oss/docs/images/studio-variables-panel-v1.jpg"
+    alt="HyperFrames browser editor showing a composition beside the Variables panel with Title, Subtitle, and Background inputs"
+  />
+</Frame>
+
+### Create one reusable input
+
+The quickest path starts from the canvas:
+
+1. Select the element.
+2. Open **Variables** in the right panel.
+3. Bind the text, media source, text color, background, or font property.
+4. Create a new variable or choose a compatible existing one.
+
+Before binding to an existing variable, the browser editor shows its saved default, using the font name or image URL for object values.
+
+For a value that is not tied to the selected element, click **Add variable**. The browser editor supports string, number, color, boolean, enum, font, and image variables. Number variables can include minimum, maximum, and step values; enums can define their allowed options.
+
+Name the input by meaning—`customerName`, `headline`, or `brandColor`—rather than by its position in the design.
+
+### Preview without changing the template
+
+Change a value in the Variables panel to preview that version immediately. The preview is an override: it does not replace the saved default.
+
+The panel tells you whether you are previewing defaults or custom values. Use **Reset** to clear all preview overrides. When a scalar preview should become the new default, use **Set default**.
+
+Use **Edit** to change a variable's label, description, or saved default. For font and image objects, **Default** edits the font name or image URL. Saving keeps the font source, image alt text and fit, and any other stored metadata, including when you change only the label or description.
+
+<Note>
+  Variables from other compositions are listed separately. You can edit their declarations, but
+  their values are not live-previewed in the active composition.
+</Note>
+
+### Hand the project off
+
+At the bottom of the panel, **Use this template** can copy either:
+
+- the effective values as JSON;
+- a ready-to-run `npx hyperframes render ... --variables ...` command.
+
+This keeps the values you just reviewed attached to the render request instead of asking the next person to reconstruct them.
+
+### Test the fallback
+
+A useful template survives realistic variation. Before handing it off, test:
+
+- long and short names or headlines;
+- image aspect ratios;
+- color contrast;
+- number formatting;
+- missing optional values.
+
+For the schema, HTML bindings, and batch-render examples, read [Variables](/concepts/variables).
+
 ## Related topics
 
-- [Work with media](/guides/media)
+- [Work with media](/guides/video-components)
 - [Browse the Catalog](/catalog)
-- [Turn values into reusable variables](/studio/variables)
+- [Add captions to a video](/guides/captions-and-recuts)
+- [Voice, sound and captions](/guides/voice-and-audio)
+- [Understand the variables contract](/concepts/variables)
+- [Render variable-driven versions](/guides/rendering#batch-and-cloud-work)

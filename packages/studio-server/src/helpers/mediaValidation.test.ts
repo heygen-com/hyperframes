@@ -51,14 +51,19 @@ describe("validateUploadedMedia", () => {
     },
   );
 
-  it("accepts audio files with an audio stream", () => {
-    expect(
-      validateUploadedMedia("/tmp/test.wav", () => ({
-        status: 0,
-        stdout: JSON.stringify({ streams: [{ codec_type: "audio" }] }),
-        stderr: "",
-      })),
-    ).toEqual({ ok: true });
+  it("accepts an audio file only with an audio track ffmpeg can decode", () => {
+    const probed = (streams: object[]) => () => ({
+      status: 0,
+      stdout: JSON.stringify({ streams }),
+      stderr: "",
+    });
+    const decodable = probed([{ codec_type: "audio", codec_name: "pcm_s16le" }]);
+    expect(validateUploadedMedia("/tmp/test.wav", decodable)).toEqual({ ok: true });
+    // ffprobe names no codec for a track it cannot decode.
+    expect(validateUploadedMedia("/tmp/test.m4a", probed([{ codec_type: "audio" }]))).toEqual({
+      ok: false,
+      reason: "no supported audio stream found",
+    });
   });
 
   it("accepts the upload but says it was not checked when ffprobe is unavailable", () => {

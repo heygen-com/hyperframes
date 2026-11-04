@@ -23,8 +23,10 @@ export interface UseDomEditWiringParams {
   activeCompPath: string | null;
   domEditSelection: DomEditSelection | null;
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
-  domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
-  refreshDomEditGroupSelectionsFromPreview: (selections: DomEditSelection[]) => Promise<void>;
+  refreshDomEditSelectionFromPreview: (
+    selection: DomEditSelection,
+    iframe: HTMLIFrameElement,
+  ) => Promise<void>;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   previewIframe: HTMLIFrameElement | null;
   captionEditMode: boolean;
@@ -37,11 +39,6 @@ export interface UseDomEditWiringParams {
   applyStudioManualEditsToPreviewRef: React.MutableRefObject<
     (iframe: HTMLIFrameElement) => Promise<void>
   >;
-  applyDomSelection: (
-    selection: DomEditSelection | null,
-    options?: { revealPanel?: boolean; preserveGroup?: boolean },
-  ) => void;
-  buildDomSelectionFromTarget: (element: HTMLElement) => Promise<DomEditSelection | null>;
   openSourceForSelection?: (sourceFile: string, target: PatchTarget) => void;
   // GSAP script commit ops (from useGsapScriptCommits)
   updateGsapProperty: (
@@ -117,8 +114,7 @@ export function useDomEditWiring(params: UseDomEditWiringParams) {
     activeCompPath,
     domEditSelection,
     domEditSelectionRef,
-    domEditGroupSelectionsRef,
-    refreshDomEditGroupSelectionsFromPreview,
+    refreshDomEditSelectionFromPreview,
     previewIframeRef,
     previewIframe,
     captionEditMode,
@@ -129,8 +125,6 @@ export function useDomEditWiring(params: UseDomEditWiringParams) {
     refreshPreviewDocumentVersion,
     syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,
-    applyDomSelection,
-    buildDomSelectionFromTarget,
     openSourceForSelection,
     updateGsapProperty,
     updateGsapMeta,
@@ -251,14 +245,10 @@ export function useDomEditWiring(params: UseDomEditWiringParams) {
 
   useDomEditPreviewSync({
     previewIframe,
-    activeCompPath,
     captionEditMode,
     domEditSelectionRef,
-    domEditGroupSelectionsRef,
     domEditSelection,
-    applyDomSelection,
-    refreshDomEditGroupSelectionsFromPreview,
-    buildDomSelectionFromTarget,
+    refreshDomEditSelectionFromPreview,
     refreshPreviewDocumentVersion,
     syncPreviewHotkeys,
     applyStudioManualEditsToPreviewRef,

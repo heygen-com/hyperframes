@@ -31,6 +31,7 @@ describe("validateDistributedRenderConfig", () => {
       codec: "h265",
       quality: "high",
       crf: 18,
+      pageMotionBlur: "off",
       chunkSize: 240,
       maxParallelChunks: 16,
       runtimeCap: "lambda",
@@ -42,6 +43,11 @@ describe("validateDistributedRenderConfig", () => {
 
   it.each([
     ["null config", null as unknown as SerializableDistributedRenderConfig, "config"],
+    [
+      "unsupported page motion blur",
+      { ...VALID, pageMotionBlur: "on" as never } satisfies SerializableDistributedRenderConfig,
+      "config.pageMotionBlur",
+    ],
     [
       "wrong fps",
       { ...VALID, fps: 50 as never } satisfies SerializableDistributedRenderConfig,

@@ -14,25 +14,25 @@ export function formatTime(time: number): string {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function secondsToFrame(time: number, fps = STUDIO_PREVIEW_FPS): number {
+export function secondsToFrame(time: number, fps: number): number {
   if (!Number.isFinite(time) || time <= 0) return 0;
   if (!Number.isFinite(fps) || fps <= 0) return 0;
   return Math.round(time * fps);
 }
 
-export function frameToSeconds(frame: number, fps = STUDIO_PREVIEW_FPS): number {
+export function frameToSeconds(frame: number, fps: number): number {
   if (!Number.isFinite(frame) || frame <= 0) return 0;
   if (!Number.isFinite(fps) || fps <= 0) return 0;
   return frame / fps;
 }
 
-export function stepFrameTime(time: number, deltaFrames: number, fps = STUDIO_PREVIEW_FPS): number {
+export function stepFrameTime(time: number, deltaFrames: number, fps: number): number {
   const currentFrame = secondsToFrame(time, fps);
   const nextFrame = Math.max(0, currentFrame + deltaFrames);
   return frameToSeconds(nextFrame, fps);
 }
 
-export function formatFrameTime(time: number, duration: number, fps = STUDIO_PREVIEW_FPS): string {
+export function formatFrameTime(time: number, duration: number, fps: number): string {
   const currentFrame = secondsToFrame(time, fps);
   const totalFrames = secondsToFrame(duration, fps);
   return `${currentFrame}f / ${totalFrames}f`;

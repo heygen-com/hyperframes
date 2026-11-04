@@ -1,5 +1,5 @@
 // fallow-ignore-file unused-file
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import puppeteer from "puppeteer-core";
 import { testProcessIsAlive, testProcessDescendants } from "./processTestUtils.js";
 
@@ -34,6 +34,11 @@ console.log = (...args: unknown[]) => {
   }
   log(...args);
 };
+let scriptBrowserPid: number | undefined;
+function recordLaunch(file: string, pid: number): void {
+  appendFileSync(`${file}.launched`, `${pid}\n`);
+  if (scriptBrowserPid === undefined) writeFileSync(file, String(pid));
+}
 const launch = puppeteer.launch.bind(puppeteer);
 puppeteer.launch = async (options) => {
   const browser = await launch(options);
@@ -43,13 +48,15 @@ puppeteer.launch = async (options) => {
   writeFileSync(`${pidFile}.profile`, profile.slice("--user-data-dir=".length));
   const pid = browserProcess?.pid;
   if (!pid) throw new Error("Browser did not expose its process");
-  writeFileSync(pidFile, String(pid));
+  recordLaunch(pidFile, pid);
   const newPage = browser.newPage.bind(browser);
   browser.newPage = async () => {
     const page = await newPage();
     page.on("console", (message) => {
       if (message.text() === "HF_TEST_SCRIPT_START") {
         writeFileSync(`${pidFile}.script`, "started");
+        scriptBrowserPid = pid;
+        writeFileSync(pidFile, String(pid));
         if (process.platform === "linux") {
           writeFileSync(
             `${pidFile}.tree`,
@@ -84,6 +91,7 @@ if (process.env.HF_TEST_DISTINCT_PROFILES === "1") {
     const firstProfile = readFileSync(`${pidFile}.profile`, "utf8");
     const firstPid = first.process()?.pid;
     if (!firstPid) throw new Error("First browser has no process");
+    writeFileSync(`${pidFile}.first-pid`, String(firstPid));
     const second = await launchManagedBrowser(puppeteer, {
       ...options,
       args: [...options.args],
@@ -100,5 +108,6 @@ if (process.env.HF_TEST_DISTINCT_PROFILES === "1") {
   } finally {
     await closeManagedBrowser(first);
   }
+} else {
+  await import("../cli.js");
 }
-await import("../cli.js");

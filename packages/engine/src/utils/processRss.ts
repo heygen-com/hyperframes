@@ -91,8 +91,10 @@ export async function sampleProcessRss(
     if (platform === "win32") {
       const results: ProcessRssSample[] = [];
       for (const pid of unique) {
-        const { stdout } = await exec("tasklist", ["/FO", "CSV", "/NH", "/FI", `PID eq ${pid}`]);
-        results.push(...parseTasklistCsv(pid, stdout));
+        try {
+          const { stdout } = await exec("tasklist", ["/FO", "CSV", "/NH", "/FI", `PID eq ${pid}`]);
+          results.push(...parseTasklistCsv(pid, stdout));
+        } catch {}
       }
       return results;
     }

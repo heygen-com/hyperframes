@@ -13,13 +13,14 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
-import { warnOnDimensionMismatch } from "./_dimensions.js";
-import { requireStack, stateFilePath } from "./state.js";
+import { resolveOutputResolutionFromSize } from "./_dimensions.js";
+import { videoArchitecture, requireStack, type StackOutputs, stateFilePath } from "./state.js";
 
 // Dynamic-import the SDK so tsup keeps it out of the static-import head of
 // the CLI bundle. See sites.ts loadSDK() for the full rationale.
@@ -27,7 +28,7 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
   return import("@hyperframes/aws-lambda/sdk");
 }
 
-export interface RenderArgs {
+export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
@@ -84,13 +85,15 @@ export async function runRender(args: RenderArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  warnOnDimensionMismatch({
-    projectDir,
-    cliWidth: args.width,
-    cliHeight: args.height,
-    outputResolution: args.outputResolution,
-    quiet: args.json,
-  });
+  args = {
+    ...args,
+    outputResolution: resolveOutputResolutionFromSize({
+      projectDir,
+      cliWidth: args.width,
+      cliHeight: args.height,
+      outputResolution: args.outputResolution,
+    }),
+  };
 
   // Resolve --variables / --variables-file using the same parser the local
   // `hyperframes render` uses. `resolveVariablesArg` exits(1) with a friendly
@@ -130,24 +133,12 @@ export async function runRender(args: RenderArgs): Promise<void> {
     stack.reservedConcurrency,
   );
 
-  // When the caller passes only --site-id, synthesise the minimum-shape
-  // SiteHandle pointing at the deterministic content-addressed key. The
-  // `bytes` / `uploadedAt` fields are intentionally placeholders — the
-  // SDK reads only `siteId` + `projectS3Uri` when `uploaded: false`.
-  const siteHandle = args.siteId
-    ? {
-        siteId: args.siteId,
-        bucketName: stack.bucketName,
-        projectS3Uri: `s3://${stack.bucketName}/sites/${args.siteId}/project.tar.gz`,
-        bytes: 0,
-        uploadedAt: "",
-        uploaded: false,
-      }
-    : undefined;
+  // --site-id renders a site an earlier `lambda sites create` uploaded.
+  const { renderToLambda, siteHandleFromId } = await loadSDK();
+  const siteHandle = args.siteId ? siteHandleFromId(stack.bucketName, args.siteId) : undefined;
 
-  const { renderToLambda } = await loadSDK();
   const handle = await renderToLambda({
-    projectDir: siteHandle ? undefined : projectDir,
+    projectDir,
     siteHandle,
     bucketName: stack.bucketName,
     stateMachineArn: stack.stateMachineArn,
@@ -155,6 +146,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     config,
     executionName: args.executionName,
     outputKey: args.outputKey,
+    onNotice: (message) => console.error(c.dim(message)),
   });
 
   if (args.json) {
@@ -187,19 +179,25 @@ export async function runRender(args: RenderArgs): Promise<void> {
 
 async function waitForCompletion(
   executionArn: string,
-  stack: { region: string; functionName: string; lambdaMemoryMb: number },
+  stack: StackOutputs,
   intervalMs: number,
   json: boolean,
 ): Promise<void> {
   // Lazy import to avoid pulling SFN client when only `render --no-wait` is used.
   const { getRenderProgress } = await loadSDK();
   let lastRendered = -1;
+  const warned = new Set<string>();
   while (true) {
     const progress = await getRenderProgress({
       executionArn,
       region: stack.region,
       defaultMemorySizeMb: stack.lambdaMemoryMb,
+      videoArchitecture: videoArchitecture(stack),
     });
+    for (const warning of progress.warnings) {
+      if (!warned.has(warning)) console.warn(c.warn(warning));
+      warned.add(warning);
+    }
     if (!json && progress.framesRendered !== lastRendered) {
       lastRendered = progress.framesRendered;
       const total = progress.totalFrames ?? "?";
@@ -258,6 +256,10 @@ export function buildLambdaRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
     workerConcurrency,
     runtimeCap: "lambda",
     variables,

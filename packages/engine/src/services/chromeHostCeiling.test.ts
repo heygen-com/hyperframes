@@ -1,5 +1,8 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { chromeMajorCeiling, exceedsChromeCeiling } from "./chromeHostCeiling.js";
+import { chromeMajorCeiling, exceedsChromeCeiling, shellStarts } from "./chromeHostCeiling.js";
 
 describe("chromeMajorCeiling", () => {
   it.each([
@@ -20,5 +23,21 @@ describe("exceedsChromeCeiling", () => {
     ["mac-152.0.7977.30", undefined, false],
   ])("%s with ceiling %s -> %s", (name, ceiling, expected) => {
     expect(exceedsChromeCeiling(name, ceiling)).toBe(expected);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("shellStarts", () => {
+  it("returns at its timeout even when the shell ignores SIGTERM", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-shell-probe-"));
+    const binary = join(dir, "shell.sh");
+    writeFileSync(binary, "#!/bin/sh\ntrap '' TERM\nsleep 6\n");
+    chmodSync(binary, 0o755);
+    const started = Date.now();
+    try {
+      expect(shellStarts(binary, 300)).toBe(false);
+      expect(Date.now() - started).toBeLessThan(3000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

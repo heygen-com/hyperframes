@@ -120,7 +120,11 @@ export function cssStyleMergeKey(el: Element): string | undefined {
   return JSON.stringify([media === "all" ? "" : media, el.getAttribute("title") ?? ""]);
 }
 
-export const UNCONDITIONAL_CSS_KEY = JSON.stringify(["", ""]);
+const UNCONDITIONAL_CSS_KEY = JSON.stringify(["", ""]);
+
+export function isAlwaysAppliedStyle(el: Element): boolean {
+  return cssStyleMergeKey(el) === UNCONDITIONAL_CSS_KEY && !el.closest("template, noscript, svg");
+}
 
 /** A link's identity and condition; fetch attributes (crossorigin, integrity, referrerpolicy) are not compared. */
 function linkDedupeKey(el: Element): string {

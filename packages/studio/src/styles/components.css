@@ -956,7 +956,7 @@
   }
 }
 
-/* Framey on the header's "Edit with Framey" (OpenInDesktopButton.tsx): a pulse as the page opens, a wiggle
+/* Framey on the header's "Install the desktop app" (OpenInDesktopButton.tsx): a pulse as the page opens, a wiggle
  * on hover, a flight towards the app while it opens. The eye follows the pointer from script. */
 @keyframes hf-framey-wiggle {
   0%,
@@ -1018,5 +1018,165 @@
   }
   .hf-framey-eye {
     transition: none;
+  }
+}
+
+/* Framey's moods, timed as the desktop app times them: it breathes and blinks, its eyes circle while it waits,
+ * it hops once when the app turns up, flies while a project hands over, and shakes when that fails. */
+.hf-framey-mood .hf-framey-body {
+  transform-box: fill-box;
+  transform-origin: 50% 60%;
+  animation: hf-framey-breath 3.27s ease-in-out infinite;
+}
+
+.hf-framey-mood .hf-framey-lid,
+.hf-framey-mood .hf-framey-whole {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.hf-framey-mood .hf-framey-whole {
+  transform-origin: 50% 100%;
+}
+
+.hf-framey-mood:is([data-mood="idle"], [data-mood="found"]) .hf-framey-lid {
+  animation: hf-framey-blink 4.6s infinite;
+}
+
+.hf-framey-mood[data-mood="found"] .hf-framey-whole {
+  animation: hf-framey-hop 1.8s cubic-bezier(0.2, 0.8, 0.2, 1) 2;
+}
+
+.hf-framey-mood[data-mood="opening"] .hf-framey-whole {
+  animation: hf-framey-handoff 2.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.hf-framey-mood[data-mood="error"] .hf-framey-whole {
+  animation: hf-framey-shake 0.6s ease-in-out 1;
+}
+
+.hf-framey-orbit {
+  animation: hf-framey-orbit 1.4s linear infinite;
+}
+
+@keyframes hf-framey-breath {
+  50% {
+    transform: scale(1.018);
+  }
+}
+
+@keyframes hf-framey-blink {
+  0%,
+  93%,
+  100% {
+    transform: scaleY(1);
+  }
+  95.5% {
+    transform: scaleY(0.12);
+  }
+}
+
+@keyframes hf-framey-hop {
+  0%,
+  40%,
+  100% {
+    transform: translateY(0);
+  }
+  20% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes hf-framey-orbit {
+  0%,
+  100% {
+    transform: translate(3px, 0);
+  }
+  25% {
+    transform: translate(0, 3px);
+  }
+  50% {
+    transform: translate(-3px, 0);
+  }
+  75% {
+    transform: translate(0, -3px);
+  }
+}
+
+@keyframes hf-framey-handoff {
+  0% {
+    transform: none;
+  }
+  45%,
+  60% {
+    transform: translate(14px, -4px) rotate(10deg);
+    opacity: 1;
+  }
+  80% {
+    transform: translate(30px, -8px) rotate(12deg);
+    opacity: 0;
+  }
+  81% {
+    transform: translate(-10px, 0);
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes hf-framey-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+/* The desktop-app guide card: a label or step that changes settles in; a finished step's tick pops in. */
+.hf-guide-swap {
+  animation: hf-guide-swap 180ms var(--ease-out-quint);
+}
+
+.hf-guide-tick {
+  animation: hf-guide-tick 300ms var(--ease-out-quint);
+}
+
+@keyframes hf-guide-swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+    filter: blur(2px);
+  }
+}
+
+@keyframes hf-guide-tick {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hf-framey-mood .hf-framey-body,
+  .hf-framey-mood .hf-framey-lid,
+  .hf-framey-mood .hf-framey-whole,
+  .hf-framey-orbit,
+  .hf-guide-swap,
+  .hf-guide-tick {
+    animation: none;
   }
 }

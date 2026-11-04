@@ -12,8 +12,8 @@ export const QuickstartContinuationGrid = () => {
       instruction: "Make the title larger, then render another version.",
     },
     {
-      title: "Open Studio",
-      detail: "Point at the same project and make a visible edit.",
+      title: "Open the browser editor",
+      detail: "Edit the same project on a timeline, by hand.",
       instruction: "npx hyperframes preview",
     },
     {

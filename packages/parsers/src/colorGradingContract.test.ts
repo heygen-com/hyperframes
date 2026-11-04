@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  COLOR_GRADING_EXAMPLE,
   COLOR_GRADING_ADJUST_KEYS,
   COLOR_GRADING_ADVANCED_LIMITS,
   COLOR_GRADING_DETAIL_KEYS,
@@ -13,6 +14,15 @@ import {
 } from "./colorGradingContract";
 
 describe("color grading contract", () => {
+  it("accepts its own correction example", () => {
+    expect(validateColorGradingContract(COLOR_GRADING_EXAMPLE)).toEqual([]);
+  });
+
+  it("names the real top-level keys when a container is misnamed", () => {
+    const [issue] = validateColorGradingContract({ adjustments: { exposure: 0.1 } });
+    expect(issue?.hint).toContain('"adjust"');
+  });
+
   it("publishes one complete key registry", () => {
     expect(COLOR_GRADING_TOP_LEVEL_KEYS).toContain("effects");
     expect(COLOR_GRADING_ADJUST_KEYS).toContain("exposure");

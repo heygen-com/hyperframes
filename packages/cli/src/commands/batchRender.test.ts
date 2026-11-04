@@ -85,6 +85,27 @@ describe("resolveOutputTemplate", () => {
 });
 
 describe("prepareBatchRender", () => {
+  it.each(["utf8", "utf16le"] as const)("reads a %s batch file with a BOM", (encoding) => {
+    const batchPath = join(tmpDir, "rows.json");
+    writeFileSync(batchPath, '\uFEFF[{"name":"Café","title":"Hello\\uFEFFworld"}]', encoding);
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: join(tmpDir, "renders", "{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+
+    expect(prepared.rows).toEqual([
+      {
+        index: 0,
+        variables: { name: "Café", title: "Hello\uFEFFworld" },
+        outputPath: resolve(tmpDir, "renders", "Café.mp4"),
+      },
+    ]);
+  });
+
   it("resolves output paths and the manifest path", () => {
     const batchPath = writeJson("rows.json", '[{"name":"Alice"},{"name":"Bob"}]');
     const outDir = join(tmpDir, "renders");
@@ -119,6 +140,36 @@ describe("prepareBatchRender", () => {
       "Batch output collision",
     );
     expect(error.message).toMatch(/Rows 0 and 1/);
+  });
+
+  it.each([
+    { template: "{name}.mp4", rows: [{ name: "portrait" }, { name: "landscape" }] },
+    {
+      template: "{aspect}/{name}.mp4",
+      rows: [
+        { aspect: "portrait", name: "launch" },
+        { aspect: "landscape", name: "launch" },
+      ],
+    },
+  ])("preserves a batch input at the manifest destination for $template", ({ template, rows }) => {
+    const original = JSON.stringify(rows);
+    const batchPath = writeJson("manifest.json", original);
+    const error = expectBatchError(
+      () =>
+        prepareBatchRender({
+          batchPath,
+          outputTemplate: join(tmpDir, template),
+          indexPath: writeIndex(),
+          strictVariables: false,
+          quiet: true,
+          json: false,
+        }),
+      "Batch manifest collision",
+    );
+
+    expect(error.message).toContain(batchPath);
+    expect(error.hint).toContain("separate output directory");
+    expect(readFileSync(batchPath, "utf8")).toBe(original);
   });
 
   it("fails strict variable validation per row", () => {
@@ -156,6 +207,34 @@ describe("prepareBatchRender", () => {
 });
 
 describe("runBatchRender", () => {
+  it("renders from manifest.json when the generated manifest has a separate directory", async () => {
+    const original = '[{"name":"Alice"},{"name":"Bob"}]';
+    const batchPath = writeJson("manifest.json", original);
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: join(tmpDir, "renders/{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+    const manifest = await runBatchRender({
+      prepared,
+      concurrency: 1,
+      failFast: false,
+      quiet: true,
+      json: false,
+      renderOne: async () => ({ durationMs: 3000, renderTimeMs: 42 }),
+    });
+
+    expect(manifest.completed).toBe(2);
+    expect(readFileSync(batchPath, "utf8")).toBe(original);
+    expect(JSON.parse(readFileSync(prepared.manifestPath, "utf8"))).toMatchObject({
+      completed: 2,
+      batchPath,
+    });
+  });
+
   it("writes a manifest with completed rows", async () => {
     const prepared = prepareBatchRender({
       batchPath: writeJson("rows.json", '[{"name":"Alice"}]'),

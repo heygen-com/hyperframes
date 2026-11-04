@@ -1,4 +1,8 @@
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { studioFileRevision } from "../utils/studioFileVersion";
+import { logReload } from "../utils/reloadDebug";
+import { whileScriptWrites } from "./previewReloading";
+
 type SwapWindow = Window & {
   __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
 };
@@ -71,6 +75,41 @@ export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonl
   meta.content = JSON.stringify(parts);
 }
 
+export const supersededByNewerEdit = () =>
+  new DOMException("superseded by a newer edit", "AbortError");
+
+const SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS = 5;
+
+type SceneSwap = (url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>;
+
+export function swapFreshly(
+  swap: SceneSwap,
+  url: URL,
+  isCurrent: () => boolean,
+  cancel: AbortSignal,
+  reloadWholeFilm: (url: string) => void,
+  attempt = 0,
+): void {
+  const at = studioFileRevision();
+  const fresh = () => studioFileRevision() === at;
+  const again = () => {
+    url.searchParams.set("_t", String(Date.now()));
+    swapFreshly(swap, url, isCurrent, cancel, reloadWholeFilm, attempt + 1);
+  };
+  const retries = attempt < SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS;
+  const gate = retries ? () => isCurrent() && fresh() : isCurrent;
+  whileScriptWrites(() => swap(url.toString(), gate, cancel))
+    .then(() => {
+      if (isCurrent() && !fresh() && retries) again();
+    })
+    .catch((error: unknown) => {
+      if (!isCurrent()) return;
+      if (!fresh() && retries) return again();
+      logReload("scene-swap-refused", { reason: String(error) });
+      reloadWholeFilm(url.toString());
+    });
+}
+
 /** Null when the preview cannot swap; rejects when superseded, cancelled or a full reload is needed. */
 export function sceneSwapFor(
   iframe: HTMLIFrameElement,
@@ -85,7 +124,8 @@ export function sceneSwapFor(
       () => deadline.abort(new Error("the preview took too long to swap")),
       SCENE_SWAP_MS,
     );
-    cancel?.addEventListener("abort", () => deadline.abort(cancel.reason), { once: true });
+    const onCancel = () => deadline.abort(cancel?.reason);
+    cancel?.addEventListener("abort", onCancel, { once: true });
     const swapping = (async () => {
       const response = await studioApiFetch(url, { signal: deadline.signal });
       if (!response.ok) throw new Error(`preview request failed with ${response.status}`);
@@ -101,6 +141,7 @@ export function sceneSwapFor(
       await Promise.race([swapping, expired]);
     } finally {
       clearTimeout(timer);
+      cancel?.removeEventListener("abort", onCancel);
     }
     iframe.dispatchEvent(new Event(SCENES_SWAPPED));
   };

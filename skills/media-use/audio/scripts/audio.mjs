@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // audio.mjs — the shared HyperFrames audio engine. ONE implementation of TTS +
-// BGM + SFX for every video workflow (product-launch, general-video, pr-to-video,
-// …). Workflows do NOT vendor a copy: they write a neutral `audio_request.json`
-// (a tiny per-workflow adapter maps their storyboard/scenes into it) and call:
+// BGM + SFX. Callers do NOT vendor a copy: they write a neutral
+// `audio_request.json` (mapping their storyboard/scenes into it) and call:
 //
 //   node <MEDIA_DIR>/scripts/audio.mjs --request ./audio_request.json --hyperframes . --out ./audio_meta.json
 //
@@ -35,7 +34,7 @@
 //     total_duration_s }
 //
 // --only tts,bgm,sfx  runs a subset and MERGES into an existing --out (so a
-// workflow can do TTS+BGM early, then SFX later once cues exist). When BGM uses
+// caller can do TTS+BGM early, then SFX later once cues exist). When BGM uses
 // the generate path it is spawned detached (bgm_pending:true) — run wait-bgm.mjs
 // before assembling.
 
@@ -200,8 +199,8 @@ if (only.has("bgm")) {
   Object.keys(bgmFields).forEach((k) => (bgmFields[k] = k === "bgm_pending" ? false : null));
   // Mode resolution. An EXPLICIT mode (flag or request.bgm.mode) is strict:
   // "retrieve" means retrieve-or-nothing — it never silently starts a detached
-  // generate (a caller with no wait-bgm step, e.g. product-launch, must not get
-  // a pending job it can't await). Only the UNSET/auto default picks generate
+  // generate (a caller with no wait-bgm step must not get a pending job it
+  // can't await). Only the UNSET/auto default picks generate
   // when HeyGen is absent.
   const explicitMode = bgmModeOverride || request.bgm?.mode || null;
   let mode = noBgm ? "none" : explicitMode || (heygenOK ? "retrieve" : "generate");

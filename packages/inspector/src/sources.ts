@@ -1,7 +1,8 @@
-import { closeSync, fstatSync, openSync, readFileSync, readdirSync } from "node:fs";
-import { extname, join, relative } from "node:path";
+import { closeSync, fstatSync, openSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { extname, join, posix, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { parse, type Node } from "acorn";
+import { Parser } from "htmlparser2";
 import postcss from "postcss";
 import { TraceMap, originalPositionFor } from "@jridgewell/trace-mapping";
 import type { BundleScriptProvenance } from "../../core/src/compiler/htmlBundler";
@@ -41,6 +42,14 @@ function occurrences(text: string, needle: string) {
   }
   return hits;
 }
+function realPath(path: string) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+const SHOWN_WHOLE = 2000;
 const excluded = new Set([...PREVIEW_IGNORED_DIRS, ".agents", ".claude", "evidence", "snapshots"]);
 function sourceFiles(project: string) {
   const files: string[] = [];
@@ -55,11 +64,16 @@ function sourceFiles(project: string) {
   visit(project);
   return files.sort();
 }
-export function fingerprint(project: string) {
+const HF_ID_ATTRIBUTE = /\sdata-hf-id\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g;
+export function fingerprint(project: string, { ignoreHfIds = false } = {}) {
   const hash = createHash("sha256");
   for (const path of sourceFiles(project)) {
     hash.update(relative(project, path));
-    hash.update(readFileSync(path));
+    hash.update(
+      ignoreHfIds && extname(path) === ".html"
+        ? readFileSync(path, "utf8").replace(HF_ID_ATTRIBUTE, "")
+        : readFileSync(path),
+    );
   }
   return hash.digest("hex");
 }
@@ -149,8 +163,29 @@ export interface HtmlTag {
   hfId?: string;
   classes: string[];
   tag: string;
+  compositionId?: string;
+  compositionSrc?: string;
+  inMarkup: boolean;
+  parent?: number;
+}
+function nesting(text: string) {
+  const parents = new Map<number, number | undefined>();
+  const open: number[] = [];
+  const parser = new Parser({
+    onopentag() {
+      parents.set(parser.startIndex, open.at(-1));
+      open.push(parser.startIndex);
+    },
+    onclosetag() {
+      open.pop();
+    },
+  });
+  parser.write(text);
+  parser.end();
+  return parents;
 }
 function htmlTagsOf(file: string, text: string): HtmlTag[] {
+  const parents = nesting(text);
   return [...text.matchAll(/<([a-z][\w-]*)\b[^>]*>/gi)].map((m) => {
     const attr = (name: string) => {
       const quoted = new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, "i").exec(m[0]);
@@ -165,6 +200,10 @@ function htmlTagsOf(file: string, text: string): HtmlTag[] {
       id: attr("id"),
       hfId: attr("data-hf-id"),
       classes: (attr("class") ?? "").split(/\s+/).filter(Boolean),
+      compositionId: attr("data-composition-id"),
+      compositionSrc: attr("data-composition-src"),
+      inMarkup: parents.has(m.index),
+      parent: parents.get(m.index),
     };
   });
 }
@@ -190,10 +229,16 @@ export class Sources {
   readonly cssRules: { id: string; selector: string; file: string; start: number; end: number }[] =
     [];
   readonly htmlTags: HtmlTag[] = [];
-  constructor(readonly project: string) {
+  constructor(
+    readonly project: string,
+    served?: Iterable<string>,
+  ) {
+    const root = realPath(project);
+    const bundled = served && new Set([...served].map((path) => relative(root, realPath(path))));
     for (const path of sourceFiles(project)) {
       const file = relative(project, path);
       if (/(?:^|\/)(?:vendor|lib)\//.test(file)) continue;
+      if (bundled && !bundled.has(file)) continue;
       const fd = openSync(path, "r");
       let text: string;
       try {
@@ -273,6 +318,10 @@ export class Sources {
     };
   }
   markup(element: ElementRef, target: number) {
+    const tag = this.markupTag(element);
+    return tag ? this.slice(tag.file, tag.start, tag.end, "html opening tag", target) : null;
+  }
+  markupTag(element: ElementRef): HtmlTag | null {
     const sameTag = this.htmlTags.filter((tag) => tag.tag === element.tag);
     const byHfId = element.hfId ? sameTag.filter((tag) => tag.hfId === element.hfId) : [];
     const tags = byHfId.length
@@ -282,9 +331,67 @@ export class Sources {
             ? tag.id === element.id
             : element.classes.length > 0 && element.classes.every((c) => tag.classes.includes(c)),
         );
-    return tags.length === 1
-      ? this.slice(tags[0].file, tags[0].start, tags[0].end, "html opening tag", target)
-      : null;
+    return tags.length === 1 ? tags[0] : null;
+  }
+  private nestingIndex?: { tagAt: Map<string, HtmlTag>; hostsOf: Map<string, HtmlTag[]> };
+  private get nested() {
+    if (this.nestingIndex) return this.nestingIndex;
+    const tagAt = new Map(this.htmlTags.map((t) => [`${t.file}:${t.start}`, t]));
+    const hostsOf = new Map<string, HtmlTag[]>();
+    for (const host of this.htmlTags.filter((t) => t.inMarkup && t.compositionSrc)) {
+      const file = this.mountedFile(host);
+      if (file) hostsOf.set(file, [...(hostsOf.get(file) ?? []), host]);
+    }
+    return (this.nestingIndex = { tagAt, hostsOf });
+  }
+  private fileByPath?: Map<string, string>;
+  private mountedFile(host: HtmlTag) {
+    const files = (this.fileByPath ??= new Map(
+      [...this.files.keys()].map((file) => [file.replace(/\\/g, "/"), file]),
+    ));
+    const src = (host.compositionSrc ?? "").split(/[?#]/)[0].replace(/\\/g, "/");
+    const path = [
+      posix.normalize(src.replace(/^\.?\//, "")),
+      posix.join(posix.dirname(host.file.replace(/\\/g, "/")), src),
+    ].find((file) => files.has(file));
+    return path === undefined ? undefined : files.get(path);
+  }
+  compositions(tag: HtmlTag, target: number): Snippet[] {
+    const { tagAt, hostsOf } = this.nested;
+    const shown = new Set<HtmlTag>([tag]);
+    const result: Snippet[] = [];
+    const show = (t: HtmlTag, kind: string) => {
+      if (shown.has(t)) return false;
+      shown.add(t);
+      const snippet = this.slice(t.file, t.start, t.end, kind, target);
+      if (snippet) result.push(snippet);
+      return true;
+    };
+    const mounted = tag.compositionSrc && this.mountedFile(tag);
+    const root =
+      mounted &&
+      this.htmlTags.find(
+        (t) =>
+          t.file === mounted &&
+          t.inMarkup &&
+          t.compositionId &&
+          (!tag.compositionId || t.compositionId === tag.compositionId),
+      );
+    if (root) show(root, "composition root");
+    const parentOf = (t: HtmlTag) =>
+      t.parent === undefined ? undefined : tagAt.get(`${t.file}:${t.parent}`);
+    const climb = [{ tag, candidate: false }];
+    for (let from = climb.shift(); from; from = climb.shift()) {
+      for (let at = parentOf(from.tag); at; at = parentOf(at))
+        if (at.compositionId)
+          show(at, from.candidate ? "composition root candidate" : "composition root");
+      const hosts = hostsOf.get(from.tag.file) ?? [];
+      const candidate = from.candidate || hosts.length > 1;
+      for (const host of hosts)
+        if (show(host, candidate ? "composition host candidate" : "composition host"))
+          climb.push({ tag: host, candidate });
+    }
+    return result;
   }
   mapper(html: string, provenance: BundleScriptProvenance[]) {
     const htmlLines = starts(html);
@@ -349,18 +456,21 @@ export class Sources {
               s.type === "FunctionDeclaration" &&
               hit.local >= s.start &&
               hit.local < s.end &&
-              s.end - s.start <= 2000,
+              s.end - s.start <= SHOWN_WHOLE,
           )
           .sort((a, b) => a.end - a.start - (b.end - b.start))[0];
-        const range = helper ?? enclosing;
+        const caller = result.length > 0;
+        const callLine = caller && !helper && enclosing.end - enclosing.start > SHOWN_WHOLE;
+        const range = callLine ? { start: hit.local, end: hit.local + 1 } : (helper ?? enclosing);
         const snippet = this.slice(
           hit.chunk.file,
           hit.chunk.offset + range.start,
           hit.chunk.offset + range.end,
-          result.length ? "animation caller" : "animation creation",
+          caller ? "animation caller" : "animation creation",
           target,
         );
         if (snippet) result.push(snippet);
+        if (callLine) continue;
         for (const dependency of hit.chunk.dependencies(range)) {
           const definition = this.slice(
             hit.chunk.file,
@@ -378,9 +488,6 @@ export class Sources {
   }
 }
 
-export function markupSnippet(sources: Sources, element: ElementRef, target: number) {
-  return sources.markup(element, target);
-}
 export function mergeSnippets(snippets: Snippet[], sources: Sources): Snippet[] {
   const sorted = snippets.sort((a, b) => a.file.localeCompare(b.file) || a.startLine - b.startLine);
   const output: Snippet[] = [];

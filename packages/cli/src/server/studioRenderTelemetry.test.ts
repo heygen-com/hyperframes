@@ -121,6 +121,10 @@ const fullPerf: RenderPerfSummary = {
   },
   tmpPeakBytes: 1024,
   captureAvgMs: 13,
+  captureSeekAvgMs: 3,
+  captureBeforeCaptureAvgMs: 1,
+  captureScreenshotAvgMs: 8,
+  encoderWaitAvgMs: 2,
   capturePeakMs: 25,
   observability: fullObservability,
 };
@@ -165,6 +169,10 @@ describe("studioRenderTelemetry", () => {
       // speedRatio = compositionDurationMs / elapsedMs = 10000 / 5000 = 2
       expect(p.speedRatio).toBe(2);
       expect(p.captureAvgMs).toBe(13);
+      expect(p.captureSeekAvgMs).toBe(3);
+      expect(p.captureBeforeCaptureAvgMs).toBe(1);
+      expect(p.captureScreenshotAvgMs).toBe(8);
+      expect(p.encoderWaitAvgMs).toBe(2);
       expect(p.capturePeakMs).toBe(25);
       expect(p.tmpPeakBytes).toBe(1024);
       // stages

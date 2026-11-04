@@ -16,7 +16,6 @@ import {
   navigationTimeoutHint,
   projectPathOfUrl,
   raceMediaReady,
-  resolveNavigationTimeoutMs,
   shouldIgnoreRequestFailure,
   shouldIgnoreHttpError,
 } from "./validate.js";
@@ -182,6 +181,21 @@ describe("shouldIgnoreRequestFailure", () => {
     ).toBe(true);
   });
 
+  it("ignores the aborted fetch of a proxy-swapped source for a listed media suffix", () => {
+    for (const ext of ["mkv", "m4v", "mts", "m2ts", "avi", "mpg", "MKV"]) {
+      const url = `http://127.0.0.1:3000/Caf%C3%A9%20%C3%A9t%C3%A9.${ext}`;
+      expect(shouldIgnoreRequestFailure(url, "net::ERR_ABORTED", "fetch")).toBe(true);
+      expect(shouldIgnoreRequestFailure(url, "net::ERR_FAILED", "fetch")).toBe(false);
+    }
+  });
+
+  it("keeps an aborted image request reportable whatever its file suffix", () => {
+    for (const ext of ["mkv", "mp4", "png"]) {
+      const url = `http://127.0.0.1:3000/assets/plate.${ext}`;
+      expect(shouldIgnoreRequestFailure(url, "net::ERR_ABORTED", "image")).toBe(false);
+    }
+  });
+
   it("keeps non-media and non-aborted failures reportable", () => {
     expect(
       shouldIgnoreRequestFailure("http://127.0.0.1:3000/assets/map.png", "net::ERR_ABORTED"),
@@ -335,24 +349,6 @@ describe("extractCompositionErrorsFromLint", () => {
     const errors = extractCompositionErrorsFromLint(lintResult);
     expect(errors).toHaveLength(2);
     expect(errors.map((e) => e.text)).toEqual(["scene-a is empty", "scene-b is empty"]);
-  });
-});
-
-// Regression: `validate` used a hardcoded 10s page-navigation timeout that
-// ignored --timeout, so a composition loading GSAP from a CDN <script> (which
-// blocks domcontentloaded) failed with an opaque "Navigation timeout of 10000ms"
-// even though the full render's larger budget rode it out — with no knob to
-// extend it. resolveNavigationTimeoutMs makes --timeout raise the nav budget
-// (never below the 10s floor); navigationTimeoutHint replaces the opaque error.
-describe("resolveNavigationTimeoutMs", () => {
-  it("keeps the 10s floor when --timeout is unset or smaller", () => {
-    expect(resolveNavigationTimeoutMs(undefined)).toBe(10000);
-    expect(resolveNavigationTimeoutMs(3000)).toBe(10000); // the default --timeout
-    expect(resolveNavigationTimeoutMs(0)).toBe(10000);
-  });
-
-  it("raises the navigation budget to --timeout when it exceeds the floor", () => {
-    expect(resolveNavigationTimeoutMs(30000)).toBe(30000);
   });
 });
 

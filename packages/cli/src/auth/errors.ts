@@ -17,12 +17,20 @@ export type AuthErrorCode =
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
   readonly hint?: string;
+  /** HeyGen refused a token refresh (400/401), so the grant is gone; a reply the CLI couldn't read is not this. */
+  readonly refused: boolean;
 
-  constructor(code: AuthErrorCode, message: string, hint?: string) {
+  constructor(
+    code: AuthErrorCode,
+    message: string,
+    hint?: string,
+    opts: { refused?: boolean } = {},
+  ) {
     super(message);
     this.name = "AuthError";
     this.code = code;
     this.hint = hint;
+    this.refused = opts.refused ?? false;
   }
 }
 
@@ -37,7 +45,7 @@ export const ErrInvalidStore = (detail: string) =>
   new AuthError(
     "INVALID_STORE",
     `Credential file is unreadable: ${detail}`,
-    "Delete ~/.heygen/credentials and run `hyperframes auth login` to re-create it.",
+    "Delete ~/.hyperframes/credentials and run `hyperframes auth login` to re-create it.",
   );
 
 export const ErrUnauthenticated = (detail?: string) =>
@@ -57,11 +65,12 @@ export const ErrOAuthNotConfigured = () =>
     "Set HYPERFRAMES_OAUTH_CLIENT_ID, or run `hyperframes auth login --api-key`.",
   );
 
-export const ErrRefreshFailed = (detail?: string) =>
+export const ErrRefreshFailed = (detail?: string, opts: { refused?: boolean } = {}) =>
   new AuthError(
     "REFRESH_FAILED",
     detail ? `Failed to refresh OAuth tokens: ${detail}` : "Failed to refresh OAuth tokens",
     "Run `hyperframes auth login` to re-authenticate.",
+    opts,
   );
 
 export const ErrLoginExpired = () =>

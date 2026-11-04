@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { useGestureRecording, type GestureSample } from "./useGestureRecording";
+import { CLIP_HIDDEN_ATTR } from "@hyperframes/core/runtime/clip-reveal";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -63,6 +64,47 @@ describe("useGestureRecording", () => {
       { time: 1 / 30, properties: { x: 40, y: 0 } },
     ]);
     act(() => root.unmount());
+  });
+
+  it("lifts the runtime's hidden-clip mark while previewing a hidden clip and puts it back on release", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => animationFrames.push(callback)),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const element = iframe.contentDocument!.createElement("div");
+    element.id = "card";
+    element.style.visibility = "hidden";
+    element.setAttribute(CLIP_HIDDEN_ATTR, "");
+    iframe.contentDocument!.body.append(element);
+    Reflect.set(iframe.contentWindow!, "gsap", { getProperty: vi.fn(() => 0), set: vi.fn() });
+    Reflect.set(iframe.contentWindow!, "__timelines", {
+      main: { duration: () => 5, seek: vi.fn() },
+    });
+    Reflect.set(iframe.contentWindow!, "__player", { getTime: () => 1 });
+
+    let recording: ReturnType<typeof useGestureRecording> | null = null;
+    function Harness() {
+      recording = useGestureRecording();
+      return null;
+    }
+    const root = mountReactHarness(<Harness />);
+    act(() => recording?.startRecording(element, iframe, 4));
+    document.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 10 }));
+    act(() => animationFrames.shift()?.(1));
+    expect([element.style.visibility, element.hasAttribute(CLIP_HIDDEN_ATTR)]).toEqual([
+      "visible",
+      false,
+    ]);
+
+    act(() => root.unmount());
+    expect([element.style.visibility, element.hasAttribute(CLIP_HIDDEN_ATTR)]).toEqual([
+      "hidden",
+      true,
+    ]);
   });
 
   it("releases the preview runtime when unmounted during a recording", () => {

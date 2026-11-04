@@ -12,6 +12,7 @@ import {
   type PresenterMediaMessage,
 } from "./slideshowPresenter";
 import { OwnedMediaRegistry } from "./owned-media-registry";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 
 interface Hotspot {
   id: string;
@@ -809,7 +810,7 @@ export class HyperframesSlideshow extends HTMLElement {
       Number.isFinite(msg.currentTime) &&
       Math.abs((el.currentTime || 0) - msg.currentTime) > 0.35
     ) {
-      el.currentTime = Math.max(0, msg.currentTime);
+      el.currentTime = mediaElementTime(Math.max(0, msg.currentTime));
     }
   }
 

@@ -76,6 +76,11 @@ export function isAudioElement(value: unknown): value is HTMLAudioElement {
   return isHtmlTag(value, "audio");
 }
 
+/** `<source>`, from any realm. Mirrors `instanceof HTMLSourceElement`. */
+export function isSourceElement(value: unknown): value is HTMLSourceElement {
+  return isHtmlTag(value, "source");
+}
+
 /** `<video>` or `<audio>`, from any realm. Mirrors `instanceof HTMLMediaElement`. */
 export function isMediaElement(value: unknown): value is HTMLMediaElement {
   return isVideoElement(value) || isAudioElement(value);

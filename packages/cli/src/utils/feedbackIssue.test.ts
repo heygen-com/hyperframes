@@ -48,6 +48,21 @@ describe("buildIssueUrl", () => {
     expect(url.length).toBeLessThan(8000);
   });
 
+  it("keeps title truncation from splitting an emoji", () => {
+    const url = buildIssueUrl({ ...base, comment: `${"x".repeat(78)}😀tail` });
+    expect(decoded(url, "title")).toBe(`[feedback] ${"x".repeat(78)}…`);
+  });
+
+  it("keeps body truncation from splitting an emoji", () => {
+    const url = buildIssueUrl({ ...base, comment: `Short title\n${"x".repeat(3986)}😀tail` });
+    expect(decoded(url, "body")).toContain(`Short title\n${"x".repeat(3986)}…`);
+  });
+
+  it("preserves complete emojis that fit before the title cutoff", () => {
+    const url = buildIssueUrl({ ...base, comment: `${"x".repeat(77)}😀tail` });
+    expect(decoded(url, "title")).toBe(`[feedback] ${"x".repeat(77)}😀…`);
+  });
+
   it("strips a trailing .git from the repo url", () => {
     const url = buildIssueUrl({
       ...base,

@@ -1,11 +1,12 @@
 import { setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, renameSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { c } from "../ui/colors.js";
+import { isUnattended } from "../utils/attendedTerminal.js";
 import { rewritePinnedHyperframesText, rewriteProjectPinnedScripts } from "../utils/projectPin.js";
 
 export const examples: Example[] = [
@@ -59,6 +60,12 @@ export default defineCommand({
     }
 
     const autoYes = args.yes === true;
+    if (!autoYes && !checkOnly && isUnattended()) {
+      clack.confirmationRequired(
+        "hyperframes upgrade",
+        "Pass --yes to upgrade, or --check to only look for a new version.",
+      );
+    }
     clack.intro(c.bold("hyperframes upgrade"));
 
     const s = clack.spinner();

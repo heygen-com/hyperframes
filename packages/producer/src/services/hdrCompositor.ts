@@ -11,7 +11,8 @@
  * `captureHdrResources.ts`.
  */
 
-import { readSync, closeSync } from "fs";
+import { readSync } from "fs";
+import type { HdrFrameLease, HdrFrameWindows } from "./hdrFrameWindows.js";
 import { join } from "path";
 import {
   type CaptureSession,
@@ -133,25 +134,24 @@ function cropRgb48le(
  */
 export interface HdrVideoFrameSource {
   dir: string;
-  rawPath: string;
-  fd: number;
+  windows: HdrFrameWindows;
   width: number;
   height: number;
   frameSize: number;
-  frameCount: number;
+  readonly frameCount: number;
   scratch: Buffer;
-  /** The raw file contains one playable source cycle and must wrap at EOF. */
+  /** The playable range is one source cycle and must wrap at its end. */
   loop?: boolean;
   mediaStart?: number;
-  videoStreamLeadSeconds?: number;
+  videoStartSeconds?: number;
 }
 
 export function closeHdrVideoFrameSource(source: HdrVideoFrameSource, log?: ProducerLogger): void {
   try {
-    closeSync(source.fd);
+    source.windows.close();
   } catch (err) {
-    log?.warn("Failed to close HDR raw frame file", {
-      rawPath: source.rawPath,
+    log?.warn("Failed to close HDR raw frame windows", {
+      dir: source.dir,
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -169,8 +169,7 @@ export function resolveHdrVideoFrameIndex(
   return loop ? frameIndex % frameCount : Math.min(frameIndex, frameCount - 1);
 }
 
-// fallow-ignore-next-line complexity
-export function blitHdrVideoLayer(
+export async function blitHdrVideoLayer(
   canvas: Buffer,
   el: ElementStackingInfo,
   time: number,
@@ -183,7 +182,7 @@ export function blitHdrVideoLayer(
   sourceTransfer?: HdrTransfer,
   targetTransfer?: HdrTransfer,
   hdrPerf?: HdrPerfCollector,
-): void {
+): Promise<void> {
   const frameSource = hdrVideoFrameSources.get(el.id);
   const startTime = hdrStartTimes.get(el.id);
   if (!frameSource || startTime === undefined || el.opacity <= 0) {
@@ -202,13 +201,45 @@ export function blitHdrVideoLayer(
   );
   if (effectiveIndex === null) return;
   const mediaTime = (frameSource.mediaStart ?? 0) + effectiveIndex / fps;
-  if (isVideoHiddenBeforeStreamStart(frameSource.videoStreamLeadSeconds, mediaTime)) return;
-  const frameOffset = effectiveIndex * frameSource.frameSize;
+  if (isVideoHiddenBeforeStreamStart(frameSource.videoStartSeconds, mediaTime)) return;
 
+  if (hdrPerf) hdrPerf.hdrVideoLayerBlits += 1;
+  const lease = await frameSource.windows.lease(effectiveIndex);
+  if (!lease) return;
   try {
-    if (hdrPerf) hdrPerf.hdrVideoLayerBlits += 1;
+    blitScratchFrameWithoutYielding(
+      canvas,
+      el,
+      frameSource,
+      lease,
+      width,
+      height,
+      log,
+      sourceTransfer,
+      targetTransfer,
+      hdrPerf,
+    );
+  } finally {
+    lease.release();
+  }
+}
+
+// fallow-ignore-next-line complexity
+function blitScratchFrameWithoutYielding(
+  canvas: Buffer,
+  el: ElementStackingInfo,
+  frameSource: HdrVideoFrameSource,
+  lease: HdrFrameLease,
+  width: number,
+  height: number,
+  log: ProducerLogger | undefined,
+  sourceTransfer: HdrTransfer | undefined,
+  targetTransfer: HdrTransfer | undefined,
+  hdrPerf: HdrPerfCollector | undefined,
+): void {
+  try {
     const bytesRead = timeHdrPhase(hdrPerf, "hdrVideoReadDecodeMs", () =>
-      readSync(frameSource.fd, frameSource.scratch, 0, frameSource.frameSize, frameOffset),
+      readSync(lease.fd, frameSource.scratch, 0, frameSource.frameSize, lease.offset),
     );
     if (bytesRead !== frameSource.frameSize) return;
     const hdrRgb = frameSource.scratch;
@@ -583,7 +614,7 @@ export async function compositeHdrFrame(
           hdrPerf,
         );
       } else {
-        blitHdrVideoLayer(
+        await blitHdrVideoLayer(
           canvas,
           layer.element,
           time,
@@ -627,7 +658,7 @@ export async function compositeHdrFrame(
             startTime,
             localTime: localTime.toFixed(3),
             hdrFrameNum: frameNum,
-            rawPath: frameSource?.rawPath ?? null,
+            dir: frameSource?.dir ?? null,
             frameCount: frameSource?.frameCount ?? null,
           });
         }

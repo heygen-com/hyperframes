@@ -9,6 +9,7 @@
  * an argument, so each is callable — and readable — on its own.
  */
 
+import { withSelectorIndexPass } from "../../utils/sourceScopedSelectorIndex";
 import { createTimelineDomNodeResolver, findClipElementById } from "../lib/timelineElementHelpers";
 import { usePlayerStore } from "../store/playerStore";
 import type { TimelineElement, DomClipChild, SubCompositionHostState } from "../store/playerStore";
@@ -112,6 +113,17 @@ function collectHostDomChildren(
   }
 }
 
+type SceneMarkupWindow = Window & {
+  __hfParkedSceneMarkup?: (placeholder: Element) => Element | null;
+};
+
+/** A clip's host; for a scene the preview unmounted, the markup it mounts with. */
+function clipHostOf(iframeDoc: Document, clip: ClipManifestClip): Element | null {
+  const host = findClipElementById(iframeDoc, clip);
+  const view = iframeDoc.defaultView as SceneMarkupWindow | null;
+  return (host && view?.__hfParkedSceneMarkup?.(host)) ?? host;
+}
+
 /**
  * Every sub-composition's internal elements, across the whole manifest.
  *
@@ -129,7 +141,7 @@ export function collectSubCompositionDomChildren(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = findClipElementById(iframeDoc, clip);
+    const hostEl = clipHostOf(iframeDoc, clip);
     if (!hostEl) continue;
     const innerRoot = hostEl.querySelector("[data-hf-inner-root]") ?? hostEl;
     collectHostDomChildren(clip.id, innerRoot, clip.id, parentMap, out);
@@ -173,7 +185,7 @@ export function collectSubCompositionHostState(
   if (!iframeDoc) return out;
   for (const clip of clips) {
     if (clip.kind !== "composition" || !clip.id) continue;
-    const hostEl = findClipElementById(iframeDoc, clip);
+    const hostEl = clipHostOf(iframeDoc, clip);
     if (!hostEl) continue;
     for (const el of Array.from(hostEl.querySelectorAll("[id]"))) {
       const state = readSubCompositionHostState(el);
@@ -203,15 +215,17 @@ export function buildTimelineElementsFromClips(
   iframeDoc: Document | null,
 ): TimelineElement[] {
   const resolveHost = iframeDoc ? createTimelineDomNodeResolver(iframeDoc) : null;
-  return clips.map((clip, index) => {
-    const hostEl = resolveHost?.(clip, index) ?? null;
-    return createTimelineElementFromManifestClip({
-      clip,
-      fallbackIndex: index,
-      doc: iframeDoc,
-      hostEl,
+  const build = () =>
+    clips.map((clip, index) => {
+      const hostEl = resolveHost?.(clip, index) ?? null;
+      return createTimelineElementFromManifestClip({
+        clip,
+        fallbackIndex: index,
+        doc: iframeDoc,
+        hostEl,
+      });
     });
-  });
+  return iframeDoc ? withSelectorIndexPass(iframeDoc, build) : build();
 }
 
 /**

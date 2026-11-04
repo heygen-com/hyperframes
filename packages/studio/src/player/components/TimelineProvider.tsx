@@ -48,6 +48,7 @@ export type TimelineCanvasState = Omit<
   totalH: number;
   effectiveDuration: number;
   majorTickInterval: number;
+  tickFrameRate: number | undefined;
   rangeSelection: TimelineRangeSelection | null;
   marqueeRect: Rect | null;
   resizingClip: ResizingClipState | null;

@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
+import { HYPERFRAMES_BROWSER_MARKER_ARG } from "@hyperframes/core/browser-marker";
 import type { LaunchOptions, PuppeteerNode } from "puppeteer-core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const probe = vi.hoisted(() => ({ options: [] as LaunchOptions[] }));
 
@@ -14,7 +15,7 @@ vi.mock("./gpuPolicy.js", async (actual) => ({
     const puppeteer = {
       launch: async (options: LaunchOptions) => {
         probe.options.push(options);
-        return { process: () => new EventEmitter() };
+        return { process: () => new EventEmitter(), close: async () => {} };
       },
     } as unknown as PuppeteerNode;
     await hooks.launch(puppeteer, { headless: true, args: ["--headless"] });
@@ -30,9 +31,30 @@ describe("the GPU probe where nothing may listen", () => {
     await resolveManagedGpuMode("auto", "/chrome");
     expect(probe.options[0]).toMatchObject({
       pipe: true,
-      args: ["--headless", "--single-process"],
+      args: [
+        "--headless",
+        "--single-process",
+        "--disable-gpu-compositing",
+        HYPERFRAMES_BROWSER_MARKER_ARG,
+      ],
     });
-    expect(probe.options[1]!.pipe).toBeUndefined();
-    expect(probe.options[1]!.args).toEqual(["--headless"]);
+    expect(probe.options[1]!.pipe).toBe(true);
+    expect(probe.options[1]!.args).toEqual(["--headless", HYPERFRAMES_BROWSER_MARKER_ARG]);
+  });
+});
+
+describe("the GPU probe inside an agent's macOS seatbelt", () => {
+  const platform = process.platform;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    Object.defineProperty(process, "platform", { value: platform });
+  });
+
+  it("answers software without starting a Chrome the seatbelt would crash", async () => {
+    vi.stubEnv("CODEX_SANDBOX", "seatbelt");
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    probe.options.length = 0;
+    await expect(resolveManagedGpuMode("auto", "/chrome")).resolves.toBe("software");
+    expect(probe.options).toEqual([]);
   });
 });

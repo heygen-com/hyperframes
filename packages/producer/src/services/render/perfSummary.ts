@@ -19,7 +19,7 @@ import type {
   RenderPerfSummary,
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
-import type { RenderObservabilitySummary } from "./observability.js";
+import type { RenderCaptureObservability, RenderObservabilitySummary } from "./observability.js";
 
 /**
  * Worst sub-composition timeline wait outcome across sessions: script_failure
@@ -54,6 +54,39 @@ export function pushWorkerDedupPerfs(
   }
 }
 
+/** Beyond-viewport capture as the workers' sessions used it: on if any kept it, `fallback` when none reported. */
+export function capturedBeyondViewport(
+  perfs: ReadonlyArray<CapturePerfSummary>,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  const used = perfs.flatMap((perf) => perf.captureBeyondViewport ?? []);
+  return used.length > 0 ? used.includes(true) : fallback;
+}
+
+/** The capture facts with beyond-viewport capture as the sessions used it, on every capture path. */
+export function withCapturedBeyondViewport(
+  capture: RenderCaptureObservability,
+  perfs: ReadonlyArray<CapturePerfSummary>,
+): RenderCaptureObservability {
+  const used = capturedBeyondViewport(perfs, capture.captureBeyondViewport);
+  return used === undefined ? capture : { ...capture, captureBeyondViewport: used };
+}
+
+/** Adds each worker's page-error console lines to `sink`, once per distinct line. */
+export function pushWorkerPageErrors(
+  results: ReadonlyArray<{ pageErrorLines?: string[] }>,
+  sink: string[],
+): void {
+  for (const result of results) {
+    for (const line of result.pageErrorLines ?? []) if (!sink.includes(line)) sink.push(line);
+  }
+}
+
+/** The console lines plus the workers' page-error lines the console does not already hold. */
+export function withWorkerPageErrors(consoleLines: string[], workerLines: string[]): string[] {
+  return [...consoleLines, ...workerLines.filter((line) => !consoleLines.includes(line))];
+}
+
 /**
  * Collapse per-session/per-worker static-dedup perf into one render-level
  * outcome. enabled/armed = OR across workers (they run the same gates on the
@@ -83,6 +116,8 @@ export function roundDb(value: number | undefined): number | undefined {
 export interface DrawElementPerfInput {
   compileGate?: string;
   clampReason?: string;
+  /** Engine init-time gate the pre-capture probe hit; its session may be closed before capture. */
+  probeGateReason?: string;
   workerInversion?: "inverted" | "reverted";
   /** Auto-resolved worker count before the inversion pinned it to 1 (set only when the inversion fired). */
   preInversionWorkers?: number;
@@ -145,7 +180,9 @@ function aggregateDrawElement(
   if (perfs.length === 0) return undefined;
   const modes = [...new Set(perfs.map((p) => p.captureMode).filter(Boolean))].sort();
   const gateReasons = [
-    ...new Set(perfs.map((p) => p.deGateReason).filter((r): r is string => !!r)),
+    ...new Set(
+      [de.probeGateReason, ...perfs.map((p) => p.deGateReason)].filter((r): r is string => !!r),
+    ),
   ].sort();
   const gpuRenderers = [
     ...new Set(perfs.map((p) => p.gpuRenderer).filter((r): r is string => !!r)),
@@ -193,6 +230,7 @@ function aggregateDrawElement(
     blankDeterministicAccepts: drain?.blankDeterministicAccepts ?? 0,
     blankRecaptures: drain?.blankRecaptures ?? 0,
     boundaryFrames: perfs.reduce((sum, p) => sum + (p.deBoundaryFrames ?? 0), 0),
+    riskFrames: perfs.reduce((sum, p) => sum + (p.deRiskFrames ?? 0), 0),
     ncprFallbacks: perfs.reduce((sum, p) => sum + (p.deNcprFallbacks ?? 0), 0),
     frameTimeouts: perfs.reduce((sum, p) => sum + (p.deFrameTimeouts ?? 0), 0),
   };
@@ -220,6 +258,15 @@ function aggregateChromeMemory(perfs: CapturePerfSummary[]): RenderPerfSummary["
     gpuProcessSeenLastSample: sampled.some((p) => p.chromeGpuProcessSeenLastSample === true),
     samples: sampled.reduce((sum, p) => sum + (p.chromeMemorySamples ?? 0), 0),
   };
+}
+
+function frameWeightedAvgMs(
+  perfs: CapturePerfSummary[],
+  avgOf: (perf: CapturePerfSummary) => number,
+): number | undefined {
+  const frames = perfs.reduce((sum, p) => sum + p.frames, 0);
+  if (frames === 0) return undefined;
+  return Math.round(perfs.reduce((sum, p) => sum + avgOf(p) * p.frames, 0) / frames);
 }
 
 function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticDedup"] {
@@ -387,6 +434,13 @@ export function buildRenderPerfSummary(input: {
       if (withSamples.length === 0) return undefined;
       return withSamples.reduce((a, b) => (b.frames > a.frames ? b : a)).p50TotalMs;
     })(),
+    captureSeekAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgSeekMs),
+    captureBeforeCaptureAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgBeforeCaptureMs),
+    captureScreenshotAvgMs: frameWeightedAvgMs(input.dedupPerfs, (p) => p.avgScreenshotMs),
+    encoderWaitAvgMs:
+      input.perfStages.encoderDrainWaitMs !== undefined && input.totalFrames > 0
+        ? Math.round(input.perfStages.encoderDrainWaitMs / input.totalFrames)
+        : undefined,
     peakRssMb: Math.round(input.peakRssBytes / (1024 * 1024)),
     peakHeapUsedMb: Math.round(input.peakHeapUsedBytes / (1024 * 1024)),
     staticDedup: aggregateDedup(input.dedupPerfs),

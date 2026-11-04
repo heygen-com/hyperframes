@@ -18,6 +18,7 @@ import { basename, dirname, join } from "node:path";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import * as manager from "../whisper/manager.js";
 import { WhisperUnavailableError } from "../whisper/manager.js";
 import { formatVtt, loadTranscript } from "../whisper/normalize.js";
 import * as parakeet from "../whisper/parakeet.js";
@@ -32,7 +33,7 @@ const prepareWavMock = vi.fn((input: string) => input);
 let audioSeconds = 1;
 
 // Engine selection: which runners look installed, and the sherpa decode child it spawns.
-const runners = { sherpa: false, mlx: false };
+const runners: { sherpa: boolean; mlx: boolean; whisper?: boolean } = { sherpa: false, mlx: false };
 let runtimeDir: string;
 const realTranscribeWithSherpa = sherpa.transcribeWithSherpa;
 const realTranscribeWithParakeet = parakeet.transcribeWithParakeet;
@@ -62,6 +63,9 @@ function replaceRunners(): void {
     runners.mlx ? "/bin/parakeet-mlx" : undefined,
   );
   vi.spyOn(parakeet, "transcribeWithParakeet").mockImplementation((...a) => mlxMock(...a));
+  vi.spyOn(manager, "findWhisper").mockImplementation(() =>
+    runners.whisper ? { executablePath: "/bin/whisper-cli", source: "system" } : undefined,
+  );
   vi.spyOn(childProcess, "execFile").mockImplementation(((...a: unknown[]) =>
     execFileMock(...a)) as unknown as typeof childProcess.execFile);
   // Node's named exports of a builtin follow its default export only once synced.
@@ -80,6 +84,10 @@ function fakeTranscript(dir: string, text: string) {
     durationSeconds: 1,
     speechOnsetSeconds: null,
   };
+}
+
+function errorMessage(json: Record<string, unknown>): string {
+  return String((json.error as { message?: unknown } | undefined)?.message);
 }
 
 function lastJson(): Record<string, unknown> {
@@ -103,7 +111,7 @@ describe("transcribe command", () => {
     prepareWavMock.mockReset().mockImplementation((input: string) => input);
     trackTranscribeUnavailable.mockReset();
     mlxMock.mockReset();
-    Object.assign(runners, { sherpa: false, mlx: false });
+    Object.assign(runners, { sherpa: false, mlx: false, whisper: false });
     transcribeMock.mockRejectedValue(
       new WhisperUnavailableError("whisper-cpp not found. Install: brew install whisper-cpp"),
     );
@@ -325,11 +333,29 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       expect(transcribeMock).toHaveBeenCalledTimes(1);
     });
 
+    it("sends a non-English language to an installed whisper, since Parakeet picks its own", async () => {
+      const all = { sherpa: true, mlx: true, whisper: true };
+      expect(await transcribeWith("auto", all, "fr")).toMatchObject({ engine: "whisper" });
+      expect(await transcribeWith("parakeet", all, "es")).toMatchObject({ engine: "whisper" });
+      expect(await transcribeWith("auto", all, "en-GB")).toMatchObject({ engine: "parakeet" });
+      expect(await transcribeWith("auto", all)).toMatchObject({ engine: "parakeet" });
+      const noWhisper = { sherpa: true, mlx: true, whisper: false };
+      expect(await transcribeWith("auto", noWhisper, "fr")).toMatchObject({ engine: "parakeet" });
+
+      Object.assign(runners, all);
+      const { dir, input } = dummyAudio();
+      dirs.push(dir);
+      await transcribeCmd.run!({ args: { input, engine: "auto", language: "fr" } } as never);
+      expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+        "Parakeet chooses its own language, so whisper transcribes --language fr.",
+      );
+    });
+
     it("--engine parakeet with a language it does not transcribe fails without falling back", async () => {
       Object.assign(runners, { sherpa: true, mlx: true });
       const { exitCode, out } = await transcribeFails("parakeet", { language: "ja" });
       expect(exitCode).toBe(1);
-      expect(out.error).toMatch(
+      expect(errorMessage(out)).toMatch(
         /^Parakeet does not transcribe --language ja; it covers en, es, .*uk\. Use --engine whisper\.$/,
       );
       expect(execFileMock).not.toHaveBeenCalled();
@@ -359,7 +385,10 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       Object.assign(runners, { sherpa: true, mlx: false });
       const { exitCode, out } = await transcribeFails("auto");
       expect(exitCode).toBe(130);
-      expect(out).toEqual({ ok: false, error: "Transcription cancelled" });
+      expect(out).toEqual({
+        ok: false,
+        error: expect.objectContaining({ message: "Transcription cancelled" }),
+      });
     });
 
     it("reports the fallback's own timeout as a failure, not a cancel", async () => {
@@ -373,7 +402,9 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       Object.assign(runners, { sherpa: true, mlx: false });
       const { exitCode, out } = await transcribeFails("auto");
       expect(exitCode).toBe(1);
-      expect(out.error).toMatch(/The whisper fallback failed too: spawnSync whisper-cli ETIMEDOUT/);
+      expect(errorMessage(out)).toMatch(
+        /The whisper fallback failed too: spawnSync whisper-cli ETIMEDOUT/,
+      );
     });
 
     it("--engine parakeet with nothing installed names the install command", async () => {
@@ -383,7 +414,7 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       await expect(
         transcribeCmd.run!({ args: { input, json: true, engine: "parakeet" } } as never),
       ).rejects.toThrow(CliRuntimeError);
-      expect(lastJson().error).toContain("hyperframes models install parakeet");
+      expect(errorMessage(lastJson())).toContain("hyperframes models install parakeet");
       expect(transcribeMock).not.toHaveBeenCalled();
     });
 
@@ -458,7 +489,7 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       Object.assign(runners, { sherpa: true, mlx: false });
       const { exitCode, out } = await transcribeFails("parakeet");
       expect(exitCode).toBe(1);
-      expect(out.error).toMatch(
+      expect(errorMessage(out)).toMatch(
         /^Parakeet failed: .*Protobuf parsing failed\. To repair it, run: hyperframes models install parakeet$/,
       );
       expect(transcribeMock).not.toHaveBeenCalled();
@@ -471,9 +502,9 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       );
       Object.assign(runners, { sherpa: true, mlx: false });
       const { out } = await transcribeFails("parakeet");
-      expect(out.error).toContain(`${"a".repeat(590)} tail`);
-      expect(out.error).toContain("b…. To repair it");
-      expect(String(out.error).length).toBeLessThan(800);
+      expect(errorMessage(out)).toContain(`${"a".repeat(590)} tail`);
+      expect(errorMessage(out)).toContain("b…. To repair it");
+      expect(errorMessage(out).length).toBeLessThan(800);
     });
 
     it("reports the Parakeet error, not whisper_unavailable, when the fallback is missing too", async () => {
@@ -483,7 +514,9 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       const { exitCode, out } = await transcribeFails("auto", { optional: true });
       expect(exitCode).toBe(1);
       expect(out.skipped).toBeUndefined();
-      expect(out.error).toMatch(/^Parakeet failed: .*install parakeet.*whisper-cpp not found/);
+      expect(errorMessage(out)).toMatch(
+        /^Parakeet failed: .*install parakeet.*whisper-cpp not found/,
+      );
     });
 
     it("stops with exit 130 on Ctrl-C instead of falling back", async () => {
@@ -491,7 +524,10 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
       Object.assign(runners, { sherpa: true, mlx: false });
       const { exitCode, out } = await transcribeFails("auto");
       expect(exitCode).toBe(130);
-      expect(out).toEqual({ ok: false, error: "Transcription cancelled" });
+      expect(out).toEqual({
+        ok: false,
+        error: expect.objectContaining({ message: "Transcription cancelled" }),
+      });
       expect(transcribeMock).not.toHaveBeenCalled();
     });
 
@@ -520,7 +556,7 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
         Object.assign(runners, { sherpa: true, mlx: false });
         const { exitCode, out } = await transcribeFails("auto");
         expect(exitCode).toBe(code);
-        expect(out).toEqual({ ok: false, error });
+        expect(out).toEqual({ ok: false, error: expect.objectContaining({ message: error }) });
         expect(transcribeMock).not.toHaveBeenCalled();
       });
     });
@@ -535,7 +571,9 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
         expect(exitCode).toBe(1);
         expect(out).toEqual({
           ok: false,
-          error: "Command failed: ffmpeg -i silent.mp4 -vn -ar 16000",
+          error: expect.objectContaining({
+            message: "Command failed: ffmpeg -i silent.mp4 -vn -ar 16000",
+          }),
         });
       }
       expect(execFileMock).not.toHaveBeenCalled();
@@ -605,7 +643,7 @@ echo '{"sentences":[{"tokens":[{"text":" hola","start":0,"end":1}]}]}' > "$2/$(b
         expect(console.error).not.toHaveBeenCalled();
         const { exitCode, out } = await transcribeFails("parakeet");
         expect(exitCode).toBe(1);
-        expect(out.error).toMatch(
+        expect(errorMessage(out)).toMatch(
           /^Parakeet needs glibc 2\.32 or newer; this system has glibc 2\.31\.$/,
         );
       },
@@ -682,7 +720,9 @@ Render video. Built for agents.
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(lastJson()).toEqual({
       ok: false,
-      error: `Output folder not found: ${join(dir, "missing")}`,
+      error: expect.objectContaining({
+        message: `Output folder not found: ${join(dir, "missing")}`,
+      }),
     });
   });
 
@@ -742,7 +782,10 @@ Render video. Built for agents.
     ).rejects.toThrow(CliRuntimeError);
 
     expect(transcribeMock).not.toHaveBeenCalled();
-    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringContaining(error) }),
+    });
   });
 
   it("refuses --output naming the input media in other letter case on any disk", async () => {
@@ -761,7 +804,7 @@ Render video. Built for agents.
     expect(transcribeMock).not.toHaveBeenCalled();
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("would overwrite"),
+      error: expect.objectContaining({ message: expect.stringContaining("would overwrite") }),
     });
     expect(readFileSync(input, "utf8")).toBe("not-real-audio");
   });
@@ -787,7 +830,10 @@ Render video. Built for agents.
     expect(transcribeMock).not.toHaveBeenCalled();
     // Only a case-insensitive disk has the upper-cased folder; elsewhere it is simply missing.
     const error = caseInsensitive ? "would overwrite" : "Output folder not found";
-    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringContaining(error) }),
+    });
   });
 
   it("refuses an export whose default caption path is its own input", async () => {
@@ -803,7 +849,7 @@ Render video. Built for agents.
 
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining("would overwrite"),
+      error: expect.objectContaining({ message: expect.stringContaining("would overwrite") }),
     });
     expect(readFileSync(input, "utf8")).toBe(srt);
   });
@@ -822,10 +868,12 @@ Render video. Built for agents.
 
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining(`The caption file ${output} could not be written: `),
+      error: expect.objectContaining({
+        message: expect.stringContaining(`The caption file ${output} could not be written: `),
+      }),
     });
     // Windows and Unix report a path through a file with different error codes.
-    expect(lastJson().error).toMatch(/ENOTDIR|ENOENT/);
+    expect(errorMessage(lastJson())).toMatch(/ENOTDIR|ENOENT/);
   });
 
   async function runWithInodeZero(zero: (path: string) => boolean, args: object): Promise<void> {
@@ -883,7 +931,10 @@ Render video. Built for agents.
       output,
     });
 
-    expect(lastJson()).toMatchObject({ ok: false, error: expect.stringContaining(error) });
+    expect(lastJson()).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringContaining(error) }),
+    });
     expect(readFileSync(kept, "utf8")).not.toContain("-->");
   });
 
@@ -896,7 +947,10 @@ Render video. Built for agents.
     ).rejects.toThrow(CliRuntimeError);
 
     expect(transcribeMock).not.toHaveBeenCalled();
-    expect(lastJson()).toEqual({ ok: false, error: "--output needs a file path" });
+    expect(lastJson()).toEqual({
+      ok: false,
+      error: expect.objectContaining({ message: "--output needs a file path" }),
+    });
   });
 
   it.each([
@@ -942,11 +996,13 @@ Render video. Built for agents.
     expect(consumeCommandResult().exitCode).toBe(1);
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining(
-        `Transcript saved to ${transcript}, but the caption file ${caption} could not be written: `,
-      ),
+      error: expect.objectContaining({
+        message: expect.stringContaining(
+          `Transcript saved to ${transcript}, but the caption file ${caption} could not be written: `,
+        ),
+      }),
     });
-    expect(lastJson().error).toMatch(reason);
+    expect(errorMessage(lastJson())).toMatch(reason);
     expect(JSON.parse(readFileSync(transcript, "utf8"))).toMatchObject([{ text: "whisper" }]);
   });
 
@@ -967,9 +1023,11 @@ Render video. Built for agents.
     expect(consumeCommandResult().exitCode).toBe(1);
     expect(lastJson()).toMatchObject({
       ok: false,
-      error: expect.stringContaining(
-        `Transcript saved to ${join(dir, "transcript.json")}, but the caption file ${output} could not be written: `,
-      ),
+      error: expect.objectContaining({
+        message: expect.stringContaining(
+          `Transcript saved to ${join(dir, "transcript.json")}, but the caption file ${output} could not be written: `,
+        ),
+      }),
     });
     expect(existsSync(join(dir, "transcript.json"))).toBe(true);
   });
@@ -1014,8 +1072,8 @@ Render video. Built for agents.
     if (typeof log !== "string") throw new Error("Expected JSON log output");
     const parsed = JSON.parse(log);
     expect(parsed.ok).toBe(false);
-    expect(parsed.error).toContain("--timeout");
-    expect(parsed.error).toContain("5000");
+    expect(errorMessage(parsed)).toContain("--timeout");
+    expect(errorMessage(parsed)).toContain("5000");
   });
 
   it("--preserve-cues keeps single-word cues separate when exporting from JSON", async () => {

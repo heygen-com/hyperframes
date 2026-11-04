@@ -7,10 +7,10 @@ That directory is `<PLUGIN_ROOT>`. If none exists, this is a standalone skill;
 follow the normal installation and freshness instructions.
 
 For a plugin installation, these rules replace the standalone update commands
-in every workflow and reference:
+in every skill and reference:
 
 - Do not run `hyperframes skills update`, `skills check`, or `npx skills add`.
-  The agent's plugin manager owns installation and updates. Read the workflow at
+  The agent's plugin manager owns installation and updates. Read the skill at
   `<PLUGIN_ROOT>/skills/<name>/SKILL.md`; report a missing bundled skill instead
   of downloading a different release. Resolve all skill references inside this
   bundle, even if a standalone copy is also installed. Claude exposes the router
@@ -35,7 +35,7 @@ in every workflow and reference:
   version alone does not freeze those inputs.
 - Treat the plugin directory as read-only. Put outputs and temporary work in the
   project or a temporary directory. Pass this plugin root and launcher convention
-  to any delegated workflow so it does not fall back to global skills.
+  to any delegated agent so it does not fall back to global skills.
 
 To get newer skills, use the client's plugin update flow and reload the session.
 Do not silently update an installed plugin during a video task.

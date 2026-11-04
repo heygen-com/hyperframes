@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatMeasuredNote,
+  gradeSampleTimes,
   parseMediaTreatmentSignalStats,
   statsToAdjust,
   summarizeMediaTreatmentAnalysis,
@@ -96,6 +97,15 @@ describe("vendored media grade analyzer parity", () => {
 
     expect(Math.sign(product.adjust.adjust.exposure)).toBe(expectedSign);
     expect(await vendoredResult(signalStats)).toEqual(product);
+  });
+
+  it("seeks to the same sample times", async () => {
+    const analyzer = await import(
+      new URL("../../../packages/cli/src/media-use/lib/grade-analyzer.mjs", import.meta.url).href
+    );
+    for (const duration of [0.4, 12, 300]) {
+      expect(analyzer.gradeSampleTimes(duration)).toEqual(gradeSampleTimes(duration));
+    }
   });
 });
 

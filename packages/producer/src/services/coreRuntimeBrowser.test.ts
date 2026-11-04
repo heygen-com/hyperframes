@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { bundleToSingleHtml } from "@hyperframes/core/compiler";
+import { addScenePartsManifest, bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { resolve } from "node:path";
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import type {} from "../../../core/src/runtime/window";
@@ -14,6 +14,25 @@ import {
 const RUNTIME_PATH = resolve(import.meta.dirname, "../../../core/dist/hyperframe.runtime.iife.js");
 const PNG_1PX =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==";
+
+// A tenth of a second of 8 kHz, 8-bit mono silence.
+function silentWav(): Buffer {
+  const samples = 800;
+  const wav = Buffer.alloc(44 + samples, 128);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(36 + samples, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24);
+  wav.writeUInt32LE(8000, 28);
+  wav.writeUInt16LE(1, 32);
+  wav.writeUInt16LE(8, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(samples, 40);
+  return wav;
+}
 
 describe("core runtime browser contract", () => {
   let browser: Browser;
@@ -319,6 +338,409 @@ describe("core runtime browser contract", () => {
       await videoPage.close();
     }
   }, 30_000);
+
+  const filterLayers: Record<string, (id: string, start: number) => string> = {
+    "an SVG rect": (id, start) => `
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <svg width="320" height="180" style="position:absolute;inset:0;mix-blend-mode:overlay">
+          <filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter>
+          <rect width="100%" height="100%" filter="url(#${id})" />
+        </svg>
+      </div>`,
+    "an HTML div inside the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay"></div>
+      </div>`,
+    "the scene itself": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay"></div>`,
+    "a dimmed overlay layer in a late sub-composition": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <div data-composition-id="${id}-scene" class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div style="position:absolute;inset:0;filter:url(#${id});mix-blend-mode:overlay;opacity:0.14"></div>
+      </div>`,
+    "a pseudo-element of the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <style>.${id}::before { content: ""; position: absolute; inset: 0; filter: url(#${id}); mix-blend-mode: overlay; }</style>
+      <div class="clip ${id}" data-start="${start}" data-duration="1" style="position:absolute;inset:0"></div>`,
+    "a pseudo-element inside the scene": (id, start) => `
+      <svg width="0" height="0" style="position:absolute"><filter id="${id}"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" /></filter></svg>
+      <style>.${id}-layer::after { content: ""; position: absolute; inset: 0; filter: url(#${id}); mix-blend-mode: overlay; }</style>
+      <div class="clip" data-start="${start}" data-duration="1" style="position:absolute;inset:0">
+        <div class="${id}-layer" style="position:absolute;inset:0"></div>
+      </div>`,
+  };
+
+  it.each(Object.keys(filterLayers))(
+    "paints no SVG filter output from %s before its scene starts or after it ends",
+    async (layer) => {
+      // feTurbulence draws from nothing, so visibility:hidden alone left grain over earlier scenes.
+      const grain = filterLayers[layer]!;
+      const grainPage = await browser.newPage();
+      try {
+        await grainPage.setViewport({ width: 320, height: 180 });
+        await grainPage.setContent(`<!doctype html>
+        <style>html, body { margin: 0; background: rgb(128, 128, 128); }</style>
+        <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180"
+          style="position:relative;width:320px;height:180px">
+          ${grain("early", 0)}${grain("late", 2)}
+        </div>`);
+        await grainPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await grainPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+
+        const redRangeAt = async (time: number) => {
+          await grainPage.evaluate((t) => window.__player!.renderSeek!(t), time);
+          const shot = await grainPage.screenshot({ encoding: "base64" });
+          return grainPage.evaluate(async (png) => {
+            const image = new Image();
+            image.src = `data:image/png;base64,${png}`;
+            await image.decode();
+            const context = new OffscreenCanvas(image.width, image.height).getContext("2d")!;
+            context.drawImage(image, 0, 0);
+            const { data } = context.getImageData(0, 0, image.width, image.height);
+            let min = 255;
+            let max = 0;
+            for (let i = 0; i < data.length; i += 4) {
+              min = Math.min(min, data[i]!);
+              max = Math.max(max, data[i]!);
+            }
+            return [min, max];
+          }, shot);
+        };
+
+        expect(await redRangeAt(1.5)).toEqual([128, 128]);
+        const [min, max] = await redRangeAt(2.5);
+        expect(max - min).toBeGreaterThan(2);
+      } finally {
+        await grainPage.close();
+      }
+    },
+    30_000,
+  );
+
+  const openFilm = async (body: string, head = "", script = "") => {
+    const filmPage = await browser.newPage();
+    await filmPage.setViewport({ width: 320, height: 180 });
+    await filmPage.setContent(`<!doctype html>${head}
+      <style>html, body { margin: 0; background: rgb(128, 128, 128); }</style>
+      <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180"
+        style="position:relative;width:320px;height:180px">${body}</div>`);
+    if (script) {
+      await filmPage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await filmPage.addScriptTag({ content: script });
+    }
+    await filmPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+    await filmPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+    return filmPage;
+  };
+  const PREVIEW_HEAD = `<meta name="hyperframes-studio-preview">`;
+  const redPixels = (filmPage: Page) =>
+    filmPage.screenshot({ encoding: "base64" }).then((shot) =>
+      filmPage.evaluate(async (png) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${png}`;
+        await image.decode();
+        const context = new OffscreenCanvas(image.width, image.height).getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const { data } = context.getImageData(0, 0, image.width, image.height);
+        let red = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i]! > 200) red++;
+        return red;
+      }, shot),
+    );
+
+  it.each([
+    ["a render", ""],
+    ["a preview", PREVIEW_HEAD],
+  ])(
+    "restyles only the element an inline style write lands on in %s",
+    async (_, head) => {
+      const filmPage = await openFilm(
+        `<div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0"><img></div>
+       <div id="scene" class="clip" data-start="0" data-duration="2" style="position:absolute;inset:0">${"<i></i>".repeat(400)}</div>`,
+        head,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        await filmPage.tracing.start({ categories: ["devtools.timeline"] });
+        const transforms = await filmPage.evaluate(() => {
+          const scene = document.getElementById("scene")!;
+          const read: string[] = [];
+          for (let frame = 1; frame <= 5; frame++) {
+            scene.style.transform = `translateX(${frame}px)`;
+            read.push(getComputedStyle(scene).transform);
+          }
+          return read;
+        });
+        const trace = JSON.parse(Buffer.from((await filmPage.tracing.stop())!).toString()) as {
+          traceEvents: { name: string; args?: { elementCount?: number } }[];
+        };
+        const restyled = trace.traceEvents
+          .filter((event) => event.name === "UpdateLayoutTree")
+          .map((event) => event.args?.elementCount ?? 0);
+        expect(transforms.at(-1)).toBe("matrix(1, 0, 0, 1, 5, 0)");
+        expect(restyled.length).toBeGreaterThanOrEqual(5);
+        expect(Math.max(...restyled)).toBeLessThan(10);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("keeps a root with no data-duration on screen after its GSAP timeline ends", async () => {
+    const filmPage = await browser.newPage();
+    try {
+      await filmPage.setViewport({ width: 320, height: 180 });
+      await filmPage.setContent(`<!doctype html>
+        <style>html, body { margin: 0; background: rgb(0, 0, 0); }</style>
+        <div data-composition-id="root" data-width="320" data-height="180"
+          style="position:relative;width:320px;height:180px;background:rgb(255,0,0)">
+          <audio data-start="0" data-duration="6"></audio>
+        </div>`);
+      await filmPage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await filmPage.addScriptTag({
+        content:
+          "window.__timelines = { root: gsap.timeline({ paused: true }).to({}, { duration: 2 }) };",
+      });
+      await filmPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await filmPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+      const shown = await filmPage.evaluate(() => {
+        window.__player!.renderSeek!(4);
+        return window.__player!.getDuration();
+      });
+      expect(shown).toBeGreaterThan(4);
+      expect(await redPixels(filmPage)).toBe(320 * 180);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  // In a frame the runtime stamps GSAP targets with the timeline's length at bind, for Studio's
+  // timeline list; video metadata can make the composition longer afterwards.
+  it("keeps a clip inside a discovery-stamped wrapper on screen past the stamp's end", async () => {
+    const hostPage = await browser.newPage();
+    try {
+      await hostPage.setViewport({ width: 320, height: 180 });
+      await hostPage.setContent(`<style>html, body { margin: 0; } iframe { border: 0; }</style>
+        <iframe width="320" height="180" srcdoc="<style>html, body { margin: 0; background: rgb(0, 0, 0); }</style>
+          <div data-composition-id='root' data-duration='6' data-width='320' data-height='180'
+            style='position:relative;width:320px;height:180px'>
+            <div id='wrap' data-start='0' data-duration='2' data-hf-autostamped='1'
+              style='position:absolute;inset:0'>
+              <div class='clip' data-start='0' data-duration='6'
+                style='position:absolute;inset:0;background:rgb(255,0,0)'></div>
+            </div>
+          </div>"></iframe>`);
+      const frame = (await (await hostPage.waitForSelector("iframe"))!.contentFrame())!;
+      await frame.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await frame.waitForFunction(() => window.__playerReady && window.__renderReady);
+      await frame.evaluate(() => window.__player!.seek(4));
+      expect(await redPixels(hostPage)).toBe(320 * 180);
+    } finally {
+      await hostPage.close();
+    }
+  }, 30_000);
+
+  it("paints nothing of a hidden scene, even a child or SVG shape set visible inline", async () => {
+    const filmPage = await openFilm(
+      `<div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+        <div id="child" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+        <div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+          <svg width="320" height="180"><path id="shape" d="M0 0H320V180H0Z" fill="rgb(255,0,0)" /></svg>
+        </div>
+      </div>`,
+    );
+    try {
+      const redPixelsAt = async (time: number) => {
+        await filmPage.evaluate((t) => {
+          window.__player!.renderSeek!(t);
+          // What a rewound GSAP set writes on a scene's contents.
+          for (const id of ["child", "shape"])
+            document.getElementById(id)!.style.visibility = "visible";
+        }, time);
+        return redPixels(filmPage);
+      };
+      expect(await redPixelsAt(1.5)).toBe(0);
+      expect(await redPixelsAt(2.5)).toBe(320 * 180);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  // HTML ignores `/>` on a custom element, so every later sibling ends up inside the group.
+  it.each([
+    ["an unmuted", 320 * 180, ""],
+    ["a muted", 0, " data-hidden"],
+  ])(
+    "a clip written after %s self-closed audio group paints %i red pixels",
+    async (_, red, mute) => {
+      const filmPage = await openFilm(
+        `<hf-audio-group id="sfx" data-label="SFX"${mute} />
+      <div class="clip" data-start="0" data-duration="3" style="position:absolute;inset:0;background:rgb(255,0,0)"></div>`,
+      );
+      try {
+        await filmPage.evaluate(() => window.__player!.renderSeek!(1));
+        expect(await redPixels(filmPage)).toBe(red);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it.each([
+    ["an older shader build", 320 * 180, "window.HyperShader = {};"],
+    ["a current shader build", 0, "window.HyperShader = {}; window.__hfClipRevealAware = true;"],
+  ])(
+    "with %s on the page, a hidden scene's copy forced visible inline paints %i red pixels",
+    async (_, red, shaderBuild) => {
+      const filmPage = await openFilm(
+        `<div id="scene" class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0">
+          <div style="position:absolute;inset:0;background:rgb(255,0,0)"></div>
+        </div>`,
+        "",
+        shaderBuild,
+      );
+      try {
+        await filmPage.evaluate(() => {
+          window.__player!.renderSeek!(1);
+          // How shader-transitions builds before revealClip show a scene's copy.
+          const copy = document.getElementById("scene")!.cloneNode(true) as HTMLElement;
+          copy.style.setProperty("visibility", "visible", "important");
+          document.getElementById("scene")!.after(copy);
+        });
+        expect(await redPixels(filmPage)).toBe(red);
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("leaves a clip's contents to an engine layer mask that hides its host", async () => {
+    const filmPage = await openFilm(
+      `<div id="host" style="position:absolute;inset:0"><img id="logo" data-start="0" data-duration="3" style="position:absolute"></div>`,
+    );
+    try {
+      const logo = await filmPage.evaluate(() => {
+        window.__player!.renderSeek!(1);
+        document.getElementById("host")!.style.setProperty("visibility", "hidden", "important");
+        return getComputedStyle(document.getElementById("logo")!).visibility;
+      });
+      expect(logo).toBe("visible");
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  it("skips a preview's images in hidden scenes not due soon, until the scene shows", async () => {
+    const filmPage = await openFilm(
+      `<div id="soon" class="clip" data-start="1" data-duration="1" style="position:absolute;inset:0"><img></div>
+       <div id="later" class="clip" data-start="2.9" data-duration="0.1" style="position:absolute;inset:0"><div><img></div></div>`,
+      PREVIEW_HEAD,
+    );
+    try {
+      const skipped = await filmPage.evaluate(() => {
+        const skip = (id: string) =>
+          getComputedStyle(document.querySelector(`#${id} img`)!).display === "none";
+        window.__player!.seek(0);
+        const before = [skip("soon"), skip("later")];
+        window.__player!.seek(2.95);
+        return [...before, skip("later")];
+      });
+      expect(skipped).toEqual([false, true, false]);
+    } finally {
+      await filmPage.close();
+    }
+  }, 30_000);
+
+  it.each(["seek", "renderSeek"] as const)(
+    "shows a hidden scene's child again after a %s skipped past the GSAP set that hides it",
+    async (seek) => {
+      const filmPage = await openFilm(
+        `<div class="clip" data-start="1" data-duration="1" style="position:absolute;inset:0"><div id="words"></div></div>`,
+        "",
+        `window.__timelines = {root: gsap.timeline({paused: true}).set("#words", {visibility: "hidden"}, 1.9)};`,
+      );
+      try {
+        const words = await filmPage.evaluate((method) => {
+          window.__player![method]!(2.5);
+          window.__player![method]!(1.5);
+          return getComputedStyle(document.getElementById("words")!).visibility;
+        }, seek);
+        expect(words).toBe("visible");
+      } finally {
+        await filmPage.close();
+      }
+    },
+    30_000,
+  );
+
+  it("ends a later scene's from-opacity fade at its authored opacity when frames step into it", async () => {
+    const fadePage = await browser.newPage();
+    try {
+      await fadePage.setContent(`<!doctype html>
+        <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180">
+          <div id="scene" class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0"></div>
+        </div>`);
+      await fadePage.addScriptTag({
+        path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+      });
+      await fadePage.addScriptTag({
+        content: `window.__timelines = {root:gsap.timeline({paused:true}).from("#scene",{opacity:0,duration:1,ease:"none",immediateRender:false,lazy:false},2)};`,
+      });
+      await fadePage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+      await fadePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+
+      const opacity = await fadePage.evaluate(() => {
+        for (let frame = 0; frame <= 90; frame++) window.__player!.renderSeek!(frame / 30);
+        return getComputedStyle(document.getElementById("scene")!).opacity;
+      });
+      expect(opacity).toBe("1");
+    } finally {
+      await fadePage.close();
+    }
+  }, 30_000);
+
+  it.each([
+    [2, "blur(5px)"],
+    [1.9, "blur(4px)"],
+  ])(
+    "starts a filter tween at %s s from its stylesheet filter when frames step into a scene at 2 s",
+    async (start, expected) => {
+      const tweenPage = await browser.newPage();
+      try {
+        await tweenPage.setContent(`<!doctype html>
+        <style>#probe { filter: blur(10px); }</style>
+        <div data-composition-id="root" data-start="0" data-duration="3" data-width="320" data-height="180">
+          <div class="clip" data-start="2" data-duration="1" style="position:absolute;inset:0"><div id="probe"></div></div>
+        </div>`);
+        await tweenPage.addScriptTag({
+          path: resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+        });
+        await tweenPage.addScriptTag({
+          content: `window.__timelines = {root:gsap.timeline({paused:true}).to("#probe",{filter:"blur(0px)",duration:1,ease:"none",lazy:false},${start})};`,
+        });
+        await tweenPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await tweenPage.waitForFunction(() => window.__playerReady && window.__renderReady);
+
+        const filter = await tweenPage.evaluate(() => {
+          for (let frame = 0; frame <= 75; frame++) window.__player!.renderSeek!(frame / 30);
+          return getComputedStyle(document.getElementById("probe")!).filter;
+        });
+        expect(filter).toBe(expected);
+      } finally {
+        await tweenPage.close();
+      }
+    },
+    30_000,
+  );
 
   it("renders a later clip's authored lazy image as it is: laid out at setup, fetched before any seek", async () => {
     // A chunked render starts a worker straight at a later clip, so its image must already be loaded.
@@ -1092,6 +1514,291 @@ describe("core runtime browser contract", () => {
     },
     30_000,
   );
+
+  it.each([true, false])(
+    "skips rendering preview scenes far from the playhead, measuring them unchanged (scene parts: %s)",
+    async (sceneParts) => {
+      const dir = mkdtempSync(resolve(tmpdir(), "far-scenes-browser-"));
+      const scenePage = await browser.newPage();
+      try {
+        // Content-sized hosts, so a skipped one that lost its size would shrink what it holds.
+        const hosts = [0, 1, 2, 3, 4]
+          .map(
+            (i) =>
+              `<div data-composition-id="s${i}" data-composition-src="s${i}.html" data-start="${2 * i}" data-duration="2" style="position:absolute;top:${30 * i}px"></div>`,
+          )
+          .join("");
+        writeFileSync(
+          resolve(dir, "index.html"),
+          `<!doctype html><html><body><div data-composition-id="main" data-duration="10" data-width="320" data-height="180">${hosts}</div></body></html>`,
+        );
+        for (const i of [0, 1, 2, 3, 4])
+          writeFileSync(
+            resolve(dir, `s${i}.html`),
+            `<template id="s${i}-template"><div data-composition-id="s${i}" data-duration="2"><p style="width:${40 + i}px;padding:3px">S${i}</p><i style="position:absolute;inset:0"></i></div></template>`,
+          );
+        await scenePage.setContent(
+          await bundleToSingleHtml(dir, { sceneParts, staticGuard: false }),
+        );
+        await scenePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+        const result = await scenePage.evaluate(async () => {
+          const far = () =>
+            Array.from(document.querySelectorAll("[data-hf-far-scene]"), (el) =>
+              el.getAttribute("data-composition-id"),
+            );
+          const atStart = far();
+          window.__player!.seek(7);
+          await new Promise(requestAnimationFrame);
+          const afterSeek = far();
+          const skipped = Array.from(
+            document.querySelectorAll<HTMLElement>("[data-hf-far-scene]"),
+            (el) => getComputedStyle(el).contentVisibility,
+          );
+          const boxes = () =>
+            Array.from(
+              document.querySelectorAll<HTMLElement>(
+                "[data-hf-scene] :is(p, i), [data-hf-scene]:not(style, script)",
+              ),
+              (el) => {
+                const { x, y, width, height } = el.getBoundingClientRect();
+                return [
+                  x,
+                  y,
+                  width,
+                  height,
+                  el.offsetWidth,
+                  el.offsetHeight,
+                  getComputedStyle(el).width,
+                ];
+              },
+            );
+          const measured = boxes();
+          for (const el of document.querySelectorAll("[data-hf-far-scene]"))
+            el.removeAttribute("data-hf-far-scene");
+          return { atStart, afterSeek, skipped, measured, rendered: boxes() };
+        });
+        if (!sceneParts) {
+          expect(result.atStart).toEqual([]);
+          expect(result.afterSeek).toEqual([]);
+          return;
+        }
+        expect(result.atStart).toEqual(["s2", "s3", "s4"]);
+        expect(result.afterSeek).toEqual(["s0", "s1"]);
+        expect(result.skipped).toEqual(["hidden", "hidden"]);
+        expect(result.measured).toEqual(result.rendered);
+      } finally {
+        await scenePage.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    30_000,
+  );
+
+  const builtAsItRuns = (i: number) =>
+    `const tl = gsap.timeline({ paused: true }); tl.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); window.__timelines["s${i}"] = tl;`;
+  it.each([
+    ["its timeline built as the script runs", builtAsItRuns],
+    [
+      "its timeline driving one built after a font wait",
+      (i: number) =>
+        `const tl = gsap.timeline({ paused: true }); Promise.all([document.fonts.load("16px serif")]).then(() => { const inner = gsap.timeline({ paused: true }); inner.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); tl.add(inner.tweenFromTo(0, 1), 0); window.__timelines["s${i}"] = tl; });`,
+    ],
+    [
+      "a timeline built after a font wait to pose it once",
+      (i: number) =>
+        `const tl = gsap.timeline({ paused: true }); window.__timelines["s${i}"] = tl; Promise.all([document.fonts.load("16px serif")]).then(() => { const pose = gsap.timeline({ paused: true }); pose.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); pose.time(0.5); });`,
+    ],
+  ])(
+    "lets go of each scene the preview mounts and unmounts while it plays, its captured audio included (%s)",
+    async (_, sceneScript) => {
+      const dir = mkdtempSync(resolve(tmpdir(), "scene-window-memory-"));
+      // Its own browser: Web Audio only captures media where the context may start without a gesture.
+      const audioBrowser = await puppeteer.launch({
+        headless: true,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--autoplay-policy=no-user-gesture-required",
+        ],
+      });
+      try {
+        const scenes = [0, 1, 2, 3, 4, 5];
+        const hosts = scenes
+          .map(
+            (i) =>
+              `<div data-composition-id="s${i}" data-composition-src="s${i}.html" data-start="${2 * i}" data-duration="2" style="position:absolute;inset:0"></div>`,
+          )
+          .join("");
+        writeFileSync(
+          resolve(dir, "index.html"),
+          `<!doctype html><html><body><div data-composition-id="main" data-duration="12" data-width="320" data-height="180">${hosts}</div></body></html>`,
+        );
+        writeFileSync(resolve(dir, "tone.wav"), silentWav());
+        // s0 and s1 mount at open and their scripts run with the film's: a font wait's work there has no known scene.
+        for (const i of scenes)
+          writeFileSync(
+            resolve(dir, `s${i}.html`),
+            `<template id="s${i}-template"><div data-composition-id="s${i}" data-duration="2">${"<b>x</b>".repeat(400)}<audio src="tone.wav" data-start="0" data-duration="1"></audio><script>${i < 2 ? builtAsItRuns(i) : sceneScript(i)}</script></div></template>`,
+          );
+        const html = addScenePartsManifest(
+          await bundleToSingleHtml(dir, { sceneParts: true, staticGuard: false }),
+        );
+        const page = await audioBrowser.newPage();
+        await page.evaluateOnNewDocument(
+          readFileSync(
+            resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+            "utf8",
+          ),
+        );
+        await page.setRequestInterception(true);
+        page.on(
+          "request",
+          (request) => void request.respond({ contentType: "text/html", body: html }),
+        );
+        await page.goto("http://scenes.test/");
+        await page.waitForFunction(() => window.__playerReady && window.__renderReady);
+        const cdp = await page.createCDPSession();
+        await cdp.send("Performance.enable");
+        // DOM nodes alive but out of the page, after a full collection.
+        const kept = async () => {
+          await cdp.send("HeapProfiler.collectGarbage");
+          const { metrics } = await cdp.send("Performance.getMetrics");
+          const inPage = await page.evaluate(() => {
+            const walker = document.createTreeWalker(document, NodeFilter.SHOW_ALL);
+            let count = 1;
+            while (walker.nextNode()) count++;
+            return count;
+          });
+          return metrics.find((m) => m.name === "Nodes")!.value - inPage;
+        };
+        const before = await kept();
+        await page.evaluate(async () => {
+          const player = window.__player as unknown as {
+            play: () => void;
+            seek: (time: number, options: { keepPlaying: boolean }) => void;
+          };
+          player.play();
+          for (const time of [2.5, 4.5, 6.5, 8.5, 10.5]) {
+            player.seek(time, { keepPlaying: true });
+            await window.__hfWaitForSeekCompletion?.();
+            await new Promise((settle) => setTimeout(settle, 200));
+          }
+        });
+        // The window unmounts only once it has mounted what is ahead.
+        await page.waitForFunction(
+          () => document.querySelectorAll("[data-hf-parked-scene]").length >= 5,
+        );
+        // Five scenes went out of the window, each over 800 nodes. Chrome keeps a captured element alive while
+        // its audio context lives, so each scene's audio element stays, but nothing of the scene around it.
+        expect(
+          await page.evaluate(() => document.querySelectorAll("[data-hf-parked-scene]").length),
+        ).toBe(5);
+        expect((await kept()) - before).toBeLessThan(800);
+      } finally {
+        await audioBrowser.close();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it("keeps a scene that draws on a 2D canvas mounted, and mounts a chained-timeline scene again as it was", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "scene-window-canvas-"));
+    const scenePage = await browser.newPage();
+    try {
+      const scripts = [
+        // Drawn once, as the script runs: a mount would need the script to draw again.
+        `const g = document.querySelector("canvas").getContext('2d'); g.fillStyle = "#c33"; g.fillRect(10, 10, 60, 30); const tl = gsap.timeline({ paused: true }); tl.to({ t: 0 }, { t: 1, duration: 2 }); window.__timelines["s0"] = tl;`,
+        // Placed by its timeline, chained as it is registered.
+        `const box = document.querySelector(".box"); const clock = { t: 0 }; window.__timelines["s1"] = gsap.timeline({ paused: true, onUpdate: () => { box.style.transform = "translateX(" + Math.round(clock.t * 50) + "px)"; } }).to(clock, { t: 2, duration: 2, ease: "none" });`,
+        `window.__timelines["s2"] = gsap.timeline({ paused: true });`,
+      ];
+      writeFileSync(
+        resolve(dir, "index.html"),
+        `<!doctype html><html><body><div data-composition-id="main" data-duration="6" data-width="320" data-height="180">${scripts
+          .map(
+            (_, i) =>
+              `<div data-composition-id="s${i}" data-composition-src="s${i}.html" data-start="${2 * i}" data-duration="2" style="position:absolute;inset:0"></div>`,
+          )
+          .join("")}</div></body></html>`,
+      );
+      scripts.forEach((script, i) =>
+        writeFileSync(
+          resolve(dir, `s${i}.html`),
+          `<template id="s${i}-template"><div data-composition-id="s${i}" data-duration="2"><canvas width="320" height="180"></canvas><div class="box"></div><script>${script}</script></div></template>`,
+        ),
+      );
+      const html = addScenePartsManifest(
+        await bundleToSingleHtml(dir, { sceneParts: true, staticGuard: false }),
+      );
+      await scenePage.evaluateOnNewDocument(
+        readFileSync(
+          resolve(import.meta.dirname, "../../../core/node_modules/gsap/dist/gsap.min.js"),
+          "utf8",
+        ),
+      );
+      await scenePage.setRequestInterception(true);
+      scenePage.on(
+        "request",
+        (request) => void request.respond({ contentType: "text/html", body: html }),
+      );
+      await scenePage.goto("http://scenes.test/");
+      await scenePage.waitForFunction(() => window.__playerReady && window.__renderReady);
+      const refusals = () =>
+        scenePage.evaluate(() =>
+          ["s0", "s1"].map((s) =>
+            document
+              .querySelector(`[data-hf-scene="${s}"]:not(style, script)`)!
+              .getAttribute("data-hf-scene-no-swap"),
+          ),
+        );
+      expect(await refusals()).toEqual(["its script uses getContext", null]);
+      const seek = (time: number) =>
+        scenePage.evaluate(async (time) => {
+          window.__player!.seek(time);
+          await window.__hfWaitForSeekCompletion?.();
+          for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+        }, time);
+      const canvas = () =>
+        scenePage.evaluate(() =>
+          document.querySelector<HTMLCanvasElement>('[data-hf-scene="s0"] canvas')!.toDataURL(),
+        );
+      const boxAt = async (time: number) => {
+        await seek(time);
+        return scenePage.evaluate(
+          () => document.querySelector<HTMLElement>('[data-hf-scene="s1"] .box')!.style.transform,
+        );
+      };
+      await seek(1);
+      const drawn = await canvas();
+      const placed = await boxAt(3.4);
+      await scenePage.evaluate(() => {
+        (window as unknown as { first: unknown }).first = window.__timelines!.s1;
+        window.__player!.seek(5);
+      });
+      await scenePage.waitForFunction(
+        () => document.querySelector('[data-hf-parked-scene][data-hf-scene="s1"]') !== null,
+      );
+      const parked = await scenePage.evaluate(() =>
+        [...document.querySelectorAll("[data-hf-parked-scene]")].map((el) =>
+          el.getAttribute("data-hf-scene"),
+        ),
+      );
+      expect(parked).not.toContain("s0");
+      await seek(1);
+      expect(await canvas()).toBe(drawn);
+      await scenePage.evaluate(() => window.__player!.seek(3.4));
+      // Mounted again once its script has run and registered a fresh timeline.
+      await scenePage.waitForFunction(() => {
+        const fresh = window.__timelines?.s1;
+        return fresh !== undefined && fresh !== (window as unknown as { first: unknown }).first;
+      });
+      expect(await boxAt(3.4)).toBe(placed);
+    } finally {
+      await scenePage.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it("removes the control bridge during teardown", async () => {
     const result = await page.evaluate(async () => {

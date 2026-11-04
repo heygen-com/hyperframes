@@ -52,6 +52,17 @@ describe("walkDir", () => {
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
   });
 
+  it("leaves a render's scratch dir out, so its compiled index.html is not listed as a composition", () => {
+    const projectDir = createProjectDir();
+    const work = join(projectDir, "work-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-Ab12Cd");
+    mkdirSync(join(work, "compiled"), { recursive: true });
+    writeFileSync(join(work, "compiled", "index.html"), "scratch");
+    writeFileSync(join(projectDir, "index.html"), "root");
+    writeFileSync(join(projectDir, "video.mp4"), "output");
+
+    expect(walkDir(projectDir).sort()).toEqual(["index.html", "video.mp4"]);
+  });
+
   it.each(["EACCES", "EPERM", "ENOENT", "ENOTDIR"])(
     "skips a subfolder whose listing fails with %s",
     (code) => {

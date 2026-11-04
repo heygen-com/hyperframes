@@ -63,11 +63,27 @@ export function duckLane(keyframes, { clipStart = 0, baseVolume = 1 } = {}) {
     if (t > points.at(-1).t) points.push({ t: round3(t), v });
   };
   for (const kf of keyframes) {
-    const t = Math.max(0, kf.time - start);
+    const t = Math.max(0, kf.time);
     push(t, points.at(-1).v);
     push(t + kf.duration, kf.volume);
   }
-  return { version: 1, lanes: [{ target: "volume", points }] };
+
+  const next = points.findIndex((point) => point.t > start);
+  const before = points[next - 1] ?? points.at(-1);
+  const after = points[next];
+  const initial =
+    next === 0
+      ? points[0].v
+      : after
+        ? before.v + ((after.v - before.v) * (start - before.t)) / (after.t - before.t)
+        : before.v;
+  const localPoints = [
+    { t: 0, v: initial },
+    ...points
+      .filter((point) => point.t > start)
+      .map((point) => ({ t: round3(point.t - start), v: point.v })),
+  ];
+  return { version: 1, lanes: [{ target: "volume", points: localPoints }] };
 }
 
 function mergeIntervals(intervals, mergeGap) {

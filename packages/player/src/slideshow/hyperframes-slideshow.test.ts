@@ -1,11 +1,14 @@
 // fallow-ignore-file code-duplication
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { handleRuntimeMessage } from "../runtime-message-handler.js";
 import {
   childrenMayStillArrive,
   dropInvalidSlides,
+  HyperframesSlideshow,
   locateSlideshowParts,
 } from "./hyperframes-slideshow.js";
+import { SlideshowController } from "./SlideshowController.js";
 import { slideshowChannelName } from "./slideshowPresenter.js";
 
 // Dynamic import defers custom-element registration until happy-dom is active.
@@ -129,6 +132,44 @@ describe("<hyperframes-slideshow>", () => {
     expect(el.querySelector("[data-hf-breadcrumb-item]")).toBeNull();
     expect(el.querySelector("[data-hf-back]")).toBeNull();
     el.remove();
+  });
+
+  it("keeps Next available until the final slide's fragments are revealed", () => {
+    const player = {
+      currentTime: 0,
+      seek: (time: number) => {
+        player.currentTime = time;
+      },
+      play: vi.fn(),
+      pause: vi.fn(),
+      onTimeUpdate: () => () => {},
+    };
+    const controller = new SlideshowController(player, {
+      slides: [
+        { sceneId: "intro", start: 0, end: 5, fragments: [], hotspots: [] },
+        { sceneId: "closing", start: 5, end: 10, fragments: [6, 8, 9], hotspots: [] },
+      ],
+      sequences: {},
+    });
+    const el = new HyperframesSlideshow();
+    document.body.appendChild(el);
+    el.__setControllerForTest(controller);
+
+    try {
+      controller.goToSlide(1);
+      expect(player.currentTime).toBe(6);
+      expect(el.querySelector("[data-hf-next]")).not.toBeNull();
+
+      el.querySelector<HTMLButtonElement>("[data-hf-next]")?.click();
+      expect(player.currentTime).toBe(8);
+      expect(el.querySelector("[data-hf-next]")).not.toBeNull();
+
+      el.querySelector<HTMLButtonElement>("[data-hf-next]")?.click();
+      expect(player.currentTime).toBe(9);
+      expect(el.querySelector("[data-hf-next]")).toBeNull();
+    } finally {
+      el.remove();
+    }
   });
 
   it("renders an icon-only present button inside the nav cluster in normal mode", () => {
@@ -899,7 +940,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     });
     await tick();
 
-    expect(video.currentTime).toBe(12.5);
+    expect(video.currentTime).toBe(mediaElementTime(12.5));
     expect(video.muted).toBe(true);
     expect(video.volume).toBe(0.8);
     expect(video.playbackRate).toBe(1.25);
@@ -941,7 +982,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     });
     await tick();
 
-    expect(video.currentTime).toBe(4);
+    expect(video.currentTime).toBe(mediaElementTime(4));
     expect(video.muted).toBe(true);
 
     presenterChannel.close();
@@ -983,7 +1024,7 @@ describe("<hyperframes-slideshow> presenter mode", () => {
     await tick();
 
     expect(play).toHaveBeenCalledTimes(1);
-    expect(video.currentTime).toBe(2);
+    expect(video.currentTime).toBe(mediaElementTime(2));
     expect(video.muted).toBe(true);
     const buttonTexts = Array.from(
       el.querySelectorAll("button") as NodeListOf<HTMLButtonElement>,

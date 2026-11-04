@@ -1,19 +1,20 @@
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage, setCommandExitCode } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 export const examples: Example[] = [
   ["Run benchmarks with default settings (3 runs)", "hyperframes benchmark"],
   ["Run 5 iterations per config", "hyperframes benchmark --runs 5"],
   ["Output results as JSON", "hyperframes benchmark --json"],
 ];
-import { resolve, join } from "node:path";
+import { join } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 
@@ -58,20 +59,20 @@ export default defineCommand({
     json: { type: "boolean", description: "Output results as JSON", default: false },
   },
   async run({ args }) {
-    // ── Resolve project ──────────────────────────────────────────────────
-    const project = resolveProject(args.dir);
-
     // ── Parse runs ───────────────────────────────────────────────────────
     const runsPerConfig = parseInt(args.runs ?? "3", 10);
     if (isNaN(runsPerConfig) || runsPerConfig < 1 || runsPerConfig > 20) {
       errorBox("Invalid runs", `Got "${args.runs ?? "3"}". Must be between 1 and 20.`);
-      failCommand();
+      failUsage();
     }
+
+    // ── Resolve project ──────────────────────────────────────────────────
+    const project = resolveProject(args.dir);
 
     const jsonOutput = args.json ?? false;
 
     // ── Temp output for benchmark renders ────────────────────────────────
-    const benchDir = resolve("renders", ".benchmark");
+    const benchDir = mkdtempSync(join(tmpdir(), "hyperframes-benchmark-"));
 
     // ── Load producer ────────────────────────────────────────────────────
     let producer: Awaited<ReturnType<typeof loadProducer>> | null = null;
@@ -157,6 +158,12 @@ export default defineCommand({
           : null;
 
       results.push({ config, runs, failures, avgTime, avgSize });
+    }
+
+    rmSync(benchDir, { recursive: true, force: true });
+
+    if (results.every((result) => result.runs.length === 0)) {
+      setCommandExitCode(1);
     }
 
     // ── Output results ───────────────────────────────────────────────────

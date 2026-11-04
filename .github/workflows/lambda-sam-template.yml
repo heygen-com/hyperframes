@@ -1,0 +1,25 @@
+name: Lambda SAM template
+
+on:
+  pull_request:
+    paths:
+      - "examples/aws-lambda/**"
+      - ".github/workflows/lambda-sam-template.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sam-deploy:
+    name: sam deploy validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: pipx install aws-sam-cli==1.169.0
+      - run: bash examples/aws-lambda/scripts/check-sam-deploy.sh

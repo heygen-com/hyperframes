@@ -20,7 +20,7 @@ import { HyperframesApiError } from "./_gen/client.js";
  */
 const ERROR_CODE_HINTS: Record<string, string> = {
   hyperframes_project_too_large:
-    "The zip exceeded the 200 MB limit. Run `hyperframes cloud render --dry-run`, then add only verified-unneeded paths to `.hyperframesignore` or pre-host required large media.",
+    "The zip exceeded the 200 MB limit. Run `hyperframes cloud render --dry-run` to see what stays in it, then add only verified-unneeded paths to `.hyperframesignore`.",
   hyperframes_render_not_found:
     "The render_id no longer exists — either soft-deleted or never created.",
   invalid_parameter:
@@ -29,6 +29,14 @@ const ERROR_CODE_HINTS: Record<string, string> = {
     "Run `hyperframes auth status` to confirm your credential; `hyperframes auth login` to re-auth.",
   rate_limit_exceeded: "Retry after the duration in the Retry-After header.",
 };
+
+// The asset upload API reports an over-limit file as invalid_parameter; only its message says why.
+function hintCode(err: HyperframesApiError): string | undefined {
+  if (err.code === "invalid_parameter" && /^File too large\b/.test(err.message)) {
+    return "hyperframes_project_too_large";
+  }
+  return err.code;
+}
 
 /**
  * Print an errorBox and `process.exit(1)` for any unknown error from
@@ -64,7 +72,8 @@ export function reportApiError(
       errorBox("Not found", options.notFound);
       failCommand();
     }
-    const hint = err.code ? hints[err.code] : undefined;
+    const code = hintCode(err);
+    const hint = code ? hints[code] : undefined;
     const title = `${stage} (HTTP ${err.status})`;
     // Priority: code-specific hint > caller suggestion > bare code
     // label > no third line. Code-specific hints win because they

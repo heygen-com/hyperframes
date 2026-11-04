@@ -50,6 +50,46 @@ function request() {
 }
 
 describe("RenderRequest", () => {
+  it("preserves explicit motion blur off through the distributed request round trip", () => {
+    const value = request();
+    value.options.pageMotionBlur = "off";
+    const config = distributedConfigFromRequest(value);
+    expect(config.pageMotionBlur).toBe("off");
+    expect(
+      renderRequestFromDistributedConfig({
+        projectDir: value.projectDir,
+        outputPath: value.outputPath,
+        config,
+      }).options.pageMotionBlur,
+    ).toBe("off");
+  });
+
+  it("carries the delivery encoder options through every adapter", () => {
+    const value = request();
+    Object.assign(value.options, {
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    const expected = { keyframeIntervalSeconds: 2, maxBitrate: "8M", bufferSize: "12M" };
+    expect(renderConfigFromRequest(value)).toMatchObject(expected);
+    const config = distributedConfigFromRequest(value);
+    expect(config).toMatchObject(expected);
+    expect(
+      renderRequestFromDistributedConfig({
+        projectDir: value.projectDir,
+        outputPath: value.outputPath,
+        config,
+      }).options,
+    ).toMatchObject(expected);
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, maxBitrate: 8 } }),
+    ).toThrow();
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, keyframeIntervalSeconds: 0 } }),
+    ).toThrow(/positive/);
+  });
+
   it("round-trips through JSON without dropping nested options", () => {
     const value = request();
     expect(parseRenderRequest(serializeRenderRequest(value))).toEqual(value);
@@ -99,20 +139,22 @@ describe("RenderRequest", () => {
     expect(parseRenderRequest(serializeRenderRequest(value)).options.audioBitrate).toBe("128k");
   });
 
-  it("rejects an audio bitrate that omits its unit", () => {
-    expect(() =>
-      createRenderRequest({
-        projectDir: "/project",
-        outputPath: "/output/video.mp4",
-        engineConfig: DEFAULT_CONFIG,
-        options: {
-          fps: { num: 30, den: 1 },
-          quality: "standard",
-          format: "mp4",
-          audioBitrate: "128",
-        },
-      }),
-    ).toThrow('audioBitrate must be a bitrate such as "128k"');
+  it("rejects an audio bitrate outside 500 bps to 512k", () => {
+    for (const audioBitrate of ["128", "0.4k", "513k", "1M"]) {
+      expect(() =>
+        createRenderRequest({
+          projectDir: "/project",
+          outputPath: "/output/video.webm",
+          engineConfig: DEFAULT_CONFIG,
+          options: {
+            fps: { num: 30, den: 1 },
+            quality: "standard",
+            format: "webm",
+            audioBitrate,
+          },
+        }),
+      ).toThrow('audioBitrate must be a bitrate from 500 to 512k, such as "128k"');
+    }
   });
 
   it("refuses to convert a request with audio-bitrate to a distributed config", () => {

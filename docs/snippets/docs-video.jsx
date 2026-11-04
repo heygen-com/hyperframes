@@ -5,6 +5,7 @@ export const DocsVideo = ({
   autoPlay = false,
   loop = false,
   portrait = false,
+  aspect, // e.g. "16 / 10" for app recordings; the frame is 16 / 9 otherwise
 }) => {
   const videoRef = useRef(null);
   const playerRef = useRef(null);
@@ -13,10 +14,30 @@ export const DocsVideo = ({
   const [enhanced, setEnhanced] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [muted, setMuted] = useState(false);
+  // Browsers only autoplay muted video, so an autoplaying player starts muted; the sound button unmutes it.
+  const [muted, setMuted] = useState(autoPlay);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Lazy, like ShowcaseWall's: a reduce-motion visitor's first render must not autoplay. The controls still play it.
+  const [reduced, setReduced] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = (event) => setReduced(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  // Turning Reduce Motion on mid-visit must stop an autoplaying loop for real: React props can't pause it or drop
+  // its file. The play button loads it again (togglePlayback).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!reduced || !autoPlay || !video) return;
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+  }, [reduced, autoPlay]);
   const [controlsVisible, setControlsVisible] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenSupported, setFullscreenSupported] = useState(false);
@@ -49,6 +70,7 @@ export const DocsVideo = ({
     const video = videoRef.current;
     if (!video) return;
     if (video.paused || video.ended) {
+      if (!video.getAttribute("src")) video.src = src; // dropped when Reduce Motion stopped the loop
       if (video.ended) video.currentTime = 0;
       setWaiting(true);
       try {
@@ -191,6 +213,7 @@ export const DocsVideo = ({
       <div
         ref={playerRef}
         className="hf-docs-video"
+        style={aspect ? { aspectRatio: aspect } : undefined}
         role="region"
         aria-label={title}
         tabIndex={0}
@@ -207,7 +230,8 @@ export const DocsVideo = ({
           aria-label={title}
           src={src}
           poster={poster}
-          autoPlay={autoPlay}
+          autoPlay={autoPlay && !reduced}
+          muted={autoPlay}
           loop={loop}
           playsInline
           preload="metadata"
@@ -377,46 +401,25 @@ export const DocsVideo = ({
 };
 
 export const ShowcaseWall = () => {
-  const CDN = "https://static.heygen.ai/hyperframes-oss/docs/images/showcase";
+  // The same films as the homepage showcase (hyperframes.heygen.com), from the team and ours: a tile plays the 720p
+  // card, an opened film the 1080p copy.
+  const CDN = "https://static.heygen.ai/hyperframes-oss/homepage/showcase";
+  const homepageFilm = (id, v, title, note, length) => ({
+    id,
+    title,
+    note,
+    length,
+    tile: `${CDN}/card/${id}-v${v}.mp4`,
+    full: `${CDN}/hq/${id}-v${v}.mp4`,
+    poster: `${CDN}/poster/${id}-v${v}.jpg`,
+  });
   const films = [
-    {
-      id: "grading",
-      tile: "tile-grading-v2",
-      full: "full-grading-4k-v2",
-      title: "Colour grading and media effects",
-      note: "Real footage graded with LUTs, curves, and scopes — inside Studio.",
-      length: "48s",
-    },
-    {
-      id: "variables",
-      title: "One shoot, many cuts",
-      note: "The same footage rendered as several vertical videos from one project.",
-      length: "44s",
-    },
-    {
-      id: "music",
-      title: "Cut to the music",
-      note: "A track analysed for beats and sections, then everything snapped to that grid.",
-      length: "90s",
-    },
-    {
-      id: "prvideo",
-      title: "A pull request, explained",
-      note: "A code change turned into a review anyone on the team can watch.",
-      length: "32s",
-    },
-    {
-      id: "timeline",
-      title: "Editing on a timeline",
-      note: "Trimming, splitting, and retiming a project by hand.",
-      length: "34s",
-    },
-    {
-      id: "hypecard",
-      title: "A year in review",
-      note: "Personal data turned into a shareable card, generated per person.",
-      length: "27s",
-    },
+    homepageFilm("frameys-opening-night", 1, "Opening night", "Awards trailer", "50s"),
+    homepageFilm("real-ui-newspaper-1969", 2, "Men walk on the Moon", "Real UI, rebuilt in code", "8s"),
+    homepageFilm("manga-last-onigiri", 1, "The last onigiri", "Manga", "26s"),
+    homepageFilm("vfx-background-removal-launch", 1, "Background removal", "VFX", "43s"),
+    homepageFilm("cow", 1, "Cow 1.0", "Launch parody", "30s"),
+    homepageFilm("remotion-to-hyperframes", 1, "Remotion to HyperFrames", "3D voxel", "20s"),
   ];
   const [openId, setOpenId] = useState(null);
   // Lazy initializer, not a post-mount effect: with useState(false) the first
@@ -457,12 +460,17 @@ export const ShowcaseWall = () => {
   if (open) {
     return (
       <div style={{ margin: "1.5rem 0" }}>
-        <DocsVideo
+        {/* A plain video, not DocsVideo: a Mintlify snippet can't use another export of its file, and the reference
+            alone stopped the whole wall from rendering. Opened by a click, so it may start with sound. */}
+        <video
           key={open.id}
-          title={open.title}
-          src={`${CDN}/${open.full || `full-${open.id}`}.mp4`}
-          poster={`${CDN}/${open.tile || `tile-${open.id}`}.jpg`}
+          src={open.full}
+          poster={open.poster}
+          aria-label={open.title}
+          controls
           autoPlay
+          playsInline
+          style={{ display: "block", width: "100%", borderRadius: "12px", background: "#000" }}
         />
         <div
           style={{
@@ -519,7 +527,7 @@ export const ShowcaseWall = () => {
             display: "block",
             width: "100%",
             padding: 0,
-            border: "1px solid rgba(128,128,128,0.28)",
+            border: "1px solid var(--hf-border-color)",
             borderRadius: "11px",
             overflow: "hidden",
             background: "transparent",
@@ -529,8 +537,8 @@ export const ShowcaseWall = () => {
           }}
         >
           <video
-            src={reduced ? undefined : `${CDN}/${film.tile || `tile-${film.id}`}.mp4`}
-            poster={`${CDN}/${film.tile || `tile-${film.id}`}.jpg`}
+            src={reduced ? undefined : film.tile}
+            poster={film.poster}
             autoPlay={!reduced}
             muted
             loop={!reduced}

@@ -1,12 +1,8 @@
 /**
- * `hyperframes lambda sites create <projectDir>` — tar + upload a project
- * to the deployed render bucket at a content-addressed S3 prefix. Used
- * by adopters who want to pre-stage a project so multiple subsequent
- * renders share the upload.
- *
- * Without this verb, every `render` call re-tars the same tree on every
- * invocation. With it, the same `siteId` resolves to a `HeadObject`-204
- * short-circuit inside `deploySite`.
+ * `hyperframes lambda sites create <projectDir>` — upload a project's files
+ * to the deployed render bucket's shared content store. Used by adopters
+ * who want to pre-stage a project so multiple subsequent renders share the
+ * upload; files already in the bucket are skipped.
  */
 
 import { resolve as resolvePath } from "node:path";
@@ -34,12 +30,14 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  const { deploySite } = await loadSDK();
+  const { assertStackReadsSites, deploySite } = await loadSDK();
+  await assertStackReadsSites({ stateMachineArn: stack.stateMachineArn, region: stack.region });
   const handle = await deploySite({
     projectDir,
     bucketName: stack.bucketName,
     region: stack.region,
     siteId: args.siteId,
+    onNotice: (message) => console.error(c.dim(message)),
   });
 
   if (args.json) {

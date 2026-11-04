@@ -209,7 +209,7 @@ test(
 );
 
 test("pickProvider heygen with an unreadable credentials path says to fix that path", () => {
-  const saved = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HEYGEN_CONFIG_DIR"].map((k) => [
+  const saved = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "HYPERFRAMES_CONFIG_DIR"].map((k) => [
     k,
     process.env[k],
   ]);
@@ -217,7 +217,7 @@ test("pickProvider heygen with an unreadable credentials path says to fix that p
   try {
     delete process.env.HEYGEN_API_KEY;
     delete process.env.HYPERFRAMES_API_KEY;
-    process.env.HEYGEN_CONFIG_DIR = dir;
+    process.env.HYPERFRAMES_CONFIG_DIR = dir;
     mkdirSync(join(dir, "credentials"));
     assert.throws(() => pickProvider("heygen"), /fix or remove that path/);
   } finally {

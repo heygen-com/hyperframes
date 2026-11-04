@@ -147,3 +147,42 @@ describe("catalog wrapper duration", () => {
     });
   }
 });
+
+describe("catalog snippet wrapper theme", () => {
+  it("gives Testimonial Card the tokens and canvas its demo sets", async () => {
+    const html = await preparedHtml(
+      join(repoRoot, "registry/components/testimonial-card"),
+      "testimonial-card.html",
+    );
+    assert.match(html, /:root \{[^}]*--bg: #070a12;[^}]*--fg: #f8fafc;/);
+    assert.match(html, /background: var\(--bg, #0a0a0a\)/);
+  });
+
+  it("takes tokens from the mount and its ancestors, nearest last", async () => {
+    const sourceDir = mkdtempSync(join(tmpdir(), "catalog-theme-"));
+    try {
+      writeFileSync(join(sourceDir, "registry-item.json"), "{}");
+      writeFileSync(join(sourceDir, "entry.html"), '<div data-composition-id="entry"></div>');
+      writeFileSync(
+        join(sourceDir, "demo.html"),
+        `<!doctype html><html><head><style>
+          :root { --bg: #000; --fg: #fff; }
+          #root { --bg: #111; }
+          .mount { --surface: #222; width: 10px; }
+          .other { --fg: #f00; }
+          .mount::before { --fg: #0f0; }
+        </style></head><body><div id="root">
+          <div class="other" data-composition-src="./other.html"></div>
+          <div class="mount" style="--border: #333" data-composition-src="./entry.html"></div>
+        </div></body></html>`,
+      );
+      const html = await preparedHtml(sourceDir, "entry.html");
+      assert.match(
+        html,
+        /:root \{ --bg: #000; --fg: #fff; --bg: #111; --surface: #222; --border: #333; \}/,
+      );
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+});

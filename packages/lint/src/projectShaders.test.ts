@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { lintProject } from "./project";
@@ -13,7 +13,7 @@ gl_FragColor=vec4(vec3(f),1.0);
 }\`;`;
 
 function project(files: Record<string, string>) {
-  const root = mkdtempSync(join(tmpdir(), "hf-shader-lint-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hf-shader-lint-")));
   dirs.push(root);
   for (const [file, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, file)), { recursive: true });

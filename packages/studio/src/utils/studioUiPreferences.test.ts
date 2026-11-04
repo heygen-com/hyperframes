@@ -32,6 +32,15 @@ describe("studio UI preferences", () => {
     });
   });
 
+  it("remembers the preview quality, and drops a level that is not one of the four", () => {
+    const storage = createStorage();
+    writeStudioUiPreferences({ previewQuality: 0.25 }, storage);
+    expect(readStudioUiPreferences(storage)).toEqual({ previewQuality: 0.25 });
+
+    storage.setItem("hf-studio-ui-preferences", JSON.stringify({ previewQuality: 0.75 }));
+    expect(readStudioUiPreferences(storage).previewQuality).toBeUndefined();
+  });
+
   it("remembers the ruler and safe-margin toggles and drops non-boolean values", () => {
     const storage = createStorage();
     writeStudioUiPreferences({ rulerVisible: true, safeMarginsVisible: false }, storage);

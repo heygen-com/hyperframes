@@ -1,0 +1,104 @@
+---
+title: "Make videos with Cursor"
+sidebarTitle: "Cursor"
+description: "Install the HyperFrames skills in Cursor, ask its agent for a video in plain words, then preview and render it to MP4 on your computer."
+---
+
+Install the HyperFrames skills in your project, then ask Cursor's agent for a
+video. The agent writes an HTML project in your folder, opens a live preview,
+and renders the MP4 on your computer.
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+Run it in the root of the folder you open in Cursor, and choose **Core Skills**
+and **Cursor** in the picker.
+
+## Before you start
+
+- [Cursor](https://cursor.com), signed in. Agent usage bills to your Cursor plan.
+- Node.js 22 or newer, and npm.
+- FFmpeg, for rendering MP4 files. Run `npx hyperframes doctor` to check.
+
+## Install
+
+<Tabs>
+  <Tab title="Project skills">
+    Run the command above in the project folder. The skills stay with that
+    project. Reload Cursor or start a new agent chat afterwards.
+  </Tab>
+  <Tab title="For your user">
+    Install the core set once for every project:
+
+    ```bash
+    npx hyperframes skills update
+    ```
+
+    When Cursor is installed, this links the skills into `~/.cursor/skills`.
+    Run it again later to update them.
+  </Tab>
+  <Tab title="Plugin">
+    Teams can add the HyperFrames plugin through a Cursor team marketplace, or
+    load a local copy. See [Install the HyperFrames plugin](/guides/plugins#cursor).
+  </Tab>
+</Tabs>
+
+## Ask for your first video
+
+Open a new agent chat in an empty project and paste:
+
+```text
+Using /hyperframes, make a 10-second product intro for https://example.com.
+```
+
+Replace the URL with the page you want the video to show.
+
+## What happens
+
+1. The agent reads the HyperFrames guide for your kind of video, such as a product
+   launch or an explainer, and builds the project in your folder. For a longer
+   film that tells a story, it first offers three storylines to pick from.
+2. It checks the project and opens a local preview.
+
+The agent runs terminal commands to install packages, start the preview, and
+render. Approve them when Cursor asks. Watch the first version and say what to
+change, in the same chat.
+
+## Preview and render
+
+To reopen the preview later, run this in Cursor's terminal, inside the project
+folder:
+
+```bash
+npx hyperframes preview
+```
+
+The preview opens in the browser editor, where you can also edit the video by
+hand. To make the MP4 yourself:
+
+```bash
+npx hyperframes render --output final.mp4
+```
+
+You can also ask the agent to render it.
+
+## Prefer an app?
+
+The [HyperFrames Studio app](/studio-app) for Mac, Windows and Linux gives you a chat, a
+preview, and an editor in one window. It runs Claude Code, Codex, and other
+agents, but not Cursor. See [Connect your agent](/studio-app/connect-your-agent).
+
+## If something goes wrong
+
+- **The agent does not see the skill.** Start a new agent chat. Confirm that
+  `.agents/skills` (project install) or `~/.cursor/skills` (user install)
+  contains `hyperframes`, then run `npx hyperframes skills check`.
+- **The render fails.** Run `npx hyperframes doctor` and fix what it reports.
+- **Anything else.** See [Troubleshooting](/help).
+
+## Related topics
+
+- [Make your first video](/quickstart)
+- [Choose what to make](/workflows)
+- [Write better prompts](/prompting/overview)

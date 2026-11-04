@@ -1,6 +1,6 @@
 import { failCommand } from "./commandResult.js";
 import { existsSync, statSync } from "node:fs";
-import { resolve, basename } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { errorBox } from "../ui/format.js";
 import { trackCommandFailure } from "../telemetry/events.js";
 
@@ -45,7 +45,14 @@ export function resolveProjectOrThrow(
   const name = basename(dir);
   const indexPath = resolve(dir, "index.html");
 
-  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+  if (existsSync(dir) && !statSync(dir).isDirectory()) {
+    throw new InvalidProjectError(
+      "Not a directory: " + dir,
+      basename(dir) + " is a file; this command takes the project folder.",
+      "Pass the folder that holds index.html: " + projectHolding(dir),
+    );
+  }
+  if (!existsSync(dir)) {
     throw new InvalidProjectError("Not a directory: " + dir);
   }
   if (options.requireIndex !== false && !existsSync(indexPath)) {
@@ -74,4 +81,30 @@ export function resolveProject(
     }
     throw err;
   }
+}
+
+export interface LintTarget {
+  project: ProjectDir;
+  entryFile?: string;
+}
+
+function projectHolding(file: string): string {
+  for (let dir = dirname(file); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "index.html"))) return dir;
+    if (dirname(dir) === dir) return dirname(file);
+  }
+}
+
+export function resolveLintTarget(arg: string | undefined): LintTarget {
+  const file = arg === undefined ? undefined : resolve(arg);
+  if (file === undefined || !statSync(file, { throwIfNoEntry: false })?.isFile()) {
+    return { project: resolveProject(arg) };
+  }
+  const dir = projectHolding(file);
+  const project = resolveProject(dir, { requireIndex: false });
+  return file === project.indexPath ? { project } : { project, entryFile: file };
+}
+
+export function isUnderCompositions(projectDir: string, file: string): boolean {
+  return relative(projectDir, file).split(sep)[0] === "compositions";
 }

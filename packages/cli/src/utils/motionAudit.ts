@@ -6,7 +6,8 @@ const APPEAR_OPACITY = 0.5;
 /** Pixels an element may exceed the canvas edge before it counts as off-frame. */
 const FRAME_TOLERANCE = 1;
 /** Default longest allowed fully-static window for keepsMoving, in seconds. */
-const DEFAULT_MAX_STATIC_SEC = 2;
+export const DEFAULT_MAX_STATIC_SEC = 2;
+export const END_CARD_HOLD_SEC = 3;
 
 export interface FrameSample {
   rect: LayoutRect;
@@ -161,36 +162,20 @@ function staysInFrame(frames: MotionFrame[], selector: string, canvas: Canvas): 
   return [];
 }
 
-function keepsMoving(
+export function frozenSpans(
   frames: MotionFrame[],
-  within: string | undefined,
+  scope: string,
   maxStaticSec: number,
-): LayoutIssue[] {
-  // "*" is reserved for whole-canvas scope; motionSpec.ts rejects it as a user-supplied withinSelector.
-  const scope = within ?? "*";
-  if (within && frames.every((frame) => !frame.liveness[scope])) {
-    return [missingIssue(within, 0)];
-  }
-
-  const issues: LayoutIssue[] = [];
+  endCardStart = Number.POSITIVE_INFINITY,
+): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
   const first = frames[0];
-  if (!first) return issues;
+  if (!first) return spans;
   let runStart = first.time;
   let runSig = first.liveness[scope] ?? "";
-  const flush = (endTime: number) => {
-    const span = endTime - runStart;
-    if (span > maxStaticSec) {
-      issues.push({
-        code: "motion_frozen",
-        severity: "error",
-        time: runStart,
-        selector: within ?? "composition",
-        message: `nothing moves${within ? ` within ${within}` : ""} between ${round(runStart)}s and ${round(endTime)}s (${round(span)}s static) — should keep moving`,
-        rect: ZERO_RECT,
-        fixHint:
-          "Add or extend motion so no shot freezes for this long, or shorten the static hold.",
-      });
-    }
+  const flush = (runEnd: number) => {
+    const end = Math.min(runEnd, endCardStart);
+    if (end - runStart > maxStaticSec) spans.push({ start: runStart, end });
   };
 
   let lastTime = runStart;
@@ -204,7 +189,29 @@ function keepsMoving(
     }
   }
   flush(lastTime);
-  return issues;
+  return spans;
+}
+
+function keepsMoving(
+  frames: MotionFrame[],
+  within: string | undefined,
+  maxStaticSec: number,
+  endCardStart: number,
+): LayoutIssue[] {
+  // "*" is reserved for whole-canvas scope; motionSpec.ts rejects it as a user-supplied withinSelector.
+  const scope = within ?? "*";
+  if (within && frames.every((frame) => !frame.liveness[scope])) {
+    return [missingIssue(within, 0)];
+  }
+  return frozenSpans(frames, scope, maxStaticSec, endCardStart).map(({ start, end }) => ({
+    code: "motion_frozen",
+    severity: "error",
+    time: start,
+    selector: within ?? "composition",
+    message: `nothing moves${within ? ` within ${within}` : ""} between ${round(start)}s and ${round(end)}s (${round(end - start)}s static) — should keep moving`,
+    rect: ZERO_RECT,
+    fixHint: "Add or extend motion so no shot freezes for this long, or shorten the static hold.",
+  }));
 }
 
 /**
@@ -216,8 +223,13 @@ export function evaluateMotion(
   frames: MotionFrame[],
   assertions: MotionAssertion[],
   canvas: Canvas,
+  filmDuration?: number,
 ): LayoutIssue[] {
   if (frames.length === 0) return [];
+  const endCardStart =
+    filmDuration !== undefined && filmDuration > 0
+      ? filmDuration - END_CARD_HOLD_SEC
+      : Number.POSITIVE_INFINITY;
   return assertions.flatMap((assertion) => {
     switch (assertion.kind) {
       case "appearsBy":
@@ -231,6 +243,7 @@ export function evaluateMotion(
           frames,
           assertion.withinSelector,
           assertion.maxStaticSec ?? DEFAULT_MAX_STATIC_SEC,
+          endCardStart,
         );
     }
   });

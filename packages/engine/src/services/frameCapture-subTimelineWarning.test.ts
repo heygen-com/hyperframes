@@ -83,6 +83,48 @@ describe("recordSubTimelineWarning", () => {
     expect(warning.message).not.toContain("data-no-timeline");
   });
 
+  it("hands a script failure to the session's hook, so the caller can end the render there", () => {
+    const hook = vi.fn();
+    const failed = makeSession({
+      options: { onSubTimelineScriptFailure: hook },
+      subTimelineWaitOutcome: "script_failure",
+      scriptLoadFailures: ["https://example.test/scene.js"],
+    } as Partial<CaptureSession>);
+    recordSubTimelineWarning(failed, 45_000);
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(hook.mock.calls[0][0].map((w: { code: string }) => w.code)).toEqual([
+      "sub_timeline_script_failure",
+    ]);
+
+    const slow = makeSession({
+      options: { onSubTimelineScriptFailure: hook },
+      subTimelineWaitOutcome: "timeout",
+    } as Partial<CaptureSession>);
+    recordSubTimelineWarning(slow, 45_000);
+    const isolated = makeSession({
+      options: { onSubTimelineScriptFailure: hook },
+      subTimelineWaitOutcome: "script_failure",
+      pageErrors: ["runtime-error:boom"],
+      isolatedCompositions: [{ compositionId: "hook", elementId: "scene-hook" }],
+    } as Partial<CaptureSession>);
+    recordSubTimelineWarning(isolated, 45_000);
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the hook's error out of the recording, ending the wait", () => {
+    const session = makeSession({
+      options: {
+        onSubTimelineScriptFailure: () => {
+          throw new Error("stop here");
+        },
+      },
+      subTimelineWaitOutcome: "script_failure",
+      scriptLoadFailures: ["https://example.test/scene.js"],
+    } as Partial<CaptureSession>);
+    expect(() => recordSubTimelineWarning(session, 45_000)).toThrow("stop here");
+    expect(session.warnings.map((w) => w.code)).toEqual(["sub_timeline_script_failure"]);
+  });
+
   it("turns a timeout with an uncaught page error into a script failure naming data-no-timeline", () => {
     const session = makeSession({
       subTimelineWaitOutcome: "timeout",
@@ -98,6 +140,22 @@ describe("recordSubTimelineWarning", () => {
     expect(warning.details).toMatchObject({
       sources: ["runtime-error:ReferenceError: gsap is not defined"],
     });
+  });
+
+  it("names the composition whose script threw, not a load failure", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      pageErrors: [
+        "runtime-error:TypeError: Cannot read properties of null (reading 'appendChild')",
+      ],
+      pendingTimelineIds: ["root"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    const message = session.warnings[0].message;
+    expect(message).toContain("threw before its timeline registered");
+    expect(message).toContain("still unregistered: root");
+    expect(message).not.toContain("failed to load");
   });
 
   it("names the missing script, not the error it caused, when both are present", () => {
@@ -155,7 +213,8 @@ describe("pollSubCompositionTimelines pending-id reporting", () => {
   function pageReturning(enumerateResult: unknown) {
     const matched = { count: 0 };
     const page = {
-      evaluate: vi.fn(async (expr: string) => {
+      evaluate: vi.fn(async (expr: string | (() => unknown)) => {
+        if (typeof expr === "function") return true;
         if (!expr.includes("m.push(")) return false;
         matched.count++;
         return enumerateResult;

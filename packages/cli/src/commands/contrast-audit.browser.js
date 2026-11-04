@@ -1,49 +1,13 @@
-// Browser-side WCAG contrast audit.
-// Loaded as a raw string and injected via page.addScriptTag to avoid
-// esbuild mangling (page.evaluate serializes functions; __name helpers break).
-//
-// Two-phase API — see packages/cli/src/commands/validate.ts's
-// runContrastAudit() for the calling contract:
-//
-//   1. window.__contrastAuditPrepare() walks the DOM for text-bearing
-//      elements, computes each one's foreground paint (CSS `color`, or SVG
-//      `fill` for SVG text — fill and color are independent CSS properties
-//      in SVG), and HIDES that element's own text paint (color/fill set to
-//      transparent). Hiding is layout-neutral — it doesn't reflow anything —
-//      so the caller can screenshot the frame right after with the glyphs
-//      invisible but everything else unchanged. Returns the candidate list
-//      (selector, text, fg, bbox, font metrics).
-//   2. Caller takes ONE screenshot (page.screenshot()) — same number of
-//      screenshots as before, just moved to after prepare() instead of
-//      before it.
-//   3. window.__contrastAuditFinish(imgBase64, time, candidates) restores
-//      the original paint FIRST (so a slow/failed decode can't leave the
-//      page's text stuck invisible), then decodes the screenshot and, for
-//      each candidate, samples the real composited pixels directly INSIDE
-//      its own bounding box for the true background.
-//
-// Why sample inside the box instead of the 4px ring just outside it (the
-// previous approach): the ring is a proximity heuristic that's wrong
-// whenever what's immediately outside the text differs from what's actually
-// behind it — a neighboring panel/component just past the text's edge, a
-// rounded pill/button whose corner falls inside the ring, a
-// backdrop-filter-blurred glass panel sized only a couple pixels larger
-// than the text, or a translucent decoration that only partially overlaps
-// the ring (or sits entirely inside the bbox, never touching the ring at
-// all). Hiding the glyphs and sampling their own box side-steps all of
-// that: it reads the exact pixels that were behind them.
-//
-// window.__contrastAuditRestoreIfPending() is a safety net: if the caller's
-// screenshot or finish() call throws between prepare() and finish(), calling
-// this restores any still-hidden paint so the next sample in the loop
-// doesn't audit a page with stale invisible text. It's a no-op after a
-// normal finish() call.
-//
-// NOTE: this logic (DOM-walk, foreground/paint-hide, background sampling)
-// plus the pure WCAG math (relLum, wcagRatio, median) is duplicated in
-// skills/hyperframes-creative/scripts/contrast-report.mjs — keep in sync.
-// The pure "which rect to sample" decision is also mirrored in
-// contrast-sample.ts (unit-tested there since this file can't import).
+// Browser-side WCAG contrast audit, injected as a raw string so esbuild can't mangle it.
+// __contrastAuditPrepare() hides each text element's own paint (layout-neutral) and returns candidates;
+// the caller takes one screenshot, full frame or clipped to the candidates (collectContrast in checkBrowser.ts);
+// __contrastAuditFinish(png, time, candidates, region) restores paint first, then samples inside each box.
+
+// Sampling inside the box reads the exact pixels behind the glyphs; a ring outside the text misreads
+// neighbouring panels, rounded pills, blurred glass and partial decorations.
+// __contrastAuditRestoreIfPending() restores hidden paint if the screenshot or finish() throws.
+
+// The "which rect to sample" decision is mirrored and unit-tested in contrast-sample.ts.
 
 /* eslint-disable */
 window.__contrastAuditPrepare = function () {
@@ -55,6 +19,143 @@ window.__contrastAuditPrepare = function () {
   // reflect what's actually rendered on screen.
   function isSvgTextElement(el) {
     return !!el.ownerSVGElement;
+  }
+
+  // Raster-free contrast: a leaf text box whose backdrop is provably one opaque CSS colour needs no
+  // screenshot. Anything this cannot prove (overlays, images, blending, rotation, round corners) returns null.
+  var REPLACED = /^(IMG|VIDEO|CANVAS|IFRAME|OBJECT|EMBED|INPUT|TEXTAREA|SELECT|svg|PICTURE)$/;
+  var paintCache = new Map();
+  function blends(cs) {
+    return (
+      cs.opacity !== "1" ||
+      cs.filter !== "none" ||
+      (cs.backdropFilter || cs.webkitBackdropFilter || "none") !== "none" ||
+      cs.mixBlendMode !== "normal" ||
+      (cs.maskImage || cs.webkitMaskImage || "none") !== "none" ||
+      cs.clipPath !== "none"
+    );
+  }
+  function axisAligned(cs) {
+    var t = cs.transform;
+    if (t === "none") return true;
+    var m = t.match(/^matrix\(([^)]+)\)$/);
+    if (!m) return false;
+    var v = m[1].split(",").map(parseFloat);
+    return v[1] === 0 && v[2] === 0;
+  }
+  function pseudoPaints(el) {
+    return ["::before", "::after"].some(function (pseudo) {
+      var content = getComputedStyle(el, pseudo).content;
+      return content !== "none" && content !== "normal";
+    });
+  }
+  function hasOwnText(el) {
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3 && /\S/.test(n.nodeValue || "")) return true;
+    }
+    return false;
+  }
+  function boxPaints(el, cs) {
+    var bg = parseColor(cs.backgroundColor || "");
+    return (
+      (cs.backgroundImage || "none") !== "none" ||
+      !bg ||
+      bg[3] !== 0 ||
+      ["Top", "Right", "Bottom", "Left"].some(function (side) {
+        return (
+          cs["border" + side + "Style"] !== "none" && parseFloat(cs["border" + side + "Width"]) > 0
+        );
+      }) ||
+      cs.boxShadow !== "none" ||
+      (cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0) ||
+      pseudoPaints(el)
+    );
+  }
+  // True unless the element provably adds no pixels of its own.
+  function paints(el) {
+    if (paintCache.has(el)) return paintCache.get(el);
+    var cs = getComputedStyle(el);
+    var result =
+      cs.visibility === "hidden" && cs.filter === "none"
+        ? false
+        : REPLACED.test(el.tagName) ||
+          !!el.ownerSVGElement ||
+          hasOwnText(el) ||
+          boxPaints(el, cs) ||
+          blends(cs);
+    paintCache.set(el, result);
+    return result;
+  }
+  function intersects(a, b) {
+    return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+  }
+  function solidBackdrop(el, rect, cs) {
+    if (el.children.length > 0 || el.ownerSVGElement || cs.textShadow !== "none") return null;
+    if (cs.textDecorationLine !== "none" || boxPaints(el, cs) || !axisAligned(cs)) return null;
+    if ((cs.backdropFilter || cs.webkitBackdropFilter || "none") !== "none") return null;
+    var region = {
+      left: Math.max(0, rect.left),
+      top: Math.max(0, rect.top),
+      right: Math.min(window.innerWidth, rect.right),
+      bottom: Math.min(window.innerHeight, rect.bottom),
+    };
+    if (region.right <= region.left || region.bottom <= region.top) return null;
+    var chain = new Set([el]);
+    var solid = null;
+    for (var a = el.parentElement; a; a = a.parentElement) {
+      chain.add(a);
+      var acs = getComputedStyle(a);
+      if (blends(acs) || !axisAligned(acs) || pseudoPaints(a)) return null;
+      if (a === document.body || a === document.documentElement) {
+        if (!solid) solid = canvasColor(a, acs, region);
+        if (!solid && (a === document.documentElement || boxPaints(a, acs))) return null;
+        continue;
+      }
+      if (solid) {
+        if (acs.overflow !== "visible" && !contains(a.getBoundingClientRect(), acs, region))
+          return null;
+        continue;
+      }
+      var bg =
+        (acs.backgroundImage || "none") === "none" ? parseColor(acs.backgroundColor || "") : null;
+      if (bg && bg[3] === 1) {
+        var radius = ["TopLeft", "TopRight", "BottomRight", "BottomLeft"].some(function (corner) {
+          return parseFloat(acs["border" + corner + "Radius"]) > 0;
+        });
+        if (radius || !contains(a.getBoundingClientRect(), acs, region)) return null;
+        solid = bg;
+        continue;
+      }
+      if (hasOwnText(a) || boxPaints(a, acs)) return null;
+    }
+    if (!solid) return null;
+    var all = document.querySelectorAll("*");
+    for (var i = 0; i < all.length; i++) {
+      var other = all[i];
+      if (chain.has(other) || !intersects(other.getBoundingClientRect(), region)) continue;
+      if (paints(other)) return null;
+    }
+    return [solid[0], solid[1], solid[2]];
+  }
+  // body's background paints the whole canvas unless html has its own (CSS background propagation).
+  function canvasColor(el, cs, region) {
+    var bg =
+      (cs.backgroundImage || "none") === "none" ? parseColor(cs.backgroundColor || "") : null;
+    var html = document.documentElement;
+    var htmlCs = getComputedStyle(html);
+    var htmlBg = parseColor(htmlCs.backgroundColor || "");
+    var htmlPaints = (htmlCs.backgroundImage || "none") !== "none" || !htmlBg || htmlBg[3] !== 0;
+    if (el === html) return bg && bg[3] === 1 ? bg : null;
+    if (!bg || bg[3] !== 1) return null;
+    return htmlPaints && !contains(el.getBoundingClientRect(), cs, region) ? null : bg;
+  }
+  function contains(box, cs, region) {
+    return (
+      box.left + parseFloat(cs.borderLeftWidth) <= region.left &&
+      box.top + parseFloat(cs.borderTopWidth) <= region.top &&
+      box.right - parseFloat(cs.borderRightWidth) >= region.right &&
+      box.bottom - parseFloat(cs.borderBottomWidth) >= region.bottom
+    );
   }
 
   function parseColor(c) {
@@ -185,7 +286,7 @@ window.__contrastAuditPrepare = function () {
   function isClippedAway(el, rect) {
     if (typeof document.elementFromPoint !== "function") return false;
     if (!hasClipPath(el)) return false;
-    return !paintsAnyProbePoint(el, rect);
+    return !paintsAnyProbePoint(el, rect, true);
   }
 
   function isIntentionallyOccluded(el, rect) {
@@ -352,6 +453,7 @@ window.__contrastAuditPrepare = function () {
       fontWeight: fontWeight,
       large: large,
       ownBg: ownBg,
+      solidBg: ownBg ? null : solidBackdrop(el, rect, cs),
       bbox: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
     });
   }
@@ -394,7 +496,7 @@ window.__contrastAuditRestoreIfPending = function () {
   __contrastAuditRestoreAll();
 };
 
-window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
+window.__contrastAuditFinish = async function (imgBase64, time, candidates, region) {
   function relLum(r, g, b) {
     function ch(v) {
       var s = v / 255;
@@ -422,24 +524,32 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
   // never want a decode failure below to leave the page's text invisible.
   __contrastAuditRestoreAll();
 
-  var img = new Image();
-  await new Promise(function (resolve) {
-    img.onload = resolve;
-    img.onerror = function () {
-      resolve();
-    };
-    img.src = "data:image/png;base64," + imgBase64;
-  });
-  if (!img.naturalWidth) return [];
-  var canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth || 1920;
-  canvas.height = img.naturalHeight || 1080;
-  var ctx = canvas.getContext("2d");
-  if (!ctx) return [];
-  ctx.drawImage(img, 0, 0);
-  var px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  var w = canvas.width;
-  var h = canvas.height;
+  // No image when every candidate's background is known from styles.
+  var canvas = { width: region ? region.frameWidth : 0, height: region ? region.frameHeight : 0 };
+  var px = null;
+  if (imgBase64) {
+    var img = new Image();
+    await new Promise(function (resolve) {
+      img.onload = resolve;
+      img.onerror = function () {
+        resolve();
+      };
+      img.src = "data:image/png;base64," + imgBase64;
+    });
+    if (!img.naturalWidth) return [];
+    canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || 1920;
+    canvas.height = img.naturalHeight || 1080;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return [];
+    ctx.drawImage(img, 0, 0);
+    px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  }
+  // A clipped shot holds `region.clip` of the frame: clamp to the frame, read at the offset.
+  var w = region ? region.frameWidth : canvas.width;
+  var h = region ? region.frameHeight : canvas.height;
+  var ox = region ? region.clip.x : 0;
+  var oy = region ? region.clip.y : 0;
 
   var out = [];
   for (var ci = 0; ci < candidates.length; ci++) {
@@ -461,26 +571,27 @@ window.__contrastAuditFinish = async function (imgBase64, time, candidates) {
     // sampleGridPoints.
     var stepX = Math.max(1, Math.floor((x1 - x0) / 12));
     var stepY = Math.max(1, Math.floor((y1 - y0) / 6));
+    var known = c.ownBg && c.ownBg.length >= 4 && c.ownBg[3] >= 0.99 ? c.ownBg : c.solidBg;
     var rr = [],
       gg = [],
       bb = [],
       aa = [];
-    for (var y = y0; y <= y1; y += stepY) {
+    for (var y = y0; !known && y <= y1; y += stepY) {
       for (var x = x0; x <= x1; x += stepX) {
-        var idx = (y * w + x) * 4;
+        var idx = ((y - oy) * canvas.width + (x - ox)) * 4;
         rr.push(px[idx]);
         gg.push(px[idx + 1]);
         bb.push(px[idx + 2]);
         aa.push(px[idx + 3]);
       }
     }
-    if (rr.length === 0) continue;
+    if (!known && rr.length === 0) continue;
 
     var bgR, bgG, bgB;
-    if (c.ownBg && c.ownBg.length >= 4 && c.ownBg[3] >= 0.99) {
-      bgR = c.ownBg[0];
-      bgG = c.ownBg[1];
-      bgB = c.ownBg[2];
+    if (known) {
+      bgR = known[0];
+      bgG = known[1];
+      bgB = known[2];
     } else {
       // A transparent sampled backdrop is supplied by the downstream editor,
       // not this composition. WCAG contrast cannot be inferred until that live

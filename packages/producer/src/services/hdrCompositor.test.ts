@@ -73,7 +73,7 @@ describe("blitHdrVideoLayer", () => {
     { lead: 7, mediaStart: 6.5, painted: true },
   ])(
     "paints at 1 s of a clip from $mediaStart s whose stream starts $lead s in: $painted",
-    ({ lead, mediaStart, painted }) => {
+    async ({ lead, mediaStart, painted }) => {
       const dir = mkdtempSync(join(tmpdir(), "hf-hdr-lead-"));
       const rawPath = join(dir, "frames.rgb48le");
       const frameSize = 2 * 2 * 6;
@@ -90,17 +90,33 @@ describe("blitHdrVideoLayer", () => {
         });
         const source = {
           dir,
-          rawPath,
-          fd,
+          windows: {
+            totalFrames: 2,
+            lease: async (index: number) => ({
+              fd,
+              offset: index * frameSize,
+              release: () => {},
+            }),
+            close: () => {},
+          },
           width: 2,
           height: 2,
           frameSize,
           frameCount: 2,
           scratch: Buffer.alloc(frameSize),
           mediaStart,
-          videoStreamLeadSeconds: lead,
+          videoStartSeconds: lead,
         };
-        blitHdrVideoLayer(canvas, el, 1, 1, new Map([["v", source]]), new Map([["v", 0]]), 2, 2);
+        await blitHdrVideoLayer(
+          canvas,
+          el,
+          1,
+          1,
+          new Map([["v", source]]),
+          new Map([["v", 0]]),
+          2,
+          2,
+        );
         expect(canvas.some((byte) => byte !== 0)).toBe(painted);
       } finally {
         closeSync(fd);
@@ -108,4 +124,37 @@ describe("blitHdrVideoLayer", () => {
       }
     },
   );
+
+  it("fails the render when a window cannot be extracted, instead of dropping the layer", async () => {
+    const frameSize = 2 * 2 * 6;
+    const source = {
+      dir: "unused",
+      windows: {
+        totalFrames: 2,
+        lease: async () => {
+          throw new Error("HDR frame extraction failed");
+        },
+        close: () => {},
+      },
+      width: 2,
+      height: 2,
+      frameSize,
+      frameCount: 2,
+      scratch: Buffer.alloc(frameSize),
+    };
+    const el = makeEl("v", { width: 2, height: 2, layoutWidth: 2, layoutHeight: 2, isHdr: true });
+
+    await expect(
+      blitHdrVideoLayer(
+        Buffer.alloc(frameSize),
+        el,
+        1,
+        1,
+        new Map([["v", source]]),
+        new Map([["v", 0]]),
+        2,
+        2,
+      ),
+    ).rejects.toThrow("HDR frame extraction failed");
+  });
 });

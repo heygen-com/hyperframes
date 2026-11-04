@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -8,19 +7,29 @@ import {
 } from "node:http";
 import { createServer as createHttpsServer, type RequestOptions as HttpsOptions } from "node:https";
 import { createServer as createTcpServer, type Socket } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { TLSSocket } from "node:tls";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const transport = vi.hoisted(() => ({
-  lookup: vi.fn(),
+  resolve4: vi.fn(),
   dials: [] as HttpsOptions[],
   certificate: "",
   trustCertificate: true,
 }));
 
-vi.mock("node:dns/promises", () => ({ lookup: transport.lookup }));
+vi.mock("node:dns", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:dns")>();
+  return {
+    ...real,
+    promises: {
+      ...real.promises,
+      Resolver: class {
+        resolve4 = transport.resolve4;
+        cancel() {}
+      },
+    },
+  };
+});
 
 // Only the already-checked numeric peer is mapped to an isolated loopback server.
 // The real Node HTTP/TLS transport, headers and certificate checks remain active.
@@ -65,7 +74,6 @@ type RequestReceipt = {
 const receipts: RequestReceipt[] = [];
 const sockets = new Set<Socket>();
 const streams = new Set<ServerResponse>();
-let fixtureDirectory: string;
 let httpPort: number;
 let httpsPort: number;
 let malformedPort: number;
@@ -128,32 +136,14 @@ async function waitForStreamClose() {
 
 describe("publicRequest controlled socket integration", () => {
   beforeAll(async () => {
-    fixtureDirectory = await mkdtemp(join(tmpdir(), "capture-public-network-"));
-    const key = join(fixtureDirectory, "key.pem");
-    const certificate = join(fixtureDirectory, "certificate.pem");
-    execFileSync(
-      "openssl",
-      [
-        "req",
-        "-x509",
-        "-newkey",
-        "rsa:2048",
-        "-nodes",
-        "-keyout",
-        key,
-        "-out",
-        certificate,
-        "-days",
-        "1",
-        "-subj",
-        "/CN=assets.capture-fixture.com",
-        "-addext",
-        "subjectAltName=DNS:assets.capture-fixture.com",
-      ],
-      { stdio: "pipe" },
-    );
-    transport.certificate = await readFile(certificate, "utf8");
-    httpsServer.setSecureContext({ key: await readFile(key), cert: transport.certificate });
+    // A committed self-signed pair (valid to 2126), so this 30 s hook starts no openssl child.
+    const fixture = (name: string) =>
+      new URL(`./fixtures/capture-fixture-${name}`, import.meta.url);
+    transport.certificate = await readFile(fixture("certificate.pem"), "utf8");
+    httpsServer.setSecureContext({
+      key: await readFile(fixture("key.pem")),
+      cert: transport.certificate,
+    });
     httpsServer.on("tlsClientError", () => {});
     for (const server of servers) {
       server.on("connection", (socket) => {
@@ -172,9 +162,9 @@ describe("publicRequest controlled socket integration", () => {
     receipts.length = 0;
     transport.dials.length = 0;
     transport.trustCertificate = true;
-    transport.lookup.mockReset();
-    transport.lookup.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
-    transport.lookup.mockResolvedValueOnce([{ address: "93.184.216.34", family: 4 }]);
+    transport.resolve4.mockReset();
+    transport.resolve4.mockResolvedValue(["127.0.0.1"]);
+    transport.resolve4.mockResolvedValueOnce(["93.184.216.34"]);
   });
 
   afterAll(async () => {
@@ -187,18 +177,13 @@ describe("publicRequest controlled socket integration", () => {
           }),
       ),
     );
-    await rm(fixtureDirectory, { recursive: true, force: true });
   });
 
   it("pins the checked address without a second DNS lookup and preserves HTTP Host/path", async () => {
     const response = await publicRequest(`http://assets.capture-fixture.com:${httpPort}/asset?q=1`);
     expect(await response.text()).toBe("fixture response");
-    expect(transport.lookup).toHaveBeenCalledTimes(1);
-    expect(transport.lookup).toHaveBeenCalledWith("assets.capture-fixture.com", {
-      all: true,
-      family: 4,
-      verbatim: true,
-    });
+    expect(transport.resolve4).toHaveBeenCalledTimes(1);
+    expect(transport.resolve4).toHaveBeenCalledWith("assets.capture-fixture.com");
     expect(transport.dials).toHaveLength(1);
     expect(transport.dials[0]?.hostname).toBe("93.184.216.34");
     expect(receipts).toEqual([
@@ -255,7 +240,7 @@ describe("publicRequest controlled socket integration", () => {
   });
 
   it("rejects private DNS answers before dialing or reaching a target", async () => {
-    transport.lookup.mockReset().mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
+    transport.resolve4.mockReset().mockResolvedValue(["127.0.0.1"]);
     await expect(
       publicRequest(`http://assets.capture-fixture.com:${httpPort}/asset`),
     ).rejects.toThrow(/non-public/);

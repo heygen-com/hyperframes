@@ -20,6 +20,7 @@ import {
   rewriteSvgIdReferencesInCss,
 } from "../compiler/svgIdNamespacing";
 import { waitForFonts } from "./afterFonts";
+import { applyTextBindings } from "./applyVariableBindings";
 import { parseLayoutDimension } from "./compositionDimension";
 import { markFlattenedInnerRoot } from "./flattenedRoot";
 import {
@@ -605,6 +606,7 @@ async function mountCompositionContent(params: {
     runScripts: async () => {
       if (scriptPayloads.length > 0) await waitForFonts();
       if (!isCurrent()) return;
+      applyTextBindings(document, params.host);
       for (const scriptPayload of scriptPayloads) {
         const injectedScript = document.createElement("script");
         if (scriptPayload.type) {

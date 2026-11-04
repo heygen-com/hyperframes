@@ -5,16 +5,13 @@ function truncateTelemetryString(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function redactUrlQueryStrings(value: string): string {
-  return value.replace(/\b(https?:\/\/[^\s?]+)\?[^\s]*/g, "$1?…");
+/** Strips http(s) URL queries, and any signing parameter left without its URL (e.g. after a cut). */
+export function redactUrlQueryStrings(value: string): string {
+  return value
+    .replace(/\b(https?:\/\/[^\s?]+)\?[^\s]*/g, "$1?…")
+    .replace(/((?:X-(?:Amz|Goog)-[\w-]*|Signature)=)[^&\s]*/gi, "$1…");
 }
 
-/**
- * Path characters we treat as part of a single segment. Space is deliberately
- * excluded: including it would let a match run past the path and swallow the
- * prose after it, and a path with a space still gets its remaining segments
- * redacted, which is the part that carries the identifying information.
- */
 /**
  * A path segment is defined by what ENDS it, not by an alphabet.
  *
@@ -30,6 +27,10 @@ function redactUrlQueryStrings(value: string): string {
  * run past the path and swallow the prose after it.
  */
 const SEGMENT = String.raw`[^\s/\\'"]+`;
+
+/** A folder that another separator follows may hold spaces (`My Drive`, `내 드라이브`, `OneDrive - Contoso`); only
+ * the last segment stops at a space, so prose after a path survives. Line breaks still end it. */
+const FOLDER = String.raw`${SEGMENT}(?:[^\S\r\n]+(?![A-Za-z]:[\\/])${SEGMENT})*(?=[\\/])`;
 
 /** Same, minus the dot, so a trailing `.ext` can be matched separately. */
 const SEGMENT_NODOT = String.raw`[^\s/\\'".]+`;
@@ -57,14 +58,15 @@ const TOKEN_TAIL = String.raw`[^\s'")]*`;
  * host is kept and only the query is dropped.
  */
 const ABSOLUTE_PATH = new RegExp(
-  String.raw`(?<![:\w/\\])(?:[A-Za-z]:)?(?:[\\/]${SEGMENT}){2,}${TOKEN_TAIL}`,
-  "g",
+  // A Windows share (`\\server\share`) starts with two separators; the first is taken as its root.
+  String.raw`(?<![:\w\p{L}\p{N}\p{M}/\\])(?:[A-Za-z]:|\\(?=\\[^\s\\/]))?(?:[\\/]${FOLDER})+[\\/]${SEGMENT}${TOKEN_TAIL}`,
+  "gu",
 );
 
 /** `./assets/bgm.mp3`, `../out.wav`, `.\tmp\x` — relative paths leak the same
  *  project structure absolute ones do, and were previously untouched. */
 const RELATIVE_PATH = new RegExp(
-  String.raw`(?<![\w/\\.])\.{1,2}(?:[\\/]${SEGMENT})+${TOKEN_TAIL}`,
+  String.raw`(?<![\w/\\.])\.{1,2}(?:[\\/]${FOLDER})*[\\/]${SEGMENT}${TOKEN_TAIL}`,
   "g",
 );
 
@@ -95,6 +97,8 @@ const BARE_RELATIVE_PATH = new RegExp(
     // Two or more separators: `customer/acme/video.mp4`. No extension needed —
     // that much structure is already a path.
     String.raw`(?<![^\s'\"(=,\[])(?:${SEGMENT}[\\/]){2,}${SEGMENT}${TOKEN_TAIL}`,
+    // Spaced folders only before a file name with an extension, so ffprobe's `N/A, … bitrate: N/A` is not a path.
+    String.raw`(?<![^\s'\"(=,\[])${SEGMENT}[\\/](?:${FOLDER}[\\/]){1,8}${SEGMENT_NODOT}\.\w{1,8}\b${TOKEN_TAIL}`,
     // One separator, but the last segment carries a file extension:
     // `assets/bgm.mp3`. That segment is dot-free on purpose — SEGMENT includes
     // `.`, so a greedy one swallows the extension this rule needs.
@@ -138,10 +142,10 @@ function redactFilePaths(value: string): string {
       // (`/assets/x.mp3`), so the absolute rule would consume it and leave the
       // leading `.` stranded outside the redaction.
       .replace(RELATIVE_PATH, "[path]")
-      // Bare-relative BEFORE absolute: a bare path's interior satisfies the
-      // absolute rule, which would claim it and strand the first segment.
-      .replace(BARE_RELATIVE_PATH, "[path]")
+      // Absolute BEFORE bare-relative: the folders after a space in `/Users/kim/My Drive/x.mp4` look like a bare path
+      // on their own, and claiming them first would strand the start of the absolute one.
       .replace(ABSOLUTE_PATH, "[path]")
+      .replace(BARE_RELATIVE_PATH, "[path]")
       .replace(ASSET_BASENAME, "[file]")
   );
 }

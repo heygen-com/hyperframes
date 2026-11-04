@@ -48,7 +48,7 @@ function detectedAssetMediaType(profile: MediaProbeProfile): DetectedAssetMediaT
   return "unknown";
 }
 
-function mediaProfileMatchesElementType(
+export function mediaProfileMatchesElementType(
   expected: AssetElementMediaType,
   profile: MediaProbeProfile,
 ): boolean {

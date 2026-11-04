@@ -5,6 +5,8 @@ type LazyCommandDef = CommandDef | (() => CommandDef | Promise<CommandDef>);
 export interface ResolvedCommandUsage {
   command: CommandDef;
   parent?: CommandDef;
+  path: string[];
+  unknownSubcommand?: string;
 }
 
 async function loadSubcommand(command: CommandDef, name: string): Promise<CommandDef | undefined> {
@@ -21,12 +23,20 @@ export async function resolveCommandUsage(
 ): Promise<ResolvedCommandUsage> {
   let command = root;
   let parent: CommandDef | undefined;
+  const path: string[] = [];
   for (const argument of argv) {
     if (argument.startsWith("-")) break;
     const child = await loadSubcommand(command, argument);
-    if (!child) break;
+    if (!child)
+      return {
+        command,
+        parent,
+        path,
+        unknownSubcommand: command.subCommands ? argument : undefined,
+      };
     parent = command;
     command = child;
+    path.push(argument);
   }
-  return { command, parent };
+  return { command, parent, path };
 }

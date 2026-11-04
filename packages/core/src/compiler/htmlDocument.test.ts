@@ -8,6 +8,7 @@ import {
   injectScriptsIntoHtml,
   injectTagsAtHeadStart,
   insertBeforeCloseTag,
+  insertRuntimeTag,
   hasCompositionOutsideTemplates,
   isFullHtmlDocument,
   parseHTMLContent,
@@ -452,5 +453,31 @@ describe("hasCompositionOutsideTemplates", () => {
     ],
   ])("%s", (_name, html, expected) => {
     expect(hasCompositionOutsideTemplates(html)).toBe(expected);
+  });
+});
+
+describe("insertRuntimeTag", () => {
+  const runtime = '<script data-hf-runtime src="/rt.js"></script>';
+  const page = (attrs: string) =>
+    `<html><head><script>window.author=1</script></head><body><div id="root" ${attrs}></div></body></html>`;
+
+  it("puts the canvas tracker ahead of author head scripts for a page that opts into blur", () => {
+    const out = insertRuntimeTag(page('data-motion-blur="on"'), runtime);
+    const tracker = out.indexOf("data-hf-accel-tracker");
+    expect(tracker).toBeGreaterThan(-1);
+    expect(tracker).toBeLessThan(out.indexOf("window.author"));
+    expect(out.indexOf("window.author")).toBeLessThan(out.indexOf(runtime));
+  });
+
+  it("adds the tracker once, however many times the runtime is placed", () => {
+    const once = insertRuntimeTag(page('data-motion-blur="on"'), runtime);
+    const twice = insertRuntimeTag(once, runtime);
+    expect(twice.split("data-hf-accel-tracker").length).toBe(2);
+  });
+
+  it("leaves pages that did not opt in alone", () => {
+    for (const attrs of ["", 'data-motion-blur="off"', 'data-motion-blur-shutter="on"']) {
+      expect(insertRuntimeTag(page(attrs), runtime)).not.toContain("data-hf-accel-tracker");
+    }
   });
 });

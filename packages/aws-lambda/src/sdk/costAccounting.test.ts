@@ -19,6 +19,15 @@ describe("computeRenderCost", () => {
     expect(result.breakdown.stepFunctionsUsd).toBe(0);
   });
 
+  it("prices arm64 invocations at the arm64 rate", () => {
+    // 10 GiB × 6 s = 60 GB-s × $0.0000133334 = $0.0008.
+    const result = computeRenderCost(
+      [{ billedDurationMs: 6_000, memorySizeMb: 10_240, estimated: false, architecture: "arm64" }],
+      0,
+    );
+    expect(result.breakdown.lambdaUsd).toBeCloseTo(0.0008, 4);
+  });
+
   it("sums multiple Lambda invocations", () => {
     const invs: BilledLambdaInvocation[] = [
       { billedDurationMs: 1_000, memorySizeMb: 1_024, estimated: false }, // 1 GB-s

@@ -1,11 +1,12 @@
 import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { transcribeWithHeygen } from "../heygen/transcribe.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import {
   createRenderCancellationScope,
   stoppedByCancelSignal,
 } from "../utils/renderCancellation.js";
-import { DEFAULT_MODEL, isWhisperUnavailable } from "../whisper/manager.js";
+import { DEFAULT_MODEL, findWhisper, isWhisperUnavailable } from "../whisper/manager.js";
 import { initialModelForLanguage } from "../whisper/modelForLanguage.js";
 import {
   formatSrt,
@@ -38,7 +39,7 @@ import {
 // finishing even on the fastest hardware for the shortest clip.
 export const MIN_TIMEOUT_MS = 5000;
 
-export type TranscribeEngine = "auto" | "parakeet" | "whisper";
+export type TranscribeEngine = "auto" | "parakeet" | "whisper" | "heygen";
 export type CaptionFormat = "srt" | "vtt";
 /** The program that does the work: Parakeet runs on sherpa-onnx or parakeet-mlx. */
 export type TranscribeRunner = ParakeetRunner | "whisper";
@@ -60,6 +61,8 @@ export interface TranscribeEngineEvent {
   model: string;
   /** Set when auto mode gave up on Parakeet and this runner takes over. */
   fallbackReason?: string;
+  /** One line on why this runner was chosen over the one asked for. */
+  notice?: string;
 }
 
 export interface TranscribeOptions {
@@ -67,8 +70,10 @@ export interface TranscribeOptions {
   input: string;
   /** Where transcript.json goes; caption scripts in this folder's .html files are patched. Default: the input's folder. */
   dir?: string;
-  /** Default "auto": Parakeet when installed and it covers `language`, else whisper. */
+  /** Default "auto": Parakeet when installed and it covers `language`, else whisper; "heygen" runs on HeyGen. */
   engine?: TranscribeEngine;
+  /** HeyGen only: label each word with its speaker. */
+  speakers?: boolean;
   /** Whisper model. Parakeet has its own fixed model. */
   model?: string;
   language?: string;
@@ -95,7 +100,7 @@ export interface TranscribeOptions {
 export type TranscribeResult =
   | {
       kind: "transcribed";
-      engine: "parakeet" | "whisper";
+      engine: "parakeet" | "whisper" | "heygen";
       model: string;
       detectedLanguage: string | null;
       wordCount: number;
@@ -325,9 +330,17 @@ function pickRunner(
   engine: string,
   parakeet: () => ParakeetRunner | null,
   language?: string,
+  whisperForLanguage = false,
 ): TranscribeRunner {
-  if (engine === "whisper" || !parakeetSpeaks(language)) return "whisper";
+  if (engine === "whisper" || whisperForLanguage || !parakeetSpeaks(language)) return "whisper";
   return parakeet() ?? "whisper";
+}
+
+/** Parakeet picks its own language, so a non-English --language goes to an installed whisper. */
+function needsWhisperForLanguage(engine: string, language?: string): boolean {
+  const base = language?.trim().toLowerCase().split(/[-_]/, 1)[0];
+  if (engine === "whisper" || !base || base === "en" || !parakeetSpeaks(language)) return false;
+  return findWhisper() !== undefined;
 }
 
 /** When Parakeet fails, only auto falls back; an explicit parakeet engine fails with the error. */
@@ -357,6 +370,70 @@ function failureMessage(err: unknown): string {
   return stderr ? `${base}\n${stderr}` : base;
 }
 
+interface EngineTranscript {
+  transcriptPath: string;
+  model: string;
+  detectedLanguage: string | null;
+  durationSeconds: number;
+  speechOnsetSeconds: number | null;
+}
+
+/** Every engine's words end the same way: normalized, patched into caption scripts, and as a sidecar if asked. */
+function finishTranscript(
+  result: EngineTranscript,
+  engine: "parakeet" | "whisper" | "heygen",
+  dir: string,
+  sidecar: CaptionSidecar | undefined,
+): TranscribeResult {
+  const { words } = loadTranscript(result.transcriptPath);
+
+  writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
+  patchCaptionHtml(dir, words);
+  if (sidecar) {
+    try {
+      writeCaptionSidecar(words, sidecar, false);
+    } catch (err) {
+      throw new TranscribeError(
+        "caption_write_failed",
+        `Transcript saved to ${result.transcriptPath}, but the caption file ${sidecar.outPath} could not be written: ${normalizeErrorMessage(err)}`,
+        { cause: err, transcriptPath: result.transcriptPath },
+      );
+    }
+  }
+
+  return {
+    kind: "transcribed",
+    engine,
+    model: result.model,
+    detectedLanguage: result.detectedLanguage,
+    wordCount: words.length,
+    durationSeconds: result.durationSeconds,
+    speechOnsetSeconds: result.speechOnsetSeconds,
+    transcriptPath: result.transcriptPath,
+    ...(sidecar && { captions: { format: sidecar.to, outputPath: sidecar.outPath } }),
+  };
+}
+
+async function transcribeOnHeygen(
+  inputPath: string,
+  dir: string,
+  sidecar: CaptionSidecar | undefined,
+  options: TranscribeRequest,
+): Promise<TranscribeResult> {
+  try {
+    const result = await transcribeWithHeygen(inputPath, join(dir, TRANSCRIPT_FILE), {
+      diarize: options.speakers,
+      onStatus: options.onStatus,
+    });
+    return finishTranscript(result, "heygen", dir, sidecar);
+  } catch (err) {
+    if (err instanceof TranscribeError) throw err;
+    const fix =
+      err instanceof Error && "fix" in err && typeof err.fix === "string" ? ` Fix: ${err.fix}` : "";
+    throw new TranscribeError("failed", `${normalizeErrorMessage(err)}.${fix}`, { cause: err });
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function transcribeAudio(
   inputPath: string,
@@ -365,15 +442,22 @@ async function transcribeAudio(
   options: TranscribeRequest,
 ): Promise<TranscribeResult> {
   const engine = (options.engine ?? "auto").toLowerCase();
+  if (engine === "heygen") return transcribeOnHeygen(inputPath, dir, sidecar, options);
   if (engine !== "auto" && engine !== "parakeet" && engine !== "whisper") {
     throw new TranscribeError(
       "invalid_option",
-      `Unknown --engine: ${options.engine}. Use auto, parakeet, or whisper.`,
+      `Unknown --engine: ${options.engine}. Use auto, parakeet, whisper, or heygen.`,
     );
   }
   const unsupported = sherpaUnsupportedReason();
-  let runner = pickRunner(engine, () => parakeetRunner({ unsupported }), options.language);
-  if (engine === "parakeet" && runner === "whisper") {
+  const whisperForLanguage = needsWhisperForLanguage(engine, options.language);
+  let runner = pickRunner(
+    engine,
+    () => parakeetRunner({ unsupported }),
+    options.language,
+    whisperForLanguage,
+  );
+  if (engine === "parakeet" && runner === "whisper" && !whisperForLanguage) {
     throw new TranscribeError(
       "parakeet_unavailable",
       !parakeetSpeaks(options.language)
@@ -385,7 +469,14 @@ async function transcribeAudio(
 
   const model = options.model ?? DEFAULT_MODEL;
   const whisperModel = initialModelForLanguage(model, options.language);
-  options.onEngine?.({ runner, engine: engineOf(runner), model: whisperModel });
+  options.onEngine?.({
+    runner,
+    engine: engineOf(runner),
+    model: whisperModel,
+    ...(whisperForLanguage && {
+      notice: `Parakeet chooses its own language, so whisper transcribes --language ${options.language}.`,
+    }),
+  });
   const { onStatus, onProgress } = options;
   const startScope = (): CancellationScope =>
     options.stopOnProcessSignals
@@ -465,33 +556,7 @@ async function transcribeAudio(
       }
     }
 
-    const { words } = loadTranscript(result.transcriptPath);
-
-    writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
-    patchCaptionHtml(dir, words);
-    if (sidecar) {
-      try {
-        writeCaptionSidecar(words, sidecar, false);
-      } catch (err) {
-        throw new TranscribeError(
-          "caption_write_failed",
-          `Transcript saved to ${result.transcriptPath}, but the caption file ${sidecar.outPath} could not be written: ${normalizeErrorMessage(err)}`,
-          { cause: err, transcriptPath: result.transcriptPath },
-        );
-      }
-    }
-
-    return {
-      kind: "transcribed",
-      engine: engineOf(runner),
-      model: result.model,
-      detectedLanguage: result.detectedLanguage,
-      wordCount: words.length,
-      durationSeconds: result.durationSeconds,
-      speechOnsetSeconds: result.speechOnsetSeconds,
-      transcriptPath: result.transcriptPath,
-      ...(sidecar && { captions: { format: sidecar.to, outputPath: sidecar.outPath } }),
-    };
+    return finishTranscript(result, engineOf(runner), dir, sidecar);
   } catch (err) {
     if (err instanceof TranscribeError) throw err;
     if (err instanceof DecodeCancelled || cancellation?.signal.aborted) {

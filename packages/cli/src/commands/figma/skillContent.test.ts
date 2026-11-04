@@ -39,7 +39,6 @@ describe("figma storyboard doctrine pins", () => {
     ["CLAUDE.md", ["CLAUDE.md"]],
     ["README.md", ["README.md"]],
     ["docs/guides/skills.mdx", ["docs", "guides", "skills.mdx"]],
-    ["skills/hyperframes/SKILL.md", ["skills", "hyperframes", "SKILL.md"]],
   ];
 
   it("every catalog surface says reconstructed motion, never animatics", () => {
@@ -48,6 +47,8 @@ describe("figma storyboard doctrine pins", () => {
       expect(content, label).toContain("reconstructed motion");
       expect(content, label).not.toContain("animatics");
     }
+    // The entry names /figma without a blurb, so it only has to keep the old word out.
+    expect(read("skills", "hyperframes", "SKILL.md")).not.toContain("animatics");
   });
 
   it("the source-of-truth description carries the frames-as-states framing", () => {

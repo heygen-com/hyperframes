@@ -653,6 +653,47 @@ function runCli(t, base, head, args = [], overrides = {}) {
 }
 
 const KIT = { "src/kit.ts": ["export const needsReview = 1;", ""].join("\n") };
+const GENERATED = "src/_gen/output.ts";
+const ATTRIBUTES = { ".gitattributes": "src/_gen/** linguist-generated=true\n" };
+
+for (const exists of [false, true])
+  test(`the CLI skips base-marked generated citations, existing ${exists}`, (t) => {
+    const base = { ...KIT, ...ATTRIBUTES, ...(exists ? { [GENERATED]: KIT["src/kit.ts"] } : {}) };
+    const head = {
+      ...base,
+      [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+    };
+    const { status, output } = runCli(t, base, head);
+    assert.equal(status, 0, output);
+  });
+
+test("the CLI does not accept a citation exemption added by the change", (t) => {
+  const { status, output } = runCli(t, KIT, {
+    ...KIT,
+    ...ATTRIBUTES,
+    [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+  });
+  assert.equal(status, 1, output);
+});
+
+for (const attribute of ["linguist-generated", "linguist-generated=false", "-linguist-generated"])
+  test(`the CLI respects the base attribute ${attribute}`, (t) => {
+    const base = { ...KIT, ".gitattributes": `src/_gen/** ${attribute}\n` };
+    const { status, output } = runCli(t, base, {
+      ...base,
+      [GENERATED]: "// The `missing.ts` module owns this.\nexport const value = 1;\n",
+    });
+    assert.equal(status, attribute === "linguist-generated" ? 0 : 1, output);
+  });
+
+test("generated source remains a valid citation target", (t) => {
+  const base = { ...KIT, ...ATTRIBUTES, [GENERATED]: "export const value = 1;\n" };
+  const { status, output } = runCli(t, base, {
+    ...base,
+    "src/subject.ts": "// The `src/_gen/output.ts` module owns this.\nexport const subject = 1;\n",
+  });
+  assert.equal(status, 0, output);
+});
 const explains = (symbol) =>
   oneLiner(
     `// The kit stops carrying \`${symbol}\`: the verdict map owns what a review row means.`,

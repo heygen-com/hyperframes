@@ -3,8 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
 import { ProjectLockTimeout, projectLockPath, withProjectLock } from "./projectLock.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof fs>();
+  return { ...original, linkSync: vi.fn(original.linkSync) };
+});
 
 const directories: string[] = [];
 const project = () => {
@@ -43,6 +49,21 @@ describe("withProjectLock", () => {
     await expect(
       withProjectLock(dir, "check", async () => Promise.reject(new Error("boom")), locked(0)),
     ).rejects.toThrow("boom");
+    expect(existsSync(projectLockPath(dir))).toBe(false);
+  });
+
+  it("takes the lock where hard links are refused (EPERM)", async () => {
+    const dir = project();
+    vi.mocked(fs.linkSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    });
+    const seen = await withProjectLock(
+      dir,
+      "check",
+      async () => JSON.parse(readFileSync(projectLockPath(dir), "utf8")),
+      locked(0),
+    );
+    expect(seen).toMatchObject({ pid: process.pid, command: "check" });
     expect(existsSync(projectLockPath(dir))).toBe(false);
   });
 

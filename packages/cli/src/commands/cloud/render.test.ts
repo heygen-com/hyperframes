@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
+  assertArchiveFits,
+  resolveCloudFpsArg,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
-  validateResolutionFormatCombo,
   type ProjectInputSource,
 } from "./render.js";
-import { CliRuntimeError } from "../../utils/commandResult.js";
+import { CliRuntimeError, CliUsageError } from "../../utils/commandResult.js";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "cli.ts");
 
@@ -35,16 +36,27 @@ function writeComposition(width: number, height: number): string {
   return dir;
 }
 
-describe("validateResolutionFormatCombo", () => {
-  it("rejects 4k + webm and 4k + mov", () => {
-    expect(() => validateResolutionFormatCombo("4k", "webm")).toThrow(CliRuntimeError);
-    expect(() => validateResolutionFormatCombo("4k", "mov")).toThrow(CliRuntimeError);
-  });
+describe("resolveCloudFpsArg", () => {
+  const withFps = (fps: string) => {
+    const dir = writeComposition(1920, 1080);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-fps="${fps}" data-width="1920" data-height="1080"></div></body></html>`,
+    );
+    return { kind: "dir", dir } as const;
+  };
 
-  it("allows 4k + mp4 and 1080p + any format", () => {
-    expect(() => validateResolutionFormatCombo("4k", "mp4")).not.toThrow();
-    expect(() => validateResolutionFormatCombo("1080p", "webm")).not.toThrow();
-    expect(() => validateResolutionFormatCombo(undefined, undefined)).not.toThrow();
+  it("reads the root data-fps when --fps is absent", () => {
+    expect(resolveCloudFpsArg(withFps("24"), undefined, undefined)).toBe("24");
+  });
+  it("lets an explicit --fps win", () => {
+    expect(resolveCloudFpsArg(withFps("24"), "60", undefined)).toBe("60");
+  });
+  it("leaves the server default when data-fps is absent or fractional", () => {
+    expect(
+      resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
+    ).toBeUndefined();
+    expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
   });
 });
 
@@ -52,11 +64,11 @@ describe("validateDryRunSource", () => {
   it("accepts a local directory and rejects already-uploaded sources", () => {
     expect(() => validateDryRunSource({ kind: "dir", dir: "." }, true)).not.toThrow();
     expect(() => validateDryRunSource({ kind: "asset_id", assetId: "asst_123" }, true)).toThrow(
-      CliRuntimeError,
+      CliUsageError,
     );
     expect(() =>
       validateDryRunSource({ kind: "url", url: "https://example.com/project.zip" }, true),
-    ).toThrow(CliRuntimeError);
+    ).toThrow(CliUsageError);
   });
 });
 
@@ -116,6 +128,106 @@ describe("cloud render --dry-run", () => {
   });
 });
 
+describe("cloud render --dry-run with heavy media", () => {
+  it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
+    const dir = writeComposition(1920, 1080);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><video src="clip.mp4"></video></div></body></html>`,
+      "utf-8",
+    );
+    const mp4Header = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom")]);
+    writeFileSync(
+      join(dir, "clip.mp4"),
+      Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
+    );
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: dir,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as {
+      archive: {
+        file_count: number;
+        size_bytes: number;
+        offloaded_media: Array<{ path: string; action: string; size_bytes: number }>;
+      };
+    };
+    expect(archive.offloaded_media).toEqual([
+      { path: "clip.mp4", action: "upload", size_bytes: 6 * 1024 * 1024 },
+    ]);
+    expect(archive.file_count).toBe(1);
+    expect(archive.size_bytes).toBeLessThan(64 * 1024);
+  });
+});
+
+describe("cloud render --dry-run with a file over 4 GiB left in the zip", () => {
+  it("reports it as over the limit without reading it", () => {
+    const dir = writeComposition(1920, 1080);
+    // A mention nothing can rewrite keeps the file in the zip.
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!-- raw/take.mov -->${readFileSync(join(dir, "index.html"), "utf-8")}`,
+    );
+    mkdirSync(join(dir, "raw"));
+    writeFileSync(join(dir, "raw", "take.mov"), "");
+    truncateSync(join(dir, "raw", "take.mov"), 2 ** 32 + 1);
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: dir,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as {
+      archive: {
+        exceeds_upload_limit: boolean;
+        largest_files: Array<{ path: string; size_bytes: number }>;
+      };
+    };
+    expect(archive.exceeds_upload_limit).toBe(true);
+    expect(archive.largest_files[0]).toEqual({ path: "raw/take.mov", size_bytes: 2 ** 32 + 1 });
+  });
+});
+
+describe("assertArchiveFits", () => {
+  it("passes an archive at the limit and fails one over it, naming its largest files", () => {
+    expect(() => assertArchiveFits(200 * 1024 * 1024, [])).not.toThrow();
+    const errors = vi.mocked(console.error);
+    const logs = vi.mocked(console.log);
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: "data/scan.tiff", size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    expect([...errors.mock.calls, ...logs.mock.calls].flat().join("\n")).toContain(
+      "data/scan.tiff",
+    );
+  });
+});
+
 describe("resolveAspectRatioForSubmit — non-local sources", () => {
   it("trusts an explicit flag for asset_id / url", () => {
     const asset: ProjectInputSource = { kind: "asset_id", assetId: "a" };
@@ -167,5 +279,16 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
         true,
       ),
     ).toThrow(CliRuntimeError);
+  });
+
+  it("names the resolved entry path and project directory when the entry is missing", () => {
+    const dir = writeComposition(1920, 1080);
+    const printed = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, "missing.html", undefined, true),
+    ).toThrow(CliRuntimeError);
+    const output = printed.mock.calls.flat().join("\n");
+    expect(output).toContain(`resolves to ${resolve(dir, "missing.html")}`);
+    expect(output).toContain(`project directory ${resolve(dir)}`);
   });
 });

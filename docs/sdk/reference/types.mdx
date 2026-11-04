@@ -398,7 +398,7 @@ interface EnumVariable extends CompositionVariableBase {
 
 interface FontVariable extends CompositionVariableBase {
   type: "font";
-  default: string;
+  default: string | FontValue;
   source?: string;
   default_name?: string;
   default_source?: string;
@@ -406,7 +406,7 @@ interface FontVariable extends CompositionVariableBase {
 
 interface ImageVariable extends CompositionVariableBase {
   type: "image";
-  default: string;
+  default: string | ImageValue;
   brandRole?: string;
 }
 
@@ -432,8 +432,8 @@ type CompositionVariable =
   Human-readable name for a variables panel UI.
 </ResponseField>
 
-<ResponseField name="default" type="string | number | boolean">
-  The variable's fallback value. `font` and `image` variants store their fallback as a plain string here (a font-family name / image URL) — the richer `FontValue`/`ImageValue` object shapes are only used as `setVariableValue`'s runtime argument, not as `default`'s stored type.
+<ResponseField name="default" type="string | number | boolean | FontValue | ImageValue">
+  The variable's default value. `font` accepts a font-family string or `FontValue`; `image` accepts a URL string or `ImageValue`. `setVariableValue` persists the whole value here, including font source and image metadata. Declaration reads, validation, and save/reopen preserve these objects.
 </ResponseField>
 
 <ResponseField name="brandRole" type="string (color, image)">

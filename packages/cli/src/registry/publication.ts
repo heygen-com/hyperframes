@@ -1,6 +1,7 @@
-import { lstatSync, chmodSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { mkdirWithinProject, realpath } from "@hyperframes/core";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 
 export { realProjectRoot as registryRoot } from "@hyperframes/core";
 
@@ -52,7 +53,7 @@ export function publishRegistryFile(
     writeFileSync(stagedFile, bytes, { flag: "wx" });
     const previous = lstatSync(destination, { throwIfNoEntry: false });
     if (previous?.isFile()) chmodSync(stagedFile, previous.mode & 0o777);
-    renameSync(stagedFile, destination);
+    renameWithRetry(stagedFile, destination);
     return destination;
   } finally {
     rmSync(stage, { recursive: true, force: true });

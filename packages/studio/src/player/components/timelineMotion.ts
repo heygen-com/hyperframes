@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
+import { usePlayerStore } from "../store/playerStore";
 
 /** How long the timeline must go without a zoom step to count as at rest. */
 export const TIMELINE_REST_MS = 150;
@@ -28,16 +29,21 @@ const onIdle = (callback: () => void) => {
   else setTimeout(callback, 0);
 };
 
-/** Resolves at an idle moment with no zoom moving the timeline: long work waits there, not mid-zoom. */
+const busy = () => moving || usePlayerStore.getState().isPlaying;
+
+/** Resolves at an idle moment with the film stopped and no zoom moving the timeline: long work waits there. */
 export function whenTimelineIdle(): Promise<void> {
   return new Promise((resolve) => {
     const check = () => {
-      if (!moving) return resolve();
-      const stop = subscribeTimelineMotion(() => {
-        if (moving) return;
-        stop();
+      if (!busy()) return resolve();
+      const wake = () => {
+        if (busy()) return;
+        stopMotion();
+        stopPlayback();
         onIdle(check);
-      });
+      };
+      const stopMotion = subscribeTimelineMotion(wake);
+      const stopPlayback = usePlayerStore.subscribe(wake);
     };
     onIdle(check);
   });

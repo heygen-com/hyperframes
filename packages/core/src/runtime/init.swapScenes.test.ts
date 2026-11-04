@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createRequire } from "node:module";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular, installAuthoredMediaCapture } from "./init";
 import type { RuntimeTimelineLike } from "./types";
@@ -8,6 +8,7 @@ import { WebAudioTransport } from "./webAudioTransport";
 import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
 import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
 import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
+import { parkFarScenesAtBoot } from "./sceneWindow";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -25,12 +26,8 @@ vi.mock("./colorGrading", async (importOriginal) => {
   };
 });
 
-// The library itself, the repo's vendored 3.15.0, for what a stand-in would only assume.
-const vendoredGsap = () =>
-  join(
-    dirname(expect.getState().testPath!),
-    "../../../../skills/music-to-video/references/motion-primitives/assets/gsap.min.js",
-  );
+// The library itself, core's own gsap dependency, for what a stand-in would only assume.
+const vendoredGsap = () => createRequire(import.meta.url).resolve("gsap/dist/gsap.min.js");
 type RealGsap = {
   ticker: { sleep: () => void };
   getProperty: (target: Element, property: string) => unknown;
@@ -57,9 +54,9 @@ function tl(label: string, duration = 2): Tl {
   } as unknown as Tl;
 }
 
-function trackingRoot() {
+function trackingRoot(duration = 6) {
   const children: Array<{ child: unknown; at: number | undefined }> = [];
-  const root = tl("root", 6) as Tl & { remove: (c: unknown) => void };
+  const root = tl("root", duration) as Tl & { remove: (c: unknown) => void };
   root.add = ((child: unknown, at?: number) => void children.push({ child, at })) as Tl["add"];
   root.getChildren = (() => children.map((c) => c.child)) as Tl["getChildren"];
   root.remove = (child) => {
@@ -84,6 +81,7 @@ interface Scene {
   hash: string;
   extraAttrs?: string;
   script?: string;
+  duration?: number;
 }
 
 function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
@@ -95,11 +93,11 @@ function preview(scenes: Scene[], shared = "s1", sharedMarkup = "") {
     `<meta name="hf-scene-parts" content="${manifest}"><style>.shared{}</style>` +
     scenes.map((s) => `<style data-hf-scene="${s.id}">${s.css}</style>`).join("");
   const body =
-    `<div data-composition-id="main" data-root="true" data-start="0" data-duration="6">${sharedMarkup}` +
+    `<div data-composition-id="main" data-root="true" data-start="0" data-duration="${Math.max(6, ...scenes.map((s) => s.start + (s.duration ?? 2)))}">${sharedMarkup}` +
     scenes
       .map(
         (s) =>
-          `<div data-composition-id="${s.id}" data-hf-scene="${s.id}" data-start="${s.start}" data-duration="2"${s.extraAttrs ?? ""}>${s.body}</div>`,
+          `<div data-composition-id="${s.id}" data-hf-scene="${s.id}" data-start="${s.start}" data-duration="${s.duration ?? 2}"${s.extraAttrs ?? ""}>${s.body}</div>`,
       )
       .join("") +
     `</div>` +
@@ -162,6 +160,11 @@ const sceneHost = (id: string) =>
 const scoped = window as unknown as {
   __hfVariablesByComp?: Record<string, Record<string, unknown>>;
 };
+// A scene script that splits its bound text into one span per letter, as a letter animation does.
+const splitLetters = (id: string) =>
+  `var p = document.querySelector('[data-hf-scene="${id}"]:not(style):not(script) [data-var-text]');` +
+  `if (p) p.replaceChildren(...Array.from(p.textContent).map(function (c) {` +
+  `var s = document.createElement("span"); s.textContent = c; return s; }));`;
 const quietMedia = () => {
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
@@ -490,6 +493,18 @@ describe("__hfSwapScenes", () => {
     await tick();
     const videos = Array.from(sceneHost("a").querySelectorAll("video"));
     expect(videos.map((v) => v.src)).toEqual([proxied, proxied]);
+  });
+
+  it("binds a swapped scene's variable text before its script splits it into letters", async () => {
+    const { root } = trackingRoot();
+    scoped.__hfVariablesByComp = { a: { title: "Hi" } };
+    const titled = { ...A1, body: '<p data-var-text="title">x</p>' };
+    boot([titled, B], root);
+    await tick();
+    const split = { ...titled, label: "a2", hash: "ha2", script: splitLetters("a") };
+    await window.__hfSwapScenes!(preview([split, B]).html);
+    const p = sceneHost("a").querySelector("p")!;
+    expect([p.textContent, p.childElementCount]).toEqual(["Hi", 2]);
   });
 
   it("leaves the bound text of a scene the edit did not touch as it is", async () => {
@@ -1013,6 +1028,27 @@ describe("__hfSwapScenes", () => {
     await tick();
     await window.__hfSwapScenes!(preview([nested(A2), B]).html);
     expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
+  });
+
+  it("swaps a scene whose timeline drives one its script built later, and stops that one too", async () => {
+    const { root } = trackingRoot();
+    const globalTimeline = { getChildren: () => [innerTween] };
+    // Built after a font wait, so never recorded: only the registered timeline's tween of its time leads to it.
+    const inner = {
+      parent: globalTimeline,
+      totalTime: () => 0,
+      kill: () => {},
+      revert: vi.fn(),
+      getChildren: () => [innerTween],
+    };
+    const innerTween = { parent: inner, targets: () => [sceneHost("a")] };
+    Object.assign(made.a1!, { getChildren: () => [{ parent: made.a1, targets: () => [inner] }] });
+    (window as unknown as { gsap: unknown }).gsap = { set: () => {}, globalTimeline };
+    boot([A1, B], root);
+    await tick();
+    await window.__hfSwapScenes!(preview([A2, B]).html);
+    expect(sceneHost("a").querySelector("p")?.textContent).toBe("A two");
+    expect(inner.revert).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -1711,5 +1747,434 @@ window.__timelines.a = tl;`;
     expect(touched).toContain("a2");
     expect(touched).not.toContain("b");
     delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+});
+
+describe("the preview's scene window", () => {
+  // Three 2 s scenes; at 0 the first two play or neighbour, so the third waits parked.
+  const S0: Scene = { id: "s0", start: 0, body: "<p>zero</p>", css: "", label: "a1", hash: "h0" };
+  const S1: Scene = { id: "s1", start: 2, body: "<p>one</p>", css: "", label: "b", hash: "h1" };
+  const S2: Scene = {
+    id: "s2",
+    start: 4,
+    body: '<p>two</p><i data-start="0.5" data-duration="1"></i>',
+    css: "",
+    label: "a2",
+    hash: "h2",
+  };
+  const parked = () =>
+    [...document.querySelectorAll("[data-hf-parked-scene]")].map((el) =>
+      el.getAttribute("data-hf-scene"),
+    );
+  // As the runtime's entry does: park before any scene script runs, then run the rest.
+  function bootWindowed(scenes: Scene[], root: Tl, withManifest = true) {
+    const { head, body } = preview(scenes);
+    document.head.innerHTML = withManifest ? head : head.replace(/<meta[^>]*>/, "");
+    document.body.innerHTML = body;
+    window.__timelines = { main: root };
+    parkFarScenesAtBoot();
+    for (const s of scenes) if (!parked().includes(s.id)) window.__timelines[s.id] = made[s.label];
+    const replaceWith = Element.prototype.replaceWith;
+    vi.spyOn(Element.prototype, "replaceWith").mockImplementation(function (
+      this: Element,
+      ...nodes
+    ) {
+      replaceWith.apply(this, nodes);
+      for (const node of nodes) {
+        if (node instanceof HTMLScriptElement && node.hasAttribute("data-hf-scene"))
+          new Function(node.textContent ?? "")();
+      }
+    });
+    initSandboxRuntimeModular();
+  }
+  const seekAndSettle = async (time: number) => {
+    window.__player?.seek(time);
+    await window.__hfWaitForSeekCompletion?.();
+  };
+
+  beforeEach(() => {
+    resetRuntimeDataForTests();
+    (globalThis as { CSS?: { escape?: (v: string) => string } }).CSS ??= {};
+    globalThis.CSS.escape ??= (v: string) => v;
+    window.requestAnimationFrame = ((cb: FrameRequestCallback) => (
+      cb(0), 1
+    )) as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = (() => {}) as typeof window.cancelAnimationFrame;
+    for (const k of Object.keys(made)) delete made[k];
+    for (const label of ["a1", "a2", "b"]) made[label] = tl(label);
+    (window as unknown as { __made: typeof made }).__made = made;
+  });
+  afterEach(() => {
+    window.__hfRuntimeTeardown?.();
+    document.head.innerHTML = "";
+    document.body.innerHTML = "";
+    delete window.__hfSceneAnimations;
+    vi.restoreAllMocks();
+  });
+
+  it("parks a scene away from the start, keeping its timing, and never runs its script", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    expect(parked()).toEqual(["s2"]);
+    const placeholder = sceneHost("s2");
+    expect([placeholder.childElementCount, placeholder.getAttribute("data-start")]).toEqual([
+      0,
+      "4",
+    ]);
+    expect(document.querySelector('script[data-hf-scene="s2"]')).toBeNull();
+    expect(window.__timelines?.s2).toBeUndefined();
+    expect(sceneHost("s0").textContent).toBe("zero");
+  });
+
+  it("binds a far scene's variable text before its script splits it into letters as it mounts", async () => {
+    scoped.__hfVariablesByComp = { s2: { title: "Hi" } };
+    try {
+      const body = '<p data-var-text="title">x</p><i data-start="0.5" data-duration="1"></i>';
+      bootWindowed([S0, S1, { ...S2, body, script: splitLetters("s2") }], trackingRoot().root);
+      await tick();
+      await seekAndSettle(5);
+      const p = sceneHost("s2").querySelector("p")!;
+      expect([p.textContent, p.childElementCount]).toEqual(["Hi", 2]);
+    } finally {
+      delete scoped.__hfVariablesByComp;
+    }
+  });
+
+  it("mounts the scene a seek lands in before the seek counts as done, then parks the far ones", async () => {
+    const { root, children } = trackingRoot();
+    bootWindowed([S0, S1, S2], root);
+    await tick();
+    // Fonts that settle a moment later keep the mount pending past the seek's own work.
+    const fonts = { ready: new Promise((settle) => window.setTimeout(settle, 50)) };
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    window.__player?.seek(5);
+    let settled = false;
+    const done = window.__hfWaitForSeekCompletion!().then(() => (settled = true));
+    await tick();
+    expect([settled, window.__timelines?.s2]).toEqual([false, undefined]);
+    await done;
+    Reflect.deleteProperty(document, "fonts");
+    expect(sceneHost("s2").textContent).toBe("two");
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0", "s1"]);
+    expect(window.__timelines?.s2).toBe(made.a2);
+    expect(children.map((c) => c.child)).toContain(made.a2);
+    expect(made.a1!.kill).toHaveBeenCalled();
+    expect(children.map((c) => c.child)).not.toContain(made.a1);
+    expect(window.__player?.getTime()).toBe(5);
+    await seekAndSettle(0.5);
+    expect(sceneHost("s0").textContent).toBe("zero");
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s2"]);
+  });
+
+  it("waits for the scene a seek lands in while its mount as a neighbour is still running", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    await seekAndSettle(5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0", "s1"]);
+    // Once s0 is in, s1 mounts as its neighbour; this seek lands in s1 meanwhile.
+    await seekAndSettle(0.5);
+    window.__player?.seek(2.5);
+    await window.__hfWaitForSeekCompletion?.();
+    expect(sceneHost("s1").textContent).toBe("one");
+  });
+
+  it("keeps drawing the scene it showed while the scene a seek lands in mounts", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    await seekAndSettle(0.5);
+    window.__player?.seek(5);
+    expect(sceneHost("s0").getAttribute("style")).toContain("visibility: visible");
+    // A frame drawn between the mount's tasks, the scene not yet settled, still holds.
+    await tick();
+    window.__player?.seek(5);
+    expect(sceneHost("s0").getAttribute("style")).toContain("visibility: visible");
+    await window.__hfWaitForSeekCompletion?.();
+    expect(sceneHost("s2").getAttribute("style")).toContain("visibility: visible");
+  });
+
+  it("shows a mounted scene whose empty stand-in the visibility pass hid by display", async () => {
+    // In flow, an empty stand-in is a leaf clip, which the visibility pass hides with display:none.
+    bootWindowed([S0, S1, { ...S2, extraAttrs: ' style="position: static"' }], trackingRoot().root);
+    await tick();
+    expect(sceneHost("s2").getAttribute("style")).toContain("display: none");
+    await seekAndSettle(5);
+    expect(sceneHost("s2").textContent).toBe("two");
+    expect(sceneHost("s2").getAttribute("style")).not.toContain("display: none");
+  });
+
+  it("keeps a scene mounted whose script published its timeline under another id as well", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    // What the recorder keeps of s0's script, which also published its timeline as "elsewhere".
+    window.__hfSceneAnimations = { s0: [made.a1] };
+    window.__timelines.elsewhere = made.a1;
+    try {
+      await seekAndSettle(5);
+      expect(parked()).toEqual(["s1"]);
+      expect(sceneHost("s0").getAttribute("data-hf-scene-no-swap")).toBe(
+        "its script registers a timeline as elsewhere",
+      );
+      expect(window.__timelines.elsewhere).toBe(made.a1);
+      expect(made.a1.kill).not.toHaveBeenCalled();
+    } finally {
+      delete window.__hfSceneAnimations;
+    }
+  });
+
+  it("settles when a scene it would retire cannot be retired, instead of planning it again forever", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    window.__hfSceneAnimations = { s0: [made.a1] };
+    window.__timelines.elsewhere = made.a1;
+    try {
+      await seekAndSettle(5);
+      const host = sceneHost("s0");
+      const has = host.hasAttribute.bind(host);
+      let asks = 0;
+      host.hasAttribute = (name: string) => {
+        // A runaway plan starves every timer; seeking back to s0 is what ends it, so a failure fails, not hangs.
+        if (name === "data-hf-scene-no-swap" && ++asks === 1000) window.__player?.seek(0.5);
+        return has(name);
+      };
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(asks).toBeLessThan(100);
+    } finally {
+      delete window.__hfSceneAnimations;
+    }
+  });
+
+  it("shows a scene mounted again after the visibility pass hid it by display and it unmounted", async () => {
+    const leaf: Scene = { ...S2, body: "<p>two</p>", extraAttrs: ' style="position: static"' };
+    bootWindowed([S0, S1, leaf], trackingRoot().root);
+    await tick();
+    // Paused in the middle scene, the last one mounts as next, hidden until it plays.
+    await seekAndSettle(2.5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(sceneHost("s2").getAttribute("style")).toContain("display: none");
+    await seekAndSettle(0.5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toContain("s2");
+    await seekAndSettle(5);
+    expect(sceneHost("s2").getAttribute("style")).not.toContain("display: none");
+  });
+
+  it("mounts a scene Studio holds for editing and keeps it until Studio lets go", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    await window.__hfHoldScenes!(["main", "s2"]);
+    expect(sceneHost("s2").textContent).toBe("two");
+    await seekAndSettle(0.5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual([]);
+    await window.__hfHoldScenes!([]);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s2"]);
+  });
+
+  it("keeps each holder's scenes, so the inspector letting go leaves Studio's held scene mounted", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    await window.__hfHoldScenes!(["s2"]);
+    await window.__hfHoldScenes!(["s0", "s1", "s2"], "inspection");
+    expect(parked()).toEqual([]);
+    await window.__hfHoldScenes!([], "inspection");
+    await seekAndSettle(0.5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual([]);
+    await window.__hfHoldScenes!([]);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s2"]);
+  });
+
+  it("keeps a parked scene's clips on the timeline, at the time its scene puts them", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    const clip = window.__clipManifest?.clips.find(
+      (c) => c.parentCompositionId === "s2" && c.tagName === "i",
+    );
+    expect(clip && [clip.start, clip.duration]).toEqual([4.5, 1]);
+  });
+
+  it("hands Studio a parked scene's markup, and nothing for a mounted one", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    const markup = window.__hfParkedSceneMarkup!;
+    expect(markup(sceneHost("s2"))?.textContent).toBe("two");
+    expect(markup(sceneHost("s2"))?.isConnected).toBe(false);
+    expect(markup(sceneHost("s0"))).toBeNull();
+  });
+
+  it("gives an edit to a parked scene to its next mount, without mounting it", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    const edited: Scene = { ...S2, body: "<p>two, edited</p>", css: ".two{}", hash: "h2b" };
+    await window.__hfSwapScenes!(preview([S0, S1, edited]).html);
+    expect(parked()).toEqual(["s2"]);
+    expect(cssText()).toContain(".two{}");
+    await seekAndSettle(5);
+    expect(sceneHost("s2").textContent).toBe("two, edited");
+  });
+
+  it("retimes a parked scene an edit moves, for when it mounts and as it mounts", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    // From 4 s to 1 s, and 3 s long: paused at 1.5 it plays, where before it was not even next.
+    const moved: Scene = { ...S2, start: 1, duration: 3, hash: "h2b" };
+    await window.__hfSwapScenes!(preview([S0, S1, moved]).html);
+    expect(parked()).toEqual(["s2"]);
+    await seekAndSettle(1.5);
+    const host = sceneHost("s2");
+    expect([
+      host.textContent,
+      host.getAttribute("data-start"),
+      host.getAttribute("data-hf-authored-duration"),
+    ]).toEqual(["two", "1", "3"]);
+  });
+
+  it("still mounts parked scenes after an edit to a mounted one", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    await window.__hfSwapScenes!(
+      preview([{ ...S0, body: "<p>zero, edited</p>", hash: "h0b" }, S1, S2]).html,
+    );
+    await seekAndSettle(5);
+    expect(sceneHost("s2").textContent).toBe("two");
+  });
+
+  it("refuses an edit that would leave a parked scene unable to mount or to show its clips", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root);
+    await tick();
+    const fetching: Scene = {
+      ...S2,
+      extraAttrs: ' data-hf-scene-no-swap="its script uses fetch"',
+      hash: "h2b",
+    };
+    const untrimmed: Scene = {
+      ...S2,
+      body: '<audio src="/two.mp3" data-start="0"></audio>',
+      hash: "h2c",
+    };
+    // The window times a parked scene by its host's own seconds: a reference start or no length has none.
+    const referenceStart: Scene = { ...S2, start: "s1" as unknown as number, hash: "h2d" };
+    const noLength: Scene = { ...S2, duration: 0, hash: "h2e" };
+    for (const edit of [fetching, untrimmed, referenceStart, noLength])
+      await expect(window.__hfSwapScenes!(preview([S0, S1, edit]).html)).rejects.toThrow("s2");
+    await seekAndSettle(5);
+    expect(sceneHost("s2").textContent).toBe("two");
+  });
+
+  it("keeps mounted a scene whose clip lengths come from its media, from boot or from an edit", async () => {
+    quietMedia();
+    const untrimmed = '<audio src="/a.mp3" data-start="0"></audio>';
+    bootWindowed([S0, S1, { ...S2, body: untrimmed }], trackingRoot().root);
+    await tick();
+    expect(parked()).toEqual([]);
+    window.__hfRuntimeTeardown?.();
+    vi.restoreAllMocks();
+    quietMedia();
+    const trimmed = {
+      ...S0,
+      body: '<audio src="/a.mp3" data-start="0" data-duration="1"></audio>',
+    };
+    bootWindowed([trimmed, S1, S2], trackingRoot().root);
+    await tick();
+    await window.__hfSwapScenes!(preview([{ ...S0, body: untrimmed, hash: "h0b" }, S1, S2]).html);
+    await seekAndSettle(5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s1"]);
+  });
+
+  it("mounts the next scene once its cut is within the lead of a playing film, not at the cut before it", async () => {
+    window.requestAnimationFrame = (() => 1) as typeof window.requestAnimationFrame;
+    bootWindowed([S0, S1, { ...S2, start: 30 }], trackingRoot(32).root);
+    await tick();
+    window.__player?.play();
+    window.__player?.seek(2.5, { keepPlaying: true });
+    await window.__hfWaitForSeekCompletion?.();
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0", "s2"]);
+    window.__player?.seek(21, { keepPlaying: true });
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0", "s1"]);
+    expect(sceneHost("s2").textContent).toBe("two");
+  });
+
+  const audio = (src: string) => `<audio src="${src}" data-start="0.5" data-duration="1"></audio>`;
+
+  it("lets a scene mounting ahead of a playing film join its mix, leaving what already plays alone", async () => {
+    vi.spyOn(WebAudioTransport.prototype, "init").mockResolvedValue(true);
+    const schedule = vi
+      .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+      .mockResolvedValue(null);
+    vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(null);
+    const stop = vi.spyOn(WebAudioTransport.prototype, "stopAll");
+    quietMedia();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    bootWindowed(
+      [{ ...S0, body: audio("/zero.mp3") }, S1, { ...S2, body: audio("/two.mp3") }],
+      trackingRoot().root,
+    );
+    window.requestAnimationFrame = (() => 1) as typeof window.requestAnimationFrame;
+    await tick();
+    window.__player?.play();
+    // Into the middle scene: the last one mounts a turn later as its neighbour.
+    window.__player?.seek(2.5, { keepPlaying: true });
+    await window.__hfWaitForSeekCompletion?.();
+    for (const spy of [schedule, stop]) spy.mockClear();
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0"]);
+    expect(stop).not.toHaveBeenCalled();
+    expect(schedule.mock.calls.map(([el]) => el.getAttribute("src"))).toEqual(["/two.mp3"]);
+  });
+
+  it("records only what a mounting scene starts as its own, never the runtime's root", async () => {
+    const { root } = trackingRoot();
+    let onGlobal: unknown[] = [];
+    const own = { label: "late" };
+    (window as unknown as { gsap: unknown }).gsap = {
+      set: () => {},
+      globalTimeline: { getChildren: () => onGlobal },
+    };
+    // While s2's scripts run, the root lands on GSAP's global timeline, as a rebuild does, beside one of s2's own.
+    (window as unknown as { __lateStart: () => void }).__lateStart = () => (onGlobal = [root, own]);
+    bootWindowed([S0, S1, { ...S2, script: "window.__lateStart && window.__lateStart();" }], root);
+    window.__hfSceneAnimations = {};
+    await tick();
+    await seekAndSettle(5);
+    expect(window.__hfSceneAnimations?.s2).toEqual([own]);
+    delete (window as unknown as { gsap?: unknown }).gsap;
+  });
+
+  it("drops the decoded audio of a scene it parks", async () => {
+    const release = vi.spyOn(WebAudioTransport.prototype, "releaseDecodedExcept");
+    quietMedia();
+    bootWindowed(
+      [{ ...S0, body: audio("/zero.mp3") }, S1, { ...S2, body: audio("/two.mp3") }],
+      trackingRoot().root,
+    );
+    await tick();
+    release.mockClear();
+    await seekAndSettle(5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(parked()).toEqual(["s0", "s1"]);
+    const kept = release.mock.calls.at(-1)?.[0].map((el) => el.getAttribute("src"));
+    expect(kept).toEqual(["/two.mp3"]);
+  });
+
+  it("mounts every scene of a page without a scene manifest, and every scene the swap gate refuses", async () => {
+    bootWindowed([S0, S1, S2], trackingRoot().root, false);
+    await tick();
+    expect(parked()).toEqual([]);
+    window.__hfRuntimeTeardown?.();
+    vi.restoreAllMocks();
+    bootWindowed(
+      [S0, S1, { ...S2, extraAttrs: ' data-hf-scene-no-swap="its script uses fetch"' }],
+      trackingRoot().root,
+    );
+    await tick();
+    expect(parked()).toEqual([]);
   });
 });

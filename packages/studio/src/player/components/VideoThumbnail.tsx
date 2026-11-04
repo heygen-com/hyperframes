@@ -3,10 +3,13 @@ import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import { useThumbnailStripSize } from "../../hooks/useThumbnailStripSize";
 import {
   createThumbnailKey,
+  thumbnailScheduler,
   type ThumbnailPriority,
   type ThumbnailSnapshot,
 } from "../lib/thumbnailScheduler";
+import { bindThumbnailPlaybackHold } from "../lib/thumbnailPlaybackHold";
 import { decodeVideoThumbnail } from "../lib/thumbnailVideoDecoder";
+import { usePlayerStore } from "../store/playerStore";
 import { ThumbnailTiles } from "./ThumbnailTiles";
 import {
   computeThumbnailStrip,
@@ -14,6 +17,9 @@ import {
   thumbnailFrameForTile,
 } from "./thumbnailUtils";
 import { useValueAtRest } from "./timelineMotion";
+
+const unbindPlaybackHold = bindThumbnailPlaybackHold(usePlayerStore, thumbnailScheduler);
+import.meta.hot?.dispose(unbindPlaybackHold);
 
 interface VideoThumbnailProps {
   videoSrc: string;
@@ -98,6 +104,33 @@ function useVideoThumbnailSnapshot(
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
+function useRangeHeldDuringTrim(
+  props: Required<
+    Pick<VideoThumbnailProps, "videoSrc" | "duration" | "projectId" | "sessionEpoch" | "priority">
+  > &
+    Pick<VideoThumbnailProps, "sourceStart" | "sourceRangeDuration">,
+) {
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  } = props;
+  const range = useValueAtRest(
+    useMemo(
+      () => ({ sourceStart, sourceRangeDuration, duration }),
+      [duration, sourceRangeDuration, sourceStart],
+    ),
+  );
+  return useMemo(
+    () => ({ videoSrc, ...range, projectId, sessionEpoch, priority }),
+    [priority, projectId, range, sessionEpoch, videoSrc],
+  );
+}
+
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
 export const VideoThumbnail = memo(function VideoThumbnail({
   videoSrc,
@@ -116,18 +149,15 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
     ),
   );
-  const requestProps = useMemo(
-    () => ({
-      videoSrc,
-      sourceStart,
-      sourceRangeDuration,
-      duration,
-      projectId,
-      sessionEpoch,
-      priority,
-    }),
-    [duration, priority, projectId, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
-  );
+  const requestProps = useRangeHeldDuringTrim({
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  });
   const posterRequest = useMemo(
     () => createVideoThumbnailRequest(requestProps, 1, false),
     [requestProps],

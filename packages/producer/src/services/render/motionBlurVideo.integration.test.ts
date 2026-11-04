@@ -1,5 +1,6 @@
 // Motion blur over a <video>, rendered for real (#5144): held video rows match blur-off, the
-// bar smears, and a sub-composition cut keeps its video. Needs Chrome + ffmpeg: integration lane.
+// bar smears, and a sub-composition cut keeps its video. A video held past its media end keeps
+// following its style (#4049). Needs Chrome + ffmpeg: integration lane.
 
 import { spawnSync } from "node:child_process";
 import {
@@ -80,6 +81,40 @@ const CUT_FIXTURE = join(
 const CUT_FPS = 24;
 const CUT_FRAME = 24;
 const CUT_FRAME_COUNT = 48;
+
+// A 0.2 s white clip in a 0.5 s slot, fading out over the whole slot on black (#4049).
+const HELD_MEDIA_SECONDS = 0.2;
+const HELD_COMPOSITION = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; }
+    #root { background: #000; }
+    #clip {
+      position: absolute; left: 0; top: 0; width: ${WIDTH}px; height: ${HEIGHT}px;
+      animation: fade ${DURATION_SECONDS}s linear both;
+    }
+    @keyframes fade { from { opacity: 1; } to { opacity: 0; } }
+  </style>
+</head>
+<body>
+  <div
+    id="root"
+    data-composition-id="held-video"
+    data-start="0"
+    data-duration="${DURATION_SECONDS}"
+    data-width="${WIDTH}"
+    data-height="${HEIGHT}"
+    data-fps="${FPS}"
+    data-no-timeline
+  >
+    <video id="clip" class="clip" src="assets/white.mp4" data-start="0" data-duration="${DURATION_SECONDS}" data-track-index="0" muted playsinline></video>
+  </div>
+</body>
+</html>
+`;
 
 let root: string;
 
@@ -234,6 +269,63 @@ describe.skipIf(!HAS_FFMPEG)("motion blur over video — real render (#5144)", (
     expect(blurredAgain).toHaveLength(FRAME_COUNT);
     for (let i = 0; i < FRAME_COUNT; i++) {
       expect(blurredAgain[i]!.equals(blurred[i]!), `frame ${i}`).toBe(true);
+    }
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("a video held past its media end — real render (#4049)", () => {
+  let heldDir: string;
+  let plain: Buffer[];
+  let blurred: Buffer[];
+
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), "hf-held-video-"));
+    heldDir = join(root, "held");
+    mkdirSync(join(heldDir, "assets"), { recursive: true });
+    writeFileSync(join(heldDir, "index.html"), HELD_COMPOSITION);
+    const clip = spawnSync(
+      FFMPEG,
+      [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        `color=c=white:size=${WIDTH}x${HEIGHT}:rate=${FPS}:duration=${HELD_MEDIA_SECONDS}`,
+        "-pix_fmt",
+        "yuv420p",
+        "-c:v",
+        "libx264",
+        "-y",
+        join(heldDir, "assets", "white.mp4"),
+      ],
+      { encoding: "utf-8" },
+    );
+    if (clip.status !== 0) throw new Error(`white clip fixture failed: ${clip.stderr}`);
+    plain = await renderFrames("held-plain", undefined, heldDir);
+    blurred = await renderFrames("held-blurred", { samplesPerFrame: 4 }, heldDir);
+  }, 600_000);
+
+  afterAll(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("keeps following the fade after the media ends", () => {
+    expect(plain).toHaveLength(FRAME_COUNT);
+    const levels = plain.map(meanLevel);
+    const lastMediaFrame = Math.floor(HELD_MEDIA_SECONDS * FPS);
+    for (let i = lastMediaFrame; i < FRAME_COUNT - 1; i++) {
+      expect(levels[i + 1]!, `frame ${i + 1}`).toBeLessThan(levels[i]!);
+    }
+    expect(levels[FRAME_COUNT - 1]!).toBeLessThan(levels[0]! * 0.15);
+  });
+
+  it("gives every motion-blur sample the output frame's fade", () => {
+    expect(blurred).toHaveLength(FRAME_COUNT);
+    for (let i = 0; i < FRAME_COUNT; i++) {
+      expect(rows(blurred[i]!, 0, HEIGHT).equals(rows(plain[i]!, 0, HEIGHT)), `frame ${i}`).toBe(
+        true,
+      );
     }
   });
 });

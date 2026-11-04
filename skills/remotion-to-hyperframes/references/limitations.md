@@ -32,7 +32,7 @@ Remotion accepts a function for `volume`:
 ```
 
 HF ramps volume with a `data-automation` volume lane on the `<audio>`
-(form in `hyperframes-core/references/creator-editing-recipes.md`).
+(form in `/media-use` → `references/mixing.md`).
 Translation: write the lane from the `interpolate` points, OR bake the ramp
 into the audio file with `ffmpeg afade`. The dropped-ramp path produces audibly different
 output but visually-identical video, so SSIM passes — just flag it.
@@ -122,7 +122,7 @@ a `TRANSLATION_NOTES.md` next to the output:
 The following Remotion patterns were translated with caveats:
 
 - `<Audio volume={(f) => ...}>` (line 15): volume ramp written as a
-  `data-automation` volume lane (see `creator-editing-recipes.md`); the
+  `data-automation` volume lane (see the media-use skill's mixing reference); the
   ffmpeg `afade` bake-in is the alternative.
 - `<HeavyChart>` (line 30): translated as inline HTML. The original
   React.lazy boundary was dropped — bundle size unchanged because HF

@@ -14,6 +14,9 @@ import { appendRecord, mediaDir, nextId } from "./manifest.mjs";
 import { regenerateIndex } from "./index-gen.mjs";
 import { mergedPreferences } from "./prefs-store.mjs";
 
+// A filter keeps Node 22 off its native copy, which writes nothing under a non-ASCII path on Windows.
+const NON_ASCII_SAFE_DIR_COPY = { recursive: true, force: true, filter: () => true };
+
 /**
  * Recipes — the heavyweight tier of HyperFrames user memory.
  *
@@ -35,7 +38,7 @@ import { mergedPreferences } from "./prefs-store.mjs";
 const FRONTMATTER_CONTENT_KEYS = new Set(["message", "audience", "mode"]);
 
 /** BRIEF.md frontmatter keys that describe this run, not the reusable type —
- * a recipe never locks the run's shape, so the intent layer always re-asks. */
+ * a recipe never locks the run's shape, so these are always asked again. */
 const BRIEF_CONTENT_KEYS = new Set(["flow", "storyboard", "message", "audience"]);
 
 /** Per-frame metadata that is content, not structure. */
@@ -279,7 +282,8 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   try {
     const userDir = join(userRecipesDir(), slug);
     mkdirSync(userDir, { recursive: true });
-    cpSync(dir, userDir, { recursive: true, force: true });
+    cpSync(dir, userDir, NON_ASCII_SAFE_DIR_COPY);
+    if (!briefSkeleton) rmSync(join(userDir, "brief-skeleton.md"), { force: true });
   } catch {
     // The project-tier freeze already landed.
   }
@@ -339,7 +343,7 @@ export function useRecipe({ projectDir, name }) {
       );
     }
     mkdirSync(dir, { recursive: true });
-    cpSync(userDir, dir, { recursive: true, force: true });
+    cpSync(userDir, dir, NON_ASCII_SAFE_DIR_COPY);
     const imported = readRecipeJson(dir);
     appendRecord(root, {
       id: nextId(root, "recipe"),

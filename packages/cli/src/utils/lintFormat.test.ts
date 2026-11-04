@@ -217,12 +217,19 @@ describe("formatLintStartupMessage", () => {
     },
   ]);
 
-  it("collapses to a one-line summary by default, pointing at --lint-verbose (no Studio open)", () => {
+  it("collapses to a one-line summary by default, pointing at the lint command (no Studio open)", () => {
     const lines = formatLintStartupMessage(result, { kind: "summary" });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("2 error(s), 1 warning(s)");
     expect(lines[0]).not.toContain("Studio");
-    expect(lines[0]).toContain("--lint-verbose");
+    expect(lines[0]).toContain("hyperframes lint");
+  });
+
+  it("does not name --lint-verbose, a flag lint and check do not take", () => {
+    for (const pointer of [undefined, "studio"] as const) {
+      const lines = formatLintStartupMessage(result, { kind: "summary", pointer });
+      expect(lines[0]).not.toContain("--lint-verbose");
+    }
   });
 
   it("names the Studio badge and the lint command when pointer is 'studio'", () => {

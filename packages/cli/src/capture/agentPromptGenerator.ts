@@ -6,12 +6,13 @@
  *   - CLAUDE.md  — Claude Code convention
  *
  * This file generates a DATA INVENTORY that tells the AI agent what files
- * exist and what they contain. The actual workflow lives in the
- * product-launch-video skill — this file points agents there.
+ * exist and what they contain. How to make a film from it lives in the
+ * hyperframes skill's references/film.md and references/types/launch.md — this file points agents there.
  */
 
 import { readdirSync, existsSync } from "node:fs";
 import { writeCaptureFileSync } from "./captureFile.js";
+import { captureSiteName } from "./localPage.js";
 import { join } from "node:path";
 import type { DesignTokens } from "./types.js";
 import type { AnimationCatalog } from "./animationCataloger.js";
@@ -67,7 +68,7 @@ function buildPrompt(
   hasLottie?: boolean,
   hasShaders?: boolean,
 ): string {
-  const title = tokens.title || new URL(url).hostname.replace(/^www\./, "");
+  const title = tokens.title || captureSiteName(url);
 
   const colorSummary = tokens.colors
     .slice(0, 10)
@@ -199,7 +200,7 @@ function buildPrompt(
 
 Source: ${url}
 
-To create a video from this capture, use the \`product-launch-video\` skill.
+To create a video from this capture, use the \`hyperframes\` skill and read its \`references/film.md\` (From a website) and \`references/types/launch.md\`.
 
 ## What's in This Capture
 

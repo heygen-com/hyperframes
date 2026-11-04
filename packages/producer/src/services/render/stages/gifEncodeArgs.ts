@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { frameSequencePath } from "@hyperframes/engine";
 import type { Fps } from "@hyperframes/core";
 
 export interface GifEncodeArgsInput {
@@ -18,14 +18,16 @@ function fpsToFfmpegArg(fps: Fps): string {
 
 const KEEP_FILTER_GRAPH_WHEN_FRAMES_DROP_ALPHA = ["-reinit_filter", "0"];
 const WRITE_EVERY_FRAME_WHOLE = ["-gifflags", "0"];
+const FAIL_ON_UNREADABLE_FRAME_INSTEAD_OF_ENDING_THERE = ["-xerror"];
 
 function framesInput(input: GifEncodeArgsInput, fpsArg: string): string[] {
   return [
+    ...FAIL_ON_UNREADABLE_FRAME_INSTEAD_OF_ENDING_THERE,
     "-framerate",
     fpsArg,
     ...KEEP_FILTER_GRAPH_WHEN_FRAMES_DROP_ALPHA,
     "-i",
-    join(input.framesDir, input.framePattern),
+    frameSequencePath(input.framesDir, input.framePattern),
   ];
 }
 

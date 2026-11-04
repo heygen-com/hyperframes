@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { MEDIA_VISUAL_STYLE_PROPERTIES, quantizeTimeToFrame } from "./utils/parityContract.js";
 
 type ParityHarnessOptions = {
@@ -319,7 +320,7 @@ async function run(): Promise<void> {
       height: options.height,
       deviceScaleFactor: 1,
     },
-    args: [
+    args: withHyperframesBrowserMarker([
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
@@ -331,7 +332,7 @@ async function run(): Promise<void> {
       "--font-render-hinting=none",
       "--force-color-profile=srgb",
       `--window-size=${options.width},${options.height}`,
-    ],
+    ]),
   });
 
   try {

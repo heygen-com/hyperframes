@@ -19,6 +19,7 @@ import * as whisper from "./whisper/transcribe.js";
 import {
   RemoveBackgroundError,
   TranscribeError,
+  offloadHeavyMedia,
   removeBackground,
   transcribe,
   type TranscribeOptions,
@@ -370,6 +371,7 @@ describe("transcribe", () => {
       "utils/stoppableExecFile.ts",
       "utils/stoppableExecFile.test.ts",
       "whisper/manager.ts",
+      "whisper/modelFile.ts",
       "whisper/modelForLanguage.ts",
       "whisper/parakeet.ts",
       "whisper/sherpa.ts",
@@ -478,5 +480,11 @@ describe("removeBackground", () => {
 
     expect(err).toBeInstanceOf(RemoveBackgroundError);
     expect(err).toMatchObject({ code: "failed", message: failure.message, cause: failure });
+  });
+});
+
+describe("offloadHeavyMedia", () => {
+  it("is exported for apps that upload a project's heavy media themselves", () => {
+    expect(typeof offloadHeavyMedia).toBe("function");
   });
 });

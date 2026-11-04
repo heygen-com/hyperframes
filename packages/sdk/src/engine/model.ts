@@ -20,6 +20,15 @@ export interface ParsedDocument {
   wrapped: boolean;
   /** ensureHfIds-stamped original HTML — used as fallback / diff base. */
   stamped: string;
+  /** Replayed deletes a script still looks up: left out of the live document, written back hidden by serialize. */
+  keptDeletes?: KeptDelete[];
+}
+
+export interface KeptDelete {
+  hfId: string;
+  html: string;
+  parentId: string | null;
+  siblingIndex: number;
 }
 
 export function parseMutable(html: string): ParsedDocument {

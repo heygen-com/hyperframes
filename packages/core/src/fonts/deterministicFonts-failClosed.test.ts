@@ -15,7 +15,10 @@
  * The tests inject `fetchImpl` so no real network call happens.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   _clearGoogleFontCssCacheForTests,
   FONT_FETCH_FAILED,
@@ -30,6 +33,21 @@ import {
 // tests here request the same unresolved-font URL, so a leftover entry from
 // an earlier test would silently skip this test's own fetchImpl.
 beforeEach(() => _clearGoogleFontCssCacheForTests());
+
+let cacheDir: string;
+let prevCacheEnv: string | undefined;
+
+beforeAll(() => {
+  prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+  cacheDir = mkdtempSync(join(tmpdir(), "hf-font-fail-closed-"));
+  process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
+});
+
+afterAll(() => {
+  if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+  else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
+  rmSync(cacheDir, { recursive: true, force: true });
+});
 
 // HTML that requests a font NOT in FONT_ALIASES, so the resolver falls
 // through to the Google Fonts fetch path. (Bundled fonts like Inter

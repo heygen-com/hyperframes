@@ -10,6 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -28,6 +29,8 @@ import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
+import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
@@ -142,7 +145,7 @@ export type RangeRequest =
  *
  * Supports the three forms of `bytes=...`:
  *   - `bytes=START-END`: closed range, both bounds inclusive.
- *   - `bytes=START-`: open-ended, serve from START to EOF.
+ *   - `bytes=start-`: open-ended, from start to EOF (audio/video: see `openRangeEnd`).
  *   - `bytes=-SUFFIX`: last SUFFIX bytes.
  *
  * Multi-range requests (`bytes=0-99,200-299`) are treated as `absent`. The
@@ -152,7 +155,11 @@ export type RangeRequest =
  *
  * Exported for unit tests; not part of the public package surface.
  */
-export function parseRangeHeader(header: string | null | undefined, size: number): RangeRequest {
+export function parseRangeHeader(
+  header: string | null | undefined,
+  size: number,
+  contentType = "application/octet-stream",
+): RangeRequest {
   if (!header) return { kind: "absent" };
   const match = /^\s*bytes\s*=\s*(.*?)\s*$/i.exec(header);
   if (!match) return { kind: "absent" };
@@ -181,10 +188,10 @@ export function parseRangeHeader(header: string | null | undefined, size: number
   const start = Number(rawStart);
   if (!Number.isFinite(start)) return { kind: "absent" };
 
-  // Open-ended form: `bytes=START-` returns from START to EOF.
+  // Open-ended form: `bytes=start-` returns from start to EOF, or one bounded piece of audio/video.
   if (rawEnd === "") {
     if (start >= size) return { kind: "unsatisfiable" };
-    return { kind: "satisfiable", start, end: size - 1 };
+    return { kind: "satisfiable", start, end: openRangeEnd(start, size - 1, contentType) };
   }
 
   // Closed form: `bytes=START-END`
@@ -836,6 +843,19 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         return c.text(html, 200, { "Content-Type": contentType });
       }
 
+      if (ext === ".png") {
+        const untagged = stripSdrPngColourTags(await readFileAsync(fd));
+        if (untagged) {
+          const headers = {
+            "Content-Type": contentType,
+            "Content-Length": String(untagged.length),
+          };
+          return new Response(c.req.method === "HEAD" ? null : new Uint8Array(untagged), {
+            headers,
+          });
+        }
+      }
+
       // Stream binary file content rather than buffering it with readFileSync.
       // On video-heavy compositions Chrome requests several 32MB video files
       // back-to-back through this server; each readFileSync(32MB) blocked the
@@ -851,7 +871,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       // full-body 200s) so the client knows ranges are supported.
       const totalSize = stat.size;
       const rangeHeader = c.req.header("range");
-      const rangeRequest = parseRangeHeader(rangeHeader, totalSize);
+      const rangeRequest = parseRangeHeader(rangeHeader, totalSize, contentType);
 
       if (rangeRequest.kind === "unsatisfiable") {
         // 416 Range Not Satisfiable. RFC 7233 §4.4 mandates `Content-Range`
@@ -882,7 +902,8 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const stream = createReadStream(filePath, {
         fd,
         autoClose: true,
-        ...(range ? { start: range.start, end: range.end } : {}),
+        start: range?.start ?? 0,
+        ...(range ? { end: range.end } : {}),
       });
       streamOwnsFd = true;
       try {
@@ -899,7 +920,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     }
   });
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     // Track open connections so we can force-destroy them on close.
     // Without this, server.close() waits for keep-alive connections to
     // drain, holding the Node.js event loop open indefinitely.
@@ -914,24 +935,30 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // it must not listen on 0.0.0.0 where an IDE's port auto-forward surfaces
     // it as a transient, breakage-prone "preview".
     const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
-      resolve({
-        url: `http://localhost:${info.port}`,
-        port: info.port,
-        addPreHeadScript: (script: string) => {
-          preHeadScripts.push(script);
-        },
-        close: () => {
-          for (const socket of connections) socket.destroy();
-          connections.clear();
-          server.close();
-        },
-      });
+      // An OS-picked port (0) must be one Chromium will load from; a caller-chosen one is theirs.
+      const bound =
+        port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
+      bound.then((boundPort) => {
+        resolve({
+          url: `http://localhost:${boundPort}`,
+          port: boundPort,
+          addPreHeadScript: (script: string) => {
+            preHeadScripts.push(script);
+          },
+          close: () => {
+            for (const socket of connections) socket.destroy();
+            connections.clear();
+            server.close();
+          },
+        });
+      }, reject);
     });
 
     server.on("connection", (socket: IncomingMessage["socket"]) => {
       connections.add(socket);
       socket.on("close", () => connections.delete(socket));
     });
+    server.on("error", reject);
   });
 }
 

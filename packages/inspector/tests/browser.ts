@@ -1,4 +1,5 @@
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { snippetSource } from "./snippetSource";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -39,18 +40,10 @@ try {
   assert(
     cold.snippets.some((s) => s.code.includes("function move") || s.code.includes("tl.to(element")),
   );
-  assert(cold.snippets.some((s) => s.targets.length === 2 && s.code.includes("tl.to(element")));
+  assert(cold.snippets.some((s) => s.targets?.length === 2 && s.code.includes("tl.to(element")));
   checks.push("multi-target source deduplication");
-  for (const snippet of cold.snippets) {
-    const text = readFileSync(join(project, snippet.file), "utf8");
-    assert.equal(
-      snippet.code,
-      text
-        .split(/(?<=\n)/)
-        .slice(snippet.startLine - 1, snippet.endLine)
-        .join(""),
-    );
-  }
+  for (const snippet of cold.snippets)
+    assert.equal(snippet.code, snippetSource(project, snippet.id));
   checks.push("literal snippets equal original bytes");
   const single = await inspector.inspect({ targets: [{ selector: "#title" }] });
   const ambiguity = await inspector.inspect({
@@ -65,7 +58,9 @@ try {
     ["found", "missing", "found"],
   );
   assert.equal(ambiguity.results[0].candidates.length, 2);
-  assert(ambiguity.snippets.some((s) => s.targets.includes(0) && s.code.includes("tl.to(element")));
+  assert(
+    ambiguity.snippets.some((s) => s.targets?.includes(0) && s.code.includes("tl.to(element")),
+  );
   const overlapping = await inspector.inspect({ targets: [{ selector: "#scene-a, #title" }] });
   assert.equal(overlapping.results[0].animations, single.results[0].animations);
   checks.push("class groups, overlapping scopes, partial success and optional within");

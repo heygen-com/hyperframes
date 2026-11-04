@@ -10,8 +10,8 @@ export const HEYGEN_MIN_VERSION = "0.3.0";
 // installer text out of the runtime module; the docs are the safer source of
 // truth for platform-specific setup.
 export const HEYGEN_INSTALL_COMMAND =
-  "Install the CLI from https://developers.heygen.com/cli, then run: heygen auth login --oauth";
-export const HEYGEN_AUTH_COMMAND = "heygen auth login --oauth";
+  "Install the CLI from https://developers.heygen.com/cli, then run: hyperframes auth login";
+export const HEYGEN_AUTH_COMMAND = "hyperframes auth login";
 export const HEYGEN_UPDATE_COMMAND = "heygen update";
 export const HEYGEN_CLIENT_SOURCE_ARGV = ["--headers", "X-HeyGen-Client-Source: media-use"];
 

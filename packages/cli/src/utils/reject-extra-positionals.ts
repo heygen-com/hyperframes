@@ -1,12 +1,15 @@
 import type { ArgsDef, CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
 import { isTextFile } from "./textFile.js";
+import { jsonFailure } from "./jsonError.js";
 
 // citty binds each declared positional in order and leaves the rest in `args._`, where they were
 // silently dropped (`render ./proj out.mp4` rendered to the default path). Reject them up front.
 
 // Leaf commands that read extra positionals from `args._` on purpose, by command path.
 export const ACCEPTS_EXTRA_POSITIONALS = new Set([
+  "add",
+  "audio",
   "compare",
   "figma asset",
   "skills update",
@@ -15,10 +18,6 @@ export const ACCEPTS_EXTRA_POSITIONALS = new Set([
 
 // Free-text commands: their last positional takes every remaining word (`tts hello world`).
 export const JOINS_EXTRA_POSITIONALS = new Set(["catalog", "tts"]);
-
-const EXTRA_POSITIONAL_HINTS: Record<string, string> = {
-  add: "Run add once per item, or pass a single tag to install every item tagged with it.",
-};
 
 // citty parses `--json` on every command (`--json=1` as "1"); after `--` it is a positional.
 function wantsJson(value: unknown): boolean {
@@ -69,9 +68,8 @@ export function resolveExtraPositionals(
   const plural = extra.length === 1 ? "" : "s";
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
-    `Usage: ${usageLine(path, args)}` +
-    (EXTRA_POSITIONAL_HINTS[path] ? `\n${EXTRA_POSITIONAL_HINTS[path]}` : "");
-  if (wantsJson(parsed?.json)) console.log(JSON.stringify({ ok: false, error: message }));
+    `Usage: ${usageLine(path, args)}`;
+  if (wantsJson(parsed?.json)) console.log(JSON.stringify(jsonFailure("usage_error", message)));
   else console.error(message);
   // Telemetry reads the thrown message: the command path and a count, never the arguments.
   throw new CliUsageError(

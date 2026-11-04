@@ -13,6 +13,7 @@ export function TimelineRulerPart() {
       totalH={props.totalH}
       effectiveDuration={props.effectiveDuration}
       majorTickInterval={props.majorTickInterval}
+      tickFrameRate={props.tickFrameRate}
       theme={props.theme}
       beatAnalysis={props.beatAnalysis}
       contentOrigin={props.contentOrigin}

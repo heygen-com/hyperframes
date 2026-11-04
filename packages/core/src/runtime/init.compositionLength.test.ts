@@ -71,6 +71,25 @@ describe("runtime composition length and size", () => {
     expect(window.__player?.getDuration()).toBe(9);
   });
 
+  it("keeps a timeline-less composition's declared length when a rebind finds no timeline", () => {
+    const html = `<div data-composition-id="main" data-root="true" data-duration="6"></div>`;
+    expect(lengthOf(html, {})).toBe(6);
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(window.__player?.getDuration()).toBe(6);
+    window.__player?.play();
+    expect(window.__player?.isPlaying()).toBe(true);
+  });
+
+  it("reports 0 after a rebind for a timeline-less composition with nothing that gives a length", () => {
+    expect(lengthOf(`<div data-composition-id="main" data-root="true"></div>`, {})).toBe(0);
+
+    window.__hfForceTimelineRebind?.();
+
+    expect(window.__player?.getDuration()).toBe(0);
+  });
+
   it("takes the timeline's length when the root declares none", () => {
     const html = `<div data-composition-id="main" data-root="true"></div>`;
     expect(lengthOf(html, { main: createMockTimeline(6) })).toBe(6);

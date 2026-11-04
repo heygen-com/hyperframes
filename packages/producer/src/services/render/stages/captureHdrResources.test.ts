@@ -1,12 +1,4 @@
-import {
-  closeSync,
-  constants,
-  existsSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -23,7 +15,6 @@ import { createRenderJob } from "../../renderOrchestrator.js";
 import { resolveHdrVideoFrameIndex } from "../../hdrCompositor.js";
 import {
   cleanupHdrVideoFrameSource,
-  estimateHdrExtractionBytes,
   extractHdrVideoFrames,
   getHdrExtractionReservedBytes,
   planHdrResources,
@@ -51,6 +42,25 @@ function ffmpegResult(success: boolean): RunFfmpegResult {
 }
 
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
+
+/**
+ * A mock FFmpeg: answers the first-frame probe and fills each extraction's output with its frames,
+ * stopping where the source's `realFrames` (at the fixture's 2 fps) run out.
+ */
+function windowWriter(calls: string[][], realFrames = Infinity) {
+  return async (args: string[]): Promise<RunFfmpegResult> => {
+    if (args.at(-1) === "-") return { ...ffmpegResult(true), stderr: "pts_time:0.000000" };
+    calls.push(args);
+    const out = args.at(-1);
+    if (!out) throw new Error("mock FFmpeg output path missing");
+    const filter = args[args.indexOf("-vf") + 1] ?? "";
+    const lead = Number(/trim=start_frame=(\d+)/.exec(filter)?.[1] ?? 0);
+    const first = Math.round(Number(args[args.indexOf("-ss") + 1]) * 2) + lead;
+    const wanted = Number(args[args.indexOf("-frames:v") + 1]);
+    writeFileSync(out, Buffer.alloc(Math.max(0, Math.min(wanted, realFrames - first)) * 6));
+    return ffmpegResult(true);
+  };
+}
 
 function hdrVideo(id: string, overrides: Partial<VideoElement> = {}): VideoElement {
   return {
@@ -125,7 +135,17 @@ function videoComposition(src: string): CompositionMetadata {
     height: 1080,
     audios: [],
     images: [],
-    videos: [{ id: "a-roll", src, start: 0, end: 5, mediaStart: 0, loop: false, hasAudio: false }],
+    videos: [
+      {
+        id: "a-roll",
+        src,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: false,
+      },
+    ],
   };
 }
 
@@ -169,41 +189,11 @@ describe("planHdrResources non-ASCII src resolution (PRINFRA-349)", () => {
   });
 });
 
-describe("estimateHdrExtractionBytes", () => {
-  it("sums 6 bytes per pixel per frame across videos", () => {
-    // 10s @ 30fps of 1920x1080 = 300 frames * 1920*1080*6
-    expect(
-      estimateHdrExtractionBytes([{ durationSeconds: 10, width: 1920, height: 1080 }], 30),
-    ).toBe(300 * 1920 * 1080 * 6);
-  });
-
-  it("accumulates multiple videos and rounds frame counts up", () => {
-    const bytes = estimateHdrExtractionBytes(
-      [
-        { durationSeconds: 1.5, width: 100, height: 100 },
-        { durationSeconds: 0.05, width: 100, height: 100 },
-      ],
-      30,
-    );
-    expect(bytes).toBe((45 + 2) * 100 * 100 * 6);
-  });
-
-  it("treats negative durations as empty", () => {
-    expect(estimateHdrExtractionBytes([{ durationSeconds: -3, width: 100, height: 100 }], 30)).toBe(
-      0,
-    );
-  });
-});
-
 describe("resolveHdrExtractionWindow", () => {
   it("bounds a two-second composition backed by an unbounded HDR source to 60 raw frames", () => {
     const window = resolveHdrExtractionWindow(hdrVideo("long-hdr"), 2, videoMetadata(120));
     if (!window) throw new Error("expected a visible HDR extraction window");
-    const { durationSeconds } = window;
-    expect(durationSeconds).toBe(2);
-    expect(estimateHdrExtractionBytes([{ durationSeconds, width: 3840, height: 2160 }], 30)).toBe(
-      60 * 3840 * 2160 * 6,
-    );
+    expect(window.durationSeconds).toBe(2);
   });
 
   it("independently caps a stale finite media end at the composition duration", () => {
@@ -248,7 +238,12 @@ describe("resolveHdrExtractionWindow", () => {
   });
 
   it.each([
-    { start: -5, compositionDuration: 2, expected: null, label: "already ended" },
+    {
+      start: -5,
+      compositionDuration: 2,
+      expected: null,
+      label: "already ended",
+    },
     {
       start: -2,
       compositionDuration: 15,
@@ -260,7 +255,11 @@ describe("resolveHdrExtractionWindow", () => {
     ({ start, compositionDuration, expected }) => {
       expect(
         resolveHdrExtractionWindow(
-          hdrVideo("open-held", { start, end: Number.POSITIVE_INFINITY, loop: false }),
+          hdrVideo("open-held", {
+            start,
+            end: Number.POSITIVE_INFINITY,
+            loop: false,
+          }),
           compositionDuration,
           videoMetadata(3),
         ),
@@ -269,7 +268,11 @@ describe("resolveHdrExtractionWindow", () => {
   );
 
   it.each([
-    { loop: true, preservation: { preserveTimelinePhase: true }, label: "loop" },
+    {
+      loop: true,
+      preservation: { preserveTimelinePhase: true },
+      label: "loop",
+    },
     {
       loop: false,
       preservation: { preserveTimelineEnd: true, ensureFinalFrame: true },
@@ -308,7 +311,12 @@ describe("resolveHdrExtractionWindow", () => {
   it("rejects mediaStart at source EOF before HDR budgeting", () => {
     expect(() =>
       resolveHdrExtractionWindow(hdrVideo("past-eof", { mediaStart: 3 }), 60, videoMetadata(3)),
-    ).toThrowError(expect.objectContaining({ kind: "media_start_out_of_range", retryable: false }));
+    ).toThrowError(
+      expect.objectContaining({
+        kind: "media_start_out_of_range",
+        retryable: false,
+      }),
+    );
   });
 
   it("skips HDR media with no interval inside the composition", () => {
@@ -335,7 +343,7 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
       {
         path: vfrFixture,
         input: "testsrc2=s=64x64:d=10:rate=1/2",
-        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-vsync", "vfr"],
+        filters: ["-vf", "select='eq(n,0)+eq(n,2)'", "-fps_mode", "vfr"],
       },
       {
         path: nonZeroStartFixture,
@@ -385,8 +393,18 @@ describe.skipIf(!HAS_FFMPEG)("raw HDR held tails on sparse-timestamp sources", (
   });
 
   it.each([
-    { label: "sub-1fps CFR", src: cfrFixture, expectedVfr: false, streamStart: 0 },
-    { label: "sparse VFR", src: vfrFixture, expectedVfr: true, streamStart: 0 },
+    {
+      label: "sub-1fps CFR",
+      src: cfrFixture,
+      expectedVfr: false,
+      streamStart: 0,
+    },
+    {
+      label: "sparse VFR",
+      src: vfrFixture,
+      expectedVfr: true,
+      streamStart: 0,
+    },
     {
       label: "non-zero stream start",
       src: nonZeroStartFixture,
@@ -518,20 +536,20 @@ describe("extractHdrVideoFrames", () => {
     try {
       const extracted = await extractHdrVideoFrames({
         ...fixture,
-        runFfmpegImpl: async (args) => {
-          calls.push(args);
-          const rawPath = args.at(-1);
-          if (!rawPath) throw new Error("mock FFmpeg output path missing");
-          // The visible [0, 2] interval is two seconds at 2fps = 4 rgb48le 1x1 frames.
-          writeFileSync(rawPath, Buffer.alloc(4 * 6));
-          return ffmpegResult(true);
-        },
+        // The visible [0, 2] interval is two seconds at 2fps = 4 rgb48le 1x1 frames.
+        runFfmpegImpl: windowWriter(calls),
       });
       try {
         expect(calls).toHaveLength(1);
         const args = calls[0] ?? [];
-        expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "60"]);
-        expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "2"]);
+        expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual([
+          "-ss",
+          "60.000000",
+        ]);
+        expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual([
+          "-frames:v",
+          "4",
+        ]);
         expect(fixture.prep.hdrVideoStartTimes.get("preroll")).toBe(0);
         expect(extracted.sources.get("preroll")?.frameCount).toBe(4);
         expect(extracted.estimatedBytes).toBe(24);
@@ -549,32 +567,27 @@ describe("extractHdrVideoFrames", () => {
     {
       loop: true,
       expectedFrameIndex: 4,
-      expectedFrameCount: 6,
       expectedStart: -5,
-      expectedSeek: "0",
-      expectedDuration: "3",
+      expectedSeek: "0.000000",
+      expectedFrames: "7",
       label: "loop phase",
     },
     {
       loop: false,
       expectedFrameIndex: 0,
-      expectedFrameCount: 1,
       expectedStart: 0,
       expectedSeek: "2",
-      expectedDuration: undefined,
+      expectedFrames: "1",
       label: "held final frame",
     },
   ])("preserves $label after materially negative preroll", async (testCase) => {
-    const {
-      loop,
-      expectedFrameIndex,
-      expectedFrameCount,
-      expectedStart,
-      expectedSeek,
-      expectedDuration,
-    } = testCase;
+    const { loop, expectedFrameIndex, expectedStart, expectedSeek, expectedFrames } = testCase;
     const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-negative-source-"));
-    const video = hdrVideo(`negative-${String(loop)}`, { start: -5, end: 10, loop });
+    const video = hdrVideo(`negative-${String(loop)}`, {
+      start: -5,
+      end: 10,
+      loop,
+    });
     const fixture = hdrExtractionFixture([video], framesDir);
     const calls: string[][] = [];
 
@@ -593,13 +606,7 @@ describe("extractHdrVideoFrames", () => {
                 finalFrameOnly: true,
               }
             : window,
-        runFfmpegImpl: async (args) => {
-          calls.push(args);
-          const rawPath = args.at(-1);
-          if (!rawPath) throw new Error("mock FFmpeg output path missing");
-          writeFileSync(rawPath, Buffer.alloc(expectedFrameCount * 6));
-          return ffmpegResult(true);
-        },
+        runFfmpegImpl: windowWriter(calls, 6),
       });
       try {
         const args = calls[0] ?? [];
@@ -607,18 +614,10 @@ describe("extractHdrVideoFrames", () => {
           "-ss",
           expectedSeek,
         ]);
-        if (expectedDuration === undefined) {
-          expect(args).not.toContain("-t");
-          expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual([
-            "-frames:v",
-            "1",
-          ]);
-        } else {
-          expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual([
-            "-t",
-            expectedDuration,
-          ]);
-        }
+        expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual([
+          "-frames:v",
+          expectedFrames,
+        ]);
         expect(fixture.prep.hdrVideoStartTimes.get(video.id)).toBe(expectedStart);
         const source = extracted.sources.get(video.id);
         expect(source?.loop).toBe(loop);
@@ -652,18 +651,18 @@ describe("extractHdrVideoFrames", () => {
           // A valid mux can have a short video stream and a much longer audio
           // stream/container. Scratch planning must follow video EOF.
           extractMediaMetadataImpl: async () => videoMetadata(60, 3),
-          runFfmpegImpl: async (args) => {
-            calls.push(args);
-            const rawPath = args.at(-1);
-            if (!rawPath) throw new Error("mock FFmpeg output path missing");
-            writeFileSync(rawPath, Buffer.alloc(6 * 6));
-            return ffmpegResult(true);
-          },
+          runFfmpegImpl: windowWriter(calls, 6),
         });
         try {
           const args = calls[0] ?? [];
-          expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual(["-ss", "0"]);
-          expect(args.slice(args.indexOf("-t"), args.indexOf("-t") + 2)).toEqual(["-t", "3"]);
+          expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual([
+            "-ss",
+            "0.000000",
+          ]);
+          expect(args.slice(args.indexOf("-frames:v"), args.indexOf("-frames:v") + 2)).toEqual([
+            "-frames:v",
+            loop ? "7" : "6",
+          ]);
           expect(extracted.estimatedBytes).toBe(36);
           expect(getHdrExtractionReservedBytes()).toBe(36);
           expect(fixture.prep.hdrVideoStartTimes.get(video.id)).toBe(0);
@@ -693,6 +692,7 @@ describe("extractHdrVideoFrames", () => {
         extractHdrVideoFrames({
           ...fixture,
           runFfmpegImpl: async (args) => {
+            if (args.at(-1) === "-") return ffmpegResult(true);
             call += 1;
             const rawPath = args.at(-1);
             if (!rawPath) throw new Error("mock FFmpeg output path missing");
@@ -715,50 +715,206 @@ describe("extractHdrVideoFrames", () => {
 });
 
 describe("cleanupHdrVideoFrameSource", () => {
-  it("closes the raw descriptor and immediately removes its directory", () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-cleanup-"));
-    const rawPath = join(dir, "frames.rgb48le");
-    writeFileSync(rawPath, Buffer.alloc(12));
-    const fd = openSync(rawPath, constants.O_RDONLY);
-
-    cleanupHdrVideoFrameSource({
-      dir,
-      rawPath,
-      fd,
-      width: 1,
-      height: 2,
-      frameSize: 12,
-      frameCount: 1,
-      scratch: Buffer.alloc(12),
-    });
-
-    expect(existsSync(dir)).toBe(false);
-    expect(() => closeSync(fd)).toThrow();
+  const sourceIn = (dir: string, close: () => void) => ({
+    dir,
+    windows: { totalFrames: 1, lease: async () => null, close },
+    width: 1,
+    height: 2,
+    frameSize: 12,
+    frameCount: 1,
+    scratch: Buffer.alloc(12),
   });
 
-  it("closes the descriptor but retains raw files with KEEP_TEMP=1", () => {
+  it("closes the windows and immediately removes their directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-cleanup-"));
+    writeFileSync(join(dir, "window-0.rgb48le"), Buffer.alloc(12));
+    const close = vi.fn();
+
+    cleanupHdrVideoFrameSource(sourceIn(dir, close));
+
+    expect(existsSync(dir)).toBe(false);
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the windows but retains raw files with KEEP_TEMP=1", () => {
     vi.stubEnv("KEEP_TEMP", "1");
     const dir = mkdtempSync(join(tmpdir(), "hf-hdr-keep-temp-"));
-    const rawPath = join(dir, "frames.rgb48le");
+    const rawPath = join(dir, "window-0.rgb48le");
     writeFileSync(rawPath, Buffer.alloc(12));
-    const fd = openSync(rawPath, constants.O_RDONLY);
+    const close = vi.fn();
 
     try {
-      cleanupHdrVideoFrameSource({
-        dir,
-        rawPath,
-        fd,
-        width: 1,
-        height: 2,
-        frameSize: 12,
-        frameCount: 1,
-        scratch: Buffer.alloc(12),
-      });
+      cleanupHdrVideoFrameSource(sourceIn(dir, close));
 
       expect(existsSync(rawPath)).toBe(true);
-      expect(() => closeSync(fd)).toThrow();
+      expect(close).toHaveBeenCalledOnce();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+describe("extractHdrVideoFrames scratch bound", () => {
+  it("holds a long clip in a few windows instead of the whole clip", async () => {
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-bounded-"));
+    const video = hdrVideo("long", { start: 0, end: 20, mediaStart: 0 });
+    const fixture = hdrExtractionFixture([video], framesDir);
+    fixture.composition.duration = 20;
+    const calls: string[][] = [];
+
+    try {
+      const extracted = await extractHdrVideoFrames({
+        ...fixture,
+        maxResidentWindows: 2,
+        windowBytes: 8 * 6,
+        extractMediaMetadataImpl: async () => videoMetadata(20),
+        runFfmpegImpl: windowWriter(calls),
+      });
+      try {
+        const source = extracted.sources.get("long");
+        // 20 s at 2 fps is 40 one-pixel frames, held 8 per window.
+        expect(source?.frameCount).toBe(40);
+        expect(extracted.estimatedBytes).toBe(2 * 8 * 6);
+        let mostFiles = 0;
+        for (let i = 0; i < 40; i++) {
+          const lease = await source?.windows.lease(i);
+          lease?.release();
+          mostFiles = Math.max(mostFiles, readdirSync(source?.dir ?? "").length);
+        }
+        expect(mostFiles).toBeLessThanOrEqual(2);
+        expect(calls.length).toBe(5);
+        // The second window starts at frame 8 (4 s): seek a whole second before it, trim the lead-in.
+        const second = calls[1] ?? [];
+        expect(second[second.indexOf("-ss") + 1]).toBe("3.000000");
+        expect(second[second.indexOf("-vf") + 1]).toContain("fps=2:start_time=0.000000");
+        expect(second[second.indexOf("-vf") + 1]).toContain("trim=start_frame=2");
+      } finally {
+        for (const source of extracted.sources.values()) cleanupHdrVideoFrameSource(source);
+        extracted.releaseReservation();
+      }
+    } finally {
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("extractHdrVideoFrames loop frame count", () => {
+  it("knows a looped source's real frame count before capture starts", async () => {
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-hdr-loop-count-"));
+    const video = hdrVideo("loop", { start: 0, end: 20, mediaStart: 0, loop: true });
+    const fixture = hdrExtractionFixture([video], framesDir);
+    fixture.composition.duration = 20;
+    const realFrames = 37;
+
+    try {
+      const extracted = await extractHdrVideoFrames({
+        ...fixture,
+        windowBytes: 8 * 6,
+        extractMediaMetadataImpl: async () => videoMetadata(20),
+        runFfmpegImpl: windowWriter([], realFrames),
+      });
+      try {
+        // 40 planned frames plus one so the real end is observable; the source really has 37.
+        expect(extracted.sources.get("loop")?.frameCount).toBe(realFrames);
+      } finally {
+        for (const source of extracted.sources.values()) cleanupHdrVideoFrameSource(source);
+        extracted.releaseReservation();
+      }
+    } finally {
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe.skipIf(!HAS_FFMPEG)("raw HDR windows past the first (#6556)", () => {
+  async function leaseAll(src: string, end: number, dir: string) {
+    const video = hdrVideo("counter", { src, start: 0, end });
+    const fixture = hdrExtractionFixture([video], join(dir, "frames"));
+    fixture.job = createRenderJob({ fps: { num: 30, den: 1 }, quality: "standard" });
+    fixture.composition.duration = end;
+    fixture.prep.hdrExtractionDims.set(video.id, { width: 64, height: 64 });
+    const frameSize = 64 * 64 * 6;
+    const extracted = await extractHdrVideoFrames({
+      ...fixture,
+      width: 64,
+      height: 64,
+      // 8-frame windows: frames 8 and up all come from seeked + trimmed passes.
+      windowBytes: 8 * frameSize,
+      runFfmpegImpl: runFfmpeg,
+      extractMediaMetadataImpl: extractMediaMetadata,
+      resolveFinalFrameExtractionWindowImpl: resolveFinalFrameExtractionWindow,
+    });
+    try {
+      const source = extracted.sources.get(video.id)!;
+      const frames: string[] = [];
+      const buf = Buffer.alloc(frameSize);
+      for (let i = 0; i < source.frameCount; i++) {
+        const lease = await source.windows.lease(i);
+        expect(lease).not.toBeNull();
+        readSync(lease!.fd, buf, 0, frameSize, lease!.offset);
+        lease!.release();
+        frames.push(buf.toString("base64"));
+      }
+      return frames;
+    } finally {
+      for (const s of extracted.sources.values()) cleanupHdrVideoFrameSource(s);
+      extracted.releaseReservation();
+    }
+  }
+
+  it("gives every composition frame its own source frame across window boundaries", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-window-dupes-"));
+    const src = join(dir, "counter.mp4");
+    try {
+      const synth = await runFfmpeg([
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc2=s=64x64:d=4:rate=30", "-f", "lavfi", "-i", "sine=d=4"],
+        // The audio track matters: with one in the input, FFmpeg's default CFR sync pads a
+        // timestamp-less raw output from pts 0 (camera/phone clips always carry audio).
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", "-y", src],
+      ]);
+      expect(synth.success).toBe(true);
+      const frames = await leaseAll(src, 4, dir);
+      expect(frames).toHaveLength(120);
+      expect(new Set(frames).size).toBe(120);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("holds the first frame until a video that starts after its audio begins, like Chrome", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-hdr-window-delayed-"));
+    const counter = join(dir, "counter.mp4");
+    const src = join(dir, "delayed.mp4");
+    try {
+      const synth = await runFfmpeg([
+        ...["-hide_banner", "-loglevel", "error", "-f", "lavfi"],
+        ...["-i", "testsrc2=s=64x64:d=4:rate=30", "-f", "lavfi", "-i", "sine=d=4.5"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-c:a", "aac", "-y", counter],
+      ]);
+      expect(synth.success).toBe(true);
+      const delay = await runFfmpeg([
+        ...[
+          "-hide_banner",
+          "-loglevel",
+          "error",
+          "-itsoffset",
+          "0.5",
+          "-i",
+          counter,
+          "-i",
+          counter,
+        ],
+        ...["-map", "0:v", "-map", "1:a", "-c", "copy", "-y", src],
+      ]);
+      expect(delay.success).toBe(true);
+      const frames = await leaseAll(src, 4.5, dir);
+      // The picture starts at 0.5 s = frame 15; until then the first frame shows.
+      expect(frames).toHaveLength(135);
+      expect(new Set(frames.slice(0, 16)).size).toBe(1);
+      expect(frames.slice(15)).toEqual(await leaseAll(counter, 4, dir));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

@@ -1,7 +1,13 @@
 import {
+  localBeatEvidence,
+  medianInterval,
+  rhythm,
   runLadder,
   signalDuration,
   signalProvider,
+  silence,
+  snapper,
+  STEADY_BEAT_CONFIDENCE,
   tempoOf,
   type AnalysisQuality,
   type AudioAnalysisProvider,
@@ -10,6 +16,7 @@ import {
   type Beats,
   type LadderResult,
   type LadderStep,
+  type SnapReport,
 } from "@hyperframes/core/audio-analysis";
 import { apiProvider } from "./providers/api.js";
 import { appleMuProvider, appleSoundProvider } from "./providers/apple.js";
@@ -36,6 +43,7 @@ function audioAnalysisProviders(): AudioAnalysisProvider<AudioSignal>[] {
 
 export interface AnalyzeOptions {
   capabilities: readonly AudioCapability[];
+  /** Defaults to local: audio leaves the machine only when best is asked for. */
   quality?: AnalysisQuality;
   /** Pin a capability to one provider, skipping the ladder. */
   provider?: Partial<Record<AudioCapability, string>>;
@@ -103,6 +111,7 @@ export async function analyzeSignal(
   request: AnalyzeOptions,
   providers: readonly AudioAnalysisProvider<AudioSignal>[] = audioAnalysisProviders(),
 ): Promise<Analysis> {
+  const quality = request.quality ?? "local";
   const { beats, bpm } = request.provider ?? {};
   if (beats && bpm && beats !== bpm) throw new Error("beats and bpm must use the same provider");
   const beatProvider = beats ?? bpm;
@@ -119,11 +128,12 @@ export async function analyzeSignal(
     let result = ladders.get(capability);
     if (!result) {
       const withContext = capability === "onsets" && framing.cut;
-      result = runLadder(capability, withContext ? signal : framing.windowed, providers, {
-        quality: request.quality,
+      const input = withContext ? signal : framing.windowed;
+      result = runLadder(capability, input, providers, {
+        quality,
         provider: capability === "beats" ? beatProvider : request.provider?.[capability],
         options: optionsFor(capability, request, analysis.analyzed),
-      });
+      }).then((answer) => settled(capability, answer, input));
       ladders.set(capability, result);
     }
     return result;
@@ -140,7 +150,82 @@ export async function analyzeSignal(
     const said = new Set(analysis.warnings);
     analysis.warnings.push(...result.warnings.filter((w) => !said.has(w)));
   }
+  analysis.warnings.push(...serviceHint(quality, analysis, request.capabilities));
   return analysis;
+}
+
+function serviceHint(
+  quality: AnalysisQuality,
+  analysis: Analysis,
+  capabilities: readonly AudioCapability[],
+): string[] {
+  const leftToService = (capability: AudioCapability) =>
+    analysis.values[capability] == null &&
+    (analysis.ladder[capability] ?? []).some((s) => s.outcome === "excluded");
+  return quality === "local" && capabilities.some(leftToService)
+    ? ["a service could have answered what is missing: --quality best uploads the audio to HeyGen"]
+    : [];
+}
+
+export interface MarkedBeats {
+  times: number[];
+  /** True where nothing rhythmic sounds at the beat (silence, hiss, a held note): the grid runs on there. */
+  unheard: boolean[];
+  meter?: number | null;
+  snap?: SnapReport;
+}
+
+/** Under this a beat sits in digital silence, whatever the rest of the clip does. */
+const DIGITAL_SILENCE_DB = -80;
+/** A beat whose onset stands this far over its span is heard even where the span keeps no steady beat (narration). */
+const HEARD_LIFT = 1.5;
+
+const roundTime = (t: number) => Math.round(t * 1000) / 1000;
+
+/** Beats move onto the signal's own; unheard in digital silence, or with neither a steady beat around nor an onset. */
+function settled(
+  capability: AudioCapability,
+  result: LadderResult,
+  signal: AudioSignal,
+): LadderResult {
+  if (capability !== "beats" && capability !== "downbeats") return result;
+  const value = result.value as Omit<MarkedBeats, "unheard"> | null;
+  if (!value?.times) return result;
+  const beat = beatOf(capability, value, signal);
+  const onSignal = result.provenance === "signal" ? value : snappedToSignal(value, signal, beat);
+  const quiet = silence(signal, { thresholdDb: DIGITAL_SILENCE_DB });
+  const evidence = localBeatEvidence(
+    signal,
+    onSignal.times,
+    capability === "downbeats" ? beat : undefined,
+  );
+  const unheard = onSignal.times.map(
+    (t, i) =>
+      quiet.some((span) => t >= span.start && t < span.end) ||
+      (evidence[i]!.confidence < STEADY_BEAT_CONFIDENCE && evidence[i]!.lift < HEARD_LIFT),
+  );
+  return { ...result, value: { ...onSignal, unheard } };
+}
+
+/** The beat is the answer's own beat interval, or its bar over its meter; the signal's when neither is known. */
+function beatOf(
+  capability: "beats" | "downbeats",
+  value: Omit<MarkedBeats, "unheard">,
+  signal: AudioSignal,
+): number {
+  const interval = medianInterval(value.times);
+  const own =
+    capability === "beats" ? interval : interval && value.meter ? interval / value.meter : null;
+  return own ?? medianInterval(rhythm(signal).beats.times) ?? 0;
+}
+
+function snappedToSignal(value: Omit<MarkedBeats, "unheard">, signal: AudioSignal, beat: number) {
+  const onBeat = snapper(rhythm(signal).beats.times, beat / 4, "signal beats");
+  return {
+    ...value,
+    times: value.times.map((t) => roundTime(onBeat.snap(t))),
+    snap: onBeat.report(),
+  };
 }
 
 /** Tempo is read off the beats of whichever provider placed them, so the two never disagree. */

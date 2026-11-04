@@ -24,6 +24,7 @@ class TestHyperframesPlayer extends HTMLElement {
 
   constructor() {
     super();
+    this.attachShadow({ mode: "open" });
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
     this.iframeElement.addEventListener = ((type, listener, options) => {
@@ -378,6 +379,39 @@ describe("ready to show", () => {
     expect(usePlayerStore.getState().previewBooted).toBe(true);
   });
 
+  /** A first load whose one audio has no data yet: Studio's asset wait. */
+  async function loadWithUnloadedMedia(props: Partial<PlayerProps>) {
+    const { host, player } = await mountPlayer(props);
+    const el = player as TestHyperframesPlayer;
+    document.body.appendChild(el.iframeElement);
+    const doc = el.iframeElement.contentDocument!;
+    const audio = doc.createElement("audio");
+    Object.defineProperty(audio, "readyState", { value: 0, configurable: true });
+    Object.defineProperty(audio, "networkState", { value: 2, configurable: true });
+    doc.body.appendChild(audio);
+    loadAndReady(el);
+    painted(el);
+    await flushEffects();
+    return host;
+  }
+
+  it("keeps its asset wait on a later load that only skips the composition cover", async () => {
+    const host = await loadWithUnloadedMedia({ suppressLoadingOverlay: true });
+    expect(host.textContent).toContain("Preparing preview assets");
+  });
+
+  it("draws no loader of its own when the host draws one, and still says the preview is loading", async () => {
+    const onCompositionLoadingChange = vi.fn();
+    const host = await loadWithUnloadedMedia({
+      suppressLoadingOverlay: false,
+      loadingUi: "host",
+      onCompositionLoadingChange,
+    });
+    expect(host.textContent).not.toContain("Preparing preview assets");
+    expect(host.textContent).not.toContain("Loading composition");
+    expect(onCompositionLoadingChange).toHaveBeenLastCalledWith(true);
+  });
+
   it("stops deferring editing work when the preview never shows", async () => {
     vi.useFakeTimers();
     try {
@@ -438,6 +472,15 @@ describe("ready to show", () => {
   });
 });
 
+describe("preview canvas chrome", () => {
+  it("does not paint Studio chrome on the scaled composition iframe", async () => {
+    const { player } = await mountPlayer();
+    const injectedStyles = Array.from(player.shadowRoot?.querySelectorAll("style") ?? []);
+
+    expect(injectedStyles.some((style) => style.textContent?.includes("box-shadow"))).toBe(false);
+  });
+});
+
 describe("composition loading overlay", () => {
   it("shows while the composition is loading", () => {
     expect(shouldShowCompositionLoadingOverlay(true)).toBe(true);
@@ -481,5 +524,12 @@ describe("composition loading overlay", () => {
     expect(hasUnloadedAssets(iframe, false)).toBe(false);
 
     iframe.remove();
+  });
+});
+
+describe("accelerated canvases", () => {
+  it("are tracked in Studio's window, whose prototype a preview canvas gets when Studio reaches it first", () => {
+    expect("__hfAccelTracked" in HTMLCanvasElement.prototype.getContext).toBe(true);
+    expect(Reflect.get(window, "__hfAcceleratedCanvases")).toBeInstanceOf(WeakSet);
   });
 });

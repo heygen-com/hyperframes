@@ -318,6 +318,30 @@ test("re-freezing bumps the version and archives the old folder", () => {
   });
 });
 
+test("re-freezing without a brief does not import the previous version's brief", () => {
+  withSandbox(({ project, root }) => {
+    writeFileSync(join(project, "BRIEF.md"), BRIEF);
+    freezeRecipe({ projectDir: project, name: "promo" });
+
+    rmSync(join(project, "BRIEF.md"));
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "product-launch-video",
+    });
+    assert.equal(frozen.version, 2);
+    assert.equal(frozen.briefSkeleton, false);
+    assert.ok(existsSync(join(project, ".media/recipes/promo@v1/brief-skeleton.md")));
+
+    const fresh = join(root, "fresh-project");
+    mkdirSync(fresh, { recursive: true });
+    const used = useRecipe({ projectDir: fresh, name: "promo" });
+    assert.equal(used.recipe.version, 2);
+    assert.equal(used.briefSkeletonPath, undefined);
+    assert.ok(!existsSync(join(fresh, ".media/recipes/promo/brief-skeleton.md")));
+  });
+});
+
 test("list merges tiers (project wins), filters by workflow, skips archives", () => {
   withSandbox(({ project, root }) => {
     freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" });

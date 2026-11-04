@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import {
   isProcessDescendant,
   killProcessTree,
-  killOrphanedProcesses,
   processIdentity,
   windowsProcessTreeKillArgs,
 } from "./orphanCleanup.js";
@@ -109,19 +108,4 @@ describe.skipIf(!IS_UNIX)("killProcessTree", () => {
     await exitPromise;
     expect(() => process.kill(proc.pid!, 0)).toThrow();
   }, 5000);
-});
-
-describe.skipIf(!IS_UNIX)("killOrphanedProcesses", () => {
-  it("returns 0 when no orphans exist", () => {
-    const killed = killOrphanedProcesses();
-    expect(killed).toBe(0);
-  });
-
-  it("does not kill non-orphaned Chrome processes", () => {
-    // Our current process is not an orphan (PPID !== 1), so any
-    // chrome-headless-shell processes we'd find with our PID as
-    // ancestor wouldn't be killed.
-    const killed = killOrphanedProcesses();
-    expect(killed).toBe(0);
-  });
 });

@@ -2,8 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 
 const { execFileMock } = vi.hoisted(() => ({
   execFileMock: vi.fn(
-    (_file: string, _args: string[], _options: unknown, callback: (error: Error) => void) =>
-      callback(new Error("ffmpeg stub")),
+    (
+      _file: string,
+      args: string[],
+      _options: unknown,
+      callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+    ) =>
+      // ffprobe finds a track to measure; ffmpeg's measurement then fails.
+      args.includes("-select_streams")
+        ? callback(
+            null,
+            JSON.stringify({ streams: [{ codec_type: "audio", codec_name: "aac" }] }),
+            "",
+          )
+        : callback(new Error("ffmpeg stub")),
   ),
 }));
 
@@ -20,6 +32,7 @@ describe("measureAudio child-process options", () => {
       measureAudio("/fake/ffmpeg", "/fake/a.wav", { mediaStart: 0, duration: 1 }),
     ).rejects.toThrow();
 
-    expect(execFileMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ windowsHide: true }));
+    const ffmpeg = execFileMock.mock.calls.find(([file]) => file === "/fake/ffmpeg");
+    expect(ffmpeg?.[2]).toEqual(expect.objectContaining({ windowsHide: true }));
   });
 });

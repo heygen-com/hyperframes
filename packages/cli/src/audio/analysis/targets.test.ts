@@ -1,4 +1,6 @@
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ProjectTimeline, TimelineRow } from "../../timeline/describeProject.js";
 import { fileTime, filmTargets, filmTime, type Placement } from "./targets.js";
@@ -112,6 +114,7 @@ describe("filmTargets", () => {
       (t) => t.ref === "#fast",
     );
     expect(fast!.window).toEqual({ from: 3, seconds: 2 });
+    expect(fast!.clip).toEqual({ from: 1, seconds: 4 });
   });
 
   it("resolves a source against the file that declares the clip, and keeps its local data-start", () => {
@@ -125,6 +128,38 @@ describe("filmTargets", () => {
       playbackRate: 2,
       volume: 1,
     });
+  });
+
+  it("finds media the way preview and render load it: root assets from a nested scene, percent-encoded names", () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), "hf-audio-targets-")));
+    try {
+      mkdirSync(join(projectDir, "assets"));
+      mkdirSync(join(projectDir, "compositions", "sfx"), { recursive: true });
+      writeFileSync(join(projectDir, "assets", "music bed.mp3"), "");
+      writeFileSync(join(projectDir, "compositions", "sfx", "hit.wav"), "");
+      const scene = { absStart: 0, absEnd: 5, file: "compositions/scene.html" } as const;
+      const nested: ProjectTimeline = {
+        ...timeline,
+        tracks: [
+          {
+            ...timeline.tracks[0]!,
+            rows: [
+              row({ ...scene, ref: "#bed", kind: "audio", src: "assets/music%20bed.mp3" }),
+              row({ ...scene, ref: "#hit", kind: "audio", src: "sfx/hit.wav" }),
+            ],
+          },
+        ],
+      };
+
+      const paths = filmTargets(projectDir, nested, { by: "all" }).map((t) => t.path);
+
+      expect(paths).toEqual([
+        join(projectDir, "assets", "music bed.mp3"),
+        join(projectDir, "compositions", "sfx", "hit.wav"),
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("says when an element is missing or is not sound", () => {

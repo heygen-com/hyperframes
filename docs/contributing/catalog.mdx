@@ -125,6 +125,11 @@ upgrade command.
 Set `deprecated` to a short migration message when an item has a replacement.
 The installer warns and keeps the item available for existing projects.
 
+Installing by tag with `npx hyperframes add <tag>` refreshes the registry index
+and item manifests, so published tag changes take effect without waiting for
+the 24-hour cache to expire. If the registry cannot be reached, previously
+cached manifests remain available as a fallback.
+
 ```json
 {
   "minCliVersion": "0.6.96",
@@ -197,7 +202,7 @@ Include:
 - the item directory;
 - the matching entry in `registry/registry.json`;
 - regenerated Catalog output;
-- a `hyperframes.dev` preview from `npx hyperframes publish`;
+- a `hyperframes.studio` preview from `npx hyperframes publish`;
 - when to use it, its useful duration range, and any known pitfalls.
 
 External contributors should attach the preview MP4. A maintainer will publish

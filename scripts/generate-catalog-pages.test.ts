@@ -25,6 +25,7 @@ import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
   groupForItem,
   mdxStringAttribute,
+  mdxText,
   sectionEntry,
   stageProps,
   variableBootstrap,
@@ -205,6 +206,20 @@ describe("explorer producer", () => {
       "utf-8",
     );
     assert.match(source, /postMessage\(\{ hfVariables: values \}/);
+  });
+});
+
+describe("mdxText", () => {
+  it("escapes what would open markup or an expression, and every inline markdown marker", () => {
+    assert.equal(mdxText("@_blue_sweater_."), "@&#95;blue&#95;sweater&#95;.");
+    assert.equal(
+      mdxText("a & <b>{x}</b> *bold* `code` [l](u) ~s~ \\"),
+      "a &amp; &lt;b>&#123;x&#125;&lt;/b> &#42;bold&#42; &#96;code&#96; &#91;l&#93;(u) &#126;s&#126; &#92;",
+    );
+  });
+
+  it("leaves plain text alone", () => {
+    assert.equal(mdxText("Animated bar chart, 3 series"), "Animated bar chart, 3 series");
   });
 });
 

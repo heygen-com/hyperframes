@@ -14,8 +14,8 @@
  * resize for raster. They answer "does this drawing carry its own backdrop", nothing more.
  */
 
-import sharp from "sharp";
 import { parseHTML } from "linkedom";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 /** What a downloaded icon is, as a drawing. `unknown` when the format cannot be inspected. */
 export type IconShape = "bare-mark" | "badge" | "unknown";
@@ -151,6 +151,7 @@ const SAMPLE_EDGE = 32;
 export async function classifyRasterIcon(buffer: Buffer): Promise<IconVerdict> {
   let data: Buffer;
   let channels: number;
+  const sharp = await loadSharp("website capture");
   try {
     const raw = await sharp(buffer)
       .resize(SAMPLE_EDGE, SAMPLE_EDGE, { fit: "fill" })

@@ -16,7 +16,7 @@
  *   - `perfStages.videoExtractMs` is set at the same end-of-stage point.
  *   - `materializeExtractedFramesForCompiledDir` is still called once
  *     when `extractionResult.extracted` is non-empty.
- *   - `force-sdr` mode still skips ALL ffprobe overhead.
+ *   - `force-sdr` mode, and auto mode with graded media, still skip ALL ffprobe overhead.
  *
  * New for distributed mode:
  *   - `materializeSymlinks` (default `false`) — when `true`, the stage
@@ -33,7 +33,6 @@ import { join } from "node:path";
 import {
   type CaptureVideoMetadataHint,
   type EngineConfig,
-  type ExtractedFrames,
   type ExtractionResult,
   type FrameLookupTable,
   type HdrTransfer,
@@ -45,22 +44,34 @@ import {
   detectTransfer,
   extractAllVideoFrames,
   extractMediaMetadata,
+  gradingKeepsSdr,
   isVideoPastTimelineEnd,
   isHdrColorSpace,
+  rebaseVideoToWindow,
+  resolveFinalFrameExtractionWindow,
+  resolveVideoExtractionWindow,
+  isHttpUrl,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
+  videoAudioId,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
   collectVideoReadinessSkipIds,
   type RenderJob,
 } from "../../renderOrchestrator.js";
-import { materializeExtractedFramesForCompiledDir, type CompositionMetadata } from "../shared.js";
+import {
+  materializeExtractedFramesForCompiledDir,
+  reportExtractProgress,
+  type CompositionMetadata,
+} from "../shared.js";
+import type { ProgressCallback } from "../../renderOrchestrator.js";
 import { REMOTE_MEDIA_SUBDIR } from "../../htmlCompiler.js";
 import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { rendersSdrOnly } from "../hdrMode.js";
 import {
   compareExtractionFailureGroups,
   extractionFailureGroupIdentityKey,
@@ -86,6 +97,9 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  skipFrameExtractionIds?: readonly string[];
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  onProgress?: ProgressCallback;
 }
 
 export interface ExtractVideosStageResult {
@@ -201,6 +215,8 @@ export function resolveVideoExtractionPolicy(
   return { failureMode, maxTransientRetries };
 }
 
+const MAX_NAMED_SOURCES = 5;
+
 /**
  * Producer-safe terminal error for per-source extraction failures.
  *
@@ -227,10 +243,19 @@ export class VideoExtractionStageError extends Error {
         affectedElementCount: failure.count,
       })),
     ),
+    ffmpegReason?: string,
+    sources: readonly string[] = [],
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
-    super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]`);
+    const reason = ffmpegReason ? `: ffmpeg said: ${ffmpegReason}` : "";
+    const shown = sources.slice(0, MAX_NAMED_SOURCES).join(", ");
+    const more =
+      sources.length > MAX_NAMED_SOURCES ? ` and ${sources.length - MAX_NAMED_SOURCES} more` : "";
+    const files = sources.length > 0 ? ` (${shown}${more})` : "";
+    super(
+      `Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${files}${reason}`,
+    );
     this.name = "VideoExtractionStageError";
     this.publicMetadata = { extractionFailure };
   }
@@ -270,6 +295,10 @@ function buildVideoExtractionStageError(
     retryable,
     failures,
     extractionFailureMetadataFromResult(result),
+    result.errors.find((failure) => failure.ffmpegReason)?.ffmpegReason,
+    [
+      ...new Set(result.errors.flatMap((failure) => (failure.source ? [failure.source] : []))),
+    ].sort(),
   );
 }
 
@@ -386,6 +415,8 @@ export async function runExtractVideosStage(
     assertNotAborted,
     materializeSymlinks,
     deferRangeExtraction,
+    urlByAbsentLocalPath,
+    skipFrameExtractionIds = [],
   } = input;
 
   const stage2Start = Date.now();
@@ -402,12 +433,14 @@ export async function runExtractVideosStage(
 
   // Probe ORIGINAL color spaces before extraction (which may convert SDR→HDR).
   // This is needed to identify which videos are natively HDR vs converted-SDR
-  // for the two-pass compositing path. Skipped only in force-sdr mode to
-  // avoid ffprobe overhead when the user has explicitly opted out.
+  // for the two-pass compositing path. Skipped when the render is SDR anyway:
+  // force-sdr, or auto mode with graded media (grading is SDR-only).
+  const probesHdr =
+    job.config.hdrMode !== "force-sdr" && !gradingKeepsSdr(job.config.hdrMode, composition);
   const nativeHdrVideoIds = new Set<string>();
   const videoTransfers = new Map<string, HdrTransfer>();
   let hdrProbeTransientRetries = 0;
-  if (job.config.hdrMode !== "force-sdr" && composition.videos.length > 0) {
+  if (probesHdr && composition.videos.length > 0) {
     log?.info("Probing video color spaces...", { videoCount: composition.videos.length });
     const probeFailures = await Promise.all(
       composition.videos.map(async (v) => {
@@ -457,14 +490,13 @@ export async function runExtractVideosStage(
 
   // Probe images for HDR color spaces (16-bit PNGs tagged BT.2020 PQ/HLG).
   // Mirrors the video probe loop above so image-only compositions can
-  // trigger HDR output without any video sources present. Skipped only in
-  // force-sdr mode to avoid ffprobe overhead when the user has explicitly
-  // opted out.
+  // trigger HDR output without any video sources present. Skipped when the
+  // video probe is.
   const nativeHdrImageIds = new Set<string>();
   const imageTransfers = new Map<string, HdrTransfer>();
   const hdrImageSrcPaths = new Map<string, string>();
   const imageColorSpaces: (VideoColorSpace | null)[] = [];
-  if (job.config.hdrMode !== "force-sdr" && composition.images.length > 0) {
+  if (probesHdr && composition.images.length > 0) {
     const probed = await Promise.all(
       composition.images.map(async (img) => {
         // Same shared resolver as the video probe above — a percent-encoded
@@ -485,7 +517,10 @@ export async function runExtractVideosStage(
     imageColorSpaces.push(...probed);
   }
 
-  if (composition.videos.length > 0) {
+  if (skipFrameExtractionIds.length > 0) {
+    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    videoReadinessSkipIds = [...skipFrameExtractionIds];
+  } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
     for (let i = 0; i < totalVideos; i++) {
       const v = composition.videos[i]!;
@@ -494,6 +529,8 @@ export async function runExtractVideosStage(
         safeVideoExtractionSourceLogMetadata(v.src),
       );
     }
+    let framesPlanned = 0;
+    let framesDone = 0;
     extractionResult = await extractAllVideoFrames(
       composition.videos,
       projectDir,
@@ -504,12 +541,18 @@ export async function runExtractVideosStage(
         fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
-        toneMapHdrToSdr: job.config.hdrMode === "force-sdr",
+        toneMapHdrToSdr: rendersSdrOnly(job.config, composition),
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
         deferRangeExtraction,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
+        urlByAbsentLocalPath,
+        onProgress: ({ planned = 0, done = 0 }) => {
+          framesPlanned += planned;
+          framesDone += done;
+          reportExtractProgress(job, framesDone, framesPlanned, input.onProgress);
+        },
       },
       abortSignal,
       cfg,
@@ -565,7 +608,7 @@ export async function runExtractVideosStage(
  */
 export function appendAutoDetectedVideoAudio(
   composition: Pick<CompositionMetadata, "videos" | "audios">,
-  extracted: ExtractedFrames[],
+  extracted: ReadonlyArray<{ videoId: string; metadata: { hasAudio: boolean } }>,
 ): void {
   const existingAudioSrcs = new Set(composition.audios.map((a) => a.src));
   for (const ext of extracted) {
@@ -573,15 +616,56 @@ export function appendAutoDetectedVideoAudio(
     const video = composition.videos.find((v) => v.id === ext.videoId);
     if (!video || !video.hasAudio || video.hidden || existingAudioSrcs.has(video.src)) continue;
     composition.audios.push({
-      id: `${video.id}-audio`,
+      id: videoAudioId(video.id),
       src: video.src,
       start: video.start,
       end: video.end,
       mediaStart: video.mediaStart,
+      playbackRate: video.playbackRate,
+      loop: video.loop,
       layer: 0,
       volume: 1.0,
       type: "video",
     });
     existingAudioSrcs.add(video.src);
   }
+}
+
+/**
+ * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
+ * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
+ */
+export async function appendVideoAudioFromProbe(input: {
+  projectDir: string;
+  compiledDir: string;
+  composition: CompositionMetadata;
+  urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+}): Promise<void> {
+  const { projectDir, compiledDir, composition, urlByAbsentLocalPath } = input;
+  const videos = composition.videos.filter(
+    (video) => !isVideoPastTimelineEnd(video, composition.duration),
+  );
+  const probed = await Promise.all(
+    videos.map(async (video) => {
+      const path = isHttpUrl(video.src)
+        ? video.src
+        : resolveProjectRelativeSrc(video.src, projectDir, compiledDir);
+      const readFrom = urlByAbsentLocalPath?.get(path) ?? path;
+      if (!isHttpUrl(readFrom) && !existsSync(readFrom)) return null;
+      const metadata = await extractMediaMetadata(readFrom);
+      const window = await resolveFinalFrameExtractionWindow(
+        readFrom,
+        video,
+        metadata,
+        resolveVideoExtractionWindow(video, metadata, composition.duration),
+      );
+      if (window.durationSeconds <= 0) return null;
+      rebaseVideoToWindow(video, window);
+      return { videoId: video.id, metadata };
+    }),
+  );
+  appendAutoDetectedVideoAudio(
+    composition,
+    probed.filter((entry) => entry !== null),
+  );
 }

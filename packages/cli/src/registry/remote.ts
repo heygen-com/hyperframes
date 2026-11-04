@@ -123,10 +123,17 @@ async function fetchJson<T>(url: string, validate: (value: unknown) => value is 
  * because "check for something newer" and "rather have nothing than this" are
  * different requests and only the first one is ever made.
  */
-export async function fetchRegistryManifest(
+export const fetchRegistryManifest = (
   baseUrl: string = DEFAULT_REGISTRY_URL,
   options?: { skipCache?: boolean },
-): Promise<RegistryManifest | undefined> {
+): Promise<RegistryManifest | undefined> =>
+  readRegistryManifest(baseUrl, options).catch(() => undefined);
+
+/** The manifest as fetchRegistryManifest gives it, but unreachable and never cached throws why, never undefined. */
+export async function readRegistryManifest(
+  baseUrl: string = DEFAULT_REGISTRY_URL,
+  options?: { skipCache?: boolean },
+): Promise<RegistryManifest> {
   const url = registryPathUrl(baseUrl, "registry.json");
   const cacheFile = cachePath(baseUrl, "registry");
   const cached = readCacheEntry(cacheFile, validRegistryManifest);
@@ -136,14 +143,15 @@ export async function fetchRegistryManifest(
     const manifest = await fetchJson(url, validRegistryManifest);
     writeCache(cacheFile, manifest);
     return manifest;
-  } catch {
-    return cached?.data;
+  } catch (err) {
+    if (cached) return cached.data;
+    throw new Error(`The registry could not be read: ${describeCauseChain(err)}`, { cause: err });
   }
 }
 
 /**
  * Fetch a single item's `registry-item.json` manifest. Same freshness policy as
- * the top-level manifest: fresh from cache, else revalidate, else serve stale.
+ * the top-level manifest: fresh unless skipCache, else revalidate, else serve stale.
  * Throws on network failure only when nothing was ever cached for this item
  * (callers decide whether to degrade gracefully).
  */
@@ -151,6 +159,7 @@ export async function fetchItemManifest(
   name: string,
   type: ItemType,
   baseUrl: string = DEFAULT_REGISTRY_URL,
+  options?: { skipCache?: boolean; cacheOnly?: boolean },
 ): Promise<RegistryItem> {
   if (!validRegistryName(name) || !Object.hasOwn(ITEM_TYPE_DIRS, type))
     throw new Error("Invalid registry item name or type");
@@ -159,7 +168,9 @@ export async function fetchItemManifest(
   const url = registryPathUrl(baseUrl, dir, name, "registry-item.json");
   const cacheFile = cachePath(baseUrl, `${dir}__${name}`);
   const cached = readCacheEntry(cacheFile, validate);
-  if (cached && isFresh(cached)) return cached.data;
+  if (cached && (options?.cacheOnly || (!options?.skipCache && isFresh(cached))))
+    return cached.data;
+  if (options?.cacheOnly) throw new Error("not fetched after an earlier registry timeout");
 
   try {
     const item = await fetchJson(url, validate);

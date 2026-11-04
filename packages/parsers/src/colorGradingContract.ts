@@ -2,6 +2,11 @@ export const COLOR_GRADING_CONTRACT_VERSION = 2;
 export const COLOR_GRADING_COLOR_SPACE = "rec709";
 export const COLOR_GRADING_MAX_CURVE_POINTS = 16;
 export const COLOR_GRADING_MAX_SECONDARIES = 4;
+export const COLOR_GRADING_SOURCE_TAGS = ["video", "img", "canvas"] as const;
+/** A lane's grade: an inert element whose `data-color-grading` its members inherit. */
+export const COLOR_GROUP_TAG = "hf-color-group";
+/** On a member: the id of the `<hf-color-group>` it is graded through. */
+export const COLOR_GROUP_ATTR = "data-color-group";
 export const COLOR_GRADING_ADVANCED_LIMITS = {
   hueDegrees: { min: 0, max: 360, inclusiveMax: false },
   unit: { min: 0, max: 1 },
@@ -47,6 +52,11 @@ export const COLOR_GRADING_ADJUST_KEYS = [
   "vibrance",
   "saturation",
 ] as const;
+
+export const COLOR_GRADING_EXAMPLE = {
+  adjust: { exposure: 0.1, contrast: 0.05, temperature: 0.08 },
+  details: { vignette: 0.15 },
+} as const;
 
 export const COLOR_GRADING_WHEEL_KEYS = ["shadows", "midtones", "highlights"] as const;
 export const COLOR_GRADING_CURVE_KEYS = ["master", "red", "green", "blue"] as const;
@@ -185,7 +195,7 @@ function unknownKeysHint(path: string, unknown: readonly string[]): string {
   );
   return sections.size === 1
     ? `Move those controls under "${[...sections][0]}".`
-    : "Use only the documented media-treatment keys at the top level.";
+    : `Top-level keys are ${COLOR_GRADING_TOP_LEVEL_KEYS.map((key) => `"${key}"`).join(", ")}.`;
 }
 
 function validateObject(

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -12,6 +13,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { MEDIA_DURATION_FIXTURES } from "@hyperframes/parsers/media-duration-fixtures";
 import { fileURLToPath } from "node:url";
+import { format } from "node:util";
+import { runInNewContext } from "node:vm";
 import { beforeAll, describe, expect, it, onTestFinished } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
 import {
@@ -317,6 +320,30 @@ describe("describeProject", () => {
     expect(row!.mediaStart).toBe(0.2);
   });
 
+  it("probes a nested scene's media where preview loads it: a root asset with a percent-encoded name", async () => {
+    const probed: string[] = [];
+    const { rows } = await rowsOf(
+      `<div data-composition-id="m" data-duration="5">
+        <div id="scene" data-composition-src="compositions/bed.html" data-start="0" data-duration="5"></div>
+      </div>`,
+      false,
+      (root) => {
+        mkdirSync(join(root, "assets"));
+        copyFileSync(REAL_AUDIO, join(root, "assets", "music bed.mp3"));
+        writeFileSync(
+          join(root, "compositions", "bed.html"),
+          `<template><div data-composition-id="bed"><audio id="bed" src="assets/music%20bed.mp3" data-start="0"></audio></div></template>`,
+        );
+      },
+      async (file, tag) => {
+        probed.push(`${tag}:${basename(file)}`);
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual(["audio:music bed.mp3"]);
+    expect(rows.find((r) => r.id === "bed")).toMatchObject({ durationSource: "media" });
+  });
+
   it("takes a media leaf's duration from the probe when none is authored", async () => {
     const probed: string[] = [];
     const {
@@ -338,6 +365,73 @@ describe("describeProject", () => {
     expect(row!.end).toBeCloseTo(0.72, 1);
     expect(text).toContain("duration=media");
   });
+
+  it.each([
+    ["assets/beat%20track.mp3", "assets/beat track.mp3"],
+    ["assets/beat track.mp3?cache=1#listen", "assets/beat track.mp3"],
+    ["assets/100%20beat%.mp3?cache=1", "assets/100 beat%.mp3"],
+    ["assets/beat%23one.mp3?cache=1", "assets/beat#one.mp3"],
+    ["assets/beat%2520track.mp3", "assets/beat%20track.mp3"],
+  ])("measures the local source behind URL %s", async (src, filename) => {
+    const probed: string[] = [];
+    const { rows, text } = await rowsOf(
+      `<div data-composition-id="m"><audio id="sting" src="${src}" data-start="0"></audio></div>`,
+      false,
+      (root) => {
+        mkdirSync(join(root, "assets"));
+        copyFileSync(REAL_AUDIO, join(root, filename));
+      },
+      async (file, tag) => {
+        probed.push(`${tag}:${file}`);
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual([`audio:${realpathSync(join(dir, filename))}`]);
+    expect(rows[0]).toMatchObject({ durationSource: "media", pendingReason: null, src });
+    expect(rows[0]?.duration).toBeCloseTo(0.72);
+    expect(text).toContain("duration=media");
+  });
+
+  it("retains a literal escaped filename when no decoded file exists", async () => {
+    const probed: string[] = [];
+    const { rows } = await rowsOf(
+      '<div data-composition-id="m"><audio id="sting" src="beat%20track.mp3" data-start="0"></audio></div>',
+      false,
+      (root) => copyFileSync(REAL_AUDIO, join(root, "beat%20track.mp3")),
+      async (file) => {
+        probed.push(basename(file));
+        return POP_SECONDS();
+      },
+    );
+    expect(probed).toEqual(["beat%20track.mp3"]);
+    expect(rows[0]).toMatchObject({ durationSource: "media", pendingReason: null });
+  });
+
+  it.each(["../outside.mp3?cache=1", "%2e%2e%2foutside.mp3", "link%20out.mp3?cache=1"])(
+    "keeps URL %s from probing outside the project",
+    async (src) => {
+      const probed: string[] = [];
+      const { rows } = await rowsOf(
+        `<div data-composition-id="m"><audio id="sting" src="${src}" data-start="0"></audio></div>`,
+        false,
+        (root) => {
+          const outside = join(dirname(root), "outside.mp3");
+          copyFileSync(REAL_AUDIO, outside);
+          symlinkSync(outside, join(root, "link out.mp3"));
+        },
+        async (file) => {
+          probed.push(file);
+          return POP_SECONDS();
+        },
+      );
+      expect(probed).toEqual([]);
+      expect(rows[0]).toMatchObject({
+        duration: 0,
+        durationSource: "pending",
+        pendingReason: "source file not found",
+      });
+    },
+  );
 
   it.skipIf(!hasFfprobe)("measures a real audio file with ffprobe by default", async () => {
     const {
@@ -779,10 +873,11 @@ describe("kind tracks list every clip once", () => {
 });
 
 // The documented one-liners run verbatim; only the example query values are swapped for the fixture's.
+const HERE_TL = '<<<"$TL"';
 const docLines = (kind: "jq" | "node -e"): string[] =>
   readFileSync(SKILL_DOC, "utf8")
     .split("\n")
-    .filter((l) => l.startsWith(`${kind} `) && l.endsWith('<<<"$TL"'));
+    .filter((l) => l.startsWith(`${kind} `) && l.endsWith(HERE_TL));
 const oneLiners = (kind: "jq" | "node -e"): string[] =>
   docLines(kind).map((l) => l.replace("12.5", "7").replace("tsfx-pet2", "nested"));
 
@@ -795,23 +890,38 @@ const hasJq = (() => {
   }
 })();
 
-const runOneLiner = async (line: string, timeline?: ProjectTimeline): Promise<string> => {
-  const own = timeline ? null : inversionProject();
-  return execFileSync("bash", ["-c", line], {
-    env: {
-      ...process.env,
-      TL: JSON.stringify({ timeline: timeline ?? (await describeProject(own!)) }),
+/** Argv of a documented `<cmd> ... '<program>' <<<"$TL"` line, quoted as bash reads these lines. */
+const argvOf = (line: string) =>
+  [...line.slice(0, -HERE_TL.length).matchAll(/'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2]!);
+
+/** Runs a documented line on `tl` with no shell: jq as a process, a `node -e` program in-process. */
+const runOneLiner = (line: string, tl: string): string => {
+  const [cmd, ...args] = argvOf(line);
+  if (cmd === "jq") return execFileSync("jq", args, { input: tl, encoding: "utf8" });
+  expect([cmd, args[0], args.length]).toEqual(["node", "-e", 2]);
+  const out: string[] = [];
+  const fs = {
+    readFileSync: (fd: number, encoding: string) => {
+      expect([fd, encoding]).toEqual([0, "utf8"]);
+      return tl;
     },
-    encoding: "utf8",
+  };
+  runInNewContext(args[1]!, {
+    require: (id: string) => (id === "fs" ? fs : undefined),
+    console: { log: (...parts: unknown[]) => out.push(`${format(...parts)}\n`) },
   });
+  return out.join("");
 };
+const timelineJson = async (timeline: Promise<ProjectTimeline>) =>
+  JSON.stringify({ timeline: await timeline });
 const parseStream = (out: string) => JSON.parse(`[${out.replace(/}\s*{/g, "},{")}]`);
 
 describe("skill query one-liners", () => {
   it("documents five node one-liners, each answering from the fixture", async () => {
     const lines = oneLiners("node -e");
     expect(lines).toHaveLength(5);
-    const [at = "", find, track, gaps, nth] = await Promise.all(lines.map((l) => runOneLiner(l)));
+    const tl = await timelineJson(describeProject(inversionProject()));
+    const [at = "", find, track, gaps, nth] = lines.map((l) => runOneLiner(l, tl));
     expect(at.split("\n").filter(Boolean)).toEqual([
       "nested compositions/scene.html",
       "host index.html",
@@ -825,9 +935,8 @@ describe("skill query one-liners", () => {
   it.skipIf(!hasJq)("documents five jq one-liners that agree with the node ones", async () => {
     const lines = oneLiners("jq");
     expect(lines).toHaveLength(5);
-    const [at, find, track, gaps, nth] = (await Promise.all(lines.map((l) => runOneLiner(l)))).map(
-      parseStream,
-    );
+    const tl = await timelineJson(describeProject(inversionProject()));
+    const [at, find, track, gaps, nth] = lines.map((l) => parseStream(runOneLiner(l, tl)));
     expect(at[0].map((r: { id: string }) => r.id)).toEqual(["nested", "host"]);
     expect(find).toEqual([
       { file: "compositions/scene.html", trackKind: "video", absStart: 6, absEnd: 8 },
@@ -843,12 +952,10 @@ describe("skill query one-liners", () => {
   });
 
   it("answers the eval questions exactly on the eval fixture, counting no clip twice", async () => {
-    const timeline = await evalTimeline();
+    const tl = await timelineJson(evalTimeline());
     const ids = ["tsfx-pet1", "tmus-pet1", "tmus-pet2", "tsfx-pet2", "v-replay1", "v-replay2"];
-    const run = (l: string) => runOneLiner(l.replace("12.5", "15.7"), timeline);
-    const [at = "", find = "", track = "", , nth = ""] = await Promise.all(
-      docLines("node -e").map(run),
-    );
+    const run = (l: string) => runOneLiner(l.replace("12.5", "15.7"), tl);
+    const [at = "", find = "", track = "", , nth = ""] = docLines("node -e").map(run);
     expect(at.split("\n").filter(Boolean)).toEqual([
       "tsfx-pet2 compositions/terminal-sfx.html",
       "sec-sfx index.html",
@@ -863,7 +970,7 @@ describe("skill query one-liners", () => {
     ).toEqual(ids);
     expect(nth).toBe("1 tmus-pet1 13 compositions/terminal-music.html\n");
     if (!hasJq) return;
-    const [jqAt = "", , jqTrack = "", , jqNth = ""] = await Promise.all(docLines("jq").map(run));
+    const [jqAt = "", , jqTrack = "", , jqNth = ""] = docLines("jq").map(run);
     expect(parseStream(jqAt)[0].map((r: { id: string }) => r.id)).toEqual([
       "tsfx-pet2",
       "sec-sfx",

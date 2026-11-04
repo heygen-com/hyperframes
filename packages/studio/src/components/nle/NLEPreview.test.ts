@@ -4,7 +4,8 @@ import React, { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useTimelinePlayer } from "../../player/hooks/useTimelinePlayer";
-import { NLEPreview, getPreviewPlayerKey, resolvePreviewStageSize } from "./NLEPreview";
+import { NLEPreview, getPreviewPlayerKey } from "./NLEPreview";
+import { resolvePreviewStageSize } from "./previewStage";
 import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -213,6 +214,15 @@ describe("NLEPreview", () => {
 
   afterEach(() => {
     globalThis.ResizeObserver = originalResizeObserver;
+  });
+
+  it("draws the canvas boundary on the preview stage", () => {
+    const view = renderPreview();
+
+    expect(view.stage.className).toContain(
+      "shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_4px_32px_rgba(0,0,0,0.7)]",
+    );
+    view.cleanup();
   });
 
   it("pans the preview with middle mouse drag", () => {

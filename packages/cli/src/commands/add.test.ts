@@ -17,7 +17,6 @@ import addCommand, {
   tagAddJson,
 } from "./add.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
-import { CliUsageError } from "../utils/commandResult.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 
 // Assert the emitted payload rather than the transport: `shouldTrack()` is
@@ -525,17 +524,17 @@ describe("variable values in the snippet", () => {
   });
 });
 
-describe("add command run() — extra positional arguments", () => {
+describe("add command run() — several names", () => {
   let dir: string;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     dir = tmp();
-    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    writeRegistryConfig(dir);
+    mockFetch();
   });
 
   afterEach(() => {
-    errorSpy.mockRestore();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -545,22 +544,50 @@ describe("add command run() — extra positional arguments", () => {
     await runCittyCommand(cmd, { rawArgs });
   }
 
-  it("rejects `add a --dir <dir> b c` through the CLI wrapper, before any registry call", async () => {
-    const fetchSpy = vi.fn();
-    vi.stubGlobal("fetch", fetchSpy);
+  it("installs every name in one call and reports them together", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await expect(runWrapped(["a", "--dir", dir, "b", "c"])).rejects.toThrow(CliUsageError);
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain(
-      "Unexpected extra arguments for hyperframes add: b, c",
-    );
-    expect(errorSpy.mock.calls.flat().join(" ")).toContain("Run add once per item");
+    await runWrapped(["my-block", "--dir", dir, "deprecated-block", "--no-clipboard", "--json"]);
+
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({
+      ok: true,
+      installed: ["my-block", "deprecated-block"],
+      warnings: expect.any(Array),
+      errors: [],
+    });
+    expect(existsSync(join(dir, "compositions", "my-block.html"))).toBe(true);
+    expect(existsSync(join(dir, "compositions", "deprecated-block.html"))).toBe(true);
   });
 
-  it("does not fire on a normal single-item invocation", async () => {
-    mockFetch();
-    writeRegistryConfig(dir);
+  it("keeps the installs that worked when one name is unknown, and fails the call", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
+    await expect(
+      runWrapped(["my-block", "no-such-block", "--dir", dir, "--no-clipboard", "--json"]),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+
+    const out = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(out).toMatchObject({ ok: false, installed: ["my-block"] });
+    expect(out.errors).toEqual([{ name: "no-such-block", error: expect.any(String) }]);
+    expect(existsSync(join(dir, "compositions", "my-block.html"))).toBe(true);
+  });
+
+  it("says --dir is the project root when it does not exist", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const missing = join(dir, "compositions", "new-folder");
+
+    await expect(
+      runWrapped(["my-block", "--dir", missing, "--no-clipboard", "--json"]),
+    ).rejects.toMatchObject({ result: { exitCode: 1 } });
+
+    const out = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(out.error.message).toContain(`Project folder not found: ${missing}`);
+    expect(out.error.message).toContain("--dir is the project root");
+    expect(out.error.message).toContain("hyperframes init");
+    expect(existsSync(missing)).toBe(false);
+  });
+
+  it("still installs a single name the way it did", async () => {
     await expect(
       runWrapped(["my-block", "--dir", dir, "--no-clipboard", "--json"]),
     ).resolves.toBeUndefined();
@@ -618,6 +645,89 @@ describe("tagAddJson", () => {
       tag: "lower-thirds",
       installed: ["a", "b"],
       warnings: ["b: no id"],
+      errors: [],
     });
+  });
+});
+
+describe("tag installation failures", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = tmp();
+    writeRegistryConfig(dir);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it.each([
+    { names: ["my-block"], failed: ["my-block"], installed: [], json: true },
+    {
+      names: ["my-block", "deprecated-block"],
+      failed: ["my-block"],
+      installed: ["deprecated-block"],
+      json: true,
+    },
+    { names: ["my-block"], failed: [], installed: ["my-block"], json: true },
+    { names: ["my-block"], failed: ["my-block"], installed: [], json: false },
+    { names: ["my-block"], failed: [], installed: ["my-block"], json: false },
+  ])("reports failed downloads and keeps successful installs: %j", async (scenario) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        if (url.pathname.endsWith("/registry.json")) {
+          return Response.json({
+            ...MANIFEST,
+            items: MANIFEST.items.filter((item) => scenario.names.includes(item.name)),
+          });
+        }
+        const name = scenario.names.find((item) => url.pathname.includes(`/blocks/${item}/`));
+        if (!name) return new Response("not found", { status: 404 });
+        if (url.pathname.endsWith("/registry-item.json")) {
+          return Response.json({ ...ITEM_BY_NAME[name], tags: ["test-tag"] });
+        }
+        if (scenario.failed.includes(name)) return new Response("not found", { status: 404 });
+        return new Response(FILE_BODIES[`${name}.html`]);
+      }),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const run = runCittyCommand(addCommand, {
+      rawArgs: ["test-tag", "--dir", dir, "--no-clipboard", ...(scenario.json ? ["--json"] : [])],
+    });
+    if (scenario.failed.length > 0) {
+      await expect(run).rejects.toMatchObject({ result: { exitCode: 1, presented: true } });
+    } else {
+      await expect(run).resolves.toBeDefined();
+    }
+
+    if (scenario.json) {
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
+        ok: scenario.failed.length === 0,
+        tag: "test-tag",
+        installed: scenario.installed,
+        errors: scenario.failed.map((name) => ({
+          name,
+          error: expect.stringContaining("HTTP 404"),
+        })),
+      });
+    } else {
+      expect(log).toHaveBeenLastCalledWith(
+        `${scenario.failed.length > 0 ? "✗" : "✓"} Installed ${scenario.installed.length}/${scenario.names.length} blocks`,
+      );
+      if (scenario.failed.length > 0) {
+        expect(log.mock.calls.flat().join(" ")).toContain("HTTP 404");
+      }
+    }
+    for (const name of scenario.names) {
+      expect(existsSync(join(dir, "compositions", `${name}.html`))).toBe(
+        scenario.installed.includes(name),
+      );
+    }
   });
 });

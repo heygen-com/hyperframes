@@ -33,12 +33,11 @@ test("listTypes exposes the v2 media types", () => {
 });
 
 test("heygen provider is first for every type it serves", () => {
-  for (const t of ["bgm", "image", "icon"]) {
+  for (const t of ["bgm", "sfx", "image", "icon"]) {
     const first = getProviders(t)[0];
     assert.ok(first, `no enabled provider for ${t}`);
     assert.match(first.name, /^heygen/, `${t} first provider is ${first.name}`);
   }
-  assert.ok(!getProviders("sfx").some((p) => p.name.startsWith("heygen")), "sfx never asks HeyGen");
 });
 
 test("sanctioned providers only: heygen, Openverse, local mflux/kokoro/ltx, codex, design spec, logo tiers", () => {
@@ -85,14 +84,14 @@ test("video cascade: HeyGen first, LTX local fallback, generate-only", async () 
   assert.equal(await runCapability("video", "search", "x", {}), null);
 });
 
-test("sfx cascade: Openverse first, the bundled library is the offline fallback", () => {
+test("sfx cascade: HeyGen, then Openverse, the bundled library is the offline fallback", () => {
   const ps = getProviders("sfx");
   assert.deepEqual(
     ps.map((p) => p.name),
-    ["openverse.audio", "bundled.sfx"],
+    ["heygen.audio.sounds", "openverse.audio", "bundled.sfx"],
   );
-  assert.ok(ps[0].network && !ps[0].paid, "Openverse is free and network-only");
-  assert.ok(!ps[1].network, "bundled SFX remain available offline");
+  assert.ok(ps[1].network && !ps[1].paid, "Openverse is free and network-only");
+  assert.ok(!ps[2].network, "bundled SFX remain available offline");
 });
 
 test("ctx.provider forces one generator (e.g. 'make an image WITH codex')", async () => {

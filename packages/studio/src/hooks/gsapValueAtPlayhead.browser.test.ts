@@ -4,7 +4,7 @@ import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { replaceTweenWithKeyframesInScript } from "@hyperframes/parsers/gsap-writer-acorn";
 import { expect, it, vi } from "vitest";
-import { launchTestChrome, showWithRuntime } from "../../tests/chromeTestUtils";
+import { closeTestChrome, launchTestChrome, showWithRuntime } from "../../tests/chromeTestUtils";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import { planValueEdit } from "./gsapValueAtPlayhead";
@@ -59,6 +59,6 @@ it("a drag on a fromTo's start shows the dropped x there once the runtime seeks"
     });
     expect(shown).toBeCloseTo(90, 1);
   } finally {
-    await browser.close();
+    await closeTestChrome(browser);
   }
 });

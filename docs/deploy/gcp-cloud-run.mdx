@@ -31,6 +31,11 @@ The CLI can build the renderer automatically when it runs from a HyperFrames
 repository checkout. Outside the repository, pass an image built from
 `packages/gcp-cloud-run/Dockerfile` with `--image`.
 
+The renderer image uses Chrome 152, matching the CLI's managed browser, so
+gradient text inside transformed child elements also renders in Cloud Run.
+Existing deployments need a rebuilt image and a new deployment to receive
+the browser update.
+
 ## Deploy
 
 ```bash
@@ -72,7 +77,8 @@ use H.264 or H.265. Distributed rendering is currently SDR-only.
 ## Reuse an upload
 
 Projects are content-addressed. Upload an unchanged project once, then reuse
-its site ID for later renders:
+its site ID for later renders. Site IDs from earlier versions keep working, but
+the ID scheme changed, so each project uploads once more under a new ID:
 
 ```bash
 hyperframes cloudrun sites create ./my-project

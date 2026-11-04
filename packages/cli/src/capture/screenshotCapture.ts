@@ -10,6 +10,7 @@ import { CaptureDirRefusedError } from "./captureErrors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
+import { waitForPageReady } from "./navigateForCapture.js";
 import { join } from "node:path";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 
@@ -40,9 +41,30 @@ export interface ScreenshotInterruption {
   message: string;
 }
 
+/** A shot Chrome would not take; the capture goes on to the next one. */
+export interface ScreenshotFailure {
+  file: string;
+  /** Where the page was scrolled to; null for the full-page plate. */
+  scrollY: number | null;
+  message: string;
+}
+
 export interface ScreenshotCaptureResult {
   files: string[];
   interruption: ScreenshotInterruption | null;
+  failures: ScreenshotFailure[];
+}
+
+/** Notes one shot that failed. A timeout, a closed page or a refused output folder still ends the whole capture. */
+function shotFailure(err: unknown, file: string, scrollY: number | null): ScreenshotFailure {
+  const message = normalizeErrorMessage(err);
+  // puppeteer-core 25 exports no class for a closed page or session, only these messages.
+  const closed =
+    (err instanceof Error && err.constructor.name === "ConnectionClosedError") ||
+    /\b(target|session) closed\b/i.test(message);
+  if (closed || err instanceof CaptureDirRefusedError || isDegradableEvaluateTimeoutError(err))
+    throw err;
+  return { file, scrollY, message };
 }
 
 /**
@@ -75,18 +97,18 @@ export function pngHeight(buf: Uint8Array): number | null {
  * Returns the captured path or the cause for omitting the plate.
  */
 export async function captureFullPagePlate(
-  page: Page,
+  page: Pick<Page, "evaluate" | "screenshot">,
   screenshotsDir: string,
   budget: { remainingMs?: () => number; files?: string[] } = {},
 ): Promise<PlateCaptureResult> {
-  // Record the inline value before overwriting so the page is handed back unchanged — the
-  // caller keeps using it (asset extraction, DOM reads) after this returns.
+  // Preserve the inline value and priority: asset and DOM extraction reuse this page afterward.
   await page.evaluate(
     `document.querySelectorAll('*').forEach((el) => {
       const p = getComputedStyle(el).position;
       if (p === 'fixed' || p === 'sticky') {
         el.setAttribute('data-hf-plate-position', el.style.position || '');
-        el.style.position = 'static';
+        el.setAttribute('data-hf-plate-position-priority', el.style.getPropertyPriority('position'));
+        el.style.setProperty('position', 'static', 'important');
       }
     })`,
   );
@@ -119,8 +141,10 @@ export async function captureFullPagePlate(
     try {
       await page.evaluate(
         `document.querySelectorAll('[data-hf-plate-position]').forEach((el) => {
-          el.style.position = el.getAttribute('data-hf-plate-position');
+          el.style.setProperty('position', el.getAttribute('data-hf-plate-position') || '',
+            el.getAttribute('data-hf-plate-position-priority') || '');
           el.removeAttribute('data-hf-plate-position');
+          el.removeAttribute('data-hf-plate-position-priority');
         })`,
       );
     } catch {
@@ -149,7 +173,7 @@ export async function captureScrollScreenshots(
   filePaths.length = 0;
   const filenames = new Set<string>();
 
-  const result: ScreenshotCaptureResult = { files: filePaths, interruption: null };
+  const result: ScreenshotCaptureResult = { files: filePaths, interruption: null, failures: [] };
   const budgetSpent = (): boolean => {
     if ((budget.remainingMs?.() ?? 1) > 0) return false;
     result.interruption = {
@@ -164,7 +188,15 @@ export async function captureScrollScreenshots(
     // Dismiss marketing banners, cookie consents, and popups before scrolling.
     // These overlay content and contaminate screenshots with UI that doesn't
     // belong in video compositions (cookie popups, newsletter modals, etc.)
-    await page
+    const readTimeOrigin = async (): Promise<number> => {
+      const value: unknown = await page.evaluate(`performance.timeOrigin`).catch((err: unknown) => {
+        if (isDegradableEvaluateTimeoutError(err)) throw err;
+        return undefined;
+      });
+      return typeof value === "number" ? value : Number.NaN;
+    };
+    const originBefore = await readTimeOrigin();
+    const clickedCount = await page
       .evaluate(() => {
         // Click common dismiss/accept buttons
         const selectors = [
@@ -194,14 +226,35 @@ export async function captureScrollScreenshots(
           'button[class*="not-now"]',
           'button[class*="no-thanks"]',
         ];
+        let clicked = 0;
         for (const sel of selectors) {
           try {
             const el = document.querySelector<HTMLElement>(sel);
-            if (el) el.click();
+            if (el) {
+              el.click();
+              clicked++;
+            }
           } catch {
             /* ignore */
           }
         }
+        return clicked;
+      })
+      .catch((err: unknown) => {
+        if (isDegradableEvaluateTimeoutError(err)) {
+          throw err;
+        }
+        return 0;
+      });
+    await new Promise((r) => setTimeout(r, 400));
+    if (clickedCount > 0 || (await readTimeOrigin()) !== originBefore) {
+      await waitForPageReady(page, {
+        timeoutMs: Math.min(15_000, budget.remainingMs?.() ?? 15_000),
+      });
+    }
+    await page
+      // fallow-ignore-next-line complexity
+      .evaluate(() => {
         // Hide fixed/sticky overlays that aren't the main nav. Scanning every
         // element with querySelectorAll('*') + getComputedStyle is O(n) DOM
         // calls and can dominate evaluate() time on large pages. Narrow the
@@ -239,7 +292,6 @@ export async function captureScrollScreenshots(
           throw err;
         }
       });
-    await new Promise((r) => setTimeout(r, 400));
 
     const scrollHeight = (await page.evaluate(
       `Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)`,
@@ -270,7 +322,13 @@ export async function captureScrollScreenshots(
       filenames.add(filename);
       const filePath = join(screenshotsDir, filename);
       if (budgetSpent()) break;
-      const buffer = await page.screenshot({ type: "png" });
+      let buffer: Uint8Array;
+      try {
+        buffer = await page.screenshot({ type: "png" });
+      } catch (err) {
+        result.failures.push(shotFailure(err, `screenshots/${filename}`, finalPositions[i]!));
+        continue;
+      }
       writeCaptureFileSync(filePath, buffer);
       filePaths.push(`screenshots/${filename}`);
     }
@@ -288,8 +346,11 @@ export async function captureScrollScreenshots(
       const plate = await captureFullPagePlate(page, screenshotsDir, {
         ...budget,
         files: filePaths,
+      }).catch((err: unknown) => {
+        result.failures.push(shotFailure(err, "screenshots/full-page.png", null));
+        return null;
       });
-      if (plate.kind === "omitted" && plate.reason === "budget-exhausted") budgetSpent();
+      if (plate?.kind === "omitted" && plate.reason === "budget-exhausted") budgetSpent();
     }
   } catch (err) {
     if (err instanceof CaptureDirRefusedError) throw err;

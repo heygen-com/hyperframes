@@ -233,6 +233,33 @@ describe("media rules", () => {
     );
   });
 
+  it("accepts color grading on a canvas", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <canvas id="drawn" width="1920" height="1080" data-color-grading='{"preset":"skin-soft"}'></canvas>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.filter((f) => f.code.startsWith("color_grading_"))).toEqual([]);
+  });
+
+  it("accepts a grade group's grading and still validates it", async () => {
+    const lane = (grading: string) => `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <hf-color-group id="tamer" data-label="Tamer" data-color-grading='${grading}'></hf-color-group>
+    <video id="v1" data-color-group="tamer" data-start="0" data-duration="5" src="a.mp4" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const valid = await lintHyperframeHtml(lane('{"preset":"skin-soft"}'));
+    expect(valid.findings.filter((f) => f.code.startsWith("color_grading_"))).toEqual([]);
+    const broken = await lintHyperframeHtml(lane('{"preset":'));
+    expect(broken.findings.map((f) => f.code)).toContain("color_grading_invalid_json");
+  });
+
   it("reports warning for media with preload=none", async () => {
     const html = `
 <html><body>
@@ -305,6 +332,90 @@ describe("media rules", () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe("error");
     expect(finding?.elementId).toBe("demo-video");
+  });
+
+  it("names the timed wrapper in the hint, and following it lints clean", async () => {
+    const page = (body: string) => `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    ${body}
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const codes = async (body: string) =>
+      (await lintHyperframeHtml(page(body))).findings.map((f) => f.code);
+
+    const nested = await lintHyperframeHtml(
+      page(
+        `<div id="wrap" class="clip" data-start="2" data-duration="6"><video id="nv" src="assets/clip.mp4" muted></video></div>`,
+      ),
+    );
+    const hint = nested.findings.find((f) => f.code === "media_missing_data_start")?.fixHint;
+    expect(hint).toContain('id="wrap"');
+    expect(hint).toContain('data-start="2"');
+    expect(hint).not.toContain('data-start="0"');
+
+    // The hint's one step: the video leaves the wrapper and takes its timing.
+    const followed = await codes(
+      `<div id="wrap" class="clip" data-start="2" data-duration="6"></div><video id="nv" src="assets/clip.mp4" data-start="2" data-duration="6" muted></video>`,
+    );
+    expect(followed).not.toContain("media_missing_data_start");
+    expect(followed).not.toContain("video_nested_in_timed_element");
+
+    // Direct case keeps the plain hint, and following it is clean too.
+    const direct = await lintHyperframeHtml(
+      page(`<video id="dv" src="assets/clip.mp4" muted></video>`),
+    );
+    expect(direct.findings.find((f) => f.code === "media_missing_data_start")?.fixHint).toContain(
+      'data-start="0"',
+    );
+    expect(
+      await codes(
+        `<video id="dv" src="assets/clip.mp4" data-start="0" data-duration="5" muted></video>`,
+      ),
+    ).not.toContain("media_missing_data_start");
+  });
+
+  it("hints the innermost timed wrapper, skips closed siblings, and leaves audio alone", async () => {
+    const hintFor = async (body: string) =>
+      (
+        await lintHyperframeHtml(`
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">${body}</div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`)
+      ).findings.find((f) => f.code === "media_missing_data_start")?.fixHint;
+
+    const scene = await hintFor(
+      `<div id="scene" data-start="0" data-duration="10"><div id="clip" data-start="3" data-duration="4"><video id="v" src="a.mp4" muted></video></div></div>`,
+    );
+    expect(scene).toContain('id="clip"');
+    expect(scene).toContain('data-start="3" and data-duration="4"');
+
+    const sibling = await hintFor(
+      `<div id="scene" data-start="0" data-duration="10"><div id="gone" data-start="1"></div><video id="v" src="a.mp4" muted></video></div>`,
+    );
+    expect(sibling).toContain('id="scene"');
+
+    const afterClosed = await lintHyperframeHtml(`
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="title" data-start="0" data-duration="3"></div>
+    <div id="frame"><video id="v" src="a.mp4" data-start="4" data-duration="5" muted></video></div>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`);
+    expect(afterClosed.findings.map((f) => f.code)).not.toContain("video_nested_in_timed_element");
+
+    const noDuration = await hintFor(
+      `<div id="w" data-start="2"><video id="v" src="a.mp4" muted></video></div>`,
+    );
+    expect(noDuration).toContain('data-start="2".');
+
+    const audio = await hintFor(
+      `<div id="w" data-start="2" data-duration="6"><audio id="a" src="a.mp3"></audio></div>`,
+    );
+    expect(audio).toContain('data-start="0"');
   });
 
   it("allows audible video clips to omit muted when data-has-audio is true", async () => {
@@ -399,6 +510,23 @@ describe("media rules", () => {
       expect(found).not.toContain("video_audio_double_source");
     },
   );
+
+  it("video_audio_double_source ignores a room tone, the audio that bridges a cut with another stretch of the file", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="10" data-media-start="2" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="a" data-start="3.2" data-duration="0.06" data-media-start="7" data-timeline-role="room-tone" src="clip.mp4"></audio>`),
+    );
+    expect(found).not.toContain("video_audio_double_source");
+  });
+
+  it("video_audio_double_source still flags a plain audio of the same file beside the room tone", async () => {
+    const found = await codes(
+      wrap(`<video id="v" data-start="0" data-duration="10" data-has-audio="true" src="clip.mp4"></video>
+    <audio id="tone" data-start="3.2" data-duration="0.06" data-media-start="7" data-timeline-role="room-tone" src="clip.mp4"></audio>
+    <audio id="a" data-start="3" data-duration="2" src="clip.mp4"></audio>`),
+    );
+    expect(found).toContain("video_audio_double_source");
+  });
 
   it("video_audio_double_source ignores same-src clips that do not overlap in time", async () => {
     const found = await codes(
@@ -580,6 +708,31 @@ describe("media rules", () => {
     expect(findings).toHaveLength(2);
     expect(findings.map((finding) => finding.elementId).sort()).toEqual(["clip", "voice"]);
     expect(findings.every((finding) => finding.fixHint?.includes("data-var-src"))).toBe(true);
+  });
+
+  it.each([
+    {
+      script: `const target = document.getElementById("clip"); { const target = document.getElementById("poster"); target.src = "b.png"; } target.src = "b.mp4";`,
+      expected: ["clip"],
+    },
+    {
+      script: `const target = document.getElementById("clip"); function update(target) { target.src = "b.png"; }`,
+      expected: [],
+    },
+    {
+      script: `function updateVideo() { const target = document.getElementById("clip"); target.src = "b.mp4"; } function updateImage() { const target = document.getElementById("poster"); target.src = "b.png"; }`,
+      expected: ["clip"],
+    },
+  ])("checks the media source write in its own scope ($expected)", async ({ script, expected }) => {
+    const html = `<html><body><div data-composition-id="c1" data-width="1920" data-height="1080">
+      <video id="clip" src="a.mp4"></video><img id="poster" src="a.png">
+      <script>${script}</script></div></body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(
+      result.findings
+        .filter((finding) => finding.code === "media_runtime_src_mutation")
+        .map((finding) => finding.elementId),
+    ).toEqual(expected);
   });
 
   it("does not flag img or script src mutations", async () => {
@@ -765,7 +918,7 @@ describe("audio_volume_tween_overrides_gain", () => {
     expect(res.findings.some((f) => f.code === "audio_volume_tween_overrides_gain")).toBe(false);
   });
 
-  it("stays quiet at unity, without a tween, or when a lane already owns the level", async () => {
+  it("stays quiet at unity, without a tween, or when a lane makes the tween inert", async () => {
     const unity = await lintHyperframeHtml(
       withScript(`data-volume="1"`, `tl.to("#bgm", { volume: 0 });`),
     );
@@ -1030,6 +1183,42 @@ describe("audio_group_carve_attr", () => {
   });
 });
 
+describe("audio_group_holds_elements", () => {
+  const doc = (group: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      ${group}
+      <video id="clip" src="clip.mp4" data-start="0" data-duration="10" data-has-audio="true"></video>
+      <audio id="ding" src="ding.wav" data-start="1" data-duration="1" data-audio-group="sfx"></audio>
+    </div>
+  </body></html>`;
+  const holds = async (group: string) =>
+    (await lintHyperframeHtml(doc(group))).findings.filter(
+      (f) => f.code === "audio_group_holds_elements",
+    );
+
+  it("warns on a self-closed group, naming the first element it took in", async () => {
+    const [finding, ...rest] = await holds(`<hf-audio-group id="sfx" data-label="SFX" />`);
+    expect(rest).toHaveLength(0);
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.elementId).toBe("sfx");
+    expect(finding?.message).toContain("holds 2 element(s), starting with <video#clip>");
+    expect(finding?.message).toContain("data-audio-group");
+  });
+
+  it("warns on a clip written inside a closed group", async () => {
+    const [finding] = await holds(
+      `<hf-audio-group id="sfx"><img id="logo" src="logo.png"></hf-audio-group>`,
+    );
+    expect(finding?.message).toContain("holds 1 element(s), starting with <img#logo>");
+  });
+
+  it("stays quiet on a group closed right after it opens", async () => {
+    expect(await holds(`<hf-audio-group id="sfx" data-label="SFX"></hf-audio-group>`)).toHaveLength(
+      0,
+    );
+  });
+});
+
 describe("audio_carve_ungrouped_sources", () => {
   const withCarve = (carveJson: string, extra = "") => `<!DOCTYPE html><html><body>
     <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
@@ -1175,14 +1364,100 @@ describe("media_src_kind_mismatch", () => {
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
   });
 
-  it("does not flag .ogg or .m4a, whose containers can carry video too", async () => {
+  it("errors when <img> src is an .m4a audio file", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="logo" src="voice.m4a" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("logo");
+    expect(finding?.message).toContain("an audio file");
+  });
+
+  it("errors when <video> src is an .m4a audio file", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="bg" src="voice.m4a" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("bg");
+    expect(finding?.message).toContain("an audio file");
+  });
+
+  it("errors when <video> src is an .avif image", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="bg" src="photo.avif" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "media_src_kind_mismatch");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("bg");
+    expect(finding?.message).toContain("an image");
+  });
+
+  it("does not flag matching .avif and .m4a src kinds", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <img id="i1" src="photo.avif">
+    <audio id="a1" src="voice.m4a" data-start="0" data-duration="5"></audio>
+    <video id="v1" src="clip.m4v" data-start="0" data-duration="5" muted></video>
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+
+  it("reads .avif and .m4a extensions case-insensitively and past query/hash suffixes", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="photo.AVIF?v=2" data-start="0" data-duration="5" muted></video>
+    <img id="i1" src="voice.M4A#t=5" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "media_src_kind_mismatch");
+    expect(findings.map((f) => f.elementId)).toEqual(["v1", "i1"]);
+    expect(findings[0]?.message).toContain("an image");
+    expect(findings[1]?.message).toContain("an audio file");
+  });
+
+  it("does not flag .ogg, whose container can carry video too", async () => {
     const html = `
 <html><body>
   <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
     <video id="v1" src="clip.ogg" data-start="0" data-duration="5" muted></video>
-    <video id="v2" src="clip.m4a" data-start="0" data-duration="5" muted></video>
     <img id="i1" src="clip.ogg" data-start="0" data-duration="5" />
-    <img id="i2" src="clip.m4a" data-start="0" data-duration="5" />
+  </div>
+  <script>window.__timelines = {};</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+
+  it("does not flag unknown extensions, whose kind cannot be inferred", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v1" src="clip.xyz" data-start="0" data-duration="5" muted></video>
+    <img id="i1" src="still.xyz" data-start="0" data-duration="5" />
   </div>
   <script>window.__timelines = {};</script>
 </body></html>`;
@@ -1201,6 +1476,102 @@ describe("media_src_kind_mismatch", () => {
 </body></html>`;
     const result = await lintHyperframeHtml(html);
     expect(result.findings.find((f) => f.code === "media_src_kind_mismatch")).toBeUndefined();
+  });
+});
+
+describe("duplicate_media_discovery_risk", () => {
+  const page = (media: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      ${media}
+    </div>
+  </body></html>`;
+
+  it("warns when two clips repeat the same source, start and duration under different ids", async () => {
+    const result = await lintHyperframeHtml(
+      page(`
+      <video id="v1" src="clip.mp4" data-start="0" data-duration="4" muted></video>
+      <video id="v2" src="clip.mp4" data-start="0" data-duration="4" muted></video>`),
+    );
+    const findings = result.findings.filter((f) => f.code === "duplicate_media_discovery_risk");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe("warning");
+    expect(findings[0]?.message).toContain("2 matching video entries");
+  });
+
+  it.each([
+    [
+      "data-duration",
+      `<video id="v2" src="clip.mp4" data-start="0" data-duration="9" muted></video>`,
+    ],
+    ["data-start", `<video id="v2" src="clip.mp4" data-start="2" data-duration="4" muted></video>`],
+    ["src", `<video id="v2" src="other.mp4" data-start="0" data-duration="4" muted></video>`],
+  ])("stays quiet when only %s differs", async (_field, second) => {
+    const result = await lintHyperframeHtml(
+      page(`
+      <video id="v1" src="clip.mp4" data-start="0" data-duration="4" muted></video>
+      ${second}`),
+    );
+    expect(result.findings.some((f) => f.code === "duplicate_media_discovery_risk")).toBe(false);
+  });
+
+  it("keeps a unique clip quiet", async () => {
+    const result = await lintHyperframeHtml(
+      page(`<video id="v1" src="clip.mp4" data-start="0" data-duration="4" muted></video>`),
+    );
+    expect(result.findings.some((f) => f.code === "duplicate_media_discovery_risk")).toBe(false);
+  });
+});
+
+describe("self_closing_media_tag", () => {
+  const page = (media: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      ${media}
+    </div>
+  </body></html>`;
+
+  it.each(["video", "audio"])("errors on a self-closing <%s/>", async (tag) => {
+    const result = await lintHyperframeHtml(
+      page(`<${tag} id="m1" src="clip.mp4" data-start="0" data-duration="4"/>`),
+    );
+    const finding = result.findings.find((f) => f.code === "self_closing_media_tag");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.elementId).toBe("m1");
+    expect(finding?.message).toContain(`Self-closing <${tag}/>`);
+  });
+
+  it("stays quiet on an explicitly closed media tag", async () => {
+    const result = await lintHyperframeHtml(
+      page(`<video id="v1" src="clip.mp4" data-start="0" data-duration="4" muted></video>`),
+    );
+    expect(result.findings.some((f) => f.code === "self_closing_media_tag")).toBe(false);
+  });
+});
+
+describe("placeholder_media_url", () => {
+  const page = (media: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      ${media}
+    </div>
+  </body></html>`;
+
+  it.each([
+    ["video", "https://placehold.co/1920x1080"],
+    ["audio", "https://placekitten.com/320/1.mp3"],
+    ["img", "https://picsum.photos/1920/1080"],
+  ])("errors on a placeholder <%s> src", async (tag, src) => {
+    const result = await lintHyperframeHtml(
+      page(`<${tag} id="m1" src="${src}" data-start="0" data-duration="4"></${tag}>`),
+    );
+    const finding = result.findings.find((f) => f.code === "placeholder_media_url");
+    expect(finding?.severity).toBe("error");
+    expect(finding?.message).toContain(src);
+  });
+
+  it("stays quiet on a real src", async () => {
+    const result = await lintHyperframeHtml(
+      page(`<video id="v1" src="assets/clip.mp4" data-start="0" data-duration="4" muted></video>`),
+    );
+    expect(result.findings.some((f) => f.code === "placeholder_media_url")).toBe(false);
   });
 });
 

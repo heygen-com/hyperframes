@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "tts");
+const CACHE_DIR = hyperframesCacheDir("tts");
 const MODELS_DIR = join(CACHE_DIR, "models");
 const VOICES_DIR = join(CACHE_DIR, "voices");
 

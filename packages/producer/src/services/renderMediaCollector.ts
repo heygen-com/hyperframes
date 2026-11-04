@@ -26,8 +26,10 @@ import {
 } from "@hyperframes/core/media-timing";
 import {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   parseAudioElements,
+  isSelfOrAncestorHidden,
   resolveReferencedStart,
   type RefResolverEl,
   type RefResolverDoc,
@@ -147,6 +149,17 @@ function collectHostWindows(html: string): Map<string, HostWindow> {
   return windows;
 }
 
+/** Ids, as the parsers report them, of videos that are `data-hidden` or sit inside such an element. */
+export function collectHiddenVideoIds(html: string): Set<string> {
+  const { document } = parseHTML(html);
+  const hidden = new Set<string>();
+  for (const element of document.querySelectorAll("video")) {
+    const id = element.getAttribute(MEDIA_RENDER_ID_ATTR) || element.getAttribute("id");
+    if (id && isSelfOrAncestorHidden(element)) hidden.add(id);
+  }
+  return hidden;
+}
+
 /**
  * Shift a scene-relative window onto the root timeline; null when the clip starts after its host
  * ends (the file-tree walk's `start < absoluteEnd` drop) or its in-point hosts cut all of it.
@@ -199,6 +212,7 @@ export interface RenderMedia {
   images: ImageElement[];
   /** Ids of clips in the document that never play; the browser probe must not add them back. */
   droppedMediaIds: Set<string>;
+  gradedCanvas: boolean;
 }
 
 /**
@@ -214,8 +228,14 @@ export function collectRenderMedia(html: string): RenderMedia {
   const windowFor = (id: string): HostWindow => windows.get(id) ?? ROOT_WINDOW;
   const droppedMediaIds = new Set<string>();
 
+  // A hidden clip never shows, so it is not extracted or probed; its audio is the mixer's to mute.
+  const hiddenIds = collectHiddenVideoIds(html);
   const videos: VideoElement[] = [];
   for (const video of parseVideoElements(html)) {
+    if (hiddenIds.has(video.id)) {
+      droppedMediaIds.add(video.id);
+      continue;
+    }
     const absolute = toAbsoluteWindow(video.start, video.end, windowFor(video.id));
     if (!absolute) {
       droppedMediaIds.add(video.id);
@@ -243,7 +263,7 @@ export function collectRenderMedia(html: string): RenderMedia {
     else droppedMediaIds.add(elementId);
   }
 
-  return { videos, audios, images, droppedMediaIds };
+  return { videos, audios, images, droppedMediaIds, gradedCanvas: hasGradedCanvas(html) };
 }
 
 function placeAudio(audio: AudioElement, window: HostWindow): AudioElement | null {

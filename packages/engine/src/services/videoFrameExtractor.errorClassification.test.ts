@@ -2,7 +2,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { safeDownloadUrlIdentity, UrlDownloadError } from "../utils/urlDownloader.js";
+import {
+  _setDownloadFetchForTests,
+  safeDownloadUrlIdentity,
+  UrlDownloadError,
+} from "../utils/urlDownloader.js";
+
+const stubFetch = (replacement: unknown): void =>
+  _setDownloadFetchForTests(replacement as Parameters<typeof _setDownloadFetchForTests>[0]);
 import {
   classifyFfmpegSpawnError,
   classifyVideoExtractionError,
@@ -13,6 +20,7 @@ const tempDirs: string[] = [];
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  _setDownloadFetchForTests();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -62,8 +70,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
   it("threads a query-free fingerprint, allowlisted host, and zero used retries", async () => {
     const source =
       "https://media.customer-cdn.example/private/clip.mp4?X-Amz-Signature=super-secret#fragment";
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockResolvedValue(new Response("<!doctype html><html><body>denied</body></html>")),
     );
 
@@ -97,7 +104,7 @@ describe("extractAllVideoFrames download failure metadata", () => {
 
   it("collapses an exhausted HTTP retry to status class and normalized host", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const result = await extractAllVideoFrames(
       [

@@ -18,12 +18,13 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
-import type { S3Client } from "@aws-sdk/client-s3";
-import type { LambdaPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
+import { DescribeStateMachineCommand, SFNClient, StartExecutionCommand } from "@aws-sdk/client-sfn";
+import { S3Client } from "@aws-sdk/client-s3";
+import type { SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
-import { deploySite, type SiteHandle } from "./deploySite.js";
+import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
+import { deploySite, ensureSiteStored, type SiteHandle } from "./deploySite.js";
 import {
   validateDistributedRenderConfig,
   validateStepFunctionsInputSize,
@@ -31,17 +32,13 @@ import {
 
 /** Options for {@link renderToLambda}. */
 export interface RenderToLambdaOptions {
-  /** Local project directory. Required when `siteHandle` is not supplied. */
+  /** Local project directory. Required without `siteHandle`; with one, re-uploads expired files. */
   projectDir?: string;
   /** Re-use an existing `deploySite` upload (skips tar+S3 PUT). */
   siteHandle?: SiteHandle;
+  onNotice?: (message: string) => void;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
-  /**
-   * Distributed plan transport. Defaults to `"v2"`. Select `"v1"`
-   * explicitly only for deprecated compatibility with the monolithic plan.
-   */
-  planProtocol?: LambdaPlanProtocol;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */
   bucketName: string;
   /** State machine ARN from the SAM stack output (`RenderStateMachineArn`). */
@@ -78,8 +75,20 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+function rejectUnsupportedLegacyPlanProtocol(opts: object): void {
+  const planProtocol = Reflect.get(opts, "planProtocol");
+  if (planProtocol === undefined || planProtocol === "v2") return;
+
+  const error = new Error(
+    `[renderToLambda] planProtocol is no longer configurable; expected "v2" or absent, got ${JSON.stringify(planProtocol)}`,
+  );
+  error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+  throw error;
+}
+
 // fallow-ignore-next-line complexity
 export async function renderToLambda(opts: RenderToLambdaOptions): Promise<RenderHandle> {
+  rejectUnsupportedLegacyPlanProtocol(opts);
   validateDistributedRenderConfig(opts.config);
 
   if (!opts.bucketName) {
@@ -92,6 +101,9 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     throw new Error("[renderToLambda] either siteHandle or projectDir must be supplied");
   }
 
+  const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
+  await assertStackReadsSites({ stateMachineArn: opts.stateMachineArn, sfn });
+
   const executionName = opts.executionName ?? `hf-render-${randomUUID()}`;
   const ext = formatExtension(opts.config.format);
   const outputKey = opts.outputKey ?? `renders/${executionName}/output${ext}`;
@@ -101,21 +113,26 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
   });
   const outputS3Uri = formatS3Uri({ bucket: opts.bucketName, key: outputKey });
 
-  const site =
-    opts.siteHandle ??
-    (await deploySite({
-      projectDir: opts.projectDir as string,
-      bucketName: opts.bucketName,
-      region: opts.region,
-      s3: opts.s3,
-    }));
+  const site = opts.siteHandle
+    ? await ensureSiteStored(
+        opts.siteHandle,
+        opts.s3 ?? new S3Client({ region: opts.region }),
+        opts.projectDir,
+      )
+    : await deploySite({
+        projectDir: opts.projectDir as string,
+        bucketName: opts.bucketName,
+        region: opts.region,
+        onNotice: opts.onNotice,
+        s3: opts.s3,
+      });
 
   const input = {
     ProjectS3Uri: site.projectS3Uri,
     PlanOutputS3Prefix: planOutputS3Prefix,
     OutputS3Uri: outputS3Uri,
     Config: opts.config,
-    PlanProtocol: opts.planProtocol ?? "v2",
+    PlanProtocol: "v2",
   };
 
   // Reject oversize input client-side. Step Functions Standard caps the
@@ -127,7 +144,6 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
   // check should be against the actual wire payload).
   validateStepFunctionsInputSize(input);
 
-  const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
   const startedAt = new Date().toISOString();
   const response = await sfn.send(
     new StartExecutionCommand({
@@ -150,4 +166,23 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     projectS3Uri: site.projectS3Uri,
     startedAt,
   };
+}
+
+/** An older stack's plan step would try to untar a site manifest and fail after retries. */
+export async function assertStackReadsSites(opts: {
+  stateMachineArn: string;
+  region?: string;
+  sfn?: SFNClient;
+}): Promise<void> {
+  const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
+  const { stateMachineArn } = opts;
+  const { definition } = await sfn.send(new DescribeStateMachineCommand({ stateMachineArn }));
+  if (definition?.includes(`"${SITE_MANIFEST_INVALID}"`)) return;
+  const error = new Error(
+    `[renderToLambda] STACK_TOO_OLD: ${stateMachineArn} was deployed by an earlier ` +
+      "@hyperframes/aws-lambda that cannot read this version's sites. Redeploy the stack first " +
+      "(`hyperframes lambda deploy`, or the SAM template / CDK construct from this version).",
+  );
+  error.name = "STACK_TOO_OLD";
+  throw error;
 }

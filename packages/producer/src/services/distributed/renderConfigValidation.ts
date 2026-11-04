@@ -17,6 +17,7 @@
  * needs the actual planner.
  */
 
+import { validateDeliveryEncoderConfig } from "../render/deliveryEncoder.js";
 import {
   VIDEO_FRAME_FORMATS,
   isVideoFrameFormat,
@@ -24,7 +25,11 @@ import {
 } from "@hyperframes/engine";
 import { DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { type DistributedFormat } from "./shared.js";
-import { type DistributedRenderConfig, MAX_PARALLEL_CHUNKS_CEILING } from "./plan.js";
+import {
+  type DistributedRenderConfig,
+  MAX_CHUNK_SIZE,
+  MAX_PARALLEL_CHUNKS_CEILING,
+} from "./plan.js";
 
 /**
  * `DistributedRenderConfig` minus the runtime-only fields (`logger`,
@@ -62,7 +67,6 @@ const ALLOWED_HDR_MODES = ["auto", "force-sdr"] as const;
 
 const MAX_DIMENSION = 7680;
 const MIN_DIMENSION = 16;
-const MAX_CHUNK_SIZE = 3600;
 
 /**
  * Throw an `InvalidConfigError` if `config` is not a valid
@@ -88,6 +92,10 @@ export function validateDistributedRenderConfig(
 
   validateIntDimension("config.width", config.width);
   validateIntDimension("config.height", config.height);
+
+  if (config.pageMotionBlur !== undefined && config.pageMotionBlur !== "off") {
+    throw new InvalidConfigError("config.pageMotionBlur", 'must be "off" when provided');
+  }
 
   if (!ALLOWED_FORMATS.includes(config.format)) {
     throw new InvalidConfigError(
@@ -138,6 +146,34 @@ export function validateDistributedRenderConfig(
     throw new InvalidConfigError(
       "config.bitrate",
       `must look like "10M" or "5000k"; got ${JSON.stringify(config.bitrate)}`,
+    );
+  }
+
+  try {
+    validateDeliveryEncoderConfig({
+      format: config.format,
+      fps: { num: config.fps, den: 1 },
+      keyframeIntervalSeconds: config.keyframeIntervalSeconds,
+      maxBitrate: config.maxBitrate,
+      bufferSize: config.bufferSize,
+    });
+  } catch (error) {
+    throw new InvalidConfigError(
+      "config.maxBitrate",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+
+  try {
+    validateDeliveryEncoderConfig({
+      format: config.format,
+      fps: { num: config.fps, den: 1 },
+      proresProfile: config.proresProfile,
+    });
+  } catch (error) {
+    throw new InvalidConfigError(
+      "config.proresProfile",
+      error instanceof Error ? error.message : String(error),
     );
   }
 

@@ -1,5 +1,6 @@
 import { authoredSrcPath, resolveMediaPreviewUrl } from "../components/thumbnailUtils";
 import { TIMELINE_VIEWPORT_BUDGETS } from "./timelineViewportBudgets";
+import { mediaUrlSourceOptions, reportMediaFetchFailure } from "./mediaFetch";
 
 export interface MediaProbeResult {
   duration: number;
@@ -55,7 +56,7 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
   if (!mb) return null;
 
   const input = new mb.Input({
-    source: new mb.UrlSource(url),
+    source: new mb.UrlSource(url, mediaUrlSourceOptions("probe")),
     formats: mb.ALL_FORMATS,
   });
   try {
@@ -73,7 +74,8 @@ async function probeOne(url: string): Promise<MediaProbeResult | null> {
       hasAudio: audioTracks.length > 0,
     };
     return result;
-  } catch {
+  } catch (error) {
+    reportMediaFetchFailure(error);
     return null;
   } finally {
     input.dispose();
@@ -126,34 +128,35 @@ export function applyCachedSourceDurations<
 
 /**
  * Probe (header-only, cheap) any media elements still missing sourceDuration
- * after the cache pass, applying each resolved duration via `apply(key, secs)`.
- * Skips already-cached srcs.
+ * after the cache pass. Each file is probed once and all its clips' durations go to one
+ * `apply(durations)`, so a file cut into many clips writes the store once. Skips already-cached srcs.
  */
 export async function probeMissingSourceDurations<
   T extends { src?: string; tag: string; sourceDuration?: number; key?: string; id: string },
 >(
   elements: T[],
   projectId: string | null,
-  apply: (key: string, durationSeconds: number) => void,
+  apply: (durations: ReadonlyMap<string, number>) => void,
 ): Promise<void> {
-  const needs = elements.flatMap((el) => {
+  const keysBySource = new Map<string, string[]>();
+  for (const el of elements) {
     if (
       !el.src ||
       el.sourceDuration != null ||
       !["video", "audio"].includes(el.tag.toLowerCase())
     ) {
-      return [];
+      continue;
     }
     const source = resolveProbeSource(el.src, projectId);
-    return !getCachedProbe(source) && !hasFreshFailure(normalizeUrl(source))
-      ? [{ el, source }]
-      : [];
-  });
-  if (needs.length === 0) return;
+    if (getCachedProbe(source) || hasFreshFailure(normalizeUrl(source))) continue;
+    const keys = keysBySource.get(source);
+    if (keys) keys.push(el.key ?? el.id);
+    else keysBySource.set(source, [el.key ?? el.id]);
+  }
   await Promise.allSettled(
-    needs.map(async ({ el, source }) => {
+    [...keysBySource].map(async ([source, keys]) => {
       const result = await probeMediaUrl(source);
-      if (result) apply(el.key ?? el.id, result.duration);
+      if (result) apply(new Map(keys.map((key) => [key, result.duration])));
     }),
   );
 }

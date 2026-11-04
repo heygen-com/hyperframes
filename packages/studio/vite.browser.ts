@@ -14,7 +14,7 @@ import { seekThumbnailPreview } from "./vite.thumbnail";
 
 let browser: import("puppeteer-core").Browser | null = null;
 let browserLaunch: Promise<import("puppeteer-core").Browser | null> | null = null;
-let browserDescription = "unknown browser";
+let describeBrowser = () => "unknown browser";
 
 function systemChromePaths(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string[] {
   if (platform === "win32") {
@@ -84,12 +84,19 @@ function findPuppeteerCacheChrome(
   return undefined;
 }
 
-function browserVersion(
+export function browserVersion(
   executable: string,
-  run: (file: string) => string = (file) => execFileSync(file, ["--version"], { encoding: "utf8" }),
+  run: typeof execFileSync = execFileSync,
+  platform: NodeJS.Platform = process.platform,
 ): string | undefined {
+  const options = { encoding: "utf8" as const, timeout: 5_000, windowsHide: true };
+  const env = { ...process.env, HYPERFRAMES_CHROME_VERSION_PATH: executable };
+  const script =
+    "(Get-Item -LiteralPath $env:HYPERFRAMES_CHROME_VERSION_PATH).VersionInfo.ProductVersion";
   try {
-    return run(executable).trim() || undefined;
+    if (platform !== "win32") return run(executable, ["--version"], options).trim() || undefined;
+    const v = run("powershell.exe", ["-NoProfile", "-Command", script], { ...options, env }).trim();
+    return /^\d+(\.\d+){3}$/.test(v) ? `Chrome/${v}` : undefined;
   } catch {
     return undefined;
   }
@@ -110,7 +117,8 @@ export function findSystemChrome(
   env: NodeJS.ProcessEnv = process.env,
   pathExists: (path: string) => boolean = existsSync,
   platform: NodeJS.Platform = process.platform,
-  versionOf: (path: string) => string | undefined = browserVersion,
+  versionOf: (path: string) => string | undefined = (path) =>
+    browserVersion(path, undefined, platform),
   readDirectories: (path: string) => string[] = readdirSync,
 ): string | undefined {
   const override = [
@@ -127,6 +135,13 @@ export function findSystemChrome(
   );
 }
 
+/** Reading the version blocks the server (a PowerShell start on Windows), so only a failure's wording pays for it. */
+function versionWhenAsked(executable: string): () => string {
+  let description: string | undefined;
+  return () =>
+    (description ??= `${executable}, ${browserVersion(executable) ?? "unknown version"}`);
+}
+
 async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | null> {
   if (browser?.connected) return browser;
   if (browserLaunch) return browserLaunch;
@@ -134,7 +149,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
     const puppeteer = await import("puppeteer-core");
     const executablePath = findSystemChrome();
     if (!executablePath) return null;
-    browserDescription = `${executablePath}, ${browserVersion(executablePath) ?? "unknown version"}`;
+    describeBrowser = versionWhenAsked(executablePath);
     try {
       browser = await puppeteer.default.launch({
         headless: true,
@@ -151,7 +166,7 @@ async function getSharedBrowser(): Promise<import("puppeteer-core").Browser | nu
       });
     } catch (error) {
       console.warn(
-        `[Studio] Thumbnail browser launch failed (${browserDescription}):`,
+        `[Studio] Thumbnail browser launch failed (${describeBrowser()}):`,
         error instanceof Error ? error.message : error,
       );
       throw error;
@@ -265,7 +280,7 @@ export async function generateThumbnail(opts: GenerateThumbnailOptions): Promise
   } catch (error) {
     if (!opts.signal.aborted) {
       console.warn(
-        `[Studio] Thumbnail generation failed (${browserDescription}):`,
+        `[Studio] Thumbnail generation failed (${describeBrowser()}):`,
         error instanceof Error ? error.message : error,
       );
     }

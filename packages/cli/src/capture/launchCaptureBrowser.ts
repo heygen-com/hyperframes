@@ -1,5 +1,5 @@
 import type { Browser } from "puppeteer-core";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,7 +8,9 @@ import {
   registerBrowserSessionCleanup,
 } from "../browser/launch.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
+import { settleAcrossNavigation } from "./navigateForCapture.js";
 import { startCaptureProxy } from "./captureProxy.js";
+import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 
 /** The launch-wide proxy covers pages, popups, workers and both extraction passes. */
 export async function launchCaptureBrowser(options: {
@@ -17,6 +19,7 @@ export async function launchCaptureBrowser(options: {
   disableWebgl: boolean;
   width: number;
   height: number;
+  localOrigin?: string;
 }): Promise<{ browser: Browser; close(): Promise<void> }> {
   const proxy = await startCaptureProxy();
   let profile: string | undefined;
@@ -30,7 +33,7 @@ export async function launchCaptureBrowser(options: {
         if (browser) await closeManagedBrowser(browser);
       } finally {
         try {
-          if (profile) await rm(profile, { recursive: true, force: true });
+          if (profile) await removeTreeBestEffortAsync(profile);
         } finally {
           unregister?.();
         }
@@ -59,11 +62,13 @@ export async function launchCaptureBrowser(options: {
       args: [
         ...captureBrowserArgs(options.disableWebgl, options.width, options.height),
         `--proxy-server=${proxy.url}`,
-        "--proxy-bypass-list=<-loopback>",
+        `--proxy-bypass-list=<-loopback>${options.localOrigin ? `;${new URL(options.localOrigin).host}` : ""}`,
         "--disable-quic",
         "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
       ],
     });
+    const newPage = browser.newPage.bind(browser);
+    browser.newPage = async () => settleAcrossNavigation(await newPage());
     browser.once("disconnected", () => void proxy.close());
     return {
       browser,

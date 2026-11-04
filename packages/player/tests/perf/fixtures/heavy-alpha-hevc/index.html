@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-alpha-hevc</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+        font-family: system-ui, sans-serif;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      video {
+        position: absolute;
+        object-fit: cover;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    ></div>
+    <script>
+      (function () {
+        var root = document.getElementById("root");
+        var tl = gsap.timeline({ paused: true });
+        function video(src, track, start, duration, css) {
+          var v = document.createElement("video");
+          v.setAttribute("data-start", String(start));
+          v.setAttribute("data-duration", String(duration));
+          v.setAttribute("data-track-index", String(track));
+          v.setAttribute("src", "../_media/" + src);
+          v.setAttribute("preload", "auto");
+          v.setAttribute("playsinline", "");
+          v.muted = true;
+          v.style.cssText = css;
+          root.appendChild(v);
+          return v;
+        }
+        // Transparent overlays over a 1080p background; Safari and Chrome decode these alpha formats differently.
+        video("h264-1080.mp4", 0, 0, 10, "inset:0;width:100%;height:100%;");
+        for (var i = 0; i < 6; i++) {
+          var v = video(
+            "alpha-hevc.mov",
+            i + 1,
+            0,
+            10,
+            "left:" + i * 280 + "px;top:" + (i % 2 ? 560 : 120) + "px;width:640px;height:360px;",
+          );
+          tl.to(v, { x: 300 * (i % 2 ? -1 : 1), rotation: 8, duration: 10, ease: "sine.inOut" }, 0);
+        }
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

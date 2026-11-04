@@ -8,7 +8,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * `HEYGEN_ACCESS_TOKEN`) can't be cleared by this command — we tell the user to unset them.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   ENV_CREDENTIAL_VAR,
   clearOAuth,
@@ -69,8 +69,8 @@ function warnIfEnvCredentialActive(): void {
 async function ensureConfirmed(yes: boolean, keepApiKey: boolean): Promise<boolean> {
   if (yes) return true;
   const prompt = keepApiKey
-    ? `This will sign out of any active OAuth session on this machine (~/.heygen lives at ${configDir()}). Continue? [y/N] `
-    : `This will sign out of HeyGen on this machine (~/.heygen lives at ${configDir()}). Continue? [y/N] `;
+    ? `This will sign out of any active OAuth session on this machine (~/.hyperframes lives at ${configDir()}). Continue? [y/N] `
+    : `This will sign out of HeyGen on this machine (~/.hyperframes lives at ${configDir()}). Continue? [y/N] `;
   return confirmInteractive(prompt);
 }
 

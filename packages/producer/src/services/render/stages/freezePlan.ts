@@ -14,6 +14,13 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join, relative, resolve } from "node:path";
 
 import type { Fps } from "@hyperframes/core";
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+  type ProresProfile,
+} from "@hyperframes/engine";
+import type { RenderRequestOptions } from "../../../renderRequest.js";
 import { PLAN_PROTOCOL_V1 } from "../../distributed/planProtocol.js";
 import {
   canonicalJsonStringify,
@@ -27,7 +34,7 @@ import {
 /**
  * The encoder configuration locked in at plan time.
  */
-export interface LockedRenderConfig {
+export interface LockedRenderConfig extends Pick<RenderRequestOptions, "pageMotionBlur"> {
   // Capture
   captureMode: "beginframe" | "screenshot";
   forceScreenshot: boolean;
@@ -52,9 +59,13 @@ export interface LockedRenderConfig {
    */
   quality: "draft" | "standard" | "high";
   ffmpegVersion: string;
+  proresProfile?: ProresProfile;
   preset: string;
   crf?: number;
   bitrate?: string;
+  maxBitrate?: string;
+  bufferSize?: string;
+  keyframeIntervalFrames?: number;
   /**
    * VP9-only: new WebM plans persist the resolved libvpx-vp9 `-cpu-used`
    * value so distributed workers reproduce the controller's speed/quality
@@ -96,9 +107,10 @@ export interface LockedRenderConfig {
   variables?: Record<string, unknown>;
 
   chunksCarryAudio?: true;
+  separateAudio?: true;
 }
 
-export interface CompositionMetadataJson {
+export interface CompositionMetadataJson extends Partial<ReferenceBackgroundResult> {
   durationSeconds: number;
   width: number;
   height: number;
@@ -113,6 +125,7 @@ export interface ChunkSliceJson {
   startFrame: number;
   /** Exclusive upper bound — chunk workers iterate frames in `[startFrame, endFrame)`. */
   endFrame: number;
+  captureCost?: number;
 }
 
 /**
@@ -273,6 +286,26 @@ function collectPlanAssetShas(
   return { compositionHtml, assets };
 }
 
+/** Plan file left in remote storage: hashed and published by digest, never copied into the plan. */
+export interface PlanRemoteFile {
+  readonly path: string;
+  readonly sha256: string;
+  readonly sizeBytes: number;
+}
+
+const PLAN_REMOTE_FILES_RELATIVE_PATH = "meta/remote-files.json";
+
+export function writePlanRemoteFiles(planDir: string, files: readonly PlanRemoteFile[]): void {
+  if (files.length === 0) return;
+  const sorted = [...files].sort((a, b) => (a.path < b.path ? -1 : 1));
+  writeFileSync(join(planDir, PLAN_REMOTE_FILES_RELATIVE_PATH), JSON.stringify(sorted), "utf-8");
+}
+
+export function readPlanRemoteFiles(planDir: string): PlanRemoteFile[] {
+  const path = join(planDir, PLAN_REMOTE_FILES_RELATIVE_PATH);
+  return existsSync(path) ? (JSON.parse(readFileSync(path, "utf-8")) as PlanRemoteFile[]) : [];
+}
+
 /**
  * Read a frozen plan directory back from disk and recompute its
  * content-addressed `planHash` over the actual on-disk bytes — including
@@ -386,6 +419,7 @@ export async function freezePlan(input: FreezePlanInput): Promise<FreezePlanResu
   });
 
   const planJson = {
+    ...referenceBackgroundResult(composition[REFERENCE_BACKGROUND_FIELD]),
     protocol: PLAN_PROTOCOL_V1,
     planHash,
     producerVersion,

@@ -3,9 +3,12 @@ import { extname } from "node:path";
 import {
   firstFrameColourArgs,
   parseFirstFrameColour,
+  type PreviewSourceFacts,
   type ToneMapSourceColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
+import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
 export interface FfprobeRunResult {
   status: number | null;
@@ -71,8 +74,15 @@ export interface MediaColorMetadata {
 export interface MediaMetadata {
   kind: "video" | "image" | "audio" | "unknown";
   color: MediaColorMetadata;
-  /** Video audio stream, when probed. Absent means the drop path stays muted. */
+  /** Video audio stream ffmpeg can decode, when probed. Absent means the drop path stays muted. */
   hasAudio?: boolean;
+  audioStream?: number;
+  /** Video stream carries alpha (pix_fmt or the VP8/VP9 alpha_mode tag). */
+  hasAlpha?: boolean;
+  durationSeconds?: number;
+  source?: PreviewSourceFacts;
+  /** Every stream as `type:codec[flags]`, for a failure report. */
+  streams?: string[];
   probeError?: string;
 }
 
@@ -85,7 +95,11 @@ interface FfprobeStream {
   color_transfer?: string;
   color_primaries?: string;
   bits_per_raw_sample?: string;
-  disposition?: { attached_pic?: number };
+  width?: number;
+  height?: number;
+  bit_rate?: string;
+  disposition?: Record<string, number | undefined>;
+  tags?: Record<string, string | undefined>;
 }
 
 const VIDEO_EXT = new Set([
@@ -135,17 +149,6 @@ function colorLabel(input: {
     return "SDR Rec.709";
   }
   return "SDR/unknown";
-}
-
-// Conservative alpha-bearing pix_fmt list: yuva* (yuva420p, yuva444p10le...),
-// rgba/argb/bgra/abgr (packed RGB+alpha), gbrap* (planar GBR+alpha, ProRes
-// 4444 decodes to these), ya* (gray+alpha). Prefix match keeps bit-depth /
-// endianness suffixes covered.
-const ALPHA_PIX_FMT_RE = /^(?:yuva|rgba|argb|bgra|abgr|gbrap|ya)/;
-
-/** True when an ffprobe `pix_fmt` carries an alpha component. */
-export function pixelFormatHasAlpha(pixFmt: string | undefined): boolean {
-  return pixFmt !== undefined && ALPHA_PIX_FMT_RE.test(pixFmt.toLowerCase());
 }
 
 export function classifyMediaColor(stream: FfprobeStream | null | undefined): MediaColorMetadata {
@@ -198,6 +201,86 @@ export async function probeFirstFrameColour(
   return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
 }
 
+function bitDepthOf(stream: FfprobeStream): number {
+  const raw = Number(stream.bits_per_raw_sample);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  const suffixed = /(\d{1,3})(?:le|be)$/.exec(stream.pix_fmt ?? "");
+  return suffixed ? Number(suffixed[1]) : 8;
+}
+
+function sourceFactsOf(
+  stream: FfprobeStream | undefined,
+  formatBitrate: string | undefined,
+): PreviewSourceFacts | undefined {
+  if (!stream?.width || !stream.height) return undefined;
+  const bitrate = Number(stream.bit_rate ?? formatBitrate);
+  return {
+    width: stream.width,
+    height: stream.height,
+    bitDepth: bitDepthOf(stream),
+    bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+  };
+}
+
+const STREAM_SUMMARY_MAX = 12;
+
+function summarizeStream(stream: FfprobeStream): string {
+  const flags = Object.entries(stream.disposition ?? {})
+    .filter(([, on]) => on === 1)
+    .map(([name]) => name);
+  return `${stream.codec_type ?? "?"}:${stream.codec_name ?? "?"}[${flags.join(",")}]`;
+}
+
+type ProbeOutput = {
+  streams?: FfprobeStream[];
+  format?: { duration?: string; bit_rate?: string };
+};
+
+function audioOf(streams: FfprobeStream[]): Pick<MediaMetadata, "hasAudio" | "audioStream"> {
+  const audioStream = decodableAudioStream(streams);
+  return audioStream === null ? { hasAudio: false } : { hasAudio: true, audioStream };
+}
+
+function metadataFromProbe(kind: MediaMetadata["kind"], parsed: ProbeOutput): MediaMetadata {
+  const stream = parsed.streams?.find((item) => {
+    if (kind === "image") return item.codec_type === "video";
+    return item.codec_type === kind && item.disposition?.attached_pic !== 1;
+  });
+  const metadata: MediaMetadata = {
+    kind,
+    color: classifyMediaColor(stream),
+    streams: (parsed.streams ?? []).slice(0, STREAM_SUMMARY_MAX).map(summarizeStream),
+  };
+  if (kind === "video") {
+    Object.assign(metadata, audioOf(parsed.streams ?? []));
+    metadata.hasAlpha = stream !== undefined && videoStreamHasAlpha(stream);
+    const duration = Number(parsed.format?.duration);
+    if (Number.isFinite(duration) && duration > 0) metadata.durationSeconds = duration;
+    metadata.source = sourceFactsOf(stream, parsed.format?.bit_rate);
+  }
+  return metadata;
+}
+
+/** The audio track ffmpeg can decode in a file, with its channel count; null when it has none. */
+export async function probeAudioTrack(
+  filePath: string,
+  runner: FfprobeRunner = execFileRunner,
+): Promise<{ stream: number; channels: number } | null> {
+  const result = await runner(
+    findFfBinary("ffprobe") ?? "ffprobe",
+    [
+      ...["-v", "error", "-select_streams", "a"],
+      ...["-show_entries", "stream=codec_type,codec_name,channels", "-of", "json", "--", filePath],
+    ],
+    { timeout: 30_000 },
+  );
+  if (result.status !== 0) return null;
+  type Probed = { streams?: (FfprobeStreamCodec & { channels?: number })[] };
+  const streams = (JSON.parse(String(result.stdout || "{}")) as Probed).streams ?? [];
+  const stream = decodableAudioStream(streams);
+  return stream === null ? null : { stream, channels: streams[stream]?.channels ?? 0 };
+}
+
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
@@ -222,7 +305,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
       "--",
@@ -239,16 +322,7 @@ export async function probeMediaMetadata(
   }
 
   try {
-    const parsed = JSON.parse(String(result.stdout || "{}")) as { streams?: FfprobeStream[] };
-    const stream = parsed.streams?.find((item) => {
-      if (kind === "image") return item.codec_type === "video";
-      return item.codec_type === kind && item.disposition?.attached_pic !== 1;
-    });
-    const metadata: MediaMetadata = { kind, color: classifyMediaColor(stream) };
-    if (kind === "video") {
-      metadata.hasAudio = (parsed.streams ?? []).some((item) => item.codec_type === "audio");
-    }
-    return metadata;
+    return metadataFromProbe(kind, JSON.parse(String(result.stdout || "{}")) as ProbeOutput);
   } catch {
     return { kind, color: classifyMediaColor(null), probeError: "ffprobe returned invalid json" };
   }

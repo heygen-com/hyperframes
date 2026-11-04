@@ -1,14 +1,7 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CaptureDirRefusedError } from "./captureErrors.js";
+import { removeTreeBestEffort } from "@hyperframes/core/remove-tree";
 
 type WriteOptions = Parameters<typeof writeFileSync>[2];
 
@@ -31,7 +24,7 @@ function publishCaptureFileSync(
     writeCaptureFileSync(staged, data, { ...options, flag: "wx" });
     renameSync(staged, path);
   } finally {
-    rmSync(stagingDir, { recursive: true, force: true });
+    removeTreeBestEffort(stagingDir);
   }
 }
 

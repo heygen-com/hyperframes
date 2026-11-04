@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
@@ -6,8 +6,9 @@ import { downloadHint, openInDesktop, type DesktopOpenResult } from "../utils/de
 import { resolveProject, resolveProjectOrThrow, type ProjectDir } from "../utils/project.js";
 
 export const examples: Example[] = [
-  ["Open this project in the HyperFrames desktop app", "hyperframes open"],
-  ["Open another project", "hyperframes open ./my-video"],
+  ["Open this project in the HyperFrames desktop app", "hyperframes ."],
+  ["Open another project", "hyperframes ./my-video"],
+  ["Same, naming the command (needed for a folder named like a command)", "hyperframes open ."],
   ["For agents", "hyperframes open --json"],
 ];
 

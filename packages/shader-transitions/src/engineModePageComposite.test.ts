@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CLIP_HIDDEN_ATTR } from "@hyperframes/core/runtime/clip-reveal";
 import {
   installPageSideCompositor,
   isPageSideCompositingSupported,
@@ -201,7 +202,12 @@ describe("page-side compositor scene copies", () => {
   }
 
   class FakeEl {
-    style: Record<string, string> = {};
+    style: Record<string, string> = Object.defineProperty({}, "setProperty", {
+      value(this: Record<string, string>, name: string, value: string) {
+        this[name] = value;
+      },
+    });
+    attributes = new Set<string>();
     children: FakeEl[] = [];
     parentElement: FakeEl | null = null;
     animations: FakeAnimation[] = [];
@@ -211,6 +217,15 @@ describe("page-side compositor scene copies", () => {
     ) {}
     getAttribute() {
       return null;
+    }
+    hasAttribute(name: string) {
+      return this.attributes.has(name);
+    }
+    setAttribute(name: string) {
+      this.attributes.add(name);
+    }
+    removeAttribute(name: string) {
+      this.attributes.delete(name);
     }
     get key(): string {
       return (this.copyOf ?? this).id.replace(/^scene-.*/, "scene");
@@ -229,6 +244,7 @@ describe("page-side compositor scene copies", () => {
     }
     cloneNode(deep: boolean) {
       const copy = new FakeEl(`${this.id}-copy`, this);
+      copy.attributes = new Set(this.attributes);
       copy.animations = (CSS_ANIMATIONS[this.key] ?? []).map(
         (spec) => new FakeAnimation(spec, copy),
       );
@@ -240,12 +256,18 @@ describe("page-side compositor scene copies", () => {
       child.parentElement = this;
       return child;
     }
-    querySelectorAll() {
-      return [];
+    querySelectorAll(selector: string): FakeEl[] {
+      if (selector !== "[data-start]") return [];
+      return this.children.flatMap((c) => [
+        ...(c.hasAttribute("data-start") ? [c] : []),
+        ...c.querySelectorAll(selector),
+      ]);
     }
   }
 
-  function installTransparentInsetFilm(opts: { failDraw?: boolean; underBody?: boolean } = {}) {
+  function installTransparentInsetFilm(
+    opts: { failDraw?: boolean; underBody?: boolean; markIncoming?: boolean } = {},
+  ) {
     const calls: Array<{ canvas: number; op: string; args: unknown[] }> = [];
     const gl = new Proxy(fakeWebGl(), {
       get: (target, key) => {
@@ -301,6 +323,16 @@ describe("page-side compositor scene copies", () => {
       ["scene-a", parent.appendChild(new FakeEl("scene-a"))],
       ["scene-b", parent.appendChild(new FakeEl("scene-b"))],
     ]);
+    if (opts.markIncoming) {
+      // The incoming scene before its own start, as the runtime's visibility pass leaves it.
+      const incoming = scenes.get("scene-b")!;
+      const title = incoming.appendChild(new FakeEl("title"));
+      for (const el of [incoming, title]) {
+        el.setAttribute("data-start");
+        el.setAttribute(CLIP_HIDDEN_ATTR);
+        el.style.visibility = "hidden";
+      }
+    }
     let startPolling: (() => void) | undefined;
     const hf = { seek: vi.fn() };
     const win: Record<string, unknown> = {
@@ -335,7 +367,7 @@ describe("page-side compositor scene copies", () => {
       return (win.__hf_page_composite_resolve as () => boolean)();
     };
     const overlay = () => canvases.find((c) => c.id === PAGE_COMPOSITOR_CANVAS_ID)!;
-    return { calls, composite, overlay };
+    return { calls, composite, overlay, scenes };
   }
 
   it("stages each scene copy inside unaltered ancestor copies in a full-frame box", async () => {
@@ -358,6 +390,20 @@ describe("page-side compositor scene copies", () => {
       expect(stage.style).toEqual({});
       expect(scene.style).toEqual({ opacity: "1", visibility: "visible" });
     }
+  });
+
+  it("lifts the runtime's hidden mark from a marked scene's copy and its timed clips", async () => {
+    const { calls, composite, scenes } = installTransparentInsetFilm({ markIncoming: true });
+    expect(await composite(1.2)).toBe(true);
+    const frame = calls.filter((c) => c.op === "drawElementImage")[1]?.args[0] as FakeEl;
+    const scene = frame.children[0]!.children[0]!.children[0]!;
+    const title = scene.children[0]!;
+    expect([scene, title].map((el) => [el.copyOf?.id, el.hasAttribute(CLIP_HIDDEN_ATTR)])).toEqual([
+      ["scene-b", false],
+      ["title", false],
+    ]);
+    expect([scene.style.visibility, title.style.visibility]).toEqual(["visible", "visible"]);
+    expect(scenes.get("scene-b")!.hasAttribute(CLIP_HIDDEN_ATTR)).toBe(true);
   });
 
   it("holds copied CSS animations at the live time and cancels ones finished live", async () => {

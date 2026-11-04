@@ -68,7 +68,7 @@ function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: s
 
 describe("extractionCache constants", () => {
   it("exposes the v7 schema prefix", () => {
-    expect(SCHEMA_PREFIX).toBe("hfcache-v7-");
+    expect(SCHEMA_PREFIX).toBe("hfcache-v8-");
   });
 
   it("exposes the frame filename prefix shared with the extractor", () => {
@@ -420,6 +420,21 @@ describe("publishCacheEntry", () => {
     expect(existsSync(partialDir)).toBe(false);
     expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
     expect(existsSync(join(cacheEntry.dir, COMPLETE_SENTINEL))).toBe(true);
+  });
+
+  it("replaces a sentineled winner whose frames are gone instead of discarding fresh frames", () => {
+    const cacheEntry = entry();
+    ensureCacheEntryDir(cacheEntry);
+    markCacheEntryComplete(cacheEntry);
+    expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(false);
+    const partialDir = seedPartialDir(cacheEntry, "fresh");
+
+    const result = publishCacheEntry(cacheEntry, partialDir);
+
+    expect(result).toEqual({ dir: cacheEntry.dir, published: true });
+    expect(existsSync(partialDir)).toBe(false);
+    expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(true);
+    expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
   });
 });
 

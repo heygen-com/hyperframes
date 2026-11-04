@@ -20,21 +20,21 @@
  *     const { title = "Untitled", theme = "light" } = getVariables<MyVars>();
  */
 import { cssVariableName, detectSlugCollisions } from "../tokenSlug";
+import { scopedVariablesFor } from "./variableScope";
 
 export function getVariables<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(): Partial<T> {
   if (typeof document === "undefined") return {} as Partial<T>;
 
-  // Same collection the CSS-variable injection uses: <html> first, then any
-  // composition element carrying the attribute (later declarers win), then
-  // render-time overrides.
+  // <html> first, then any element carrying the attribute (later declarers win), then render-time
+  // overrides. A sub-composition's declaration is its own scope's, read from its scoped table.
   const declarers = new Set<Element>();
   if (document.documentElement?.hasAttribute("data-composition-variables")) {
     declarers.add(document.documentElement);
   }
   for (const el of Array.from(document.querySelectorAll("[data-composition-variables]"))) {
-    declarers.add(el);
+    if (!scopedVariablesFor(el)) declarers.add(el);
   }
   const declaredDefaults: Record<string, unknown> = {};
   for (const el of declarers) {

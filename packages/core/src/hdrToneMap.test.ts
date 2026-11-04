@@ -10,6 +10,12 @@ describe("hdrToSdrToneMapFilter", () => {
     expect(hdrToSdrToneMapFilter(PQ, PQ)).toBe(TONE_MAP);
   });
 
+  it("resizes in the first zscale, before the tone map, when it is given a size", () => {
+    expect(hdrToSdrToneMapFilter(PQ, PQ, { width: "1920", height: "1080" })).toBe(
+      "zscale=w=1920:h=1080:t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+    );
+  });
+
   it("sets the probed tags the first frame lacks", () => {
     expect(hdrToSdrToneMapFilter(PQ, {})).toBe(
       `setparams=colorspace=bt2020nc:color_primaries=bt2020:color_trc=smpte2084,${TONE_MAP}`,

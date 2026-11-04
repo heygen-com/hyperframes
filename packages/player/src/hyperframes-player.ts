@@ -52,6 +52,7 @@ const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+const BUFFERING_ATTR = "buffering";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
 const RANGE_START_ATTR = "range-start";
@@ -120,6 +121,7 @@ class HyperframesPlayer extends HTMLElement {
 
   private shadow: ShadowRoot;
   private container: HTMLDivElement;
+  private readonly sizer = document.createElement("div");
   private iframe: HTMLIFrameElement;
   private posterEl: HTMLImageElement | null = null;
   private controlsApi: ReturnType<typeof setupControls> | null = null;
@@ -135,6 +137,7 @@ class HyperframesPlayer extends HTMLElement {
   private _pendingPlay = false;
   private _assetsGeneration = 0;
   private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
+  private _bufferingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -169,6 +172,8 @@ class HyperframesPlayer extends HTMLElement {
 
     adoptShadowStyles(this.shadow, PLAYER_STYLES);
     ({ container: this.container, iframe: this.iframe } = createCompositionIframe());
+    this.sizer.className = "hfp-sizer";
+    this.shadow.appendChild(this.sizer);
     this.shadow.appendChild(this.container);
 
     const loaderElements = createShaderLoader();
@@ -447,6 +452,7 @@ class HyperframesPlayer extends HTMLElement {
       }
     }
     if (this._media.audioOwner === "parent") this._media.playAll();
+    else this._media.primeAll();
     this.controlsApi?.updatePlaying(true);
     if (!queuedForReady && announce) this._emit(new Event("play"));
     if (directTimelineStarted && this._directTimelineAdapter) {
@@ -1268,6 +1274,7 @@ class HyperframesPlayer extends HTMLElement {
         this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
+      setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
@@ -1371,6 +1378,23 @@ class HyperframesPlayer extends HTMLElement {
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
+  private _setBuffering(buffering: boolean): void {
+    if (buffering) {
+      if (this._bufferingShowTimer !== null || this.hasAttribute(BUFFERING_ATTR)) return;
+      this._bufferingShowTimer = setTimeout(() => {
+        this._bufferingShowTimer = null;
+        this.setAttribute(BUFFERING_ATTR, "");
+        if (this.assetsLoadingUi !== "none") this.shaderLoader.showAssetsLoading("Buffering", "");
+      }, ASSETS_LOADING_SHOW_DELAY_MS);
+      return;
+    }
+    if (this._bufferingShowTimer !== null) clearTimeout(this._bufferingShowTimer);
+    this._bufferingShowTimer = null;
+    if (!this.hasAttribute(BUFFERING_ATTR)) return;
+    this.removeAttribute(BUFFERING_ATTR);
+    this.shaderLoader.hideAssetsLoading();
+  }
+
   private _hasPendingFirstFrameAssets(doc: Document): boolean {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
@@ -1438,6 +1462,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
+    this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
   }
@@ -1486,6 +1511,7 @@ class HyperframesPlayer extends HTMLElement {
     const changed = width !== this._compositionWidth || height !== this._compositionHeight;
     this._compositionWidth = width;
     this._compositionHeight = height;
+    this.sizer.style.aspectRatio = `${width} / ${height}`;
     this._rescale();
     if (!changed) return;
     const detail = { compositionWidth: width, compositionHeight: height };
@@ -1610,6 +1636,9 @@ class HyperframesPlayer extends HTMLElement {
       },
       this._isAudioLocked(),
     );
+    this.controlsApi.updateTime(this._currentTime, this._duration);
+    this.controlsApi.updatePlaying(!this._paused);
+    this.controlsApi.updateSpeed(this.playbackRate);
   }
 
   // Test-instrumentation pass-throughs (match original field names).

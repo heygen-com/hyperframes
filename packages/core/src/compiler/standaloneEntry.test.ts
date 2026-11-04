@@ -1,6 +1,26 @@
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
-import { extractStandaloneEntryFromIndex } from "./standaloneEntry";
+import { extractStandaloneEntryFromIndex, isTemplateEntry } from "./standaloneEntry";
+
+describe("isTemplateEntry", () => {
+  it.each([
+    "<template></template>",
+    " \n<!-- Scene author notes -->\n<template id='scene'></template>",
+    "<!-- a --><!-- <template> is inert --><TEMPLATE></TEMPLATE>",
+    "<!--><template></template>",
+  ])("recognizes a template entry past leading comments: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(true);
+  });
+
+  it.each([
+    "<template-card></template-card>",
+    "<!doctype html><html><body><template></template></body></html>",
+    "<div></div><template></template>",
+    "<!-- <template></template> -->",
+  ])("does not mistake other entries for a template scene: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+});
 
 describe("extractStandaloneEntryFromIndex", () => {
   it("reuses the index wrapper and keeps only the requested composition host", () => {

@@ -90,7 +90,7 @@ fs.writeFileSync(path.join(args[args.indexOf('--dir')+1], 'transcript.json'), JS
           encoding: "utf8",
           env: {
             ...process.env,
-            HEYGEN_CONFIG_DIR: config,
+            HYPERFRAMES_CONFIG_DIR: config,
             HEYGEN_API_KEY: "",
             HYPERFRAMES_API_KEY: "",
             GEMINI_API_KEY: "fixture-key",

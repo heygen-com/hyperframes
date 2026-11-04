@@ -138,6 +138,89 @@ describe("history coalescing", () => {
 // ─── T3 override replay ───────────────────────────────────────────────────────
 
 describe("override-set replay on open", () => {
+  it.each([
+    { key: "hf-title.timing.bogus", value: 2 },
+    { key: "meta.fps", value: 30 },
+    { key: "style.foo", value: "x" },
+    { key: "future.element", value: { html: '<p data-hf-id="hf-extra">Extra</p>' } },
+    { key: "future.element", value: { siblingIndex: 0 } },
+  ])("ignores an unrecognized non-snapshot override: $key", async ({ key, value }) => {
+    const base = await openComposition(BASE_HTML);
+    const reopened = await openComposition(BASE_HTML, { overrides: { [key]: value } });
+
+    expect(reopened.serialize()).toBe(base.serialize());
+  });
+
+  it.each([false, true])("replays edits with dotted IDs, scoped: %s", async (scoped) => {
+    const title = '<h1 data-hf-id="hf-title.main" style="color:red" title="Original">Original</h1>';
+    const html = `<div data-hf-id="hf-stage" data-hf-root>${
+      scoped
+        ? `<div data-hf-id="hf-host.one" data-composition-file="scene.html">${title}</div>`
+        : title
+    }</div>`;
+    const id = scoped ? "hf-host.one/hf-title.main" : "hf-title.main";
+    const comp = await openComposition(html, { overrides: {} });
+    comp.setText(id, "Updated");
+    comp.setStyle(id, { color: "blue" });
+    comp.setAttribute(id, "title", null);
+    comp.setAttribute(id, "data-app.attr.label", "Saved");
+    comp.setTiming(id, { start: 1, duration: 2 });
+    comp.setHold(id, { start: 0.5, end: 0.25, fill: "freeze" });
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement(id)?.text).toBe("Updated");
+    expect(reopened.getElement(id)?.inlineStyles["color"]).toBe("blue");
+    expect(reopened.getElement(id)?.attributes["title"]).toBeUndefined();
+    expect(reopened.getElement(id)?.attributes["data-app.attr.label"]).toBe("Saved");
+    expect(reopened.getElement(id)?.attributes).toMatchObject({
+      "data-hold-start": "0.5",
+      "data-hold-end": "0.25",
+      "data-hold-fill": "freeze",
+    });
+    expect(reopened.getElementTimings()[id]).toMatchObject({ enterAt: 1, exitAt: 3 });
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("replays a removal marker for a dotted element ID", async () => {
+    const html = '<div data-hf-root><p data-hf-id="hf-copy.main">Remove me</p></div>';
+    const comp = await openComposition(html, { overrides: {} });
+    comp.removeElement("hf-copy.main");
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement("hf-copy.main")).toBeNull();
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps edit-family words inside an attribute name", async () => {
+    const comp = await openComposition(BASE_HTML, { overrides: {} });
+    comp.setAttribute("hf-title", "data-app.style.color", "Saved");
+    comp.setAttribute("hf-title", "data-app.text", "Label");
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("hf-title")?.attributes["data-app.style.color"]).toBe("Saved");
+    expect(reopened.getElement("hf-title")?.attributes["data-app.text"]).toBe("Label");
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps ordinary element edits ahead of the variable namespace", async () => {
+    const html = '<div data-hf-root><p data-hf-id="var">Original</p></div>';
+    const comp = await openComposition(html, { overrides: {} });
+    comp.setText("var", "Updated");
+    comp.setStyle("var", { color: "blue" });
+
+    const reopened = await openComposition(html, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("var")?.text).toBe("Updated");
+    expect(reopened.getElement("var")?.inlineStyles["color"]).toBe("blue");
+  });
+
   it("applies style, text, and attribute overrides to the base document", async () => {
     const comp = await openComposition(BASE_HTML, {
       overrides: {
@@ -195,6 +278,221 @@ describe("override-set replay on open", () => {
     const overrides = { "hf-title.style.color": "#e63946" };
     const comp = await openComposition(BASE_HTML, { overrides });
     expect(comp.getOverrides()).toEqual(overrides);
+  });
+
+  it("restores added elements and their later edits from the stored override set", async () => {
+    const comp = await openComposition(BASE_HTML, { overrides: {} });
+    const id = comp.addElement("hf-stage", 1, "<p>Available today</p>");
+    comp.setText(id, "Available worldwide");
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement(id)?.text).toBe("Available worldwide");
+    expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-title",
+      id,
+      "hf-sub",
+      "hf-logo",
+    ]);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("replaces the base element once when reopening an undone removal", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.setText("hf-title", "Edited headline");
+    comp.removeElement("hf-title");
+    comp.undo();
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("hf-title")?.text).toBe("Edited headline");
+    expect(reopened.getElements().filter((element) => element.id === "hf-title")).toHaveLength(1);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps a restored base element after siblings removed before its latest snapshot", async () => {
+    const comp = await openComposition(BASE_HTML);
+    comp.removeElement("hf-logo");
+    comp.undo();
+    comp.removeElement("hf-title");
+    comp.removeElement("hf-logo");
+    comp.undo();
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-sub",
+      "hf-logo",
+    ]);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps an added element's position after removing a sibling and undoing its removal", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const id = comp.addElement("hf-stage", 2, "<p>Available today</p>");
+    comp.removeElement("hf-title");
+    comp.removeElement(id);
+    comp.undo();
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-sub",
+      id,
+      "hf-logo",
+    ]);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("keeps child edits made after restoring an added parent", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const parent = comp.addElement("hf-stage", 1, "<section>Details</section>");
+    const child = comp.addElement(parent, 0, "<p>Original</p>");
+    comp.setText(child, "Before removal");
+    comp.removeElement(parent);
+    comp.undo();
+    comp.setText(child, "After restore");
+
+    const reopened = await openComposition(BASE_HTML, { overrides: comp.getOverrides() });
+
+    expect(reopened.getElement(child)?.text).toBe("After restore");
+    expect(reopened.getElements().filter((element) => element.id === child)).toHaveLength(1);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it.each(["session", "host"] as const)(
+    "keeps later %s edits to a child after restoring its base parent",
+    async (origin) => {
+      const html =
+        '<div data-hf-id="hf-stage" data-hf-root><section data-hf-id="hf-box"><p data-hf-id="hf-in">In</p></section></div>';
+      const comp = await openComposition(html, { coalesceMs: 0 });
+      comp.setText("hf-in", "Before removal");
+      comp.removeElement("hf-box");
+      comp.undo();
+      if (origin === "session") comp.setText("hf-in", "After restore");
+      else
+        comp.applyPatches([
+          { op: "replace", path: "/elements/hf-in/text", value: "After restore" },
+        ]);
+
+      const reopened = await openComposition(html, {
+        overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+      });
+
+      expect(reopened.getElement("hf-in")?.text).toBe("After restore");
+      expect(reopened.serialize()).toBe(comp.serialize());
+    },
+  );
+
+  it.each(["base", "added"] as const)(
+    "keeps a restored %s element's position after removing a temporary sibling",
+    async (kind) => {
+      const comp = await openComposition(BASE_HTML, { coalesceMs: 0 });
+      const id = kind === "base" ? "hf-sub" : comp.addElement("hf-stage", 1, "<p>Keep</p>");
+      const temporary = comp.addElement("hf-stage", 1, "<p>Temporary</p>");
+      comp.removeElement(id);
+      comp.undo();
+      comp.removeElement(temporary);
+
+      const reopened = await openComposition(BASE_HTML, {
+        overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+      });
+
+      expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual(
+        kind === "base" ? ["hf-title", "hf-sub", "hf-logo"] : ["hf-title", id, "hf-sub", "hf-logo"],
+      );
+      expect(reopened.serialize()).toBe(comp.serialize());
+    },
+  );
+
+  it("positions an added element after replaying later sibling removals", async () => {
+    const comp = await openComposition(BASE_HTML);
+    const id = comp.addElement("hf-stage", 2, "<p>Keep</p>");
+    comp.removeElement("hf-title");
+
+    const reopened = await openComposition(BASE_HTML, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-sub",
+      id,
+      "hf-logo",
+    ]);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it("restores several saved positions without shifting a previously restored sibling", async () => {
+    const ids = ["hf-c", "hf-b", "hf-first", "hf-last", "hf-a"];
+    const html = `<div data-hf-id="hf-stage" data-hf-root>${ids.map((id) => `<p data-hf-id="${id}">${id}</p>`).join("")}</div>`;
+    const comp = await openComposition(html);
+    comp.applyPatches([
+      ...["hf-c", "hf-b", "hf-a"].map((id) => ({ op: "remove", path: `/elements/${id}` })),
+      ...["hf-a", "hf-b", "hf-c"].map((id, index) => ({
+        op: "add",
+        path: `/elements/${id}`,
+        value: {
+          html: `<p data-hf-id="${id}">${id}</p>`,
+          parentId: "hf-stage",
+          siblingIndex: index + 1,
+        },
+      })),
+    ]);
+
+    const reopened = await openComposition(html, {
+      overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+    });
+
+    expect(reopened.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-first",
+      "hf-a",
+      "hf-b",
+      "hf-c",
+      "hf-last",
+    ]);
+    expect(reopened.serialize()).toBe(comp.serialize());
+  });
+
+  it.each([false, true])(
+    "keeps text around restored inline elements, with temporary sibling: %s",
+    async (withTemporary) => {
+      const html =
+        '<p data-hf-id="hf-stage" data-hf-root>Start <b data-hf-id="hf-a">A</b> middle <i data-hf-id="hf-b">B</i> end <span data-hf-id="hf-c">C</span>.</p>';
+      const comp = await openComposition(html, { coalesceMs: 0 });
+      const temporary = withTemporary ? comp.addElement("hf-stage", 0, "<u>Temporary</u>") : null;
+      comp.removeElement("hf-a");
+      comp.undo();
+      comp.removeElement("hf-b");
+      comp.undo();
+      if (temporary) comp.removeElement(temporary);
+
+      const reopened = await openComposition(html, {
+        overrides: JSON.parse(JSON.stringify(comp.getOverrides())),
+      });
+
+      expect(reopened.serialize()).toBe(comp.serialize());
+    },
+  );
+
+  it("replays element snapshots with only an element sibling index", async () => {
+    const comp = await openComposition(BASE_HTML, {
+      overrides: {
+        "hf-added": {
+          html: '<p data-hf-id="hf-added">Original</p>',
+          parentId: "hf-stage",
+          siblingIndex: 1,
+        },
+        "hf-added.text": "Updated",
+      },
+    });
+
+    expect(comp.getElement("hf-stage")?.children.map((child) => child.id)).toEqual([
+      "hf-title",
+      "hf-added",
+      "hf-sub",
+      "hf-logo",
+    ]);
+    expect(comp.getElement("hf-added")?.text).toBe("Updated");
   });
 });
 

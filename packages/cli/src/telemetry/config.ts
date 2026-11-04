@@ -183,6 +183,23 @@ function installStateLatchedFired(): boolean {
   return latchedFiredSeen;
 }
 
+/** Lift the router latch from both stores; install-state goes first or the next write copies it back. */
+export function releaseDeParallelRouterLatch(): void {
+  const read = readInstallState();
+  if (isInstallState(read) && read.deParallelRouterTrialFired) {
+    try {
+      writeInstallState({ ...read, deParallelRouterTrialFired: undefined });
+    } catch {
+      return;
+    }
+  }
+  latchedFiredSeen = false;
+  stateFiredSynced = false;
+  const config = readConfigFresh();
+  config.deParallelRouterTrialFired = undefined;
+  writeConfig(config);
+}
+
 /**
  * The seed install-state has recorded for this machine, if any.
  *
@@ -388,6 +405,53 @@ function mintConfig(): HyperframesConfig {
   };
 }
 
+/** What the router's self-verify rejected, kept so the bad frame can be found and fixed. */
+export interface DeRouterRevert {
+  /** The router outcome, or the fallback reason the render reported (psnr, blank, capture_error...). */
+  reason: string;
+  frameIndex?: number;
+  failedDb?: number;
+  thresholdDb?: number;
+  at: string;
+  /** CLI version that recorded it: a different version re-arms the router. */
+  version: string;
+  /** deParallelRouterTrialRenderCount when it happened. */
+  atRender: number;
+}
+
+/** A lone revert (`strike`) is remembered; a second inside the window turns the router off (`trip`). */
+export interface DeRouterBreaker {
+  strike?: DeRouterRevert;
+  trip?: DeRouterRevert & { cleanRenders: number };
+}
+
+function hasFields(value: object, types: Record<string, "string" | "number">): boolean {
+  return Object.entries(types).every(([key, type]) => typeof Reflect.get(value, key) === type);
+}
+
+function isDeRouterRevert(value: unknown): value is DeRouterRevert {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    hasFields(value, { reason: "string", at: "string", version: "string", atRender: "number" })
+  );
+}
+
+function isDeRouterTrip(value: unknown): value is NonNullable<DeRouterBreaker["trip"]> {
+  return isDeRouterRevert(value) && hasFields(value, { cleanRenders: "number" });
+}
+
+function parseDeRouterBreaker(value: unknown): DeRouterBreaker | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const strike = Reflect.get(value, "strike");
+  const trip = Reflect.get(value, "trip");
+  const parsed: DeRouterBreaker = {
+    strike: isDeRouterRevert(strike) ? strike : undefined,
+    trip: isDeRouterTrip(trip) ? trip : undefined,
+  };
+  return parsed.strike || parsed.trip ? parsed : undefined;
+}
+
 export interface HyperframesConfig {
   /** Has the user agreed to download the on-device search model? Undefined means never asked. */
   localEmbeddingEnabled?: boolean;
@@ -448,7 +512,6 @@ export interface HyperframesConfig {
   /** How many skills were missing (not installed) at the last check. */
   skillsMissingCount?: number;
   /** How many installed skills were flagged removed-upstream at the last check. */
-  skillsRemovedCount?: number;
   /**
    * True once the DE parallel-router experiment ("HF_DE_PARALLEL_ROUTER")
    * has actually FAILED (its self-verify/generic-failure safety net fired —
@@ -461,6 +524,8 @@ export interface HyperframesConfig {
    * `maybeEnableDeParallelRouterTrial`/`maybeConsumeDeParallelRouterTrial`.
    */
   deParallelRouterTrialFired?: boolean;
+  /** Why and when the router went off (or its lone strike); the latch above mirrors `trip`. */
+  deParallelRouterBreaker?: DeRouterBreaker;
   /**
    * Count of engaged (routed or reverted) trial renders so far — the
    * backstop that caps exposure even absent an actual failure. See
@@ -510,6 +575,23 @@ export interface HyperframesConfig {
    * telemetry rows of the renders it describes.
    */
   recentRenders?: RecentRenderRecord[];
+  /** The newest local `check`: exit code and its top error codes, which `hyperframes feedback` attaches. */
+  lastCheck?: LastCheckRecord;
+}
+
+/** The newest `check` in {@link HyperframesConfig.lastCheck}; codes and counts only, no content or paths. */
+export interface LastCheckRecord {
+  at: string;
+  /** Absent while the check has not finished: it is still running, or was stopped. */
+  exitCode?: number;
+  codes: Record<string, number>;
+}
+
+/** Remember the newest check so a later `hyperframes feedback` can name why it failed. */
+export function recordLastCheck(lastCheck: LastCheckRecord): void {
+  const config = readConfigFresh();
+  config.lastCheck = lastCheck;
+  writeConfig(config);
 }
 
 /** One entry in {@link HyperframesConfig.recentRenders}. */
@@ -660,7 +742,6 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsUpdateAvailable: parsed.skillsUpdateAvailable,
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
-    skillsRemovedCount: parsed.skillsRemovedCount,
     localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }
@@ -680,6 +761,7 @@ function guardedFields(parsed: Partial<HyperframesConfig>): Partial<HyperframesC
     // wins over an untripped config.json, never the reverse.
     deParallelRouterTrialFired:
       parsed.deParallelRouterTrialFired === true || installStateLatchedFired() ? true : undefined,
+    deParallelRouterBreaker: parseDeRouterBreaker(parsed.deParallelRouterBreaker),
     deParallelRouterTrialRenderCount:
       typeof parsed.deParallelRouterTrialRenderCount === "number"
         ? parsed.deParallelRouterTrialRenderCount

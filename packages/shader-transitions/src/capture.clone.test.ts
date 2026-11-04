@@ -17,6 +17,18 @@ describe("forceSceneVisibleInClone", () => {
       "visible",
     ]);
   });
+
+  it("shows the contents of a scene the runtime marked hidden", () => {
+    document.head.innerHTML =
+      "<style>[data-hf-clip-hidden] * { visibility: hidden !important; }</style>";
+    document.body.innerHTML =
+      '<div id="scene" data-start="5" data-hf-clip-hidden style="visibility: hidden"><p>Title</p></div>';
+    const scene = document.getElementById("scene") as HTMLElement;
+
+    forceSceneVisibleInClone(scene, document);
+
+    expect(getComputedStyle(scene.querySelector("p") as HTMLElement).visibility).toBe("visible");
+  });
 });
 
 describe("captureScene with html-in-canvas", () => {

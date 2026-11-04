@@ -14,12 +14,7 @@ test("skill CLIs run when invoked through a symlinked skills dir", () => {
   const dir = mkdtempSync(join(tmpdir(), "skills-link-"));
   try {
     symlinkSync(SKILLS, join(dir, "skills"), "dir");
-    for (const script of [
-      "faceless-explainer/scripts/captions.mjs",
-      "pr-to-video/scripts/captions.mjs",
-      "product-launch-video/scripts/captions.mjs",
-      "media-use/audio/scripts/heygen-voice.mjs",
-    ]) {
+    for (const script of ["media-use/audio/scripts/heygen-voice.mjs"]) {
       const run = spawnSync(process.execPath, [join(dir, "skills", script), "not-a-command"], {
         encoding: "utf8",
       });

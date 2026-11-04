@@ -4,11 +4,11 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import { renameWithRetry } from "@hyperframes/engine";
 import { dirname, join } from "node:path";
 import { PlanV2IntegrityError } from "./planV2Errors.js";
 import { assertPlanV2Sha256, planV2BlobPath } from "./planV2Layout.js";
@@ -26,6 +26,7 @@ export interface PlanV2ArtifactPublisher {
    * adapters must finish reading/uploading it before the promise resolves.
    */
   putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void>;
+  referenceStoredBlob?(blob: Readonly<Omit<PlanV2PublishBlob, "sourcePath">>): Promise<void>;
   /** Commit the manifest only after every referenced blob is durable. */
   commitManifest(manifestBytes: string): Promise<void>;
   /** Idempotent best-effort cleanup for an unpublished or partial plan. */
@@ -110,7 +111,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
         if (!canFallbackToCopy(error)) throw error;
         copyFileSync(blob.sourcePath, temporaryPath);
       }
-      renameSync(temporaryPath, destinationPath);
+      renameWithRetry(temporaryPath, destinationPath);
     } finally {
       rmSync(stagingDir, { recursive: true, force: true });
     }
@@ -125,7 +126,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
       }
     }
     writeFileSync(join(this.temporaryDir, "plan.json"), manifestBytes, "utf-8");
-    renameSync(this.temporaryDir, this.destinationDir);
+    renameWithRetry(this.temporaryDir, this.destinationDir);
     this.#committed = true;
   }
 

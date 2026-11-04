@@ -33,14 +33,23 @@ import { getDebugSurface } from "./globals.js";
 export function recordStartupError(error: unknown): void {
   let detail = "unknown error";
   try {
-    detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    if (error instanceof Error) {
+      detail = `${error.name}: ${error.message}`;
+      detail += startupErrorStack(error, detail);
+    } else {
+      detail = String(error);
+    }
   } catch (err) {
     swallow("runtime.startupError", err);
   }
+  detail = detail.replace(/\s+/g, " ").trim();
   (window as Window & { __hfStartupError?: string }).__hfStartupError =
     `HyperFrames runtime failed: ${detail}. Check the composition's scripts and window.__timelines ` +
     `entries; if they look right, report this as a HyperFrames bug.`;
 }
+
+/** Starts the warning for a scene callback that threw; the render log shows it once per render. */
+export const SCENE_CALLBACK_ERROR_PREFIX = "[hyperframes] scene timeline callback threw:";
 
 export function swallow(label: string, error?: unknown): void {
   if (typeof window === "undefined") return;
@@ -62,5 +71,36 @@ export function swallow(label: string, error?: unknown): void {
   if (w.__hfDebug || w.__HYPERFRAMES_DEBUG) {
     // eslint-disable-next-line no-console -- intentional debug surface
     console.debug(`[hyperframes] ${label} swallowed:`, error);
+  }
+}
+
+function isCompositionFrame(frame: string): boolean {
+  const location = /(?:\(|@|\bat )(\S+?):\d+(?::\d+)?\)?$/.exec(frame)?.[1];
+  if (!location || location.startsWith("hyperframes://")) return false;
+  return (
+    location.startsWith("hyperframes-composition://") ||
+    /\.html?(?:[?#]|$)/i.test(location) ||
+    (typeof document !== "undefined" && location === document.URL)
+  );
+}
+
+function startupErrorStack(error: Error, header: string): string {
+  try {
+    const stack = error.stack;
+    if (typeof stack !== "string") return "";
+    const hasHeader =
+      stack === header || stack.startsWith(`${header}\n`) || stack.startsWith(`${header}\r`);
+    const body = hasHeader ? stack.slice(header.length) : stack;
+    const frames = body
+      .split(/[\r\n]+/)
+      .map((line) => line.trim().replace(/\s+/g, " "))
+      .filter((line) => /^at\s+\S/.test(line) || /^[^@]*@.+:\d+(?::\d+)?$/.test(line));
+    const selected = frames.slice(0, 3);
+    const composition = frames.find(isCompositionFrame);
+    if (composition && !selected.includes(composition)) selected.push(composition);
+    return selected.length ? ` [thrown at: ${selected.join(" <- ")}]` : "";
+  } catch (err) {
+    swallow("runtime.startupError.stack", err);
+    return "";
   }
 }

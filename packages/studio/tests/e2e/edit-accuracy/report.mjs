@@ -11,13 +11,14 @@ const lateUndo = (r) => Math.max(r.undo.ms ?? 0, r.undo.redoMs ?? 0) > UNDO_WRIT
 const DROPPED_FRAME_MS = 25;
 /** Smooth means no main-thread frame over this, and no more dropped frames than the blank-page control. */
 const WORK_MS = 8;
-/** A runner whose first cases take a median past this (3x a healthy runner's) is too slow to measure on. */
-export const SLOW_RUNNER = { cases: 4, medianSeconds: 60 };
-/** The first cases' median seconds when it marks a slow runner, else null; the blank-page control misses it. */
-export function slowRunner(seconds) {
-  if (seconds.length < SLOW_RUNNER.cases) return null;
-  const median = percentile(seconds.slice(0, SLOW_RUNNER.cases), 50);
-  return median > SLOW_RUNNER.medianSeconds ? median : null;
+/** A runner whose first cases take a median of over 3x their usual seconds is too slow to measure on. */
+export const SLOW_RUNNER = { cases: 4, multiple: 3 };
+/** First cases' median multiple of `expected` seconds if it marks a slow runner, else null; the control misses it. */
+export function slowRunner(results, expected) {
+  if (results.length < SLOW_RUNNER.cases) return null;
+  const multiples = results.slice(0, SLOW_RUNNER.cases).map((r) => r.seconds / expected(r));
+  const median = percentile(multiples, 50);
+  return median > SLOW_RUNNER.multiple ? median : null;
 }
 export const METRICS = [
   "tracking",

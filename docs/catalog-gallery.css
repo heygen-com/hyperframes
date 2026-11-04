@@ -27,7 +27,7 @@
 .hfc-gallery .hfc-card-body { padding:12px 2px 0; }
 .hfc-gallery .hfc-card-title { display:flex; align-items:start; justify-content:space-between; gap:10px; }
 .hfc-gallery .hfc-card-title h3 { font-size:15px; font-weight:500; line-height:1.4; margin:0; color:var(--hf-heading); }
-.hfc-gallery .hfc-status { flex-shrink:0; padding:2px 7px; border-radius:20px; background:#38bdf812; color:#60a5da; font-size:11px; }
+.hfc-gallery .hfc-status { flex-shrink:0; padding:2px 7px; border-radius:20px; background:var(--hf-brand-soft); color:var(--hf-brand); font-size:11px; }
 .hfc-gallery .hfc-meta { font-size:12px; line-height:1.5; margin:4px 0 0; color:var(--hf-text-secondary); }
 .hfc-gallery .hfc-empty { padding:44px 20px; text-align:center; }
 .hfc-gallery .hfc-empty h3 { font-size:18px; }

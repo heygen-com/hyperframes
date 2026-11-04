@@ -89,13 +89,24 @@ interpolate(frame, [0, 30], [0, 1], { easing: Easing.out(Easing.cubic) });
 | Remotion                     | GSAP                                                                                   |
 | ---------------------------- | -------------------------------------------------------------------------------------- |
 | `Easing.in(Easing.linear)`   | `ease: "none"`                                                                         |
-| `Easing.out(Easing.cubic)`   | `ease: "power3.out"`                                                                   |
-| `Easing.inOut(Easing.cubic)` | `ease: "power3.inOut"`                                                                 |
-| `Easing.out(Easing.poly(N))` | `ease: "power<N>.out"` (N=2 quad, 3 cubic, 4 quart, 5 quint)                           |
+| `Easing.out(Easing.cubic)`   | `ease: "power2.out"`                                                                   |
+| `Easing.inOut(Easing.cubic)` | `ease: "power2.inOut"`                                                                 |
+| `Easing.out(Easing.poly(N))` | `ease: "power<N-1>.out"` (N=2 quad, 3 cubic, 4 quart, 5 quint)                         |
 | `Easing.bezier(a,b,c,d)`     | `CustomEase.create("c", "M0,0 C${a},${b} ${c},${d} 1,1")` (requires CustomEase plugin) |
 | `Easing.elastic(bounciness)` | `ease: "elastic.out(${bounciness}, 0.3)"`                                              |
 | `Easing.bounce`              | `ease: "bounce.out"`                                                                   |
-| `Easing.back(overshoot)`     | `ease: "back.out(${overshoot * 1.7})"` (Remotion's overshoot scale differs)            |
+| `Easing.back(s)`             | `ease: "back.in(${s})"`                                                                |
+| `Easing.out(Easing.back(s))` | `ease: "back.out(${s})"`                                                               |
+
+GSAP names polynomial eases by degree minus one: `power1` is quadratic,
+`power2` cubic, `power3` quartic, and `power4` quintic. For `Easing.poly(N)`
+with integer N from 1 through 5, use `power<N-1>` (`power0` is linear). For
+other exponents, pass an easing function; an ease-out is `(t) => 1 - (1 - t) ** N`.
+
+Remotion and GSAP use the same back-ease overshoot parameter. Remotion defaults
+to `s = 1.70158`; pass that value explicitly to GSAP when porting the default.
+Bare `Easing.back` is an ease-in. Its polynomial is `t * t * ((s + 1) * t - s)`;
+wrapping it in `Easing.out` reverses the direction without changing `s`.
 
 ## interpolate driving non-numeric properties
 
@@ -132,7 +143,7 @@ tl.to(
   {
     v: target,
     duration: 1.5,
-    ease: "power3.out",
+    ease: "power2.out",
     onUpdate: () => {
       el.textContent = Math.round(counter.v).toLocaleString();
     },
@@ -141,9 +152,10 @@ tl.to(
 );
 ```
 
-`power3.out` matches `1 - (1-t)^3` exactly. Validated in T3 (mean SSIM 0.953).
-Per-frame digit mismatches occur on sub-frame timing offsets but final values
-converge — no SSIM impact above the noise floor.
+`power2.out` matches `1 - (1-t)^3` exactly. At the midpoint, both yield 0.875;
+`power3.out` yields 0.9375 because it is quartic. Compare the displayed count
+at matching frame times as well as the final value; SSIM alone can miss a
+plausible-looking counter that advances too early.
 
 ## Stagger via per-instance prop
 

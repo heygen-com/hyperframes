@@ -1,5 +1,7 @@
 /** Band-limited resampling by windowed-sinc interpolation, so analysis reads the same at any decode rate. */
 
+import { finish, type Steps } from "./audioSteps";
+
 const ZERO_CROSSINGS = 8;
 const STEPS_PER_CROSSING = 256;
 /** Cutoff as a share of the lower Nyquist, leaving the window's transition band below it. */
@@ -21,12 +23,23 @@ function kernelAt(x: number): number {
 }
 
 export function resample(samples: Float32Array, from: number, to: number): Float32Array {
+  return finish(resampleSteps(samples, from, to));
+}
+
+const SAMPLES_PER_STEP = 4096;
+
+export function* resampleSteps(
+  samples: Float32Array,
+  from: number,
+  to: number,
+): Steps<Float32Array> {
   if (from === to) return samples;
   const ratio = to / from;
   const scale = Math.min(1, ratio) * CUTOFF;
   const reach = ZERO_CROSSINGS / scale;
   const out = new Float32Array(Math.floor(samples.length * ratio));
   for (let n = 0; n < out.length; n++) {
+    if (n % SAMPLES_PER_STEP === 0) yield;
     const t = n / ratio;
     const last = Math.min(samples.length - 1, Math.floor(t + reach));
     let sum = 0;

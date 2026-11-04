@@ -4,7 +4,7 @@
  * provenance in the shared manifest, print a composition snippet.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   appendRecord,
   buildAssetSnippet,

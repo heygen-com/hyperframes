@@ -1,35 +1,16 @@
 // Pure background-sampling-region logic for the WCAG contrast audit.
 //
-// The audit used to estimate an element's background by sampling a 4px ring
-// just OUTSIDE its bounding box (with an own-opaque-background pre-check —
-// see the historical note in contrast-bg.ts). That proximity-based estimate
-// breaks down whenever what's immediately outside the box differs from
-// what's actually behind the text inside it:
-//
-//  - cross-component bleed: text sits near the edge of its own panel/layer,
-//    and a differently-colored sibling panel/layer starts just outside the
-//    text's bbox — the ring samples the neighbor, not the true background.
-//  - solid-fill pill/button with rounded corners achieved via a sibling
-//    shape (not a CSS background-color on an ancestor of the text) — same
-//    failure as above; the ownBg ancestor-walk never sees it.
-//  - translucent "glass" text over a backdrop-filter blur panel sized only
-//    a couple pixels larger than the text — the ring exits the panel and
-//    samples the raw, unblurred, untinted pixels behind it.
-//  - a translucent/decorative shape that only partially overlaps the ring,
-//    or sits entirely INSIDE the text's own bbox (never touching the ring
-//    at all) — the ring is structurally blind to it.
-//
-// The fix: hide the text's own paint (color/fill → transparent), take ONE
-// screenshot with the glyphs invisible, then sample the REAL composited
-// pixels directly INSIDE the element's own bbox — no proximity heuristic
-// needed, because we're reading the exact pixels that were behind the
-// glyphs. This module hosts the pure "which rect do we sample" decision
-// (inset to dodge anti-aliased edge pixels, clamp to canvas bounds, and
-// reject a rect that's too small to sample) so it's unit-testable without a
-// browser. The same logic is inlined into contrast-audit.browser.js (which
-// is injected as a raw string and cannot import) and into
-// skills/hyperframes-creative/scripts/contrast-report.mjs — keep all three
-// in sync.
+// A ring sampled just OUTSIDE a text box reads whatever is next to the text,
+// not what is behind it: a neighbouring panel, a rounded pill drawn by a
+// sibling shape, a glass panel only a few pixels larger than the text, or a
+// decoration that sits inside the box. So the audit hides the text's own
+// paint (color/fill → transparent), takes ONE screenshot with the glyphs
+// invisible, and samples the composited pixels INSIDE the element's own bbox.
+// This module hosts the pure "which rect do we sample" decision (inset to
+// dodge anti-aliased edge pixels, clamp to canvas bounds, and reject a rect
+// that's too small to sample) so it's unit-testable without a browser. The
+// same logic is inlined into contrast-audit.browser.js (which is injected as
+// a raw string and cannot import) — keep both in sync.
 
 export interface Rect {
   x: number;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyMediaColor, pixelFormatHasAlpha, probeMediaMetadata } from "./mediaMetadata.js";
+import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -93,7 +93,30 @@ describe("probeMediaMetadata", () => {
       }),
       stderr: "",
     }));
-    expect(withAudio).toMatchObject({ kind: "video", hasAudio: true });
+    expect(withAudio).toMatchObject({ kind: "video", hasAudio: true, audioStream: 0 });
+
+    // A phone's spatial track names no codec ffmpeg can decode; the AAC track after it is the one to play.
+    const phone = await probeMediaMetadata("/tmp/phone.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          { codec_type: "video", codec_name: "hevc" },
+          { codec_type: "audio" },
+          { codec_type: "audio", codec_name: "aac" },
+        ],
+      }),
+      stderr: "",
+    }));
+    expect(phone).toMatchObject({ kind: "video", hasAudio: true, audioStream: 1 });
+    const spatialOnly = await probeMediaMetadata("/tmp/spatial.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [{ codec_type: "video", codec_name: "hevc" }, { codec_type: "audio" }],
+      }),
+      stderr: "",
+    }));
+    expect(spatialOnly).toMatchObject({ kind: "video", hasAudio: false });
+    expect(spatialOnly).not.toHaveProperty("audioStream");
 
     const silent = await probeMediaMetadata("/tmp/silent.mp4", () => ({
       status: 0,
@@ -118,6 +141,53 @@ describe("probeMediaMetadata", () => {
       stderr: "",
     }));
     expect(flac.kind).toBe("audio");
+  });
+
+  it("reads the size, bit depth and bitrate a lighter copy is judged by", async () => {
+    const probe = (stream: object, format: object = {}) =>
+      probeMediaMetadata("/tmp/clip.mp4", () => ({
+        status: 0,
+        stdout: JSON.stringify({ streams: [{ codec_type: "video", ...stream }], format }),
+        stderr: "",
+      }));
+
+    expect(
+      (await probe({ width: 3840, height: 2160, pix_fmt: "yuv420p10le", bit_rate: "9" })).source,
+    ).toEqual({
+      width: 3840,
+      height: 2160,
+      bitDepth: 10,
+      bitrate: 9,
+    });
+    expect(
+      (await probe({ width: 1920, height: 1080, pix_fmt: "yuv420p" }, { bit_rate: "55000000" }))
+        .source,
+    ).toEqual({ width: 1920, height: 1080, bitDepth: 8, bitrate: 55_000_000 });
+    expect(
+      (await probe({ width: 1920, height: 1080, pix_fmt: "yuv420p", bits_per_raw_sample: "12" }))
+        .source?.bitDepth,
+    ).toBe(12);
+    expect((await probe({ pix_fmt: "yuv420p" })).source).toBeUndefined();
+  });
+
+  it("lists every stream with its flags, for a failure report", async () => {
+    const metadata = await probeMediaMetadata("/tmp/clip.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          { codec_type: "video", codec_name: "hevc", disposition: { default: 1, attached_pic: 0 } },
+          { codec_type: "video", codec_name: "mjpeg", disposition: { attached_pic: 1 } },
+          { codec_type: "data", disposition: {} },
+        ],
+      }),
+      stderr: "",
+    }));
+
+    expect(metadata.streams).toEqual([
+      "video:hevc[default]",
+      "video:mjpeg[attached_pic]",
+      "data:?[]",
+    ]);
   });
 
   it("ignores attached cover art and reads the real video stream", async () => {
@@ -173,25 +243,5 @@ describe("probeMediaMetadata", () => {
       stderr: "",
     }));
     expect(metadata).toMatchObject({ kind: "video", color: { codecName: "h264" } });
-  });
-});
-
-describe("pixelFormatHasAlpha", () => {
-  it("detects alpha-bearing pixel formats", () => {
-    for (const pixFmt of [
-      "yuva420p",
-      "yuva444p10le",
-      "rgba",
-      "argb",
-      "bgra",
-      "abgr",
-      "gbrap12le",
-      "ya8",
-    ]) {
-      expect(pixelFormatHasAlpha(pixFmt)).toBe(true);
-    }
-    for (const pixFmt of ["yuv420p", "yuv422p10le", "rgb24", "gbrp", "gray", undefined]) {
-      expect(pixelFormatHasAlpha(pixFmt)).toBe(false);
-    }
   });
 });

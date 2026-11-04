@@ -83,6 +83,7 @@ describe("capture proxy", () => {
     const proxy = await startCaptureProxy();
     proxies.push(proxy);
     const socket = connect(Number(new URL(proxy.url).port), "127.0.0.1");
+    socket.on("error", () => {});
     await new Promise<void>((resolve) => socket.once("connect", resolve));
     const closed = new Promise<void>((resolve) => socket.once("close", () => resolve()));
     await proxy.close();

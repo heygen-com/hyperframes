@@ -109,7 +109,7 @@ RUN case "$TARGETARCH" in \
 # ── Chrome ───────────────────────────────────────────────────────────────────
 # Use `@puppeteer/browsers` to fetch the chrome-headless-shell version
 # packages/gcp-cloud-run/Dockerfile pins.
-ENV CHROME_HEADLESS_SHELL_VERSION=148.0.7778.167
+ENV CHROME_HEADLESS_SHELL_VERSION=152.0.7977.30
 ENV CHROME_DIR=/opt/chrome
 
 RUN mkdir -p "$CHROME_DIR" && \

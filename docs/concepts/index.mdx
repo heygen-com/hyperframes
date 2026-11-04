@@ -16,7 +16,7 @@ project.
 flowchart TD
     S["Your project folder<br/>HTML, CSS, media"]
     A["Agent<br/>story and structure"] <--> S
-    T["Studio<br/>what you can point at"] <--> S
+    T["Browser editor<br/>what you can point at"] <--> S
     C["CLI<br/>check, preview, render"] <--> S
     K["SDK and Player<br/>inside your own product"] <--> S
     S --> R["renders/final.mp4"]
@@ -24,26 +24,26 @@ flowchart TD
 
 ## The source is the project
 
-The agent, Studio, CLI, SDK, and Player do not create separate versions of the
+The agent, the browser editor, CLI, SDK, and Player do not create separate versions of the
 video. They work with the same project files.
 
 | What you want to change                              | Best place to start |
 | ---------------------------------------------------- | ------------------- |
 | Story, structure, or several scenes                  | Ask the agent       |
-| Text, layout, timing, or animation you can see       | Studio              |
+| Text, layout, timing, or animation you can see       | The browser editor              |
 | Preview, checks, snapshots, rendering, or automation | CLI                 |
 | A composition inside your own product                | SDK or Player       |
 
 <div style={{ maxWidth: "42rem", margin: "1.5rem auto" }}>
-  <Frame caption="The same editable project open in Studio, with its source, canvas, controls, and timeline.">
+  <Frame caption="The same editable project open in the browser editor, with its source, canvas, controls, and timeline.">
     <img
       src="https://static.heygen.ai/hyperframes-oss/docs/images/studio/overview-v1.jpg"
-      alt="A HyperFrames project open in Studio with the source tree, canvas, controls, and timeline"
+      alt="A HyperFrames project open in the browser editor with the source tree, canvas, controls, and timeline"
     />
   </Frame>
 </div>
 
-Studio writes supported edits back into the source. An agent can continue from
+The browser editor writes supported edits back into the source. An agent can continue from
 those files, Git can track them, and the renderer sees the same result.
 
 ## What the agent creates
@@ -116,7 +116,7 @@ Timed elements carry their start, duration, and track in HTML:
 ```
 
 This image starts at two seconds, remains for three seconds, and appears on
-track one. Animation timelines are paused and seekable, so Studio, the Player,
+track one. Animation timelines are paused and seekable, so the browser editor, the Player,
 and the renderer can request an exact moment without playing from the
 beginning.
 
@@ -173,6 +173,6 @@ unseeded randomness, and render-time network requests.
 
 ## Related topics
 
-- [Take more control of an existing project](/go-further)
+- [Take more control of an existing project](/studio-app/edit-with-the-agent)
 - [Look up the complete HTML schema](/reference/html-schema)
 - [Choose a developer integration surface](/developers/overview)

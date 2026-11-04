@@ -39,6 +39,9 @@ describe("policies — required actions", () => {
       "iam:CreateRole",
       "logs:CreateLogGroup",
       "cloudwatch:PutMetricAlarm",
+      // A redeploy that drops a reserved concurrency rolls back without it.
+      "lambda:DeleteFunctionConcurrency",
+      "states:DescribeMapRun",
     ]) {
       expect(actions).toContain(must);
     }
@@ -80,6 +83,12 @@ describe("policies — validatePolicy", () => {
     const result = validatePolicy(path);
     expect(result.missing).toEqual([]);
     expect(result.granted).toEqual(allRequiredActions());
+  });
+
+  it("reads a policy saved with a UTF-8 BOM", () => {
+    const path = join(workdir, "bom-policy.json");
+    writeFileSync(path, `\uFEFF${JSON.stringify({ Version: "2012-10-17", Statement: [] })}`);
+    expect(validatePolicy(path).granted).toEqual([]);
   });
 
   it("reports specific missing actions", () => {

@@ -123,7 +123,7 @@
   --timeline-clip-band-height: 15px;
   --timeline-clip-band-bg: rgb(12 12 14);
   --timeline-clip-hover-duration: 60ms;
-  --timeline-clip-audio-radius: 21px;
+  --timeline-clip-audio-radius: var(--timeline-clip-radius);
   --timeline-clip-highlight: rgb(255 255 255 / 0.08);
   --timeline-clip-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
   --timeline-clip-chip-bg: rgba(15, 22, 18, 0.73);

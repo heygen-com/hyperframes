@@ -51,7 +51,13 @@ export interface DockerRenderOptions {
   vp9CpuUsed?: number;
   videoBitrate?: string;
   audioBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  range?: { startSeconds: number; endSeconds?: number };
+  proresProfile?: string;
+  maxBitrate?: string;
+  bufferSize?: string;
   videoFrameFormat?: "auto" | "jpg" | "png";
+  pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
@@ -144,9 +150,23 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.vp9CpuUsed != null ? ["--vp9-cpu-used", String(options.vp9CpuUsed)] : []),
     ...(options.videoBitrate ? ["--video-bitrate", options.videoBitrate] : []),
     ...(options.audioBitrate ? ["--audio-bitrate", options.audioBitrate] : []),
+    ...(options.proresProfile ? ["--prores-profile", options.proresProfile] : []),
+    ...(options.range
+      ? [
+          "--start",
+          String(options.range.startSeconds),
+          ...(options.range.endSeconds != null ? ["--end", String(options.range.endSeconds)] : []),
+        ]
+      : []),
+    ...(options.keyframeIntervalSeconds != null
+      ? ["--keyframe-interval", String(options.keyframeIntervalSeconds)]
+      : []),
+    ...(options.maxBitrate ? ["--max-bitrate", options.maxBitrate] : []),
+    ...(options.bufferSize ? ["--buffer-size", options.bufferSize] : []),
     ...(options.videoFrameFormat && options.videoFrameFormat !== "auto"
       ? ["--video-frame-format", options.videoFrameFormat]
       : []),
+    ...(options.pageMotionBlur !== undefined ? ["--page-motion-blur", options.pageMotionBlur] : []),
     ...(options.quiet ? ["--quiet"] : []),
     ...(options.debug ? ["--debug"] : []),
     // The in-container CLI is best-effort by default. Only forward the

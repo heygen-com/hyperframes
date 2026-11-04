@@ -5,14 +5,12 @@ import test from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 const files = {
-  router: "skills/hyperframes/SKILL.md",
-  keyframes: "skills/hyperframes-keyframes/SKILL.md",
+  entry: "skills/hyperframes/SKILL.md",
+  format: "skills/hyperframes/references/format.md",
+  motion: "skills/hyperframes/references/motion.md",
   cli: "skills/hyperframes-cli/SKILL.md",
-  audio: "skills/hyperframes-audio/SKILL.md",
+  mixing: "skills/media-use/references/mixing.md",
   webAudioTransport: "packages/core/src/runtime/webAudioTransport.ts",
-  coreClips: "skills/hyperframes-core/references/tracks-and-clips.md",
-  generalVideo: "skills/general-video/SKILL.md",
-  editingRecipes: "skills/hyperframes-core/references/creator-editing-recipes.md",
   runtimeMedia: "packages/core/src/runtime/media.ts",
   runtimeInit: "packages/core/src/runtime/init.ts",
   timingNumbers: "packages/core/src/runtime/playbackRate.ts",
@@ -32,109 +30,56 @@ function requiresAll(text, patterns, surface) {
   }
 }
 
-test("router loads the owning skills for creator picture and sound edits", async () => {
-  const router = await read(files.router);
-  requiresAll(
-    router,
-    [
-      /cut this footage/i,
-      /trim[\s\S]{0,80}splice[\s\S]{0,80}reorder|trim[\s\S]{0,80}reorder[\s\S]{0,80}splice/i,
-      /source range/i,
-      /punch[- ]in.*punch[- ]out/i,
-      /multi-state zoom|smooth.*zoom.*reframe/i,
-      /Ken Burns/i,
-      /camera move/i,
-      /match cut/i,
-      /whip pan/i,
-      /fade.*crossfade/i,
-      /duck.*automation.*effects|automation.*duck.*effects/i,
-      /picture and sound|video and audio/i,
-    ],
-    files.router,
-  );
-  assert.match(router, /cut.*trim.*splice.*reorder[\s\S]{0,500}hyperframes-core/i);
+test("the entry skill sends motion edits to the motion reference and media to media-use", async () => {
+  const entry = await read(files.entry);
   assert.match(
-    router,
-    /zoom.*punch.*reframe.*Ken Burns.*camera move[\s\S]{0,500}hyperframes-keyframes/i,
+    entry,
+    /\| Motion: [^\n]*punch-ins, speed, holds \| `references\/motion\.md` \|/,
+    "the References table routes punch-ins, speed changes and holds",
   );
-  assert.match(
-    router,
-    /match cut.*whip pan[\s\S]{0,500}hyperframes-animation[\s\S]{0,300}hyperframes-keyframes[\s\S]{0,300}hyperframes-registry/i,
-  );
-  assert.match(router, /fade.*crossfade.*gain.*duck[\s\S]{0,700}hyperframes-audio/i);
-  assert.match(
-    router,
-    /picture and sound[\s\S]{0,700}hyperframes-core[\s\S]{0,300}hyperframes-audio/i,
-  );
-  assert.match(router, /media-use[\s\S]{0,180}sourc|sourc[\s\S]{0,180}media-use/i);
+  assert.match(entry, /Any media[\s\S]{0,200}`\/media-use`/);
 });
 
-test("keyframes states truthful creator capabilities and ownership boundaries", async () => {
-  const keyframes = await read(files.keyframes);
+test("the motion reference states truthful creator capabilities", async () => {
+  const motion = await read(files.motion);
   requiresAll(
-    keyframes,
+    motion,
     [
-      /hard cut/i,
-      /trim[\s\S]{0,80}splice[\s\S]{0,80}reorder|trim[\s\S]{0,80}reorder[\s\S]{0,80}splice/i,
-      /punch[- ]in.*punch[- ]out/i,
-      /multi-state zoom|multiple zoom.*reframe states/i,
-      /Ken Burns/i,
-      /camera move/i,
+      /Punch-in, zoom, pan, Ken Burns, reframe[^\n]*wrapper inside the clip, never on the timed media element/,
+      /Crop or mask reveal[^\n]*`clip-path` or a mask on an inner wrapper; source time is untouched/,
+      /Constant speed change[^\n]*`data-playback-rate`/,
+      /Speed ramp[^\n]{0,80}`rate` lane in `data-automation`/,
+      /Speed ramp[^\n]{0,220}overrides the constant rate/,
+      /freeze mid-source needs a still exported first/,
       /match cut/i,
-      /whip pan/i,
-      /data-start/,
-      /data-duration/,
-      /data-media-start/,
-      /hyperframes-core/,
-      /hyperframes-audio/,
     ],
-    files.keyframes,
+    files.motion,
   );
-  assert.match(
-    keyframes,
-    /source[\s\S]{0,80}cut[\s\S]{0,80}trim[\s\S]{0,80}reorder[\s\S]{0,500}hyperframes-core/i,
-  );
-  assert.match(keyframes, /non-timed|non-clip/);
-  assert.match(keyframes, /wrapper inside the clip|inner.*wrapper/i);
-  assert.match(keyframes, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
-  assert.match(keyframes, /speed ramps?[\s\S]{0,220}wins over the constant/i);
-  assert.match(keyframes, /arbitrary mid-source freeze[\s\S]{0,300}(not supported|preprocess)/i);
-  assert.doesNotMatch(keyframes, /keyframe(?:d|ing)?\s+(?:the\s+)?data-playback-rate/i);
+  assert.doesNotMatch(motion, /keyframe(?:d|ing)?\s+(?:the\s+)?data-playback-rate/i);
 });
 
-test("CLI requires domain skills before authoring or diagnosing creator edits", async () => {
+test("CLI sends `hyperframes keyframes` to the motion reference", async () => {
   const cli = await read(files.cli);
-  assert.match(
-    cli,
-    /before[\s\S]{0,120}(zoom|punch-in)[\s\S]{0,180}(reframe|camera)[\s\S]{0,180}keyframe[\s\S]{0,220}read `?\/hyperframes-keyframes/i,
-  );
-  assert.match(cli, /before `?hyperframes keyframes`?[\s\S]{0,180}read `?\/hyperframes-keyframes/i);
-  assert.match(cli, /cut.*trim.*splice.*source timing[\s\S]{0,250}hyperframes-core/i);
-  assert.match(
-    cli,
-    /fade[\s\S]{0,100}crossfade[\s\S]{0,100}volume automation[\s\S]{0,100}carve[\s\S]{0,100}FX[\s\S]{0,300}hyperframes-audio/i,
-  );
+  assert.match(cli, /Read the row before running its command/);
+  assert.match(cli, /\| `keyframes` \| `\.\.\/hyperframes\/references\/motion\.md`/);
 });
 
-test("audio skill owns placed-track fades, automation, ducking, and effects", async () => {
-  const audio = await read(files.audio);
+test("the mixing reference owns placed-track fades, automation, ducking, and effects", async () => {
+  const mixing = await read(files.mixing);
   requiresAll(
-    audio,
+    mixing,
     [
-      /fade[- ]in.*fade[- ]out/i,
+      /`data-fade-in`, `data-fade-out`/,
       /crossfade/i,
-      /track gain|track volume/i,
-      /duck/i,
+      /Track gain/,
+      /Duck the bed/,
       /data-automation/,
-      /gain.*EQ.*compressor.*limiter.*gate.*saturat.*delay.*reverb.*chorus.*phaser.*bitcrush/is,
-      /clip timing.*hyperframes-core|hyperframes-core.*clip timing/is,
-      /sourcing.*media-use|media-use.*sourcing/is,
+      /gain.*peaking.*compressor.*limiter.*gate.*saturate.*delay.*reverb.*chorus.*phaser.*bitcrush/is,
+      /data-playback-rate/,
+      /`rate` \(a speed ramp, 0\.1–10, overrides `data-playback-rate`\)/,
     ],
-    files.audio,
+    files.mixing,
   );
-  assert.match(audio, /constant.*playback rate|data-playback-rate/i);
-  assert.match(audio, /speed ramps?[\s\S]{0,80}`rate` lane in `data-automation`/i);
-  assert.match(audio, /speed ramps?[\s\S]{0,220}wins over the constant/i);
 });
 
 test("WebAudio scheduling combines per-element and global transport playback rates", async () => {
@@ -145,117 +90,14 @@ test("WebAudio scheduling combines per-element and global transport playback rat
   );
 });
 
-test("keyframes routes visual crop and mask handoffs without claiming temporal source edits", async () => {
-  const keyframes = await read(files.keyframes);
-  requiresAll(
-    keyframes,
-    [
-      /interpolat(?:e|ed|ing)[\s\S]{0,100}(clip-path|mask)[\s\S]{0,100}(crop|reframe)/i,
-      /directional wipe cut/i,
-      /iris[\s\S]{0,40}reveal cut|reveal[\s\S]{0,40}iris cut/i,
-      /split-screen handoff/i,
-      /polygon[\s\S]{0,50}mask transition|mask[\s\S]{0,50}polygon transition/i,
-      /visual transition[\s\S]{0,120}(not|isn't|is not)[\s\S]{0,80}(temporal|source)[\s\S]{0,80}(trim|splice)/i,
-      /hyperframes-core[\s\S]{0,160}(timeline|clip timing)/i,
-    ],
-    files.keyframes,
+test("source trims and a video's own sound stay on the clip", async () => {
+  const [entry, format] = await Promise.all([read(files.entry), read(files.format)]);
+  assert.match(format, /`data-media-start`[^\n]*\(a trim\)/);
+  assert.match(format, /Prefer one `<video data-has-audio="true">`/);
+  assert.match(
+    entry,
+    /A `<video>` keeps its sound with `data-has-audio="true"`, else it is `muted`; music, voice, replacement sound and J\/L cuts are a separate `<audio>`\./,
   );
-});
-
-test("core and general-video author temporal edits as duplicated source-range clips", async () => {
-  const [coreClips, generalVideo, router, keyframes] = await Promise.all([
-    read(files.coreClips),
-    read(files.generalVideo),
-    read(files.router),
-    read(files.keyframes),
-  ]);
-  for (const [surface, text] of [
-    [files.coreClips, coreClips],
-    [files.generalVideo, generalVideo],
-  ]) {
-    requiresAll(
-      text,
-      [
-        /duplicate[\s\S]{0,120}(same|one)[\s\S]{0,80}(video|media) source/i,
-        /data-media-start[\s\S]{0,120}data-duration/i,
-        /data-start/,
-        /hard cut[\s\S]{0,100}trim[\s\S]{0,100}splice[\s\S]{0,100}reorder/i,
-        /sound stays on the clip[\s\S]{0,160}data-has-audio/i,
-      ],
-      surface,
-    );
-  }
-  assert.match(router, /cut this footage[\s\S]{0,300}hyperframes-core/i);
-  requiresAll(keyframes, [/zoom/i, /punch/i, /pan/i, /crop|mask|clip-path/i], files.keyframes);
-  assert.match(keyframes, /inner[\s\S]{0,80}wrapper/i);
-  assert.match(keyframes, /not a temporal source trim or[\s\S]{0,40}splice/i);
-});
-
-test("creator editing recipes are copyable, owned, mathematical, and limitation-safe", async () => {
-  const recipes = await read(files.editingRecipes).catch(() => "");
-  const recipeNames = [
-    "Hard cut",
-    "Trim in/out",
-    "Split / splice",
-    "Duplicate / reuse same source",
-    "Reorder",
-    "Freeze / hold",
-    "Constant speed / slow motion",
-    "Zoom / punch",
-    "Pan / Ken Burns",
-    "Crop / reframe",
-    "Clip-path wipe / reveal / mask / split-screen",
-    "Crossfade",
-    "Volume fades / ducking",
-    "Audio alignment",
-  ];
-  for (let index = 0; index < recipeNames.length; index += 1) {
-    const start = recipes.indexOf(`## ${recipeNames[index]}`);
-    const next =
-      index + 1 < recipeNames.length
-        ? recipes.indexOf(`## ${recipeNames[index + 1]}`)
-        : recipes.length;
-    assert.ok(start >= 0, `missing recipe: ${recipeNames[index]}`);
-    const section = recipes.slice(start, next);
-    requiresAll(
-      section,
-      [
-        /```(?:html|js)/,
-        /Timeline math:/i,
-        /Source math:/i,
-        /Audio follows:/i,
-        /Owner:/i,
-        /Limit:/i,
-      ],
-      recipeNames[index],
-    );
-  }
-  requiresAll(
-    recipes,
-    [
-      /data-start/,
-      /data-duration/,
-      /data-media-start/,
-      /data-playback-rate/,
-      /consumed source\s*=\s*timeline duration\s*[×*]\s*rate/i,
-      /natural timeline duration\s*=\s*remaining source\s*\/\s*rate/i,
-      /separate `?<audio>`?[\s\S]{0,160}(J\/L cut|replacement audio|voiceover|music)/i,
-      /final-source[\s\S]{0,100}subcomp[\s\S]{0,100}visual pose/i,
-      /arbitrary mid-source[\s\S]{0,120}preprocess/i,
-      /distinct tracks[\s\S]{0,120}overlap[\s\S]{0,120}opposing/i,
-      /same-track overlap is valid/i,
-      /inner wrapper[\s\S]{0,100}not[\s\S]{0,50}(clip element|timed clip)/i,
-      /source cuts[\s\S]{0,80}hyperframes-core/i,
-    ],
-    files.editingRecipes,
-  );
-  const [core, general] = await Promise.all([
-    read("skills/hyperframes-core/SKILL.md"),
-    read(files.generalVideo),
-  ]);
-  assert.match(core, /creator-editing-recipes\.md/);
-  assert.match(general, /creator-editing-recipes\.md/);
-  assert.doesNotMatch(recipes, /data-(?:media-end|source-end|trim-start|trim-end)/);
 });
 
 test("every preview reader shares the non-negative media-start helper", async () => {
@@ -274,38 +116,19 @@ test("every preview reader shares the non-negative media-start helper", async ()
   }
 });
 
-test("crossfade and volume recipes contain executable opposing envelopes", async () => {
-  const recipes = await read(files.editingRecipes);
-  const crossfade = recipes.slice(
-    recipes.indexOf("## Crossfade"),
-    recipes.indexOf("## Volume fades / ducking"),
+test("crossfade and ducking guidance carries executable envelopes", async () => {
+  const mixing = await read(files.mixing);
+  assert.match(
+    mixing,
+    /A crossfade is two clips on different tracks that overlap, each with a fade\./,
   );
+  const lanes = JSON.parse(mixing.match(/data-automation='([^']+)'/)?.[1] ?? "");
+  assert.equal(lanes.lanes[0].target, "volume");
   requiresAll(
-    crossfade,
-    [
-      /data-track-index="0"[\s\S]*data-track-index="1"/,
-      /class="inner"/,
-      /gsap\.timeline\(\{\s*paused:\s*true\s*\}\)/,
-      /window\.__timelines/,
-      /autoAlpha|opacity/,
-      /data-has-audio="true"[\s\S]*data-has-audio="true"/,
-      /data-automation='/,
-    ],
-    "crossfade recipe",
+    mixing,
+    [/full level before the voice/, /down to about 0\.3–0\.4 while anyone speaks/, /back up after/],
+    "ducking guidance",
   );
-  const crossfadeAutomation = [...crossfade.matchAll(/data-automation='([^']+)'/g)];
-  assert.equal(crossfadeAutomation.length, 2);
-  for (const match of crossfadeAutomation) JSON.parse(match[1]);
-  const volume = recipes.slice(
-    recipes.indexOf("## Volume fades / ducking"),
-    recipes.indexOf("## Audio alignment"),
-  );
-  requiresAll(
-    volume,
-    [/fade-in/i, /fade-out/i, /duck down/i, /hold/i, /duck up/i, /data-automation='/],
-    "volume recipe",
-  );
-  JSON.parse(volume.match(/data-automation='([^']+)'/)?.[1] ?? "");
 });
 
 test("natural media duration is rate-scaled across every preview surface", async () => {
@@ -315,32 +138,6 @@ test("natural media duration is rate-scaled across every preview surface", async
     "packages/core/src/runtime/timeline.ts",
   ]) {
     assert.match(await read(path), /resolveNaturalMediaTimelineDuration/);
-  }
-});
-
-test("every temporal source-range recipe keeps sound on the video", async () => {
-  const recipes = await read(files.editingRecipes);
-  for (const name of [
-    "Hard cut",
-    "Trim in/out",
-    "Split / splice",
-    "Duplicate / reuse same source",
-    "Reorder",
-  ]) {
-    const start = recipes.indexOf(`## ${name}`);
-    const next = recipes.indexOf("## ", start + 3);
-    const section = recipes.slice(start, next < 0 ? recipes.length : next);
-    const videos = [...section.matchAll(/<video\b[^>]*>/g)].map((m) => m[0]);
-    assert.ok(videos.length > 0, `${name}: no video markup`);
-    for (const video of videos) {
-      assert.match(video, /data-has-audio="true"/, `${name}: video must keep its sound`);
-      assert.doesNotMatch(video, /\bmuted\b/, `${name}: video must not be muted`);
-    }
-    assert.doesNotMatch(
-      section,
-      /<audio\b/,
-      `${name}: no duplicate <audio> for the video's own sound`,
-    );
   }
 });
 

@@ -20,20 +20,24 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, renameSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   DEFAULT_CONFIG,
   describeFfmpegFailure,
+  encodeAac,
   extractAudioMetadata,
   getFfprobeBinary,
   ManagedChildProcess,
-  resolveAacAudioBitrate,
+  removeScratch,
+  renameWithRetry,
   runFfmpeg,
   trackChildProcess,
   type AudioMetadata,
+  type RunFfmpegResult,
 } from "@hyperframes/engine";
 import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
+import { measureTruePeakDbfs } from "./audioTruePeak.js";
 
 /**
  * Tolerance used to decide whether an audio file is already short enough to
@@ -84,13 +88,26 @@ export interface PadTrimAudioInput {
   probeVideoFrameInfo?: (videoPath: string) => Promise<ProbeVideoFrameInfo>;
   probeAudioInfo?: (audioPath: string, signal?: AbortSignal) => Promise<AudioProbeInfo>;
   probeAudioTruePeakDbfs?: (audioPath: string, signal?: AbortSignal) => Promise<number>;
-  runFfmpeg?: (args: string[]) => Promise<{
-    success: boolean;
-    error?: string;
-    failureReason?: "external_interruption";
-  }>;
+  runFfmpeg?: (args: string[]) => Promise<StepResult>;
+  encodeAac?: AacEncoder;
+  /** AAC bitrate for every re-encode; defaults to the engine's AAC default. */
   audioBitrate?: string;
 }
+
+interface StepResult {
+  success: boolean;
+  error?: string;
+  failureReason?: "external_interruption";
+}
+
+/** Encodes `filter` applied to `inputPath` as AAC of exactly `durationSeconds`. */
+type AacEncoder = (
+  inputPath: string,
+  outputPath: string,
+  durationSeconds: number,
+  filter: string,
+  options: { audioBitrate?: string },
+) => Promise<StepResult>;
 
 export type PadTrimOperation = "pad" | "trim" | "copy";
 
@@ -111,12 +128,9 @@ export interface PadTrimAudioResult {
   audioLoweredDb?: number;
 }
 
-export type PadTrimAudioStepKind = "copy" | "trim" | "normalize";
-
-export interface PadTrimAudioStep {
-  kind: PadTrimAudioStepKind;
-  args: string[];
-}
+export type PadTrimAudioStep =
+  | { kind: "copy"; args: string[] }
+  | { kind: "trim" | "normalize"; filter: string };
 
 export interface PadTrimAudioPlan {
   operation: PadTrimOperation;
@@ -124,35 +138,13 @@ export interface PadTrimAudioPlan {
   cleanupPaths: string[];
 }
 
-function buildAacTruePeakCorrectionArgs(
-  inputPath: string,
-  outputPath: string,
-  targetDurationSeconds: number,
-  attenuationDb: number,
-  audioBitrate?: string,
-): string[] {
-  return [
-    "-i",
-    inputPath,
-    "-map",
-    "0:a:0",
-    "-vn",
-    "-af",
-    `volume=${attenuationDb.toFixed(3)}dB`,
-    "-t",
-    formatSeconds(targetDurationSeconds),
-    "-c:a",
-    "aac",
-    "-b:a",
-    resolveAacAudioBitrate(audioBitrate),
-    "-y",
-    outputPath,
-  ];
+function aacTruePeakCorrectionFilter(targetDurationSeconds: number, attenuationDb: number) {
+  return `volume=${attenuationDb.toFixed(3)}dB,apad,atrim=0:${formatSeconds(targetDurationSeconds)}`;
 }
 
 /**
- * Pure helper: decide the pad/trim operation and build the ffmpeg argv
- * sequence that materializes it. Exported separately so unit tests can pin
+ * Pure helper: decide the pad/trim operation and the steps that
+ * materialize it. Exported separately so unit tests can pin
  * every branch without spawning ffmpeg.
  *
  *   - `sourceDuration < targetDuration` → pad with `apad` to the exact target
@@ -169,11 +161,9 @@ export function buildPadTrimAudioPlan(
   outputPath: string,
   sourceDurationSeconds: number,
   targetDurationSeconds: number,
-  audioBitrate?: string,
 ): PadTrimAudioPlan {
   const delta = targetDurationSeconds - sourceDurationSeconds;
   const targetSec = formatSeconds(targetDurationSeconds);
-  const aacBitrate = resolveAacAudioBitrate(audioBitrate);
   if (Math.abs(delta) < AUDIO_DURATION_TOLERANCE_SECONDS) {
     return {
       operation: "copy",
@@ -184,25 +174,7 @@ export function buildPadTrimAudioPlan(
   if (delta > 0) {
     return {
       operation: "pad",
-      steps: [
-        {
-          kind: "normalize",
-          args: [
-            "-i",
-            audioPath,
-            "-af",
-            `apad,atrim=0:${targetSec}`,
-            "-t",
-            targetSec,
-            "-c:a",
-            "aac",
-            "-b:a",
-            aacBitrate,
-            "-y",
-            outputPath,
-          ],
-        },
-      ],
+      steps: [{ kind: "normalize", filter: `apad,atrim=0:${targetSec}` }],
       cleanupPaths: [],
     };
   }
@@ -211,48 +183,9 @@ export function buildPadTrimAudioPlan(
   // into M4A so ffmpeg records the exact presentation duration.
   return {
     operation: "trim",
-    steps: [
-      {
-        kind: "trim",
-        args: [
-          "-i",
-          audioPath,
-          "-af",
-          `atrim=duration=${targetSec},asetpts=PTS-STARTPTS`,
-          // `atrim` limits decoded samples but does not cap muxer timestamps
-          // introduced by encoder delay/flush.  The output duration contract
-          // is enforced at the container boundary as well; without `-t`, a
-          // long primed source can retain its original tail after re-encode.
-          "-t",
-          targetSec,
-          "-c:a",
-          "aac",
-          "-b:a",
-          aacBitrate,
-          "-y",
-          outputPath,
-        ],
-      },
-    ],
+    steps: [{ kind: "trim", filter: `atrim=duration=${targetSec},asetpts=PTS-STARTPTS` }],
     cleanupPaths: [],
   };
-}
-
-export function buildPadTrimAudioArgs(
-  audioPath: string,
-  outputPath: string,
-  sourceDurationSeconds: number,
-  targetDurationSeconds: number,
-  audioBitrate?: string,
-): { args: string[]; operation: PadTrimOperation } {
-  const plan = buildPadTrimAudioPlan(
-    audioPath,
-    outputPath,
-    sourceDurationSeconds,
-    targetDurationSeconds,
-    audioBitrate,
-  );
-  return { operation: plan.operation, args: plan.steps[0]?.args ?? [] };
 }
 
 /**
@@ -305,15 +238,16 @@ export async function padOrTrimAudioToVideoFrameCount(
   const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const runner =
     input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, timeoutMs, input.signal));
+  const encode = input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal);
   // Injected runners usually do not materialize media. Tests that exercise
   // peak correction opt in with a matching probe; production always uses the
   // real post-codec measurement.
   const probeTruePeak =
     input.probeAudioTruePeakDbfs ??
-    (input.runFfmpeg
+    (input.runFfmpeg || input.encodeAac
       ? undefined
       : (audioPath: string, signal?: AbortSignal) =>
-          defaultProbeAudioTruePeakDbfs(audioPath, timeoutMs, signal));
+          measureTruePeakDbfs(audioPath, { timeoutMs, signal }));
 
   // Probe video and audio in parallel — the two ffprobe invocations are
   // independent and account for most of this function's wall-clock time.
@@ -371,12 +305,16 @@ export async function padOrTrimAudioToVideoFrameCount(
     input.outputPath,
     audioInfo.durationSeconds,
     targetDurationSeconds,
-    input.audioBitrate,
   );
 
   try {
     for (const step of plan.steps) {
-      const ffmpegResult = await runner(step.args);
+      const ffmpegResult =
+        step.kind === "copy"
+          ? await runner(step.args)
+          : await encode(input.audioPath, input.outputPath, targetDurationSeconds, step.filter, {
+              audioBitrate: input.audioBitrate,
+            });
       if (!ffmpegResult.success) {
         return {
           success: false,
@@ -401,7 +339,7 @@ export async function padOrTrimAudioToVideoFrameCount(
       }`,
     };
   } finally {
-    for (const path of plan.cleanupPaths) rmSync(path, { force: true });
+    for (const path of plan.cleanupPaths) removeScratch(path);
   }
 
   let loweredDb = 0;
@@ -411,7 +349,7 @@ export async function padOrTrimAudioToVideoFrameCount(
       targetDurationSeconds,
       signal: input.signal,
       probeTruePeak,
-      runner,
+      encode,
       audioBitrate: input.audioBitrate,
     });
     if (!correction.success) {
@@ -437,16 +375,47 @@ export async function padOrTrimAudioToVideoFrameCount(
   };
 }
 
+/**
+ * The true-peak half of {@link padOrTrimAudioToVideoFrameCount}, for AAC already encoded at its
+ * exact length: measures once and re-encodes only when the peak is over the ceiling.
+ */
+export async function constrainAacTruePeak(input: {
+  audioPath: string;
+  /** The PCM `audioPath` was encoded from: a correction re-encodes it instead of decoding the AAC. */
+  sourcePath?: string;
+  targetDurationSeconds: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  probeTruePeakDbfs?: (audioPath: string, signal?: AbortSignal) => Promise<number>;
+  encodeAac?: AacEncoder;
+  audioBitrate?: string;
+}): Promise<{
+  success: boolean;
+  error?: string;
+  failureReason?: "external_interruption";
+  loweredDb?: number;
+}> {
+  const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
+  return enforceAacTruePeak({
+    audioPath: input.audioPath,
+    sourcePath: input.sourcePath,
+    targetDurationSeconds: input.targetDurationSeconds,
+    signal: input.signal,
+    probeTruePeak:
+      input.probeTruePeakDbfs ??
+      ((audioPath, signal) => measureTruePeakDbfs(audioPath, { timeoutMs, signal })),
+    encode: input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal, input.sourcePath),
+    audioBitrate: input.audioBitrate,
+  });
+}
+
 interface EnforceAacTruePeakInput {
   audioPath: string;
+  sourcePath?: string;
   targetDurationSeconds: number;
   signal?: AbortSignal;
   probeTruePeak: (audioPath: string, signal?: AbortSignal) => Promise<number>;
-  runner: (args: string[]) => Promise<{
-    success: boolean;
-    error?: string;
-    failureReason?: "external_interruption";
-  }>;
+  encode: AacEncoder;
   audioBitrate?: string;
 }
 
@@ -460,9 +429,9 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
   try {
     scratchDir = mkdtempSync(join(dirname(input.audioPath), ".true-peak-"));
     const correctedPath = join(scratchDir, "audio.m4a");
-    const correctionTargetDbfs = AAC_DELIVERY_TRUE_PEAK_DBFS - AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB;
     const measurements: string[] = [];
     let attenuationDb = 0;
+    let sourcePeakDbfs: number | undefined;
     let measuredPath = input.audioPath;
     for (let pass = 0; pass <= MAX_TRUE_PEAK_CORRECTION_PASSES; pass += 1) {
       const truePeakDbfs = await input.probeTruePeak(measuredPath, input.signal);
@@ -474,22 +443,27 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       }
       if (truePeakDbfs <= AAC_DELIVERY_TRUE_PEAK_DBFS) {
         if (measuredPath !== correctedPath) return { success: true };
-        renameSync(correctedPath, input.audioPath);
+        renameWithRetry(correctedPath, input.audioPath, { copyFallback: true });
         return { success: true, loweredDb: Number((-attenuationDb).toFixed(2)) };
       }
       if (pass === MAX_TRUE_PEAK_CORRECTION_PASSES) break;
 
-      // Aim below the acceptance ceiling because this correction itself is
-      // another lossy AAC encode and can regenerate content-dependent peaks.
-      attenuationDb += correctionTargetDbfs - truePeakDbfs;
-      const result = await input.runner(
-        buildAacTruePeakCorrectionArgs(
-          input.audioPath,
-          correctedPath,
-          input.targetDurationSeconds,
-          attenuationDb,
-          input.audioBitrate,
-        ),
+      // Aim below the ceiling, twice as far each pass: the correction is another lossy AAC encode,
+      // whose peak can stall or rise over a few dB of attenuation instead of falling dB for dB.
+      const headroomDb = AAC_TRUE_PEAK_CORRECTION_HEADROOM_DB * 2 ** pass;
+      // The encoder clips what is left above full scale, so the AAC under-reads a hotter PCM and a
+      // cut sized from it never gets the PCM under: size it from the louder of the two.
+      if (input.sourcePath && sourcePeakDbfs === undefined) {
+        sourcePeakDbfs = await input.probeTruePeak(input.sourcePath, input.signal);
+      }
+      const referenceDbfs = Math.max(truePeakDbfs, (sourcePeakDbfs ?? -Infinity) + attenuationDb);
+      attenuationDb += AAC_DELIVERY_TRUE_PEAK_DBFS - headroomDb - referenceDbfs;
+      const result = await input.encode(
+        input.audioPath,
+        correctedPath,
+        input.targetDurationSeconds,
+        aacTruePeakCorrectionFilter(input.targetDurationSeconds, attenuationDb),
+        { audioBitrate: input.audioBitrate },
       );
       if (!result.success) {
         return {
@@ -516,7 +490,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       )}`,
     };
   } finally {
-    if (scratchDir) rmSync(scratchDir, { recursive: true, force: true });
+    if (scratchDir) removeScratch(scratchDir);
   }
 }
 
@@ -626,37 +600,32 @@ async function defaultProbeAudioInfo(
   };
 }
 
-async function defaultProbeAudioTruePeakDbfs(
-  audioPath: string,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<number> {
-  const result = await runFfmpeg(
-    ["-i", audioPath, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"],
-    { signal, timeout: timeoutMs },
-  );
-  if (!result.success) {
-    throw new Error(`[audioPadTrim] ${describeFfmpegFailure(result, timeoutMs)}`);
-  }
-  const matches = [...result.stderr.matchAll(/^\s*Peak:\s*([+-]?(?:[\d.]+|inf)) dBFS$/gim)];
-  const token = matches.at(-1)?.[1]?.toLowerCase();
-  const value = token === "-inf" ? Number.NEGATIVE_INFINITY : Number(token);
-  if (Number.isNaN(value) || value === Number.POSITIVE_INFINITY) {
-    throw new Error("[audioPadTrim] FFmpeg did not report AAC true peak");
-  }
-  return value;
-}
-
 async function defaultRunFfmpeg(
   args: string[],
   timeoutMs: number,
   signal?: AbortSignal,
-): Promise<{
-  success: boolean;
-  error?: string;
-  failureReason?: "external_interruption";
-}> {
-  const result = await runFfmpeg(args, { signal, timeout: timeoutMs });
+): Promise<StepResult> {
+  return toStepResult(await runFfmpeg(args, { signal, timeout: timeoutMs }), timeoutMs);
+}
+
+function defaultAacEncoder(
+  timeoutMs: number,
+  signal?: AbortSignal,
+  pcmSourcePath?: string,
+): AacEncoder {
+  return async (inputPath, outputPath, durationSeconds, filter, { audioBitrate }) => {
+    // Each segment decodes its input from the start: cheap from PCM, a second lossy pass from AAC.
+    const options = pcmSourcePath
+      ? { signal, timeout: timeoutMs, filter, audioBitrate }
+      : { signal, timeout: timeoutMs, filter, audioBitrate, segments: 1 };
+    return toStepResult(
+      await encodeAac(pcmSourcePath ?? inputPath, outputPath, durationSeconds, options),
+      timeoutMs,
+    );
+  };
+}
+
+function toStepResult(result: RunFfmpegResult, timeoutMs: number): StepResult {
   if (result.success) return { success: true };
   return {
     success: false,

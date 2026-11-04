@@ -94,7 +94,7 @@ describe("distributed video metadata", () => {
     expect(sourceDerived.videos[0]?.mediaStart).toBe(1);
   });
 
-  it("round-trips a non-zero video stream start and lead and defaults legacy plans to zero", () => {
+  it("round-trips a non-zero video stream start, lead and media time offset and defaults legacy plans to zero", () => {
     const withStart = buildPlanVideosJson({
       videos: [video()],
       extracted: [
@@ -103,6 +103,7 @@ describe("distributed video metadata", () => {
             ...extractedMetadata().metadata,
             videoStreamStartSeconds: 5,
             videoStreamLeadSeconds: 7,
+            mediaTimeOffsetSeconds: 0.25,
           },
         }),
       ],
@@ -111,13 +112,41 @@ describe("distributed video metadata", () => {
     const parsed = parsePlanVideosJson(withStart).extracted[0]?.metadata;
     expect(parsed?.videoStreamStartSeconds).toBe(5);
     expect(parsed?.videoStreamLeadSeconds).toBe(7);
+    expect(parsed?.mediaTimeOffsetSeconds).toBe(0.25);
 
     const legacy = structuredClone(withStart);
     delete legacy.extracted[0]?.metadata.videoStreamStartSeconds;
     delete legacy.extracted[0]?.metadata.videoStreamLeadSeconds;
+    delete legacy.extracted[0]?.metadata.mediaTimeOffsetSeconds;
     const legacyParsed = parsePlanVideosJson(legacy).extracted[0]?.metadata;
     expect(legacyParsed?.videoStreamStartSeconds).toBe(0);
     expect(legacyParsed?.videoStreamLeadSeconds).toBe(0);
+    expect(legacyParsed?.mediaTimeOffsetSeconds).toBe(0);
+  });
+
+  it("keeps alphaPlaneDecoded when present and accepts plans without it", () => {
+    const withField = (alphaPlaneDecoded: unknown) =>
+      buildPlanVideosJson({
+        videos: [video()],
+        extracted: [
+          extractedMetadata({
+            metadata: {
+              ...extractedMetadata().metadata,
+              videoCodec: "vp9",
+              alphaPlaneDecoded,
+            } as PlanVideosJson["extracted"][number]["metadata"],
+          }),
+        ],
+        compositionEnd: 8,
+      });
+    const roundTrip = (plan: PlanVideosJson) =>
+      parsePlanVideosJson(JSON.parse(JSON.stringify(plan))).extracted[0]?.metadata;
+
+    expect(roundTrip(withField(false))?.alphaPlaneDecoded).toBe(false);
+    expect(roundTrip(withField(true))?.alphaPlaneDecoded).toBe(true);
+    const legacy = roundTrip(withField(undefined));
+    expect(legacy && "alphaPlaneDecoded" in legacy).toBe(false);
+    expect(() => withField("no")).toThrow(PlanVideosMetadataError);
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, 0, 2])(

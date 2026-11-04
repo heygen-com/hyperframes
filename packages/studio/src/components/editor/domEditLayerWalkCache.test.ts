@@ -148,6 +148,54 @@ describe("collectDomEditLayerItems incremental rebuild", () => {
     });
   });
 
+  it("queries the document for no selector when a walk meets elements it has not seen", () => {
+    const root = mountPreview(12);
+    const boxes = Array.from(root.querySelectorAll<HTMLElement>(".box"));
+    // The scenes a scrub has not reached yet: hidden, so no identity is read for them.
+    for (const box of boxes.slice(6)) box.style.display = "none";
+    const cache = createDomEditLayerWalkCache();
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.documentElement, DOM_EDIT_LAYER_OBSERVER_INIT);
+    try {
+      collectDomEditLayerItems(root, opts, undefined, cache);
+      for (const box of boxes.slice(6)) box.style.display = "";
+      cache.ingest(observer.takeRecords());
+
+      const real = document.querySelectorAll.bind(document);
+      let queries = 0;
+      Object.defineProperty(document, "querySelectorAll", {
+        configurable: true,
+        value: (selector: string) => {
+          queries += 1;
+          return real(selector);
+        },
+      });
+      let kept: DomEditLayerItem[];
+      try {
+        kept = collectDomEditLayerItems(root, opts, undefined, cache);
+      } finally {
+        delete (document as Partial<Document>).querySelectorAll;
+      }
+      // The revealed cards are in the kept index for their selector.
+      expect(queries).toBe(0);
+      expect(shape(kept)).toEqual(shape(collectDomEditLayerItems(root, opts)));
+    } finally {
+      observer.disconnect();
+    }
+  });
+
+  it("builds the selector index again once a node is added", () => {
+    withWarmWalk(6, ({ root, cache, observer }) => {
+      const added = document.createElement("div");
+      added.className = "box";
+      root.insertBefore(added, root.firstElementChild);
+      cache.ingest(observer.takeRecords());
+
+      const kept = collectDomEditLayerItems(root, opts, undefined, cache);
+      expect(shape(kept)).toEqual(shape(collectDomEditLayerItems(root, opts)));
+    });
+  });
+
   /**
    * The equivalence half, and the one that would catch a wrong optimisation
    * rather than a missing one. Every mutation KIND the invalidation reasons

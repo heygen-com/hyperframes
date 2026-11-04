@@ -163,6 +163,14 @@ describe("applyFreezeFrameToHtml", () => {
     ).toBe("11");
   });
 
+  it("keeps a lane clip's grade group on the still, so the still is graded with its lane", () => {
+    const graded = applyFreezeFrameToHtml(
+      project.replace('id="talk"', 'id="talk" data-color-group="cam-a"'),
+      { target: { id: "talk" }, playhead: 3.2, imageSrc: "assets/freeze/talk-3200.png" },
+    );
+    expect(at(graded?.html ?? "", "talk-freeze")?.getAttribute("data-color-group")).toBe("cam-a");
+  });
+
   it("returns null when the playhead is not inside the video", () => {
     expect(
       applyFreezeFrameToHtml(project, { target: { id: "talk" }, playhead: 9, imageSrc: "x.png" }),

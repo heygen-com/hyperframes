@@ -23,8 +23,13 @@ import type { IconCandidate } from "./faviconRanker.js";
 import { CAPTURE_USER_AGENT } from "./userAgent.js";
 import sharp from "sharp";
 import { publicRequest } from "./publicNetwork.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("../utils/optionalPackages.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/optionalPackages.js")>();
+  return { ...actual, loadSharp: vi.fn(actual.loadSharp) };
+});
 
 // Exercise production URL/redirect checks while replacing only the socket transport.
 function mockRequest(implementation: (url: string, init?: RequestInit) => Promise<Response>) {
@@ -776,6 +781,101 @@ describe("capture download security boundaries", () => {
   });
 });
 
+describe("captured font URL rewrites", () => {
+  afterEach(() => vi.mocked(publicRequest).mockReset());
+
+  it.each([
+    ["", "demo.woff2?v=1", "demo.woff2?v=10"],
+    ["'", "demo.woff2?v=1", "demo.woff2?v=10"],
+    ['"', "demo.woff2?v=1", "demo.woff2?v=10"],
+    ["", "demo.woff2", "demo.woff2?v=2"],
+    ["'", "demo.woff2", "demo.woff2?v=2"],
+    ['"', "demo.woff2", "demo.woff2?v=2"],
+    ["", "demo.woff", "demo.woff2"],
+    ["'", "demo.woff", "demo.woff2"],
+    ['"', "demo.woff", "demo.woff2"],
+  ])("keeps both fonts when %s-quoted %s prefixes %s", async (quote, first, second) => {
+    await withTempDir(async (dir) => {
+      const firstBytes = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+      );
+      const secondBytes = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/8963f64fa28dc4ae.woff2", import.meta.url),
+      );
+      const firstUrl = `https://fonts.example/${first}`;
+      const secondUrl = `https://fonts.example/${second}`;
+      const fetch = vi.fn(async (url: string) => {
+        if (url === firstUrl) return new Response(new Uint8Array(firstBytes));
+        if (url === secondUrl) return new Response(new Uint8Array(secondBytes));
+        throw new Error(`Unexpected font URL: ${url}`);
+      });
+      mockRequest(fetch);
+      const firstRule = `@font-face{font-family:Mono;src:url(${quote}${firstUrl}${quote})}`;
+      const secondRule = `@font-face{font-family:Marker;src:url(${quote}${secondUrl}${quote})}`;
+
+      const result = await downloadAndRewriteFonts(`${firstRule}\n${secondRule}`, dir);
+
+      expect(result.css).toBe(
+        `@font-face{font-family:Mono;src:url(${quote}assets/fonts/demo.woff2${quote})}\n` +
+          `@font-face{font-family:Marker;src:url(${quote}assets/fonts/demo-2.woff2${quote})}`,
+      );
+      expect(readFileSync(join(dir, "assets/fonts/demo.woff2"))).toEqual(firstBytes);
+      expect(readFileSync(join(dir, "assets/fonts/demo-2.woff2"))).toEqual(secondBytes);
+      expect(result.drops.unavailable).toBe(0);
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([firstUrl, secondUrl]);
+    });
+  });
+
+  it("leaves an unavailable longer URL intact after saving the shorter URL", async () => {
+    await withTempDir(async (dir) => {
+      const bytes = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+      );
+      mockRequest(
+        vi.fn(async (url: string) =>
+          url.endsWith("?v=1")
+            ? new Response(new Uint8Array(bytes))
+            : new Response("Unavailable", { status: 503 }),
+        ),
+      );
+      const source =
+        '@font-face{font-family:Mono;src:url("https://fonts.example/demo.woff2?v=1")}\n' +
+        '@font-face{font-family:Marker;src:url("https://fonts.example/demo.woff2?v=10")}';
+
+      const result = await downloadAndRewriteFonts(source, dir);
+
+      expect(result.css).toBe(
+        '@font-face{font-family:Mono;src:url("assets/fonts/demo.woff2")}\n' +
+          '@font-face{font-family:Marker;src:url("https://fonts.example/demo.woff2?v=10")}',
+      );
+      expect(readdirSync(join(dir, "assets/fonts"))).toEqual(["demo.woff2"]);
+      expect(result.drops.unavailable).toBe(1);
+    });
+  });
+
+  it("localizes repeated references to the same font with one download", async () => {
+    await withTempDir(async (dir) => {
+      const bytes = readFileSync(
+        new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),
+      );
+      const fetch = vi.fn(async () => new Response(new Uint8Array(bytes)));
+      mockRequest(fetch);
+      const source =
+        '@font-face{font-family:Mono;src:url("https://fonts.example/demo.woff2?v=1")}\n' +
+        "@font-face{font-family:Alias;src:url('https://fonts.example/demo.woff2?v=1')}";
+
+      const result = await downloadAndRewriteFonts(source, dir);
+
+      expect(result.css).toBe(
+        '@font-face{font-family:Mono;src:url("assets/fonts/demo.woff2")}\n' +
+          "@font-face{font-family:Alias;src:url('assets/fonts/demo.woff2')}",
+      );
+      expect(readFileSync(join(dir, "assets/fonts/demo.woff2"))).toEqual(bytes);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
 describe("a planted directory link inside the capture directory (#4304)", () => {
   // Creating symlinks needs elevated rights on Windows.
   const posixOnly = it.skipIf(process.platform === "win32");
@@ -834,6 +934,24 @@ describe("a planted directory link inside the capture directory (#4304)", () => 
         /outside the capture directory/,
       );
       expect(readdirSync(outside)).toEqual([]);
+    });
+  });
+});
+
+describe("downloadAssets without sharp", () => {
+  afterEach(() => vi.mocked(publicRequest).mockReset());
+
+  it("fails the download instead of counting every image unavailable", async () => {
+    vi.mocked(loadSharp).mockRejectedValueOnce(new Error("sharp is not installed"));
+    await withTempDir(async (dir) => {
+      const fetchMock = vi.fn();
+      mockRequest(fetchMock);
+      await expect(
+        downloadAssets(tokensWithNoSvgs(), dir, [
+          { type: "Image", url: "https://cdn.example/hero.png", contexts: ["img[src]"] },
+        ] as never),
+      ).rejects.toThrow("sharp is not installed");
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

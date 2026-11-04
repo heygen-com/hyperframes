@@ -1,10 +1,19 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { existsSync, lstatSync, readFileSync, unlinkSync, readdirSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  lstatSync,
+  readFileSync,
+  unlinkSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
+import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
-import { formatRenderOutputTimestamp, parseFps } from "@hyperframes/core";
+import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
 import {
   folderGone,
   isPrivateProjectFile,
@@ -14,12 +23,14 @@ import {
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoderOptions.js";
+import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
+  ".gif": "image/gif",
 };
 const RENDER_EXTENSIONS = Object.keys(RENDER_MIME);
 const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_EXTENSIONS, ".meta.json"];
@@ -46,9 +57,17 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
-  const renderJobs = new Map<string, RenderJobState & { createdAt: number }>();
+  const renderJobs = new Map<string, RenderJobState>();
 
-  // TTL cleanup for completed jobs (5 minutes)
+  const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
+    let jobId = baseId;
+    for (let n = 2; renderJobs.has(jobId) || existsSync(join(rendersDir, `${jobId}${ext}`)); n++) {
+      jobId = `${baseId}-${n}`;
+    }
+    return jobId;
+  };
+
+  // A finished job stays readable for 5 minutes after it finishes
   const TTL_MS = 300_000;
   const CLEANUP_INTERVAL_MS = 60_000;
   let cleanupTimer: ReturnType<typeof setInterval> | null = null;
@@ -59,12 +78,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
-    const now = Date.now();
-    for (const [key, job] of renderJobs) {
-      if (job.status !== "rendering" && now - job.createdAt > TTL_MS) {
-        renderJobs.delete(key);
-      }
-    }
+    forgetJobsFinishedLongerThan(TTL_MS, renderJobs, (job) => job.status !== "rendering");
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;
@@ -108,17 +122,26 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       // window.__hfVariables — same channel as `hyperframes render --variables`.
       variables?: Record<string, unknown>;
       gpu?: boolean;
+      previewMotionBlur?: boolean;
+      pageMotionBlur?: unknown;
     };
-    const VALID_FORMATS = new Set(["mp4", "webm", "mov"]);
-    const FORMAT_EXT: Record<string, string> = { mp4: ".mp4", webm: ".webm", mov: ".mov" };
-    const format = VALID_FORMATS.has(body.format ?? "") ? (body.format as string) : "mp4";
+    const VALID_FORMATS = ["mp4", "webm", "mov", "gif"] as const;
+    const FORMAT_EXT: Record<string, string> = {
+      mp4: ".mp4",
+      webm: ".webm",
+      mov: ".mov",
+      gif: ".gif",
+    };
+    const format = VALID_FORMATS.find((value) => value === body.format) ?? "mp4";
 
     // Default to 30 fps when unset or unparseable. The route stays lenient on
     // invalid fps values (matching the lenient handling of `resolution` and
     // `quality` already in this file) — the producer surfaces a clearer error
     // message if the caller really did mean to fail loudly.
     const fpsParse = body.fps === undefined ? null : parseFps(body.fps);
-    const fps = fpsParse && fpsParse.ok ? fpsParse.value : { num: 30, den: 1 };
+    const requestedFps = fpsParse && fpsParse.ok ? fpsParse.value : { num: 30, den: 1 };
+    const fps =
+      format === "gif" && fpsToNumber(requestedFps) > 30 ? { num: 30, den: 1 } : requestedFps;
     const quality = ["draft", "standard", "high"].includes(body.quality ?? "")
       ? (body.quality as string)
       : "standard";
@@ -150,17 +173,29 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const encoder = parseEncoderOptions(body, format);
     if (!encoder.ok) return c.json({ error: encoder.error }, 400);
 
-    const now = new Date();
-    const jobId = `${project.id}_${formatRenderOutputTimestamp(now)}`;
+    const requestedPageMotionBlur = body.pageMotionBlur;
+    if (requestedPageMotionBlur !== undefined && requestedPageMotionBlur !== "off") {
+      return c.json({ error: "pageMotionBlur must be off when supplied" }, 400);
+    }
+    const pageMotionBlur =
+      requestedPageMotionBlur === undefined && body.previewMotionBlur === false
+        ? "off"
+        : requestedPageMotionBlur;
+
     const rendersDir = adapter.rendersDir(project);
     mkdirWithinProject(project.dir, rendersDir);
     const ext = FORMAT_EXT[format] ?? ".mp4";
+    const jobId = nextFreeRenderJobId(
+      `${project.id}_${formatRenderOutputTimestamp(new Date())}`,
+      ext,
+      rendersDir,
+    );
     const outputPath = join(rendersDir, `${jobId}${ext}`);
 
     const jobState = adapter.startRender({
       project,
       outputPath,
-      format: format as "mp4" | "webm" | "mov",
+      format,
       fps,
       quality,
       jobId,
@@ -172,9 +207,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       distinctId:
         typeof body.telemetryDistinctId === "string" ? body.telemetryDistinctId : undefined,
       telemetryOptOut: body.telemetryOptOut === true,
+      ...(pageMotionBlur === undefined ? {} : { pageMotionBlur }),
     });
-    (jobState as RenderJobState & { createdAt: number }).createdAt = Date.now();
-    renderJobs.set(jobId, jobState as RenderJobState & { createdAt: number });
+    renderJobs.set(jobId, jobState);
 
     ensureCleanupTimer();
 
@@ -235,44 +270,42 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return (ext && RENDER_MIME[ext]) ?? "video/mp4";
   }
 
-  // Serve render inline (for in-browser playback — opens in a new tab)
-  // fallow-ignore-next-line code-duplication
+  function renderFileResponse(
+    filePath: string,
+    disposition: "inline" | "attachment",
+    filename: string,
+    method: string,
+  ): Response {
+    const headers = {
+      "Content-Type": renderContentType(filePath),
+      "Content-Disposition": contentDispositionHeader(disposition, filename),
+      ...(disposition === "inline" ? { "Accept-Ranges": "bytes" } : {}),
+      "Content-Length": String(statSync(filePath).size),
+    };
+    if (method === "HEAD") return new Response(null, { headers });
+    // Node and DOM stream declarations differ; the response receives a web byte stream.
+    const body = Readable.toWeb(createReadStream(filePath)) as unknown as ReadableStream;
+    return new Response(body, { headers });
+  }
+
   api.get("/render/:jobId/view", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
-    });
+    return renderFileResponse(job.outputPath, "inline", filename, c.req.method);
   });
 
-  // Download render
-  // fallow-ignore-next-line code-duplication
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    const contentType = renderContentType(job.outputPath);
     const filename = job.outputPath.split("/").pop() ?? `render.mp4`;
-    const content = readFileSync(job.outputPath);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("attachment", filename),
-      },
-    });
+    return renderFileResponse(job.outputPath, "attachment", filename, c.req.method);
   });
 
   async function renderDirectories(jobId: string): Promise<string[]> {
@@ -315,16 +348,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const fp = resolveWithinProject(rendersDir, filename);
     if (!fp || isPrivateProjectFile(project.dir, fp)) return c.json({ error: "forbidden" }, 403);
     if (!existsSync(fp)) return c.json({ error: "not found" }, 404);
-    const contentType = renderContentType(fp);
-    const content = readFileSync(fp);
-    return new Response(content, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Disposition": contentDispositionHeader("inline", filename),
-        "Accept-Ranges": "bytes",
-        "Content-Length": String(content.length),
-      },
-    });
+    return renderFileResponse(fp, "inline", filename, c.req.method);
   });
 
   // List renders
@@ -334,14 +358,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
     const files = readdirSync(rendersDir)
-      .filter((f) => f.endsWith(".mp4") || f.endsWith(".webm") || f.endsWith(".mov"))
+      .filter((f) => RENDER_EXTENSIONS.some((extension) => f.endsWith(extension)))
       .flatMap((f) => {
         const fp = resolveWithinProject(rendersDir, f);
         return fp && !isPrivateProjectFile(project.dir, fp) ? [{ f, fp }] : [];
       })
       .map(({ f, fp }) => {
         const stat = statSync(fp);
-        const rid = f.replace(/\.(mp4|webm|mov)$/, "");
+        const rid = f.replace(/\.(mp4|webm|mov|gif)$/, "");
         const metaPath = join(rendersDir, `${rid}.meta.json`);
         let status: "complete" | "failed" = "complete";
         let durationMs: number | undefined;
@@ -381,8 +405,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
           status: file.status,
           progress: 100,
           outputPath: file.path,
-          createdAt: file.createdAt,
-        } as RenderJobState & { createdAt: number });
+        });
       }
     }
     return c.json({ renders: files.map(({ path: _path, ...render }) => render) });

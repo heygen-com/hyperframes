@@ -5,7 +5,9 @@ import {
   announcePreviewDocumentLoaded,
   onPreviewContentReplaced,
   sceneSwapFor,
+  supersededByNewerEdit,
 } from "./sceneSwap";
+import { errorProps } from "../utils/rejectionTelemetry";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -83,12 +85,39 @@ describe("sceneSwapFor", () => {
       .mockImplementation(async () => new Response("<html></html>"));
     const { iframe, swap } = swappableIframe();
     const cancel = new AbortController();
-    cancel.abort(new Error("superseded by a newer edit"));
-    await expect(sceneSwapFor(iframe)!("/preview", () => true, cancel.signal)).rejects.toThrow(
-      "superseded",
+    cancel.abort(supersededByNewerEdit());
+    const rejection = await sceneSwapFor(iframe)!("/preview", () => true, cancel.signal).catch(
+      (error: unknown) => error,
     );
+    // The rejection listener files AbortErrors as cancellations, never as unhandled failures.
+    expect(errorProps(rejection)).toMatchObject({
+      error_name: "AbortError",
+      error_message: "superseded by a newer edit",
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(swap).not.toHaveBeenCalled();
+  });
+
+  it("leaves no listener on the caller's cancel signal once swaps settle, so a swapped film can be freed", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("<html></html>"));
+    const cancel = new AbortController();
+    const live = new Set<unknown>();
+    const { signal } = cancel;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    signal.addEventListener = ((type: string, listener: EventListener, options?: unknown) => {
+      live.add(listener);
+      add(type, listener, options as AddEventListenerOptions);
+    }) as AbortSignal["addEventListener"];
+    signal.removeEventListener = ((type: string, listener: EventListener, options?: unknown) => {
+      live.delete(listener);
+      remove(type, listener, options as EventListenerOptions);
+    }) as AbortSignal["removeEventListener"];
+    const { iframe } = swappableIframe();
+    const refused = swappableIframe(vi.fn(async () => Promise.reject(new Error("refused")))).iframe;
+    for (let n = 0; n < 3; n++) await sceneSwapFor(iframe)!("/preview", () => true, signal);
+    await expect(sceneSwapFor(refused)!("/preview", () => true, signal)).rejects.toThrow("refused");
+    expect(live.size).toBe(0);
   });
 
   it("swaps a document that arrives in time", async () => {

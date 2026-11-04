@@ -118,6 +118,47 @@ describe("buildMissingCompositionElements — hfId (R7)", () => {
   });
 });
 
+describe("buildMissingCompositionElements — on a settled timeline", () => {
+  // Studio runs this on every runtime state tick, so a timeline with nothing to add must cost one host scan.
+  const settled = () =>
+    makeDoc(`
+      <div data-composition-id="root">
+        <div id="intro" data-composition-id="intro" data-start="0" data-duration="3"></div>
+        ${Array.from({ length: 40 }, (_, i) => `<video id="clip-${i}" data-start="${i}" data-duration="1"></video>`).join("")}
+      </div>
+    `);
+  const rows = ["intro", ...Array.from({ length: 40 }, (_, i) => `clip-${i}`)].map((id, i) => ({
+    id,
+    key: id,
+    tag: id === "intro" ? "div" : "video",
+    start: i,
+    duration: 1,
+    track: 0,
+  }));
+
+  it("walks no more of the document than the hosts when nothing is missing or patchable", () => {
+    const doc = settled();
+    const scans = vi.spyOn(doc, "querySelectorAll");
+    const result = buildMissingCompositionElements(doc, window as IframeWindow, rows, 40);
+    expect(scans.mock.calls.map(([selector]) => selector)).toEqual([
+      "[data-composition-id][data-start]",
+    ]);
+    expect([result.missing, result.patched, result.updatedEls]).toEqual([[], false, rows]);
+  });
+
+  it("still patches a row whose host carries its source", () => {
+    const doc = settled();
+    doc.getElementById("intro")!.setAttribute("data-composition-src", "compositions/intro.html");
+    const { patched, updatedEls } = buildMissingCompositionElements(
+      doc,
+      window as IframeWindow,
+      rows,
+      40,
+    );
+    expect([patched, updatedEls[0]?.compositionSrc]).toEqual([true, "compositions/intro.html"]);
+  });
+});
+
 describe("buildMissingCompositionElements — nested master time", () => {
   it("places hosts two and three levels deep at their master time", () => {
     const doc = makeDoc(`
@@ -238,6 +279,46 @@ describe("scrubPreviewAudio", () => {
 
     expect(root!.play).toHaveBeenCalled();
     expect(inner!.play).not.toHaveBeenCalled();
+    stopScrubPreviewAudio();
+  });
+
+  /** An edit to a sub-composition rebuilds the media inside it, so the music row can
+   *  name a track that is not in the preview for a moment. Auditioning whatever audio
+   *  came first then previews the voiceover, which is not the track being scrubbed. */
+  it("previews nothing when the music row's own track is not in the preview", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+
+    const voiceover = previewDoc.createElement("audio");
+    voiceover.id = "voiceover";
+    voiceover.play = vi.fn(async () => {});
+    voiceover.pause = vi.fn();
+    previewDoc.body.append(voiceover);
+
+    scrubPreviewAudio(iframe, 0.5, { id: "music-bed" }, 1);
+
+    expect(voiceover.play).not.toHaveBeenCalled();
+    expect(voiceover.volume).toBe(1);
+    stopScrubPreviewAudio();
+  });
+
+  it("still previews the track marked as the music when the row's own id is gone", () => {
+    const iframe = document.createElement("iframe");
+    document.body.append(iframe);
+    const previewDoc = iframe.contentDocument;
+    if (!previewDoc?.body) throw new Error("expected an iframe document");
+    previewDoc.body.innerHTML =
+      '<audio id="voiceover"></audio><audio id="bed" data-timeline-role="music"></audio>';
+    const [voiceover, bed] = Array.from(previewDoc.querySelectorAll("audio"));
+    for (const audio of [voiceover, bed])
+      Object.assign(audio!, { play: vi.fn(async () => {}), pause: vi.fn() });
+
+    scrubPreviewAudio(iframe, 0.5, { id: "music-bed" }, 1);
+
+    expect(bed!.play).toHaveBeenCalled();
+    expect(voiceover!.play).not.toHaveBeenCalled();
     stopScrubPreviewAudio();
   });
 

@@ -236,13 +236,9 @@ function isGroupableMember(el: Element): boolean {
 /**
  * Make `<hf-audio-group>` inert, once per document.
  *
- * The element is metadata — an id, a label, a chain, an automation lane — and
- * carries no content, but "no content" is not "no box": it is still an unknown
- * custom element, so in a flex or grid composition root it counts as an item
- * (taking a `gap`, shifting `justify-content`, moving every `:nth-child` after
- * it), and in inline formatting it can still open a line box. Authored layout
- * would shift by adding a group, which is not something a mixing decision is
- * allowed to do.
+ * An unknown custom element still makes a box (a flex or grid item, a line box), and a
+ * mixing decision must not shift authored layout. `contents`, not `none`: what sits
+ * inside one (a self-closed `<hf-audio-group />` takes in every later sibling) still renders, unless muted.
  *
  * `!important` because an author rule can outrank a bare type selector on
  * specificity — inertness here is a contract, not a default. Emitted from the
@@ -253,6 +249,6 @@ export function ensureAudioGroupInertStyle(doc: Document): void {
   if (!doc?.head || doc.getElementById(styleId)) return;
   const style = doc.createElement("style");
   style.id = styleId;
-  style.textContent = `${HF_AUDIO_GROUP_TAG}{display:none!important}`;
+  style.textContent = `${HF_AUDIO_GROUP_TAG}{display:contents!important}${HF_AUDIO_GROUP_TAG}[data-hidden]{display:none!important}`;
   doc.head.appendChild(style);
 }

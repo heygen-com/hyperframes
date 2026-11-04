@@ -185,3 +185,50 @@ export function checkOutputResolutionCompatibility(input: {
 
   return OK;
 }
+
+export type OutputSizeResolution =
+  | { ok: true; outputResolution: CanvasResolution | undefined }
+  | { ok: false; message: string };
+
+/**
+ * The preset a requested pixel size stands for on a composition: none when it is the composition's own size,
+ * else the preset of exactly that size when it is a whole-number multiple (3840×2160 on 1920×1080 is scale 2).
+ */
+export function outputResolutionForSize(input: {
+  compositionWidth: number;
+  compositionHeight: number;
+  width: number;
+  height: number;
+}): OutputSizeResolution {
+  const { compositionWidth, compositionHeight, width, height } = input;
+  if (width === compositionWidth && height === compositionHeight) {
+    return { ok: true, outputResolution: undefined };
+  }
+  const composition = `${compositionWidth}×${compositionHeight}`;
+  const scale = width / compositionWidth;
+  if (width < compositionWidth || height < compositionHeight) {
+    return {
+      ok: false,
+      message: `${width}×${height} is smaller than the composition (${composition}). Use the composition's size, or a whole-number multiple of it.`,
+    };
+  }
+  const preset = VALID_CANVAS_RESOLUTIONS.find(
+    (name) => CANVAS_DIMENSIONS[name].width === width && CANVAS_DIMENSIONS[name].height === height,
+  );
+  if (
+    !Number.isInteger(scale) ||
+    height !== compositionHeight * scale ||
+    !preset ||
+    !checkOutputResolutionCompatibility({
+      compositionWidth,
+      compositionHeight,
+      outputResolution: preset,
+    }).ok
+  ) {
+    return {
+      ok: false,
+      message: `${width}×${height} is not a whole-number multiple of the composition (${composition}) at a supported size. Use ${composition}, or a multiple such as ${compositionWidth * 2}×${compositionHeight * 2} when that is a preset size (${VALID_CANVAS_RESOLUTIONS.map((name) => `${CANVAS_DIMENSIONS[name].width}×${CANVAS_DIMENSIONS[name].height}`).join(", ")}).`,
+    };
+  }
+  return { ok: true, outputResolution: preset };
+}

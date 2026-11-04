@@ -26,7 +26,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getFfmpegBinary, getFfprobeBinary, resolveConfig } from "@hyperframes/engine";
 import { createRenderJob, executeRenderJob } from "../renderOrchestrator.js";
 
@@ -98,6 +98,8 @@ function extinfDurations(playlistPath: string): number[] {
 describe.skipIf(!HAS_FFMPEG)("format: hls — real render", () => {
   let root: string;
   let outputDir: string;
+  let renderJobId: string;
+  const debug = vi.fn();
 
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), "hf-hls-render-"));
@@ -130,14 +132,27 @@ describe.skipIf(!HAS_FFMPEG)("format: hls — real render", () => {
       hlsSegmentSeconds: SEGMENT_SECONDS,
       hdrMode: "force-sdr",
       workers: 1,
-      logger: { info() {}, warn() {}, error() {}, debug() {} },
+      logger: { info() {}, warn() {}, error() {}, debug },
       producerConfig: resolveConfig({ browserGpuMode: "software" }),
     });
+    renderJobId = job.id;
     await executeRenderJob(job, root, outputDir);
   }, 600_000);
 
   afterAll(() => {
     if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reports unavailable playlist frame counts through the scoped render logger", () => {
+    expect(debug).toHaveBeenCalledWith(
+      "[Render] Frame-count validation skipped: no usable frame count was reported.",
+      expect.objectContaining({
+        event: "artifact_frame_count_unavailable",
+        artifact: outputDir,
+        expectedFrames: DURATION_SECONDS * FPS,
+        renderJobId,
+      }),
+    );
   });
 
   it("publishes a directory with a master playlist referencing both renditions", () => {

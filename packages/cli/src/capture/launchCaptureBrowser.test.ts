@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
@@ -28,7 +28,11 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.proxyClose.mockResolvedValue(undefined);
   mocks.browserClose.mockResolvedValue(undefined);
-  mocks.launch.mockResolvedValue({ close: mocks.browserClose, once: mocks.once });
+  mocks.launch.mockResolvedValue({
+    close: mocks.browserClose,
+    once: mocks.once,
+    newPage: vi.fn(),
+  });
 });
 describe("capture browser transport lifecycle", () => {
   it("forces proxy for loopback and disables direct UDP routes", async () => {
@@ -51,6 +55,36 @@ describe("capture browser transport lifecycle", () => {
       mocks.browserClose.mock.invocationCallOrder[0] ?? 0,
     );
   });
+  it("exempts only a local page server's exact host and port from the proxy", async () => {
+    const session = await launchCaptureBrowser({
+      ...options,
+      localOrigin: "http://127.0.0.1:9123",
+    });
+    expect(mocks.launch.mock.calls[0]?.[1].args).toContain(
+      "--proxy-bypass-list=<-loopback>;127.0.0.1:9123",
+    );
+    await session.close();
+  });
+
+  // A profile directory the OS refuses to empty stands in for Windows' locked Chrome lockfile.
+  it.runIf(process.platform !== "win32" && process.getuid?.() !== 0)(
+    "finishes a close whose profile directory cannot be removed, with a warning",
+    async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const session = await launchCaptureBrowser(options);
+      const profile = mocks.launch.mock.calls[0]?.[1].userDataDir;
+      const locked = join(profile, "Default");
+      chmodSync(locked, 0o500);
+      try {
+        await expect(session.close()).resolves.toBeUndefined();
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(profile));
+      } finally {
+        chmodSync(locked, 0o700);
+        warn.mockRestore();
+      }
+    },
+  );
+
   it("closes proxy when launch fails", async () => {
     mocks.launch.mockRejectedValue(new Error("launch failed"));
     await expect(launchCaptureBrowser(options)).rejects.toThrow("launch failed");
@@ -68,6 +102,27 @@ describe("capture browser transport lifecycle", () => {
     expect(event).toBe("disconnected");
     callback();
     expect(mocks.proxyClose).toHaveBeenCalledOnce();
+    await session.close();
+  });
+});
+
+describe("pages the capture browser opens", () => {
+  it("ride out a navigation that destroys the execution context mid-read", async () => {
+    const evaluate = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new Error("Execution context was destroyed, most likely because of a navigation."),
+      )
+      .mockResolvedValue("ok");
+    const rawPage = { evaluate, waitForNetworkIdle: vi.fn(async () => undefined) };
+    mocks.launch.mockResolvedValue({
+      close: mocks.browserClose,
+      once: mocks.once,
+      newPage: vi.fn(async () => rawPage),
+    });
+    const session = await launchCaptureBrowser(options);
+    const page = await session.browser.newPage();
+    await expect(page.evaluate(() => "read")).resolves.toBe("ok");
     await session.close();
   });
 });

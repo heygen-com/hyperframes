@@ -148,5 +148,6 @@ describe("render cancellation process keepalive", () => {
     } finally {
       rmSync(testDir, { recursive: true, force: true });
     }
-  }, 5_000);
+    // Sized for a cold tsx start on a slow Windows runner (1.4-2.7 s healthy); the work is 250 ms.
+  }, 30_000);
 });

@@ -1,3 +1,4 @@
+import "../utils/hideChildConsoles.js";
 import { createRequire } from "node:module";
 import {
   droppedSpeechGaps,

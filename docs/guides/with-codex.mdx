@@ -1,0 +1,97 @@
+---
+title: "Make videos with Codex"
+sidebarTitle: "Codex"
+description: "Install the HyperFrames skills for OpenAI Codex, ask for a video in plain words, then preview and render it to MP4 on your computer."
+---
+
+Install the HyperFrames skills, then ask Codex for a video. Codex writes an HTML
+project in your folder, opens a live preview, and renders the MP4 on your
+computer.
+
+```bash
+npx hyperframes skills update
+```
+
+This installs the core skills into your user's shared skills folder,
+`~/.agents/skills`, which Codex reads in every project.
+
+## Before you start
+
+- [Codex](https://developers.openai.com/codex), signed in with your ChatGPT
+  account or an OpenAI API key. Its usage bills to that account.
+- Node.js 22 or newer, and npm.
+- FFmpeg, for rendering MP4 files. Run `npx hyperframes doctor` to check.
+
+## Install
+
+Run the command above once. Run it again later to update the skills.
+
+To keep the skills with one project instead, run this in the project folder and
+choose **Core Skills** and **Codex** in the picker:
+
+```bash
+npx skills add heygen-com/hyperframes
+```
+
+Start a new Codex session after either install. See
+[Install and update agent skills](/guides/skills) for checking and updating.
+
+## Ask for your first video
+
+Open Codex in an empty folder and paste:
+
+```text
+Use $hyperframes to make a 10-second product intro for https://example.com.
+```
+
+`$hyperframes` names the HyperFrames skill. Replace the URL with the page
+you want the video to show.
+
+## What happens
+
+1. Codex reads the HyperFrames guide for your kind of video, such as a product
+   launch or an explainer, and builds the project in your folder. For a longer
+   film that tells a story, it first offers three storylines to pick from.
+2. It checks the project and opens a local preview.
+
+Codex may ask before it runs a command or uses the network. The skills install
+packages, start a preview server, and run the renderer, so approve those steps
+for this folder. Watch the first version and say what to change, in the same
+conversation.
+
+## Preview and render
+
+To reopen the preview later, run this inside the project folder:
+
+```bash
+npx hyperframes preview
+```
+
+The preview opens in the browser editor, where you can also edit the video by
+hand. To make the MP4 yourself:
+
+```bash
+npx hyperframes render --output final.mp4
+```
+
+You can also ask Codex to render it.
+
+## Prefer an app?
+
+The [HyperFrames Studio app](/studio-app) for Mac, Windows and Linux can use Codex as its
+agent. See [Connect your agent](/studio-app/connect-your-agent). To create
+inside ChatGPT instead, with nothing installed, use the
+[hosted connector](/guides/mcp).
+
+## If something goes wrong
+
+- **Codex does not see the skill.** Start a new session, then run
+  `npx hyperframes skills check`.
+- **The render fails.** Run `npx hyperframes doctor` and fix what it reports.
+- **Anything else.** See [Troubleshooting](/help).
+
+## Related topics
+
+- [Make your first video](/quickstart)
+- [Choose what to make](/workflows)
+- [Write better prompts](/prompting/overview)

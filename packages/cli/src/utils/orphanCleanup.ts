@@ -1,24 +1,20 @@
 // fallow-ignore-file code-duplication
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { HYPERFRAMES_BROWSER_MARKER_ARG } from "@hyperframes/core/browser-marker";
 import { runRenderSetupWorker } from "./cancellableProcess.js";
 import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.js";
 
 export { windowsProcessTreeKillArgs };
 
 /**
- * Kill orphaned Chrome processes (PPID 1: their parent died) left by crashed sessions, headless shell or
- * Puppeteer's Chrome (`puppeteer_dev_chrome_profile`), with their helper subtrees. Only the current user's
- * processes are read. Returns the count of killed process trees.
+ * Kill the current user's orphaned (PPID 1) Chrome trees that carry the HyperFrames launch marker, so detached
+ * browsers other tools started survive. Returns the count of killed process trees.
  */
 export function killOrphanedProcesses(): number {
-  if (process.platform === "win32") return 0;
+  if (process.env.HYPERFRAMES_NO_ORPHAN_CLEANUP === "1" || process.platform === "win32") return 0;
 
-  return killOrphansMatching([
-    "chrome-headless-shell",
-    "chrome_headless_shell",
-    "puppeteer_dev_chrome_profile",
-  ]);
+  return killOrphansMatching(HYPERFRAMES_BROWSER_MARKER_ARG);
 }
 
 export async function killOrphanedProcessesForRender(signal: AbortSignal): Promise<number> {
@@ -230,7 +226,7 @@ export function isProcessDescendant(
 }
 
 /** One process-table read: a spawn per candidate PID cost half a second before `preview` listened. */
-function killOrphansMatching(markers: readonly string[]): number {
+function killOrphansMatching(marker: string): number {
   const uid = process.getuid?.();
   const owner = uid === undefined ? ["-A"] : ["-U", String(uid)];
   let table: string;
@@ -247,7 +243,7 @@ function killOrphansMatching(markers: readonly string[]): number {
   for (const line of table.split("\n")) {
     const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
     if (!match || match[2] !== "1") continue;
-    if (!markers.some((marker) => match[3]!.includes(marker))) continue;
+    if (!match[3]!.split(/\s+/).includes(marker)) continue;
     killProcessTree(Number(match[1]));
     killed++;
   }

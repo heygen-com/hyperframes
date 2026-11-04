@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>perf fixture: heavy-subcomp-audio</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #050714;
+        overflow: hidden;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .card {
+        position: absolute;
+        width: 960px;
+        height: 540px;
+      }
+    </style>
+    <script src="/vendor/gsap.min.js"></script>
+    <script data-hyperframes-runtime="1" src="/vendor/hyperframe.runtime.iife.js"></script>
+  </head>
+  <body>
+    <!-- Four sub-compositions, each with its own video and timeline, under three overlapping audio tracks. -->
+    <div
+      id="root"
+      data-composition-id="main"
+      data-width="1920"
+      data-height="1080"
+      data-duration="10"
+      data-fps="30"
+    >
+      <div
+        class="card"
+        style="left: 0; top: 0"
+        data-composition-id="card-0"
+        data-composition-src="scenes/card-0.html"
+        data-start="0"
+        data-duration="10"
+        data-track-index="0"
+      ></div>
+      <div
+        class="card"
+        style="left: 960px; top: 0"
+        data-composition-id="card-1"
+        data-composition-src="scenes/card-1.html"
+        data-start="0"
+        data-duration="10"
+        data-track-index="1"
+      ></div>
+      <div
+        class="card"
+        style="left: 0; top: 540px"
+        data-composition-id="card-2"
+        data-composition-src="scenes/card-2.html"
+        data-start="0"
+        data-duration="10"
+        data-track-index="2"
+      ></div>
+      <div
+        class="card"
+        style="left: 960px; top: 540px"
+        data-composition-id="card-3"
+        data-composition-src="scenes/card-3.html"
+        data-start="0"
+        data-duration="10"
+        data-track-index="3"
+      ></div>
+      <audio
+        src="../_media/tone.m4a"
+        data-start="0"
+        data-duration="10"
+        data-track-index="4"
+        data-volume="0.5"
+      ></audio>
+      <audio
+        src="../_media/tone.m4a"
+        data-start="2"
+        data-duration="8"
+        data-track-index="5"
+        data-volume="0.5"
+      ></audio>
+      <audio
+        src="../_media/tone.m4a"
+        data-start="4"
+        data-duration="6"
+        data-track-index="6"
+        data-volume="0.5"
+      ></audio>
+    </div>
+    <script>
+      (function () {
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          ".card",
+          { scale: 0.9 },
+          { scale: 1, duration: 10, ease: "sine.inOut", stagger: 0.25 },
+          0,
+        );
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+      })();
+    </script>
+  </body>
+</html>

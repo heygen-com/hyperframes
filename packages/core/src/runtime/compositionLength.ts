@@ -34,15 +34,17 @@ export function readCompositionSize(root: Element): {
   };
 }
 
-/** The latest end among the document's timed video and audio, at their absolute starts. */
-export function resolveMediaWindowDurationSeconds(
+type MediaTiming = {
+  mediaStart: (el: HTMLMediaElement) => number;
+  mediaDuration: (el: HTMLMediaElement) => number | null;
+};
+
+/** The timed `<video>`/`<audio>` whose window ends last, and where it ends. */
+export function longestMediaWindow(
   doc: ParentNode,
-  media: {
-    mediaStart: (el: HTMLMediaElement) => number;
-    mediaDuration: (el: HTMLMediaElement) => number | null;
-  },
-): number | null {
-  const clipEnds: number[] = [];
+  media: MediaTiming,
+): { seconds: number; element: HTMLMediaElement } | null {
+  let longest: { seconds: number; element: HTMLMediaElement } | null = null;
   for (const node of doc.querySelectorAll<HTMLMediaElement>(
     "video[data-start], audio[data-start]",
   )) {
@@ -50,12 +52,17 @@ export function resolveMediaWindowDurationSeconds(
     if (!Number.isFinite(start)) continue;
     const duration = media.mediaDuration(node);
     if (duration == null || duration <= MIN_VALID_TIMELINE_DURATION_SECONDS) continue;
-    clipEnds.push(Math.max(0, start) + duration);
+    const end = Math.max(0, start) + duration;
+    if (!longest || end > longest.seconds) longest = { seconds: end, element: node };
   }
-  return aboveOneFrame(
-    resolveCompositionDuration({ authoredDurationSeconds: null, clipEndsSeconds: clipEnds })
-      .seconds,
-  );
+  return longest && aboveOneFrame(longest.seconds) !== null ? longest : null;
+}
+
+export function resolveMediaWindowDurationSeconds(
+  doc: ParentNode,
+  media: MediaTiming,
+): number | null {
+  return longestMediaWindow(doc, media)?.seconds ?? null;
 }
 
 /** The latest of the root's declared length and its direct sub-compositions' ends. */
@@ -118,14 +125,30 @@ export type CompositionLengthInputs = {
   derived: () => number;
 };
 
-/** A declared root length is the length; else the longest of timeline, floors and fallback (a
- *  loop-inflated timeline yields to a floor or fallback); else the length derived from the clips. */
+export type CompositionLengthFrom = "declared" | "timeline" | "floor" | "fallback" | "derived";
+
+export type CompositionLengthSource =
+  | { from: CompositionLengthFrom }
+  | { from: "media"; tag: string; src: string; trimmed: boolean };
+
 export function resolveCompositionLengthSeconds(input: CompositionLengthInputs): number {
+  return resolveCompositionLength(input).seconds;
+}
+
+/** A declared root length is the length; else the longest of timeline, floors and fallback (a
+ *  loop-inflated timeline yields to a floor or fallback); else the length derived from the clips.
+ *  `from` names the input that set it, and `floorIndex` which floor when a floor did. */
+export function resolveCompositionLength(input: CompositionLengthInputs): {
+  seconds: number;
+  from: CompositionLengthFrom;
+  floorIndex: number | null;
+} {
   if (input.declared !== null && Number.isFinite(input.declared) && input.declared > 0) {
-    return input.declared;
+    return { seconds: input.declared, from: "declared", floorIndex: null };
   }
   const rawTimeline = aboveOneFrame(input.timeline());
-  const floor = Math.max(0, ...input.floors().map((seconds) => seconds ?? 0));
+  const floors = input.floors().map((seconds) => seconds ?? 0);
+  const floor = Math.max(0, ...floors);
   const fallback =
     Number.isFinite(input.fallback) && input.fallback > MIN_VALID_TIMELINE_DURATION_SECONDS
       ? input.fallback
@@ -136,12 +159,21 @@ export function resolveCompositionLengthSeconds(input: CompositionLengthInputs):
     rawTimeline >= LOOP_INFLATED_TIMELINE_SECONDS &&
     aboveOneFrame(floorOrFallback) !== null;
   const timeline = loopInflated ? null : rawTimeline;
-  let seconds: number;
-  if (timeline !== null) seconds = Math.max(timeline, floorOrFallback);
-  else if (aboveOneFrame(floor) !== null) seconds = floorOrFallback;
-  else if (fallback > 0) seconds = fallback;
-  else seconds = input.derived();
-  return seconds > 0 ? seconds : 0;
+  const floorWins = floor >= fallback;
+  const fromFloorOrFallback = (seconds: number) => ({
+    seconds,
+    from: floorWins ? ("floor" as const) : ("fallback" as const),
+    floorIndex: floorWins ? floors.indexOf(floor) : null,
+  });
+  if (timeline !== null) {
+    return timeline >= floorOrFallback
+      ? { seconds: timeline, from: "timeline", floorIndex: null }
+      : fromFloorOrFallback(floorOrFallback);
+  }
+  if (aboveOneFrame(floor) !== null) return fromFloorOrFallback(floorOrFallback);
+  if (fallback > 0) return { seconds: fallback, from: "fallback", floorIndex: null };
+  const derived = input.derived();
+  return { seconds: derived > 0 ? derived : 0, from: "derived", floorIndex: null };
 }
 
 /** Size, frame rate and length of a composition nothing is running (a server-parsed or detached

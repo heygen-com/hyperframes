@@ -7,7 +7,10 @@
  */
 import type { InferenceSession, Tensor } from "onnxruntime-node";
 import type sharpType from "sharp";
-import { loadOptionalPackage } from "../utils/optionalPackages.js";
+import { loadOptionalPackage, loadSharp } from "../utils/optionalPackages.js";
+import { registerBrowserSessionCleanup } from "../browser/launch.js";
+import { drainToExit } from "../utils/commandResult.js";
+import { trackCoreMlTemp } from "./coremlTemp.js";
 import { ensureModel, selectProviders, type Device, type ModelId } from "./manager.js";
 
 const INPUT_SIZE = 320;
@@ -53,21 +56,8 @@ export interface CreateSessionOptions {
   onProgress?: (message: string) => void;
 }
 
-// sharp is an optional native module — its platform binary doesn't install
-// everywhere. Surface an actionable error instead of a raw "Cannot find module".
-async function loadNative<T>(name: string, load: () => Promise<T>): Promise<T> {
-  try {
-    return await load();
-  } catch (err) {
-    throw new Error(
-      `remove-background needs the optional native module '${name}', which isn't available ` +
-        `(${(err as Error).message}). Install it with \`npm i ${name}\`, or reinstall hyperframes with optional dependencies enabled.`,
-    );
-  }
-}
-
 export async function createSession(options: CreateSessionOptions = {}): Promise<Session> {
-  const sharp = (await loadNative("sharp", () => import("sharp"))).default as Sharp;
+  const sharp: Sharp = await loadSharp("remove-background");
   const ort = (await loadOptionalPackage(
     "onnxruntime-node",
     "background removal",
@@ -84,6 +74,25 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
       graphOptimizationLevel: "all",
     });
 
+  const coreMlTemp = choice.label === "CoreML" ? trackCoreMlTemp() : undefined;
+  // A signal stops the run through the CLI's shutdown, which releases the session so CoreML removes its temp files.
+  // Releasing it while a frame is inside it aborts the process, so the stop waits for that frame and refuses the next.
+  if (coreMlTemp) drainToExit();
+  let stopped = false;
+  let inFlight: Promise<unknown> | undefined;
+  let released = false;
+  const release = async () => {
+    if (released || !session) return;
+    released = true;
+    await session.release();
+  };
+  const unregister =
+    coreMlTemp &&
+    registerBrowserSessionCleanup(async () => {
+      stopped = true;
+      await inFlight;
+      await release();
+    });
   let session: InferenceSession;
   let providerUsed = choice.label;
   try {
@@ -93,8 +102,13 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
     options.onProgress?.(
       `${choice.label} provider failed (${(err as Error).message}); falling back to CPU.`,
     );
-    session = await tryCreate(["cpu"]);
+    session = await tryCreate(["cpu"]).catch((error: unknown) => {
+      unregister?.();
+      throw error;
+    });
     providerUsed = "CPU";
+  } finally {
+    coreMlTemp?.record();
   }
 
   const inputName = session.inputNames[0];
@@ -109,35 +123,65 @@ export async function createSession(options: CreateSessionOptions = {}): Promise
   let rgbaBuf: Buffer | null = null;
   let rgbaBgBuf: Buffer | null = null;
 
-  return {
-    provider: providerUsed,
-    async process(rgb, width, height, withBackground = false) {
-      const tensor = await preprocess(sharp, ort, rgb, width, height, inputData);
-      const outputs = await session.run({ [inputName]: tensor });
-      const output = outputs[outputName];
-      if (!output) throw new Error(`Model did not return output '${outputName}'`);
-      const expectedBytes = width * height * 4;
-      if (!rgbaBuf || rgbaBuf.length !== expectedBytes) {
-        rgbaBuf = Buffer.allocUnsafe(expectedBytes);
-      }
-      if (withBackground) {
-        if (!rgbaBgBuf || rgbaBgBuf.length !== expectedBytes) {
-          rgbaBgBuf = Buffer.allocUnsafe(expectedBytes);
-        }
-      }
-      return await postprocess(
-        sharp,
-        output,
-        rgb,
-        width,
-        height,
-        maskBuf,
-        rgbaBuf,
-        withBackground ? rgbaBgBuf : null,
+  // The load-time fallback above cannot see a provider that loads and then fails on a frame (CoreML's "Unable to
+  // compute the prediction" on a long run). One retry per session on CPU keeps the whole run from dying with it.
+  let retried = false;
+  const run = async (tensor: Tensor) => {
+    try {
+      return await session.run({ [inputName]: tensor });
+    } catch (err) {
+      if (providerUsed === "CPU" || retried) throw err;
+      retried = true;
+      options.onProgress?.(
+        `${providerUsed} failed while running a frame (${(err as Error).message}); continuing on CPU.`,
       );
+      await session.release().catch(() => undefined);
+      session = await tryCreate(["cpu"]);
+      providerUsed = "CPU";
+      return await session.run({ [inputName]: tensor });
+    }
+  };
+
+  const convert = async (rgb: Buffer, width: number, height: number, withBackground: boolean) => {
+    const tensor = await preprocess(sharp, ort, rgb, width, height, inputData);
+    const outputs = await run(tensor);
+    const output = outputs[outputName];
+    if (!output) throw new Error(`Model did not return output '${outputName}'`);
+    const expectedBytes = width * height * 4;
+    if (!rgbaBuf || rgbaBuf.length !== expectedBytes) {
+      rgbaBuf = Buffer.allocUnsafe(expectedBytes);
+    }
+    if (withBackground) {
+      if (!rgbaBgBuf || rgbaBgBuf.length !== expectedBytes) {
+        rgbaBgBuf = Buffer.allocUnsafe(expectedBytes);
+      }
+    }
+    return await postprocess(
+      sharp,
+      output,
+      rgb,
+      width,
+      height,
+      maskBuf,
+      rgbaBuf,
+      withBackground ? rgbaBgBuf : null,
+    );
+  };
+
+  return {
+    get provider() {
+      return providerUsed;
+    },
+    async process(rgb, width, height, withBackground = false) {
+      if (stopped) throw new Error("Background removal was stopped.");
+      const frame = convert(rgb, width, height, withBackground);
+      inFlight = frame.catch(() => undefined);
+      return await frame;
     },
     async close() {
-      await session.release();
+      unregister?.();
+      await release();
+      coreMlTemp?.forget();
     },
   };
 }

@@ -18,9 +18,7 @@
  *     Adopt a recipe: import it from the user tier if needed, copy its
  *     frame.md over the project's, and print the brief values + skeleton path.
  *
- * When recipes are offered/consumed is the review loop's and the intent
- * layer's business — see hyperframes/references/review-loop.md § 4 and
- * the intent layer's recipe check (hyperframes SKILL.md § 4).
+ * When recipes are offered and consumed: references/memory.md.
  */
 import { parseArgs } from "node:util";
 import { freezeRecipe, listRecipes, useRecipe } from "./lib/recipe-store.mjs";

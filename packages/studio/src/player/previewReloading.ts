@@ -9,10 +9,15 @@ let givenUp = false;
 const changing = () => reloading || reloadRequested || scriptWrites > 0;
 const noteIdle = () => {
   if (!changing()) givenUp = false;
+  globalThis.document?.documentElement.toggleAttribute(
+    "data-preview-changing",
+    isPreviewChanging(),
+  );
 };
 
 export function giveUpOnPreviewChange(): void {
   givenUp = changing();
+  noteIdle();
 }
 
 export function setPreviewReloading(next: boolean): void {
@@ -24,6 +29,7 @@ export function setPreviewReloading(next: boolean): void {
 /** Studio asked for a reload that has not begun yet; `previewReloadBegun` closes that gap. */
 export function requestPreviewReload(): void {
   reloadRequested = true;
+  noteIdle();
 }
 
 export function previewReloadBegun(): void {
@@ -31,9 +37,10 @@ export function previewReloadBegun(): void {
   noteIdle();
 }
 
-/** A script write or scene swap counts from its send until its preview update is applied, or it fails. */
+/** A script write, scene swap or history step counts from its send until its preview update is applied, or it fails. */
 export async function whileScriptWrites<T>(write: () => Promise<T>): Promise<T> {
   scriptWrites += 1;
+  noteIdle();
   try {
     return await write();
   } finally {

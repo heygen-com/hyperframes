@@ -105,6 +105,34 @@ describe("appendAutoDetectedVideoAudio", () => {
     });
   });
 
+  it.each([
+    1.5,
+    {
+      target: "rate",
+      points: [
+        { t: 0, v: 1 },
+        { t: 3, v: 2 },
+      ],
+    },
+  ] satisfies NonNullable<VideoElement["playbackRate"]>[])(
+    "keeps the video's rate and trim in its detected audio (%j)",
+    (playbackRate) => {
+      const composition: Parameters<typeof appendAutoDetectedVideoAudio>[0] = {
+        videos: [makeVideo({ start: 2, end: 5, mediaStart: 0.5, playbackRate })],
+        audios: [],
+      };
+
+      appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+
+      expect(composition.audios[0]).toMatchObject({
+        start: 2,
+        end: 5,
+        mediaStart: 0.5,
+        playbackRate,
+      });
+    },
+  );
+
   it("skips a muted video even when the source file has audio", () => {
     const composition = {
       videos: [makeVideo({ hasAudio: false })],
@@ -112,6 +140,17 @@ describe("appendAutoDetectedVideoAudio", () => {
     };
     appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
     expect(composition.audios).toHaveLength(0);
+  });
+
+  it("keeps the loop and speed of auto-detected video audio", () => {
+    const composition = {
+      videos: [makeVideo({ loop: true, playbackRate: 2, mediaStart: 1 })],
+      audios: [] as never[],
+    };
+    appendAutoDetectedVideoAudio(composition, [makeExtracted("v1", true)]);
+    expect(composition.audios).toEqual([
+      expect.objectContaining({ loop: true, playbackRate: 2, mediaStart: 1 }),
+    ]);
   });
 
   it("skips a hidden video so a track hidden in Studio stays silent in the render", () => {
@@ -272,6 +311,29 @@ describe("safeVideoExtractionSourceLogMetadata", () => {
 describe("assertVideoExtractionSucceeded", () => {
   it("accepts a complete extraction", () => {
     expect(() => assertVideoExtractionSucceeded(extractionResult([]))).not.toThrow();
+  });
+
+  it("names the failed clips, at most five, in the message and nowhere else", () => {
+    const failed = (n: number) => ({
+      videoId: `v${n}`,
+      kind: "zero_output" as const,
+      retryable: false,
+      error: "FFmpeg failed for /tmp/render/secret.mp4",
+      source: `assets/clip-${n}.mp4`,
+    });
+    let caught: unknown;
+    try {
+      assertVideoExtractionSucceeded(extractionResult([1, 2, 3, 4, 5, 6, 7].map(failed)));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(VideoExtractionStageError);
+    const error = caught as VideoExtractionStageError;
+    expect(error.message).toBe(
+      "Video extraction failed for 7 source(s) [VIDEO_SOURCE_UNRENDERABLE; zero_output=7] (assets/clip-1.mp4, assets/clip-2.mp4, assets/clip-3.mp4, assets/clip-4.mp4, assets/clip-5.mp4 and 2 more)",
+    );
+    expect(error.code).toBe("VIDEO_SOURCE_UNRENDERABLE");
+    expect(JSON.stringify(error.publicMetadata)).not.toContain("clip-");
   });
 
   it("fails deterministic media errors without forwarding paths or signed URLs", () => {

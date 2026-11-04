@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
-import { InvalidProjectError, resolveProjectOrThrow } from "./project.js";
+import { InvalidProjectError, resolveLintTarget, resolveProjectOrThrow } from "./project.js";
 
 describe("resolveProjectOrThrow", () => {
   it("rejects # as a project directory with a helpful message", () => {
@@ -21,6 +21,25 @@ describe("resolveProjectOrThrow", () => {
   it("rejects a missing directory", () => {
     const missing = join(tmpdir(), `hf-missing-${Date.now()}`);
     expect(() => resolveProjectOrThrow(missing)).toThrowError(/Not a directory/);
+  });
+
+  it("names the project folder when given a file inside it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-file-arg-project-"));
+    try {
+      mkdirSync(join(dir, "assets"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      writeFileSync(join(dir, "assets", "music.mp3"), "x");
+      const file = join(dir, "assets", "music.mp3");
+      expect(() => resolveProjectOrThrow(file)).toThrowError(
+        expect.objectContaining({
+          title: "Not a directory: " + file,
+          hint: "music.mp3 is a file; this command takes the project folder.",
+          suggestion: "Pass the folder that holds index.html: " + dir,
+        }),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("rejects a directory without index.html", () => {
@@ -52,6 +71,48 @@ describe("resolveProjectOrThrow", () => {
       expect(project.dir).toBe(dir);
       expect(project.indexPath).toBe(join(dir, "index.html"));
       expect(project.name).toBe(basename(dir));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("resolveLintTarget", () => {
+  const project = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-lint-target-"));
+    mkdirSync(join(dir, "compositions"));
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    writeFileSync(join(dir, "compositions", "intro.html"), "<template></template>");
+    return dir;
+  };
+
+  it("takes a composition file as the entry of the project that holds it", () => {
+    const dir = project();
+    try {
+      const file = join(dir, "compositions", "intro.html");
+      const target = resolveLintTarget(file);
+      expect(target.entryFile).toBe(file);
+      expect(target.project.dir).toBe(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("lints a project's own index.html as the whole project", () => {
+    const dir = project();
+    try {
+      const target = resolveLintTarget(join(dir, "index.html"));
+      expect(target.entryFile).toBeUndefined();
+      expect(target.project.dir).toBe(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("still takes a directory", () => {
+    const dir = project();
+    try {
+      expect(resolveLintTarget(dir)).toEqual({ project: resolveProjectOrThrow(dir) });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

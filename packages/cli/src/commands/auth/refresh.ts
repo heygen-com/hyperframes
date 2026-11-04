@@ -8,7 +8,7 @@ import { failCommand } from "../../utils/commandResult.js";
  * job. Status's 401-retry path already does this automatically.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   assertOAuthConfiguredOrExit,
   isAuthError,

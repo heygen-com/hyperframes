@@ -1,4 +1,6 @@
+import "./utils/hideChildConsoles.js";
 import { constants, setPriority } from "node:os";
+import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
 import { killOrphanedProcesses } from "./utils/orphanCleanup.js";
@@ -28,6 +30,7 @@ function lowerPriority(): void {
 
 async function runMode(): Promise<unknown> {
   if (mode === "browser") return ensureBrowser(input);
+  if (mode === "browser-install") return runBrowserInstall(input);
   if (mode === "lint") {
     // Nobody waits on a background lint the way they wait on a Studio boot, so it takes idle CPU only.
     lowerPriority();

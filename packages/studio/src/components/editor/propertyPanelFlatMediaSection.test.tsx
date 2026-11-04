@@ -9,6 +9,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { PatchOperation } from "../../utils/sourcePatcher";
 import { formatTimingValue } from "./propertyPanelHelpers";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
+import { audioGainToFaderPosition } from "@hyperframes/core/audio-gain";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -163,7 +164,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
-  it("commits +12 dB of boost from the upper half of the volume fader", () => {
+  it("commits +12 dB of boost from the upper half of the gain fader", () => {
     const onSetAttribute = vi.fn();
     const element = makeVideoElement({ dataAttributes: { volume: "1" } });
     const host = document.createElement("div");
@@ -182,7 +183,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
+    const volumeTrack = host.querySelector('[data-flat-slider-track="true"][aria-label="Gain"]')!;
     Object.defineProperty(volumeTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -197,10 +198,8 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
     act(() => root.unmount());
   });
 
-  it("writes through the envelope instead of the attribute once volume is automated", () => {
-    const onSetAttribute = vi.fn();
-    const onCommitVolumeAt = vi.fn();
-    const element = makeVideoElement({ dataAttributes: { volume: "1" } });
+  it("shows the clip's gain and its lane's level as two sliders", () => {
+    const element = makeVideoElement({ dataAttributes: { volume: "0.5" } });
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
@@ -211,27 +210,61 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
           element={element}
           styles={{}}
           onSetStyle={vi.fn()}
-          onSetAttribute={onSetAttribute}
+          onSetAttribute={vi.fn()}
           onSetHtmlAttribute={vi.fn()}
           onSetAttributeBatch={vi.fn()}
           volumeAutomated
-          onCommitVolumeAt={onCommitVolumeAt}
+          automatedVolumeValue={0.25}
         />,
       );
     });
-    const volumeTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[0];
-    Object.defineProperty(volumeTrack, "getBoundingClientRect", {
-      value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
-    });
-    act(() => {
-      volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
-      volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
-    });
-    expect(onCommitVolumeAt).toHaveBeenCalledTimes(1);
-    expect(onCommitVolumeAt.mock.calls[0][0]).toBeCloseTo(3.981072, 6);
-    expect(onSetAttribute).not.toHaveBeenCalledWith("volume", expect.anything());
+    const [gain, volume] = host.querySelectorAll('[data-flat-slider-track="true"]');
+    expect(labelsOf(host).slice(0, 2)).toEqual(["Gain", "Volume"]);
+    expect(gain?.getAttribute("aria-valuenow")).toBe(String(audioGainToFaderPosition(0.5)));
+    expect(volume?.getAttribute("aria-valuenow")).toBe(String(audioGainToFaderPosition(0.25)));
     act(() => root.unmount());
   });
+
+  it.each([true, false])(
+    "writes Volume through the lane, never data-volume (automated: %s)",
+    (automated) => {
+      const onSetAttribute = vi.fn();
+      const onCommitVolumeAt = vi.fn();
+      const element = makeVideoElement({ dataAttributes: { volume: "1" } });
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <FlatMediaSection
+            projectDir={null}
+            element={element}
+            styles={{}}
+            onSetStyle={vi.fn()}
+            onSetAttribute={onSetAttribute}
+            onSetHtmlAttribute={vi.fn()}
+            onSetAttributeBatch={vi.fn()}
+            volumeAutomated={automated}
+            onCommitVolumeAt={onCommitVolumeAt}
+          />,
+        );
+      });
+      const volumeTrack = host.querySelector(
+        '[data-flat-slider-track="true"][aria-label="Volume"]',
+      )!;
+      Object.defineProperty(volumeTrack, "getBoundingClientRect", {
+        value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
+      });
+      act(() => {
+        volumeTrack.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 100 }));
+        volumeTrack.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 100 }));
+      });
+      expect(onCommitVolumeAt).toHaveBeenCalledTimes(1);
+      expect(onCommitVolumeAt.mock.calls[0][0]).toBeCloseTo(3.981072, 6);
+      expect(onSetAttribute).not.toHaveBeenCalledWith("volume", expect.anything());
+      act(() => root.unmount());
+    },
+  );
 
   it("commits a new rate value on slider track pointerdown", () => {
     const onSetAttribute = vi.fn();
@@ -252,7 +285,7 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const rateTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[1];
+    const rateTrack = host.querySelector('[data-flat-slider-track="true"][aria-label="Speed"]')!;
     Object.defineProperty(rateTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -284,7 +317,9 @@ describe("FlatMediaSection — volume/rate/media-start", () => {
         />,
       );
     });
-    const mediaStartTrack = host.querySelectorAll('[data-flat-slider-track="true"]')[2];
+    const mediaStartTrack = host.querySelector(
+      '[data-flat-slider-track="true"][aria-label="Media start"]',
+    )!;
     Object.defineProperty(mediaStartTrack, "getBoundingClientRect", {
       value: () => ({ left: 0, width: 100, top: 0, height: 2, right: 100, bottom: 2 }),
     });
@@ -465,7 +500,7 @@ describe("FlatMediaSection — audio clips", () => {
   it("shows Fade in / Fade out rows for audio, and for video only when it carries audio", () => {
     const audio = renderWithRate(makeAudioElement());
     expect(labelsOf(audio.host)).toEqual(
-      expect.arrayContaining(["Volume", "Speed", "Media start", "Fade in", "Fade out"]),
+      expect.arrayContaining(["Gain", "Volume", "Speed", "Media start", "Fade in", "Fade out"]),
     );
     act(() => audio.root.unmount());
 

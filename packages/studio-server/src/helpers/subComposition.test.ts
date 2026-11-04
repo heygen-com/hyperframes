@@ -20,6 +20,28 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it.each([
+    ["template", (body: string) => `<template>${body}</template>`],
+    ["document", (body: string) => `<!doctype html><html><body>${body}</body></html>`],
+    ["fragment", (body: string) => body],
+  ])("rebases responsive images in a %s preview", (_, wrap) => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "scenes/scene.html": wrap(
+        '<div data-composition-id="scene"><picture><source id="source" srcset="hero.svg 1x, assets/root.svg 2x"><img src="assets/root.svg"></picture><img id="image" srcset="hero.svg 1x"></div>',
+      ),
+      "scenes/hero.svg": "scene-image",
+      "hero.svg": "root-decoy-image",
+      "assets/root.svg": "root-image",
+    });
+    const html = buildSubCompositionHtml(dir, "scenes/scene.html", "/runtime.js", "/preview/");
+    const { document } = parseHTML(html ?? "");
+    expect(document.querySelector("#source")?.getAttribute("srcset")).toBe(
+      "scenes/hero.svg 1x, assets/root.svg 2x",
+    );
+    expect(document.querySelector("#image")?.getAttribute("srcset")).toBe("scenes/hero.svg 1x");
+  });
+
   it("loads the default gsap version when the project head has no gsap", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head><title>Host</title></head><body></body></html>`,
@@ -28,6 +50,21 @@ describe("buildSubCompositionHtml", () => {
     const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js");
     expect(html).toContain(`<script src="${gsapCdnDist()}gsap.min.js"></script>`);
   });
+
+  it.each(["", "<script>gsap.registerPlugin(MotionPathPlugin);</script>"])(
+    "loads GSAP core before a project head that has only a GSAP plugin (%#)",
+    (usage) => {
+      const plugin = `<script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/MotionPathPlugin.min.js"></script>`;
+      const dir = makeTempProject({
+        "index.html": `<!doctype html><html><head>${plugin}${usage}</head><body></body></html>`,
+        "compositions/scene.html": `<div data-composition-id="scene" data-width="320" data-height="180"></div>`,
+      });
+      const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js") ?? "";
+      const core = html.indexOf(`<script src="${gsapCdnDist()}gsap.min.js"></script>`);
+      expect(core).toBeGreaterThanOrEqual(0);
+      expect(core).toBeLessThan(html.indexOf(plugin));
+    },
+  );
 
   it("adds the preview runtime even when the project head's script mentions a runtime file", () => {
     const dir = makeTempProject({

@@ -4,14 +4,14 @@
  * The pipeline addresses media by id, but element ids are only unique within
  * one composition FILE and the render document inlines many, so
  * `document.getElementById` silently resolves duplicates to whichever element
- * comes first. The producer stamps a document-unique `data-hf-render-id`
+ * comes first. The compiler stamps a document-unique `data-hf-render-id`
  * (core's mediaRenderIds.ts); these helpers are the single place that knows to
  * prefer it, so every capture stage addresses the same element.
  *
  * Installed via `evaluateOnNewDocument` so it exists before any page script.
- * Every call site keeps a `getElementById` fallback for documents that were
- * never compiled by the producer (snapshot, check, and direct engine callers),
- * where the authored id already is the identity.
+ * Every call site keeps a `getElementById` fallback for uncompiled documents
+ * passed directly to the engine. CLI captures and producer renders both carry
+ * document-unique IDs from the compiler.
  *
  * `__hfMediaId` mirrors core's `readMediaRenderId`, which is the definition of
  * this rule; the copy exists only because code serialized into `page.evaluate`

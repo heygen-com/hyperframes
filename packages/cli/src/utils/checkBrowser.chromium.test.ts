@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
-import { collectSeekClock } from "./checkBrowser.js";
+import { createRequire } from "node:module";
+import { resolve } from "node:path";
+import { measuredInMotion, readContrastMotion } from "./contrastMotion.js";
+import { collectSeekClock, createPageDriver } from "./checkBrowser.js";
 
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
 
@@ -116,11 +119,53 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
     await page.close();
   });
 
+  it("skips a seek's WebGL draws unless the caller asks to paint them", async () => {
+    page = await browser.newPage();
+    await page.setContent(`<script>
+      window.draws = 0;
+      window.WebGLRenderingContext = function () {};
+      window.WebGLRenderingContext.prototype.drawArrays = () => { window.draws += 1; };
+      window.__hf = { seek: () => new window.WebGLRenderingContext().drawArrays() };
+    </script>`);
+    const driver = createPageDriver(page);
+    const drawn = () => page.evaluate(() => Reflect.get(window, "draws"));
+
+    await driver.seekGeometry(1);
+    expect(await drawn()).toBe(0);
+    await driver.seekGeometry(2, { draws: true });
+    expect(await drawn()).toBe(1);
+    await page.close();
+  });
+
   it("reports nothing on a page with no animations", async () => {
     page = await browser.newPage();
     await page.setContent("<body><h1>Hello</h1></body>");
 
     expect(await collectSeekClock(page)).toEqual([]);
     await page.close();
+  });
+
+  it("reads real GSAP motion after a repeated seek without moving the clock", async () => {
+    page = await browser.newPage();
+    try {
+      await page.setContent('<div id="card"><span id="label">Text</span></div>');
+      const coreRequire = createRequire(resolve(__dirname, "../../../core/package.json"));
+      await page.addScriptTag({ path: coreRequire.resolve("gsap/dist/gsap.js") });
+      await page.evaluate(() => {
+        const gsap = Reflect.get(window, "gsap");
+        const root = gsap.timeline({ paused: true, repeat: 1, yoyo: true });
+        root.to("#card", { x: 100, duration: 1 }, 1).to({}, { duration: 1 }, 3);
+        root.totalTime(6.5, true);
+        Reflect.set(window, "__timelines", { root });
+        Reflect.set(window, "__contrastAuditRestores", [{ el: document.getElementById("label") }]);
+      });
+      const sample = (await page.evaluate(readContrastMotion))[0];
+      expect(sample && measuredInMotion(sample)).toBe(true);
+      expect(await page.evaluate(() => Reflect.get(window, "__timelines").root.totalTime())).toBe(
+        6.5,
+      );
+    } finally {
+      await page.close();
+    }
   });
 });

@@ -56,6 +56,18 @@ describe("registry components", () => {
     expect(invalidMedia).toEqual([]);
   });
 
+  it("never caps a caption's last group at a fixed demo-length constant", () => {
+    const capped: string[] = [];
+
+    for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith("caption-")) continue;
+      const html = readFileSync(join(componentsDir, entry.name, `${entry.name}.html`), "utf8");
+      if (/nextStart\s*=[^;]*:\s*\d+(?:\.\d+)?;/.test(html)) capped.push(entry.name);
+    }
+
+    expect(capped).toEqual([]);
+  });
+
   it("ships demos without source-less media", async () => {
     const invalidMedia: string[] = [];
 

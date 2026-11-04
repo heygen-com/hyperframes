@@ -40,6 +40,8 @@ hyperframes media-treatment --project . --file index.html \
   --grading '{"preset":"warm-daylight","intensity":1}' --apply --json
 ```
 
+On Windows PowerShell, put the payload in a file and pass `--grading grading.json` (or pipe it with `--grading -`); inline JSON loses its quotes there.
+
 Use `--dry-run` before writing when scope is uncertain and `--clear` to remove
 the treatment. The low-level persisted result is still normal HTML:
 

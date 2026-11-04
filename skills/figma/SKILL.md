@@ -1,134 +1,55 @@
 ---
 name: figma
-description: Import Figma content into a HyperFrames composition — rendered assets, brand tokens, components, storyboard sections → reconstructed motion (frames read as states, not slides) (REST/CLI), connector-assisted motion when available, and shaders from a connector or native export. Use when the user pastes a figma.com link or asks to bring a Figma design, frame, logo, brand, or animation into a video/composition.
+description: Bring Figma into a HyperFrames video - rendered assets, brand tokens, components, storyboard frames as reconstructed motion (frames read as states, not slides), shaders and connector-assisted motion. Use when the person pastes a figma.com link or asks to use a Figma design, frame, logo or brand.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin. Standalone installs keep the update instructions below.
-
-> **First, keep this skill fresh — confirm with the user before running:** `npx hyperframes skills update figma`. A fast no-op when everything is current; otherwise it refreshes this skill plus the core domain skills it depends on before you rely on them.
+**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
 
 # Figma → HyperFrames
 
-Bring the user's Figma work into a composition. **Split by capability** (design spec §2):
+Every import happens at build time and freezes a local file with its source recorded under `.media/`, so renders never call Figma and re-running a command re-imports only what changed. Assets, tokens and components go over REST with a token; motion and shader data need a Figma connector, or a native export from the person.
 
-| Phase | What                | Transport                 | Surface                       |
-| ----- | ------------------- | ------------------------- | ----------------------------- |
-| 1     | Static assets       | REST                      | `hyperframes figma asset`     |
-| 2     | Brand tokens/styles | REST                      | `hyperframes figma tokens`    |
-| 3     | Components → HTML   | REST                      | `hyperframes figma component` |
-| 4     | Motion → GSAP       | connector when available  | use its motion context        |
-| 5     | Shaders             | connector / manual export | use it or a native export     |
+## Access
 
-REST is used wherever it can be (usable at volume, headless). A compatible Figma connector is optional for motion and shader data; without one, ask for a native export. Every path freezes assets locally so renders stay deterministic. Storyboard reconstructions compose Phase-1 asset exports (REST) with agent-driven timeline assembly — no connector needed. Existing frozen assets, manifest records, and bindings are unaffected by routing changes — the split only changes which credential the next import uses.
+`FIGMA_TOKEN` in the shell or the project `.env`. Check it exists before the first command; if not, tell the person how to make one and stop: figma.com → Settings → Security → Personal access tokens, read-only **File content** and **File metadata**, plus **Library content** for `tokens` on non-Enterprise plans. They set it themselves; never ask them to paste it into the chat.
 
-## Auth — two credentials, scoped
+| Error | Meaning |
+| --- | --- |
+| `BAD_TOKEN` (401) | Expired or revoked: make a new one |
+| `FORBIDDEN` (403) | The message names the missing scope, or the file isn't visible to the account |
+| `REQUIRES_ENTERPRISE` (403, variables) | Not a failure: the published-styles fallback already ran |
+| `RATE_LIMITED` (429) | Already retried with backoff; wait a minute or import fewer nodes per call |
 
-**Preflight — before the first CLI call, check a token exists**: shell env (`[ -n "$FIGMA_TOKEN" ]`) **or** the project `.env` (the CLI auto-loads it — a `.env` entry counts as configured). If neither, do NOT run the command to harvest the error — walk the user through the one-time setup first, then stop and wait:
+## Commands
 
-1. figma.com/settings → **Security** → **Personal access tokens** → Generate new token.
-2. Scopes — read-only is all this integration ever needs (it never writes to Figma): **File content: Read-only** + **File metadata: Read-only**. Add **Library content: Read-only** if you'll run `tokens` on a non-Enterprise plan — the published-styles fallback hits `/v1/files/:key/styles`, which 403s without it (a scope the older setup text omitted). Optionally **Variables: Read-only** for brand variables — Enterprise-only; without it `tokens` degrades to published styles automatically (expected, not an error — say so). A 403 now names the exact missing scope; 429s retry automatically (per-minute limit, honors `Retry-After`).
-3. Have the user set `FIGMA_TOKEN` in their shell profile or project `.env`; never ask them to paste the token into the conversation.
+- A layer, logo or image: `npx hyperframes figma asset '<url or fileKey:nodeId>' [more refs] --format svg|png --scale 2 --description "<what it is>" [--entity "<brand mark>"]`. SVG for vectors and logos, PNG at 2x for raster. Several nodes of one file in one call render in a single request; `--entity` lets `/media-use` find a brand mark later.
+- Brand colours and type: `npx hyperframes figma tokens <fileKey>`. Run it before `component` and paste the printed entries into `data-composition-variables`. Without Enterprise it falls back to published styles. A connector can supply variables there instead: cache its raw response in `.media/figma-cache/` and write the bindings to `.media/figma-bindings.jsonl` (`{kind:"binding", figmaId, sourceFileKey, compositionVariableId:"figma:<name>", version}`).
+- A frame as editable HTML at exact geometry: `npx hyperframes figma component '<url or fileKey:nodeId>'`, packaged under `compositions/components/<name>/`. A fill bound to an imported token comes out as `var(--slug, #literal)`, so one variable re-brands every import; an unknown token stays a literal marked `data-figma-unresolved`: import that library's tokens and re-import. Ask once which file a library is; never match by hex.
+- Check hero components against Figma's pixels (`figma asset <same node> --format png`). Text drift is the usual cause; report drift you can't fix instead of hand-tweaking the import.
 
-While onboarding, also set expectations in one breath: every import lands as a **local frozen file with recorded provenance** — renders never call Figma, re-running a command re-imports only what changed in Figma, and one token works for assets, brand tokens, and components across every file their Figma account can view.
+## Motion (connector)
 
-- **Phases 4–5 (motion/shaders):** a compatible Figma connector, with separate authorization from the token. If it is unavailable or unauthenticated, ask the user to connect it or provide a native export, then stop.
-- Say exactly which credential a failing phase needs — never present the split as broken.
-- `BAD_TOKEN` (401) mid-flow → the token is expired/revoked; re-mint. `FORBIDDEN` (403) → the message names the exact missing scope (e.g. `library_content:read` for the styles fallback) — add it, or the file isn't visible to the account. `REQUIRES_ENTERPRISE` (403 on variables) → not a failure: styles fallback already ran. `RATE_LIMITED` (429) → the client already retried with backoff (this applies to EVERY read — assets, tokens, styles, node trees, versions — the retry lives in the shared request path; `Retry-After` is honored, capped at 60s); if it still surfaces, wait a minute or import fewer nodes per call.
+Usage beacon: these phases have no CLI touchpoint, so run `npx hyperframes events --skill=figma-motion` when you begin and `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
 
-**Rate-limit awareness (spec §2.1):** connector quotas vary by Figma plan — batch parent-frame requests, skip verification screenshots unless asked, and cache raw responses so re-derivation never spends a second call. REST is per-minute (10+/min, per-endpoint buckets) — fine at volume, back off on 429.
+1. Fetch motion context for the parent frame in one recursive request; cache the raw JSON in `.media/figma-cache/`.
+2. Normalise with `motionContextToDocs(raw, { selectorFor, repeat })` from `@hyperframes/core/figma`, never by transcribing keyframes. It reads the motion.dev snippets (the CSS snippets stretch durations), drops loop-wrap tail keyframes and keeps bezier eases. `selectorFor` returns the ids from the component import.
+3. `motionToGsap(doc)` → `emitTimelineScript(spec)`, injected after the GSAP and CustomEase tags: paused, finite, a literal `window.__timelines` key. Named eases outside the mapped set fall back to linear; say so.
+4. Verify against Figma's own export: `node <SKILL_DIR>/scripts/verify-motion.mjs --reference <export.mp4> --render <render.mp4> --crop WxH+X+Y`. It compares motion between samples, so static drift cancels out, and fails under 15 dB (faithful ≈ 20+, diverging ≈ 5). Measure `--crop` from the render's card edges. A fail means fix the translation, not the threshold.
+5. A track that won't translate: export it, freeze the MP4 and place it as `<video class="clip">`.
 
-## Routing
+## Shaders
 
-Parse the user's figma link with `parseFigmaRef` (URL, `fileKey:nodeId`, bare `fileKey`). Then by intent:
+Figma's export path flattens shaders to their base colour, and shader source is only reachable for library-published styles. Ask the person for a native export of that frame (PNG or MP4) and place it as an asset or clip.
 
-- "use this layer / logo / image" → **Asset** (CLI)
-- "pull my brand / colors / tokens" → **Tokens** (CLI)
-- "build a scene from this frame" → **Component** (CLI)
-- "import this animation / motion" → **Motion** (connector when available, below)
-- a storyboard section / filmstrip of scene frames → **Storyboard** (below)
-- shader fill/effect → **Shaders** (below)
+## Storyboards: frames are KEYFRAMES, not slides
 
-**Narrate every step for the user** — before each command say what you're about to pull from Figma; after it, say where the artifact landed (the frozen path / sidecar / component dir), what changed in the composition, and the immediate next action (preview, add printed variables, re-import to link bindings). The user should never have to ask "did it work?" or "now what?".
+Two frames holding the same element describe that element's state through time: animate the element between the states. Playing the frames back to back as stills is the failure mode.
 
-## Assets (Phase 1 — CLI)
+1. Scenes are every frame-sized node in the section, named frames and loose full-frame rectangles alike: filter by size, not type or name. Order by `absoluteBoundingBox.x`.
+2. Match children across neighbouring frames by name first, then by similar size and position. Tween geometry between states; crossfade two exports in place when the pixels changed. Export one asset per element, not one still per frame. Unmatched children enter or exit at their scene's beat.
+3. Text nodes below the strip are motion notes for the scene above them, not on-screen copy. A note about motion inside a scene ("lines reveal one after another") means import that frame as a component and animate it.
+4. Export in batches of about 4 scene frames per call: past about 12 ids `/v1/images` times out.
+5. Frames that are one product UI in successive states: rebuild the UI as live DOM: code what changes state, freeze what doesn't, and treat each frame change as an interaction to perform (the cursor moves, clicks, the screen responds), not a tween to apply.
+6. Stills are the fallback, only for frames with no shared elements.
 
-```bash
-hyperframes figma asset '<url-or-fileKey:nodeId>' [more refs…] [--format svg|png|jpg|pdf] [--scale 2] [--description "..."] [--entity "..."]
-```
-
-Renders over REST, sanitizes SVG, freezes under `.media/images/`, appends the manifest with provenance, regenerates `.media/index.md` (the shared media-use inventory), prints an `<img>` snippet. Idempotent per `fileKey:nodeId:format:scale:version`. Prefer SVG for vectors/logos (scalable, animatable), PNG `--scale 2` for raster fidelity. **Always pass `--description "<what it is>"`** (it becomes the index row + `<img alt>`); add `--entity "<name>"` for named brand marks so media-use `resolve --entity` finds them later (entity hits match across image/icon).
-
-**Batch many nodes in ONE request** — pass several refs (space-separated or comma-joined) of the SAME file: `hyperframes figma asset 'KEY:1-2' 'KEY:3-4' 'KEY:5-6'`. All render in a single `/v1/images` call, which is figma's own answer to the per-minute rate limit — prefer it over N separate commands when pulling a whole frame's worth of assets. `--description`/`--entity` apply to every node in the batch, so batch nodes that share a purpose. 429s also auto-retry with backoff regardless.
-
-## Tokens (Phase 2 — CLI)
-
-```bash
-hyperframes figma tokens <fileKey>
-```
-
-Imports variables as composition brand-variable entries + `figma-tokens.json` sidecar + binding-index records (`.media/figma-bindings.jsonl`). Variables are Enterprise-gated upstream: on other plans the command degrades to published-style metadata (values resolve at component-import time). Add the printed entries to the composition's `data-composition-variables`.
-
-**Import tokens before components** when both are wanted — that's what lets component colors link to brand variables instead of baking duplicates.
-
-**Non-Enterprise variables path (field-tested):** REST variables are Enterprise-gated, but a compatible connector may provide variable definitions. When `tokens` reports `REQUIRES_ENTERPRISE` and the connector is available, retrieve the parent scene's variables once, cache the raw response to `.media/figma-cache/`, and use it to build the binding index. The REST node tree's `boundVariables` supplies per-property `VariableID`s; join them by node and property, then write `.media/figma-bindings.jsonl` rows (`{kind:"binding", figmaId, sourceFileKey, compositionVariableId: "figma:<name>", version}`) plus the composition-variable entries. Everything downstream (component `var()` resolution, refresh, runtime CSS variables) is the shipped machinery. Label it for the user: "tokens via the Figma connector — Enterprise plans get this from `hyperframes figma tokens` directly."
-
-The runtime defines every declared composition variable as a CSS custom property (document root + sub-comp hosts), so imported `var(--slug, literal)` fills recolor when the variable default changes — updating one value in `data-composition-variables` re-brands every imported component without re-importing anything. `hyperframes render --variables '<json>'` overrides them at render time.
-
-## Components (Phase 3 — CLI)
-
-```bash
-hyperframes figma component '<url-or-fileKey:nodeId>'
-```
-
-Node tree → editable HTML at exact figma geometry, packaged as a registry item under `compositions/components/<name>/`. Vectors/boolean-ops auto-rasterize via Phase-1 export. Binding pass (spec §7.1, exact-ID only — never value matching):
-
-- **Static fidelity self-check (mandatory for hero content)**: after importing, render the fragment and compare against figma's own pixels — `figma asset <same node> --format png` is the ground truth. Text is the known drift axis: a figma text box shorter than its line-height is vertically-trimmed bounds (the mapper emits `text-box-trim` for these; measured drift without it was ~6px on a 70px font). If the comparison shows drift the mapper doesn't cover, report it — don't hand-tweak the fragment silently.
-- Fill bound to an **imported** token → `var(--slug, #literal)` — brand refresh propagates.
-- Bound to an **unknown** token → literal + `data-figma-unresolved` flag. The command tells you; offer the user: run `tokens` on the source (or library) file, then re-import the component to link them. Ask **once** per unknown library which file it is — never guess, never match by hex.
-
-## Motion (Phase 4 — connector-assisted)
-
-**Usage beacon:** Connector-assisted phases have no CLI touchpoint, so fire the skill beacon at start and finish (anonymous, consent-gated, never fails): `npx hyperframes events --skill=figma-motion` when you begin, `npx hyperframes events --skill=figma-motion --event=skill_completed --outcome=success|error` when done. Same for shaders (`figma-shaders`) and storyboards (`figma-storyboard`).
-
-No REST equivalent exists. When a compatible connector is available, use it and hand its output to the pure helpers in `@hyperframes/core/figma`; otherwise ask for a native export:
-
-1. Retrieve motion context for the parent frame in one recursive request, not one request per element. Save the raw JSON next to the project (`.media/figma-cache/`) so retranslation is free.
-2. Normalize into `MotionDoc`s with `motionContextToDocs(rawResponse, { selectorFor, repeat })` from `@hyperframes/core/figma` — **never transcribe keyframe numbers by hand**. The helper encodes the field-tested decoding rules mechanically: it parses the motion.dev snippets (the reliable encoding — the CSS snippets stretch durations and can disagree; they are ignored), strips loop-wrap tail keyframes (sub-millisecond segments at times ≈0.9999→1 are the loop's instant reset, not authored motion — the wrap is realized by `repeat` restart), and preserves bezier eases verbatim. `selectorFor` must return the ids from the Phase-3 component import — don't derive selectors from node names.
-   2b. **Validate against ground truth before calling it done — mandatory**: export the cohort's root frame through the available connector and run `node <SKILL_DIR>/scripts/verify-motion.mjs --reference <export.mp4> --render <render.mp4> --crop WxH+X+Y` — it compares motion-energy deltas (static import fidelity cancels out) and fails below 15dB min motion-PSNR (calibrated: faithful ≈ 20+, diverging ≈ 5). Measure `--crop` from the render's actual card edges, don't guess. FAIL means re-check the translation, not the threshold.
-3. `motionToGsap(doc)` → `emitTimelineScript(spec)` → inject as a `<script>` after the GSAP + CustomEase CDN tags. Paused, finite, registered on `window.__timelines` with a literal key.
-4. Untranslatable track (shader-driven, unsupported prop, complex masks) → export through the connector, freeze the MP4, then embed it as `<video class="clip">`. Exception: shader-driven tracks — Figma's export path flattens shaders to the base color (see Shaders below), so a bake there silently loses the shader; ask the user for a native Figma export instead. Always say which path you used and why. Named eases outside the mapped set fall back to linear — the mapping table lives in `motionEase.ts`; flag the fallback to the user when it fires.
-5. Run `npx hyperframes check` before calling it done.
-
-## Shaders (Phase 5 — mostly manual)
-
-Figma's connector render path does not execute shaders (they flatten to the base color), and shader source is only reachable for **library-published** styles (paid Full seat). Default path: ask the user to export the shader frame natively in Figma (PNG or Motion MP4), then import it as a Phase-1 asset / clip. Don't attempt connector pixel capture of a shader — it will silently produce the wrong thing.
-
-## Storyboards (a SECTION of scene frames → animation)
-
-**The cardinal rule: storyboard frames are KEYFRAMES, not slides.** Two frames containing the same element describe that element's state through time — animate the ELEMENT between the states; never play the frames as a sequence of stills. A logo drawn in four consecutive frames at descending y is ONE element rising through four keyframes. Playing storyboard frames back-to-back is the failure mode; reconstructing the element timelines they imply is the job.
-
-Storyboard files follow a grammar you can parse mechanically — don't eyeball, decode:
-
-1. **Scene units**: inside the SECTION, every frame-sized node is a scene — both named FRAMEs _and_ loose full-frame RECTANGLEs (designers paste stills straight into the section). Filter by size (≈ composition aspect, e.g. >1400×900), not by node type or name.
-2. **Order = x-position** (row-major if the strip wraps). Sort scenes by `absoluteBoundingBox.x`.
-3. **Diff adjacent frames into element chains** — this is where the animation lives. Match children across consecutive frames: first by **name** (same name = same element → tween its relative x/y/w/h between states), then by **geometry similarity** (similar size + nearby center = same logical element whose pixels changed → crossfade the two exports in place while tweening geometry; covers typed-text progressions and morph states). Unmatched children enter/exit at their scene's beat. Frame background fills tween as a color track. Export ONE asset per chain (one per state only when pixels genuinely differ) — never one still per frame.
-4. **Stills are the fallback, not the default** — only for frames that don't decompose (flat full-frame screenshots with no shared elements); those get the animatic treatment below.
-5. **Director notes**: TEXT nodes below the strip are motion intent, paired to the scene whose x-range they overlap. They describe _how_ to animate — they are not on-screen copy.
-6. **Batch exports** (elements or stills): `GET /v1/images` accepts comma-separated ids, but big scene frames hit "Render timeout" past ~12 ids — chunk to ~4 per call with a retry. (One call per scene wastes the rate budget; 26 scenes ≈ 52 calls via the single-asset path.)
-7. **Note verbs → transitions** (starter vocabulary, extend as encountered):
-
-| Note says                       | Do                                                                |
-| ------------------------------- | ----------------------------------------------------------------- |
-| EXPLOSION / BURST               | incoming scale ~1.5→1 + fade, `power3.out`                        |
-| SLIDES / SLIDE TO THE… / SCROLL | directional slide in from that edge                               |
-| MORPH / REVEALS                 | crossfade — or Phase-3 import if the motion is inside one scene   |
-| CYCLE THROUGH / EACH ONE        | longer hold — or Phase-3 import if items animate within the scene |
-| (no note)                       | crossfade + slow Ken-Burns drift                                  |
-
-8. **Stills vs. components routing**: a note describing motion _between_ scenes → transition on the still (above). A note describing motion _inside_ a scene ("TEXT LINES REVEAL ONE AFTER THE OTHER", "PILLS ANIMATE IN") → that frame deserves a Phase-3 component import (real elements) animated per the note, not a flat PNG. Do the animatic pass first with stills, then upgrade the scenes the notes single out.
-9. One `main` timeline sequences everything (opacity/x/y per scene at absolute times) — no per-scene sub-compositions needed for an animatic.
-10. **Escalation — frames depict ONE product UI → rebuild the app, not element chains.** When every frame is the same application screen in successive states (a signup flow, a settings panel, a player), element chains undersell it. Rebuild the UI as live DOM — Phase-3 component import for the parts that change state, real exported pixels for static chrome (**code what changes state, freeze what doesn't**) — and treat each frame delta as an **interaction to perform**, not a tween to apply: the cursor enters, clicks the control, the state responds, screens push/slide as real navigation. The result reads as one continuous screen recording of a working app. This is the cardinal rule taken to its conclusion for UI flows; the stills/element-chain treatments are for storyboards that aren't one coherent application.
-
-## Determinism
-
-Never leave a Figma URL in the composition — freeze first. Never emit `repeat: -1` without a finite root `data-duration`. Timelines paused, finite, literal `window.__timelines` keys. All Figma I/O at import time; render sees local files only.
+Never leave a Figma URL in the composition.

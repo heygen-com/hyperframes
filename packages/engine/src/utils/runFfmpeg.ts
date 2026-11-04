@@ -17,6 +17,7 @@ import {
 
 export interface RunFfmpegOptions {
   signal?: AbortSignal;
+  /** Stop after this long without a higher frame count or output time (counted from spawn until one). */
   timeout?: number;
   onStderr?: (line: string) => void;
 }
@@ -138,15 +139,15 @@ export function formatFfmpegError(
     : `FFmpeg exited with code ${exitCode}`;
 }
 
-/** formatFfmpegError, led by the timeout when this process was killed at its deadline. */
+/** formatFfmpegError, led by the timeout when this process was killed for making no progress. */
 export function describeFfmpegFailure(
   result: Pick<RunFfmpegResult, "exitCode" | "signal" | "stderr" | "terminationReason">,
   timeoutMs: number,
 ): string {
   const error = formatFfmpegError(result.exitCode, result.stderr);
-  if (result.terminationReason === "deadline") {
+  if (result.terminationReason === "inactivity") {
     return (
-      `FFmpeg timed out after ${timeoutMs} ms (ffmpegProcessTimeout; long renders can raise ` +
+      `FFmpeg timed out after ${timeoutMs} ms without progress (ffmpegProcessTimeout, ` +
       `FFMPEG_PROCESS_TIMEOUT_MS). ${error}`
     );
   }
@@ -200,11 +201,21 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
-  const timeout = opts?.timeout ?? DEFAULT_TIMEOUT;
+  let framesWritten = 0;
+  let secondsWritten = 0;
+  const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
+    if (frames <= framesWritten && seconds <= secondsWritten) return;
+    framesWritten = Math.max(frames, framesWritten);
+    secondsWritten = Math.max(seconds, secondsWritten);
+    managed.markActivity();
+  });
   const managed = new ManagedChildProcess(spawnFfmpeg(args), {
     signal: opts?.signal,
-    deadlineAtMs: Date.now() + timeout,
-    onStderr: opts?.onStderr,
+    inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
+    onStderr: (chunk) => {
+      readStats(chunk);
+      opts?.onStderr?.(chunk);
+    },
   });
   return toResult(await managed.wait());
 }

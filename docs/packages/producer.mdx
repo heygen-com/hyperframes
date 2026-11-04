@@ -100,6 +100,57 @@ segment starts on a keyframe. HLS is SDR only (`hdrMode: "force-hdr"` is
 rejected), refuses GPU encoding (GPU encoders ignore the keyframe lock), and is
 not available in distributed rendering, Lambda, or Cloud Run.
 
+## Inspect output validation
+
+A matching output duration does not prove that every expected frame is present.
+WebM and HLS often omit the frame count from their metadata. When no usable count
+is available, the producer skips the frame-count check and continues checking
+duration and requested dimensions.
+
+Set `debug: true` in `createRenderJob()` or use `npx hyperframes render --debug`
+to retain `render.log` in the render's working directory. Its
+`artifact_frame_count_unavailable` debug event records the output path and
+expected frame count whenever this check is skipped. Normal output stays quiet;
+a custom `logger` can also collect the event through its `debug` method.
+
+## Reference background
+
+Completed jobs expose `reference_background`. In-process local render results, blocking and
+streaming producer responses, and distributed plan and assembly results carry
+this same additive field:
+
+```json
+{"reference_background":{"kind":"solid","rgb":[10,46,138]}}
+```
+
+The value describes the composition root and its surrounding page background at
+the canonical initial film state. It is read from Chromium's computed styles
+before transparent capture changes those styles, not inferred from rendered
+frames or an inner panel. Distributed chunks preserve the plan's reference;
+they do not choose a different reference at each chunk boundary.
+
+| Kind | Meaning |
+| --- | --- |
+| `solid` | An opaque computed background, with three integer sRGB components from 0 to 255. |
+| `none` | A positively established `background: none` declaration with no effective paint. |
+| `unsupported_non_solid` | An effective background image or gradient. |
+| `unknown` | Missing, unresolved, changing, translucent, or otherwise indeterminate background. |
+
+A transparent computed color alone does **not** establish `none`. An undeclared
+background, an authored transparent color, or an inaccessible stylesheet that
+prevents proving absence remains `unknown`. Gradients and images are never
+replaced with their underlying color. Consumers must preserve indeterminate
+results instead of treating them as a default color or proof of a blank frame.
+
+In-process local rendering reads from a session it already opens. The Docker CLI
+wrapper does not currently return the child process's result metadata. Distributed planning
+opens an inspection-only page even for a composition whose duration was
+resolved statically. It does not require WebGPU, run BeginFrame liveness checks,
+or reconcile media on that page. An unavailable browser or failed inspection
+produces `unknown` without rejecting an otherwise valid static plan. The value
+is stored in the execution-plan artifacts, not added to the hashed v2 transport
+manifest, so older readers and materializers remain compatible.
+
 ## Cancel a render
 
 Pass an abort signal to the final argument:

@@ -1,6 +1,8 @@
 import { parse, parseExpressionAt, type CallExpression, type Expression } from "acorn";
 import { simple } from "acorn-walk";
 
+export const GLSL_SCRIPT_TYPES = new Set(["x-shader/x-fragment", "x-shader/x-vertex", "text/glsl"]);
+
 interface ShaderSource {
   text: string;
   start: number;

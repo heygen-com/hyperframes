@@ -82,7 +82,13 @@ import { runExtractVideosStage } from "./extractVideosStage.js";
 async function runStage(
   compositionDuration: number,
   materializeSymlinks: boolean,
-  options: { source?: string; log?: ProducerLogger; extraVideos?: VideoElement[] } = {},
+  options: {
+    source?: string;
+    log?: ProducerLogger;
+    extraVideos?: VideoElement[];
+    hdrMode?: "auto" | "force-hdr" | "force-sdr";
+    format?: "mp4" | "webm" | "mov";
+  } = {},
 ): Promise<VideoElement[]> {
   const composition = {
     duration: compositionDuration,
@@ -109,7 +115,8 @@ async function runStage(
     job: createRenderJob({
       fps: { num: 30, den: 1 },
       quality: "standard",
-      hdrMode: "force-sdr",
+      hdrMode: options.hdrMode ?? "force-sdr",
+      format: options.format,
     }),
     cfg: resolveConfig(),
     log: options.log,
@@ -153,6 +160,21 @@ describe.each([
 
     expect(toneMapHdrToSdrCalls).toEqual([true]);
   });
+
+  it.each([
+    ["auto", "mp4", false],
+    ["auto", "webm", true],
+    ["force-hdr", "mov", true],
+  ] as const)(
+    "tone maps HDR sources in %s mode to %s output: %s",
+    async (hdrMode, format, want) => {
+      toneMapHdrToSdrCalls.splice(0);
+
+      await runStage(2, materializeSymlinks, { hdrMode, format });
+
+      expect(toneMapHdrToSdrCalls).toEqual([want]);
+    },
+  );
 
   it("drops clips starting at or after the end before extraction, keeping natural-length ones", async () => {
     requestedVideoIds.splice(0);

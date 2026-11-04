@@ -1,7 +1,7 @@
-import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync } from "node:fs";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_MODEL,
@@ -15,6 +15,7 @@ import {
 import { DEFAULT_QUALITY, QUALITIES, isQuality } from "../background-removal/pipeline.js";
 import type { Example } from "./_examples.js";
 import { RemoveBackgroundError, removeBackground } from "../api/removeBackground.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   [
@@ -102,23 +103,23 @@ export default defineCommand({
           "Input file is required. Run `hyperframes remove-background --info` for providers.",
         ),
       );
-      failCommand();
+      failUsage();
     }
     if (!args.output) {
       console.error(c.error("--output (-o) is required. Use a .webm, .mov, or .png path."));
-      failCommand();
+      failUsage();
     }
     if (!isDevice(args.device)) {
       console.error(
         c.error(`Invalid --device '${String(args.device)}'. Use: ${DEVICES.join(", ")}.`),
       );
-      failCommand();
+      failUsage();
     }
     if (!isQuality(args.quality)) {
       console.error(
         c.error(`Invalid --quality '${String(args.quality)}'. Use: ${QUALITIES.join(", ")}.`),
       );
-      failCommand();
+      failUsage();
     }
 
     const spin = args.json ? null : clack.spinner();
@@ -176,9 +177,9 @@ export default defineCommand({
         );
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = failureMessage(err);
       if (args.json) {
-        console.log(JSON.stringify({ ok: false, error: message }));
+        console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
         spin?.stop(c.error(`Background removal failed: ${message}`));
       }

@@ -80,9 +80,9 @@ Same backend, same `(u_t, params)` → byte-identical `.hf-vfx-out` pixels. A
 kernel may read only `(u_size, u_t, u_fps, params, u_src)` — no `Math.random`,
 no clock, no state carried between paints. That's what makes `data-vfx-chain`
 safe to seek anywhere in a render, including backwards, and still get the same
-frame you'd get scrubbing forward to it in Studio.
+frame you'd get scrubbing forward to it in the browser editor.
 
-## Studio and browser support
+## The browser editor and browser support
 
 `self` and `backdrop` capture depend on `drawElementImage`, the same
 experimental Chromium API [HTML in Canvas](/guides/html-in-canvas) uses. In a
@@ -107,7 +107,7 @@ a chain by hand:
   box.** A GSAP `transform: scale()` or rotation on the host does not affect
   `.hf-vfx-out`'s resolution.
 - **A chain repaints on seek, not on every animation-frame tick.** Every render
-  path seeks per frame, so this only matters for Studio scrubbing-free
+  path seeks per frame, so this only matters for browser editor scrubbing-free
   playback, where a chain does not repaint between seeks.
 - **Known conflict with page-side shader transitions.** A composition running
   both `@hyperframes/shader-transitions`' page-side compositing and a

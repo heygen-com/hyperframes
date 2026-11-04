@@ -51,6 +51,18 @@ describe("slideshow lint rule", () => {
     expect(findings[0]!.code).toBe("slideshow_invalid");
   });
 
+  it.each(['"0"', "1e400"])(
+    "reports invalid slide timing %s as slideshow_invalid",
+    async (start) => {
+      const html = `<div data-composition-id="c" data-width="1920" data-height="1080">
+      <script type="application/hyperframes-slideshow+json">{"slides":[{"sceneId":"a","startTime":${start},"endTime":5}]}</script>
+    </div>`;
+      expect(await findSlideshow(html)).toEqual([
+        expect.objectContaining({ code: "slideshow_invalid", severity: "error" }),
+      ]);
+    },
+  );
+
   it.each([null, {}, { id: "h1", label: 42, target: "deep" }])(
     "reports malformed hotspot %j as a structure finding without crashing lint",
     async (hotspot) => {

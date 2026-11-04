@@ -16,7 +16,7 @@ const originalCancelAnimationFrame = window.cancelAnimationFrame;
 
 /** A root composition, two sub-composition hosts, and the registry the runtime
  *  reads. `captions` has a host element (so the per-child source-time seek
- *  visits it); `overlay` is registry-only (reached solely by root propagation).
+ *  visits it); `overlay` is registry-only (no seek of its own reaches it).
  *  Both are siblings under the invariant. */
 function mountNestedComposition() {
   document.body.innerHTML = `
@@ -115,14 +115,14 @@ describe("paused transport owns what is running", () => {
     }
   });
 
-  it("still hands the root seek an unpaused sibling, so propagation reaches it", () => {
-    // The rearm is what this whole dance exists for: GSAP does not propagate
-    // totalTime() into a paused child. Restoring must not cost that.
+  it("hands the root seek every hosted scene paused, as preview does", () => {
+    // The scene gets its own seek on its host's clock first, so the root need not propagate
+    // into it, and a scene callback that throws cannot cut the root's pass short.
     const registry = mountNestedComposition();
     const seenDuringRootSeek: boolean[] = [];
     const rootTotalTime = registry.main.totalTime!;
     registry.main.totalTime = (time?: number, suppressEvents?: boolean) => {
-      seenDuringRootSeek.push(registry.overlay.paused!());
+      seenDuringRootSeek.push(registry.captions.paused!());
       return rootTotalTime.call(registry.main, time, suppressEvents);
     };
 
@@ -131,7 +131,7 @@ describe("paused transport owns what is running", () => {
     window.__player!.renderSeek(3);
 
     expect(seenDuringRootSeek.length).toBeGreaterThan(0);
-    expect(seenDuringRootSeek.every((paused) => paused === false)).toBe(true);
-    expect(registry.overlay.paused!()).toBe(true);
+    expect(seenDuringRootSeek.every((paused) => paused === true)).toBe(true);
+    expect(registry.captions.time!()).toBe(3);
   });
 });

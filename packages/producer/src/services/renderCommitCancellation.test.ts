@@ -84,6 +84,7 @@ vi.mock("./render/stages/captureStage.js", async (importOriginal) => ({
 }));
 
 vi.mock("./render/stages/encodeStage.js", () => ({
+  canEncodeWhileCapturing: () => false,
   runEncodeStage: async ({ outputPath }: { outputPath: string }) => {
     mkdirSync(outputPath, { recursive: true });
     writeFileSync(join(outputPath, "frame_000001.png"), "new-render");

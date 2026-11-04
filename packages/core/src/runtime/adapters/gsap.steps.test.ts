@@ -1,7 +1,13 @@
 // @vitest-environment happy-dom
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
-import { createGsapAdapter, rerenderGsapTimelineAt, seekGsapTimeline } from "./gsap";
+import {
+  createGsapAdapter,
+  holdFrameMarks,
+  holdLandingMarks,
+  rerenderGsapTimelineAt,
+  seekGsapTimeline,
+} from "./gsap";
 import type { GsapStructureKey } from "./gsap";
 import type { RuntimeTimelineLike } from "../types";
 
@@ -29,6 +35,16 @@ describe("gsap adapter on a step", () => {
     film.adapter.seek({ time: 2.5 });
     expect(film.shown()).toEqual([false, true, false]);
   });
+
+  it.each([undefined, 1, 2.7])(
+    "shows the first step's frame when seeking to 0 from %s s",
+    (from) => {
+      const film = steppedFilm();
+      if (from !== undefined) film.timeline.totalTime(from, true);
+      film.adapter.seek({ time: 0 });
+      expect(film.shown()).toEqual([true, false, false]);
+    },
+  );
 
   it("fires a call on the step once when seeking onto it twice", () => {
     const film = steppedFilm();
@@ -759,5 +775,77 @@ describe("rerenderGsapTimelineAt with a structure key", () => {
       }
       expect(keyed.state()).toEqual(plain.state());
     }
+  });
+});
+
+describe("holdLandingMarks", () => {
+  const FPS = 30;
+  // Motion blur's pose reads seek silently across the shutter, then land back on the frame.
+  function readsAround(timeline: gsap.core.Timeline, t: number, render: boolean, hold: boolean) {
+    const tl = timeline as unknown as RuntimeTimelineLike;
+    const key: GsapStructureKey | undefined = render
+      ? undefined
+      : { owner: timeline, version: "1" };
+    const put = hold ? holdLandingMarks(tl, key) : () => {};
+    for (const at of [t - 0.011, t - 0.004, t + 0.004, t + 0.011])
+      seekGsapTimeline(tl, at, true, key);
+    seekGsapTimeline(tl, t, true, key);
+    if (render) rerenderGsapTimelineAt(timeline, t);
+    put();
+  }
+  function play(timeline: gsap.core.Timeline, render: boolean, hold: boolean, frames: number) {
+    for (let frame = 0; frame <= frames; frame++) {
+      const t = frame / FPS;
+      seekGsapTimeline(timeline as unknown as RuntimeTimelineLike, t, false);
+      readsAround(timeline, t, render, hold);
+    }
+  }
+
+  it.each([false, true])(
+    "fires a call on a frame once across silent reads around it (render %s)",
+    (render) => {
+      const run = (hold: boolean) => {
+        let fires = 0;
+        let on = false;
+        const timeline = gsap.timeline({ paused: true });
+        timeline.to({}, { duration: 2 }, 0);
+        timeline.call(() => ((on = !on), fires++), [], 1);
+        play(timeline, render, hold, 45);
+        return { fires, on };
+      };
+      expect(run(false).fires).toBeGreaterThan(1);
+      expect(run(true)).toEqual({ fires: 1, on: true });
+    },
+  );
+
+  it("lands a render frame with the root drawn after its scenes, as the frame's own seek does", () => {
+    const shared = { x: 0 };
+    const scene = gsap.timeline({ paused: true });
+    scene.fromTo(shared, { x: 0 }, { x: 100, duration: 2, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    root.fromTo(shared, { x: 1000 }, { x: 2000, duration: 2, ease: "none" }, 0);
+    const tl = (timeline: gsap.core.Timeline) => timeline as unknown as RuntimeTimelineLike;
+    const seekBoth = (t: number, silent: boolean) => {
+      seekGsapTimeline(tl(scene), t, silent);
+      seekGsapTimeline(tl(root), t, silent);
+    };
+    seekBoth(0.5, false);
+    expect(shared.x).toBe(1250);
+    const land = holdFrameMarks({
+      scenes: [tl(scene)],
+      root: tl(root),
+      structureOf: () => undefined,
+    });
+    for (const at of [0.489, 0.496, 0.504, 0.511]) seekBoth(at, true);
+    land(() => seekBoth(0.5, true));
+    expect(shared.x).toBe(1250);
+  });
+
+  it("keeps two same-time sets in authored order after silent reads around a render frame", () => {
+    const value = { v: 0 };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to({}, { duration: 2 }, 0).set(value, { v: 1 }, 1).set(value, { v: 2 }, 1);
+    play(timeline, true, true, FPS);
+    expect(value.v).toBe(2);
   });
 });

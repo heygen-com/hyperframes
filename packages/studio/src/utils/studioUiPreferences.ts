@@ -1,3 +1,4 @@
+import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
 import type { SerializedDockview } from "dockview-react";
 import { parseDockLayout } from "../components/dock/dockLayoutSchema";
 
@@ -7,6 +8,7 @@ export type StudioTheme = "light" | "dark";
 export interface StudioUiPreferences {
   timelineVisible?: boolean;
   playbackRate?: number;
+  previewQuality?: PreviewQuality;
   audioMuted?: boolean;
   audioVolume?: number;
   thumbnailMode?: "adaptive" | "hidden";
@@ -83,6 +85,9 @@ function readStorage(storage: Storage | null, key: string): StudioUiPreferences 
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;
+    }
+    if (isPreviewQuality(parsed.previewQuality)) {
+      preferences.previewQuality = parsed.previewQuality;
     }
     if (typeof parsed.audioMuted === "boolean") {
       preferences.audioMuted = parsed.audioMuted;
