@@ -38,12 +38,14 @@ function priceLine(
   return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} add-on credits: ${price}`;
 }
 
+const WAIT_TIMEOUT_EXIT = 124;
+
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
   signal: AbortSignal,
   needed?: number,
-): Promise<boolean> {
+): Promise<CheckoutError | null> {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
@@ -51,7 +53,7 @@ async function offerCheckout(
   try {
     if (isUnattended()) {
       console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-      return true;
+      return null;
     }
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
@@ -60,14 +62,13 @@ async function offerCheckout(
       rl.close();
     }
     await openBrowser(await createCheckout(kind, offer, missing));
-    return true;
+    return null;
   } catch (error) {
-    if (signal.aborted) return true;
+    if (signal.aborted) return null;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
-    trackBillingCheckoutFailed({
-      reason: error instanceof CheckoutError ? error.reason : "checkout_unavailable",
-    });
-    return false;
+    if (!(error instanceof CheckoutError)) return null;
+    trackBillingCheckoutFailed({ reason: error.reason });
+    return error;
   }
 }
 
@@ -128,13 +129,13 @@ export default defineCommand({
       }
       return null;
     })().finally(() => stop.abort());
-    const opened = await offerCheckout(
+    const checkoutFailure = await offerCheckout(
       action === "subscribe" ? "plans" : "credits",
       before,
       stop.signal,
       needed,
     );
-    if (!opened) {
+    if (checkoutFailure?.reason === "checkout_unavailable") {
       giveUp.abort();
       failCommand();
     }
@@ -149,8 +150,8 @@ export default defineCommand({
         `Still waiting on the ${action === "subscribe" ? "plans" : "credits"} page; run this again once it is done.`,
       ),
     );
-    // Exit 124 (timeout): the person did not finish, which is not a failed command or a cli_error.
+    if (checkoutFailure) failCommand();
     trackBillingWaitTimeout({ action });
-    setCommandExitCode(124);
+    setCommandExitCode(WAIT_TIMEOUT_EXIT);
   },
 });

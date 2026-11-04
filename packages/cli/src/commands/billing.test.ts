@@ -151,15 +151,44 @@ describe("billing at a terminal", () => {
 });
 
 describe("billing outcomes", () => {
-  it("reports a failed checkout with its reason class and not as a timeout", async () => {
+  it("keeps waiting after a failed checkout, because the open pricing page can still take the payment", async () => {
     const { CheckoutError } = await import("../heygen/plan.js");
     terminal.checkoutError = new CheckoutError("checkout_network", "https://x.test/secret failed");
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    await expect(runCommand(billing, { rawArgs: ["subscribe"] })).rejects.toThrow();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
     expect(events.failed).toEqual([{ reason: "checkout_network" }]);
+    expect(log.mock.calls.flat().join("\n")).toContain("Done");
+  });
+
+  it("fails with the checkout error, not as a timeout, when the checkout failed and nobody paid", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    terminal.checkoutError = new CheckoutError("checkout_rejected", "HeyGen would not open it");
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] });
+    const settled = expect(done).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(6000);
+    await settled;
+    vi.useRealTimers();
+    expect(events.failed).toEqual([{ reason: "checkout_rejected" }]);
     expect(events.timeout).toEqual([]);
-    expect(error.mock.calls.flat().join("\n")).not.toMatch(/Still waiting/);
+  });
+
+  it("stops at once when credits are not on sale, since the credits page cannot sell them either", async () => {
+    const { CheckoutError } = await import("../heygen/plan.js");
+    terminal.checkoutError = new CheckoutError("checkout_unavailable", "Credits are not on sale");
+    never.paid = false;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(runCommand(billing, { rawArgs: ["subscribe"] })).rejects.toThrow();
+    expect(events.failed).toEqual([{ reason: "checkout_unavailable" }]);
   });
 
   it("ends a wait with no payment as wait_timeout, not a checkout failure or a failed command", async () => {
