@@ -4,17 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captionImagesWithGemini } from "./contentExtractor.js";
 
-const { generateContentMock } = vi.hoisted(() => ({ generateContentMock: vi.fn() }));
-
-vi.mock("../utils/optionalPackages.js", () => ({
-  loadSharp: async () => (await import("sharp")).default,
-  loadOptionalPackage: vi.fn(async () => ({
-    GoogleGenAI: class {
-      models = { generateContent: generateContentMock };
-    },
-  })),
-}));
-
 const hooks = vi.hoisted(() => ({
   afterStat: () => {},
   beforeRead: () => {},
@@ -52,6 +41,10 @@ describe("caption image file reads", () => {
   let dir: string;
   let file: string;
   let sentBody: string;
+  const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+    sentBody = typeof init?.body === "string" ? init.body : "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "A hero." } }] }));
+  });
 
   beforeEach(() => {
     dir = fs.mkdtempSync(join(tmpdir(), "hf-caption-read-"));
@@ -63,19 +56,15 @@ describe("caption image file reads", () => {
     hooks.descriptor = -1;
     hooks.closed = [];
     sentBody = "";
-    generateContentMock.mockReset();
-    generateContentMock.mockImplementation(async (request: unknown) => {
-      sentBody = JSON.stringify(request);
-      return { text: "A hero." };
-    });
-    vi.stubEnv("GEMINI_API_KEY", "test-key");
-    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "");
-    vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", "");
+    fetchMock.mockClear();
+    vi.stubEnv("OPENROUTER_API_KEY", "test-key");
+    vi.stubGlobal("fetch", fetchMock);
   });
 
   afterEach(() => {
     hooks.afterStat = () => {};
     hooks.beforeRead = () => {};
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -103,7 +92,7 @@ describe("caption image file reads", () => {
     hooks.beforeRead = read;
     const captions = await captionImagesWithGemini(dir, () => {}, []);
     expect(captions).toEqual(size === 4_000_000 ? { "hero.png": "A hero." } : {});
-    expect(generateContentMock).toHaveBeenCalledTimes(size === 4_000_000 ? 1 : 0);
+    expect(fetchMock).toHaveBeenCalledTimes(size === 4_000_000 ? 1 : 0);
     expect(read).toHaveBeenCalledTimes(size === 4_000_000 ? 1 : 0);
     expectClosed();
   });
@@ -116,8 +105,8 @@ describe("caption image file reads", () => {
     else hooks.beforeRead = fail;
     const warnings: string[] = [];
     expect(await captionImagesWithGemini(dir, () => {}, warnings)).toEqual({});
-    expect(warnings).toEqual(["Gemini vision failed for 1 asset(s); captions omitted."]);
-    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(warnings).toEqual(["OpenRouter vision failed for 1 asset(s); captions omitted."]);
+    expect(fetchMock).not.toHaveBeenCalled();
     expectClosed();
   });
 });

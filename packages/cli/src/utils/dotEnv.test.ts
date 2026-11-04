@@ -13,8 +13,11 @@ describe("applyDotEnv", () => {
 
   it("reads a comment after an empty value as no value", () => {
     const env: NodeJS.ProcessEnv = {};
-    applyDotEnv("GEMINI_API_KEY= # paste your key here\nGOOGLE_API_KEY=\t# later\nHASH=#abc", env);
-    expect(env).toEqual({ GEMINI_API_KEY: "", GOOGLE_API_KEY: "", HASH: "#abc" });
+    applyDotEnv(
+      "GEMINI_API_KEY= # paste your key here\nOPENROUTER_API_KEY=\t# later\nHASH=#abc",
+      env,
+    );
+    expect(env).toEqual({ GEMINI_API_KEY: "", OPENROUTER_API_KEY: "", HASH: "#abc" });
   });
 
   it("never takes the feedback email from a project file", () => {
@@ -76,7 +79,7 @@ describe("applyDotEnv quoted multiline values", () => {
 
   it("a commented-out example with an unclosed quote does not swallow the real keys below it", () => {
     const env: NodeJS.ProcessEnv = {};
-    applyDotEnv('# FIGMA_TOKEN="sk-old\nGEMINI_API_KEY=real1\nGOOGLE_API_KEY=real2', env);
+    applyDotEnv('# OPENROUTER_API_KEY="sk-old\nGEMINI_API_KEY=real1\nGOOGLE_API_KEY=real2', env);
     expect(env).toEqual({ GEMINI_API_KEY: "real1", GOOGLE_API_KEY: "real2" });
   });
 
@@ -130,7 +133,7 @@ describe("loadProjectDotEnv", () => {
   });
 
   it("says nothing when every key is one the CLI reads, or there is no .env", () => {
-    const dir = projectWith("GOOGLE_API_KEY=k\n");
+    const dir = projectWith("OPENROUTER_API_KEY=k\n");
     try {
       const warn = vi.fn();
       loadProjectDotEnv(dir, {}, warn);
