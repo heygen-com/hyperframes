@@ -43,7 +43,7 @@ vi.mock("./render/stages/compileStage.js", () => ({
     outputWidth: 320,
     outputHeight: 180,
     compileOnlyMs: 0,
-    forceScreenshot: state.compileForcesScreenshot,
+    forceScreenshot: false,
   }),
 }));
 vi.mock("./render/stages/probeStage.js", () => ({
