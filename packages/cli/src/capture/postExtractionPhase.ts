@@ -34,8 +34,7 @@ import type { VisionCaptionOutcome } from "./contentExtractor.js";
 function hasVisionCredentials(skipVision: boolean): boolean {
   return Boolean(
     !skipVision &&
-    (process.env.OPENROUTER_API_KEY ||
-      process.env.GEMINI_API_KEY ||
+    (process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
         process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT)),

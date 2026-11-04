@@ -245,9 +245,8 @@ export async function extractVisibleText(page: Page): Promise<string> {
 /**
  * Caption downloaded images using a vision model.
  *
- * Provider is chosen by which API key is present: OPENROUTER_API_KEY → OpenRouter
- * (any vision model via its OpenAI-style API), else GEMINI_API_KEY/GOOGLE_API_KEY
- * → Google Gemini, else no captioning. OpenRouter wins if both are set.
+ * Provider is chosen by which credential is present: Vertex service account, else
+ * GEMINI_API_KEY/GOOGLE_API_KEY → Google Gemini, else no captioning.
  *
  * Batches requests to stay under free-tier rate limits.
  * Returns a map of filename -> caption string.
@@ -277,7 +276,6 @@ export async function captionImagesWithGemini(
     reportOutcome();
     return geminiCaptions;
   }
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   // Vertex authenticates with a service account and a project instead of an API key. Server
   // deployments have those; they often do not have a working Gemini API key, and a rejected
@@ -286,28 +284,19 @@ export async function captionImagesWithGemini(
   const vertexProject = process.env.HYPERFRAMES_VERTEX_PROJECT_ID;
   const vertexServiceAccount = process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT;
   const useVertex = Boolean(vertexProject && vertexServiceAccount);
-  if (!openRouterKey && !useVertex && !geminiKey) {
+  if (!useVertex && !geminiKey) {
     reportOutcome();
     return geminiCaptions;
   }
 
-  // OpenRouter takes priority — it's the explicit opt-in for users without Google access.
   // Vertex outranks the bare API key because it is the credential a deployment actually
-  // holds. All three satisfy the same single-image → one-line-caption contract
+  // holds. Both satisfy the same single-image → one-line-caption contract
   // (`captionOne`), so the batching and SVG-rasterization loops stay provider-agnostic.
-  const provider: "openrouter" | "vertex" | "gemini" = openRouterKey
-    ? "openrouter"
-    : useVertex
-      ? "vertex"
-      : "gemini";
-  const providerName = { openrouter: "OpenRouter", vertex: "Vertex AI", gemini: "Gemini" }[
-    provider
-  ];
-  // Override per provider via HYPERFRAMES_OPENROUTER_MODEL / HYPERFRAMES_VERTEX_MODEL /
-  // HYPERFRAMES_GEMINI_MODEL. Vertex publishes a different model set than the Gemini API —
+  const provider: "vertex" | "gemini" = useVertex ? "vertex" : "gemini";
+  const providerName = { vertex: "Vertex AI", gemini: "Gemini" }[provider];
+  // Override per provider via HYPERFRAMES_VERTEX_MODEL / HYPERFRAMES_GEMINI_MODEL. Vertex publishes a different model set than the Gemini API —
   // the API's flash-lite preview id is not resolvable there — so it carries its own default.
   const model = {
-    openrouter: process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite",
     vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-2.5-flash",
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
   }[provider];
@@ -326,114 +315,75 @@ export async function captionImagesWithGemini(
     }) => Promise<string>;
 
     let captionOne: CaptionOne;
-    if (provider === "openrouter") {
-      captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
-        return runBoundedVisionRequest(async (signal) => {
-          const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${openRouterKey}`,
-              "Content-Type": "application/json",
-            },
-            signal,
-            body: JSON.stringify({
-              model,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    { type: "text", text: prompt },
-                    {
-                      type: "image_url",
-                      image_url: { url: `data:${mimeType};base64,${base64}` },
-                    },
-                  ],
-                },
-              ],
-              max_tokens: maxTokens,
-            }),
-          });
-          if (!res.ok) {
-            await res.text();
-            throw new Error(`OpenRouter request failed with HTTP ${res.status}`);
-          }
-          const data = (await res.json()) as {
-            choices?: Array<{ message?: { content?: string } }>;
-          };
-          return data.choices?.[0]?.message?.content?.trim() || "";
-        }, timeoutMs);
-      };
-    } else {
-      let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
+    let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
+    try {
+      ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
+    } catch (err) {
+      warnings.push(`Skipped vision captioning: ${(err as Error).message}`);
+      internalError = true;
+      reportOutcome();
+      return geminiCaptions;
+    }
+    let ai: InstanceType<typeof GoogleGenAI>;
+    if (provider === "vertex") {
+      // Re-narrow for TS; `useVertex` already guaranteed both are set.
+      if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
+      let credentials: Record<string, unknown>;
       try {
-        ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
-      } catch (err) {
-        warnings.push(`Skipped vision captioning: ${(err as Error).message}`);
+        credentials = JSON.parse(vertexServiceAccount) as Record<string, unknown>;
+      } catch {
+        warnings.push(
+          "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.",
+        );
         internalError = true;
         reportOutcome();
         return geminiCaptions;
       }
-      let ai: InstanceType<typeof GoogleGenAI>;
-      if (provider === "vertex") {
-        // Re-narrow for TS; `useVertex` already guaranteed both are set.
-        if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = JSON.parse(vertexServiceAccount) as Record<string, unknown>;
-        } catch {
-          warnings.push(
-            "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.",
-          );
-          internalError = true;
-          reportOutcome();
-          return geminiCaptions;
-        }
-        ai = new GoogleGenAI({
-          vertexai: true,
-          project: vertexProject,
-          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
-          googleAuthOptions: { credentials },
-        });
-      } else {
-        // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
-        if (!geminiKey) return geminiCaptions;
-        ai = new GoogleGenAI({ apiKey: geminiKey });
-      }
-      captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
-        const response = await runBoundedVisionRequest(
-          (signal) =>
-            ai.models.generateContent({
-              model,
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }],
-                },
-              ],
-              config: {
-                maxOutputTokens: maxTokens,
-                // A one-line factual caption needs no reasoning, and leaving thinking on is
-                // not merely wasteful: thinking tokens are drawn from maxOutputTokens, so the
-                // model can spend the whole budget and return empty text. That surfaces as a
-                // successful request with no caption — the capture then logs "Captioned N/N
-                // images" followed by "0 images captioned", which is what production shows.
-                thinkingConfig: { thinkingBudget: 0 },
-                abortSignal: signal,
-                httpOptions: { timeout: timeoutMs },
-              },
-            }),
-          timeoutMs,
-        );
-        return response.text?.trim() || "";
-      };
+      ai = new GoogleGenAI({
+        vertexai: true,
+        project: vertexProject,
+        location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
+        googleAuthOptions: { credentials },
+      });
+    } else {
+      // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.
+      if (!geminiKey) return geminiCaptions;
+      ai = new GoogleGenAI({ apiKey: geminiKey });
     }
+    captionOne = async ({ mimeType, base64, prompt, maxTokens, timeoutMs }) => {
+      const response = await runBoundedVisionRequest(
+        (signal) =>
+          ai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: "user",
+                parts: [{ inlineData: { mimeType, data: base64 } }, { text: prompt }],
+              },
+            ],
+            config: {
+              maxOutputTokens: maxTokens,
+              // A one-line factual caption needs no reasoning, and leaving thinking on is
+              // not merely wasteful: thinking tokens are drawn from maxOutputTokens, so the
+              // model can spend the whole budget and return empty text. That surfaces as a
+              // successful request with no caption — the capture then logs "Captioned N/N
+              // images" followed by "0 images captioned", which is what production shows.
+              thinkingConfig: { thinkingBudget: 0 },
+              abortSignal: signal,
+              httpOptions: { timeout: timeoutMs },
+            },
+          }),
+        timeoutMs,
+      );
+      return response.text?.trim() || "";
+    };
 
     const imageFiles = readdirSync(join(outputDir, "assets")).filter((f: string) =>
       /\.(png|jpg|jpeg|webp|gif)$/i.test(f),
     );
 
     // Caption in parallel batches. Gemini free tier is ~5 RPM (slow but $0),
-    // paid/OpenRouter ~2000 RPM. We batch 20 with a 2s inter-batch pause and rely
+    // paid ~2000 RPM. We batch 20 with a 2s inter-batch pause and rely
     // on Promise.allSettled so one rate-limited image does not fail its siblings;
     // rejected requests are aggregated into a sanitized warning below.
     const BATCH_SIZE = 20;
