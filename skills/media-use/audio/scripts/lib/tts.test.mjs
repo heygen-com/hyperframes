@@ -228,3 +228,17 @@ test("pickProvider heygen with an unreadable credentials path says to fix that p
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("synthesizeHeygen refuses under a credit limit before any request", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-tts-limit-"));
+  mkdirSync(join(dir, ".hyperframes"));
+  writeFileSync(join(dir, ".hyperframes", "credit-limit.json"), '{"credits": 5}');
+  let asked = false;
+  const r = await synthesizeHeygen(
+    { text: "hi", voiceId: "v", lang: "en", speed: 1, wavAbs: join(dir, "a.wav") },
+    { projectDir: dir, heygenJSON: async () => ((asked = true), {}) },
+  );
+  assert.equal(r.ok, false);
+  assert.match(r.error, /credit limit of 5/);
+  assert.equal(asked, false);
+});

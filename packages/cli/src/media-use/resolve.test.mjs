@@ -280,6 +280,23 @@ test("missing bundled SFX install returns a typed recovery command", () => {
   assert.equal(parsed.fix, "npx hyperframes skills update media-use");
   assert.match(parsed.error, /bundled SFX assets are missing or incomplete/);
   assert.match(parsed.error, /manifest not found/);
+  // Repairing a skill is the person's step: the message names it for them, not the agent.
+  assert.match(parsed.error, /For the user: `npx hyperframes skills update media-use` repairs/);
+  assert.doesNotMatch(parsed.error, /Repair the installed/);
+  cleanup();
+});
+
+test("--doctor addresses the bundled SFX repair to the person", () => {
+  setup();
+  const result = spawnResolve(["--doctor"], {
+    env: {
+      HOME: tmp,
+      PATH: tmp,
+      HYPERFRAMES_MEDIA_USE_SFX_DIR: join(tmp, "missing-sfx-library"),
+    },
+  });
+  assert.match(result.stdout, /For the user: `npx hyperframes skills update media-use` repairs it/);
+  assert.doesNotMatch(result.stdout, /fix: npx hyperframes skills/);
   cleanup();
 });
 

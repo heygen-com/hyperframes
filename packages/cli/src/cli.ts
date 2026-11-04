@@ -7,7 +7,7 @@
 // the process. This is a normal lifecycle event — suppress it.
 //
 // commandFailed must be declared here (before the handlers) so the EPIPE
-// stream-error path can set it before process.exit(0). The telemetry exit
+// stream-error path can set it before it exits. The telemetry exit
 // handler reads this flag to determine success/failure — an EPIPE that
 // interrupts a command should NOT score as success:true, but one that
 // arrives after the render artifact was validated is the normal agent-pipe
@@ -166,6 +166,7 @@ const commandLoaders = {
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
+  update: () => import("./commands/update.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   feedback: () => import("./commands/feedback.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
@@ -282,6 +283,7 @@ if (
 if (
   !isHelp &&
   command !== "upgrade" &&
+  command !== "update" &&
   command !== "events" &&
   command !== "telemetry" &&
   command !== "skills" &&
@@ -459,17 +461,13 @@ function exitAfterPostRenderTermination(
   process.exit(0);
 }
 
-// A closed pipe (EPIPE) is the NORMAL teardown when the CLI runs under a
-// piped agent (Claude Code, Codex, …) — the reader may stop consuming as
-// soon as it has what it needs. Exit cleanly, but only score the run as a
-// failure when the pipe died BEFORE the render artifact was validated:
-// unconditionally setting `commandFailed = true` here marked every piped
-// successful render as success:false (0.7.65–0.7.90). Delivery of anything
-// still queued (render_complete's eager flush() dies with the process) is
-// owned by the unconditional flushSync() in the `exit` handler below.
+// A closed pipe (EPIPE) is the normal teardown under a piped agent: exit without a crash. A run that had not delivered
+// (a refused or interrupted render) still exits 1, so `| head` cannot turn a failure into success.
+// The `exit` handler's flushSync() delivers anything still queued.
 function handleStreamEpipe(): never {
-  if (!isRunDelivered()) commandFailed = true;
-  process.exit(0);
+  const delivered = isRunDelivered();
+  if (!delivered) commandFailed = true;
+  process.exit(delivered ? 0 : 1);
 }
 
 // Success gate for the cli_command_result telemetry field. `commandFailed`

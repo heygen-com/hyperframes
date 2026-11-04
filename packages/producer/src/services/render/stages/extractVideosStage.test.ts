@@ -92,6 +92,28 @@ describe("encoder interruption classification", () => {
 
     expect(() => assertVideoExtractionSucceeded(result)).toThrow(EncoderInterruptedError);
   });
+
+  it("reports a disk that filled up during extraction as ENOSPC, not as unrenderable sources", () => {
+    const full = (n: number) => ({
+      videoId: `v${n}`,
+      kind: "disk_full" as const,
+      retryable: false,
+      error: "Error submitting a packet to the muxer: No space left on device",
+      source: `assets/clip-${n}.mp4`,
+    });
+    const result = extractionResult([
+      full(1),
+      full(2),
+      { videoId: "v3", kind: "zero_output", retryable: false, error: "no frames" },
+    ]);
+
+    expect(() => assertVideoExtractionSucceeded(result)).toThrow(
+      expect.objectContaining({
+        code: "ENOSPC",
+        message: "ENOSPC: no space left on device, extracting the frames of 2 video source(s)",
+      }),
+    );
+  });
 });
 
 describe("appendAutoDetectedVideoAudio", () => {

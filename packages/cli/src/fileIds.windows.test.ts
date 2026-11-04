@@ -6,10 +6,10 @@ import { join } from "node:path";
 // Number-mode stats report one identity for every path, as Windows file ids above 2^53 can.
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  const statSync = ((path: string, options?: { bigint?: boolean }) =>
-    options?.bigint
-      ? actual.statSync(path, options as never)
-      : { ...actual.statSync(path), dev: 1, ino: 2 ** 53 }) as typeof actual.statSync;
+  const statSync = ((path: string, options?: { bigint?: boolean }) => {
+    const stats = actual.statSync(path, options as never);
+    return options?.bigint || !stats ? stats : Object.assign(stats, { dev: 1, ino: 2 ** 53 });
+  }) as typeof actual.statSync;
   return { ...actual, statSync };
 });
 

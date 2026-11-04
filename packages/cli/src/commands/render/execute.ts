@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
 import { PRORES_PROFILES } from "@hyperframes/engine";
@@ -13,6 +13,7 @@ import {
   type ProjectLintResult,
 } from "../../utils/lintProject.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
+import { makeOutputFolder } from "../../utils/outputFolder.js";
 import { failCommand, setCommandExitCode } from "../../utils/commandResult.js";
 import {
   reportVariableIssues,
@@ -71,7 +72,7 @@ export async function executeRenderPlan(
 ): Promise<void> {
   assertRenderActive(cancellation);
   applyRenderEnvironment(plan);
-  if (!plan.batchPath) mkdirSync(renderOutputDirectory(plan), { recursive: true });
+  if (!plan.batchPath) makeOutputFolder(renderOutputDirectory(plan));
 
   let batchModule: typeof import("../batchRender.js") | undefined;
   let preparedBatch: import("../batchRender.js").PreparedBatchRender | undefined;

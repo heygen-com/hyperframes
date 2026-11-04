@@ -172,6 +172,7 @@ import {
   checkRenderEta,
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
+import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
 import {
@@ -3089,6 +3090,7 @@ async function executeRenderPipeline(input: {
   const onProgress = execution.onProgress;
   const tooSlow = new AbortController();
   let tooSlowError: RenderTooSlowError | undefined;
+  let calibrationEvaluateTimedOut = false;
   const executionSignal = job.config.maxRenderMs
     ? AbortSignal.any([tooSlow.signal, ...(execution.signal ? [execution.signal] : [])])
     : execution.signal;
@@ -4171,6 +4173,7 @@ async function executeRenderPipeline(input: {
         { heartbeatMessage: "browser calibrating (frames not started)" },
       );
       captureCalibration = outcome.calibration;
+      calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       probeSession = outcome.probeSession;
@@ -5680,7 +5683,12 @@ async function executeRenderPipeline(input: {
     await eventPublisher.flush();
   } catch (caught) {
     await pendingAudio;
-    const error = surfaceScriptFailure(tooSlowError ?? caught, job);
+    const pageNeverReady = checkPageNeverReady({
+      calibrationEvaluateTimedOut,
+      framesRendered: job.framesRendered ?? 0,
+      error: caught,
+    });
+    const error = surfaceScriptFailure(tooSlowError ?? pageNeverReady ?? caught, job);
     if (!tooSlowError && (error instanceof RenderCancelledError || executionSignal?.aborted)) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);
