@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import type { CheckDeadline } from "./checkDeadline.js";
+import { CheckCopiesUnfinishedError, COPY_BUDGET_MS, type CheckDeadline } from "./checkDeadline.js";
 import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
@@ -168,9 +168,11 @@ function startCopyHeartbeat(
   progress: (index: number, progress: ProxyProgress) => void;
   settled: (index: number) => void;
   stop: () => void;
+  percent: (index: number) => string;
 } {
   const startedAt = Date.now();
   const latest = new Map<number, ProxyProgress>();
+  const last = new Map<number, ProxyProgress>();
   const total = cached.filter((isCached) => !isCached).length;
   let finished = 0;
   const timer = setInterval(() => {
@@ -186,7 +188,16 @@ function startCopyHeartbeat(
   }, COPY_HEARTBEAT_MS);
   timer.unref();
   return {
-    progress: (index, progress) => void latest.set(index, progress),
+    progress: (index, progress) => {
+      latest.set(index, progress);
+      last.set(index, progress);
+    },
+    percent: (index) => {
+      const { doneSeconds = 0, totalSeconds } = last.get(index) ?? {};
+      return totalSeconds
+        ? `${Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))}%`
+        : "not started";
+    },
     settled: (index) => {
       latest.delete(index);
       if (!cached[index]) finished += 1;
@@ -211,6 +222,7 @@ export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
   autoProxyOverride?: boolean,
+  budgetMs?: number,
 ): Promise<ProxyPreResolution> {
   const none: ProxyPreResolution = { findings: [], failedPaths: new Set(), files: [] };
   if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
@@ -252,6 +264,14 @@ export async function preResolveHostileMediaProxies(
   const heartbeat = startCopyHeartbeat(sources, cached);
   const stopped = new AbortController();
   const forgetStop = onStopSignal(() => stopped.abort());
+  let overBudget: number | undefined;
+  const budget =
+    budgetMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          overBudget = budgetMs;
+          stopped.abort();
+        }, budgetMs);
   const results = await resolveProxies(
     projectDir,
     sources,
@@ -265,7 +285,14 @@ export async function preResolveHostileMediaProxies(
   ).finally(() => {
     heartbeat.stop();
     forgetStop();
+    clearTimeout(budget);
   });
+  if (overBudget !== undefined) {
+    const unfinished = sources.flatMap(({ file }, index) =>
+      results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
+    );
+    throw new CheckCopiesUnfinishedError(overBudget, unfinished);
+  }
   const failures = sources.flatMap((source, index) => {
     const result = results[index]!;
     return result.status === "rejected" ? [{ ...source, reason: result.reason }] : [];
@@ -357,6 +384,7 @@ export async function runBrowserCheck(
     project.dir,
     html,
     options.autoProxy,
+    COPY_BUDGET_MS,
   );
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
