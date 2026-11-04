@@ -18,7 +18,6 @@ export type PlaybackHealthInput = {
   hidden: boolean;
   /** A playing video is waiting for data. */
   waiting: boolean;
-  /** The element play waits on, when one does. */
   heldBy?: PlaybackHeldBy | null;
   frozen?: boolean;
   clock: "audio" | "webaudio" | "monotonic";
@@ -46,7 +45,6 @@ let postedAtMs = 0;
 let clockSource: PlaybackHealthInput["clock"] = "monotonic";
 const fetchStartedAt = new WeakMap<EventTarget, number>();
 
-/** Notes when each media element starts a fetch (`loadstart` does not bubble, so capture on the document). */
 export function watchMediaFetches(doc: Document): () => void {
   const onStart = (event: Event) => {
     if (event.target) fetchStartedAt.set(event.target, performance.now());
@@ -55,9 +53,11 @@ export function watchMediaFetches(doc: Document): () => void {
   return () => doc.removeEventListener("loadstart", onStart, true);
 }
 
-/** `el` as what holds play at `nowMs` (performance.now() time). */
+const resourceFetchStart = (src: string) => performance.getEntriesByName(src).at(-1)?.startTime;
+
 export function heldByMedia(el: HTMLMediaElement, nowMs: number): PlaybackHeldBy {
-  const started = fetchStartedAt.get(el);
+  const started =
+    fetchStartedAt.get(el) ?? (el.currentSrc ? resourceFetchStart(el.currentSrc) : undefined);
   return {
     kind: el.tagName === "VIDEO" ? "video" : "audio",
     readyState: el.readyState,

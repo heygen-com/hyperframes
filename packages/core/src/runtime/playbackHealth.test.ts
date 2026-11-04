@@ -131,7 +131,7 @@ describe("playback health", () => {
     expect(healths().at(-1)?.heldBy).toBeNull();
   });
 
-  it("times an element's fetch from the loadstart it fired, and says null for one it never saw start", () => {
+  it("times an element's fetch from its loadstart, else its resource timing, and says null for one never seen", () => {
     const now = vi.spyOn(performance, "now").mockReturnValue(1000);
     const stop = watchMediaFetches(document);
     const voice = document.createElement("audio");
@@ -145,6 +145,15 @@ describe("playback health", () => {
       fetchMs: 3500,
     });
     expect(heldByMedia(clip, 4500)).toMatchObject({ kind: "video", fetchMs: null });
+    const early = document.createElement("audio");
+    Object.defineProperty(early, "currentSrc", { value: "http://film/voice.mp3" });
+    const entries = vi
+      .spyOn(performance, "getEntriesByName")
+      .mockImplementation((name) =>
+        name === "http://film/voice.mp3" ? [{ startTime: 500 } as PerformanceEntry] : [],
+      );
+    expect(heldByMedia(early, 4500).fetchMs).toBe(4000);
+    entries.mockRestore();
     stop();
     now.mockReturnValue(2000);
     clip.dispatchEvent(new Event("loadstart"));

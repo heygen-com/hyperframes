@@ -269,13 +269,13 @@ export type RuntimePreviewCopiesMessage = {
   } | null;
 };
 
-/** What held play: the media element without data ahead, in numbers only; a null `fetchMs` is a fetch not seen to
- * start. */
+export type FetchNotSeenToStart = null;
+
 export type PlaybackHeldBy = {
   kind: "audio" | "video";
   readyState: number;
   networkState: number;
-  fetchMs: number | null;
+  fetchMs: number | FetchNotSeenToStart;
 };
 
 export type RuntimePreviewHealthMessage = {
@@ -294,7 +294,6 @@ export type RuntimePreviewHealthMessage = {
     gapP50Ms: number;
     gapP95Ms: number;
     clockSource: "audio" | "webaudio" | "monotonic";
-    /** The last element in the window that play waited on, or null when none did. */
     heldBy: PlaybackHeldBy | null;
     mode: "play";
   } | null;

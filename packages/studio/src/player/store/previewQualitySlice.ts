@@ -26,7 +26,6 @@ export interface PlaybackHealth {
   gapP50Ms?: number;
   gapP95Ms?: number;
   clockSource?: "audio" | "webaudio" | "monotonic";
-  /** The element play last waited on in the window (the runtime's preview-health). */
   heldBy?: PlaybackHeldBy | null;
   mode: "play";
 }
@@ -121,14 +120,14 @@ export function parsePreviewCopies(value: unknown): PreviewCopies | null {
 const optionalNumber = (n: unknown) => (typeof n === "number" ? n : undefined);
 const CLOCK_SOURCES = ["audio", "webaudio", "monotonic"] as const;
 const optionalClock = (clock: unknown) => CLOCK_SOURCES.find((known) => known === clock);
-/** The runtime's `heldBy`: null when it says nothing held play, undefined when absent or not the shape it sends. */
 function parseHeldBy(value: unknown): PlaybackHealth["heldBy"] {
   if (value === null) return null;
   if (typeof value !== "object") return undefined;
   const { kind, readyState, networkState, fetchMs } = value as Record<string, unknown>;
   if (kind !== "audio" && kind !== "video") return undefined;
   if (typeof readyState !== "number" || typeof networkState !== "number") return undefined;
-  return { kind, readyState, networkState, fetchMs: typeof fetchMs === "number" ? fetchMs : null };
+  if (typeof fetchMs !== "number" && fetchMs !== null) return undefined;
+  return { kind, readyState, networkState, fetchMs };
 }
 
 export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {

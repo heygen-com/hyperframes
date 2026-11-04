@@ -107,6 +107,9 @@ describe("preview quality in the player store", () => {
     });
     expect(parsePlaybackHealth({ ...health, heldBy: null })?.heldBy).toBeNull();
     expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, fetchMs: "3500" } })?.heldBy,
+    ).toBeUndefined();
+    expect(
       parsePlaybackHealth({ ...health, heldBy: { ...heldBy, kind: "/a/b.mp3" } })?.heldBy,
     ).toBeUndefined();
     expect(parsePlaybackHealth(health)?.heldBy).toBeUndefined();
