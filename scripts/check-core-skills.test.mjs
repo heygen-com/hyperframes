@@ -77,3 +77,12 @@ test("flags a path the skill does not ship, and skips placeholders", () => {
   const content = "`references/a.md`, `references/b.md`, `references/routes/<workflow>.md`";
   assert.deepEqual(missingPaths(content, dir), ["references/b.md"]);
 });
+
+test("style-sampling picks a voice from the HyperFrames account, never the separate heygen sign-in", () => {
+  const remix = readFileSync(
+    new URL("../skills/style-sampling/references/remix.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(remix, /`npx hyperframes media-use voices`/);
+  assert.doesNotMatch(remix.replace(/never `heygen voice list`/, ""), /heygen voice list/);
+});

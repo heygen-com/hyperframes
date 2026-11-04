@@ -14,7 +14,7 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
-const { idempotencyKey, runJob } = await import("./v3.js");
+const { idempotencyKey, ownVoices, runJob } = await import("./v3.js");
 
 /** A job route through the generated client: the create and the status GET it polls. */
 const X: JobRoute = {
@@ -426,5 +426,31 @@ describe("runJob", () => {
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),
     );
     expect(idempotencyKey("/v3/x", ["a"])).not.toBe(idempotencyKey("/v3/y", ["a"]));
+  });
+});
+
+describe("ownVoices", () => {
+  it("lists the clones of the HyperFrames sign-in's workspace only, never another account's", async () => {
+    const asked: { url: string; key: string | null }[] = [];
+    const clonesByKey: Record<string, string> = {
+      k: "film-account-clone",
+      "heygen-cli-login": "other-account-clone",
+    };
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const key = new Headers(init.headers).get("x-api-key");
+      asked.push({ url, key });
+      return reply(200, { data: [{ voice_id: "v1", name: clonesByKey[key ?? ""] }] });
+    });
+    expect(await ownVoices(5)).toEqual([
+      { voice_id: "v1", name: "film-account-clone", language: undefined, gender: undefined },
+    ]);
+    expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!.url).searchParams.get("type")).toBe("private");
+    expect(asked[0]!.key).toBe("k");
+  });
+
+  it("refuses with the sign-in fix when the HyperFrames account cannot be reached, instead of listing anything", async () => {
+    vi.stubGlobal("fetch", async () => reply(401, { message: "no" }));
+    await expect(ownVoices(5)).rejects.toMatchObject({ fix: "npx hyperframes auth login" });
   });
 });

@@ -628,6 +628,9 @@ npx hyperframes media-use resolve --type bgm --reuse 06e052c0
 # Bring in a file you already have
 npx hyperframes media-use resolve --type image --from ./photo.jpg
 
+# The voice clones on the account that makes the film
+npx hyperframes media-use voices
+
 # Check the setup, and see what has been used
 npx hyperframes media-use doctor
 npx hyperframes media-use stats --days 7
@@ -644,6 +647,7 @@ file yourself.
 | `candidates` | List assets already in the project and the global cache for `--type`, best match for `--intent` first. Downloads nothing and changes nothing. Same as `resolve --candidates` |
 | `adopt`      | Record the files already in `assets/` so later requests find them, with duration and size read by `ffprobe`                                                               |
 | `analyze`    | Measure an image or video and print suggested exposure and color corrections, saving nothing. Needs `--type grade --for <file>`                                           |
+| `voices`     | List the voice clones on the HyperFrames account you are signed in with, for `--voice` in `generate`. Never lists the separate `heygen` CLI's account |
 | `doctor`     | Check ffmpeg, ffprobe, Node.js, the bundled sound library, and the `heygen` CLI (installed, v0.3.0 or newer, signed in). Changes nothing                                  |
 | `stats`      | Count requests, misses, and reuse from the project's `.media/` and the global `~/.media/`                                                                                 |
 
