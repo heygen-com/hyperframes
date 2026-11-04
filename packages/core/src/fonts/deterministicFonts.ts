@@ -990,6 +990,27 @@ function findDeclaredFamilyAlias(
   return match;
 }
 
+// Design exports name a family by class, `font-<Family>-<weight>`; serve all <Family> faces under that name.
+const WEIGHTED_CLASS_FAMILY = /^font-(.+)-[1-9]00$/i;
+
+async function resolveWeightedClassFamily(
+  authoredFamily: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const family = WEIGHTED_CLASS_FAMILY.exec(authoredFamily)?.[1];
+  if (!family) return null;
+  return resolveFamilyFaceRules(
+    normalizeFamilyName(family),
+    family,
+    authoredFamily,
+    optional,
+    options,
+    fontText,
+  );
+}
+
 // Emits under the authored name instead of rewriting usages, as FONT_ALIASES does,
 // so script-assigned and var()-indirected usages match too.
 async function resolveDeclaredFamilyAlias(
@@ -1065,7 +1086,8 @@ async function buildFontFaceCss(
         optional,
         options,
         fontText,
-      ));
+      )) ??
+      (await resolveWeightedClassFamily(originalCaseFamily, optional, options, fontText));
     options.diag.endFamily(Boolean(familyRules));
     if (familyRules) {
       rules.push(...familyRules);
@@ -1823,6 +1845,7 @@ export interface InjectDeterministicFontFacesOptions {
    * planning; tests may lower delays and timeouts without replacing timers.
    */
   fontFetchRetryPolicy?: Partial<FontFetchRetryPolicy>;
+  projectFontFamilies?: readonly string[];
   /**
    * When `true` (default for local renders), fonts that aren't resolved by
    * the bundled alias map or Google Fonts are located on the local filesystem,
@@ -2029,6 +2052,8 @@ export async function injectDeterministicFontFaces(
   };
 
   const existingFaces = extractExistingFontFaces(html);
+  for (const family of options.projectFontFamilies ?? [])
+    existingFaces.add(normalizeFamilyName(family));
   const requestedFamilies = extractRequestedFontFamilies(html);
   const pendingFamilies = new Map<string, ResolvedFamily>();
 
