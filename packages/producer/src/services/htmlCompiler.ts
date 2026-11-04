@@ -1747,21 +1747,30 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
   return result;
 }
 
-// Copies project stylesheets' @font-face rules inline (urls rebased) so the font check and embed see them.
-// The <link> stays for the sheet's other rules.
-function inlineProjectFontFaces(html: string, projectDir: string): string {
-  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
-  return html.replace(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi, (tag) => {
+// Families a linked project stylesheet declares with an @font-face file the project ships.
+function projectStylesheetFontFamilies(html: string, projectDir: string): string[] {
+  const families: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {
     const href = /\bhref=["']([^"']+)["']/i.exec(tag)?.[1];
-    if (!href || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) return tag;
-    const sheetPath = decodedUrlPath(href).replace(/^(?:\.?\/)+/, "");
-    const absPath = resolve(projectDir, sheetPath);
-    if (!isPathInside(absPath, projectDir) || !existsSync(absPath)) return tag;
-    const faces = extractFontFaceBlocks(readFileSync(absPath, "utf8"));
-    if (faces.length === 0) return tag;
-    const css = rewriteCssAssetUrls(faces.join("\n"), sheetPath, assetExists);
-    return `${tag}\n<style>\n${css}\n</style>`;
-  });
+    if (!href || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) continue;
+    const sheet = resolve(projectDir, decodedUrlPath(href).replace(/^(?:\.?\/)+/, ""));
+    if (!isPathInside(sheet, projectDir) || !existsSync(sheet)) continue;
+    for (const face of extractFontFaceBlocks(readFileSync(sheet, "utf8"))) {
+      const family = /font-family\s*:\s*([^;}]+)/i
+        .exec(face)?.[1]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, "");
+      const shipsFile = [...face.matchAll(LOCAL_FONTFACE_URL_RE)].some(([, url = ""]) => {
+        const path = decodedUrlPath(url);
+        const file = path.startsWith("/")
+          ? resolve(projectDir, `.${path}`)
+          : resolve(dirname(sheet), path);
+        return isPathInside(file, projectDir) && existsSync(file);
+      });
+      if (family && shipsFile) families.push(family);
+    }
+  }
+  return families;
 }
 
 /**
@@ -2120,9 +2129,9 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
-  // Linked @font-face rules join the page first, or the font check below cannot see them.
+  // Remote font stylesheets join the page first, or the font check below cannot see them.
   const fontSheetHtml = await inlineExternalFontStylesheets(
-    inlineProjectFontFaces(promoteCssImportsToLinkTags(sanitizedHtml), projectDir),
+    promoteCssImportsToLinkTags(sanitizedHtml),
   );
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(coalesceHeadStylesAndBodyScripts(fontSheetHtml)),
@@ -2132,6 +2141,7 @@ export async function compileForRender(
     logger: defaultLogger,
     failClosedFontFetch: options.failClosedFontFetch === true,
     allowSystemFontCapture: options.allowSystemFontCapture,
+    projectFontFamilies: projectStylesheetFontFamilies(fontSheetHtml, projectDir),
     abortSignal: options.abortSignal,
   });
 

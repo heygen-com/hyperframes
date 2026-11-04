@@ -1845,6 +1845,7 @@ export interface InjectDeterministicFontFacesOptions {
    * planning; tests may lower delays and timeouts without replacing timers.
    */
   fontFetchRetryPolicy?: Partial<FontFetchRetryPolicy>;
+  projectFontFamilies?: readonly string[];
   /**
    * When `true` (default for local renders), fonts that aren't resolved by
    * the bundled alias map or Google Fonts are located on the local filesystem,
@@ -2051,6 +2052,8 @@ export async function injectDeterministicFontFaces(
   };
 
   const existingFaces = extractExistingFontFaces(html);
+  for (const family of options.projectFontFamilies ?? [])
+    existingFaces.add(normalizeFamilyName(family));
   const requestedFamilies = extractRequestedFontFamilies(html);
   const pendingFamilies = new Map<string, ResolvedFamily>();
 

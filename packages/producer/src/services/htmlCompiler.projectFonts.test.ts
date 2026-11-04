@@ -64,7 +64,6 @@ describe("compileForRender with fonts shipped in the project", () => {
     writeFileSync(join(projectDir, "fonts.css"), FACE);
     const { html } = await compile(page(`<link rel="stylesheet" href="fonts.css">`));
     expect(html).toContain('<link rel="stylesheet" href="fonts.css">');
-    expect(html).not.toContain('url("fonts/display.woff2")');
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -72,7 +71,18 @@ describe("compileForRender with fonts shipped in the project", () => {
     mkdirSync(join(projectDir, "css"));
     writeFileSync(join(projectDir, "css/fonts.css"), FACE.replace("fonts/", "../fonts/"));
     const { html } = await compile(page(`<link rel="stylesheet" href="./css/fonts.css">`));
-    expect(html).toMatch(/font-family: "Project Display"; src: url\("data:font\/woff2;base64,/);
+    expect(html).toContain('<link rel="stylesheet" href="./css/fonts.css">');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still fails closed when a project stylesheet names a font file the project lacks", async () => {
+    writeFileSync(
+      join(projectDir, "fonts.css"),
+      FACE.replace("fonts/display.woff2", "fonts/missing.woff2"),
+    );
+    await expect(compile(page(`<link rel="stylesheet" href="fonts.css">`))).rejects.toThrow(
+      /Unresolved fonts in fail-closed mode: Project Display/,
+    );
   });
 
   it("accepts a family whose @font-face lives in a remote stylesheet", async () => {
