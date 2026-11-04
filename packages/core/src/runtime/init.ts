@@ -4069,7 +4069,13 @@ export function initSandboxRuntimeModular(): void {
       );
     },
     () => maybePublishRenderReady(),
-    (err) => swallow("runtime.init.buildReady", err),
+    (err) => {
+      // A rejected build hold is a failed build, not a released one (#5603): name it on
+      // the startup-error channel, so capture fails the render with the reason instead
+      // of rendering every frame of a scene that never built and exiting 0.
+      recordStartupError(err);
+      swallow("runtime.init.buildReady", err);
+    },
   );
 
   // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is

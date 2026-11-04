@@ -4515,6 +4515,39 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  it("names a rejected buildReady hold on the startup-error channel instead of releasing silently (#5603)", async () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-width", "1920");
+    root.setAttribute("data-height", "1080");
+    document.body.appendChild(root);
+
+    window.__timelines = { main: createMockTimeline(10) };
+
+    // The registration shape a composition uses when its build fails (WebGPU
+    // unavailable, bad geometry): the hold rejects, and capture must learn why
+    // through window.__hfStartupError rather than render a never-built scene.
+    let rejectBuild: (reason?: unknown) => void = () => {};
+    const buildPromise = new Promise<void>((_resolve, reject) => {
+      rejectBuild = reject;
+    });
+    window.__hf = window.__hf || {};
+    window.__hf.buildReady = { frost: buildPromise };
+
+    initSandboxRuntimeModular();
+
+    expect(window.__renderReady).toBe(false);
+
+    rejectBuild(new Error("WebGPU adapter unavailable"));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(window.__hfStartupError).toContain("HyperFrames runtime failed");
+    expect(window.__hfStartupError).toContain("WebGPU adapter unavailable");
+  });
+
   it("settles window.__hf.buildReady with two or more registered keys", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
