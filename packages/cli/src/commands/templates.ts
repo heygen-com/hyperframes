@@ -145,24 +145,34 @@ const partPrefix = (dest: string) => `${basename(dest)}.part-`;
 const PULL_MARKER = ".hyperframes-pull.json";
 const PULL_OWNER = "hyperframes templates pull";
 
-/** The pid of the pull that made `path`, read from the marker it wrote; null for anything this CLI did not make. */
-function pullOwner(path: string, name: string, dest: string): number | null {
-  const suffix = name.slice(partPrefix(dest).length);
-  if (!name.startsWith(partPrefix(dest)) || !/^\d+-[A-Za-z0-9]{6}$/.test(suffix)) return null;
+function pidInPartName(name: string, dest: string): number | null {
+  if (!name.startsWith(partPrefix(dest))) return null;
+  const match = /^(\d+)-[A-Za-z0-9]{6}$/.exec(name.slice(partPrefix(dest).length));
+  return match ? Number(match[1]) : null;
+}
+
+function readPullMarker(path: string): unknown {
   let fd: number | undefined;
   try {
     fd = openSync(join(path, PULL_MARKER), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    if (!fstatSync(fd).isFile()) return null;
-    const record: unknown = JSON.parse(readFileSync(fd, "utf8"));
-    const pid = Number(suffix.split("-")[0]);
-    const owned =
-      typeof record === "object" && record !== null && "owner" in record && "pid" in record;
-    return owned && record.owner === PULL_OWNER && record.pid === pid ? pid : null;
+    return fstatSync(fd).isFile() ? JSON.parse(readFileSync(fd, "utf8")) : null;
   } catch {
     return null;
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
+}
+
+const hasMarkerFields = (value: unknown): value is { owner: unknown; pid: unknown } =>
+  typeof value === "object" && value !== null && "owner" in value && "pid" in value;
+
+const markedBy = (marker: unknown, pid: number): boolean =>
+  hasMarkerFields(marker) && marker.owner === PULL_OWNER && marker.pid === pid;
+
+/** The pid of the pull that made `path`, read from the marker it wrote; null for anything this CLI did not make. */
+function pullOwner(path: string, name: string, dest: string): number | null {
+  const pid = pidInPartName(name, dest);
+  return pid !== null && markedBy(readPullMarker(path), pid) ? pid : null;
 }
 
 function removeAbandonedParts(dest: string): void {
