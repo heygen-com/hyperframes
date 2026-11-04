@@ -79,6 +79,24 @@
 @media(prefers-reduced-motion:reduce){.hfc-gallery .mw .sq path{stroke-dashoffset:0;}}
 @media(max-width:600px){.hfc-gallery{padding:0 18px;}.hfc-gallery .hfc-hero{padding:28px 0;}}
 
+/* The catalog's own search: filters the cards below as you type. */
+.hfc-search {
+  display: block;
+  width: min(560px, 100%);
+  margin-top: 18px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+.hfc-search:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 40%, transparent);
+  outline-offset: 2px;
+}
+
 /* Pause previews: the visitor's stop for the looping cards. */
 .hfc-gallery .hfc-pause {
   margin-top: 14px;
