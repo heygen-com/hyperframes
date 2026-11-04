@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Page } from "puppeteer-core";
 import {
   MAX_RISK_FRAME_FRACTION,
@@ -118,6 +118,26 @@ describe("scanCssEffectLiveFrames", () => {
       await scanCssEffectLiveFrames(page, 60, 40_219, 40_219, { budgetMs: 60_000, now }),
     ).toBeNull();
     expect(seeks).toEqual([240]);
+  });
+
+  it("gives up when a chunk never answers, not when the protocol timeout fires", async () => {
+    vi.useFakeTimers();
+    try {
+      const page = { evaluate: () => new Promise<never>(() => {}) } as unknown as Page;
+      const scan = scanCssEffectLiveFrames(page, 30, 5_000, 5_000, {
+        budgetMs: 120_000,
+        now: () => Date.now(),
+      });
+      const outcome = { settled: false, live: undefined as Set<number> | null | undefined };
+      void scan.then((live) => Object.assign(outcome, { settled: true, live }));
+
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(outcome.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(outcome).toEqual({ settled: true, live: null });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports the frames scanned after each chunk", async () => {

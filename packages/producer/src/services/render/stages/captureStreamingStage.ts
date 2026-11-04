@@ -98,6 +98,8 @@ import type { SdrStreamingCapturePlan } from "../capturePlan.js";
  * fallback.
  */
 const DEFAULT_CAPTURE_STALL_MS = 60_000;
+/** Opening a session, and the effect scan inside it, before a first frame can land. */
+const SESSION_INIT_STALL_MS = 300_000;
 const DE_STALL_POLL_MS = 5_000;
 const STALL_ADVICE =
   "Chrome stopped answering. If another app is keeping the GPU or CPU busy " +
@@ -187,7 +189,12 @@ function captureModeLabel(mode: CaptureSession["captureMode"]): string {
   return "screenshot";
 }
 
-type StalledSession = Pick<CaptureSession, "captureMode" | "captureStep">;
+type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
+
+const OPENING_RISK_SESSION: StalledSession = {
+  captureMode: "screenshot",
+  captureStep: "opening the screenshot session for effect frames",
+};
 
 class SequentialCaptureStallError extends Error {
   readonly captureMode: CaptureSession["captureMode"];
@@ -492,7 +499,7 @@ function createDrainFrameGuard(args: {
 /** Frames drawElement cannot reproduce, and how to capture one by screenshot. */
 interface RiskFrameCapture {
   frames: ReadonlySet<number>;
-  /** Opens the screenshot session; kept out of the stall budget, a browser launch is slow. */
+  /** Opens the screenshot session; it gets a no-progress window of its own, a browser launch is slow. */
   open: () => Promise<void>;
   capture: (frameIndex: number, time: number) => Promise<Buffer>;
 }
@@ -521,7 +528,12 @@ async function runWorkerEncodePipelineLoop(
   const guardFrame = (item: Pending, buf: Buffer): Promise<Buffer> =>
     item.trusted ? Promise.resolve(buf) : guard(session, item.idx, buf);
   const captureRisk = async (idx: number): Promise<Buffer> => {
-    await risk!.open();
+    await raceAgainstStall(
+      risk!.open(),
+      stallTimeoutMs - quiet.idle(0),
+      { session: OPENING_RISK_SESSION, frameIndex: idx, totalFrames, stallTimeoutMs },
+      abortSignal,
+    );
     quiet.reset();
     return raceAgainstStall(
       risk!.capture(idx, frameTime(idx)),
@@ -1020,6 +1032,8 @@ export async function runCaptureStreamingStage(
         // The screenshot capture of today: same config with fast capture off. Its frames are not
         // consecutive, so static-frame reuse is off.
         let riskSession: CaptureSession | null = null;
+        // A stalled attempt stops waiting on an open still in flight; that session closes itself.
+        let attemptClosed = false;
         const openRiskSession = async (): Promise<CaptureSession> => {
           const opened = await createCaptureSession(
             fileServer.url,
@@ -1033,20 +1047,32 @@ export async function runCaptureStreamingStage(
               enableBrowserPool: false,
             },
           );
+          if (attemptClosed) {
+            await closeCaptureSession(opened);
+            throw new Error("[Render] Capture attempt ended while its screenshot session opened");
+          }
           riskSession = opened;
           await initializeSession(opened);
           return opened;
         };
+        const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
+        const withinInitBudget = (work: Promise<void>) =>
+          raceAgainstStall(
+            work,
+            initStallMs,
+            { session, frameIndex: resume.from, totalFrames, stallTimeoutMs: initStallMs },
+            abortSignal,
+          );
 
         let resumed = false;
         try {
           if (!session.isInitialized) {
-            await initializeSession(session);
+            await withinInitBudget(initializeSession(session));
           }
           // Probe-initialized video comps defer verification + canvas injection
           // until the injector exists (attached by prepareCaptureSessionForReuse
           // above) — complete it now so drawElement runs VERIFIED on video comps.
-          await completeDeferredDrawElementInit(session);
+          await withinInitBudget(completeDeferredDrawElementInit(session));
           assertNotAborted();
           lastBrowserConsole = session.browserConsoleBuffer;
 
@@ -1146,6 +1172,7 @@ export async function runCaptureStreamingStage(
           resumes++;
           resumed = true;
         } finally {
+          attemptClosed = true;
           // Keep the latest console buffer for success and cleanup-error summaries.
           lastBrowserConsole = session.browserConsoleBuffer;
           await closeCaptureSession(session);
