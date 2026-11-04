@@ -39,6 +39,18 @@ export function parseStoryboard(source: string): StoryboardManifest {
   const warnings: StoryboardWarning[] = [];
   const { globals, bodyStartLine, body } = parseFrontmatter(source, warnings);
   const frames = parseFrames(body, bodyStartLine, warnings);
+  const ids = new Set<string>();
+  for (const frame of frames) {
+    if (!frame.frameId) continue;
+    if (ids.has(frame.frameId)) {
+      warnings.push({
+        code: "duplicate_frame_id",
+        message: `Duplicate frame_id: ${frame.frameId}`,
+        frameIndex: frame.index,
+      });
+    }
+    ids.add(frame.frameId);
+  }
   return { globals, frames, warnings };
 }
 
@@ -87,7 +99,7 @@ function isFrameStatus(value: string): value is FrameStatus {
 // ── Frontmatter ───────────────────────────────────────────────────────────────
 
 /** Locate the `---`-delimited frontmatter block, or null when there is none. */
-function findFrontmatterRange(
+export function findFrontmatterRange(
   lines: string[],
   warnings: StoryboardWarning[],
 ): { start: number; end: number } | null {
@@ -225,6 +237,7 @@ function buildFrame(
 
   const narrativeLines: string[] = [];
   for (const line of section.lines) {
+    if (applyFrameIdentity(frame, line, warnings)) continue;
     const meta = META_RE.exec(line);
     if (meta) {
       applyMeta(
@@ -240,6 +253,25 @@ function buildFrame(
   }
   frame.narrative = narrativeLines.join("\n").trim();
   return frame;
+}
+
+function applyFrameIdentity(
+  frame: StoryboardFrame,
+  line: string,
+  warnings: StoryboardWarning[],
+): boolean {
+  const identity = /^\s*[-*]\s+frame_id\s*:(.*)$/i.exec(line);
+  if (!identity) return false;
+  const value = (identity[1] ?? "").trim();
+  if (frame.frameId !== undefined || !/^[0-9a-f]{32}$/.test(value)) {
+    warnings.push({
+      code: "invalid_frame_id",
+      message: `Frame ${frame.index}: frame_id must occur once and contain 32 lowercase hex characters.`,
+      frameIndex: frame.index,
+    });
+  }
+  frame.frameId = value;
+  return true;
 }
 
 function parseHeading(text: string): { number?: number; title?: string } {

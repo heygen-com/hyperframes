@@ -1,4 +1,4 @@
-import { FRAME_HEADING_RE, VOICEOVER_ALIASES } from "./parseStoryboard.js";
+import { FRAME_HEADING_RE, VOICEOVER_ALIASES, findFrontmatterRange } from "./parseStoryboard.js";
 import type { FrameStatus } from "./types.js";
 
 // Re-exported for back-compat: the canonical list now lives in parseStoryboard.ts.
@@ -40,7 +40,8 @@ interface FrameBounds {
 function frameBounds(lines: string[]): FrameBounds[] {
   const bounds: FrameBounds[] = [];
   let current: FrameBounds | null = null;
-  for (let i = 0; i < lines.length; i++) {
+  const bodyStart = (findFrontmatterRange(lines, [])?.end ?? -1) + 1;
+  for (let i = bodyStart; i < lines.length; i++) {
     const line = lines[i] ?? "";
     const frameMatch = FRAME_HEADING_RE.exec(line);
     if (frameMatch) {

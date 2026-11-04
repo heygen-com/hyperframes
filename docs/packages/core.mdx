@@ -31,6 +31,40 @@ re-exports for some older imports.
 
 ## Types
 
+### Storyboard identity and review manifests
+
+`@hyperframes/core/storyboard` parses the canonical `STORYBOARD.md`. Legacy
+boards can omit IDs, but a review manifest requires a persistent
+`- frame_id: <32 lowercase UUID hex characters>` on each frame.
+
+```ts
+import {
+  assignMissingFrameIds,
+  createReviewBoardManifest,
+  parseStoryboard,
+  setFrameFieldById,
+} from "@hyperframes/core/storyboard";
+
+const identified = assignMissingFrameIds(markdown, () => crypto.randomUUID().replaceAll("-", ""));
+// Persist identified under your project write lock before sharing its IDs.
+const manifest = createReviewBoardManifest(parseStoryboard(identified), { title: "Launch" });
+const edited = setFrameFieldById(identified, frameId, "voiceover", "A new line");
+```
+
+IDs survive reorder, rename and redraw. Duplicate and malformed IDs are rejected;
+duplicating or splitting a frame requires new IDs. The assignment helper returns
+Markdown and performs no file I/O. Repeating it on an identified document returns
+the original source without generating new IDs. The ID-based writer fails if the
+frame was removed instead of editing its old ordinal.
+
+The v1 review manifest has 1–200 frames and a maximum normalized size of 1 MiB.
+Each frame carries its persistent ID, display metadata, optional planned duration
+in integer milliseconds and an optional immutable still receipt. Supply stills
+as a map keyed by frame ID with `asset_id`, `sha256`, `mime_type`, `width`
+and `height`. Local paths are not asset identity. A missing still becomes null,
+so an outline can be reviewed before it is sketched. Timing is planned, not a
+mapping into a rendered cut. Creating this object does not upload or publish it.
+
 ```ts
 import type {
   CanvasResolution,

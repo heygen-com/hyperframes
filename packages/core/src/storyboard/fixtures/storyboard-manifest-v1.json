@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "title": "Launch 🎬",
+  "frames": [
+    {
+      "frame_id": "11111111111141118111111111111111",
+      "title": "First",
+      "display_number": 1,
+      "status": "built",
+      "act": "Opening",
+      "scene": null,
+      "motion": "Slow push in",
+      "voiceover": null,
+      "description": "Show the product.",
+      "planned_duration_ms": 2000,
+      "still": {
+        "asset_id": "22222222222242228222222222222222",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mime_type": "image/png",
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "frame_id": "33333333333343338333333333333333",
+      "title": "Second",
+      "display_number": 2,
+      "status": "outline",
+      "act": null,
+      "scene": null,
+      "motion": null,
+      "voiceover": null,
+      "description": "Still to sketch.",
+      "planned_duration_ms": null,
+      "still": null
+    }
+  ]
+}

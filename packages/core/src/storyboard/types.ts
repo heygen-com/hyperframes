@@ -48,6 +48,8 @@ export interface StoryboardGlobals {
 
 /** A single frame: one key moment in the video. */
 export interface StoryboardFrame {
+  /** Persisted lowercase UUID hex; independent of order, labels and image content. */
+  frameId?: string;
   /** 1-based order within the storyboard, assigned by document order. */
   index: number;
   /** Frame number as authored (the `N` in `Frame N`), when present. */
@@ -81,6 +83,7 @@ export interface StoryboardFrame {
 
 /** A non-fatal issue encountered while parsing. The parser never throws. */
 export interface StoryboardWarning {
+  code?: "invalid_frame_id" | "duplicate_frame_id";
   message: string;
   /** 1-based source line number, when known. */
   line?: number;
