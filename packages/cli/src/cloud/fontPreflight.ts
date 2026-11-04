@@ -115,7 +115,7 @@ export function describeUnresolvedFonts(families: readonly string[]): string {
   return families
     .map((family) => {
       const swap = lookAlikeFor(family);
-      return `${family} isn't on this computer, so the cloud can't have it: ${
+      return `HyperFrames couldn't find a font file for ${family} on this computer, so the cloud can't have it: ${
         swap ? `use ${swap}, ` : ""
       }switch to a font in your project or render on this computer.`;
     })

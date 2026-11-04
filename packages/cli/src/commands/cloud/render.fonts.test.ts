@@ -49,7 +49,7 @@ describe("cloud render font preflight", () => {
     expect(errorBox).toHaveBeenCalledWith(
       "Fonts not on this computer",
       expect.stringContaining(
-        "PingFang SC isn't on this computer, so the cloud can't have it: use Noto Sans SC",
+        "HyperFrames couldn't find a font file for PingFang SC on this computer, so the cloud can't have it: use Noto Sans SC",
       ),
     );
   });

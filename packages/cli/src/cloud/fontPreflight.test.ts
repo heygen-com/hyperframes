@@ -63,8 +63,8 @@ describe("embedSystemFonts", () => {
 describe("describeUnresolvedFonts", () => {
   it("names the font and a look-alike when there is one", () => {
     expect(describeUnresolvedFonts(["PingFang SC", "Zapfino"])).toBe(
-      "PingFang SC isn't on this computer, so the cloud can't have it: use Noto Sans SC, switch to a font in your project or render on this computer.\n" +
-        "Zapfino isn't on this computer, so the cloud can't have it: switch to a font in your project or render on this computer.",
+      "HyperFrames couldn't find a font file for PingFang SC on this computer, so the cloud can't have it: use Noto Sans SC, switch to a font in your project or render on this computer.\n" +
+        "HyperFrames couldn't find a font file for Zapfino on this computer, so the cloud can't have it: switch to a font in your project or render on this computer.",
     );
   });
 });
