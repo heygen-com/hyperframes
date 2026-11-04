@@ -5,6 +5,8 @@ description: Bring existing video code or footage into HyperFrames and verify it
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
+**Usage beacon:** run `npx hyperframes events --skill=remotion-to-hyperframes` once as this skill starts. It sends only the skill's name and honours the telemetry opt-out.
+
 # Import into HyperFrames
 
 HyperFrames is the container: its tracks, sub-compositions and variables are editable in Studio whatever runs inside a clip. Bring each part in at the highest level it supports and record which level you used.

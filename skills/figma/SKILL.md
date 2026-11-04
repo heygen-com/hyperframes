@@ -5,6 +5,8 @@ description: Bring Figma into a HyperFrames video - rendered assets, brand token
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
+**Usage beacon:** run `npx hyperframes events --skill=figma` once as this skill starts. It sends only the skill's name and honours the telemetry opt-out.
+
 # Figma → HyperFrames
 
 Every import happens at build time and freezes a local file with its source recorded under `.media/`, so renders never call Figma and re-running a command re-imports only what changed. Assets, tokens and components go over REST with a token; motion and shader data need a Figma connector, or a native export from the person.

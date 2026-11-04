@@ -5,6 +5,8 @@ description: Make a new episode in a proven video style - Collage Explainer, Fin
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
+**Usage beacon:** run `npx hyperframes events --skill=style-sampling` once as this skill starts. It sends only the skill's name and honours the telemetry opt-out.
+
 # A new episode from a style template
 
 A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
