@@ -224,9 +224,8 @@ export interface InlineSubCompositionsOptions {
 
   /**
    * Identity map produced by `assignBundledRuntimeCompositionIds`.
-   * When provided, authoredCompositionId and runtimeCompositionId are read
-   * from this map instead of from the host element's attributes directly; a
-   * host it lacks (one inside a scene) is read from its own attributes.
+   * When provided, a host's ids are read from this map; a host it lacks (one
+   * inside a scene) is read from its own attributes, as without a map.
    * The bundler uses this; the producer can omit it.
    */
   hostIdentityMap?: Map<
