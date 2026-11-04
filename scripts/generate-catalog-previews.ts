@@ -8,7 +8,8 @@
  * - Blocks:     renders the block's standalone HTML via a wrapper index.html
  * - Components: renders the component's demo.html via a wrapper index.html
  *
- * Output: docs/images/catalog/<type>/<name>.png + <name>.mp4
+ * Output: docs/images/catalog/<type>/<name>.png + <name>.mp4, and the gallery card's
+ *   docs/images/catalog-card/<type>/<name>.mp4 + <name>.jpg
  *   (docs/images/ is gitignored — files are served from the CDN. After running
  *   this script, run `bun run upload:docs-images` to publish.)
  *
@@ -135,9 +136,9 @@ export function discoverItems(
 
 // ── Preview generation ─────────────────────────────────────────────────────
 
-function outputDir(kind: ItemKind): string {
+function outputDir(kind: ItemKind, root = "docs/images/catalog"): string {
   const typeDir = kind === "block" ? "blocks" : "components";
-  return resolve(repoRoot, "docs/images/catalog", typeDir);
+  return resolve(repoRoot, root, typeDir);
 }
 
 /**
@@ -560,6 +561,60 @@ async function generateVideo(item: CatalogItem, projectDir: string): Promise<voi
   encodeForWeb(masterMp4, outMp4);
   rmSync(masterMp4, { force: true });
   console.log(`  ✓ ${item.name}.mp4 (${(statSync(outMp4).size / 1048576).toFixed(1)} MB)`);
+  writeCard(item, outMp4);
+}
+
+/** Where in the clip the card poster may come from: a fixed moment is often a blank frame between beats. */
+const POSTER_CANDIDATES = [0.25, 0.45, 0.65, 0.85];
+
+/**
+ * The gallery card's copy (docs/images/catalog-card). Every card on screen plays, so each one is a 480-wide
+ * silent loop of about 50 KB rather than the 1280-wide preview. Its poster is the candidate frame with the
+ * largest JPEG, which is the one with the most on it.
+ */
+function writeCard(item: CatalogItem, previewMp4: string): void {
+  const outDir = outputDir(item.kind, "docs/images/catalog-card");
+  mkdirSync(outDir, { recursive: true });
+  const ffmpeg = (args: string[]) =>
+    execFileSync("ffmpeg", ["-v", "error", "-y", ...args], { stdio: "inherit" });
+  const cardMp4 = join(outDir, `${item.name}.mp4`);
+  ffmpeg([
+    ...["-i", previewMp4, "-vf", "scale=480:-2", "-c:v", "libx264", "-crf", "28"],
+    ...["-preset", "slow", "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart", cardMp4],
+  ]);
+
+  const probe = [
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    "--",
+    cardMp4,
+  ];
+  const seconds = Number(execFileSync("ffprobe", probe).toString());
+  const candidates = POSTER_CANDIDATES.map((share, i) => {
+    const file = join(outDir, `${item.name}.poster-${i}.jpg`);
+    ffmpeg([
+      "-ss",
+      (seconds * share).toFixed(2),
+      "-i",
+      cardMp4,
+      "-frames:v",
+      "1",
+      "-q:v",
+      "4",
+      file,
+    ]);
+    return file;
+  }).filter((file) => existsSync(file));
+  const busiest = candidates.reduce((a, b) => (statSync(b).size > statSync(a).size ? b : a));
+  cpSync(busiest, join(outDir, `${item.name}.jpg`));
+  for (const file of candidates) rmSync(file, { force: true });
+  console.log(
+    `  ✓ card ${item.name}.mp4 + .jpg (${(statSync(cardMp4).size / 1024).toFixed(0)} KB)`,
+  );
 }
 
 /**

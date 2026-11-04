@@ -9,6 +9,8 @@ description: Make a new episode in a proven video style - Collage Explainer, Fin
 
 A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
 
+Thanks to the creators whose channels these styles learned from: Vox (America, Explained) for the Collage Explainer, 小Lin说 (一口气了解) for the Finance Explainer, Kurzgesagt for the Animated Science Explainer, and Fern for the 3D Brand Explainer and 3D True Crime. Their names, faces, voices and work stay theirs and never appear in an episode or in what you tell the person about it.
+
 Style templates are a HyperFrames Pro feature. The CLI pulls them and the server checks the plan.
 
 | Template | Slug | Series | Makes | The person brings |

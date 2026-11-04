@@ -503,11 +503,11 @@ samp {
     color: var(--hf-heading);
   }
 
-  #navbar .nav-tabs-item[aria-current] {
-    background: var(--hf-brand-soft);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hf-brand) 55%, transparent);
+  /* Mintlify marks the current tab with aria-current, except the Docs dropdown, which gets .text-primary instead */
+  #navbar .nav-tabs-item[aria-current],
+  #navbar .nav-tabs-item.text-primary {
+    background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
     color: var(--hf-heading) !important;
-    font-weight: 600;
   }
 
   #navbar .nav-tabs-item:focus:not(:focus-visible) {
@@ -1419,12 +1419,6 @@ h2 { clear: both; }
   background: var(--hf-glass) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-}
-
-@media (min-width: 1024px) {
-  #navbar .nav-tabs-item.text-primary {
-    background: var(--hf-chip);
-  }
 }
 
 /* Headlines: hyperframes.dev's heavy, tight TT Norms. */
