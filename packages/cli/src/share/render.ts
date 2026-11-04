@@ -1,0 +1,81 @@
+import { randomUUID } from "node:crypto";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { mkdir, writeFile, rename } from "node:fs/promises";
+import { join } from "node:path";
+import { projectFingerprint } from "@hyperframes/share";
+
+export interface ShareRender {
+  path: string;
+  id: string;
+  fingerprint: string;
+}
+
+export function latestShareRender(dir: string): ShareRender | null {
+  try {
+    const value: unknown = JSON.parse(
+      readFileSync(join(dir, ".hyperframes", "share-render.json"), "utf8"),
+    );
+    if (
+      !value ||
+      typeof value !== "object" ||
+      !("path" in value) ||
+      !("id" in value) ||
+      !("fingerprint" in value)
+    )
+      return null;
+    if (
+      typeof value.path !== "string" ||
+      typeof value.id !== "string" ||
+      typeof value.fingerprint !== "string" ||
+      !/^[a-f0-9-]{36}$/.test(value.id)
+    )
+      return null;
+    const expected = join(realpathSync(dir), ".hyperframes", "share-renders", `${value.id}.mp4`);
+    if (value.path !== expected || !existsSync(expected) || realpathSync(expected) !== expected)
+      return null;
+    return { path: expected, id: value.id, fingerprint: value.fingerprint };
+  } catch {
+    return null;
+  }
+}
+
+export async function prepareShareRender(dir: string): Promise<void> {
+  const before = await projectFingerprint(dir);
+  const previous = latestShareRender(dir);
+  if (previous?.fingerprint === before) return;
+  const stateFolder = join(dir, ".hyperframes");
+  if (existsSync(stateFolder) && realpathSync(stateFolder) !== stateFolder)
+    throw new Error("Sharing state must stay inside this project, without symlinks.");
+  await mkdir(stateFolder, { recursive: true });
+  const folder = join(stateFolder, "share-renders");
+  if (existsSync(folder) && realpathSync(folder) !== folder)
+    throw new Error("Sharing state must stay inside this project, without symlinks.");
+  await mkdir(folder, { recursive: true });
+  if (realpathSync(folder) !== folder)
+    throw new Error("Sharing state must stay inside this project, without symlinks.");
+  const id = randomUUID();
+  const output = join(folder, `${id}.mp4`);
+  const [{ createRenderPlan }, { executeRenderPlan }, render] = await Promise.all([
+    import("../commands/render/plan.js"),
+    import("../commands/render/execute.js"),
+    import("../commands/render.js"),
+  ]);
+  const plan = createRenderPlan({ dir, output, format: "mp4", quiet: true, strict: true });
+  await executeRenderPlan(plan, {
+    renderLocal: render.renderLocal,
+    renderDocker: async () => {
+      throw new Error("Share renders locally.");
+    },
+    checkResolution: render.checkRenderResolutionPreflight,
+  });
+  if (!existsSync(output))
+    throw new Error("The render did not produce a video. Run hyperframes render to diagnose it.");
+  if ((await projectFingerprint(dir)) !== before)
+    throw new Error(
+      "The project changed while rendering. Share again to capture the current project.",
+    );
+  const target = join(dir, ".hyperframes", "share-render.json");
+  const temporary = `${target}.${id}.tmp`;
+  await writeFile(temporary, JSON.stringify({ id, path: output, fingerprint: before }));
+  await rename(temporary, target);
+}

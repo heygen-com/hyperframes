@@ -99,6 +99,7 @@
         "@hyperframes/lint": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
         "@hyperframes/producer": "workspace:*",
+        "@hyperframes/share": "workspace:*",
         "@hyperframes/studio": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
         "@types/css-tree": "^3.2.0",
