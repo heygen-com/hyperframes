@@ -545,6 +545,7 @@ export async function addVersion(request) {
   /** @param {ReviewExportProgress} progress */
   const report = (progress) => (inFlight.set(key, progress), r.onProgress(progress));
   try {
+    report({ step: "preparing", sent: 0, total: 0 });
     const failure = await withProjectShareLock(r.projectPath, "export", () => run(r, report));
     const kept = failure && (uploaded || !request.projectId);
     if (kept) failures.set(key, { ...failure, exportKey: exportKeyOf(r.projectPath) });
