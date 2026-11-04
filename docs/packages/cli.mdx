@@ -1209,7 +1209,9 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
-`check` runs the linter first and skips the browser entirely on a lint error.
+`check` runs the linter first. A lint error fails the check but does not stop
+it: the browser checks still run and both are reported, unless the lint error
+leaves no composition to load (a root with no `data-composition-id`).
 Then it loads the bundled composition once and sweeps a single seek grid,
 running every audit at every sample: runtime console errors and failed requests,
 layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
@@ -1221,8 +1223,8 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
-When the browser never ran (lint errors, a linter crash, or a browser launch
-failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
+When the browser never ran (no composition to load, a linter crash, or a
+browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
 
 Scoped checks add `scope` to the JSON report with the requested range and
