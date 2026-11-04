@@ -1,14 +1,20 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
-import { processIdentity } from "./orphanCleanup.js";
-import { alive, readHolder, release, takeOver, tryAcquire, type Holder } from "./projectLock.js";
-import { liveOtherOwners, removeIfPresent, writeOwnerMarker } from "./renderLockOwners.js";
-
-/** Who holds this user account's render slot. */
-export interface RenderLockHolder extends Holder {
-  project: string;
-}
+import { readHolder, release } from "./projectLock.js";
+import {
+  claimSlot,
+  ensureLockDir,
+  RenderLockUnwritable,
+  type RenderLockHolder,
+} from "./renderLockClaim.js";
+import {
+  isHeldError,
+  liveOtherOwners,
+  removeIfPresent,
+  startToken,
+  writeOwnerMarker,
+} from "./renderLockOwners.js";
 
 export class RenderLockBusy extends Error {
   constructor(
@@ -31,7 +37,9 @@ export interface RenderLockOptions {
   pollMs?: number;
   env?: NodeJS.ProcessEnv;
   pid?: number;
-  claim?: (path: string, holder: Holder) => boolean | Promise<boolean>;
+  claim?: (path: string, holder: RenderLockHolder, marker: string) => boolean | Promise<boolean>;
+  /** Runs while this render holds `.break`, right before it re-checks and replaces a stale lock. */
+  beforeReplace?: () => void | Promise<void>;
 }
 
 const POLL_MS = 1_000;
@@ -66,22 +74,6 @@ function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
   });
 }
 
-/** Claims a lock or `.break` only a dead writer could have left: unreadable ones need no live contender. */
-function reclaimAbandoned(path: string, holder: Holder, marker: string): boolean {
-  const current = readHolder(path);
-  if (current && alive(current.pid)) return false;
-  const breakPath = `${path}.break`;
-  if (existsSync(breakPath)) {
-    const breaker = readHolder(breakPath);
-    if (breaker ? alive(breaker.pid) : liveOtherOwners(path, marker) > 0) return false;
-    removeIfPresent(breakPath);
-    return tryAcquire(path, holder);
-  }
-  const writerGone = () =>
-    existsSync(path) && !readHolder(path) && liveOtherOwners(path, marker) === 0;
-  return writerGone() && takeOver(path, holder, writerGone);
-}
-
 const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) =>
   a?.pid === b?.pid && a?.startedAt === b?.startedAt;
 
@@ -93,12 +85,15 @@ export async function acquireRenderLock(options: RenderLockOptions): Promise<() 
   if (renderLockDisabled(options.env)) return () => {};
   const contender = prepareContender(options);
   let waitingBehind: RenderLockHolder | null | undefined;
+  let retriedVanished = false;
   for (;;) {
+    options.signal?.throwIfAborted();
     const releaseSlot = await claimOnce(contender);
     if (releaseSlot) return releaseSlot;
     const { path } = contender;
     const current = readHolder<RenderLockHolder>(path);
-    if (!current && !existsSync(path)) continue;
+    retriedVanished = !current && !existsSync(path) && !retriedVanished;
+    if (retriedVanished) continue;
     if (!options.wait) throw new RenderLockBusy(current, path);
     if (waitingBehind === undefined || !sameWaitTarget(waitingBehind, current)) {
       waitingBehind = current;
@@ -117,22 +112,37 @@ interface Contender {
 
 function prepareContender(options: RenderLockOptions): Contender {
   const path = options.path ?? renderLockPath();
-  mkdirSync(dirname(path), { recursive: true });
+  ensureLockDir(dirname(path));
   liveOtherOwners(path);
   const pid = options.pid ?? process.pid;
+  const identity = startToken(pid);
   return {
     path,
-    holder: { pid, command: "render", startedAt: Date.now(), project: options.project },
-    owner: { pid, identity: processIdentity(pid) },
-    claim: options.claim ?? tryAcquire,
+    holder: { pid, command: "render", startedAt: Date.now(), project: options.project, identity },
+    owner: { pid, identity },
+    claim:
+      options.claim ??
+      ((lock, holder, marker) => claimSlot(lock, holder, marker, options.beforeReplace)),
   };
 }
 
+const notWritable = (error: unknown) =>
+  process.platform !== "win32" &&
+  ["EACCES", "EPERM"].includes((error as NodeJS.ErrnoException).code ?? "");
+
 async function claimOnce({ path, holder, owner, claim }: Contender): Promise<(() => void) | null> {
-  const marker = writeOwnerMarker(path, owner);
+  let marker: string;
+  try {
+    marker = writeOwnerMarker(path, owner);
+  } catch (error) {
+    throw notWritable(error) ? new RenderLockUnwritable(dirname(path), error) : error;
+  }
   let held = false;
   try {
-    held = (await claim(path, holder)) || reclaimAbandoned(path, holder, marker);
+    held = await claim(path, holder, marker);
+  } catch (error) {
+    if (notWritable(error)) throw new RenderLockUnwritable(dirname(path), error);
+    if (!isHeldError(error)) throw error;
   } finally {
     if (!held) removeIfPresent(marker);
   }

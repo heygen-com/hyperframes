@@ -1,18 +1,24 @@
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   closeSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   openSync,
   readdirSync,
+  readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireRenderLock, RenderLockBusy, type RenderLockHolder } from "./renderLock.js";
+import { acquireRenderLock, RenderLockBusy, type RenderLockOptions } from "./renderLock.js";
+import { type RenderLockHolder } from "./renderLockClaim.js";
+import { startToken } from "./renderLockOwners.js";
+import { RenderLockStaleBreak } from "./renderLockClaim.js";
 import type { Holder } from "./projectLock.js";
 import { acquireRenderSlot } from "../commands/render/renderSlot.js";
 
@@ -24,7 +30,19 @@ beforeEach(() => {
   path = join(dir, "locks", "render.lock");
 });
 
-afterEach(() => {
+const stillWaiting: Array<{ stop: AbortController; settled: Promise<unknown> }> = [];
+
+/** An acquire that every test ends before its folder is removed, so no loop outlives the test. */
+function startAcquire(options: Omit<RenderLockOptions, "signal">): Promise<() => void> {
+  const stop = new AbortController();
+  const acquiring = acquireRenderLock({ ...options, signal: stop.signal });
+  stillWaiting.push({ stop, settled: acquiring.catch(() => undefined) });
+  return acquiring;
+}
+
+afterEach(async () => {
+  for (const { stop } of stillWaiting) stop.abort(new Error("test over"));
+  await Promise.all(stillWaiting.splice(0).map(({ settled }) => settled));
   vi.useRealTimers();
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
@@ -49,7 +67,7 @@ describe("acquireRenderLock", () => {
     const release = await acquireRenderLock({ project: "/work/brand", wait: false, path, env: {} });
     const waits: Array<RenderLockHolder | null> = [];
     let started = false;
-    const second = acquireRenderLock({
+    const second = startAcquire({
       project: "/work/crime",
       wait: true,
       path,
@@ -85,21 +103,120 @@ describe("acquireRenderLock", () => {
     release();
   });
 
-  it("takes over when the render that was taking over a dead slot died too", async () => {
-    const dead = (project: string): RenderLockHolder => ({
-      pid: deadPid(),
+  describe("a takeover file (.break)", () => {
+    const record = (pid: number, project: string): RenderLockHolder => ({
+      pid,
       command: "render",
       startedAt: 1,
       project,
+      identity: startToken(pid),
     });
-    await acquireRenderLock({ project: "/work/seed", wait: false, path, env: {} }).then((r) => r());
-    writeFileSync(path, JSON.stringify(dead("/work/killed")));
-    writeFileSync(`${path}.break`, JSON.stringify(dead("/work/breaker")));
+    const seed = (breaker: string) => {
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(path, JSON.stringify(record(deadPid(), "/work/killed")));
+      writeFileSync(`${path}.break`, breaker);
+    };
 
-    const release = await acquireRenderLock({ project: "/work/next", wait: false, path, env: {} });
+    it.each([
+      ["readable", () => JSON.stringify(record(deadPid(), "/work/breaker"))],
+      ["half-written", () => '{"pid":'],
+    ])(
+      "left %s by a render that died is never deleted on an earlier reading; the render says what to delete",
+      async (_kind, content) => {
+        const left = content();
+        seed(left);
+        for (const wait of [false, true]) {
+          await expect(
+            startAcquire({ project: "/work/next", wait, path, env: {} }),
+          ).rejects.toBeInstanceOf(RenderLockStaleBreak);
+        }
+        expect(readFileSync(`${path}.break`, "utf8")).toBe(left);
+      },
+    );
 
-    release();
-    expect(existsSync(`${path}.break`)).toBe(false);
+    it("that a live render is still writing is left to it, and that render's takeover holds alone", async () => {
+      vi.useFakeTimers({ now: Date.now() });
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(path, JSON.stringify(record(deadPid(), "/work/killed")));
+      let resume: () => void = () => {};
+      let heldBy: string[] = [];
+      const first = startAcquire({
+        project: "/work/one",
+        wait: false,
+        path,
+        env: {},
+        beforeReplace: () => new Promise<void>((resolve) => (resume = resolve)),
+      }).then((release) => ((heldBy = [...heldBy, "one"]), release));
+      await vi.waitFor(() => expect(existsSync(`${path}.break`)).toBe(true));
+      const breakWhileReplacing = readFileSync(`${path}.break`, "utf8");
+
+      await expect(
+        startAcquire({ project: "/work/two", wait: false, path, env: {} }),
+      ).rejects.toBeInstanceOf(RenderLockBusy);
+      const second = startAcquire({ project: "/work/two", wait: true, path, env: {} }).then(
+        (release) => ((heldBy = [...heldBy, "two"]), release),
+      );
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(readFileSync(`${path}.break`, "utf8")).toBe(breakWhileReplacing);
+      expect(heldBy).toEqual([]);
+
+      resume();
+      const releaseFirst = await first;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(heldBy).toEqual(["one"]);
+      releaseFirst();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(heldBy).toEqual(["one", "two"]);
+      (await second)();
+    });
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "takes over a lock whose pid now belongs to a different process",
+    async () => {
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      const reused: RenderLockHolder = {
+        pid: process.pid,
+        command: "render",
+        startedAt: 1,
+        project: "/work/oom-killed",
+        identity: "linux:1",
+      };
+      writeFileSync(path, JSON.stringify(reused));
+
+      const release = await acquireRenderLock({
+        project: "/work/next",
+        wait: false,
+        path,
+        env: {},
+      });
+
+      expect(JSON.parse(readFileSync(path, "utf8")).project).toBe("/work/next");
+      release();
+    },
+  );
+
+  describe.skipIf(process.platform === "win32")("a cache folder shared by accounts", () => {
+    it("creates its locks folder writable for every account", async () => {
+      const release = await acquireRenderLock({ project: "/work/a", wait: false, path, env: {} });
+      expect(statSync(join(dir, "locks")).mode & 0o777).toBe(0o777);
+      release();
+    });
+
+    it.skipIf(process.getuid?.() === 0)(
+      "says how to fix a locks folder this account cannot write in",
+      async () => {
+        mkdirSync(join(dir, "locks"), { mode: 0o755 });
+        chmodSync(join(dir, "locks"), 0o555);
+        try {
+          await expect(
+            acquireRenderLock({ project: "/work/b", wait: false, path, env: {} }),
+          ).rejects.toThrow(`chmod 777 ${join(dir, "locks")}`);
+        } finally {
+          chmodSync(join(dir, "locks"), 0o755);
+        }
+      },
+    );
   });
 
   it("keeps the slot in this user's HyperFrames cache folder, which HYPERFRAMES_CACHE_DIR can share", async () => {
@@ -116,16 +233,17 @@ describe("acquireRenderLock", () => {
   describe("a lock file that cannot be read yet", () => {
     /** A contender that opens the lock exclusively, then stalls before writing its holder. */
     const pausedAfterOpen = (gate: Promise<void>) => async (file: string, holder: Holder) => {
-      closeSync(openSync(file, "wx"));
+      const fd = openSync(file, "wx");
       await gate;
-      writeFileSync(file, JSON.stringify(holder));
+      writeFileSync(fd, JSON.stringify(holder));
+      closeSync(fd);
       return true;
     };
 
     it("is not taken from a live contender paused between opening and writing it", async () => {
       vi.useFakeTimers({ now: Date.now() });
       let resume: () => void = () => {};
-      const writerA = acquireRenderLock({
+      const writerA = startAcquire({
         project: "/work/a",
         wait: false,
         path,
@@ -133,7 +251,7 @@ describe("acquireRenderLock", () => {
         claim: pausedAfterOpen(new Promise<void>((resolve) => (resume = resolve))),
       });
       let heldByB = false;
-      const writerB = acquireRenderLock({ project: "/work/b", wait: true, path, env: {} }).then(
+      const writerB = startAcquire({ project: "/work/b", wait: true, path, env: {} }).then(
         (release) => {
           heldByB = true;
           return release;
@@ -157,13 +275,20 @@ describe("acquireRenderLock", () => {
     });
 
     it("is reclaimed when the contender that opened it died before writing", async () => {
-      void acquireRenderLock({
+      let crash: (reason: Error) => void = () => {};
+      const died = new Promise<void>((_, reject) => (crash = reject));
+      const writerA = startAcquire({
         project: "/work/a",
         wait: false,
         path,
         env: {},
         pid: deadPid(),
-        claim: pausedAfterOpen(new Promise<void>(() => {})),
+        // A dead process holds no handle, so the opened file is closed, as the OS would close it.
+        claim: async (file) => {
+          closeSync(openSync(file, "wx"));
+          await died;
+          return true;
+        },
       });
       await vi.waitFor(() => expect(existsSync(path)).toBe(true));
 
@@ -172,6 +297,8 @@ describe("acquireRenderLock", () => {
       expect(readdirSync(join(dir, "locks")).filter((n) => n.includes(".owner-"))).toHaveLength(1);
       release();
       expect(readdirSync(join(dir, "locks"))).toEqual([]);
+      crash(new Error("A is gone"));
+      await expect(writerA).rejects.toThrow("A is gone");
     });
 
     it("is reclaimed when no contender is left at all", async () => {
@@ -188,28 +315,53 @@ describe("acquireRenderLock", () => {
       release();
       expect(existsSync(path)).toBe(false);
     });
+  });
 
-    it("reclaims a half-written takeover file next to a dead holder", async () => {
-      const killed: RenderLockHolder = {
-        pid: deadPid(),
-        command: "render",
-        startedAt: 1,
-        project: "/work/killed",
-      };
-      mkdirSync(join(dir, "locks"), { recursive: true });
-      writeFileSync(path, JSON.stringify(killed));
-      writeFileSync(`${path}.break`, '{"pid":');
+  it("stops waiting, and stops marking itself a contender, when its signal aborts", async () => {
+    vi.useFakeTimers();
+    const release = await acquireRenderLock({ project: "/work/brand", wait: false, path, env: {} });
+    const stop = new AbortController();
+    const waiting = acquireRenderLock({
+      project: "/work/crime",
+      wait: true,
+      path,
+      env: {},
+      signal: stop.signal,
+    });
+    await vi.advanceTimersByTimeAsync(3_000);
 
-      const release = await acquireRenderLock({
-        project: "/work/next",
+    stop.abort(new Error("cancelled"));
+    await expect(waiting).rejects.toThrow("cancelled");
+    release();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(readdirSync(join(dir, "locks"))).toEqual([]);
+  });
+
+  it("reads a file another handle holds (Windows EPERM/EBUSY) as held, not as a failure", async () => {
+    const busy = Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+
+    await expect(
+      acquireRenderLock({
+        project: "/work/crime",
         wait: false,
         path,
         env: {},
-      });
+        claim: () => {
+          throw busy;
+        },
+      }),
+    ).rejects.toBeInstanceOf(RenderLockBusy);
+    expect(readdirSync(join(dir, "locks")).filter((n) => n.includes(".owner-"))).toEqual([]);
+  });
 
-      release();
-      expect(existsSync(`${path}.break`)).toBe(false);
-    });
+  it("never starts PowerShell for a start-time lookup on Windows", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+    Object.defineProperty(process, "platform", { ...platform, value: "win32" });
+    try {
+      expect(startToken(process.pid)).toBeNull();
+    } finally {
+      Object.defineProperty(process, "platform", platform);
+    }
   });
 
   it("lets renders run side by side with HYPERFRAMES_RENDER_LOCK=off", async () => {
@@ -247,11 +399,13 @@ describe("acquireRenderSlot", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const release = await acquireRenderLock({ project: "/work/brand", wait: false, path, env: {} });
 
+    const stop = new AbortController();
     const slot = acquireRenderSlot(
       { project: { dir: "/work/crime" } as never, waitForRenderSlot: true },
-      undefined,
+      stop.signal,
       { path, env: {} },
     );
+    stillWaiting.push({ stop, settled: slot.catch(() => undefined) });
     await vi.advanceTimersByTimeAsync(3_000);
 
     const said = vi.mocked(console.error).mock.calls.flat().join("\n");

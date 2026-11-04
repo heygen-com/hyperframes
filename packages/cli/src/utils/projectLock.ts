@@ -37,11 +37,11 @@ export function alive(pid: number): boolean {
 const sameHolder = (a: Holder | null, b: Holder) =>
   a?.pid === b.pid && a.startedAt === b.startedAt && a.command === b.command;
 
-export function takeOver(path: string, holder: Holder, stillStale: () => boolean): boolean {
+function breakStaleHolder(path: string, current: Holder, holder: Holder): boolean {
   const breakPath = `${path}.break`;
   if (!createNew(breakPath, holder)) return false;
   try {
-    if (stillStale()) {
+    if (sameHolder(readHolder(path), current)) {
       try {
         unlinkSync(path);
       } catch (error) {
@@ -64,12 +64,10 @@ function createNew(path: string, holder: Holder): boolean {
   }
 }
 
-export function tryAcquire(path: string, holder: Holder): boolean {
+function tryAcquire(path: string, holder: Holder): boolean {
   if (createNew(path, holder)) return true;
   const current = readHolder(path);
-  if (current && !alive(current.pid)) {
-    return takeOver(path, holder, () => sameHolder(readHolder(path), current));
-  }
+  if (current && !alive(current.pid)) return breakStaleHolder(path, current, holder);
   return false;
 }
 

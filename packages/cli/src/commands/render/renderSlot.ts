@@ -7,6 +7,7 @@ import {
   RenderLockBusy,
   type RenderLockOptions,
 } from "../../utils/renderLock.js";
+import { RenderLockStaleBreak, RenderLockUnwritable } from "../../utils/renderLockClaim.js";
 import type { RenderPlan } from "./plan.js";
 
 /** One local render at a time per user account: a second waits for the slot, or fails under --no-wait. */
@@ -30,6 +31,10 @@ export async function acquireRenderSlot(
       ...lock,
     });
   } catch (error) {
+    if (error instanceof RenderLockStaleBreak || error instanceof RenderLockUnwritable) {
+      errorBox("The render slot cannot be taken", error.message);
+      return failCommand(1, error);
+    }
     if (!(error instanceof RenderLockBusy)) throw error;
     errorBox(
       "Another render is running for this user account",
