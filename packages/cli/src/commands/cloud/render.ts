@@ -65,6 +65,7 @@ import {
   pollUntilTerminal,
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
+import { describeUnresolvedFonts, unresolvedCloudFonts } from "../../cloud/fontPreflight.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
 import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "../../cloud/upload.js";
 import {
@@ -275,6 +276,14 @@ export default defineCommand({
       project,
       args.composition,
     );
+
+    if (project.kind === "dir") {
+      const missing = await unresolvedCloudFonts(project.dir, args.composition);
+      if (missing.length > 0) {
+        errorBox("Fonts the cloud doesn't have", describeUnresolvedFonts(missing));
+        failCommand();
+      }
+    }
 
     const client = await createCloudClient();
     const preparedArchive =
