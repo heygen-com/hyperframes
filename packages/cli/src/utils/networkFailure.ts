@@ -1,10 +1,4 @@
-/**
- * Flatten an error and its `cause` chain into one readable line.
- *
- * `fetch failed` on its own is useless. `fetch failed (self-signed certificate
- * in certificate chain)` tells the reader exactly which knob to turn, and that
- * string only exists one or two levels down the chain.
- */
+/** An error and its `cause` chain as one line: undici's reason, such as a self-signed certificate, sits a level or two down. */
 export function describeCauseChain(err: unknown): string {
   const parts: string[] = [];
   let current: unknown = err;

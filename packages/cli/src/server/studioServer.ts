@@ -434,13 +434,11 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
   }
 }
 
-/** Made before the watcher starts: the watcher reports a `.hyperframes` that appears mid-session as a change to
- * Studio's manifests, and the first preview build would otherwise create it. */
-function createStudioStateFolder(projectDir: string): void {
+function createStateFolderBeforeWatching(projectDir: string): void {
   try {
     mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
   } catch {
-    // A read-only project gets no preview cache either, so nothing creates the folder later.
+    return;
   }
 }
 
@@ -451,7 +449,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const gsapVendorDir = resolveGsapVendorDir();
-  createStudioStateFolder(projectDir);
+  createStateFolderBeforeWatching(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────

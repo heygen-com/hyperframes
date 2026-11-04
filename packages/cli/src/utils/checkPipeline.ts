@@ -1659,8 +1659,6 @@ export async function runAuditGrid(
   };
 }
 
-/** A lint error that leaves the browser no composition to load. Any other lint error still gets the browser
- * pass, so one known lint error does not hide every layout, motion and contrast finding. */
 export const leavesNothingToLoad = (finding: { code: string; severity: string }): boolean =>
   finding.severity === "error" && finding.code === "root_missing_composition_id";
 

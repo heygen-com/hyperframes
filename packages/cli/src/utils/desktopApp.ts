@@ -249,14 +249,12 @@ export function insideHostApp(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.HYPERFRAMES_DESKTOP_PROJECT);
 }
 
-/** Someone reads the app line: a person at a terminal, or the coding agent that passes it on (skills/hyperframes/SKILL.md).
- * CI and a script piping the output have nobody to open the app. */
 function someoneToTell(env: NodeJS.ProcessEnv, tty: boolean): boolean {
   if (isCI(env)) return false;
   return tty || env["HYPERFRAMES_AGENT"] === "1" || isAgentDriven(env);
 }
 
-/** The app line render and preview print; null inside the app, with nobody to read it, or with nothing to open or download. */
+/** The app line render and preview print for a person or the agent relaying it (skills/hyperframes/SKILL.md); null inside the app, under CI or a pipe, or with nothing to open or download. */
 export function desktopHint(
   dir: string,
   {
