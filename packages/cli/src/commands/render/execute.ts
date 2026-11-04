@@ -43,6 +43,8 @@ export interface RenderExecutionDependencies {
   renderDocker: RenderExecutor;
   renderLocal: RenderExecutor;
   checkResolution: ResolutionPreflight;
+  /** Takes this machine's render slot and returns its release; without it the render runs unqueued. */
+  acquireRenderSlot?: (plan: RenderPlan, signal?: AbortSignal) => Promise<() => void>;
 }
 
 // Exported only through render.ts so command tests can lock the user-facing guidance.
@@ -105,6 +107,30 @@ export async function executeRenderPlan(
   await runResolutionPreflight(plan, dependencies.checkResolution);
   assertRenderActive(cancellation);
 
+  const releaseSlot = await dependencies.acquireRenderSlot?.(plan, cancellation?.signal);
+  try {
+    assertRenderActive(cancellation);
+    await executeHeldRender(plan, browserPath, variables, dependencies, cancellation, {
+      batchModule,
+      preparedBatch,
+    });
+  } finally {
+    releaseSlot?.();
+  }
+}
+
+async function executeHeldRender(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  variables: RenderOptions["variables"],
+  dependencies: RenderExecutionDependencies,
+  cancellation: RenderCancellationScope | undefined,
+  batch: {
+    batchModule?: typeof import("../batchRender.js");
+    preparedBatch?: import("../batchRender.js").PreparedBatchRender;
+  },
+): Promise<void> {
+  const { batchModule, preparedBatch } = batch;
   if (plan.batchPath && batchModule && preparedBatch) {
     await executeBatchRender(
       plan,
