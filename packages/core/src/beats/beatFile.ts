@@ -105,7 +105,6 @@ function isMusicSourceTag(tag: HtmlOpeningTagSpan): boolean {
   return tag.closed && (tag.name === "audio" || (tag.name === "video" && isSoundingVideoTag(tag)));
 }
 
-/** The `<audio>` elements with a src and no role: music candidates nothing has marked. */
 export function unmarkedAudioSources(html: string): { id: string | null; src: string }[] {
   return scanHtmlOpeningTags(html).flatMap((tag) => {
     const src =
@@ -122,8 +121,7 @@ export function unmarkedAudioSources(html: string): { id: string | null; src: st
  * the FIRST `<audio>`, or `<video data-has-audio="true">` without `muted` (in
  * document order) where data-timeline-role="music", or —
  * when no role is set — whose id matches the music regex. An explicit non-music
- * role excludes the element. When none is marked, the only unmarked `<audio>` is
- * the music track. Returns the decoded src attribute, or null.
+ * role excludes the element. A lone unmarked `<audio>` is the music. Returns its src, or null.
  */
 export function findMusicAudioSrc(html: string): string | null {
   for (const tag of scanHtmlOpeningTags(html)) {

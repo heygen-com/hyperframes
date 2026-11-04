@@ -37,7 +37,6 @@ function mediaSrc(element: Element): string | null {
   );
 }
 
-/** The composition HTML with a `<source>` child's src lifted onto its media element. */
 function withSourceAttributes(html: string): string {
   const document = parseHTMLContent(html);
   walkCompositionDescendants(document, (element) => {
@@ -56,7 +55,6 @@ const MARK_MUSIC =
   'Add data-timeline-role="music" to the <audio> element, or to a <video data-has-audio="true"> ' +
   "whose own sound is the music (or give it an id like music/bgm/soundtrack).";
 
-/** Why no music track was found; with several unmarked <audio> elements, names each one. */
 export function noMusicTrackMessage(html: string): string {
   const audio = unmarkedAudioSources(html);
   if (audio.length < 2) return `No music track found. ${MARK_MUSIC}`;
@@ -80,7 +78,6 @@ function resolveMusicTarget(
 }
 
 function answerNoTrack(json: boolean, html: string): void {
-  // Several unmarked <audio> elements is an ambiguity to fix, not a composition without music.
   if (!json || unmarkedAudioSources(html).length > 1) fail(noMusicTrackMessage(html));
   console.log(JSON.stringify({ ok: true, track: null, file: null, count: 0, bpm: null }, null, 2));
 }
