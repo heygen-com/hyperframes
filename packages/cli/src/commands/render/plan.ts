@@ -165,7 +165,6 @@ export interface RenderPlan {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments: boolean;
   bestEffort: boolean;
-  /** Queue behind another render on this machine instead of failing. */
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;

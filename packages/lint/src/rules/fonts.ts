@@ -111,7 +111,6 @@ function resolveUsedFontNames(
   });
 }
 
-/** The family list a `font-family` or `font` declaration names; the renderer reads both. */
 function usedFamilyList(decl: postcss.Declaration): string {
   if (isFontFaceDeclaration(decl)) return "";
   return decl.prop.toLowerCase() === "font" ? fontShorthandFamilies(decl.value) : decl.value;
@@ -262,7 +261,6 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     return findings;
   },
 
-  // font_face_local_only
   ({ styles, rawSource, options, locate }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];

@@ -32,10 +32,10 @@ export interface RenderLockOptions {
 
 const POLL_MS = 1_000;
 
-export const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
+const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
 
 /** `HYPERFRAMES_RENDER_LOCK=off` lets renders on this machine run side by side. */
-export function renderLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+function renderLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.HYPERFRAMES_RENDER_LOCK?.trim().toLowerCase();
   return value === "off" || value === "0" || value === "false";
 }

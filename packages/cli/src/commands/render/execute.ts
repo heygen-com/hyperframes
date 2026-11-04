@@ -43,7 +43,6 @@ export interface RenderExecutionDependencies {
   renderDocker: RenderExecutor;
   renderLocal: RenderExecutor;
   checkResolution: ResolutionPreflight;
-  /** Takes this machine's render slot and returns its release; without it the render runs unqueued. */
   acquireRenderSlot?: (plan: RenderPlan, signal?: AbortSignal) => Promise<() => void>;
 }
 
@@ -143,6 +142,13 @@ async function executeHeldRender(
     return;
   }
 
+  reportSingleRenderNotes(plan, variables);
+  const options = renderOptionsFromPlan(plan, browserPath, variables);
+  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
+  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+}
+
+function reportSingleRenderNotes(plan: RenderPlan, variables: RenderOptions["variables"]): void {
   if (variables && Object.keys(variables).length > 0) {
     const issues = validateVariablesAgainstProject(plan.renderTarget, variables);
     reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.effectiveQuiet });
@@ -153,10 +159,6 @@ async function executeHeldRender(
       c.dim(`ProRes ${plan.proresProfile} has no alpha channel: transparent areas render black.`),
     );
   }
-
-  const options = renderOptionsFromPlan(plan, browserPath, variables);
-  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
 }
 
 /**
