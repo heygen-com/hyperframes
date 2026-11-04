@@ -222,6 +222,32 @@ describe("uploadZipViaDirectUpload", () => {
     expect((err as HyperframesApiError).status).toBe(400);
   });
 
+  it("does not blame the file's type when complete refuses an expired upload", async () => {
+    const completeAssetUpload = vi.fn(async () => {
+      throw new HyperframesApiError({
+        status: 400,
+        message: "This upload has expired; create a new upload.",
+        code: "invalid_parameter",
+      });
+    });
+    const client = makeClient({
+      completeAssetUpload:
+        completeAssetUpload as unknown as HyperframesCloudClient["completeAssetUpload"],
+    });
+
+    const err = await uploadAssetViaDirectUpload({
+      client,
+      bytes: new Uint8Array([0]),
+      filename: "song.mp3",
+      contentType: "audio/mpeg",
+      fetchImpl: makeFetchOk(),
+    }).catch((e: unknown) => e);
+
+    expect((err as HyperframesApiError).message).toBe(
+      "The cloud refused song.mp3: This upload has expired; create a new upload.",
+    );
+  });
+
   it("surfaces PUT failures with response body detail", async () => {
     const client = makeClient();
     const fetchImpl = vi.fn(

@@ -199,15 +199,17 @@ async function completeWithRetry(
   throw lastErr ?? new Error("completeAssetUpload retries exhausted");
 }
 
-// The server refuses a stored file with a bare INVALID_PARAMETER; say which file and keep its words.
+// complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
+const TYPE_REFUSAL = /^(Stored file type|content_type not allowed|Stored file does not have a ZIP)/;
+
 function nameRefusedFile(err: unknown, filename: string, contentType: string): unknown {
   if (!(err instanceof HyperframesApiError) || err.code !== "invalid_parameter") return err;
   const kind = contentType.split("/")[0];
   const noun = kind === "audio" || kind === "video" || kind === "image" ? `${kind} file` : "file";
-  return new HyperframesApiError({
-    ...err,
-    message: `The cloud couldn't read this ${noun}'s type: ${filename}. It said: ${err.message}`,
-  });
+  const lead = TYPE_REFUSAL.test(err.message)
+    ? `The cloud couldn't read this ${noun}'s type: ${filename}. It said:`
+    : `The cloud refused ${filename}:`;
+  return new HyperframesApiError({ ...err, message: `${lead} ${err.message}` });
 }
 
 export async function uploadAssetViaDirectUpload(
