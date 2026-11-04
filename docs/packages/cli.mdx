@@ -656,8 +656,9 @@ npx hyperframes media-use resolve --type bgm --reuse 06e052c0
 # Bring in a file you already have
 npx hyperframes media-use resolve --type image --from ./photo.jpg
 
-# The voice clones on the account that makes the film
+# The voice clones and avatar looks on the account that makes the film
 npx hyperframes media-use voices
+npx hyperframes media-use avatars --limit 10
 
 # Check the setup, and see what has been used
 npx hyperframes media-use doctor
@@ -676,6 +677,7 @@ file yourself.
 | `adopt`      | Record the files already in `assets/` so later requests find them, with duration and size read by `ffprobe`                                                               |
 | `analyze`    | Measure an image or video and print suggested exposure and color corrections, saving nothing. Needs `--type grade --for <file>`                                           |
 | `voices`     | List the voice clones on the HyperFrames account you are signed in with, for `--voice` in `generate`. Never lists the separate `heygen` CLI's account |
+| `avatars`    | List the avatar looks on the HyperFrames account you are signed in with, as `{avatars: [{avatar_id, name, avatar_type, group_id, gender, status, default_voice_id, preview_image_url}]}`, for `--avatar` in `generate --type avatar`. `--limit` (default 20). Never lists the separate `heygen` CLI's account |
 | `doctor`     | Check ffmpeg, ffprobe, Node.js, the bundled sound library, and the `heygen` CLI (installed, v0.3.0 or newer, signed in). Changes nothing                                  |
 | `stats`      | Count requests, misses, and reuse from the project's `.media/` and the global `~/.media/`                                                                                 |
 
@@ -1209,7 +1211,9 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
-`check` runs the linter first and skips the browser entirely on a lint error.
+`check` runs the linter first. A lint error fails the check but does not stop
+it: the browser checks still run and both are reported, unless the lint error
+leaves no composition to load (a root with no `data-composition-id`).
 Then it loads the bundled composition once and sweeps a single seek grid,
 running every audit at every sample: runtime console errors and failed requests,
 layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
@@ -1221,8 +1225,8 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
-When the browser never ran (lint errors, a linter crash, or a browser launch
-failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
+When the browser never ran (no composition to load, a linter crash, or a
+browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
 
 Scoped checks add `scope` to the JSON report with the requested range and
@@ -2559,7 +2563,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--quality`            | `standard`                  | `draft`, `standard`, or `high`                                                                                                                  |
 | `--format`             | `mp4`                       | `mp4`, `webm`, or `mov`                                                                                                                         |
 | `--resolution`         | `1080p`                     | `1080p` or `4k`. 4k bills at 1.5×.                                                                       |
-| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. With `--asset-id` or `--url` the server defaults to `16:9`. |
+| `--aspect-ratio`       | auto                        | Any `W:H`, auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. At `1080p` the output keeps the composition's own size, whatever its ratio (a 1920×960 composition renders 1920×960). `4k` scales only `16:9`, `9:16` and `1:1` compositions and refuses any other ratio before upload. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. |
 | `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip                                                                                                                   |
 | `--variables`          | —                           | Inline JSON overriding `data-composition-variables`                                                                                              |
 | `--variables-file`     | —                           | Read those overrides from a JSON file                                                                                                            |
