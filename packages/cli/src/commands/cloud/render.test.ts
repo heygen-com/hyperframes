@@ -305,6 +305,38 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     ).toThrow(CliRuntimeError);
   });
 
+  it.each([
+    [1920, 1055],
+    [1000, 980],
+    [1055, 1920],
+  ])(
+    "refuses a 4k render of %ix%i, near a preset ratio but not one the 4K preset fits",
+    (width, height) => {
+      const dir = writeComposition(width, height);
+      expect(() =>
+        resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+      ).toThrow(CliRuntimeError);
+    },
+  );
+
+  it.each([
+    [1920, 1080, "16:9"],
+    [1080, 1920, "9:16"],
+    [1080, 1080, "1:1"],
+  ])("sends %ix%i at 4k as %s", (width, height, ratio) => {
+    const dir = writeComposition(width, height);
+    expect(
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+    ).toBe(ratio);
+  });
+
+  it("keeps sending a near-16:9 composition's preset at 1080p, where the render keeps its own size", () => {
+    const dir = writeComposition(1920, 1055);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true)).toBe(
+      "16:9",
+    );
+  });
+
   it("fails fast when the --composition entry is missing", () => {
     const dir = writeComposition(1920, 1080);
     expect(() =>

@@ -36,6 +36,11 @@ import {
   type AspectRatioDetection,
   type SupportedAspectRatio,
 } from "../../cloud/detectAspectRatio.js";
+import {
+  CANVAS_DIMENSIONS,
+  checkOutputResolutionCompatibility,
+  type CanvasResolution,
+} from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
@@ -490,6 +495,7 @@ export function resolveAspectRatioForSubmit(
     failCommand();
   }
   if (detection.kind === "matched") {
+    if (resolution === "4k") refuseUnfit4kPreset(detection);
     logDetection(asJson, summarizeDetection(detection, entryRelative));
     return detection.aspectRatio;
   }
@@ -523,6 +529,34 @@ function ratioLabel(width: number, height: number): string {
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
   const d = gcd(width, height);
   return `${width / d}:${height / d}`;
+}
+
+const PRESET_4K: Record<SupportedAspectRatio, CanvasResolution> = {
+  "16:9": "landscape-4k",
+  "9:16": "portrait-4k",
+  "1:1": "square-4k",
+};
+
+/** The detector matches a ratio within a tolerance; the renderer's 4K preset has to fit the exact size. */
+function refuseUnfit4kPreset(detection: {
+  aspectRatio: SupportedAspectRatio;
+  width: number;
+  height: number;
+}): void {
+  const preset = PRESET_4K[detection.aspectRatio];
+  const compat = checkOutputResolutionCompatibility({
+    compositionWidth: detection.width,
+    compositionHeight: detection.height,
+    outputResolution: preset,
+  });
+  if (compat.ok) return;
+  const exact = CANVAS_DIMENSIONS[preset];
+  errorBox(
+    "No 4K preset fits this composition",
+    `${detection.width}×${detection.height} cannot render at 4K as ${detection.aspectRatio}: ${compat.message}`,
+    `Render it at 1080p, which keeps ${detection.width}×${detection.height}, or re-author it at ${exact.width / 2}×${exact.height / 2}.`,
+  );
+  failCommand();
 }
 
 function refuseUnsupportedAt4k(
