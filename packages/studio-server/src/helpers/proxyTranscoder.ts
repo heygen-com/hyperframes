@@ -219,6 +219,14 @@ export function getProxyCachePath(
   );
 }
 
+function copiedSeconds(duration: number | undefined, limitSeconds: number | undefined) {
+  return limitSeconds === undefined ? duration : Math.min(limitSeconds, duration ?? limitSeconds);
+}
+
+function lengthArgs(seconds: number | undefined): string[] {
+  return seconds === undefined ? [] : ["-t", String(seconds)];
+}
+
 function keyVariant(variant: ProxyVariant, limitSeconds: number | undefined): string {
   return limitSeconds === undefined ? variant : `${variant}@${limitSeconds}s`;
 }
@@ -733,10 +741,7 @@ async function runFfmpeg(
     ...["-map", "0:V:0"],
     ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
   ];
-  const totalSeconds =
-    limitSeconds === undefined
-      ? metadata.durationSeconds
-      : Math.min(limitSeconds, metadata.durationSeconds ?? limitSeconds);
+  const totalSeconds = copiedSeconds(metadata.durationSeconds, limitSeconds);
   // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
   const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
   const vp8Threads = (pieces: number) => [
@@ -756,11 +761,7 @@ async function runFfmpeg(
         "-i",
         sourcePath,
         ...streamArgs,
-        ...(range
-          ? ["-t", String(range.lengthSeconds)]
-          : limitSeconds === undefined
-            ? []
-            : ["-t", String(limitSeconds)]),
+        ...lengthArgs(range?.lengthSeconds ?? limitSeconds),
         "-vf",
         videoFilter,
         ...KEYFRAME_EVERY_SECOND_ARGS,
