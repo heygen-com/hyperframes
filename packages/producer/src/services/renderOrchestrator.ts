@@ -1472,6 +1472,32 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       const remainingCount = countFrameRanges(remaining);
       const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
 
+      // A browser that times out starting up or loading its page before any frame exists had too many pages
+      // opening at once: retry with half the workers, down to one. Other zero-progress errors fail below.
+      // A lone worker gets one retry: here for Network.enable, as the transient retry below for a page load.
+      if (
+        options.allowRetry &&
+        !madeProgress &&
+        (currentWorkers > 1 ||
+          (initializationRetriesUsed === 0 && failure.kind === "protocol_timeout")) &&
+        /\bNetwork\.enable timed out|Navigation timeout of \d+ ms exceeded/i.test(failure.message)
+      ) {
+        initializationRetriesUsed++;
+        const nextWorkers = getNextRetryWorkerCount(currentWorkers);
+        options.log.warn(
+          "[Render] Browser initialization timed out; retrying with fewer workers.",
+          {
+            fromWorkers: currentWorkers,
+            toWorkers: nextWorkers,
+            error: failure.message,
+          },
+        );
+        currentWorkers = nextWorkers;
+        missingRanges = remaining;
+        attempt++;
+        continue;
+      }
+
       // Single bounded retry for a transient browser death (`Target closed` /
       // `Page crashed` / `Session closed`): the tab died mid-capture, not the
       // composition. Unlike the worker-halving retry below, this keeps the same
@@ -1497,32 +1523,6 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         missingRanges = remaining;
         attempt++;
         pendingTransientRetry = true;
-        continue;
-      }
-
-      // CDP initialization can time out before any frame exists. Give that
-      // specific startup failure one fresh attempt with less concurrency;
-      // arbitrary zero-progress authoring/capture errors still fail below.
-      if (
-        options.allowRetry &&
-        !madeProgress &&
-        initializationRetriesUsed === 0 &&
-        failure.kind === "protocol_timeout" &&
-        /\bNetwork\.enable timed out/i.test(failure.message)
-      ) {
-        initializationRetriesUsed++;
-        const nextWorkers = getNextRetryWorkerCount(currentWorkers);
-        options.log.warn(
-          "[Render] Browser initialization timed out; retrying once with fresh sessions.",
-          {
-            fromWorkers: currentWorkers,
-            toWorkers: nextWorkers,
-            error: failure.message,
-          },
-        );
-        currentWorkers = nextWorkers;
-        missingRanges = remaining;
-        attempt++;
         continue;
       }
 

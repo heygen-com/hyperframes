@@ -428,6 +428,46 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     }
   });
 
+  it("halves the workers when every page times out loading, instead of reopening as many", async () => {
+    const workDir = mkdtempSync(join(tmpdir(), "hf-navtimeout-work-"));
+    const framesDir = mkdtempSync(join(tmpdir(), "hf-navtimeout-frames-"));
+    const log = makeLog();
+    let call = 0;
+    vi.mocked(executeParallelCapture).mockImplementation(async () => {
+      call++;
+      if (call === 1) {
+        throw new Error(
+          "[Parallel] Capture failed: Worker 0: Navigation timeout of 60000 ms exceeded",
+        );
+      }
+      writeAllFrames(framesDir, 16);
+      return [];
+    });
+    vi.mocked(mergeWorkerFrames).mockResolvedValue(undefined);
+
+    try {
+      const attempts = await executeDiskCaptureWithAdaptiveRetry({
+        serverUrl: "http://localhost:0",
+        workDir,
+        framesDir,
+        totalFrames: 16,
+        initialWorkerCount: 8,
+        allowRetry: true,
+        frameExt: "jpg",
+        captureOptions: { width: 64, height: 64, fps: { num: 30, den: 1 } },
+        createBeforeCaptureHook: () => null,
+        cfg: DEFAULT_CONFIG,
+        log,
+        dedupPerfs: [],
+      });
+
+      expect(attempts.map((a) => a.workers)).toEqual([8, 4]);
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+      rmSync(framesDir, { recursive: true, force: true });
+    }
+  });
+
   it.each(["Target closed", "Network.enable timed out"])(
     "does NOT retry %s after cancellation",
     async (message) => {
@@ -475,7 +515,7 @@ describe("executeDiskCaptureWithAdaptiveRetry — transient Target-closed single
     },
   );
 
-  it.each(["Session closed", "Network.enable timed out"])(
+  it.each(["Session closed", "Network.enable timed out", "Navigation timeout of 9 ms exceeded"])(
     "bounds repeated %s failures",
     async (message) => {
       const workDir = mkdtempSync(join(tmpdir(), "hf-transient2-work-"));
