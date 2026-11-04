@@ -10,6 +10,7 @@ import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
+import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
 import { pageUrl } from "./plan.js";
 
 export interface Job {
@@ -215,7 +216,37 @@ export interface RunOptions {
   credits?: number;
 }
 
+/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits.
+ *  Every paid call comes through runJob. True when this call reserved. */
+function withinLimit(
+  limitLog: JobLog | undefined,
+  sent: string,
+  credits: number | undefined,
+): boolean {
+  if (!limitLog?.projectDir) return false;
+  const limit = creditLimit(limitLog.projectDir);
+  if (limit === undefined) return false;
+  const spent = creditsSpent(limitLog.projectDir);
+  if (spent.keys.has(sent)) return false;
+  const left = limit - spent.total;
+  const fix =
+    "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
+  if (credits === undefined)
+    throw new Fix(
+      `this call cannot be priced ahead, so it cannot be kept under the run's credit limit of ${limit}; nothing was made`,
+      fix,
+    );
+  if (credits > left)
+    throw new Fix(
+      `this call is about ${credits} credits and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
+      fix,
+    );
+  log(limitLog, { key: sent, status: "reserved", credits });
+  return true;
+}
+
 /** Starts a job (or picks up the one this key already started) and polls its status until it ends. */
+// fallow-ignore-next-line complexity
 export async function runJob(
   jobRoute: JobRoute,
   body: unknown,
@@ -226,6 +257,7 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
+  const reserved = withinLimit(opts.log, sent, opts.credits);
   let job: Job;
   try {
     job = await call(
@@ -236,11 +268,15 @@ export async function runJob(
       auth,
     );
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
+      markFailed(sent, scope);
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 });
+    }
     throw err;
   }
   const waits = RUNNING.has(job.status.toLowerCase());
-  if (opts.log && waits) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  if (opts.log && waits)
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: opts.credits });
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
@@ -257,7 +293,8 @@ export async function runJob(
       30_000,
     );
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  if (opts.log)
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: opts.credits });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
     throw await refusal(422, {
