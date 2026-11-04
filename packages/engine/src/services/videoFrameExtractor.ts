@@ -412,6 +412,7 @@ export type VideoExtractionFailureKind =
   | "ffmpeg_timeout"
   | "ffmpeg_transient"
   | "ffmpeg_failed"
+  | "disk_full"
   | "zero_output"
   | "internal";
 
@@ -1477,6 +1478,16 @@ async function extractVideoFramesRangeUnredacted(
         "ffmpeg_timeout",
         true,
         "Video frame extraction timed out",
+        diagnostic,
+        ffmpegReason,
+      );
+    }
+    // ffmpeg ends a full disk with its last frames' summary, so the strerror text is the only sign of it
+    if (/no space left on device|disk quota exceeded/i.test(processResult.stderr)) {
+      throw new VideoSourceExtractionError(
+        "disk_full",
+        false,
+        "The disk filled up while video frames were extracted",
         diagnostic,
         ffmpegReason,
       );
