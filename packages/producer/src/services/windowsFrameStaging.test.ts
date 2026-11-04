@@ -127,6 +127,19 @@ it("distributed materialization stays physically self-contained after cache remo
   expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
 });
 
+it.skipIf(process.platform === "win32")(
+  "relinks over a dangling frame link left where the frames go",
+  () => {
+    const { root, compiled, extracted } = fixture();
+    const dest = join(compiled, "__hyperframes_video_frames", "clip");
+    mkdirSync(join(compiled, "__hyperframes_video_frames"), { recursive: true });
+    symlinkSync(join(root, "collected-cache"), dest, "dir");
+    materializeExtractedFramesForCompiledDir([extracted], compiled);
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+    expect(readFileSync(join(dest, "frame_000001.jpg"), "utf8")).toBe("frame bytes");
+  },
+);
+
 describe("Windows link fallbacks", () => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
   beforeEach(() => Object.defineProperty(process, "platform", { value: "win32" }));
@@ -156,6 +169,51 @@ describe("Windows link fallbacks", () => {
       expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
     },
   );
+
+  it.each(["EISDIR", "EIO", "EINVAL"])(
+    "copies after the drive refuses the symlink with %s and the junction too",
+    (code) => {
+      const { compiled, extracted } = fixture();
+      const attempts: Array<string | undefined> = [];
+      materializeExtractedFramesForCompiledDir([extracted], compiled, {
+        fileSystem: {
+          existsSync,
+          mkdirSync,
+          cpSync,
+          rmSync,
+          symlinkSync: (_target, _path, type) => {
+            attempts.push(type);
+            throw Object.assign(new Error("link refused"), { code });
+          },
+        },
+      });
+      expect(attempts).toEqual(["dir", "junction"]);
+      expect(lstatSync(extracted.outputDir).isSymbolicLink()).toBe(false);
+      expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
+    },
+  );
+
+  it("does not copy onto a disk the symlink found full", () => {
+    const { compiled, extracted } = fixture();
+    const copy = vi.fn();
+    const attempts: Array<string | undefined> = [];
+    expect(() =>
+      materializeExtractedFramesForCompiledDir([extracted], compiled, {
+        fileSystem: {
+          existsSync,
+          mkdirSync,
+          rmSync,
+          cpSync: copy,
+          symlinkSync: (_target, _path, type) => {
+            attempts.push(type);
+            throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+          },
+        },
+      }),
+    ).toThrow("disk full");
+    expect(attempts).toEqual(["dir"]);
+    expect(copy).not.toHaveBeenCalled();
+  });
 
   it("does not hide a disk failure from the junction attempt", () => {
     const { compiled, extracted } = fixture();
