@@ -277,14 +277,18 @@ export interface Voice {
 const isVoice = (v: unknown): v is Voice =>
   isRecord(v) && typeof v.voice_id === "string" && typeof v.name === "string";
 
-/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
-export async function publicVoices(language: string, limit: number): Promise<Voice[]> {
+async function listVoices(query: { type: "public" | "private"; language?: string }, limit: number) {
   const client = clientFor(await resolveCloudAuthHeaders().catch(noSignIn));
   const value = await client
-    .listVoicesV3({ type: "public", language, limit, signal: AbortSignal.timeout(30_000) })
+    .listVoicesV3({ ...query, limit, signal: AbortSignal.timeout(30_000) })
     .catch((err: unknown) => {
       if (err instanceof HyperframesApiError)
-        throw new Fix(`HeyGen ${err.status} listing its voices`, "run the same command again");
+        throw new Fix(
+          `HeyGen ${err.status} listing its voices`,
+          err.status === 401 || err.status === 403
+            ? "npx hyperframes auth login"
+            : "run the same command again",
+        );
       throw new Fix(
         `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
         "run the same command again",
@@ -296,6 +300,13 @@ export async function publicVoices(language: string, limit: number): Promise<Voi
     .filter(isVoice)
     .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));
 }
+
+/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
+export const publicVoices = (language: string, limit: number): Promise<Voice[]> =>
+  listVoices({ type: "public", language }, limit);
+
+export const ownVoices = (limit: number): Promise<Voice[]> =>
+  listVoices({ type: "private" }, limit);
 
 /** Who a paid job bills: the same scope a job's failures and keys belong to. */
 export async function senderScope(): Promise<string | null> {

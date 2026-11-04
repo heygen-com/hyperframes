@@ -103,6 +103,7 @@ export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
   const subCommands = {
     ...Object.fromEntries(MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)])),
     generate: () => import("./media-use/generate.js").then((m) => m.default),
+    voices: () => import("./media-use/voices.js").then((m) => m.default),
   };
   return defineCommand({
     meta: { name: "media-use", description: "Resolve and operate on project media" },
