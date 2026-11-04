@@ -9,6 +9,8 @@
   },
   "files": [
     "dist",
+    "!dist/services/__fixtures__/blurDifferential.*",
+    "!dist/services/__fixtures__/motionBlur",
     "README.md"
   ],
   "type": "module",
