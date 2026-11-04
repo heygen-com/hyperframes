@@ -10,8 +10,8 @@ import { createProjectShareSourceStore } from "./sources/store.mjs";
 import { realWait } from "./sources/transfer.mjs";
 import { uploadSource } from "./sources/upload.mjs";
 
-/** @typedef {import("./sources/adapterTypes").SourceResult} SourceResult
- * @typedef {import("./sources/types").Binding} Binding */
+/** @typedef {import("./sources/adapterTypes.js").SourceResult} SourceResult
+ * @typedef {import("./sources/types.js").Binding} Binding */
 /** @param {string} reason @returns {SourceResult} */
 const unavailable = (reason) => ({ at: "unavailable", reason });
 /** @param {Binding} binding @param {string} space */
@@ -21,7 +21,7 @@ function bindingRefusal(binding, space) {
   if (binding.gettingFromCloud || binding.duplicate) return "source_operation_in_progress";
   return null;
 }
-/** @param {import("./sources/types").Capture} capture */
+/** @param {import("./sources/types.js").Capture} capture */
 function captureRefusal(capture) {
   if (capture.at === "too-big") return `source_${capture.over.limit}_exceeded`;
   if (capture.at === "problems") return `source_${capture.problems[0]?.problem ?? "invalid"}`;
@@ -32,12 +32,12 @@ function captureRefusal(capture) {
 
 /** Prepare source explicitly before adding the video version. No unexpected network or filesystem failure is
  * converted to video-only. `filesForExport` revalidates the prepared bytes and never starts another upload.
- * @param {import("./sources/adapterTypes").SourceOptions} options */
+ * @param {import("./sources/adapterTypes.js").SourceOptions} options */
 export function shareSources(options) {
   const store = options.store ?? createProjectShareSourceStore();
   const fingerprint = options.fingerprint ?? projectFingerprint;
   const signal = options.signal ?? new AbortController().signal;
-  /** @type {Map<string, { rendered: string, digest: string, snapshot: import("./types/reviewWire").SnapshotRef, account: string, backend: string }>} */
+  /** @type {Map<string, { rendered: string, digest: string, snapshot: import("./types/reviewWire.js").SnapshotRef, account: string, backend: string }>} */
   const prepared = new Map();
   /** @param {string} projectPath @param {string | null} rendered @returns {Promise<SourceResult>} */
   const prepare = async (projectPath, rendered) => {
@@ -110,16 +110,16 @@ export function shareSources(options) {
   return { prepare, filesForExport };
 }
 
-/** @param {import("./sources/adapterTypes").SourceOptions} options */
+/** @param {import("./sources/adapterTypes.js").SourceOptions} options */
 const enabled = (options) => options.enabled?.() ?? true;
 /** @param {Awaited<ReturnType<import("./signedInRequest.mjs").SignedInAccess>>} signed
  * @param {{account: string, backend: string}} held */
 const sameOwner = (signed, held) =>
   signed?.owner === held.account && signed?.heygenApi === held.backend;
 /** @typedef {{ binding: Binding, own: boolean, external: boolean, api: import("./sources/api.mjs").SourceApi,
- * store: import("./sources/adapterTypes").SourceStore, options: import("./sources/adapterTypes").SourceOptions,
+ * store: import("./sources/adapterTypes.js").SourceStore, options: import("./sources/adapterTypes.js").SourceOptions,
  * signal: AbortSignal, fingerprint: (path: string) => Promise<string | null>, rendered: string }} Preparation */
-/** @param {Preparation} job @returns {Promise<SourceResult & {manifest?: import("./sources/types").Manifest}>} */
+/** @param {Preparation} job @returns {Promise<SourceResult & {manifest?: import("./sources/types.js").Manifest}>} */
 async function prepareBinding(job) {
   const { binding, api, fingerprint, rendered } = job;
   const limits = await api.limits(binding.ownerSpaceId);
@@ -133,8 +133,8 @@ async function prepareBinding(job) {
   const result = await snapshotFor(job, capture.manifest, limits);
   return { ...result, manifest: capture.manifest };
 }
-/** @param {Preparation} job @param {import("./sources/types").Manifest} manifest
- * @param {Extract<import("./sources/types").SyncLimitsRead, {at: "read"}>} limits @returns {Promise<SourceResult>} */
+/** @param {Preparation} job @param {import("./sources/types.js").Manifest} manifest
+ * @param {Extract<import("./sources/types.js").SyncLimitsRead, {at: "read"}>} limits @returns {Promise<SourceResult>} */
 async function snapshotFor(job, manifest, limits) {
   const { binding, api, store, options, signal } = job;
   if (binding.base?.manifestSha256 === manifest.sha256 && !binding.inflight)
@@ -153,7 +153,7 @@ async function snapshotFor(job, manifest, limits) {
   await store.write(binding);
   return uploadSource({ binding, manifest, api, store, signal, ...uploadOptions(options) });
 }
-/** @param {import("./sources/adapterTypes").SourceOptions} options */
+/** @param {import("./sources/adapterTypes.js").SourceOptions} options */
 function uploadOptions(options) {
   return {
     fetchImpl: options.fetchImpl ?? fetch,
@@ -163,14 +163,14 @@ function uploadOptions(options) {
   };
 }
 
-/** @param {import("./sources/types").BindingKey} key @param {import("./sources/adapterTypes").SourceOptions} options
- * @param {import("./sources/adapterTypes").SourceStore} store */
+/** @param {import("./sources/types.js").BindingKey} key @param {import("./sources/adapterTypes.js").SourceOptions} options
+ * @param {import("./sources/adapterTypes.js").SourceStore} store */
 async function selectBinding(key, options, store) {
   const own = await store.read(key);
   const existing = own ? null : await options.existingBinding?.(key);
   return { own, existing, binding: own ?? existing ?? newBinding(key, options.spaceId) };
 }
-/** @param {import("./sources/types").BindingKey} key @param {string} space @returns {Binding} */
+/** @param {import("./sources/types.js").BindingKey} key @param {string} space @returns {Binding} */
 function newBinding(key, space) {
   return {
     ...key,

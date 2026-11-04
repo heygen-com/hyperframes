@@ -3,10 +3,10 @@
 import { ManifestInvalid, parseStoredManifest } from "./manifest.mjs";
 import { SyncApiError } from "./errors.mjs";
 
-/** @typedef {import("./types").SyncLimitsRead} SyncLimitsRead
- * @typedef {import("./types").Composition} Composition @typedef {import("./types").Snapshot} Snapshot
- * @typedef {import("./types").UploadReceipt} UploadReceipt @typedef {import("./types").BeginResult} BeginResult
- * @typedef {import("./types").FileGrant} FileGrant @typedef {import("./types").DownloadBatch} DownloadBatch */
+/** @typedef {import("./types.js").SyncLimitsRead} SyncLimitsRead
+ * @typedef {import("./types.js").Composition} Composition @typedef {import("./types.js").Snapshot} Snapshot
+ * @typedef {import("./types.js").UploadReceipt} UploadReceipt @typedef {import("./types.js").BeginResult} BeginResult
+ * @typedef {import("./types.js").FileGrant} FileGrant @typedef {import("./types.js").DownloadBatch} DownloadBatch */
 
 /** @param {string} field */
 const malformed = (field) =>

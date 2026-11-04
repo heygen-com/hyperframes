@@ -51,7 +51,7 @@ export function sourceApi({ access, fetchImpl = fetch }) {
           `${path(space, composition)}/snapshots/${encodeURIComponent(snapshot)}?include=manifest`,
         ),
       ),
-    /** @param {string} space @param {string} composition @param {import("./types").BeginRequest} body */
+    /** @param {string} space @param {string} composition @param {import("./types.js").BeginRequest} body */
     begin: async (space, composition, body) =>
       beginOf(
         await send(
@@ -68,7 +68,7 @@ export function sourceApi({ access, fetchImpl = fetch }) {
         ),
         false,
       ),
-    /** @param {string} space @param {string} composition @param {string} upload @param {import("./types").GrantRequest[]} files */
+    /** @param {string} space @param {string} composition @param {string} upload @param {import("./types.js").GrantRequest[]} files */
     uploadUrls: async (space, composition, upload, files) =>
       grantsOf(
         await send(

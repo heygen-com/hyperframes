@@ -4,7 +4,7 @@
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 
-/** @typedef {import("./types").Limits} Limits @typedef {import("./types").LimitName} LimitName */
+/** @typedef {import("./types.js").Limits} Limits @typedef {import("./types.js").LimitName} LimitName */
 
 /** @type {Limits} */
 export const V1_LIMITS = Object.freeze({
@@ -28,7 +28,7 @@ const measure = (files, manifestBytes) => ({
 
 /** The first limit broken, in the server's fixed order (file count, file size, project size, manifest size), with
  * the biggest files first; null when the push fits. @param {readonly { path: string, size: number }[]} files
- * @param {number} manifestBytes @param {Limits} [limits] @returns {import("./types").OverLimit | null} */
+ * @param {number} manifestBytes @param {Limits} [limits] @returns {import("./types.js").OverLimit | null} */
 export function overLimit(files, manifestBytes, limits = V1_LIMITS) {
   const size = measure(files, manifestBytes);
   /** @type {[LimitName, number, number][]} */

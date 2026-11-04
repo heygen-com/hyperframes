@@ -1,7 +1,7 @@
 // @ts-check
 // Map sync API error codes to stable client error kinds.
 
-/** @typedef {import("./types").SyncErrorKind} SyncErrorKind */
+/** @typedef {import("./types.js").SyncErrorKind} SyncErrorKind */
 
 /** @type {Record<string, SyncErrorKind>} */
 const KIND_BY_CODE = {

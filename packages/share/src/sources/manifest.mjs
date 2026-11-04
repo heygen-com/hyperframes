@@ -8,8 +8,8 @@ export const ENTRYPOINT = "index.html";
 const MAX_SAFE_SIZE = Number.MAX_SAFE_INTEGER;
 const SHA256 = /^[0-9a-f]{64}$/;
 
-/** @typedef {import("./types").ManifestFile} ManifestFile @typedef {import("./types").Violation} Violation
- * @typedef {import("./types").ManifestDocument} ManifestDocument @typedef {import("./types").Manifest} Manifest */
+/** @typedef {import("./types.js").ManifestFile} ManifestFile @typedef {import("./types.js").Violation} Violation
+ * @typedef {import("./types.js").ManifestDocument} ManifestDocument @typedef {import("./types.js").Manifest} Manifest */
 
 /** Why a manifest was refused; `code` is the first violation's, in the server's order. */
 export class ManifestInvalid extends Error {

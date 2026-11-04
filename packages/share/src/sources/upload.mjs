@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { uploadNeeded } from "./uploadFiles.mjs";
 
-/** @typedef {import("./adapterTypes").SourceRun} SourceRun */
+/** @typedef {import("./adapterTypes.js").SourceRun} SourceRun */
 /** @param {SourceRun} run */
 async function begin(run) {
   const { binding, manifest, api, store } = run;
@@ -41,7 +41,7 @@ async function begin(run) {
   await store.write(binding);
   return receipt;
 }
-/** @param {SourceRun} run @param {import("./types").BeginResult} receipt */
+/** @param {SourceRun} run @param {import("./types.js").BeginResult} receipt */
 async function sendFiles(run, receipt) {
   const { binding, manifest, store } = run;
   if (!binding.inflight) throw new Error("Missing source upload intent.");
@@ -77,7 +77,7 @@ async function sendFiles(run, receipt) {
   return run.api.submit(binding.ownerSpaceId, binding.compositionId, receipt.uploadId);
 }
 /** Only published verification results can become share source; conflict_saved is preserved for explicit recovery.
- * @param {SourceRun} run @returns {Promise<import("./adapterTypes").SourceResult>} */
+ * @param {SourceRun} run @returns {Promise<import("./adapterTypes.js").SourceResult>} */
 export async function uploadSource(run) {
   let receipt = await begin(run);
   let status = receipt.status === "pending" ? await sendFiles(run, receipt) : receipt;

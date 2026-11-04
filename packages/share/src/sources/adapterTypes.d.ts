@@ -1,5 +1,5 @@
-import type { Binding, BindingKey, Manifest } from "./types";
-import type { SnapshotRef } from "../types/reviewWire";
+import type { Binding, BindingKey, Manifest } from "./types.js";
+import type { SnapshotRef } from "../types/reviewWire.js";
 import type { SignedInAccess } from "../signedInRequest.mjs";
 import type { SourceApi } from "./api.mjs";
 

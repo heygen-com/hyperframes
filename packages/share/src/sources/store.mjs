@@ -8,7 +8,7 @@ import { parseStoredManifest } from "./manifest.mjs";
 
 /** @param {unknown} value @returns {value is Record<string, unknown>} */
 const object = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-/** @param {unknown} raw @param {import("./types").BindingKey} key @returns {import("./types").Binding} */
+/** @param {unknown} raw @param {import("./types.js").BindingKey} key @returns {import("./types.js").Binding} */
 function bindingOf(raw, key) {
   if (
     !object(raw) ||
@@ -23,7 +23,7 @@ function bindingOf(raw, key) {
       "Source binding belongs to another account, backend or project. Reset explicitly before sharing this copy.",
     );
   checkSnapshots(raw);
-  return /** @type {import("./types").Binding} */ (/** @type {unknown} */ (raw));
+  return /** @type {import("./types.js").Binding} */ (/** @type {unknown} */ (raw));
 }
 
 /** @param {Record<string, unknown>} raw */
@@ -45,9 +45,9 @@ function checkSnapshots(raw) {
 }
 
 /** Project-local state is excluded by the portable source policy. Account/root mismatches fail closed, including copied folders.
- * @returns {import("./adapterTypes").SourceStore} */
+ * @returns {import("./adapterTypes.js").SourceStore} */
 export function createProjectShareSourceStore() {
-  /** @param {import("./types").BindingKey} key */
+  /** @param {import("./types.js").BindingKey} key */
   const location = async (key) => {
     const dir = await mkdirInside(key.projectPath, ".hyperframes");
     const environment = createHash("sha256").update(key.backend).digest("hex").slice(0, 16);

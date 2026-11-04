@@ -324,7 +324,7 @@ async function exportSource(dir, title, probe, filesForExport, requireSource) {
   return { file: latest.path, body };
 }
 
-/** @param {boolean} required @param {import("./types/reviewWire").SnapshotRef | null} snapshot */
+/** @param {boolean} required @param {import("./types/reviewWire.js").SnapshotRef | null} snapshot */
 const missingRequiredSource = (required, snapshot) => required && !snapshot;
 
 /** @param {string} dir @param {string | null} rendered @param {FilesForRender} filesForExport @param {boolean} requireSource */

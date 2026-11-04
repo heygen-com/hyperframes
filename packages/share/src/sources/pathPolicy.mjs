@@ -5,7 +5,7 @@ import { UNICODE_VERSION, allAssigned, comparisonKey, nfc } from "./unicode.mjs"
 
 const PATH_POLICY_VERSION = "portable-source-v4";
 
-/** @typedef {import("./types").PathRule} PathRule @typedef {import("./types").PolicyDocument} PolicyDocument */
+/** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
 /** A path the policy refuses: `code` is the golden vectors' shared vocabulary, `rule` the excluding rule's id. */
 export class PathViolation extends Error {

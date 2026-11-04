@@ -20,8 +20,8 @@ import {
 } from "./pathPolicy.mjs";
 import { readRenderOutputs, settledState } from "./projectState.mjs";
 
-/** @typedef {import("./types").CaptureProblem} CaptureProblem @typedef {import("./types").Found} Found
- * @typedef {import("./types").Walk} Walk @typedef {import("./types").Capture} Capture */
+/** @typedef {import("./types.js").CaptureProblem} CaptureProblem @typedef {import("./types.js").Found} Found
+ * @typedef {import("./types.js").Walk} Walk @typedef {import("./types.js").Capture} Capture */
 
 /** Files up to this size use one bounded buffer; larger files stream from the verified handle. */
 const INLINE_HASH_BYTES = 4 * 1024 * 1024;
@@ -186,9 +186,9 @@ export async function hashListedFile(root, file, resolve = realpath) {
 }
 
 /** @param {string} root @param {Found[]} files @param {ReturnType<typeof hashMemo>} memo
- * @returns {Promise<{ hashed: import("./types").ManifestFile[], problems: CaptureProblem[] }>} */
+ * @returns {Promise<{ hashed: import("./types.js").ManifestFile[], problems: CaptureProblem[] }>} */
 async function hashAll(root, files, memo) {
-  /** @type {import("./types").ManifestFile[]} */
+  /** @type {import("./types.js").ManifestFile[]} */
   const hashed = [];
   /** @type {CaptureProblem[]} */
   const problems = [];
@@ -223,7 +223,7 @@ function inventoryProblems(files) {
 }
 
 /** Captures `root` (a project's real path). `memo` reuses hashes of unchanged files; a send should pass a fresh one.
- * @param {string} root @param {{ memo?: ReturnType<typeof hashMemo>, limits?: import("./types").Limits }} [options]
+ * @param {string} root @param {{ memo?: ReturnType<typeof hashMemo>, limits?: import("./types.js").Limits }} [options]
  * @returns {Promise<Capture>} */
 export async function captureProject(root, { memo = hashMemo(), limits = V1_LIMITS } = {}) {
   const renderOutput = await readRenderOutputs(root);
