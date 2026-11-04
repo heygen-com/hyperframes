@@ -1,11 +1,8 @@
-/**
- * Stops a cloud render whose fonts the cloud cannot resolve, before anything is uploaded or charged.
- * It runs the compile step's own check (producer `injectDeterministicFontFaces`, fail-closed, no system fonts).
- */
+// Stops a cloud render before upload when the compile step would refuse its fonts.
 import { bundleToSingleHtml } from "@hyperframes/core/compiler";
 import { loadProducer } from "../utils/producer.js";
 
-/** Free look-alikes for system fonts that are not in the cloud. */
+// Free look-alikes for system fonts the cloud lacks.
 const LOOK_ALIKES: Record<string, string> = {
   "pingfang sc": "Noto Sans SC",
   "pingfang tc": "Noto Sans TC",
@@ -36,7 +33,7 @@ export function lookAlikeFor(family: string): string | undefined {
 
 type Injector = (html: string, options: object) => Promise<string>;
 
-/** The families the cloud cannot resolve for this project; empty when it can resolve them all or cannot tell. */
+/** The families the cloud cannot resolve; empty when all resolve or it cannot tell. */
 export async function unresolvedCloudFonts(
   dir: string,
   entryFile?: string,
@@ -54,7 +51,7 @@ export async function unresolvedCloudFonts(
     });
     return [];
   } catch (err) {
-    // Only a font the resolver names blocks; a network failure here is the server's call to make.
+    // Only a named font blocks; a network failure is the server's call.
     const e = err as { code?: unknown; unresolvedFamilies?: unknown };
     if (e.code !== "FONT_FETCH_FAILED" || !Array.isArray(e.unresolvedFamilies)) return [];
     return e.unresolvedFamilies.filter((f): f is string => typeof f === "string");
