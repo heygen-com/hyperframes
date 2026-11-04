@@ -8,21 +8,17 @@ import {
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { getTimelineScrubTime } from "./timelineLayout";
+import { getMarqueeRect, isMarqueeDrag, isTimelineRulerPress } from "./timelineMarquee";
 import {
-  computeMarqueeSelection,
-  getMarqueeClipCandidates,
-  getMarqueeRect,
-  isMarqueeDrag,
-  isTimelineRulerPress,
-  survivingPrimary,
-  type MarqueeClipInput,
-} from "./timelineMarquee";
+  commitMarqueeSelection,
+  snapshotSelection,
+  type MarqueeDragState,
+} from "./timelineMarqueeCommit";
 import {
   resolveMarqueeMode,
   type MarqueeBand,
   type MarqueeModifiers,
   type MarqueeSelectionMode,
-  type Rect,
 } from "../../utils/marqueeGeometry";
 import type { TimelineRowGeometry } from "./timelineLayout";
 import type { TimelineClipIndex } from "../lib/timelineClipIndex";
@@ -47,74 +43,6 @@ interface UseTimelineRangeSelectionInput {
 }
 
 type MarqueePointer = { clientX: number; clientY: number } & MarqueeModifiers;
-
-interface MarqueeDragState {
-  originX: number;
-  originY: number;
-  /** Pre-drag selection, restored on Escape-cancel. */
-  baseIds: Set<string>;
-  basePrimary: string | null;
-  /** Mode fixed at pointerdown (cmd/ctrl adds); Shift or Alt held mid-drag override it. */
-  mode: MarqueeSelectionMode;
-  /** True once the pointer travelled past the click threshold. */
-  active: boolean;
-}
-
-function snapshotSelection(): { ids: Set<string>; primary: string | null } {
-  const s = usePlayerStore.getState();
-  const ids = new Set(s.selectedElementIds);
-  if (s.selectedElementId) ids.add(s.selectedElementId);
-  return { ids, primary: s.selectedElementId };
-}
-
-function toMarqueeClips(elements: TimelineElement[]): MarqueeClipInput[] {
-  return elements.map((el) => ({
-    id: el.key ?? el.id,
-    start: el.start,
-    duration: el.duration,
-    track: el.track,
-  }));
-}
-
-/**
- * Compute the live selection for a marquee rect and commit it to the store.
- * Shift held mid-drag (or cmd/ctrl at pointerdown) unions the new hits with the
- * pre-drag selection (marquee.baseIds / basePrimary); Alt removes them from it.
- */
-function commitMarqueeSelection(
-  rect: Rect,
-  mode: MarqueeSelectionMode,
-  marquee: MarqueeDragState,
-  clipIndex: TimelineClipIndex,
-  rowGeometry: TimelineRowGeometry,
-  pps: number,
-  contentOrigin: number,
-): void {
-  const candidates = getMarqueeClipCandidates({
-    clipIndex,
-    rowGeometry,
-    marquee: rect,
-    pps,
-    contentOrigin,
-  });
-  const { ids, primaryId } = computeMarqueeSelection({
-    clips: toMarqueeClips([...candidates]),
-    rowGeometry,
-    pps,
-    contentOrigin,
-    marquee: rect,
-    baseSelection: mode === "replace" ? undefined : marquee.baseIds,
-    mode,
-  });
-  const store = usePlayerStore.getState();
-  let primary = primaryId;
-  if (mode === "add") primary ??= marquee.basePrimary;
-  if (mode === "subtract") primary = survivingPrimary(ids, marquee.basePrimary);
-  // Primary FIRST: setSelectedElementId collapses the multi-select set, so the set
-  // must be written after it or the marquee selection would be wiped every frame.
-  store.setSelectedElementId(primary);
-  store.setSelectedElementIds(ids);
-}
 
 function canStartPointerGesture(
   event: React.PointerEvent,
@@ -348,7 +276,7 @@ export function useTimelineRangeSelection({
       }
       // Empty body press → pending marquee. A plain click (no drag past the
       // threshold) deselects on pointerup; a drag draws the marquee. Never scrubs.
-      beginMarquee(point, resolveMarqueeMode(e, e.metaKey || e.ctrlKey ? "add" : "replace"));
+      beginMarquee(point, e.metaKey || e.ctrlKey ? "add" : "replace");
     },
     [beginRangeSelection, beginScrub, beginMarquee, scrollRef, setShowPopover, toContentPoint],
   );
@@ -488,20 +416,29 @@ export function useTimelineRangeSelection({
   const handlePointerUp = useCallback(
     (e?: React.PointerEvent) => {
       if (!canFinishPointerGesture(e)) return;
+      const marquee = marqueeRef.current;
+      // The modifiers held at release decide, as on the canvas.
+      if (e && marquee?.active) applyMarqueeAtClient(e.clientX, e.clientY, e);
       activePointerIdRef.current = null;
       gestureEpochRef.current = null;
       if (isRangeSelecting.current) {
         finishRangeSelection();
         return;
       }
-      const marquee = marqueeRef.current;
       if (marquee) {
         finishMarquee(marquee);
         return;
       }
       if (isDragging.current) finishScrub();
     },
-    [canFinishPointerGesture, finishRangeSelection, finishMarquee, finishScrub, isDragging],
+    [
+      canFinishPointerGesture,
+      finishRangeSelection,
+      finishMarquee,
+      finishScrub,
+      isDragging,
+      applyMarqueeAtClient,
+    ],
   );
 
   const cancelActiveGesture = useCallback(

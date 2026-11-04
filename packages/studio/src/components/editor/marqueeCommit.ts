@@ -128,6 +128,7 @@ export interface MarqueeGesturesDeps<T = DomEditSelection> {
   /** Turns the elements a drag touched into picks; without it, Studio's edit selections. */
   resolveHits?: (elements: HTMLElement[]) => T[] | Promise<T[]>;
   selectionRef?: React.RefObject<DomEditSelection | null>;
+  groupSelectionsRef?: React.RefObject<DomEditSelection[]>;
   /** Studio's pointer handling, for the events that are not part of a marquee. */
   gestures?: {
     onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -247,16 +248,25 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
   }, [cancel]);
 
+  const isSelectedElement = useCallback(
+    (element: HTMLElement) =>
+      deps.selectionRef?.current?.element === element ||
+      (deps.groupSelectionsRef?.current ?? []).some((s) => s.element === element),
+    [deps.selectionRef, deps.groupSelectionsRef],
+  );
+
   const showCandidates = useCallback(
-    (rect: Rect) => {
+    (rect: Rect, mode: MarqueeSelectionMode) => {
       const iframe = deps.iframeRef.current;
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
       candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
-      setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
+      let hits = hitsWithin(rect, candidatesRef.current);
+      if (mode === "subtract") hits = hits.filter((h) => isSelectedElement(h.element));
+      setCandidateRects(hits.map((h) => h.rect));
     },
-    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef, isSelectedElement],
   );
 
   const onPointerMove = useCallback(
@@ -281,8 +291,9 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
           width: Math.abs(m.currentX - m.startX),
           height: Math.abs(m.currentY - m.startY),
         };
-        setMarqueeRect({ ...rect, mode: resolveMarqueeMode(event) });
-        showCandidates(rect);
+        const mode = resolveMarqueeMode(event);
+        setMarqueeRect({ ...rect, mode });
+        showCandidates(rect, mode);
         return;
       }
       deps.gestures?.onPointerMove(event);

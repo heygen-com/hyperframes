@@ -342,6 +342,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     activeCompositionPathRef,
     onMarqueeSelectRef,
     selectionRef,
+    groupSelectionsRef,
     gestures,
   });
 

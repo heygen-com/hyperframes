@@ -259,6 +259,19 @@ describe("useTimelineRangeSelection", () => {
     unmountHarness(view);
   });
 
+  it("the modifiers held at release decide: letting go of Alt turns the subtract into a replace", () => {
+    selectIds("first", "base");
+    const view = renderHarness();
+    dragMarquee(view, { down: { altKey: true }, move: { altKey: true } });
+    expectSelectedIds("base");
+
+    act(() => view.api.handlePointerUp(pointer(view.scroll, 7, 400, OFFSCREEN_ROW_Y)));
+
+    expectSelectedIds("first", "offscreen");
+    expect(usePlayerStore.getState().selectedElementId).toBe("offscreen");
+    unmountHarness(view);
+  });
+
   it("restores the pre-drag selection when an Alt marquee is cancelled", () => {
     selectIds("first", "base");
     const view = renderHarness();
