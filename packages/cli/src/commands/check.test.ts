@@ -2958,6 +2958,7 @@ describe("check pipeline", () => {
       expect(report.craft.samples).toBeGreaterThan(20);
       expect(report.craft.samples).toBeLessThan(120);
       expect(report.craft.step).toBeGreaterThan(0.5);
+      expect(report.craft.step).toBeLessThanOrEqual(1.5);
     });
 
     it("samples a long film at 8 fps, finer than the overlap pass's capped grid", async () => {

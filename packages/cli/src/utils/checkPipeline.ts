@@ -792,12 +792,13 @@ async function collectMotionOverlapSamples(
 const CRAFT_SAMPLE_FPS = 8;
 const CRAFT_MAX_SAMPLES = 600;
 const CRAFT_BUDGET_MS = 90_000;
+const CRAFT_MAX_STRIDE = 12;
 
 function craftStride(startedAt: number, sampled: number, remaining: number): number {
   const spent = performance.now() - startedAt;
   const left = CRAFT_BUDGET_MS - spent;
-  if (left <= 0) return remaining;
-  return Math.max(1, Math.ceil(((spent / sampled) * remaining) / left));
+  const wanted = left <= 0 ? remaining : Math.ceil(((spent / sampled) * remaining) / left);
+  return Math.min(CRAFT_MAX_STRIDE, Math.max(1, wanted));
 }
 
 function buildCraftSampleTimes(duration: number): number[] {
