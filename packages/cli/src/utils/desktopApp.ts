@@ -5,6 +5,8 @@ import { basename, isAbsolute, join, relative, win32 } from "node:path";
 import { isHyperframesProject } from "@hyperframes/core";
 import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
+import { isCI } from "./attendedTerminal.js";
+import { isAgentDriven } from "../telemetry/agent_runtime.js";
 import { writeRecord } from "./projectRecords.js";
 
 // The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
@@ -247,7 +249,14 @@ export function insideHostApp(env: NodeJS.ProcessEnv = process.env): boolean {
   return Boolean(env.HYPERFRAMES_DESKTOP_PROJECT);
 }
 
-/** The app line render and preview print; null inside the app, or with nothing here to open or download. */
+/** Someone reads the app line: a person at a terminal, or the coding agent that passes it on (skills/hyperframes/SKILL.md).
+ * CI and a script piping the output have nobody to open the app. */
+function someoneToTell(env: NodeJS.ProcessEnv, tty: boolean): boolean {
+  if (isCI(env)) return false;
+  return tty || env["HYPERFRAMES_AGENT"] === "1" || isAgentDriven(env);
+}
+
+/** The app line render and preview print; null inside the app, with nobody to read it, or with nothing to open or download. */
 export function desktopHint(
   dir: string,
   {
@@ -255,14 +264,16 @@ export function desktopHint(
     ready = HANDOFF_READY,
     installed,
     platform = process.platform,
+    tty = process.stdout.isTTY === true,
   }: {
     env?: NodeJS.ProcessEnv;
     ready?: boolean;
     installed?: boolean;
     platform?: NodeJS.Platform;
+    tty?: boolean;
   } = {},
 ): string | null {
-  if (insideHostApp(env)) return null;
+  if (insideHostApp(env) || !someoneToTell(env, tty)) return null;
   if (ready && (installed ?? desktopInstalled({ platform, env })))
     return `Keep editing by chatting with Framey in the desktop app: ${openCommandFor(dir)}`;
   const url = desktopDownloadUrl(platform);
