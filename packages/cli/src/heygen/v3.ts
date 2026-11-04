@@ -267,9 +267,10 @@ export async function runJob(
       auth,
     );
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
-    if (reserved && err instanceof Refused && !KEEPS_KEY.has(err.status) && opts.log)
-      log(opts.log, { key: sent, status: "refused", credits: 0 });
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
+      markFailed(sent, scope);
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 });
+    }
     throw err;
   }
   const waits = RUNNING.has(job.status.toLowerCase());
