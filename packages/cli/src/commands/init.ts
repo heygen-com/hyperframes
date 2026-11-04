@@ -690,7 +690,9 @@ async function keepSkillsCurrent(destDir: string): Promise<void> {
       // "up to date"; the engine already reported what it could verify or
       // blind-install. Point at the recovery command instead.
       console.log(
-        c.dim("Skills freshness unverified — run `npx hyperframes skills update` when online."),
+        c.dim(
+          "Skills freshness unverified (offline?). For the user: `npx hyperframes skills update` refreshes them once online.",
+        ),
       );
     } else if (result.installed.length === 0) {
       console.log(c.success("AI coding skills are already up to date."));
@@ -977,7 +979,7 @@ export default defineCommand({
       console.log();
       if (skipSkills) {
         console.log(
-          `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
+          `  ${c.accent("1.")} For the user: use your HyperFrames plugin, or install standalone skills with:`,
         );
         console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {

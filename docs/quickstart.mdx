@@ -55,13 +55,19 @@ system.
 
 ### The short way
 
-If you already have a coding agent open in a folder, paste this. It installs the skills, makes the video, and opens
-the preview. You only change the URL.
+Unless the HyperFrames plugin is installed, install the skills once from a terminal in your project folder, then
+open or restart your coding agent there:
+
+```bash
+npx hyperframes skills update
+```
+
+Paste this into the agent. It makes the video and opens the preview. You only change the URL.
 
 ```text
 Set this folder up for HyperFrames and make me a video.
 
-1. If the HyperFrames plugin is installed, use its bundled skills and launcher. Otherwise run: npx hyperframes skills update
+1. If the HyperFrames plugin is installed, use its bundled skills and launcher. If the HyperFrames skills are missing, stop and tell me: I install them with npx hyperframes skills update
 2. Then, using /hyperframes, make a 10-second product intro for https://example.com
 3. Open the local preview when it is done and tell me the project folder.
 ```

@@ -153,10 +153,12 @@ function printCheck(cli: CliReport, skills: SkillsReport): void {
     : c.success(`${cli.current} (${cli.checkedAt ? "latest" : "npm registry not reached"})`);
   console.log(`  ${c.bold("CLI".padEnd(8))}${version}`);
   console.log(`  ${" ".repeat(8)}${c.dim(where)}`);
-  if (cli.command) console.log(`  ${" ".repeat(8)}${c.accent(`Run: ${cli.command}`)}`);
+  if (cli.command) {
+    console.log(`  ${" ".repeat(8)}${c.accent(`For the user: run ${cli.command}`)}`);
+  }
   console.log(`  ${c.bold("Skills".padEnd(8))}${skillsLine(skills)}`);
   if (skills.status === "checked" && skills.command) {
-    console.log(`  ${" ".repeat(8)}${c.accent(`Run: ${skills.command}`)}`);
+    console.log(`  ${" ".repeat(8)}${c.accent(`For the user: run ${skills.command}`)}`);
   }
   console.log();
 }
