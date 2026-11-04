@@ -154,6 +154,31 @@ function rejectWhenAborted(signal: AbortSignal | undefined): Promise<void> {
   });
 }
 
+function heldOpen(screenshot: boolean): Promise<unknown> | null {
+  if (screenshot) return hangRiskSessionOpen ? new Promise(() => {}) : null;
+  return primaryOpen;
+}
+
+function fakeSession(screenshot: boolean) {
+  sessionsCreated++;
+  return {
+    isScreenshotFallback: screenshot,
+    onBeforeCapture: sessionHasBeforeCapture ? async () => {} : undefined,
+    deRiskFrames: screenshot ? undefined : sessionRiskFrames,
+    isInitialized: false,
+    browserConsoleBuffer,
+    options: { captureBeyondViewport: false },
+    workerEncodeEnabled: sessionWorkerEncodeEnabled,
+    captureMode: captureSessionMode,
+    page: {
+      evaluate: mock(async (): Promise<unknown> => [])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce({}),
+    },
+    warnings: [],
+  };
+}
+
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
   convertTransfer: () => {},
@@ -209,25 +234,8 @@ mock.module("@hyperframes/engine", () => ({
     _injector: unknown,
     config?: { useDrawElement?: boolean },
   ) => {
-    if (hangRiskSessionOpen && config?.useDrawElement === false) return new Promise(() => {});
-    if (primaryOpen && config?.useDrawElement !== false) return primaryOpen;
-    return {
-      ...(sessionsCreated++ && {}),
-      isScreenshotFallback: config?.useDrawElement === false,
-      onBeforeCapture: sessionHasBeforeCapture ? async () => {} : undefined,
-      deRiskFrames: config?.useDrawElement === false ? undefined : sessionRiskFrames,
-      isInitialized: false,
-      browserConsoleBuffer,
-      options: { captureBeyondViewport: false },
-      workerEncodeEnabled: sessionWorkerEncodeEnabled,
-      captureMode: captureSessionMode,
-      page: {
-        evaluate: mock(async (): Promise<unknown> => [])
-          .mockResolvedValueOnce([])
-          .mockResolvedValueOnce({}),
-      },
-      warnings: [],
-    };
+    const screenshot = config?.useDrawElement === false;
+    return heldOpen(screenshot) ?? fakeSession(screenshot);
   },
   createFrameReorderBuffer: (startFrame: number) => ({
     ...(reorderStarts.push(startFrame) && {}),

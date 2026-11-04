@@ -91,33 +91,12 @@ const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) 
  */
 export async function acquireRenderLock(options: RenderLockOptions): Promise<() => void> {
   if (renderLockDisabled(options.env)) return () => {};
-  const path = options.path ?? renderLockPath();
-  mkdirSync(dirname(path), { recursive: true });
-  const pid = options.pid ?? process.pid;
-  const owner = { pid, identity: processIdentity(pid) };
-  const claim = options.claim ?? tryAcquire;
-  liveOtherOwners(path);
-  const holder: RenderLockHolder = {
-    pid,
-    command: "render",
-    startedAt: Date.now(),
-    project: options.project,
-  };
+  const contender = prepareContender(options);
   let waitingBehind: RenderLockHolder | null | undefined;
   for (;;) {
-    const marker = writeOwnerMarker(path, owner);
-    let held = false;
-    try {
-      held = (await claim(path, holder)) || reclaimAbandoned(path, holder, marker);
-    } finally {
-      if (!held) removeIfPresent(marker);
-    }
-    if (held) {
-      return () => {
-        release(path, holder);
-        removeIfPresent(marker);
-      };
-    }
+    const releaseSlot = await claimOnce(contender);
+    if (releaseSlot) return releaseSlot;
+    const { path } = contender;
     const current = readHolder<RenderLockHolder>(path);
     if (!current && !existsSync(path)) continue;
     if (!options.wait) throw new RenderLockBusy(current, path);
@@ -127,4 +106,39 @@ export async function acquireRenderLock(options: RenderLockOptions): Promise<() 
     }
     await pause(options.pollMs ?? POLL_MS, options.signal);
   }
+}
+
+interface Contender {
+  path: string;
+  holder: RenderLockHolder;
+  owner: { pid: number; identity: string | null };
+  claim: NonNullable<RenderLockOptions["claim"]>;
+}
+
+function prepareContender(options: RenderLockOptions): Contender {
+  const path = options.path ?? renderLockPath();
+  mkdirSync(dirname(path), { recursive: true });
+  liveOtherOwners(path);
+  const pid = options.pid ?? process.pid;
+  return {
+    path,
+    holder: { pid, command: "render", startedAt: Date.now(), project: options.project },
+    owner: { pid, identity: processIdentity(pid) },
+    claim: options.claim ?? tryAcquire,
+  };
+}
+
+async function claimOnce({ path, holder, owner, claim }: Contender): Promise<(() => void) | null> {
+  const marker = writeOwnerMarker(path, owner);
+  let held = false;
+  try {
+    held = (await claim(path, holder)) || reclaimAbandoned(path, holder, marker);
+  } finally {
+    if (!held) removeIfPresent(marker);
+  }
+  if (!held) return null;
+  return () => {
+    release(path, holder);
+    removeIfPresent(marker);
+  };
 }
