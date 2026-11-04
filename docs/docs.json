@@ -1005,6 +1005,11 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Web Studio",
+        "icon": "globe",
+        "href": "https://hyperframes.studio/agent?src=docs-tab"
       }
     ]
   },
@@ -1073,6 +1078,10 @@
       {
         "type": "github",
         "href": "https://github.com/heygen-com/hyperframes"
+      },
+      {
+        "label": "Sign up",
+        "href": "https://hyperframes.studio/api/auth/login?return_to=%2Fagent%3Fsrc%3Ddocs-navbar"
       }
     ],
     "primary": {
