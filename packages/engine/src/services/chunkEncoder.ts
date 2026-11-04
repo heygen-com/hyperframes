@@ -50,6 +50,7 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { resolveAacAudioBitrate, resolveOpusAudioBitrate } from "./audioBitrate.js";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -109,6 +110,7 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * source compatibility; it will be removed in a future major.
    */
   preserveAudioPrimingEditList?: boolean;
+  audioBitrate?: string;
 }
 
 async function shouldCopyAacSidecar(
@@ -885,12 +887,12 @@ export async function muxVideoWithAudio(
   const args = [...(config?.videoInputArgs ?? ["-i", videoPath]), "-i", audioPath, "-c:v", "copy"];
 
   if (isWebm) {
-    args.push("-c:a", "libopus", "-b:a", "128k");
+    args.push("-c:a", "libopus", "-b:a", resolveOpusAudioBitrate(config?.audioBitrate));
   } else if (isMov) {
     if (shouldCopyAudio) {
       args.push("-c:a", "copy");
     } else {
-      args.push("-c:a", "aac", "-b:a", "192k");
+      args.push("-c:a", "aac", "-b:a", resolveAacAudioBitrate(config?.audioBitrate));
     }
   } else {
     // processCompositionAudio (audioMixer.ts) performs the AAC encode and
@@ -901,7 +903,14 @@ export async function muxVideoWithAudio(
     if (shouldCopyAudio) {
       args.push("-c:a", "copy", "-movflags", "+faststart");
     } else {
-      args.push("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart");
+      args.push(
+        "-c:a",
+        "aac",
+        "-b:a",
+        resolveAacAudioBitrate(config?.audioBitrate),
+        "-movflags",
+        "+faststart",
+      );
     }
   }
   // No `-avoid_negative_ts` here, in any mode. ffmpeg's default is `auto`,

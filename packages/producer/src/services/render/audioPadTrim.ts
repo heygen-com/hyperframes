@@ -90,6 +90,8 @@ export interface PadTrimAudioInput {
   probeAudioTruePeakDbfs?: (audioPath: string, signal?: AbortSignal) => Promise<number>;
   runFfmpeg?: (args: string[]) => Promise<StepResult>;
   encodeAac?: AacEncoder;
+  /** AAC bitrate for every re-encode; defaults to the engine's AAC default. */
+  audioBitrate?: string;
 }
 
 interface StepResult {
@@ -104,6 +106,7 @@ type AacEncoder = (
   outputPath: string,
   durationSeconds: number,
   filter: string,
+  options: { audioBitrate?: string },
 ) => Promise<StepResult>;
 
 export type PadTrimOperation = "pad" | "trim" | "copy";
@@ -309,7 +312,9 @@ export async function padOrTrimAudioToVideoFrameCount(
       const ffmpegResult =
         step.kind === "copy"
           ? await runner(step.args)
-          : await encode(input.audioPath, input.outputPath, targetDurationSeconds, step.filter);
+          : await encode(input.audioPath, input.outputPath, targetDurationSeconds, step.filter, {
+              audioBitrate: input.audioBitrate,
+            });
       if (!ffmpegResult.success) {
         return {
           success: false,
@@ -345,6 +350,7 @@ export async function padOrTrimAudioToVideoFrameCount(
       signal: input.signal,
       probeTruePeak,
       encode,
+      audioBitrate: input.audioBitrate,
     });
     if (!correction.success) {
       return {
@@ -382,6 +388,7 @@ export async function constrainAacTruePeak(input: {
   timeoutMs?: number;
   probeTruePeakDbfs?: (audioPath: string, signal?: AbortSignal) => Promise<number>;
   encodeAac?: AacEncoder;
+  audioBitrate?: string;
 }): Promise<{
   success: boolean;
   error?: string;
@@ -398,6 +405,7 @@ export async function constrainAacTruePeak(input: {
       input.probeTruePeakDbfs ??
       ((audioPath, signal) => measureTruePeakDbfs(audioPath, { timeoutMs, signal })),
     encode: input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal, input.sourcePath),
+    audioBitrate: input.audioBitrate,
   });
 }
 
@@ -408,6 +416,7 @@ interface EnforceAacTruePeakInput {
   signal?: AbortSignal;
   probeTruePeak: (audioPath: string, signal?: AbortSignal) => Promise<number>;
   encode: AacEncoder;
+  audioBitrate?: string;
 }
 
 async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
@@ -454,6 +463,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
         correctedPath,
         input.targetDurationSeconds,
         aacTruePeakCorrectionFilter(input.targetDurationSeconds, attenuationDb),
+        { audioBitrate: input.audioBitrate },
       );
       if (!result.success) {
         return {
@@ -603,11 +613,11 @@ function defaultAacEncoder(
   signal?: AbortSignal,
   pcmSourcePath?: string,
 ): AacEncoder {
-  return async (inputPath, outputPath, durationSeconds, filter) => {
+  return async (inputPath, outputPath, durationSeconds, filter, { audioBitrate }) => {
     // Each segment decodes its input from the start: cheap from PCM, a second lossy pass from AAC.
     const options = pcmSourcePath
-      ? { signal, timeout: timeoutMs, filter }
-      : { signal, timeout: timeoutMs, filter, segments: 1 };
+      ? { signal, timeout: timeoutMs, filter, audioBitrate }
+      : { signal, timeout: timeoutMs, filter, audioBitrate, segments: 1 };
     return toStepResult(
       await encodeAac(pcmSourcePath ?? inputPath, outputPath, durationSeconds, options),
       timeoutMs,

@@ -33,6 +33,7 @@ export async function limitDeliveryPeaks(
     targetDurationSeconds: number;
     signal?: AbortSignal;
     timeoutMs: number;
+    audioBitrate?: string;
     warn?: (message: string, details: { error: string }) => void;
   },
   deps: DeliveryLimitDeps = {
@@ -61,6 +62,7 @@ export async function limitDeliveryPeaks(
   const encoded = await deps.encode(limitedPath, audioPath, input.targetDurationSeconds, {
     signal,
     timeout: timeoutMs,
+    audioBitrate: input.audioBitrate,
   });
   if (!encoded.success) {
     return {

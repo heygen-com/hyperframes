@@ -538,6 +538,11 @@ describe("final mux and faststart ffmpegProcessTimeout", () => {
 });
 
 describe("muxVideoWithAudio audio codec handling", () => {
+  function audioBitrateArg(args: string[]): string | undefined {
+    const index = args.indexOf("-b:a");
+    return index === -1 ? undefined : args[index + 1];
+  }
+
   it("preserves an external interruption from mux", async () => {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
@@ -857,10 +862,71 @@ describe("muxVideoWithAudio audio codec handling", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.args).toContain("-c:a");
     expect(calls[0]!.args[calls[0]!.args.indexOf("-c:a") + 1]).toBe("libopus");
+    expect(audioBitrateArg(calls[0]!.args)).toBe("128k");
     expect(calls[0]!.args).not.toContain("+faststart");
 
     emitClose(calls[0]!.proc, 0);
     await expect(muxPromise).resolves.toMatchObject({ success: true });
+  });
+
+  it("applies an audio bitrate override without re-encoding a copied AAC sidecar", async () => {
+    const cases = [
+      {
+        video: "/tmp/video-only.webm",
+        audio: "/tmp/audio.aac",
+        output: "/tmp/output.webm",
+        options: { audioBitrate: "96k" },
+        codec: "libopus",
+        bitrate: "96k",
+        probe: false,
+      },
+      {
+        video: "/tmp/video-only.mp4",
+        audio: "/tmp/audio.aac",
+        output: "/tmp/output.mp4",
+        options: { audioCodec: "aac" as const, audioBitrate: "128k" },
+        codec: "copy",
+        bitrate: undefined,
+        probe: true,
+      },
+      {
+        video: "/tmp/video-only.mp4",
+        audio: "/tmp/audio.wav",
+        output: "/tmp/output.mp4",
+        options: undefined,
+        codec: "aac",
+        bitrate: "192k",
+        probe: true,
+      },
+      {
+        video: "/tmp/video-only.mov",
+        audio: "/tmp/audio.wav",
+        output: "/tmp/output.mov",
+        options: { audioBitrate: "256k" },
+        codec: "aac",
+        bitrate: "256k",
+        probe: true,
+      },
+    ];
+    for (const next of cases) {
+      const { spawn, calls } = createSpawnSpy();
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+      const { muxVideoWithAudio } = await import("./chunkEncoder.js");
+      const pending = muxVideoWithAudio(
+        next.video,
+        next.audio,
+        next.output,
+        undefined,
+        next.options,
+      );
+      if (next.probe) await flushMuxCodecResolution();
+      const args = calls[0]!.args;
+      expect(args[args.indexOf("-c:a") + 1]).toBe(next.codec);
+      expect(audioBitrateArg(args)).toBe(next.bitrate);
+      emitClose(calls[0]!.proc, 0);
+      await expect(pending).resolves.toMatchObject({ success: true });
+    }
   });
 });
 

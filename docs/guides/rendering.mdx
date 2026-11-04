@@ -138,6 +138,12 @@ browser already supports the source or you are diagnosing the proxy itself.
 
 ## Choose quality and frame rate
 
+The default `standard` quality is the right choice for most finished work.
+MOV is an alpha-preserving editing intermediate and always uses the fixed
+ProRes 4444 profile. `--crf` and `--video-bitrate` do not map to that profile
+and are rejected for MOV; choose MP4 or WebM when you need those controls.
+`--audio-bitrate` is separate and works for MOV too: `128k` or `256k` sets the
+encoded audio, and leaving it unset keeps AAC at 192k and Opus at 128k.
 The default `looks` quality (CRF 16) is the right choice for most finished work.
 MOV is an editing intermediate. It uses ProRes 4444 with alpha unless
 `--prores-profile` picks a smaller 4:2:2 profile (`hq`, `422`, `lt` or `proxy`),

@@ -1795,6 +1795,7 @@ Quality and file size:
 | ---------------------- | --------------- | -------------------------------------------------------------------------------------------------------- |
 | `--crf`                | from `--quality`| Override MP4/WebM encoder CRF, 0–51. Lower is better quality. Not with `--video-bitrate`; rejected for MOV. |
 | `--video-bitrate`      | from `--quality`| Target MP4/WebM bitrate, e.g. `10M` or `5000k`. Not with `--crf`; rejected for MOV.                       |
+| `--audio-bitrate`      | 192k AAC, 128k Opus | Target audio bitrate, e.g. `128k` or `256k`. Unset keeps those defaults. Applied where audio is encoded, including the AAC sidecar that MP4 and MOV copy. |
 | `--keyframe-interval`  | encoder default | MP4 only. A keyframe at least every N seconds, e.g. `2`, so a player can seek or switch rendition at that spacing. |
 | `--start`, `--end`    | whole film      | Render only the seconds between them, as an MP4 that starts at 0 with that span's audio. MP4 at 24, 25, 30 or 60 fps, SDR only. |
 | `--max-bitrate`        | uncapped        | MP4 only. Peak video bitrate cap, e.g. `8M`, held alongside the `--crf` or `--quality` target rather than replacing it. |

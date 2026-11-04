@@ -169,6 +169,36 @@ describe("runAudioStage", () => {
     );
   });
 
+  it("forwards audioBitrate to the mixer, the peak limiter and the true-peak check", async () => {
+    processCompositionAudioMock.mockResolvedValue({
+      success: true,
+      outputPath: "audio.m4a",
+      durationMs: 1,
+      tracksProcessed: 1,
+    });
+    limitDeliveryPeaksMock.mockClear();
+    constrainAacTruePeakMock.mockClear();
+
+    await runAudioStage(makeInput({ audioBitrate: "128k" }));
+
+    expect(processCompositionAudioMock).toHaveBeenCalledWith(
+      audios,
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Number),
+      undefined,
+      expect.objectContaining({ audioBitrate: "128k" }),
+      expect.any(String),
+    );
+    expect(limitDeliveryPeaksMock).toHaveBeenCalledWith(
+      expect.objectContaining({ audioBitrate: "128k" }),
+    );
+    expect(constrainAacTruePeakMock).toHaveBeenCalledWith(
+      expect.objectContaining({ audioBitrate: "128k" }),
+    );
+  });
+
   it("hands the master chain to the mixer when the only track is the one the render added for a plain video", async () => {
     // A plain <video> has no audio entry at compile time; the render adds one after probing
     // its file. That track is not parsed from HTML, so the chain cannot ride on it.

@@ -46,6 +46,7 @@ export interface AudioStageInput {
   ffmpegProcessTimeout: number;
   /** Master gain forwarded to the audio mixer. */
   audioGain: number;
+  audioBitrate?: string;
   /** Read-only view of `composition.audios`. */
   audios: CompositionMetadata["audios"];
   masterFxChain?: string;
@@ -76,6 +77,13 @@ export interface AudioStageResult {
   audioFailures?: AudioProcessingFailure[];
   /** Wall ms per phase of the audio mix. */
   audioPhaseMs?: MixResult["phaseMs"];
+}
+
+function audioBitrateFields(
+  audioBitrate: string | undefined,
+): { audioBitrate: string } | undefined {
+  if (!audioBitrate) return undefined;
+  return { audioBitrate };
 }
 
 function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] | undefined): void {
@@ -115,6 +123,7 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
         targetDurationSeconds: duration,
         signal: input.abortSignal,
         timeoutMs: input.ffmpegProcessTimeout,
+        audioBitrate: input.audioBitrate,
         warn: (message, details) => input.log?.warn?.(message, details),
       });
       if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
@@ -124,6 +133,7 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
         targetDurationSeconds: duration,
         signal: input.abortSignal,
         timeoutMs: input.ffmpegProcessTimeout,
+        audioBitrate: input.audioBitrate,
       });
       if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
       audioLoweredDb = peak.loweredDb;
@@ -146,6 +156,7 @@ async function mixAudioForDelivery(
     compiledDir,
     ffmpegProcessTimeout,
     audioGain,
+    audioBitrate,
     audios,
     masterFxChain,
     urlByAbsentLocalPath,
@@ -181,6 +192,7 @@ async function mixAudioForDelivery(
           ffmpegProcessTimeout,
           audioGain,
           masterFxChain,
+          ...audioBitrateFields(audioBitrate),
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,

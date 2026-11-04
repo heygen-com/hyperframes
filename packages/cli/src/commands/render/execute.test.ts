@@ -50,6 +50,13 @@ describe("renderOptionsFromPlan", () => {
     expect(on.keepSegments).toBe(true);
     expect(on.browserPath).toBe("/usr/bin/chrome");
     expect(on.variables).toEqual({ title: "x" });
+    expect(
+      renderOptionsFromPlan(
+        createRenderPlan({ dir: projectDir, "audio-bitrate": "96k" }),
+        undefined,
+        undefined,
+      ).audioBitrate,
+    ).toBe("96k");
   });
 });
 

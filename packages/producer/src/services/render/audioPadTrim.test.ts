@@ -313,6 +313,29 @@ describe("padOrTrimAudioToVideoFrameCount", () => {
     });
   });
 
+  it("passes the audio bitrate to the pad/trim and true-peak correction encodes", async () => {
+    const bitrates: (string | undefined)[] = [];
+    const { input } = harness({
+      video: { frameCount: 90, fpsNum: 30, fpsDen: 1 },
+      audio: { durationSeconds: 3.029333 },
+    });
+    input.probeAudioTruePeakDbfs = async () => 1.5;
+    input.encodeAac = async (_input, _output, _durationSeconds, _filter, options) => {
+      bitrates.push(options.audioBitrate);
+      return bitrates.length === 1
+        ? { success: true }
+        : { success: false, error: "synthetic correction stop" };
+    };
+
+    await padOrTrimAudioToVideoFrameCount(input);
+    expect(bitrates).toEqual([undefined, undefined]);
+
+    bitrates.length = 0;
+    input.audioBitrate = "96k";
+    await padOrTrimAudioToVideoFrameCount(input);
+    expect(bitrates).toEqual(["96k", "96k"]);
+  });
+
   it("rides out a transient Windows file lock when the corrected AAC replaces the audio", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-peak-lock-"));
     const outputPath = join(dir, "o.aac");
@@ -601,6 +624,30 @@ describe("constrainAacTruePeak from a PCM source", () => {
       });
       expect(result.success).toBe(true);
       expect(result.loweredDb).toBeGreaterThan(pcmPeakDbfs);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("re-encodes the correction at the requested audio bitrate", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-aac-pcm-"));
+    try {
+      const audioPath = join(dir, "mix.m4a");
+      writeFileSync(audioPath, "aac");
+      const bitrates: (string | undefined)[] = [];
+      const result = await constrainAacTruePeak({
+        audioPath,
+        targetDurationSeconds: 1,
+        audioBitrate: "256k",
+        probeTruePeakDbfs: async (path) => (path === audioPath ? 2 : -3),
+        encodeAac: async (_input, output, _seconds, _filter, options) => {
+          bitrates.push(options.audioBitrate);
+          writeFileSync(output, "aac");
+          return { success: true };
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(bitrates).toEqual(["256k"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

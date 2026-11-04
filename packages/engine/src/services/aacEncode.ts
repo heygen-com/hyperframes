@@ -9,6 +9,7 @@ import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { dirname, join } from "node:path";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { resolveAacAudioBitrate } from "./audioBitrate.js";
 
 const SAMPLE_RATE = 48_000;
 const FRAME_SAMPLES = 1024;
@@ -19,7 +20,9 @@ const MAX_SEGMENTS = 8;
 // quiet sound codes the first loud frame up to 4.5 dB hot, so the first segment opens in silence.
 const PRE_ROLL_FRAMES = 469;
 const POST_ROLL_FRAMES = 8;
-const AAC_ARGS = ["-acodec", "aac", "-b:a", "192k"];
+function aacArgs(audioBitrate?: string): string[] {
+  return ["-acodec", "aac", "-b:a", resolveAacAudioBitrate(audioBitrate)];
+}
 
 export function aacSegmentCount(totalDuration: number): number {
   return Math.max(1, Math.min(MAX_SEGMENTS, Math.floor(totalDuration / MIN_SEGMENT_SECONDS)));
@@ -83,10 +86,15 @@ function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
 function encodeInOnePass(
   input: string,
   outputPath: string,
-  { signal, timeout, filter }: { signal?: AbortSignal; timeout: number; filter?: string },
+  {
+    signal,
+    timeout,
+    filter,
+    audioBitrate,
+  }: { signal?: AbortSignal; timeout: number; filter?: string; audioBitrate?: string },
 ): Promise<RunFfmpegResult> {
   const filters = [filter, `aresample=${SAMPLE_RATE}`].filter(Boolean).join(",");
-  return runFfmpeg(["-i", input, "-af", filters, ...AAC_ARGS, "-y", outputPath], {
+  return runFfmpeg(["-i", input, "-af", filters, ...aacArgs(audioBitrate), "-y", outputPath], {
     signal,
     timeout,
   });
@@ -102,11 +110,19 @@ export async function encodeAac(
     timeout,
     filter,
     segments: count = aacSegmentCount(totalDuration),
-  }: { signal?: AbortSignal; timeout: number; filter?: string; segments?: number },
+    audioBitrate,
+  }: {
+    signal?: AbortSignal;
+    timeout: number;
+    filter?: string;
+    segments?: number;
+    audioBitrate?: string;
+  },
 ): Promise<RunFfmpegResult> {
   if (!(await supportsSettsDuration())) {
-    return encodeInOnePass(input, outputPath, { signal, timeout, filter });
+    return encodeInOnePass(input, outputPath, { signal, timeout, filter, audioBitrate });
   }
+  const codecArgs = aacArgs(audioBitrate);
   const dir = mkdtempSync(join(dirname(outputPath), ".aac-segments-"));
   try {
     const segments = planSegments(totalDuration, count).map((segment, k) => ({
@@ -123,7 +139,7 @@ export async function encodeAac(
             input,
             "-af",
             [filter, `aresample=${SAMPLE_RATE}`, trim].filter(Boolean).join(","),
-            ...AAC_ARGS,
+            ...codecArgs,
             "-f",
             "adts",
             "-y",

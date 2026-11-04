@@ -19,6 +19,7 @@ Requires: Docker installed and running.
 - `-w, --workers` — Parallel workers 1-8 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
+- `--audio-bitrate` — Target audio bitrate such as `128k` or `256k` (unset keeps AAC at 192k and Opus at 128k)
 - `--keyframe-interval` — MP4 only: a keyframe at least every N seconds (default: encoder's choice)
 - `--max-bitrate` — MP4 only: peak video bitrate cap such as `8M`, kept alongside the quality target (default: uncapped)
 - `--buffer-size` — MP4 only: buffer for `--max-bitrate`, such as `16M` (default: twice `--max-bitrate`)

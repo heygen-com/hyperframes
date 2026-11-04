@@ -229,6 +229,49 @@ describe.skipIf(!HAS_FFMPEG)("encodeAac", () => {
     60_000,
   );
 
+  it.skipIf(process.platform === "win32")(
+    "encodes at the requested audio bitrate in segments and in the one-pass fallback",
+    async () => {
+      const source = join(dir, "bitrate.wav");
+      ffmpeg(["-f", "lavfi", "-i", "sine=f=440:d=0.5:r=48000", "-ac", "2", "-y", source]);
+      const wrapper = join(dir, "ffmpeg-one-pass-bitrate");
+      writeFileSync(
+        wrapper,
+        [
+          "#!/bin/sh",
+          'case "$*" in *"-h bsf=setts"*) exit 0;; esac',
+          `exec "${getFfmpegBinary()}" "$@"`,
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      const bitrateOf = (args: string[]) => args[args.indexOf("-b:a") + 1];
+      const run = vi.spyOn(ffmpegRunner, "runFfmpeg");
+      const saved = process.env[FFMPEG_PATH_ENV];
+      try {
+        const segmented = join(dir, "bitrate-segmented.m4a");
+        const options = { timeout: 30_000, audioBitrate: "96k" };
+        expect((await encodeAac(source, segmented, 0.5, options)).success).toBe(true);
+        const segmentCalls = run.mock.calls.filter(([args]) => args.includes("-acodec"));
+        expect(segmentCalls.map(([args]) => args)).toEqual([expect.arrayContaining(["adts"])]);
+        expect(segmentCalls.map(([args]) => bitrateOf(args))).toEqual(["96k"]);
+
+        run.mockClear();
+        process.env[FFMPEG_PATH_ENV] = wrapper;
+        const onePass = join(dir, "bitrate-one-pass.m4a");
+        expect((await encodeAac(source, onePass, 0.5, options)).success).toBe(true);
+        const onePassCalls = run.mock.calls.filter(([args]) => args.includes("-acodec"));
+        expect(onePassCalls).toHaveLength(1);
+        expect(onePassCalls[0]![0]).not.toContain("adts");
+        expect(bitrateOf(onePassCalls[0]![0])).toBe("96k");
+      } finally {
+        run.mockRestore();
+        if (saved === undefined) delete process.env[FFMPEG_PATH_ENV];
+        else process.env[FFMPEG_PATH_ENV] = saved;
+      }
+    },
+    60_000,
+  );
+
   it("keeps a sharp onset at its level when the audio opens quietly, encode after encode", async () => {
     const growthDb: number[] = [];
     for (const f0 of [250, 306, 360]) {

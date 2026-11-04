@@ -434,6 +434,7 @@ export interface RenderConfig {
   crf?: number;
   /** Target video bitrate (e.g. "10M"). Mutually exclusive with `crf`. */
   videoBitrate?: string;
+  audioBitrate?: string;
   /** Keyframe every N seconds (mp4). A maximum where chunks join, as on Lambda. */
   keyframeIntervalSeconds?: number;
   /** MOV only: ProRes profile. Default `4444` keeps alpha; the 422 profiles drop it. */
@@ -3676,6 +3677,7 @@ async function executeRenderPipeline(input: {
           fps: job.config.fps,
           ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
           audioGain: cfg.audioGain,
+          audioBitrate: job.config.audioBitrate,
           audios: composition.audios,
           masterFxChain: composition.masterFxChain,
           abortSignal: executionSignal,
@@ -5552,6 +5554,7 @@ async function executeRenderPipeline(input: {
             format: outputFormat,
             hlsSegmentSeconds,
             ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+            audioBitrate: job.config.audioBitrate,
             abortSignal: executionSignal,
             assertNotAborted,
             onProgress,

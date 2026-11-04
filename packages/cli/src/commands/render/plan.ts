@@ -16,6 +16,7 @@ import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
+  isValidAudioBitrate,
   isVideoFrameFormat,
   type ProresProfile,
   type VideoFrameFormat,
@@ -89,6 +90,7 @@ export interface RenderCommandArgs {
   start?: string;
   end?: string;
   "video-bitrate"?: string;
+  "audio-bitrate"?: string;
   "keyframe-interval"?: string;
   "max-bitrate"?: string;
   "buffer-size"?: string;
@@ -171,6 +173,7 @@ export interface RenderPlan {
   crf?: number;
   vp9CpuUsed?: number;
   videoBitrate?: string;
+  audioBitrate?: string;
   keyframeIntervalSeconds?: number;
   range?: RenderRange;
   proresProfile?: ProresProfile;
@@ -568,6 +571,14 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     );
     failUsage();
   }
+  const audioBitrate = args["audio-bitrate"]?.trim();
+  if (args["audio-bitrate"] != null && (!audioBitrate || !isValidAudioBitrate(audioBitrate))) {
+    errorBox(
+      "Invalid audio-bitrate",
+      `Got "${args["audio-bitrate"]}". Must be a bitrate from 500 to 512k, such as "128k" or "256k".`,
+    );
+    failUsage();
+  }
   if (format === "mov" && (crf !== undefined || videoBitrate !== undefined)) {
     const flag = crf !== undefined ? "--crf" : "--video-bitrate";
     errorBox(
@@ -644,6 +655,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     crf,
     vp9CpuUsed,
     videoBitrate,
+    audioBitrate,
     ...delivery,
     range,
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",

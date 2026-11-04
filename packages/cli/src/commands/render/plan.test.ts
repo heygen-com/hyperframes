@@ -253,6 +253,34 @@ describe("createRenderPlan", () => {
     ).toBe("10M");
   });
 
+  it("plans an audio bitrate and rejects a blank one", () => {
+    expect(createRenderPlan({ dir: projectDir }).audioBitrate).toBeUndefined();
+    expect(createRenderPlan({ dir: projectDir, "audio-bitrate": " 128k " }).audioBitrate).toBe(
+      "128k",
+    );
+    expect(
+      createRenderPlan({ dir: projectDir, format: "mov", "audio-bitrate": "256k" }).audioBitrate,
+    ).toBe("256k");
+    expect(() => createRenderPlan({ dir: projectDir, "audio-bitrate": "   " })).toThrow(
+      CliUsageError,
+    );
+    expect(() => createRenderPlan({ dir: projectDir, "audio-bitrate": "128" })).toThrow(
+      CliUsageError,
+    );
+  });
+
+  it("rejects an audio bitrate outside what every audio encoder accepts", () => {
+    expect(createRenderPlan({ dir: projectDir, "audio-bitrate": "512k" }).audioBitrate).toBe(
+      "512k",
+    );
+    expect(createRenderPlan({ dir: projectDir, "audio-bitrate": "500" }).audioBitrate).toBe("500");
+    for (const audioBitrate of ["1M", "513k", "499", "0.4k"]) {
+      expect(() =>
+        createRenderPlan({ dir: projectDir, format: "webm", "audio-bitrate": audioBitrate }),
+      ).toThrow(CliUsageError);
+    }
+  });
+
   it("carries the delivery options into the plan for MP4 and refuses them for other formats", () => {
     const flags = { "keyframe-interval": "2", "max-bitrate": "8M", "buffer-size": "12M" };
     expect(createRenderPlan({ dir: projectDir, format: "mp4", ...flags })).toMatchObject({

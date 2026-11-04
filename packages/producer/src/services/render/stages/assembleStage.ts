@@ -47,6 +47,7 @@ export interface AssembleStageInput {
   /** Segment length for `format: "hls"`. Defaults to {@link DEFAULT_HLS_SEGMENT_SECONDS}. */
   hlsSegmentSeconds?: number;
   ffmpegProcessTimeout: number;
+  audioBitrate?: string;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -55,6 +56,13 @@ export interface AssembleStageInput {
 export interface AssembleStageResult {
   /** Wall-clock ms for the assemble phase. */
   assembleMs: number;
+}
+
+function audioBitrateFields(
+  audioBitrate: string | undefined,
+): { audioBitrate: string } | undefined {
+  if (!audioBitrate) return undefined;
+  return { audioBitrate };
 }
 
 export function recordLimiterAttenuation(job: RenderJob, audioLoweredDb: number | undefined): void {
@@ -100,6 +108,7 @@ async function assembleOutput(
     hasAudio,
     format,
     ffmpegProcessTimeout,
+    audioBitrate,
     abortSignal,
     assertNotAborted,
   } = input;
@@ -119,6 +128,7 @@ async function assembleOutput(
       outputPath: normalizedAudioPath,
       signal: abortSignal,
       timeoutMs: ffmpegProcessTimeout,
+      ...audioBitrateFields(audioBitrate),
     });
     assertNotAborted();
     if (!normalizeResult.success) {
@@ -136,6 +146,7 @@ async function assembleOutput(
         {
           audioCodec: "aac",
           ffmpegProcessTimeout,
+          ...audioBitrateFields(audioBitrate),
         },
         job.config.fps,
         onSecondsWritten,

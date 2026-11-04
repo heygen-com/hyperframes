@@ -918,12 +918,16 @@ async function generateSilence(
   };
 }
 
+type AudioMixConfig = Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+  audioBitrate?: string;
+};
+
 async function mixAudioTracksFlat(
   tracks: AudioTrack[],
   outputPath: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">>,
+  config?: AudioMixConfig,
 ): Promise<MixResult> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const masterOutputGain = config?.audioGain ?? DEFAULT_CONFIG.audioGain;
@@ -1364,7 +1368,7 @@ async function mixThroughFloatSum(
   workDir: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+  config?: AudioMixConfig & {
     keepEncoderInputAt?: string;
   },
 ): Promise<MixResult> {
@@ -1386,6 +1390,7 @@ async function mixThroughFloatSum(
   const encoded = await encodeAac(encoderInput, outputPath, totalDuration, {
     signal,
     timeout: config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout,
+    audioBitrate: config?.audioBitrate,
   });
   if (!encoded.success) {
     const failure = ffmpegFailure(
@@ -1423,7 +1428,7 @@ export async function processCompositionAudio(
   outputPath: string,
   totalDuration: number,
   signal?: AbortSignal,
-  config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout" | "audioGain">> & {
+  config?: AudioMixConfig & {
     /** Serialised master bus chain, from `parseMasterFxChain`. */
     masterFxChain?: string;
     urlByAbsentLocalPath?: ReadonlyMap<string, string>;
