@@ -38,7 +38,6 @@ export class CheckDeadlineError extends Error {
   }
 }
 
-/** Check's own copy budget; `check --prepare-media` has none. */
 export const COPY_BUDGET_MS = 120_000;
 
 export class CheckCopiesUnfinishedError extends Error {
