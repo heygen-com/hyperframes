@@ -66,24 +66,30 @@ describe("billing subscribe", () => {
 });
 
 describe("billing add-credits", () => {
-  it.each(["add-credits", "top-up"])(
-    "opens the credits page for `%s`, with no notice",
-    async (name) => {
-      vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://plans.test/p");
-      vi.stubEnv("HYPERFRAMES_CREDITS_URL", "https://credits.test/c");
-      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      vi.useFakeTimers();
-      const done = runCommand(billing, { rawArgs: [name] });
-      await vi.advanceTimersByTimeAsync(2000);
-      await done;
-      vi.useRealTimers();
-      vi.unstubAllEnvs();
-      expect(new URL(opened[0] ?? "").origin).toBe("https://credits.test");
-      expect(error).not.toHaveBeenCalled();
-      expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
-    },
-  );
+  it("opens the credits page", async () => {
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://plans.test/p");
+    vi.stubEnv("HYPERFRAMES_CREDITS_URL", "https://credits.test/c");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["add-credits"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    expect(new URL(opened[0] ?? "").origin).toBe("https://credits.test");
+    expect(error).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
+  });
+
+  it("refuses the old name `top-up` like any unknown action, naming the valid ones", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(runCommand(billing, { rawArgs: ["top-up"] })).rejects.toThrow();
+    expect(error.mock.calls.flat().join("\n")).toContain(
+      "Use `billing subscribe` or `billing add-credits`.",
+    );
+    expect(opened).toEqual([]);
+  });
 });
 
 describe("billing without a terminal", () => {

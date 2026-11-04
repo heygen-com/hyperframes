@@ -87,7 +87,7 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const action = String(args.action) === "top-up" ? "add-credits" : String(args.action);
+    const action = String(args.action);
     if (action !== "subscribe" && action !== "add-credits") {
       console.error(c.error("Use `billing subscribe` or `billing add-credits`."));
       failCommand();
