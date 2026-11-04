@@ -12,7 +12,7 @@ Open a pull request that adds a row to the table below. Keep entries short:
 - **Contact** — a GitHub handle or contact person who can answer questions about your usage.
 - **How HyperFrames is used** — one sentence on the use case (e.g., "Personalized video at scale," "Agent-authored marketing assets," "Slides-to-video pipeline").
 
-If you'd rather not be listed publicly, that's fine — drop a note in [our Discord](https://discord.com/invite/xK4S8a6N5G) instead. We always like hearing about how the project is being used.
+If you'd rather not be listed publicly, that's fine — drop a note in [our Discord](https://discord.gg/fzbdWyjphr) instead. We always like hearing about how the project is being used.
 
 ## Production
 
