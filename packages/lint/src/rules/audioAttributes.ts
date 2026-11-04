@@ -17,31 +17,39 @@ const AUDIO_ATTRIBUTE_VERSION = 1;
  */
 export function audioAttributeShapeError(attr: AudioAttribute, json: string): string | null {
   const { list, noun, item } = AUDIO_ATTRIBUTES[attr];
+  const parsed = parseEnvelope(json);
+  if (typeof parsed === "string") return parsed;
+  if (parsed.version !== AUDIO_ATTRIBUTE_VERSION) {
+    return `unsupported ${noun} version: ${String(parsed.version)}`;
+  }
+  const entries = parsed[list];
+  if (!Array.isArray(entries)) return `it is missing a \`${list}\` array`;
+  for (const [i, entry] of entries.entries()) {
+    const reason = entryShapeError(attr, item, i, entry);
+    if (reason) return reason;
+  }
+  return null;
+}
+
+function parseEnvelope(json: string): ({ version?: unknown } & Record<string, unknown>) | string {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
   } catch (err) {
     return `it is not valid JSON (${(err as Error).message})`;
   }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return "it is not a JSON object";
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return "it is not a JSON object";
+  return raw as { version?: unknown } & Record<string, unknown>;
+}
+
+function entryShapeError(attr: AudioAttribute, item: string, i: number, entry: unknown): string | null {
+  if (typeof entry !== "object" || entry === null) return `${item} ${i} is not an object`;
+  const fields = entry as Record<string, unknown>;
+  if (attr === "data-fx-chain") {
+    return typeof fields.type === "string" ? null : `Node ${i} has no effect \`type\``;
   }
-  const obj = raw as { version?: unknown } & Record<string, unknown>;
-  if (obj.version !== AUDIO_ATTRIBUTE_VERSION) {
-    return `unsupported ${noun} version: ${String(obj.version)}`;
-  }
-  const entries = obj[list];
-  if (!Array.isArray(entries)) return `it is missing a \`${list}\` array`;
-  for (const [i, entry] of entries.entries()) {
-    if (typeof entry !== "object" || entry === null) return `${item} ${i} is not an object`;
-    const fields = entry as Record<string, unknown>;
-    if (attr === "data-automation") {
-      if (typeof fields.target !== "string") return `Lane ${i} has no \`target\``;
-      if (!Array.isArray(fields.points)) return `Lane ${i} is missing a \`points\` array`;
-    } else if (typeof fields.type !== "string") {
-      return `Node ${i} has no effect \`type\``;
-    }
-  }
+  if (typeof fields.target !== "string") return `Lane ${i} has no \`target\``;
+  if (!Array.isArray(fields.points)) return `Lane ${i} is missing a \`points\` array`;
   return null;
 }
 

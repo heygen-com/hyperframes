@@ -887,8 +887,6 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
   // audio_group_holds_elements
   findAudioGroupHoldsElementsFindings,
   findLinkedClipFindings,
-
-  // audio_attribute_unreadable
   findUnreadableAudioAttributeFindings,
 ];
 
