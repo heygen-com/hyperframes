@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
+import { extractSfntFace } from "./sfntNames.js";
 import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
@@ -810,9 +811,10 @@ async function systemFamilyFaceRules(
   const rules: string[] = [];
   let totalBytes = 0;
   for (const variant of variants) {
-    const fontBuffer = readFileSync(variant.path);
+    const single = variant.face === undefined ? null : extractSfntFace(variant.path, variant.face);
+    const fontBuffer = single?.bytes ?? readFileSync(variant.path);
     totalBytes += fontBuffer.length;
-    const dataUri = await fontToDataUri(fontBuffer, variant.format);
+    const dataUri = await fontToDataUri(fontBuffer, single?.format ?? variant.format);
     rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
   }
   if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {

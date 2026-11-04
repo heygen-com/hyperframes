@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
+import { readSfntFaces } from "./sfntNames.js";
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
 const FC_MATCH_TIMEOUT_MS = 3000;
@@ -136,6 +137,7 @@ export function fontDirectories(): string[] {
       "/Library/Fonts",
       "/System/Library/Fonts",
       "/System/Library/Fonts/Supplemental",
+      "/System/Library/AssetsV2",
     ];
   }
   if (platform() === "win32") {
@@ -168,15 +170,15 @@ export interface FontFileEntry {
  * path, filename, and derived family name. Shared by the font listing route
  * and the per-family locator to avoid duplicating the directory scan loop.
  */
-export function collectFontFileEntries(dir: string, depth = 0): FontFileEntry[] {
-  if (!existsSync(dir) || depth > 2) return [];
+export function collectFontFileEntries(dir: string, depth = 0, maxDepth = 2): FontFileEntry[] {
+  if (!existsSync(dir) || depth > maxDepth) return [];
   const entries: FontFileEntry[] = [];
 
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        entries.push(...collectFontFileEntries(fullPath, depth + 1));
+        entries.push(...collectFontFileEntries(fullPath, depth + 1, maxDepth));
         continue;
       }
       if (!FONT_EXT_RE.test(entry.name)) continue;
@@ -263,6 +265,8 @@ export function locateSystemFont(family: string): LocatedFont | null {
 export interface LocatedFontVariant extends LocatedFont {
   weight: string;
   style: "normal" | "italic";
+  /** Where the face starts inside a font collection (.ttc), which is the only way to load one face of it. */
+  face?: number;
 }
 
 const WEIGHT_TOKENS: Record<string, string> = {
@@ -310,7 +314,40 @@ export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
     const { weight, style } = inferWeightAndStyle(c.path);
     variants.push({ path: c.path, format: c.format, weight, style });
   }
+  if (variants.length === 0) return dedupeVariants(variantsByInnerName(normalized));
   return dedupeVariants(variants);
+}
+
+// A file name rarely equals the family (PingFang.ttc holds "PingFang SC"), so fall back to the names inside.
+const INNER_NAME_MAX_DEPTH = 4;
+let innerNameIndex: Map<string, LocatedFontVariant[]> | null = null;
+
+function variantsByInnerName(normalized: string): LocatedFontVariant[] {
+  if (!innerNameIndex) {
+    innerNameIndex = new Map();
+    for (const dir of fontDirectories()) {
+      for (const entry of collectFontFileEntries(dir, 0, INNER_NAME_MAX_DEPTH)) {
+        const ext = entry.fileName.match(FONT_EXT_RE)?.[1] ?? "ttf";
+        if (!/^(ttf|otf|ttc)$/i.test(ext)) continue;
+        const collection = ext.toLowerCase() === "ttc";
+        for (const face of readSfntFaces(entry.path)) {
+          for (const family of face.families) {
+            const key = normalizeName(family);
+            const list = innerNameIndex.get(key) ?? [];
+            list.push({
+              path: entry.path,
+              format: collection ? "ttc" : extensionToFormat(ext),
+              weight: face.weight,
+              style: face.style,
+              ...(collection && { face: face.offset }),
+            });
+            innerNameIndex.set(key, list);
+          }
+        }
+      }
+    }
+  }
+  return innerNameIndex.get(normalized) ?? [];
 }
 
 function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
@@ -324,5 +361,6 @@ function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
 
 export function clearSystemFontCache(): void {
   cache.clear();
+  innerNameIndex = null;
   allowedDirsCache = null;
 }
