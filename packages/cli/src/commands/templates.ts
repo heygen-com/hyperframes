@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -13,7 +13,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
-import { dirname, join, resolve } from "node:path";
+import { processIsAlive } from "../utils/processTree.js";
+import { basename, dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
@@ -109,19 +111,58 @@ function assertSafeEntries(data: Buffer): void {
 
 const PULLED_HASH = ".template-sha256";
 
+const execFileAsync = promisify(execFile);
+const STOP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
+/** Removes `work` if the pull is stopped mid-unpack, then lets the signal end the process as it would have. */
+function removeOnStop(work: string): () => void {
+  const handlers = STOP_SIGNALS.map((signal) => {
+    const handler = (): void => {
+      rmSync(work, { recursive: true, force: true });
+      stopWatching();
+      process.kill(process.pid, signal);
+    };
+    process.once(signal, handler);
+    return [signal, handler] as const;
+  });
+  const stopWatching = (): void => {
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  };
+  return stopWatching;
+}
+
+const partPrefix = (dest: string) => `${basename(dest)}.part-`;
+
+/** Clears the `.part-<pid>-` folders of pulls whose process is gone, such as one killed mid-unpack. */
+function removeAbandonedParts(dest: string): void {
+  const parent = dirname(dest);
+  if (!existsSync(parent)) return;
+  for (const name of readdirSync(parent)) {
+    if (!name.startsWith(partPrefix(dest))) continue;
+    const pid = Number(name.slice(partPrefix(dest).length).split("-")[0]);
+    if (Number.isInteger(pid) && pid > 0 && processIsAlive(pid)) continue;
+    rmSync(join(parent, name), { recursive: true, force: true });
+  }
+}
+
 /** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-function unpack(data: Buffer, dest: string, pack: TemplatePack): void {
+async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
   makeOutputFolder(dirname(dest));
-  const work = mkdtempSync(`${dest}.part-`);
+  removeAbandonedParts(dest);
+  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  const stopWatching = removeOnStop(work);
   try {
     const out = join(work, "template");
     assertSafeEntries(data);
     mkdirSync(out);
-    execFileSync("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], { input: data });
+    const archive = join(work, "bundle.tar.gz");
+    writeFileSync(archive, data);
+    await execFileAsync("tar", ["-xzf", archive, "-C", out, "--no-same-owner"]);
     writeFileSync(join(out, PULLED_HASH), pack.sha256);
     removeEmptyPlaceholder(dest);
     renameSync(out, dest);
   } finally {
+    stopWatching();
     rmSync(work, { recursive: true, force: true });
   }
 }
@@ -135,7 +176,7 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  await unpack(await download(await bundleUrl(pack), pack), dest, pack);
   return dest;
 }
 

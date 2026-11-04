@@ -1,6 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +21,17 @@ vi.mock("../cloud/auth.js", () => ({
   },
   resolveCloudBaseUrl: () => "https://api.heygen.test",
 }));
+
+type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
+const unpackGate = vi.hoisted(() => ({ hold: null as null | ((done: ExecFileCallback) => void) }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const execFile = (file: string, args: string[], done: ExecFileCallback) => {
+    if (unpackGate.hold) return unpackGate.hold(done);
+    return actual.execFile(file, args, done);
+  };
+  return { ...actual, execFile };
+});
 
 import { pullTemplate, PullRefused, TEMPLATES } from "./templates.js";
 
@@ -53,6 +72,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  unpackGate.hold = null;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   delete TEMPLATES["sample"];
   rmSync(dir, { recursive: true, force: true });
@@ -152,6 +173,37 @@ describe("pullTemplate", () => {
     serve({}, evil);
     await expect(pullTemplate("sample", dir)).rejects.toThrow("unsafe path");
     expect(existsSync(join(dir, "templates", "sample"))).toBe(false);
+  });
+
+  it("clears the partial folder of a pull that was killed mid-unpack, and keeps a live pull's", async () => {
+    serve({});
+    const templates = join(dir, "templates");
+    const abandoned = join(templates, "sample.part-Ab12Cd");
+    const live = join(templates, `sample.part-${process.pid}-Zz9Yy8`);
+    mkdirSync(join(abandoned, "template"), { recursive: true });
+    mkdirSync(live);
+    await pullTemplate("sample", dir);
+    expect(existsSync(abandoned)).toBe(false);
+    expect(existsSync(live)).toBe(true);
+  });
+
+  it("removes its partial folder when Ctrl-C stops the unpack", async () => {
+    serve({});
+    const before = new Set(process.listeners("SIGINT"));
+    const unpacking = new Promise<void>((started) => {
+      unpackGate.hold = () => started();
+    });
+    const resent = vi.spyOn(process, "kill").mockImplementation(() => true);
+    void pullTemplate("sample", dir);
+    await unpacking;
+    const parts = () =>
+      readdirSync(join(dir, "templates")).filter((name) => name.includes(".part-"));
+    expect(parts()).toHaveLength(1);
+    const stop = process.listeners("SIGINT").find((listener) => !before.has(listener));
+    stop?.("SIGINT");
+    expect(parts()).toEqual([]);
+    expect(resent).toHaveBeenCalledWith(process.pid, "SIGINT");
+    expect(process.listeners("SIGINT").filter((listener) => !before.has(listener))).toEqual([]);
   });
 
   it("names the templates when the slug is unknown", async () => {
