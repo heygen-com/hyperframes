@@ -1747,12 +1747,8 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
   return result;
 }
 
-/**
- * Copy the `@font-face` rules of the page's project stylesheets into an inline
- * `<style>`, url()s rebased to the project root, so the fail-closed font check
- * and the local font embed see the fonts the project ships. The `<link>` stays
- * for the sheet's other rules.
- */
+// Copies project stylesheets' @font-face rules inline (urls rebased) so the font check and embed see them.
+// The <link> stays for the sheet's other rules.
 function inlineProjectFontFaces(html: string, projectDir: string): string {
   const assetExists = (path: string) => existsSync(resolve(projectDir, path));
   return html.replace(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi, (tag) => {
