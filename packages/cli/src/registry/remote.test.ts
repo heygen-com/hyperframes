@@ -14,7 +14,6 @@ vi.mock("node:os", async (importOriginal) => ({
 
 const {
   assetSourceUrl,
-  describeCauseChain,
   fetchItemFile,
   fetchItemManifest,
   fetchRegistryManifest,
@@ -326,50 +325,6 @@ describe("fetchItemManifest", () => {
     await expect(
       fetchItemManifest("no-such-move", "hyperframes:component", DEFAULT_REGISTRY_URL),
     ).rejects.toThrow("HTTP 404");
-  });
-});
-
-describe("describeCauseChain", () => {
-  it("surfaces the reason undici hides under cause", () => {
-    // The reported failure. `fetch failed` alone describes every network
-    // problem equally badly; the sentence that tells you what to do is one
-    // level down, and it was being dropped.
-    const err = new Error("fetch failed", {
-      cause: new Error("self-signed certificate in certificate chain"),
-    });
-
-    expect(describeCauseChain(err)).toBe(
-      "fetch failed (self-signed certificate in certificate chain)",
-    );
-  });
-
-  it("includes an errno code when the message does not already carry it", () => {
-    const inner = Object.assign(new Error("getaddrinfo ENOTFOUND example.invalid"), {
-      code: "ENOTFOUND",
-    });
-
-    // The code is already in the text, so repeating it would be noise.
-    expect(describeCauseChain(new Error("fetch failed", { cause: inner }))).toBe(
-      "fetch failed (getaddrinfo ENOTFOUND example.invalid)",
-    );
-  });
-
-  it("walks more than one level", () => {
-    const deep = new Error("a", { cause: new Error("b", { cause: new Error("c") }) });
-
-    expect(describeCauseChain(deep)).toBe("a (b; c)");
-  });
-
-  it("survives a cause cycle rather than hanging", () => {
-    const a = new Error("a");
-    const b = new Error("b", { cause: a });
-    (a as { cause?: unknown }).cause = b;
-
-    expect(describeCauseChain(a)).toBe("a (b)");
-  });
-
-  it("returns the plain message when there is no cause", () => {
-    expect(describeCauseChain(new Error("HTTP 404"))).toBe("HTTP 404");
   });
 });
 

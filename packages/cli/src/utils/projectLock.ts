@@ -6,7 +6,7 @@ import { readToolContext, type ToolContext } from "./toolContext.js";
 
 export class ProjectLockTimeout extends Error {}
 
-interface Holder {
+export interface Holder {
   pid: number;
   command: string;
   startedAt: number;
@@ -17,15 +17,15 @@ const POLL_MS = 250;
 export const projectLockPath = (projectDir: string) =>
   join(projectDir, ".hyperframes", "project.lock");
 
-function readHolder(path: string): Holder | null {
+export function readHolder<T extends Holder = Holder>(path: string): T | null {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Holder;
+    return JSON.parse(readFileSync(path, "utf8")) as T;
   } catch {
     return null;
   }
 }
 
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -103,6 +103,10 @@ export async function withProjectLock<T>(
   try {
     return await run();
   } finally {
-    if (sameHolder(readHolder(path), holder)) unlinkSync(path);
+    release(path, holder);
   }
+}
+
+export function release(path: string, holder: Holder): void {
+  if (sameHolder(readHolder(path), holder)) unlinkSync(path);
 }
