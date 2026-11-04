@@ -282,7 +282,6 @@ export async function serveStaticProjectHtml(
   // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
   // committed hyperframes.json setting.
   autoProxyOverride?: boolean,
-  // Absolute path -> seconds from the start to copy, for videos the caller plays only the start of.
   proxyLimits: ReadonlyMap<string, number> = new Map(),
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];

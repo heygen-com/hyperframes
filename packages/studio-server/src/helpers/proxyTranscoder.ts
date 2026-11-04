@@ -219,12 +219,10 @@ export function getProxyCachePath(
   );
 }
 
-/** A copy of only the first `limitSeconds` of a source is a different copy from the whole one. */
 function keyVariant(variant: ProxyVariant, limitSeconds: number | undefined): string {
   return limitSeconds === undefined ? variant : `${variant}@${limitSeconds}s`;
 }
 
-/** The first-stretch length to copy for a caller playing `neededSeconds`, or undefined to copy the whole file. */
 export async function proxyWindowSeconds(
   absoluteSourcePath: string,
   neededSeconds: number,
@@ -1193,7 +1191,6 @@ async function makeStill(
 }
 
 export interface ResolveProxyOptions {
-  /** Copy only this many seconds from the start (see `proxyWindowSeconds`); a different copy from the whole one. */
   limitSeconds?: number;
   priority?: boolean;
   background?: boolean;

@@ -28,6 +28,7 @@ import {
 } from "./checkBrowser.js";
 import { CheckDeadline } from "./checkDeadline.js";
 import { closeManagedBrowser } from "../browser/launch.js";
+import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
@@ -2291,6 +2292,25 @@ describe("finding frame capture", () => {
         { time: 1, filename: "a.png", inspect: [] },
       ]);
       expect(mocks.prepareFindingInspector).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves the page the same copy windows the check made, so a capture starts no full copy", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-windows-"));
+    installSessionMock(fakePage());
+    mocks.bundleWithLocalizedFonts.mockResolvedValueOnce(
+      '<html><body><video src="clip.mov" data-duration="5"></video></body></html>',
+    );
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png" },
+      ]);
+      expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
+        new Map([[join(dir, "clip.mov"), 30]]),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
