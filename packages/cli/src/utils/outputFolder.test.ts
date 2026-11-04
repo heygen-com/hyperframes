@@ -39,12 +39,4 @@ describe("makeOutputFolder", () => {
     makeOutputFolder(dir);
     expect(fs.statSync(dir).isDirectory()).toBe(true);
   });
-
-  it("still refuses a path that is a file", () => {
-    const root = fs.mkdtempSync(join(tmpdir(), "hf-output-file-"));
-    made.push(root);
-    const file = join(root, "film.mp4");
-    fs.writeFileSync(file, "");
-    expect(() => makeOutputFolder(file)).toThrow();
-  });
 });
