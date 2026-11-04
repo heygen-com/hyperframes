@@ -237,9 +237,11 @@ function verifyPackedJavaScriptImports(workspace, filename, packedFiles) {
   }
 }
 
-function parsePackJson(output, workspace) {
+export function parsePackJson(output, workspace) {
   try {
-    const parsed = JSON.parse(output);
+    // pnpm lifecycle scripts can precede the pretty-printed JSON result with stdout.
+    const start = output.search(/^[{[]/m);
+    const parsed = JSON.parse(output.slice(start));
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     throw new Error(`Could not parse pnpm pack JSON output for ${workspace}`);

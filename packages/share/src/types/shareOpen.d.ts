@@ -23,7 +23,7 @@ export interface OpenSummaryDTO {
   plan_space_name: string | null;
 }
 
-/** One signed read URL, from a source download batch. */
+/** One signed read URL in a sync download batch. */
 export interface SignedBlobDTO {
   sha256: string;
   size: number;

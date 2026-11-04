@@ -38,7 +38,7 @@ Before first registration the host must obtain explicit audience consent and pre
 
 `reviewClient` exposes workspace capabilities, project listing/removal, grants, revision-checked access changes and export operations. `setReviewAccess`, `turnOffReviewLink`, and `removeReviewProject` retain the Desktop behavior. Enabling a revoked link produces a new URL. Disabling keeps the project and comments; removal is a separate operation.
 
-Identity remains in `.hyperframes/review.json` (or the existing backend-specific filename); pending export requests remain in `.hyperframes/review-export.json`. No bearer is stored there. A copied folder must deliberately reset sharing identity when creating a new project; a renamed folder retains it. A malformed/unreadable record fails instead of silently registering a new project.
+Identity remains in the project’s generated review.json metadata (or the existing backend-specific filename); pending export requests remain in the generated review-export.json metadata. No bearer is stored there. A copied folder must deliberately reset sharing identity when creating a new project; a renamed folder retains it. A malformed/unreadable record fails instead of silently registering a new project.
 
 Metadata mutations and version uploads use separate cross-process locks under `.hyperframes`. Locks are acquired atomically with complete owner metadata. A lock is reclaimed only when the same machine proves its owner process is dead; live, foreign-machine and malformed locks are not stolen. Interrupted upload operations resume with their saved idempotency keys. Concurrent identical uploads re-read the completed version under the lock and do not create another version.
 

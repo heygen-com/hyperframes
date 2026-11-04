@@ -2,7 +2,6 @@
 
 import type { AccessMode, LinkRole } from "./share";
 
-// code equals the HTTP status; data.reason is always present.
 export interface ErrorEnvelope {
   code: number;
   message: string;
@@ -19,7 +18,6 @@ export interface ErrorEnvelope {
   };
 }
 
-// hf/dto/review_project_dto.py:10-14
 export interface RegisterProjectRequest {
   studio_project_id: string;
   title: string;
@@ -91,7 +89,6 @@ export interface ShareDTO {
   moderation_hold_kind?: "takedown" | "auto_reports" | null;
 }
 
-// hf/dto/review_project_dto.py:17-22
 export interface UpdateProjectShareRequest {
   access_mode: AccessMode;
   default_role: LinkRole;
@@ -99,7 +96,6 @@ export interface UpdateProjectShareRequest {
   expected_revision: number;
 }
 
-// hf/dto/review_project_dto.py:50-53: POST share turns the link back on (a new address) when it was turned off.
 export interface ProjectOperationRequest {
   expected_link_generation: number;
   client_operation_id: string;

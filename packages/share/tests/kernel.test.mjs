@@ -13,6 +13,8 @@ import {
   reviewRecord,
   addVersion,
   reviewVersion,
+  refreshReviewExport,
+  putFile,
   projectFingerprint,
   withProjectShareLock,
   ShareBusyError,
@@ -188,5 +190,75 @@ test("a dead local owner can resume while a live or foreign owner is never stole
   await assert.rejects(
     withProjectShareLock(dir, "review", async () => true, { timeoutMs: 30 }),
     ShareBusyError,
+  );
+});
+
+test("status recovery settles distinct video/version IDs without a new upload", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+  const fingerprint = await projectFingerprint(dir);
+  const file = join(dir, ".hyperframes/review-export.json");
+  await writeFile(
+    file,
+    JSON.stringify({
+      last: null,
+      pending: {
+        projectId: "p1",
+        videoId: "video-id",
+        body: {
+          source_fingerprint: fingerprint,
+          local_upload: { checksum_sha256: "checksum" },
+          client_operation_id: "stable",
+        },
+      },
+    }),
+  );
+  let reads = 0;
+  api.readExport = async (project, video) => {
+    reads++;
+    assert.equal(project, "p1");
+    assert.equal(video, "video-id");
+    return {
+      status: "ready",
+      video_id: video,
+      version_id: "version-id",
+      exported_at: "2026-11-04T00:00:00Z",
+    };
+  };
+  await withProjectShareLock(dir, "export", () => refreshReviewExport(dir, api));
+  assert.equal(reads, 0);
+  await refreshReviewExport(dir, api);
+  assert.equal(reads, 1);
+  assert.equal(JSON.parse(await readFile(file, "utf8")).pending, null);
+  assert.equal(
+    (await reviewVersion(dir, { latestReadyVersionId: "version-id" })).last.current,
+    true,
+  );
+  await refreshReviewExport(dir, api);
+  assert.equal(reads, 1);
+});
+test("failed upload releases its input even when fetch does not cancel it", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "video.mp4");
+  await writeFile(file, Buffer.alloc(200_000));
+  let reader;
+  const result = await putFile(
+    { put_url: "https://storage.example/video", headers: {} },
+    file,
+    200_000,
+    () => {},
+    {
+      fetchImpl: async (_url, request) => {
+        reader = request.body.getReader();
+        await reader.read();
+        throw new Error("network closed");
+      },
+    },
+  );
+  assert.equal(result, "offline");
+  await assert.rejects(
+    reader.read(),
+    (error) => error.code === "ERR_STREAM_PREMATURE_CLOSE" || error.code === "ABORT_ERR",
   );
 });

@@ -37,7 +37,8 @@ export async function putFile(
   const arm = () => (clearTimeout(timer), (timer = setTimeout(() => stall.abort(), stallMs)));
   let sent = 0;
   // Pulled, never read ahead: a chunk is read when the network takes it, so the stall timer measures sending.
-  const chunks = createReadStream(file)[Symbol.asyncIterator]();
+  const stream = createReadStream(file);
+  const chunks = stream[Symbol.asyncIterator]();
   const body = new ReadableStream(
     {
       async pull(controller) {
@@ -70,6 +71,7 @@ export async function putFile(
     return "offline";
   } finally {
     clearTimeout(timer);
+    stream.destroy();
   }
 }
 

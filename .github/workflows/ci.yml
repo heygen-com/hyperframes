@@ -59,6 +59,7 @@ jobs:
           git worktree remove "$RUNNER_TEMP/reachability-base"
       - name: Report head reachability
         run: node scripts/check-test-reachability.mjs --report
+      - run: node --test packages/share/tests/*.test.mjs
       - run: node --test scripts/check-test-reachability.test.mjs
       - run: node scripts/check-test-reachability.mjs
 

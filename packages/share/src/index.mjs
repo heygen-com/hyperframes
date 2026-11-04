@@ -32,6 +32,7 @@ export {
   reviewVersion,
   addVersion,
   recheckHeld,
+  refreshReviewExport,
   addFirstVersion,
   versionFacts,
   versionOnPage,

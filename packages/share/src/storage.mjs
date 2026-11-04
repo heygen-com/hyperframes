@@ -37,7 +37,7 @@ export const rename = (from, to) => retryBusy(() => renameFile(from, to));
 /** @param {string} path @param {import("node:fs").RmOptions} [options] */
 export const rm = (path, options) => retryBusy(() => remove(path, options));
 
-/** Make metadata folders without recreating a project that was moved or removed. @param {string} root @param {string} rel */
+/** Create metadata folders only inside an existing project. @param {string} root @param {string} rel */
 export async function mkdirInside(root, rel) {
   let dir = root;
   for (const part of rel.split(sep).filter(Boolean)) {

@@ -1,7 +1,7 @@
 // @ts-check
 // Adding a version to a project's review page: the newest MP4 export goes up, then the server
 // processes and screens it. Main owns the run, so closing the Share popover never stops it.
-import { withProjectShareLock } from "./projectLock.mjs";
+import { ShareBusyError, withProjectShareLock } from "./projectLock.mjs";
 import { runFile } from "./host.mjs";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
@@ -580,6 +580,34 @@ export async function recheckHeld(projectPath, client) {
   if (going(done) || inFlight.has(key) || failures.get(key) !== failed) return;
   const failure = await finish(projectPath, state, pending, id, done);
   if (failure) failures.set(key, { ...failure, exportKey: failed.exportKey });
+  else failures.delete(key);
+}
+
+/** Settle a saved upload after its host exits, without competing with an active uploader.
+ * @param {string} projectPath @param {ReviewClient} client */
+export async function refreshReviewExport(projectPath, client) {
+  try {
+    await withProjectShareLock(
+      projectPath,
+      "export",
+      () => settleSavedExport(projectPath, client),
+      { timeoutMs: 0 },
+    );
+  } catch (error) {
+    if (!(error instanceof ShareBusyError)) throw error;
+  }
+}
+/** @param {string} dir @param {ReviewClient} client */
+async function settleSavedExport(dir, client) {
+  const state = await readState(dir);
+  const pending = state.pending;
+  const id = await reviewProjectId(dir);
+  if (!pending?.videoId || !id || pending.projectId !== id) return;
+  const done = await client.readExport(id, pending.videoId);
+  if (going(done)) return;
+  const failure = await finish(dir, state, pending, id, done);
+  const key = normalize(dir);
+  if (failure) failures.set(key, { ...failure, exportKey: exportKeyOf(dir) });
   else failures.delete(key);
 }
 

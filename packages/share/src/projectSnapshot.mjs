@@ -2,6 +2,7 @@
 // A project's files as change detection sees them: every file the film can use (isOutsideFilm), keyed by mtime and
 // size, except html, keyed by content without the data-hf-id stamps. A run's change set and the watcher both read it.
 import fs from "node:fs/promises";
+import { constants } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { isOutsideFilm } from "./appOwnedPaths.mjs";
@@ -20,13 +21,19 @@ export function contentKey(html) {
 /** A file renamed away between readdir and stat (atomic writes), or one the app may not read, is simply not there
  * (undefined): one unreadable entry must not blind the whole scan. @param {string} full @param {boolean} byContent */
 async function snapshotKey(full, byContent) {
-  const stat = await fs.stat(full).catch(() => null);
-  if (!stat) return undefined;
-  const html = full.endsWith(".html") ? await fs.readFile(full, "utf8").catch(() => null) : null;
-  if (html !== null) return contentKey(html);
-  if (byContent) return fs.readFile(full).then(sha256, () => undefined);
-  // A file's clock ticks coarsely (Linux: a few ms), so two quick writes can share an mtime; the size tells most apart.
-  return `${stat.mtimeMs}:${stat.size}`;
+  const handle = await fs.open(full, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
+  if (!handle) return undefined;
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) return undefined;
+    if (full.endsWith(".html")) return contentKey(await handle.readFile("utf8"));
+    if (byContent) return sha256(await handle.readFile());
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return undefined;
+  } finally {
+    await handle.close();
+  }
 }
 
 // What a run is judged against: each file's mtime and size, except html, whose key ignores the data-hf-id stamps an
