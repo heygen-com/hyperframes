@@ -13,7 +13,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DESCRIPTION_MAX = 320;
 export const CORE_SKILLS = {
   hyperframes: 7168,
-  "hyperframes-cli": 7168,
+  // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
+  "hyperframes-cli": 7424,
   "hyperframes-registry": 5120,
   "media-use": 5120,
   figma: 7168,

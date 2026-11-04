@@ -9,6 +9,8 @@ description: The HyperFrames CLI by job - scaffold, check, look at frames, edit 
 
 Run `npx hyperframes <command>` unless the project gives a wrapper; then use the wrapper. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
 
+A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is out. Pass it to the person once per conversation, in your own words, at a natural pause; updating is theirs to decide.
+
 ## Commands by job
 
 | Job | Commands |
