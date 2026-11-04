@@ -79,6 +79,8 @@ const deFrame = (index: number) =>
   Buffer.concat([Buffer.from(`de${index}:`), Buffer.alloc(30_000)]);
 // The screenshot session for risk frames never finishes opening; the capture session never initialises.
 let hangRiskSessionOpen = false;
+// The capture session's own open answers only when the test settles it.
+let primaryOpen: Promise<unknown> | null = null;
 let hangInitializeSession = false;
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
@@ -208,6 +210,7 @@ mock.module("@hyperframes/engine", () => ({
     config?: { useDrawElement?: boolean },
   ) => {
     if (hangRiskSessionOpen && config?.useDrawElement === false) return new Promise(() => {});
+    if (primaryOpen && config?.useDrawElement !== false) return primaryOpen;
     return {
       ...(sessionsCreated++ && {}),
       isScreenshotFallback: config?.useDrawElement === false,
@@ -1078,6 +1081,38 @@ describe("runCaptureStreamingStage", () => {
         sessionWorkerEncodeEnabled = false;
         sessionHasBeforeCapture = false;
         sessionRiskFrames = undefined;
+        if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
+      }
+    });
+
+    it("trips the watchdog when the capture session never finishes opening, and closes it if it opens late", async () => {
+      const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+      let openLate: (session: unknown) => void = () => {};
+      primaryOpen = new Promise((resolve) => (openLate = resolve));
+      closeCaptureSession.mockClear();
+      const prev = process.env.HF_DE_STALL_MS;
+      delete process.env.HF_DE_STALL_MS;
+      delete process.env.HF_DE_PARALLEL_STALL_MS;
+      vi.useFakeTimers();
+      try {
+        const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+        const state = await settleOnFakeClock(
+          runCaptureStreamingStage({ ...createInput(cfg), totalFrames: 10 }),
+          30 * 60_000,
+        );
+        expect(state.done).toBe(true);
+        expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+        expect((state.error as Error).message).toContain(
+          "no frame progress for 300000ms (stuck at frame 0/10 while opening the capture session",
+        );
+
+        const late = { browserConsoleBuffer: [] };
+        openLate(late);
+        for (let i = 0; i < 20; i++) await Promise.resolve();
+        expect(closeCaptureSession).toHaveBeenCalledWith(late);
+      } finally {
+        vi.useRealTimers();
+        primaryOpen = null;
         if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
       }
     });

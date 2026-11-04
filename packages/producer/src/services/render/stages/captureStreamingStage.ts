@@ -191,6 +191,11 @@ function captureModeLabel(mode: CaptureSession["captureMode"]): string {
 
 type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
 
+const OPENING_CAPTURE_SESSION: StalledSession = {
+  captureMode: "screenshot",
+  captureStep: "opening the capture session",
+};
+
 const OPENING_RISK_SESSION: StalledSession = {
   captureMode: "screenshot",
   captureStep: "opening the screenshot session for effect frames",
@@ -1015,15 +1020,31 @@ export async function runCaptureStreamingStage(
       let resumes = 0;
       for (;;) {
         const videoInjector = createRenderVideoFrameInjector();
-        const session =
-          probeSession ??
-          (await createCaptureSession(
+        const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
+        const setup = createStallClock();
+        const withinInitBudget = <T>(work: Promise<T>, stalled: StalledSession) =>
+          raceAgainstStall(
+            work,
+            initStallMs - setup.idle(0),
+            { session: stalled, frameIndex: resume.from, totalFrames, stallTimeoutMs: initStallMs },
+            abortSignal,
+          );
+        const openSession = async (): Promise<CaptureSession> => {
+          const opening = createCaptureSession(
             fileServer.url,
             framesDir,
             buildCaptureOptions(),
             videoInjector,
             captureCfg,
-          ));
+          );
+          try {
+            return await withinInitBudget(opening, OPENING_CAPTURE_SESSION);
+          } catch (error) {
+            void opening.then(closeCaptureSession, () => {});
+            throw error;
+          }
+        };
+        const session = probeSession ?? (await openSession());
         captureBeyondViewport = session.options.captureBeyondViewport;
         if (probeSession) {
           prepareCaptureSessionForReuse(session, framesDir, videoInjector);
@@ -1055,24 +1076,16 @@ export async function runCaptureStreamingStage(
           await initializeSession(opened);
           return opened;
         };
-        const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
-        const withinInitBudget = (work: Promise<void>) =>
-          raceAgainstStall(
-            work,
-            initStallMs,
-            { session, frameIndex: resume.from, totalFrames, stallTimeoutMs: initStallMs },
-            abortSignal,
-          );
 
         let resumed = false;
         try {
           if (!session.isInitialized) {
-            await withinInitBudget(initializeSession(session));
+            await withinInitBudget(initializeSession(session), session);
           }
           // Probe-initialized video comps defer verification + canvas injection
           // until the injector exists (attached by prepareCaptureSessionForReuse
           // above) — complete it now so drawElement runs VERIFIED on video comps.
-          await withinInitBudget(completeDeferredDrawElementInit(session));
+          await withinInitBudget(completeDeferredDrawElementInit(session), session);
           assertNotAborted();
           lastBrowserConsole = session.browserConsoleBuffer;
 
