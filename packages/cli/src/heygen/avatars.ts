@@ -72,7 +72,8 @@ async function fetchPage(auth: Record<string, string>, limit: number, token?: st
 
 /** The avatar looks on the HyperFrames account that makes the film, in the order HeyGen lists them. */
 export async function ownAvatarLooks(limit: number): Promise<AvatarLook[]> {
-  const auth = await resolveCloudAuthHeaders().catch(() => {
+  const auth = await resolveCloudAuthHeaders().catch((err: unknown) => {
+    if (err instanceof NetworkFailure) throw new Fix(err.message, err.hint);
     throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
   });
   const looks: AvatarLook[] = [];

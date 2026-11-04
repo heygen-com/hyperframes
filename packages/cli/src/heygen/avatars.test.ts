@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const refresh = vi.hoisted(() => ({ fails: null as Error | null }));
 vi.mock("../cloud/auth.js", () => ({
-  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudAuthHeaders: async () => {
+    if (refresh.fails) throw refresh.fails;
+    return { "x-api-key": "k" };
+  },
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
 const { ownAvatarLooks } = await import("./avatars.js");
+const { explainNetworkFailure } = await import("../utils/networkFailure.js");
 
 const reply = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -21,6 +26,7 @@ const look = (id: string) => ({
 });
 
 afterEach(() => {
+  refresh.fails = null;
   vi.unstubAllGlobals();
 });
 
@@ -64,5 +70,18 @@ describe("ownAvatarLooks", () => {
   it("refuses with the sign-in fix when HeyGen turns the account away, instead of listing anything", async () => {
     vi.stubGlobal("fetch", async () => reply(401, { message: "no" }));
     await expect(ownAvatarLooks(5)).rejects.toMatchObject({ fix: "npx hyperframes auth login" });
+  });
+
+  it("says it is offline, not signed out, when refreshing the stored login cannot reach HeyGen", async () => {
+    const lookup = Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" });
+    const failure = explainNetworkFailure(
+      new TypeError("fetch failed", { cause: lookup }),
+      "https://api.heygen.com/v1/oauth/token",
+    );
+    refresh.fails = failure instanceof Error ? failure : null;
+    await expect(ownAvatarLooks(5)).rejects.toMatchObject({
+      message: expect.stringMatching(/^Could not reach api\.heygen\.com: .*offline/),
+      fix: expect.stringContaining("internet connection"),
+    });
   });
 });
