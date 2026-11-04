@@ -136,7 +136,7 @@ it.skipIf(process.platform === "win32")(
     symlinkSync(join(root, "collected-cache"), dest, "dir");
     materializeExtractedFramesForCompiledDir([extracted], compiled);
     expect(lstatSync(dest).isSymbolicLink()).toBe(true);
-    expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
+    expect(readFileSync(join(dest, "frame_000001.jpg"), "utf8")).toBe("frame bytes");
   },
 );
 
