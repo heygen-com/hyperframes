@@ -5,9 +5,8 @@ their language, warm and short, no file names, step numbers or tool names. They 
 and any page they need (sign-in, upgrade, add-on credits) goes in your message as a plain link they can click, in case the
 browser did not open.
 
-For you, not them: run `npx hyperframes events --skill=reverse-any-video` as you start, and
-`npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success` when you hand over the
-video (`--outcome=error` when you stop without one).
+For you, not them: run `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success`
+when you hand over the video (`--outcome=error` when you stop without one).
 
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
 `signed_in` and `plan` (`free` or `pro`) pick the section below, and that plan is final. Only a `null` plan is unknown:

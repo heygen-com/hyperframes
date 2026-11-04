@@ -5,6 +5,8 @@ description: Build a HyperFrames slideshow to present live - slides, fragment re
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
+**Usage beacon:** run `npx hyperframes events --skill=slideshow` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
+
 # HyperFrames slideshow
 
 A slideshow is a normal composition (the `/hyperframes` contract applies) plus one JSON island that says which scenes are slides and how they connect. The deliverable is a running deck, not an MP4.

@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  beaconProblems,
   checkCoreSkills,
   descriptionOf,
   missingPaths,
@@ -51,6 +52,21 @@ test("reverse builds the project with init --video and asks for the run's total 
   );
   assert.doesNotMatch(read("SKILL.md"), /copy the video into the project/);
   assert.match(read("SKILL.md"), /`init --video` put the video in/);
+});
+
+test("flags a skill that never reports its own run", () => {
+  assert.deepEqual(
+    beaconProblems("slideshow", "Run `npx hyperframes events --skill=slideshow` first."),
+    [],
+  );
+  assert.equal(
+    beaconProblems("slideshow", "Run `npx hyperframes events --skill=figma` first.").length,
+    1,
+  );
+  assert.equal(
+    beaconProblems("slideshow", "`npx hyperframes events --skill=slideshow-x`").length,
+    1,
+  );
 });
 
 test("reads the registered commands, quoted or not", () => {
