@@ -1,0 +1,44 @@
+{
+  "name": "@hyperframes/share",
+  "version": "0.9.10",
+  "description": "Shared review identity, version upload and sharing state for HyperFrames hosts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/share"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "scripts/copy-types.mjs"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.mjs",
+      "types": "./dist/index.d.mts"
+    },
+    "./*.mjs": {
+      "import": "./src/*.mjs",
+      "types": "./dist/*.d.mts"
+    },
+    "./types/*": "./dist/types/*.d.ts",
+    "./hosts": "./dist/hosts.d.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-types.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.0.0"
+  }
+}

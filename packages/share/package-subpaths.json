@@ -1,0 +1,35 @@
+{
+  "package": "@hyperframes/share",
+  "subpaths": {
+    ".": {
+      "source": "./src/index.mjs",
+      "runtime": "./src/index.mjs",
+      "types": "./dist/index.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./*.mjs": {
+      "source": "./src/*.mjs",
+      "runtime": "./src/*.mjs",
+      "types": "./dist/*.d.mts",
+      "environments": ["bun", "node"]
+    },
+    "./types/*": {
+      "source": "./dist/types/*.d.ts",
+      "runtime": "./dist/types/*.d.ts",
+      "types": null,
+      "environments": ["bun", "node"]
+    },
+    "./hosts": {
+      "source": "./dist/hosts.d.ts",
+      "runtime": "./dist/hosts.d.ts",
+      "types": null,
+      "environments": ["bun", "node"]
+    },
+    "./package.json": {
+      "source": "./package.json",
+      "runtime": "./package.json",
+      "types": null,
+      "environments": ["bun", "node"]
+    }
+  }
+}
