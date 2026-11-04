@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,7 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
-const { idempotencyKey, runJob } = await import("./v3.js");
+const { idempotencyKey, ownVoices, runJob } = await import("./v3.js");
 
 /** A job route through the generated client: the create and the status GET it polls. */
 const X: JobRoute = {
@@ -75,6 +75,78 @@ describe("runJob", () => {
     vi.stubGlobal("fetch", async () => answers.shift()!);
     await runJob(X, {}, "k2", { log, intervalMs: 1 });
     expect(rows()).toEqual(["completed", "pending", "completed"]);
+  });
+
+  describe("with a run credit limit", () => {
+    const project = (limit: number) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-limit-"));
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      return { projectDir, what: "a line" };
+    };
+    const sent = () => {
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(url);
+        return reply(200, { data: { id: "j", status: "completed" } });
+      });
+      return calls;
+    };
+
+    it("refuses a call over what is left, before sending, with no --max-credits given", async () => {
+      const calls = sent();
+      const log = project(100);
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      await expect(runJob(X, {}, "k2", { log, credits: 60 })).rejects.toThrow(/leaves 40/);
+      expect(calls).toHaveLength(1);
+      await runJob(X, {}, "k3", { log, credits: 40 });
+      expect(calls).toHaveLength(2);
+    });
+
+    it("refuses a call that cannot be priced ahead", async () => {
+      const calls = sent();
+      await expect(runJob(X, {}, "k", { log: project(100) })).rejects.toThrow(/cannot be priced/);
+      expect(calls).toHaveLength(0);
+    });
+
+    it.each([429, 422])(
+      "keeps a lost job's reservation through a resume refused with %i",
+      async (status) => {
+        const log = project(100);
+        vi.stubGlobal("fetch", async () => {
+          throw new Error("socket hang up");
+        });
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        vi.stubGlobal("fetch", async () => reply(status, { error: { code: "no", message: "no" } }));
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        const calls = sent();
+        await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+        expect(calls).toHaveLength(0);
+      },
+    );
+
+    it("keeps the reservation of a fresh call refused with 429, which says nothing about the job", async () => {
+      const log = project(100);
+      vi.stubGlobal("fetch", async () => reply(429, { error: { code: "rate", message: "slow" } }));
+      await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+      await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+    });
+
+    it("lets the same job resume, and gives back a refused call's credits", async () => {
+      const log = project(100);
+      const calls = sent();
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      expect(calls).toHaveLength(2);
+      const fresh = project(100);
+      vi.stubGlobal("fetch", async () => reply(422, { error: { code: "bad", message: "no" } }));
+      await expect(runJob(X, {}, "k2", { log: fresh, credits: 100 })).rejects.toThrow();
+      vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j", status: "completed" } }));
+      await runJob(X, {}, "k3", { log: fresh, credits: 100 });
+    });
   });
 
   it("turns refusals into what to do next", async () => {
@@ -426,5 +498,31 @@ describe("runJob", () => {
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),
     );
     expect(idempotencyKey("/v3/x", ["a"])).not.toBe(idempotencyKey("/v3/y", ["a"]));
+  });
+});
+
+describe("ownVoices", () => {
+  it("lists the clones of the HyperFrames sign-in's workspace only, never another account's", async () => {
+    const asked: { url: string; key: string | null }[] = [];
+    const clonesByKey: Record<string, string> = {
+      k: "film-account-clone",
+      "heygen-cli-login": "other-account-clone",
+    };
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const key = new Headers(init.headers).get("x-api-key");
+      asked.push({ url, key });
+      return reply(200, { data: [{ voice_id: "v1", name: clonesByKey[key ?? ""] }] });
+    });
+    expect(await ownVoices(5)).toEqual([
+      { voice_id: "v1", name: "film-account-clone", language: undefined, gender: undefined },
+    ]);
+    expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!.url).searchParams.get("type")).toBe("private");
+    expect(asked[0]!.key).toBe("k");
+  });
+
+  it("refuses with the sign-in fix when the HyperFrames account cannot be reached, instead of listing anything", async () => {
+    vi.stubGlobal("fetch", async () => reply(401, { message: "no" }));
+    await expect(ownVoices(5)).rejects.toMatchObject({ fix: "npx hyperframes auth login" });
   });
 });

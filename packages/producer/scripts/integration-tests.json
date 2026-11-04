@@ -30,6 +30,7 @@
   "src/services/htmlCompiler.variableMedia.test.ts",
   "src/services/render/audioPadTrim.integration.test.ts",
   "src/services/render/audioTruePeak.test.ts",
+  "src/services/render/blurDifferential.integration.test.ts",
   "src/services/render/deliveryRender.integration.test.ts",
   "src/services/render/firstFrameStartingState.integration.test.ts",
   "src/services/render/hlsRender.integration.test.ts",

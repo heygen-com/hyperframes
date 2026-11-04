@@ -199,6 +199,19 @@ async function completeWithRetry(
   throw lastErr ?? new Error("completeAssetUpload retries exhausted");
 }
 
+// complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
+const TYPE_REFUSAL = /^(Stored file type|content_type not allowed|Stored file does not have a ZIP)/;
+
+function nameRefusedFile(err: unknown, filename: string, contentType: string): unknown {
+  if (!(err instanceof HyperframesApiError) || err.code !== "invalid_parameter") return err;
+  const kind = contentType.split("/")[0];
+  const noun = kind === "audio" || kind === "video" || kind === "image" ? `${kind} file` : "file";
+  const lead = TYPE_REFUSAL.test(err.message)
+    ? `The cloud couldn't read this ${noun}'s type: ${filename}. It said:`
+    : `The cloud refused ${filename}:`;
+  return new HyperframesApiError({ ...err, message: `${lead} ${err.message}` });
+}
+
 export async function uploadAssetViaDirectUpload(
   opts: Omit<UploadZipViaDirectOptions, "bytes"> & { contentType: string } & (
       | { bytes: Uint8Array }
@@ -231,7 +244,13 @@ export async function uploadAssetViaDirectUpload(
   opts.onProgress?.({ phase: "upload", percent: 100 });
 
   opts.onProgress?.({ phase: "complete" });
-  const completed = await completeWithRetry(opts.client, initialize.asset_id, checksum_sha256);
+  const completed = await completeWithRetry(
+    opts.client,
+    initialize.asset_id,
+    checksum_sha256,
+  ).catch((err: unknown) => {
+    throw nameRefusedFile(err, filename, opts.contentType);
+  });
   return {
     asset_id: completed.asset_id,
     url: completed.url,

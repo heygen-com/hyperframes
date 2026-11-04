@@ -503,8 +503,10 @@ export interface HyperframesConfig {
     /** True after the result has been surfaced once to the user. */
     reported?: boolean;
   };
-  /** ISO timestamp of the last `skills check` freshness check (24h cache). */
+  /** ISO timestamp of the last `skills check` freshness check (2h cache). */
   lastSkillsCheck?: string;
+  /** The CLI version that check ran under: it compared against that version's release tag. */
+  skillsCheckedVersion?: string;
   /** Whether installed skills were stale at the last check. */
   skillsUpdateAvailable?: boolean;
   /** How many installed skills were outdated at the last check. */
@@ -739,6 +741,7 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     pendingUpdate: parsed.pendingUpdate,
     completedUpdate: parsed.completedUpdate,
     lastSkillsCheck: parsed.lastSkillsCheck,
+    skillsCheckedVersion: parsed.skillsCheckedVersion,
     skillsUpdateAvailable: parsed.skillsUpdateAvailable,
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,

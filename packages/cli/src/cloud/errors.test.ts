@@ -109,6 +109,21 @@ describe("cloud/errors reportApiError", () => {
     );
   });
 
+  it("names the refused parameter next to the server's message", () => {
+    const err = new HyperframesApiError({
+      status: 400,
+      message: "Stored file type not supported",
+      code: "invalid_parameter",
+      param: "content_type",
+    });
+    expect(() => reportApiError("Media upload failed", err)).toThrow(CliRuntimeError);
+    expect(errorBox).toHaveBeenCalledWith(
+      "Media upload failed (HTTP 400)",
+      "Stored file type not supported (parameter: content_type)",
+      expect.any(String),
+    );
+  });
+
   it("omits the third line when there is no code, hint, or suggestion", () => {
     const err = new HyperframesApiError({ status: 503, message: "unavailable" });
     expect(() => reportApiError("Get failed", err)).toThrow(CliRuntimeError);

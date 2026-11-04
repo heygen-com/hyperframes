@@ -69,6 +69,44 @@ describe("skillsUpdateCheck", () => {
     expect(skillsCheckDue()).toBe(false);
   });
 
+  describe("cache freshness: 2 hours, and only for this CLI's release tag", () => {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+    it.each([
+      [
+        "an hour-old check by this CLI",
+        { lastSkillsCheck: hoursAgo(1), skillsCheckedVersion: "0.0.0-dev" },
+        false,
+      ],
+      [
+        "a 3-hour-old check",
+        { lastSkillsCheck: hoursAgo(3), skillsCheckedVersion: "0.0.0-dev" },
+        true,
+      ],
+      [
+        "a fresh check taken by another CLI version",
+        { lastSkillsCheck: hoursAgo(1), skillsCheckedVersion: "0.9.4" },
+        true,
+      ],
+      ["a fresh check that predates version stamping", { lastSkillsCheck: hoursAgo(1) }, true],
+    ])("with %s, a background check is due: %s", async (_, cache, due) => {
+      config = cache;
+      const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
+      expect(skillsCheckDue()).toBe(due);
+    });
+
+    it("refreshSkillsCache stamps the CLI version whose tag it compared against", async () => {
+      mockCheckSkills.mockResolvedValue({
+        location: "/home/user/.claude/skills",
+        updateAvailable: true,
+        summary: { current: 1, outdated: 2, missing: 0, coreMissing: 0 },
+      });
+      const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+      await refreshSkillsCache();
+      expect(config).toMatchObject({ skillsCheckedVersion: "0.0.0-dev", skillsOutdatedCount: 2 });
+    });
+  });
+
   it("a run without a TTY (an agent) still has its background check due", async () => {
     gate.noTty = true;
     const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
@@ -153,6 +191,9 @@ describe("skillsUpdateCheck", () => {
     gate.noTty = true;
     const text = await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 });
     expect(text).toContain("3 HyperFrames skills out of date or missing");
+    // The agent reads stderr too: the command is the person's to run (DeltaVerdict D5).
+    expect(text).toContain("For the user: npx hyperframes skills update");
+    expect(text).not.toMatch(/\bRun:/);
   });
 
   it("prints at most once a day per project", async () => {
@@ -160,6 +201,21 @@ describe("skillsUpdateCheck", () => {
     expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
     expect(await noticeTextFor(stale, "/projects/a")).toBeNull();
     expect(await noticeTextFor(stale, "/projects/b")).toContain("2 HyperFrames skills");
+  });
+
+  // The cache now refreshes every 2 h; the printed nudge must not follow it.
+  it("still prints at most once a day per project when the cache refreshes 3 hours later", async () => {
+    vi.useFakeTimers({ now: new Date("2026-11-03T08:00:00Z"), toFake: ["Date"] });
+    try {
+      const stale = { skillsOutdatedCount: 2, skillsMissingCount: 0 };
+      expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+      vi.setSystemTime(new Date("2026-11-03T11:00:00Z"));
+      expect(await noticeTextFor(stale, "/projects/a")).toBeNull();
+      vi.setSystemTime(new Date("2026-11-04T08:00:01Z"));
+      expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("unattended, says nothing about skills that are only outdated", async () => {
@@ -194,7 +250,8 @@ describe("skillsUpdateCheck", () => {
   // verdict so the next command re-checks for real.
   describe("invalidateSkillsCache", () => {
     const PRE_INSTALL_CACHE = {
-      lastSkillsCheck: new Date().toISOString(), // fresh — inside the 24h TTL
+      lastSkillsCheck: new Date().toISOString(), // fresh — inside the 2h TTL
+      skillsCheckedVersion: "0.0.0-dev", // taken by this CLI (the version under test)
       skillsUpdateAvailable: true,
       skillsOutdatedCount: 12,
       skillsMissingCount: 8,

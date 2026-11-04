@@ -1,6 +1,7 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename } from "node:path";
 import {
   ensureModel,
@@ -211,7 +212,7 @@ export async function synthesize(
   const scriptPath = ensureSynthScript();
 
   // 4. Ensure output directory exists
-  mkdirSync(dirname(outputPath), { recursive: true });
+  makeOutputFolder(dirname(outputPath));
 
   // 5. Run synthesis
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);

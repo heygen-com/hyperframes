@@ -146,8 +146,8 @@ export async function resolveSfx({ cues, hyperframesDir, sfxLibDir = BUNDLED_SFX
     } else if (!existsSync(dest)) {
       anomalies.push(
         `sfx "${name}" (id ${id}): bundled file ${hit.file} missing from the offline ` +
-          `library (${sfxLibDir}) — skipped. Reinstall the media-use skill to ` +
-          `restore assets/sfx/*.mp3.`,
+          `library (${sfxLibDir}) — skipped. Ask the person to reinstall the media-use ` +
+          `skill to restore assets/sfx/*.mp3.`,
       );
       return null;
     } // else the engine's earlier copy at dest stands in for the file this install lacks
