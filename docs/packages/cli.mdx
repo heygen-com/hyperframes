@@ -389,7 +389,10 @@ URL unchanged.
 For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 (~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
-`HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
+`HYPERFRAMES_OPENROUTER_MODEL` overrides the model. `OPPER_API_KEY` routes the
+same request through [Opper](https://opper.ai), a European AI gateway, when
+`OPENROUTER_API_KEY` is unset; `HYPERFRAMES_OPPER_MODEL` overrides its default
+`gemini-3.1-flash-lite`.
 
 #### Local HTML files
 
@@ -2500,7 +2503,7 @@ hyperframes auth logout --yes            # no prompt
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the selected public OAuth client. |
 
 For the keys other capabilities use — ElevenLabs and Gemini for voice and music
-fallback, OpenRouter and Gemini for capture — and how the skills prioritize
+fallback, OpenRouter, Opper and Gemini for capture — and how the skills prioritize
 them, see [Authentication and API keys](/guides/authentication).
 
 ## hyperframes cloud

@@ -397,6 +397,7 @@ describe("captionImagesWithGemini — OpenRouter provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "");
     vi.stubEnv("GOOGLE_API_KEY", "");
 
@@ -408,6 +409,113 @@ describe("captionImagesWithGemini — OpenRouter provider", () => {
 
     expect(captions).toEqual({});
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("captionImagesWithGemini — Opper provider", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  function stubCaptionFetch(caption: string) {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ url, init });
+      return new Response(JSON.stringify({ choices: [{ message: { content: caption } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, requests };
+  }
+
+  it("captions via Opper when OPPER_API_KEY is set", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "opper-test-key");
+    vi.stubEnv("HYPERFRAMES_OPPER_MODEL", "");
+    const { fetchMock, requests } = stubCaptionFetch("A dark hero with blue accents.");
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({ "hero.png": "A dark hero with blue accents." });
+    expect(warnings).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [request] = requests;
+    expect(request?.url).toBe("https://api.opper.ai/v3/compat/chat/completions");
+    expect(new Headers(request?.init?.headers).get("authorization")).toBe("Bearer opper-test-key");
+    const body = JSON.parse(typeof request?.init?.body === "string" ? request.init.body : "{}");
+    expect(body.model).toBe("gemini-3.1-flash-lite");
+    const image = body.messages[0].content.find((p: { type: string }) => p.type === "image_url");
+    expect(image?.image_url?.url).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("uses HYPERFRAMES_OPPER_MODEL when it is set", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "opper-test-key");
+    vi.stubEnv("HYPERFRAMES_OPPER_MODEL", "gpt-5-mini");
+    const { requests } = stubCaptionFetch("A caption.");
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    const [request] = requests;
+    const body = JSON.parse(typeof request?.init?.body === "string" ? request.init.body : "{}");
+    expect(body.model).toBe("gpt-5-mini");
+  });
+
+  it("stays on OpenRouter when both keys are set", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "or-test-key");
+    vi.stubEnv("OPPER_API_KEY", "opper-test-key");
+    const { requests } = stubCaptionFetch("A caption.");
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(requests.map((r) => r.url)).toEqual(["https://openrouter.ai/api/v1/chat/completions"]);
+  });
+
+  it("reports a non-OK Opper response without leaking the key", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "opper-bad-key");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("provider detail containing opper-bad-key", {
+            status: 401,
+            statusText: "Unauthorized",
+          }),
+      ),
+    );
+
+    const warnings: string[] = [];
+    let outcome: VisionCaptionOutcome | undefined;
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings, {
+      onOutcome: (value) => {
+        outcome = value;
+      },
+    });
+
+    expect(captions).toEqual({});
+    expect(warnings).toEqual(["Opper vision failed for 1 asset(s); captions omitted."]);
+    expect(warnings.join(" ")).not.toContain("opper-bad-key");
+    expect(outcome).toEqual({
+      timedOutRequests: 0,
+      failedRequests: 1,
+      budgetExhausted: false,
+    });
   });
 });
 
@@ -425,6 +533,7 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "gemini-hanging-key");
     vi.stubEnv("HYPERFRAMES_VISION_TIMEOUT_MS", "20");
     generateContentMock.mockImplementation(() => new Promise(() => {}));
@@ -441,6 +550,7 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "gemini-secret-key");
     generateContentMock.mockRejectedValue(
       new Error("provider echoed gemini-secret-key in its response"),
@@ -495,6 +605,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
 
   function vertexEnv(): void {
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
     vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", SERVICE_ACCOUNT);
   }
@@ -586,6 +697,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "");
     vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
     vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", "{not-json super-secret-material");
@@ -632,6 +744,7 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("OPPER_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "");
     vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
     vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", "");

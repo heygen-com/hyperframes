@@ -35,6 +35,7 @@ function hasVisionCredentials(skipVision: boolean): boolean {
   return Boolean(
     !skipVision &&
     (process.env.OPENROUTER_API_KEY ||
+      process.env.OPPER_API_KEY ||
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY ||
       (process.env.HYPERFRAMES_VERTEX_PROJECT_ID &&
