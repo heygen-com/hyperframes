@@ -34,6 +34,8 @@ export interface Report {
   moverNames: string[];
   scanMs: number;
   shutterDeg: number;
+  /** Degrees after the frame the shutter opens, or null for a shutter centred on the frame. */
+  phaseDeg: number | null;
   frames: number;
   meanMs: number;
   failures: number;

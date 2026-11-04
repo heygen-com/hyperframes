@@ -229,6 +229,7 @@ export function createFilterTier(
       moverNames: movers.map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}`),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames,
       meanMs: frames ? Math.round((totalMs / frames) * 10) / 10 : 0,
       failures: 0,
