@@ -94,7 +94,7 @@ describe("withProjectLock", () => {
     );
     expect(Date.now() - started).toBeGreaterThanOrEqual(300);
     await expect(withProjectLock(dir, "snapshot", async () => "ran", locked(0))).rejects.toThrow(
-      `hyperframes check (pid ${process.pid}) is still using this project`,
+      `hyperframes check (pid ${process.pid}) is still using this project after 0s. Run this command again when it finishes.`,
     );
   });
 

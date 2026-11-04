@@ -111,7 +111,7 @@ export async function withProjectLock<T>(
       }
       throw new ProjectLockTimeout(
         `hyperframes ${current?.command ?? "another command"} (pid ${current?.pid ?? "unknown"}) ` +
-          `is still using this project after ${Math.round(context.projectLock.waitMs / 1000)}s`,
+          `is still using this project after ${Math.round(context.projectLock.waitMs / 1000)}s. Run this command again when it finishes.`,
       );
     }
     await sleep(Math.min(POLL_MS, remaining));
