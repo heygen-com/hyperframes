@@ -12,17 +12,17 @@ import { ReviewFailed } from "./reviewClient.mjs";
 import { rename } from "./storage.mjs";
 
 /** @typedef {import("./reviewClient.mjs").ReviewClient} ReviewClient
- * @typedef {import("./types/reviewWire").ShareDTO} ShareDTO */
+ * @typedef {import("./types/reviewWire.js").ShareDTO} ShareDTO */
 
-/** @typedef {import("./types/share").ReviewShare} ReviewShare
- * @typedef {import("./types/share").ReviewSpace} ReviewSpace
- * @typedef {import("./types/share").ReviewAccessChange} ReviewAccessChange */
+/** @typedef {import("./types/share.js").ReviewShare} ReviewShare
+ * @typedef {import("./types/share.js").ReviewSpace} ReviewSpace
+ * @typedef {import("./types/share.js").ReviewAccessChange} ReviewAccessChange */
 
 /** Persist studioProjectId/spaceId before sending so a lost reply retries the same project and space; projectId after.
  * opened marks the first completed share; site/ownerEmail bind the record to its backend/account.
  * @typedef {{ studioProjectId: string, spaceId: string|null, projectId: string|null, opened: boolean,
  * site: string, ownerEmail: string|null, removed?: boolean, registration?:
- * import("./types/reviewWire").RegisterProjectRequest | undefined }} ReviewRecord */
+ * import("./types/reviewWire.js").RegisterProjectRequest | undefined }} ReviewRecord */
 
 /** The sign-in site this run's review calls go to, the channel's own until then.
  * Ids from another site's server mean nothing here, so each site keeps its own record and never reads another's.
@@ -80,7 +80,7 @@ async function sharedElsewhere(projectPath) {
 }
 
 /** A space as the wire names it; `has_other_members` only when the server says.
- * @param {NonNullable<ShareDTO["space"]> | import("./types/reviewWire").SpaceDTO} space */
+ * @param {NonNullable<ShareDTO["space"]> | import("./types/reviewWire.js").SpaceDTO} space */
 const spaceRefOf = (space) => ({
   id: space.space_id,
   name: space.name,
@@ -117,7 +117,7 @@ export const listSpaces = (client) =>
 
 /** The workspace Desktop is signed into, where every new link goes: its token is bound there and ignores any other
  * space. The server marks it `bound`; a server that does not yet marks the one space it lets this token create in, else none.
- * @param {import("./types/reviewWire").SpaceDTO[]} spaces */
+ * @param {import("./types/reviewWire.js").SpaceDTO[]} spaces */
 function signedInSpace(spaces) {
   const creatable = spaces.filter((space) => space.can_create_review);
   return spaces.find((space) => space.bound) ?? (creatable.length === 1 ? creatable[0] : null);
@@ -387,7 +387,7 @@ async function spaceRefusal(client, refused, error) {
 /** Share's press: the first registers the project into the space given (none: the signed-in one) and opens its link
  * to that space; a later one reads the link, turning it back on when it was off. A registered project keeps its space.
  * @param {{ projectPath: string, title: string, client: ReviewClient, spaceId?: string | null, audience?:
- * import("./types/share").AccessMode | undefined }} request */
+ * import("./types/share.js").AccessMode | undefined }} request */
 export const shareForReview = ({ projectPath, title, client, spaceId = null, audience }) =>
   oneAtATime(projectPath, async () => {
     const read = await recordToShare(client, projectPath, spaceId);
@@ -406,7 +406,7 @@ export const shareForReview = ({ projectPath, title, client, spaceId = null, aud
 
 /** Turns a link that was off back on, and opens a first share to the workspace.
  * @param {ReviewClient} client @param {string} projectPath @param {ReviewRecord} record @param {string} id
- * @param {ShareDTO} share @param {import("./types/share").AccessMode} [audience] */
+ * @param {ShareDTO} share @param {import("./types/share.js").AccessMode} [audience] */
 async function openLink(client, projectPath, record, id, share, audience) {
   // Back on means a new address: the server never revives a turned-off link.
   if (share.revoked)
@@ -423,7 +423,7 @@ async function openLink(client, projectPath, record, id, share, audience) {
 }
 
 /** @param {ReviewClient} client @param {string} id @param {ShareDTO} share
- * @param {import("./types/share").AccessMode} [audience] */
+ * @param {import("./types/share.js").AccessMode} [audience] */
 export async function applyFirstAudience(client, id, share, audience) {
   const chosen =
     audience !== undefined || share.access_mode === "private"

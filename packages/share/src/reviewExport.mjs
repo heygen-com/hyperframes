@@ -15,10 +15,10 @@ import { fileSha256Base64, putFile } from "./reviewUpload.mjs";
 import { versionSentence } from "./reviewVersionSentences.mjs";
 
 /** @typedef {import("./reviewClient.mjs").ReviewClient} ReviewClient
- * @typedef {import("./types/reviewWire").ExportDTO} ExportDTO @typedef {import("./types/reviewWire").ExportRequest} ExportRequest
- * @typedef {import("./types/share").ReviewVersion} ReviewVersion */
+ * @typedef {import("./types/reviewWire.js").ExportDTO} ExportDTO @typedef {import("./types/reviewWire.js").ExportRequest} ExportRequest
+ * @typedef {import("./types/share.js").ReviewVersion} ReviewVersion */
 
-/** @typedef {import("./types/share").ReviewExportProgress} ReviewExportProgress
+/** @typedef {import("./types/share.js").ReviewExportProgress} ReviewExportProgress
  * @typedef {{ duration: number, width: number, height: number }} VideoFacts */
 
 /** `pending`: the create body as sent and its video once answered, so a retry is the same; `snapshotRefused`: the
@@ -41,7 +41,7 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  *   projectId?: string | null, filesForExport?: FilesForRender }} VersionRequest */
 
 /** The snapshot of `rendered`, the project as the export was rendered; null when the folder is not that render.
- * @typedef {(projectPath: string, rendered: string | null) => Promise<import("./types/reviewWire").SnapshotRef | null>}
+ * @typedef {(projectPath: string, rendered: string | null) => Promise<import("./types/reviewWire.js").SnapshotRef | null>}
  *   FilesForRender */
 
 const POLL_MS = 2_000;

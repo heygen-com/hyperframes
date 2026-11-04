@@ -23,12 +23,12 @@ import {
 import { rm } from "./storage.mjs";
 
 /** @typedef {import("./reviewClient.mjs").ReviewClient} ReviewClient
- * @typedef {import("./types/share").ReviewShare} ReviewShare */
+ * @typedef {import("./types/share.js").ReviewShare} ReviewShare */
 
 /** `body`: the registration as sent, so a retry is exact; `revokeFailures`: failed turn-offs of the old link.
  * @typedef {{ id?: string, from: string, fromSpace?: string, spaceId: string, space: string, projectId: string | null,
- * opened?: boolean, paused?: boolean, audience?: import("./types/share").AccessMode | undefined, revokeFailures?:
- * number, body: import("./types/reviewWire").RegisterProjectRequest }} Switch */
+ * opened?: boolean, paused?: boolean, audience?: import("./types/share.js").AccessMode | undefined, revokeFailures?:
+ * number, body: import("./types/reviewWire.js").RegisterProjectRequest }} Switch */
 
 /** Puts the newest export on `projectId`; `onUploaded` runs once the server has it. Answers the sentence when it did
  * not go up. @typedef {(projectId: string, onUploaded: () => Promise<void>) => Promise<string | null>} Upload */
@@ -203,7 +203,7 @@ async function settle(client, dir, change) {
 
 /** The new link on and open to its space. A takedown refuses both for good (409 moderation_hold), so the change
  * stops asking and still turns the old link off. @param {ReviewClient} client @param {string} id
- * @param {import("./types/reviewWire").ShareDTO} share @param {import("./types/share").AccessMode} [audience] */
+ * @param {import("./types/reviewWire.js").ShareDTO} share @param {import("./types/share.js").AccessMode} [audience] */
 async function openNew(client, id, share, audience) {
   if (takenDown(share)) return share;
   try {
@@ -305,8 +305,8 @@ async function oldLinkFirst(client, dir, saved) {
 
 /** A change to `spaceId`, refused before anything is written when the space or the export cannot take it.
  * @param {{ client: ReviewClient, record: { studioProjectId: string, projectId: string | null }, title: string,
- * spaceId: string, now: import("./types/reviewWire").ShareDTO, canUpload: CanUpload, audience?:
- * import("./types/share").AccessMode | undefined }} request
+ * spaceId: string, now: import("./types/reviewWire.js").ShareDTO, canUpload: CanUpload, audience?:
+ * import("./types/share.js").AccessMode | undefined }} request
  * @returns {Promise<Switch>} */
 async function newChange({ client, record, title, spaceId, now, canUpload, audience }) {
   const space = await targetSpace(client, spaceId);
@@ -342,7 +342,7 @@ async function sharedRecord(projectPath) {
 /** Moves a shared project's link to `spaceId`: a new link there, the newest export on it, the old link off. Its own
  * space answers the link as it is. Refuses before any write when the export cannot go up.
  * @param {{ projectPath: string, title: string, client: ReviewClient, spaceId: string, upload: Upload,
- * canUpload: CanUpload, audience?: import("./types/share").AccessMode | undefined }} request @returns
+ * canUpload: CanUpload, audience?: import("./types/share.js").AccessMode | undefined }} request @returns
  * {Promise<ReviewShare>} */
 export const changeSpace = ({ projectPath, title, client, spaceId, upload, canUpload, audience }) =>
   inTurn(projectPath, async () => {
@@ -431,5 +431,5 @@ export function switchSentence(error, fallback) {
   return `${error.sentence} The old link still works.`;
 }
 
-/** @param {import("./types/reviewWire").ShareDTO} share @param {string | null} saved @param {string} target */
+/** @param {import("./types/reviewWire.js").ShareDTO} share @param {string | null} saved @param {string} target */
 const sameSpace = (share, saved, target) => (share.space?.space_id ?? saved) === target;

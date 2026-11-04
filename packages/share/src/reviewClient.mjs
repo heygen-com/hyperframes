@@ -6,8 +6,8 @@ import { rejectedGrantRequest } from "./grantRefusal.mjs";
 import { signedInRequest } from "./host.mjs";
 import { shareOpenCalls } from "./reviewOpenCalls.mjs";
 
-/** @typedef {import("./types/reviewWire").ShareDTO} ShareDTO @typedef {import("./types/reviewWire").ProjectDTO} ProjectDTO
- * @typedef {import("./types/reviewWire").ExportDTO} ExportDTO */
+/** @typedef {import("./types/reviewWire.js").ShareDTO} ShareDTO @typedef {import("./types/reviewWire.js").ProjectDTO} ProjectDTO
+ * @typedef {import("./types/reviewWire.js").ExportDTO} ExportDTO */
 
 const TIMEOUT_MS = 30_000;
 const PROJECTS = "/v1/hyperframes/review-projects";
@@ -16,7 +16,7 @@ const SPACES = "/v1/hyperframes/review-spaces";
 /** A refused or failed call: the HTTP status (0 when the server was never reached) and the server's reason. */
 export class ReviewFailed extends Error {
   /** @param {number} status @param {string} reason @param {number} [currentRevision] @param {number} [retryAfterMs]
-   * @param {import("./types/reviewWire").ErrorEnvelope["data"]} [details] */
+   * @param {import("./types/reviewWire.js").ErrorEnvelope["data"]} [details] */
   constructor(status, reason, currentRevision, retryAfterMs, details) {
     super(`review ${status} ${reason}`);
     this.status = status;
@@ -33,12 +33,12 @@ async function dataOf(reply, what) {
   if (reply.status === 204) return null;
   const payload = await reply.json().catch(() => null);
   if (reply.ok) return payload?.data ?? null;
-  /** @type {import("./types/reviewWire").ErrorEnvelope["data"] | undefined} */
+  /** @type {import("./types/reviewWire.js").ErrorEnvelope["data"] | undefined} */
   const data = payload?.data;
   throw responseFailure(reply, what, data);
 }
 
-/** @param {Response} reply @param {string} what @param {import("./types/reviewWire").ErrorEnvelope["data"] | undefined} data */
+/** @param {Response} reply @param {string} what @param {import("./types/reviewWire.js").ErrorEnvelope["data"] | undefined} data */
 function responseFailure(reply, what, data) {
   console.error(`[review] ${what} refused:`, reply.status, data?.reason);
   const retryAfter = Number(reply.headers.get("retry-after") ?? NaN);
@@ -54,7 +54,7 @@ function responseFailure(reply, what, data) {
 /** The server's own "no" to the sharing read: signed out, not allowed, or no such route. */
 export const SHARING_REFUSALS = [401, 403, 404];
 
-/** @param {{ access: import("./types/access").ApiAccess, fetchImpl?: typeof fetch,
+/** @param {{ access: import("./types/access.js").ApiAccess, fetchImpl?: typeof fetch,
  *   signedInEmail?: () => Promise<string | null> }} deps */
 export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async () => null }) {
   const request = signedInRequest({
@@ -80,7 +80,7 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
     /** The signed-in account's email, null when unknown; the record keeps it as the project's owner. */
     signedInEmail,
     /** The spaces this account can share into, personal first.
-     * @returns {Promise<import("./types/reviewWire").SpaceDTO[]>} */
+     * @returns {Promise<import("./types/reviewWire.js").SpaceDTO[]>} */
     spaces: async () => {
       const items = (await call("GET", SPACES))?.items;
       // An answer without a list is not "no spaces": sharing then would pick a workspace nobody chose.
@@ -98,26 +98,26 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
       };
     },
     /** Registers into `spaceId`; without one the server uses the caller's default space.
-     * @param {import("./types/reviewWire").RegisterProjectRequest} body @param {string | null} [spaceId]
+     * @param {import("./types/reviewWire.js").RegisterProjectRequest} body @param {string | null} [spaceId]
      * @returns {Promise<ProjectDTO>} */
     register: (body, spaceId) =>
       call("POST", PROJECTS, body, spaceId ? { "x-space-id": spaceId } : {}),
     /** @param {string} id @returns {Promise<ShareDTO>} */
     share: (id) => call("GET", `${project(id)}/share`),
-    /** @param {string} id @param {import("./types/reviewWire").UpdateProjectShareRequest} body
+    /** @param {string} id @param {import("./types/reviewWire.js").UpdateProjectShareRequest} body
      * @returns {Promise<ShareDTO>} */
     updateShare: (id, body) => call("PATCH", `${project(id)}/share`, body),
-    /** @param {string} id @param {import("./types/reviewWire").ProjectOperationRequest} body @returns {Promise<ShareDTO>} */
+    /** @param {string} id @param {import("./types/reviewWire.js").ProjectOperationRequest} body @returns {Promise<ShareDTO>} */
     linkOn: (id, body) => call("POST", `${project(id)}/share`, body),
     /** @param {string} id @returns {Promise<null>} */
     linkOff: (id) => call("DELETE", `${project(id)}/share`),
     /** @param {string} id @returns {Promise<ProjectDTO>} */
     project: (id) => call("GET", project(id)),
     /** One page of the project's comments, every state. @param {string} id @param {URLSearchParams} query
-     * @returns {Promise<import("./types/reviewWire").FeedbackPage>} */
+     * @returns {Promise<import("./types/reviewWire.js").FeedbackPage>} */
     feedback: (id, query) => call("GET", `${project(id)}/feedback?${query}`),
     /** A new version from a local MP4; an identical retry answers the same export.
-     * @param {string} id @param {import("./types/reviewWire").ExportRequest} body @returns {Promise<ExportDTO>} */
+     * @param {string} id @param {import("./types/reviewWire.js").ExportRequest} body @returns {Promise<ExportDTO>} */
     createExport: (id, body) => call("POST", `${project(id)}/exports`, body),
     /** @param {string} id @param {string} videoId @returns {Promise<ExportDTO>} */
     readExport: (id, videoId) =>
@@ -128,7 +128,7 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
       call("POST", `${project(id)}/exports/${encodeURIComponent(videoId)}/complete`),
     /** Attaches the synced snapshot to a version that has none; the same one again is a no-op, another is refused
      * with 409 `snapshot_already_attached`. @param {string} id @param {string} versionId
-     * @param {import("./types/reviewWire").SnapshotRef} snapshot @returns {Promise<unknown>} */
+     * @param {import("./types/reviewWire.js").SnapshotRef} snapshot @returns {Promise<unknown>} */
     attachSnapshot: (id, versionId, snapshot) =>
       call("PUT", `${project(id)}/versions/${encodeURIComponent(versionId)}/snapshot`, snapshot),
     ...shareOpenCalls(tokenCall),
@@ -144,7 +144,7 @@ function threadWrites(call, project) {
     `${project(id)}/comments/${encodeURIComponent(rootId)}`;
   return {
     /** Accept, dismiss, reopen or resolve a thread. @param {string} id @param {string} rootId
-     * @param {{ action: import("./types/review").ReviewAction, expected_status_revision: number }} body */
+     * @param {{ action: import("./types/review.js").ReviewAction, expected_status_revision: number }} body */
     setStatus: (id, rootId, body) => call("PATCH", `${thread(id, rootId)}/status`, body),
     /** @param {string} id @param {string} rootId
      * @param {{ client_operation_id: string, body: string, attachment_ids: string[] }} body */
@@ -155,8 +155,8 @@ function threadWrites(call, project) {
 /** An invite to an email whose grant was revoked: the server keeps the revoked row, leaves it out of the grant list,
  * and takes it back only with that row's revision and a fresh operation ID, so the one revision the client can learn is
  * the conflict's. Null for any other refusal, or one the same revision already got.
- * @param {unknown} error @param {import("./types/reviewWire").CreateGrantRequest} body
- * @returns {import("./types/reviewWire").CreateGrantRequest | null} */
+ * @param {unknown} error @param {import("./types/reviewWire.js").CreateGrantRequest} body
+ * @returns {import("./types/reviewWire.js").CreateGrantRequest | null} */
 function regrantOf(error, body) {
   if (!(error instanceof ReviewFailed) || error.reason !== "revision_conflict") return null;
   if (typeof error.currentRevision !== "number") return null;
@@ -172,12 +172,12 @@ function regrantOf(error, body) {
  * exactly when the window drops its own operation: on an answer, on a refusal `rejectedGrantRequest` (the window's own
  * test) calls final, or when the email is invited afresh. Any other refusal, a moderation hold among them, keeps it.
  * @param {(method: string, route: string, body?: unknown) => Promise<any>} call @param {(id: string) => string} project
- * @param {import("./types/access").ApiAccess} access */
+ * @param {import("./types/access.js").ApiAccess} access */
 function grantCreator(call, project, access) {
   /** Re-grants awaiting a final answer, by site, account, project and the operation the window sent.
-   * @type {Map<string, { email: string, regrant: import("./types/reviewWire").CreateGrantRequest }>} */
+   * @type {Map<string, { email: string, regrant: import("./types/reviewWire.js").CreateGrantRequest }>} */
   const sent = new Map();
-  /** @param {string} route @param {string} key @param {import("./types/reviewWire").CreateGrantRequest} body */
+  /** @param {string} route @param {string} key @param {import("./types/reviewWire.js").CreateGrantRequest} body */
   const settle = async (route, key, body) => {
     try {
       const answer = await call("POST", route, body);
@@ -188,8 +188,8 @@ function grantCreator(call, project, access) {
       throw error;
     }
   };
-  /** @param {string} id @param {import("./types/reviewWire").CreateGrantRequest} body
-   * @returns {Promise<import("./types/reviewWire").AccessGrantDTO>} */
+  /** @param {string} id @param {import("./types/reviewWire.js").CreateGrantRequest} body
+   * @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO>} */
   return async (id, body) => {
     const route = `${project(id)}/access-grants`;
     // expected: signed out, the POST below refuses as login_required; the scope is only a key.
@@ -214,18 +214,18 @@ function grantCreator(call, project, access) {
 /** @typedef {ReturnType<typeof reviewClient>} ReviewClient */
 
 /** @param {(method: string, route: string, body?: unknown, headers?: Record<string,string>) => Promise<any>} call
- * @param {(id: string) => string} project @param {import("./types/access").ApiAccess} access */
+ * @param {(id: string) => string} project @param {import("./types/access.js").ApiAccess} access */
 function managementClient(call, project, access) {
   return {
     /** @param {string} spaceId @param {string | null} [cursor] @returns
-     * {Promise<import("./types/reviewWire").ManagedReviewPage>} */
+     * {Promise<import("./types/reviewWire.js").ManagedReviewPage>} */
     listProjects: (spaceId, cursor = null) =>
       call("GET", `${PROJECTS}?${new URLSearchParams(cursor ? { cursor } : {})}`, undefined, {
         "x-space-id": spaceId,
       }),
     /** @param {string} id @returns {Promise<null>} */
     removeProject: (id) => call("DELETE", project(id)),
-    /** @param {string} id @returns {Promise<{items: import("./types/reviewWire").AccessGrantDTO[]}>} */
+    /** @param {string} id @returns {Promise<{items: import("./types/reviewWire.js").AccessGrantDTO[]}>} */
     grants: async (id) => {
       const items = [];
       const cursors = new Set();
@@ -242,8 +242,8 @@ function managementClient(call, project, access) {
       return { items };
     },
     createGrant: grantCreator(call, project, access),
-    /** @param {string} id @param {string} grantId @param {{role: import("./types/reviewWire").AccessGrantDTO["role"],
-     * expected_revision: number}} body @returns {Promise<import("./types/reviewWire").AccessGrantDTO>} */
+    /** @param {string} id @param {string} grantId @param {{role: import("./types/reviewWire.js").AccessGrantDTO["role"],
+     * expected_revision: number}} body @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO>} */
     updateGrant: (id, grantId, body) =>
       call("PATCH", `${project(id)}/access-grants/${encodeURIComponent(grantId)}`, body),
     /** @param {string} id @param {string} grantId @returns {Promise<null>} */
@@ -252,5 +252,5 @@ function managementClient(call, project, access) {
   };
 }
 
-/** @param {Awaited<ReturnType<import("./types/access").ApiAccess>>} who @param {string} id */
+/** @param {Awaited<ReturnType<import("./types/access.js").ApiAccess>>} who @param {string} id */
 const grantScope = (who, id) => [who?.heygen ?? "", who?.owner ?? "", id].join("\n");

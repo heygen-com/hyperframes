@@ -1,6 +1,6 @@
 // Review API request and response shapes. Nullable fields use `| null`.
 
-import type { AccessMode, LinkRole } from "./share";
+import type { AccessMode, LinkRole } from "./share.js";
 
 export interface ErrorEnvelope {
   code: number;

@@ -1,8 +1,8 @@
 // @ts-check
 import { ReviewFailed } from "./reviewClient.mjs";
 
-/** @param {import("./types/reviewWire").ReviewEntitlements | null | undefined} entitlements
- * @param {import("./types/share").AccessMode | undefined} chosen */
+/** @param {import("./types/reviewWire.js").ReviewEntitlements | null | undefined} entitlements
+ * @param {import("./types/share.js").AccessMode | undefined} chosen */
 export function firstReviewAudience(entitlements, chosen) {
   // An omitted field is the legacy server contract; explicit null is an unavailable read.
   if (entitlements === undefined) return chosen ?? "team";

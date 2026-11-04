@@ -9,9 +9,9 @@ import { markFiles, versionFacts, versionOnPage } from "./reviewExport.mjs";
 /** Files vs. the last sync: `off` (share_files or sync off), `elsewhere`
  * (syncs to `workspace`, not ours), `differs` (no sync, syncing, writing, changed), `matches` (a version can carry it).
  * @typedef {{ at: "off" } | { at: "differs" } | { at: "elsewhere", workspace: string }
- *   | { at: "matches", snapshot: import("./types/reviewWire").SnapshotRef }} SyncedFiles */
+ *   | { at: "matches", snapshot: import("./types/reviewWire.js").SnapshotRef }} SyncedFiles */
 
-/** @typedef {import("./types/share").ReviewFiles} FilesAnswer */
+/** @typedef {import("./types/share.js").ReviewFiles} FilesAnswer */
 
 /** The files line from what is known: the version on the page carrying files says so first; a project synced to
  * another workspace says which, since neither a sync nor a render here fixes it; a project moved past its render is
@@ -29,7 +29,7 @@ export function filesStateOf({ last, source }, found) {
   return { at: found.at === "matches" ? "included" : "not_synced" };
 }
 
-/** @param {string} versionId @param {import("./types/reviewWire").SnapshotRef} snapshot */
+/** @param {string} versionId @param {import("./types/reviewWire.js").SnapshotRef} snapshot */
 const pairOf = (versionId, snapshot) =>
   [versionId, snapshot.space_id, snapshot.composition_id, snapshot.snapshot_id].join("\0");
 

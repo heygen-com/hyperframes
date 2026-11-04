@@ -71,11 +71,11 @@ export {
 } from "./projectSnapshot.mjs";
 export { ShareBusyError, withProjectShareLock } from "./projectLock.mjs";
 export { bindShareHost } from "./host.mjs";
-/** @typedef {import("./hosts").ShareHost} ShareHost */
+/** @typedef {import("./hosts.js").ShareHost} ShareHost */
 /** @typedef {import("./reviewClient.mjs").ReviewClient} ReviewClient */
-/** @typedef {import("./types/share").ReviewShare} ReviewShare */
+/** @typedef {import("./types/share.js").ReviewShare} ReviewShare */
 /** @typedef {import("./reviewExport.mjs").VersionRequest} VersionRequest */
-/** @typedef {import("./types/reviewWire")} Wire */
-/** @typedef {import("./types/share").AccessMode} AccessMode */
-/** @typedef {import("./types/share").ReviewExportProgress} ReviewExportProgress */
+/** @typedef {import("./types/reviewWire.js")} Wire */
+/** @typedef {import("./types/share.js").AccessMode} AccessMode */
+/** @typedef {import("./types/share.js").ReviewExportProgress} ReviewExportProgress */
 export { pendingReviewExport } from "./reviewExport.mjs";

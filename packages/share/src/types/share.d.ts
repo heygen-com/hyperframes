@@ -33,8 +33,8 @@ export interface ShareStatus {
 /** A project's review link, as the server holds it. */
 export interface ReviewShare {
   projectId?: string;
-  entitlements?: import("./reviewWire").ReviewEntitlements | null | undefined;
-  sharingState?: import("./reviewWire").ShareDTO["sharing_state"];
+  entitlements?: import("./reviewWire.js").ReviewEntitlements | null | undefined;
+  sharingState?: import("./reviewWire.js").ShareDTO["sharing_state"];
   removed?: boolean;
   /** Null while the link is off. */
   url: string | null;
@@ -101,7 +101,7 @@ export interface ReviewSpace extends ReviewSpaceRef {
   /** A durable registration request can be replayed; the server still decides admission. */
   resumingRegistration?: boolean;
   sharingState?: ReviewShare["sharingState"];
-  entitlements?: import("./reviewWire").ReviewEntitlements | null | undefined;
+  entitlements?: import("./reviewWire.js").ReviewEntitlements | null | undefined;
   lastUsedAt: string | null;
   canCreate: boolean;
   /** The workspace Desktop is signed into, where a new link goes. */
@@ -113,7 +113,7 @@ export type ReviewAccessChange = { access: ReviewShare["access"] } | { role: Rev
 /** A share link as Settings' Cloud list shows it (packages/agent-runtime/src/share/reviewLinkStates.mjs). */
 export interface ReviewLinkState {
   state: "on" | "off" | "paused" | "taken-down";
-  access: import("./share").AccessMode;
+  access: import("./share.js").AccessMode;
   /** Why a paused link is paused: a report HyperFrames looks into, or a plan that no longer includes it. */
   pausedFor?: "report" | "plan";
 }
