@@ -139,7 +139,7 @@ describe("asynchronous share recovery", () => {
     const result = await createShareService("/project").run({ action: "status" });
     expect(mocks.refresh).toHaveBeenCalledOnce();
     expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.project.mock.invocationCallOrder[0],
+      mocks.project.mock.invocationCallOrder[0] ?? 0,
     );
     expect(result).toMatchObject({ state: "ready", ready: true, url: shared.url });
     expect(mocks.add).not.toHaveBeenCalled();
