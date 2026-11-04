@@ -168,6 +168,18 @@ describe("decodeDynamicCssBackgroundImages", () => {
     ]);
   });
 
+  it("reports a timed-out relative url without its query or fragment", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const session = { warnings: [], browserConsoleBuffer: [] } as unknown as CaptureSession;
+
+    recordBackgroundDecodeTimeouts(session, ["./assets/bg.webp?example=REDACT_ME#fragment"]);
+
+    expect(JSON.stringify([session.browserConsoleBuffer, session.warnings])).not.toMatch(
+      /REDACT_ME|fragment/,
+    );
+    expect(session.warnings[0]?.details).toMatchObject({ sources: ["/assets/bg.webp"] });
+  });
+
   it("installs a page-local decoder that can run after an in-page seek", async () => {
     let backgroundImage = 'url("/assets/row-0.jpg")';
     const decoded: string[] = [];

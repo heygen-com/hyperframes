@@ -661,14 +661,6 @@ export function sanitizeDiagnosticUrl(input: string): string {
   if (!input) return "(empty)";
   if (input.startsWith("data:")) return "data:<redacted>";
   if (input.startsWith("blob:")) return "blob:<redacted>";
-  if (input.startsWith("/")) {
-    try {
-      const url = new URL(input, "http://hyperframes.local");
-      return url.pathname;
-    } catch {
-      return input;
-    }
-  }
 
   try {
     const url = new URL(input);
@@ -678,7 +670,12 @@ export function sanitizeDiagnosticUrl(input: string): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return input;
+    // A relative reference keeps its path only, and raw input never comes back.
+    try {
+      return new URL(input, "http://hyperframes.local").pathname;
+    } catch {
+      return input.split(/[?#]/, 1)[0] ?? "";
+    }
   }
 }
 
