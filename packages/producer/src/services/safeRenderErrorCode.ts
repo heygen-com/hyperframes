@@ -9,6 +9,7 @@ const SAFE_RENDER_ERROR_CODES = new Set<string>([
   "ENCODER_INTERRUPTED",
   "RENDER_TOO_SLOW",
   "RENDER_STAGE_STALLED",
+  "PAGE_NEVER_READY",
 ]);
 
 /**
