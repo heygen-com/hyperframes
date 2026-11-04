@@ -19,7 +19,7 @@ Order: `read → settle the voice → say what's coming → ask (only what is op
 
 ## 3. What to ask, once
 
-The person's message carries what it carries. Ask once, together, only what is still open: the topic, the length, the voice and, for a presented series, the face.
+The person's message carries what it carries. Ask once, together, only what is still open: the topic, the length, the voice, for a presented series the face and, when no `PEXELS_API_KEY` is set and the template's footage.md uses Pexels, whether they'd add a free Pexels API key (pexels.com/api, a minute to get). It is optional: without it, footage comes from the other sources footage.md names.
 
 - **Never the creator's face, voice, footage, wordmark or show name.** That rule is about the creator: the person's own clone, their own recording or a credited stock voice are all fine.
 - **A presenter runs on the plan.** Their own HeyGen avatar if they have one, otherwise Avatar IV from their photo, both through `npx hyperframes media-use generate --type avatar` with the finished voice, so the lips land on it. HeyGen Video 1 is the fallback when neither works.
