@@ -36,6 +36,7 @@ import {
 } from "../../cloud/detectAspectRatio.js";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
+import { describeUnresolvedFontUse } from "../../cloud/fontFailure.js";
 import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { readProjectConfig } from "../../utils/projectConfig.js";
@@ -340,7 +341,7 @@ export default defineCommand({
     });
 
     if (detail.status === "failed") {
-      handleFailedRender(detail, asJson);
+      handleFailedRender(detail, asJson, project.kind === "dir" ? (project.dir ?? ".") : undefined);
     }
 
     if (!detail.video_url) {
@@ -946,14 +947,22 @@ function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): str
 // Terminal handlers
 // ---------------------------------------------------------------------------
 
-function handleFailedRender(detail: HyperframesRenderDetail, asJson: boolean): never {
+function handleFailedRender(
+  detail: HyperframesRenderDetail,
+  asJson: boolean,
+  projectDir?: string,
+): never {
   if (asJson) {
     console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
     failCommand();
   }
+  const fontUse =
+    projectDir && detail.failure_message
+      ? describeUnresolvedFontUse(detail.failure_message, projectDir)
+      : undefined;
   errorBox(
     "Render failed",
-    detail.failure_message ?? "(no failure_message returned)",
+    [detail.failure_message ?? "(no failure_message returned)", fontUse].filter(Boolean).join("\n"),
     `Inspect: hyperframes cloud get ${detail.render_id}`,
   );
   failCommand();
