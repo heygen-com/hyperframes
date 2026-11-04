@@ -7,6 +7,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     // still dedupes the actual script load across every instance).
     // Each item's card: a short muted loop and its poster, at card size (480 px), from scripts/generate-catalog-previews.ts.
     const CARD_BASE = 'https://static.heygen.ai/hyperframes-oss/docs/images/catalog-card';
+    const PAUSE_KEY = 'hfc-previews-paused';
     // Keep the child component type stable when gallery hover state changes.
     const MotionWord = useMemo(() => function MotionWord() {
         const root = useRef(null);
@@ -87,6 +88,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     }, []);
     const [filters, setFilters] = useState({ q: "", group: initialGroup, section: initialSection, kind: "", sort: "featured" });
     const [still, setStill] = useState(true);
+    // the visitor's own stop for the looping previews (WCAG 2.2.2), remembered on this device
+    const [paused, setPaused] = useState(false);
     const [limit, setLimit] = useState(24);
     const [expandedGroups, setExpandedGroups] = useState({});
     const resultsRef = useRef(null);
@@ -103,6 +106,10 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
         const motion = () => setStill(query.matches || Boolean(navigator.connection?.saveData));
         motion();
         query.addEventListener("change", motion);
+        try {
+            setPaused(window.localStorage.getItem(PAUSE_KEY) === "1");
+        }
+        catch { }
         return () => { window.removeEventListener("popstate", read); query.removeEventListener("change", motion); };
     }, [initialGroup, initialSection]);
     // Every card on screen plays its loop. A video is decoded by the device's video hardware, so a screenful costs less
@@ -110,7 +117,7 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
     // nearest the middle of the screen.
     useEffect(() => {
         const root = resultsRef.current;
-        if (!root || still)
+        if (!root || still || paused)
             return;
         const phone = !matchMedia("(hover: hover) and (pointer: fine)").matches;
         const onScreen = new Set();
@@ -126,6 +133,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             delete host.dataset.ready;
         };
         const play = (host) => {
+            if (document.hidden)
+                return;
             let video = host.firstElementChild;
             if (!video) {
                 video = document.createElement('video');
@@ -158,8 +167,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 play(best);
         };
         const observer = new IntersectionObserver((entries) => {
-            for (const { target, isIntersecting } of entries) {
-                if (isIntersecting) {
+            for (const { target, isIntersecting, intersectionRatio } of entries) {
+                if (isIntersecting && intersectionRatio >= 0.25) {
                     onScreen.add(target);
                     if (!phone)
                         play(target);
@@ -184,7 +193,15 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             document.removeEventListener('visibilitychange', visibility);
             hosts.forEach(stop);
         };
-    }, [filters, limit, expandedGroups, still, catalog]);
+    }, [filters, limit, expandedGroups, still, paused, catalog]);
+    const togglePaused = () => {
+        const next = !paused;
+        setPaused(next);
+        try {
+            window.localStorage.setItem(PAUSE_KEY, next ? "1" : "0");
+        }
+        catch { }
+    };
     const update = (patch) => {
         const next = { ...filters, ...patch };
         setFilters(next);
@@ -233,7 +250,8 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
             React.createElement("h1", null,
                 React.createElement(MotionWord, null),
                 " ready to install."),
-            React.createElement("p", null, initialGroup ? `${matches.length} items. Preview a piece and open it to explore its controls, code, and installation.` : "Find the scene, caption, or finishing touch for your next video. Preview the motion, pick a favorite, and make it your own.")),
+            React.createElement("p", null, initialGroup ? `${matches.length} items. Preview a piece and open it to explore its controls, code, and installation.` : "Find the scene, caption, or finishing touch for your next video. Preview the motion, pick a favorite, and make it your own."),
+            !still && React.createElement("button", { type: "button", className: "hfc-pause", "aria-pressed": paused, onClick: togglePaused }, paused ? "Play previews" : "Pause previews")),
         React.createElement("section", { className: "hfc-browser", "aria-label": "Browse catalog", ref: resultsRef }, searching ? React.createElement(React.Fragment, null,
             matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map((item) => card(item))) : React.createElement("div", { className: "hfc-empty" },
                 React.createElement("h3", null, "No matches yet."),

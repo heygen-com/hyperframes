@@ -78,3 +78,20 @@
 .hfc-gallery .mw .sq path{stroke-dasharray:220;stroke-dashoffset:220;}
 @media(prefers-reduced-motion:reduce){.hfc-gallery .mw .sq path{stroke-dashoffset:0;}}
 @media(max-width:600px){.hfc-gallery{padding:0 18px;}.hfc-gallery .hfc-hero{padding:28px 0;}}
+
+/* Pause previews: the visitor's stop for the looping cards. */
+.hfc-gallery .hfc-pause {
+  margin-top: 14px;
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hfc-gallery .hfc-pause:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+}
