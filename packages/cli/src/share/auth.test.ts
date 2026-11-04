@@ -1,0 +1,63 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ResolvedCredential } from "../auth/resolver.js";
+const mocks = vi.hoisted(() => ({
+  resolve: vi.fn<() => Promise<ResolvedCredential>>(),
+  refresh: vi.fn(),
+  user: vi.fn(),
+}));
+vi.mock("../auth/resolver.js", () => ({ resolveCredential: mocks.resolve }));
+vi.mock("../auth/oauth.js", () => ({ refreshTokens: mocks.refresh }));
+vi.mock("../auth/client.js", () => ({
+  apiBaseUrl: () => "https://api.heygen.com",
+  AuthClient: class {
+    getCurrentUser = mocks.user;
+  },
+}));
+import { createShareAccess } from "./auth.js";
+const oauth = (token: string): ResolvedCredential => ({
+  type: "oauth",
+  access_token: token,
+  source: "file_json",
+  refreshable: false,
+});
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.user.mockResolvedValue({ username: "owner", email: "owner@example.com" });
+});
+describe("share OAuth identity", () => {
+  it("rejects API keys before any account request", async () => {
+    mocks.resolve.mockResolvedValue({ type: "api_key", key: "secret", source: "env" });
+    await expect(createShareAccess().access()).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    expect(mocks.user).not.toHaveBeenCalled();
+  });
+  it("never falls back to an API key after refresh", async () => {
+    mocks.resolve
+      .mockResolvedValueOnce({
+        ...oauth("old"),
+        type: "oauth",
+        access_token: "old",
+        refresh_token: "refresh",
+        refreshable: true,
+      })
+      .mockResolvedValueOnce({ type: "api_key", key: "key", source: "env" });
+    await expect(createShareAccess().access()).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    expect(mocks.refresh).toHaveBeenCalledWith("refresh");
+    expect(mocks.user).not.toHaveBeenCalled();
+  });
+  it("resolves the actor again when the credential changes", async () => {
+    mocks.resolve.mockResolvedValueOnce(oauth("a")).mockResolvedValueOnce(oauth("b"));
+    mocks.user
+      .mockResolvedValueOnce({ username: "first" })
+      .mockResolvedValueOnce({ username: "second" });
+    const auth = createShareAccess();
+    expect((await auth.access()).owner).toBe("first");
+    expect((await auth.access()).owner).toBe("second");
+  });
+  it("does not retry a refused environment token", async () => {
+    mocks.resolve.mockResolvedValue(oauth("refused"));
+    await expect(createShareAccess().access("refused")).rejects.toMatchObject({
+      code: "UNAUTHENTICATED",
+    });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+});
