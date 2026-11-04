@@ -1,10 +1,13 @@
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
-  lstatSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -16,7 +19,6 @@ import {
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { processIsAlive } from "../utils/processTree.js";
 import { basename, dirname, join, resolve } from "node:path";
-import { promisify } from "node:util";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
@@ -114,7 +116,13 @@ function assertSafeEntries(data: Buffer): void {
 
 const PULLED_HASH = ".template-sha256";
 
-const execFileAsync = promisify(execFile);
+const extract = (data: Buffer, out: string) =>
+  new Promise<void>((done, fail) => {
+    const tar = execFile("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], (error) =>
+      error ? fail(error) : done(),
+    );
+    tar.stdin?.end(data);
+  });
 const STOP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
 function removeOnStop(work: string): () => void {
@@ -141,25 +149,29 @@ const PULL_OWNER = "hyperframes templates pull";
 function pullOwner(path: string, name: string, dest: string): number | null {
   const suffix = name.slice(partPrefix(dest).length);
   if (!name.startsWith(partPrefix(dest)) || !/^\d+-[A-Za-z0-9]{6}$/.test(suffix)) return null;
+  let fd: number | undefined;
   try {
-    const marker = join(path, PULL_MARKER);
-    if (!lstatSync(path).isDirectory() || !lstatSync(marker).isFile()) return null;
-    const record: unknown = JSON.parse(readFileSync(marker, "utf8"));
+    fd = openSync(join(path, PULL_MARKER), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    if (!fstatSync(fd).isFile()) return null;
+    const record: unknown = JSON.parse(readFileSync(fd, "utf8"));
     const pid = Number(suffix.split("-")[0]);
     const owned =
       typeof record === "object" && record !== null && "owner" in record && "pid" in record;
     return owned && record.owner === PULL_OWNER && record.pid === pid ? pid : null;
   } catch {
     return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
 function removeAbandonedParts(dest: string): void {
   const parent = dirname(dest);
   if (!existsSync(parent)) return;
-  for (const name of readdirSync(parent)) {
-    const path = join(parent, name);
-    const pid = pullOwner(path, name, dest);
+  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(parent, entry.name);
+    const pid = pullOwner(path, entry.name, dest);
     if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
   }
 }
@@ -175,9 +187,7 @@ async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<v
     const out = join(work, "template");
     assertSafeEntries(data);
     mkdirSync(out);
-    const archive = join(work, "bundle.tar.gz");
-    writeFileSync(archive, data);
-    await execFileAsync("tar", ["-xzf", archive, "-C", out, "--no-same-owner"]);
+    await extract(data, out);
     writeFileSync(join(out, PULLED_HASH), pack.sha256);
     removeEmptyPlaceholder(dest);
     renameSync(out, dest);

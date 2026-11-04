@@ -36,8 +36,11 @@ const snapshot = () =>
       .filter((file) => !file.startsWith(".hyperframes"))
       .sort()
       .map((file) => {
-        const full = path.join(dir, file);
-        return [file, fs.statSync(full).isFile() ? fs.readFileSync(full, "utf-8") : null];
+        try {
+          return [file, fs.readFileSync(path.join(dir, file), "utf-8")];
+        } catch {
+          return [file, null];
+        }
       }),
   );
 

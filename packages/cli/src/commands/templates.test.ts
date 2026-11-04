@@ -29,8 +29,9 @@ const unpackGate = vi.hoisted(() => ({ hold: null as null | ((done: ExecFileCall
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   const execFile = (file: string, args: string[], done: ExecFileCallback) => {
-    if (unpackGate.hold) return unpackGate.hold(done);
-    return actual.execFile(file, args, done);
+    if (!unpackGate.hold) return actual.execFile(file, args, done);
+    unpackGate.hold(done);
+    return {};
   };
   return { ...actual, execFile };
 });
