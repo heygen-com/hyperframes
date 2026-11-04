@@ -981,7 +981,7 @@ jobs:
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
       - name: Set up the Chrome build the work-count ceilings were measured on
-        # The runner image's Chrome moves under the gate: 156.0.8078.79 renders one more thumbnail than .47.
+        # The ceilings are counted on one Chrome build, so a Chrome release cannot move them.
         # Bump this with the ceilings in packages/studio/tests/e2e/perf-ceilings.json, never alone.
         id: chrome
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
