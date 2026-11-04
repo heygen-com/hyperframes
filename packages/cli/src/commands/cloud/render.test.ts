@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertArchiveFits,
   resolveCloudFpsArg,
+  parseAspectRatioFlag,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -228,6 +229,15 @@ describe("assertArchiveFits", () => {
   });
 });
 
+describe("parseAspectRatioFlag", () => {
+  it("takes any W:H and refuses anything else as a usage error", () => {
+    expect(parseAspectRatioFlag("2:1")).toBe("2:1");
+    expect(parseAspectRatioFlag("16:9")).toBe("16:9");
+    expect(() => parseAspectRatioFlag("wide")).toThrow(CliUsageError);
+    expect(() => parseAspectRatioFlag("0:1")).toThrow(CliUsageError);
+  });
+});
+
 describe("resolveAspectRatioForSubmit — non-local sources", () => {
   it("trusts an explicit flag for asset_id / url", () => {
     const asset: ProjectInputSource = { kind: "asset_id", assetId: "a" };
@@ -266,6 +276,32 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     const dir = writeComposition(1080, 1350);
     expect(() =>
       resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "9:16", true),
+    ).toThrow(CliRuntimeError);
+  });
+
+  it("keeps a 2:1 composition's own size at 1080p and does not claim a 16:9 default", () => {
+    const dir = writeComposition(1920, 960);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, false)).toBe(
+      undefined,
+    );
+    const said = log.mock.calls.flat().join("\n");
+    expect(said).toContain("2:1");
+    expect(said).toContain("keeps that size");
+    expect(said).not.toContain("16:9");
+  });
+
+  it("accepts --aspect-ratio 2:1 for a 2:1 composition", () => {
+    const dir = writeComposition(1920, 960);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "2:1", true)).toBe(
+      undefined,
+    );
+  });
+
+  it("refuses a 4k render of a 2:1 composition before upload, since no 4K preset fits it", () => {
+    const dir = writeComposition(1920, 960);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
     ).toThrow(CliRuntimeError);
   });
 
