@@ -9,7 +9,7 @@ import {
 } from "../../utils/renderLock.js";
 import type { RenderPlan } from "./plan.js";
 
-/** One local render at a time per machine: a second waits for the slot, or fails under --no-wait. */
+/** One local render at a time per user account: a second waits for the slot, or fails under --no-wait. */
 export async function acquireRenderSlot(
   plan: Pick<RenderPlan, "project" | "waitForRenderSlot">,
   signal?: AbortSignal,
@@ -24,7 +24,7 @@ export async function acquireRenderSlot(
         console.error(
           c.warn(
             `  Waiting for another render to finish (${describeRenderLockHolder(holder, Date.now())}). ` +
-              "Renders run one at a time on this machine; pass --no-wait to stop instead.",
+              "Renders run one at a time per user account; pass --no-wait to stop instead.",
           ) + c.dim(`\n  Lock: ${path}`),
         ),
       ...lock,
@@ -32,9 +32,10 @@ export async function acquireRenderSlot(
   } catch (error) {
     if (!(error instanceof RenderLockBusy)) throw error;
     errorBox(
-      "Another render is running on this machine",
+      "Another render is running for this user account",
       describeRenderLockHolder(error.holder, Date.now()),
-      "Rerun without --no-wait to start when it finishes, or set HYPERFRAMES_RENDER_LOCK=off to render side by side.",
+      "Rerun without --no-wait to start when it finishes, or set HYPERFRAMES_RENDER_LOCK=off to render side by side. " +
+        "Set HYPERFRAMES_CACHE_DIR to a shared folder to share the slot across user accounts.",
     );
     return failCommand(1, error);
   }

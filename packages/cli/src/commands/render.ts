@@ -323,9 +323,10 @@ export default defineCommand({
     wait: {
       type: "boolean",
       description:
-        "Wait while another render runs on this machine, then start (default): renders side by side " +
-        "starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
-        "lets renders run side by side.",
+        "Wait while another render of this user account runs, then start (default): renders side by " +
+        "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
+        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
+        "across user accounts.",
       default: true,
     },
     strict: {

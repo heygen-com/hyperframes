@@ -92,6 +92,17 @@ describe("acquireRenderLock", () => {
     expect(existsSync(`${path}.break`)).toBe(false);
   });
 
+  it("keeps the slot in this user's HyperFrames cache folder, which HYPERFRAMES_CACHE_DIR can share", async () => {
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "shared"));
+    try {
+      const release = await acquireRenderLock({ project: "/work/brand", wait: false, env: {} });
+      expect(existsSync(join(dir, "shared", "locks", "render.lock"))).toBe(true);
+      release();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("lets renders run side by side with HYPERFRAMES_RENDER_LOCK=off", async () => {
     const env = { HYPERFRAMES_RENDER_LOCK: "off" };
     await acquireRenderLock({ project: "/work/brand", wait: false, path, env });
@@ -116,7 +127,8 @@ describe("acquireRenderSlot", () => {
     ).rejects.toThrow("Command failed");
 
     const said = vi.mocked(console.error).mock.calls.flat().join("\n");
-    expect(said).toContain("Another render is running on this machine");
+    expect(said).toContain("Another render is running for this user account");
+    expect(said).toContain("HYPERFRAMES_CACHE_DIR to a shared folder");
     expect(said).toContain(`pid ${process.pid}, project /work/brand`);
     release();
   });
@@ -137,6 +149,7 @@ describe("acquireRenderSlot", () => {
     expect(said).toContain(
       `Waiting for another render to finish (pid ${process.pid}, project /work/brand`,
     );
+    expect(said).toContain("one at a time per user account");
     release();
     await vi.advanceTimersByTimeAsync(1_000);
     (await slot)();

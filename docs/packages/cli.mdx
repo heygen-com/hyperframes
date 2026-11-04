@@ -1820,7 +1820,7 @@ How it uses the machine, and when it gives up:
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
 | `--best-effort` / `--no-best-effort`                     | on                                         | Finish with capture-readiness warnings, or fail when media is missing or unready                                   |
-| `--wait` / `--no-wait`                                   | on                                         | One local render at a time per machine: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
+| `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
@@ -1829,10 +1829,13 @@ How it uses the machine, and when it gives up:
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
 
 Renders started side by side starve each other of CPU and GPU until frames stop
-landing, so a second local or `--docker` render waits for the first and says
-which render it is waiting for (pid and project). A render whose process died
-frees its slot on its own. `--workers` is unaffected: it sets the parallelism
-inside the one render that runs.
+landing, so a second local or `--docker` render from the same user account waits
+for the first and says which render it is waiting for (pid and project). The
+slot is a lock file in that account's HyperFrames cache folder, so renders by
+different user accounts do not queue behind each other; set
+`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
+whose process died frees its slot on its own. `--workers` is unaffected: it sets
+the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set

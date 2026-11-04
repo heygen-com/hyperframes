@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { alive, readHolder, release, tryAcquire, type Holder } from "./projectLock.js";
 
-/** Who holds the machine-wide render slot. */
+/** Who holds this user account's render slot. */
 export interface RenderLockHolder extends Holder {
   project: string;
 }
@@ -34,7 +34,7 @@ const POLL_MS = 1_000;
 
 const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
 
-/** `HYPERFRAMES_RENDER_LOCK=off` lets renders on this machine run side by side. */
+/** `HYPERFRAMES_RENDER_LOCK=off` lets this account's renders run side by side. */
 function renderLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.HYPERFRAMES_RENDER_LOCK?.trim().toLowerCase();
   return value === "off" || value === "0" || value === "false";
@@ -80,8 +80,8 @@ const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) 
   a?.pid === b?.pid && a?.startedAt === b?.startedAt;
 
 /**
- * Takes the one render slot on this machine, waiting while a live process holds it; a holder whose
- * process is gone is taken over. Returns the release.
+ * Takes the one render slot of this user account (its HyperFrames cache folder), waiting while a live
+ * process holds it; a holder whose process is gone is taken over. Returns the release.
  */
 export async function acquireRenderLock(options: RenderLockOptions): Promise<() => void> {
   if (renderLockDisabled(options.env)) return () => {};
