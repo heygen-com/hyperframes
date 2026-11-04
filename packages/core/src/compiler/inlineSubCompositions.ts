@@ -477,7 +477,6 @@ export function inlineSubCompositions(
       compId = identity.authoredCompositionId || null;
       runtimeCompId = identity.runtimeCompositionId || compId || "";
     } else {
-      // A host the map never met (one inside a scene) is named by its own attribute, never its file's id.
       compId = hostEl.getAttribute("data-composition-id") || null;
       runtimeCompId = compId || "";
     }
