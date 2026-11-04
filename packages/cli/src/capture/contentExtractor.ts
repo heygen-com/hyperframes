@@ -364,11 +364,8 @@ export async function captionImagesWithGemini(
             ],
             config: {
               maxOutputTokens: maxTokens,
-              // A one-line factual caption needs no reasoning, and leaving thinking on is
-              // not merely wasteful: thinking tokens are drawn from maxOutputTokens, so the
-              // model can spend the whole budget and return empty text. That surfaces as a
-              // successful request with no caption — the capture then logs "Captioned N/N
-              // images" followed by "0 images captioned", which is what production shows.
+              // Thinking tokens come out of maxOutputTokens, so a thinking model can spend the
+              // whole budget and return empty text: a successful request with no caption.
               thinkingConfig: { thinkingBudget: 0 },
               abortSignal: signal,
               httpOptions: { timeout: timeoutMs },
