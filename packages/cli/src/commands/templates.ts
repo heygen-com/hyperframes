@@ -2,6 +2,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -116,7 +117,6 @@ const PULLED_HASH = ".template-sha256";
 const execFileAsync = promisify(execFile);
 const STOP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 
-/** Removes `work` if the pull is stopped mid-unpack, then lets the signal end the process as it would have. */
 function removeOnStop(work: string): () => void {
   const handlers = STOP_SIGNALS.map((signal) => {
     const handler = (): void => {
@@ -134,16 +134,33 @@ function removeOnStop(work: string): () => void {
 }
 
 const partPrefix = (dest: string) => `${basename(dest)}.part-`;
+const PULL_MARKER = ".hyperframes-pull.json";
+const PULL_OWNER = "hyperframes templates pull";
 
-/** Clears the `.part-<pid>-` folders of pulls whose process is gone, such as one killed mid-unpack. */
+/** The pid of the pull that made `path`, read from the marker it wrote; null for anything this CLI did not make. */
+function pullOwner(path: string, name: string, dest: string): number | null {
+  const suffix = name.slice(partPrefix(dest).length);
+  if (!name.startsWith(partPrefix(dest)) || !/^\d+-[A-Za-z0-9]{6}$/.test(suffix)) return null;
+  try {
+    const marker = join(path, PULL_MARKER);
+    if (!lstatSync(path).isDirectory() || !lstatSync(marker).isFile()) return null;
+    const record: unknown = JSON.parse(readFileSync(marker, "utf8"));
+    const pid = Number(suffix.split("-")[0]);
+    const owned =
+      typeof record === "object" && record !== null && "owner" in record && "pid" in record;
+    return owned && record.owner === PULL_OWNER && record.pid === pid ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 function removeAbandonedParts(dest: string): void {
   const parent = dirname(dest);
   if (!existsSync(parent)) return;
   for (const name of readdirSync(parent)) {
-    if (!name.startsWith(partPrefix(dest))) continue;
-    const pid = Number(name.slice(partPrefix(dest).length).split("-")[0]);
-    if (Number.isInteger(pid) && pid > 0 && processIsAlive(pid)) continue;
-    rmSync(join(parent, name), { recursive: true, force: true });
+    const path = join(parent, name);
+    const pid = pullOwner(path, name, dest);
+    if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
   }
 }
 
@@ -154,6 +171,7 @@ async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<v
   const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
   const stopWatching = removeOnStop(work);
   try {
+    writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
     const out = join(work, "template");
     assertSafeEntries(data);
     mkdirSync(out);
