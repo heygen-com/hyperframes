@@ -12,6 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
@@ -110,7 +111,7 @@ const PULLED_HASH = ".template-sha256";
 
 /** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
 function unpack(data: Buffer, dest: string, pack: TemplatePack): void {
-  mkdirSync(dirname(dest), { recursive: true });
+  makeOutputFolder(dirname(dest));
   const work = mkdtempSync(`${dest}.part-`);
   try {
     const out = join(work, "template");
