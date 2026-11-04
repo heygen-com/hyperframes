@@ -17,12 +17,12 @@
 <p align="center"><b>Write HTML. Render video. Built for agents.</b></p>
 
 <p align="center">
-  <a href="https://hyperframes.studio/studio">Studio</a> |
-  <a href="https://hyperframes.heygen.com/quickstart">Quickstart</a> |
-  <a href="https://hyperframes.heygen.com/showcase">Showcase</a> |
-  <a href="https://hyperframes.studio/">Playground</a> |
-  <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart">Catalog</a> |
-  <a href="https://hyperframes.heygen.com/introduction">Docs</a> |
+  <a href="https://hyperframes.studio/studio?utm_source=github&utm_medium=readme">Studio</a> |
+  <a href="https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme">Quickstart</a> |
+  <a href="https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme">Showcase</a> |
+  <a href="https://hyperframes.studio/?utm_source=github&utm_medium=readme">Playground</a> |
+  <a href="https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme">Catalog</a> |
+  <a href="https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme">Docs</a> |
   <a href="https://discord.gg/fzbdWyjphr">Discord</a>
 </p>
 
@@ -124,7 +124,7 @@ This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and 
 | `/reverse-any-video`       | Rebuilding any video file as an editable HyperFrames project (motion graphics, talking heads, live action, AI-generated footage), checked frame by frame against the original. HyperFrames Pro.       |
 | `/style-sampling`          | Making a new episode on your topic in one of five proven styles: Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime. HyperFrames Pro.                |
 
-For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/claude-design) and [Open Design guide](https://hyperframes.heygen.com/guides/open-design).
+For visual design handoff workflows, see the [Claude Design guide](https://hyperframes.heygen.com/guides/design-tools?utm_source=github&utm_medium=readme#start-from-claude-design-or-open-design) and [Open Design guide](https://hyperframes.heygen.com/guides/design-tools?utm_source=github&utm_medium=readme#start-from-claude-design-or-open-design).
 
 ### Manually with the CLI
 
@@ -139,7 +139,7 @@ npx hyperframes render       # render to MP4
 
 ## What You Can Build
 
-Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/showcase) for finished videos you can watch, read, run, and remix.
+Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme) for finished videos you can watch, read, run, and remix.
 
 - Product launch videos and feature announcements
 - PR walkthroughs with animated code diffs, narration, and captions
@@ -159,57 +159,57 @@ The output is a `DESIGN.md` superset your whole toolchain can read. Atoms stay s
 <table>
   <tr>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/biennale-yellow"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/biennale-yellow.png" alt="Biennale Yellow" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/biennale-yellow">Biennale Yellow</a></b>
+      <a href="https://hyperframes.studio/design/biennale-yellow?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/biennale-yellow.png" alt="Biennale Yellow" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/biennale-yellow?utm_source=github&utm_medium=readme">Biennale Yellow</a></b>
     </td>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/blockframe"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blockframe.png" alt="BlockFrame" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/blockframe">BlockFrame</a></b>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/blue-professional"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blue-professional.png" alt="Blue Professional" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/blue-professional">Blue Professional</a></b>
-    </td>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/bold-poster"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/bold-poster.png" alt="Bold Poster" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/bold-poster">Bold Poster</a></b>
+      <a href="https://hyperframes.studio/design/blockframe?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blockframe.png" alt="BlockFrame" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/blockframe?utm_source=github&utm_medium=readme">BlockFrame</a></b>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/broadside"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/broadside.png" alt="Broadside" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/broadside">Broadside</a></b>
+      <a href="https://hyperframes.studio/design/blue-professional?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/blue-professional.png" alt="Blue Professional" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/blue-professional?utm_source=github&utm_medium=readme">Blue Professional</a></b>
     </td>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/capsule"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/capsule.png" alt="Capsule" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/capsule">Capsule</a></b>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/cartesian"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cartesian.png" alt="Cartesian" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/cartesian">Cartesian</a></b>
-    </td>
-    <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/cobalt-grid"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cobalt-grid.png" alt="Cobalt Grid" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/cobalt-grid">Cobalt Grid</a></b>
+      <a href="https://hyperframes.studio/design/bold-poster?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/bold-poster.png" alt="Bold Poster" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/bold-poster?utm_source=github&utm_medium=readme">Bold Poster</a></b>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/coral"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/coral.png" alt="Coral" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/coral">Coral</a></b>
+      <a href="https://hyperframes.studio/design/broadside?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/broadside.png" alt="Broadside" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/broadside?utm_source=github&utm_medium=readme">Broadside</a></b>
     </td>
     <td width="50%" align="center">
-      <a href="https://hyperframes.studio/design/creative-mode"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/creative-mode.png" alt="Creative Mode" width="100%"></a>
-      <br><b><a href="https://hyperframes.studio/design/creative-mode">Creative Mode</a></b>
+      <a href="https://hyperframes.studio/design/capsule?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/capsule.png" alt="Capsule" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/capsule?utm_source=github&utm_medium=readme">Capsule</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://hyperframes.studio/design/cartesian?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cartesian.png" alt="Cartesian" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/cartesian?utm_source=github&utm_medium=readme">Cartesian</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://hyperframes.studio/design/cobalt-grid?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/cobalt-grid.png" alt="Cobalt Grid" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/cobalt-grid?utm_source=github&utm_medium=readme">Cobalt Grid</a></b>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="https://hyperframes.studio/design/coral?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/coral.png" alt="Coral" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/coral?utm_source=github&utm_medium=readme">Coral</a></b>
+    </td>
+    <td width="50%" align="center">
+      <a href="https://hyperframes.studio/design/creative-mode?utm_source=github&utm_medium=readme"><img src="https://static.heygen.ai/hyperframes-oss/docs/images/design-templates/creative-mode.png" alt="Creative Mode" width="100%"></a>
+      <br><b><a href="https://hyperframes.studio/design/creative-mode?utm_source=github&utm_medium=readme">Creative Mode</a></b>
     </td>
   </tr>
 </table>
 
-Browse and remix them all at [hyperframes.studio/design](https://hyperframes.studio/design).
+Browse and remix them all at [hyperframes.studio/design](https://hyperframes.studio/design?utm_source=github&utm_medium=readme).
 
 ## How It Works
 
@@ -253,16 +253,16 @@ Preview instantly in the browser. Render locally or in Docker. The renderer seek
 
 HyperFrames is the open-source rendering engine, plus a growing set of tools around HTML-native video creation.
 
-| Piece                                             | Status              | What it does                                                                                      |
-| ------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
-| CLI                                               | Available           | Scaffold, preview, lint, inspect, and render local video projects                                 |
-| Core / Engine / Producer                          | Available           | Parse compositions, drive headless Chrome, encode video, and mix audio                            |
-| Catalog                                           | Available           | Reusable blocks and components for transitions, overlays, captions, charts, maps, and effects     |
-| Agent skills                                      | Available           | Teach coding agents the video-production patterns that generic web docs miss                      |
-| Studio                                            | Available, evolving | Browser surface for previewing and editing compositions                                           |
-| AWS Lambda rendering                              | Available           | Deploy a distributed render stack and drive renders from your laptop or CI                        |
-| [hyperframes.studio](https://hyperframes.studio/) | Available           | Community playground for previewing, iterating, sharing, and rendering HTML-native video projects |
-| [frame.md](https://hyperframes.studio/design)     | Available           | Invert your design system for the camera — a DESIGN.md superset an agent can compose video from   |
+| Piece                                                                                 | Status              | What it does                                                                                      |
+| ------------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------- |
+| CLI                                                                                   | Available           | Scaffold, preview, lint, inspect, and render local video projects                                 |
+| Core / Engine / Producer                                                              | Available           | Parse compositions, drive headless Chrome, encode video, and mix audio                            |
+| Catalog                                                                               | Available           | Reusable blocks and components for transitions, overlays, captions, charts, maps, and effects     |
+| Agent skills                                                                          | Available           | Teach coding agents the video-production patterns that generic web docs miss                      |
+| Studio                                                                                | Available, evolving | Browser surface for previewing and editing compositions                                           |
+| AWS Lambda rendering                                                                  | Available           | Deploy a distributed render stack and drive renders from your laptop or CI                        |
+| [hyperframes.studio](https://hyperframes.studio/?utm_source=github&utm_medium=readme) | Available           | Community playground for previewing, iterating, sharing, and rendering HTML-native video projects |
+| [frame.md](https://hyperframes.studio/design?utm_source=github&utm_medium=readme)     | Available           | Invert your design system for the camera — a DESIGN.md superset an agent can compose video from   |
 
 ## Catalog
 
@@ -274,7 +274,7 @@ npx hyperframes add instagram-follow      # social overlay
 npx hyperframes add data-chart            # animated chart
 ```
 
-Browse the catalog at [hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart).
+Browse the catalog at [hyperframes.heygen.com/catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme).
 
 ## Why HyperFrames?
 
@@ -298,19 +298,19 @@ HyperFrames is inspired by [Remotion](https://www.remotion.dev). Both tools rend
 | Distributed rendering    | Local and AWS Lambda render paths     | Remotion Lambda, mature cloud renderer  |
 | License                  | Apache 2.0                            | Source-available Remotion License       |
 
-Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion).
+Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme).
 
 ## Documentation
 
-Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction)
+Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.heygen.com/introduction?utm_source=github&utm_medium=readme)
 
-- [Quickstart](https://hyperframes.heygen.com/quickstart)
-- [Showcase](https://hyperframes.heygen.com/showcase)
-- [Guides](https://hyperframes.heygen.com/guides/gsap-animation)
-- [API Reference](https://hyperframes.heygen.com/packages/core)
-- [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart)
-- [Examples](https://hyperframes.heygen.com/examples)
-- [AWS Lambda rendering](https://hyperframes.heygen.com/deploy/aws-lambda)
+- [Quickstart](https://hyperframes.heygen.com/quickstart?utm_source=github&utm_medium=readme)
+- [Showcase](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
+- [Guides](https://hyperframes.heygen.com/guides/gsap-animation?utm_source=github&utm_medium=readme)
+- [API Reference](https://hyperframes.heygen.com/packages/core?utm_source=github&utm_medium=readme)
+- [Catalog](https://hyperframes.heygen.com/catalog/blocks/data-chart?utm_source=github&utm_medium=readme)
+- [Examples](https://hyperframes.heygen.com/examples?utm_source=github&utm_medium=readme)
+- [AWS Lambda rendering](https://hyperframes.heygen.com/deploy/aws-lambda?utm_source=github&utm_medium=readme)
 
 ## Packages
 
@@ -327,7 +327,7 @@ Full documentation: [hyperframes.heygen.com/introduction](https://hyperframes.he
 
 ## Community
 
-HyperFrames is used in production at [HeyGen](https://www.heygen.com), with community examples from teams like [tldraw](https://tldraw.com), [TanStack](https://tanstack.com), and others in [ADOPTERS.md](ADOPTERS.md). Open a PR if your team is using HyperFrames.
+HyperFrames is used in production at [HeyGen](https://www.heygen.com?utm_source=github&utm_medium=readme), with community examples from teams like [tldraw](https://tldraw.com), [TanStack](https://tanstack.com), and others in [ADOPTERS.md](ADOPTERS.md). Open a PR if your team is using HyperFrames.
 
 - Questions and ideas: [Discord](https://discord.gg/fzbdWyjphr)
 - Bugs and feature requests: [GitHub Issues](https://github.com/heygen-com/hyperframes/issues)

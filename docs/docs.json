@@ -326,13 +326,13 @@
             "item": "Community",
             "icon": "users",
             "description": "Videos people made",
-            "href": "https://hyperframes.studio/?view=community"
+            "href": "https://hyperframes.studio/?view=community&src=docs-navbar"
           },
           {
             "item": "App changelog",
             "icon": "sparkles",
             "description": "What's new in the app",
-            "href": "https://hyperframes.studio/changelog"
+            "href": "https://hyperframes.studio/changelog?src=docs-navbar"
           }
         ]
       },
