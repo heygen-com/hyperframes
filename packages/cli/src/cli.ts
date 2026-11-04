@@ -7,7 +7,7 @@
 // the process. This is a normal lifecycle event — suppress it.
 //
 // commandFailed must be declared here (before the handlers) so the EPIPE
-// stream-error path can set it before process.exit(0). The telemetry exit
+// stream-error path can set it before it exits. The telemetry exit
 // handler reads this flag to determine success/failure — an EPIPE that
 // interrupts a command should NOT score as success:true, but one that
 // arrives after the render artifact was validated is the normal agent-pipe
