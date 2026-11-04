@@ -12,7 +12,7 @@ import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1748,6 +1748,27 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
 }
 
 /**
+ * Copy the `@font-face` rules of the page's project stylesheets into an inline
+ * `<style>`, url()s rebased to the project root, so the fail-closed font check
+ * and the local font embed see the fonts the project ships. The `<link>` stays
+ * for the sheet's other rules.
+ */
+function inlineProjectFontFaces(html: string, projectDir: string): string {
+  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
+  return html.replace(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi, (tag) => {
+    const href = /\bhref=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (!href || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) return tag;
+    const sheetPath = decodedUrlPath(href).replace(/^(?:\.?\/)+/, "");
+    const absPath = resolve(projectDir, sheetPath);
+    if (!isPathInside(absPath, projectDir) || !existsSync(absPath)) return tag;
+    const faces = extractFontFaceBlocks(readFileSync(absPath, "utf8"));
+    if (faces.length === 0) return tag;
+    const css = rewriteCssAssetUrls(faces.join("\n"), sheetPath, assetExists);
+    return `${tag}\n<style>\n${css}\n</style>`;
+  });
+}
+
+/**
  * Collect all remote `url(https://...)` references inside `@font-face` blocks
  * found in `<style>` tags.
  */
@@ -1791,16 +1812,17 @@ export async function localizeRemoteFontFaces(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  // Phase 1: Inline @font-face rules from external <link rel="stylesheet"> tags.
-  const processed = await inlineExternalFontStylesheets(html);
+  return localizeFontFaceUrls(await inlineExternalFontStylesheets(html), downloadDir);
+}
 
-  // Phase 2: Download font file URLs from all @font-face blocks (both
-  // pre-existing inline blocks and the ones just inlined from external sheets).
-  const urlSet = collectFontFaceUrls(processed);
-
+/** Download the remote font files of the page's inline @font-face rules and point the rules at them. */
+function localizeFontFaceUrls(
+  html: string,
+  downloadDir: string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   return downloadAndRewriteUrls(
-    urlSet,
-    processed,
+    collectFontFaceUrls(html),
+    html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote font download failed",
     "Localized remote font face(s)",
@@ -2102,10 +2124,12 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
+  // Linked @font-face rules join the page first, or the font check below cannot see them.
+  const fontSheetHtml = await inlineExternalFontStylesheets(
+    inlineProjectFontFaces(promoteCssImportsToLinkTags(sanitizedHtml), projectDir),
+  );
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
-    injectTextRenderingRule(
-      coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
-    ),
+    injectTextRenderingRule(coalesceHeadStylesAndBodyScripts(fontSheetHtml)),
   );
 
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
@@ -2168,7 +2192,7 @@ export async function compileForRender(
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeRemoteFontFaces(htmlWithLocalBg, downloadDir);
+    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir);
 
   // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
   // so convert to JPEG before the media-type preflight sees it.

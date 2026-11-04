@@ -990,6 +990,28 @@ function findDeclaredFamilyAlias(
   return match;
 }
 
+// Design exports name a family by class, `font-<Family>-<weight>`; serve <Family> under that name.
+// ponytail: every face is emitted, so the element's own font-weight still picks the face.
+const WEIGHTED_CLASS_FAMILY = /^font-(.+)-[1-9]00$/i;
+
+async function resolveWeightedClassFamily(
+  authoredFamily: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const family = WEIGHTED_CLASS_FAMILY.exec(authoredFamily)?.[1];
+  if (!family) return null;
+  return resolveFamilyFaceRules(
+    normalizeFamilyName(family),
+    family,
+    authoredFamily,
+    optional,
+    options,
+    fontText,
+  );
+}
+
 // Emits under the authored name instead of rewriting usages, as FONT_ALIASES does,
 // so script-assigned and var()-indirected usages match too.
 async function resolveDeclaredFamilyAlias(
@@ -1065,7 +1087,8 @@ async function buildFontFaceCss(
         optional,
         options,
         fontText,
-      ));
+      )) ??
+      (await resolveWeightedClassFamily(originalCaseFamily, optional, options, fontText));
     options.diag.endFamily(Boolean(familyRules));
     if (familyRules) {
       rules.push(...familyRules);
