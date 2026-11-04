@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import {
   addVersion,
   pendingReviewExport,
+  refreshReviewExport,
   reviewClient,
   reviewRecord,
   reviewStatus,
@@ -32,12 +33,13 @@ function linkState(share: ReviewShare | null, ready: boolean): string {
 }
 async function readStatus(dir: string, client: ReviewClient) {
   const share = await reviewStatus({ projectPath: dir, client });
+  if (share) await refreshReviewExport(dir, client);
   const project = await readProject(share, client);
   const latest = project?.latest_ready_version_id ?? null;
   const version = await reviewVersion(dir, { latestReadyVersionId: latest });
   const pending = await pendingReviewExport(dir);
   const activeUrl = share?.url ?? null;
-  const processing = isProcessing(pending, share, latest);
+  const processing = isProcessing(pending, share);
   const ready = Boolean(activeUrl && latest && !processing);
   return {
     share,
@@ -66,9 +68,8 @@ function statusLinks(
 function isProcessing(
   pending: Awaited<ReturnType<typeof pendingReviewExport>>,
   share: ReviewShare | null,
-  latest: string | null,
 ) {
-  return Boolean(pending && pending.projectId === share?.projectId && pending.videoId !== latest);
+  return Boolean(pending && pending.projectId === share?.projectId);
 }
 function selectSpace(spaces: Awaited<ReturnType<ReviewClient["spaces"]>>, id?: string) {
   if (id) return spaces.find((space) => space.space_id === id);

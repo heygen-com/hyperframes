@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   add: vi.fn(),
   pending: vi.fn(),
+  refresh: vi.fn(),
 }));
 vi.mock("@hyperframes/share", () => ({
   reviewClient: () => ({ project: mocks.project, spaces: mocks.spaces, reviewFlags: mocks.flags }),
@@ -19,6 +20,7 @@ vi.mock("@hyperframes/share", () => ({
   shareForReview: mocks.create,
   addVersion: mocks.add,
   pendingReviewExport: mocks.pending,
+  refreshReviewExport: mocks.refresh,
   setReviewAccess: vi.fn(),
   turnOffReviewLink: vi.fn(),
   ReviewFailed: class extends Error {
@@ -49,7 +51,7 @@ beforeEach(() => {
   mocks.record.mockResolvedValue(null);
   mocks.pending.mockResolvedValue(null);
   mocks.version.mockResolvedValue({ last: null, source: "ready" });
-  mocks.project.mockResolvedValue({ latest_ready_version_id: "video" });
+  mocks.project.mockResolvedValue({ latest_ready_version_id: "version-id" });
   mocks.flags.mockResolvedValue({ versionSharing: true });
   mocks.spaces.mockResolvedValue([
     {
@@ -124,5 +126,32 @@ describe("share operation consent and identity", () => {
     mocks.status.mockResolvedValue({ ...shared, url: null });
     expect((await createShareService("/project").run({ action: "share" })).state).toBe("link_off");
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("asynchronous share recovery", () => {
+  it("reconciles completion before reading project and local status", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.pending.mockResolvedValue({ projectId: "project", videoId: "video-id" });
+    mocks.refresh.mockImplementation(async () => {
+      mocks.pending.mockResolvedValue(null);
+    });
+    const result = await createShareService("/project").run({ action: "status" });
+    expect(mocks.refresh).toHaveBeenCalledOnce();
+    expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.project.mock.invocationCallOrder[0],
+    );
+    expect(result).toMatchObject({ state: "ready", ready: true, url: shared.url });
+    expect(mocks.add).not.toHaveBeenCalled();
+    expect(mocks.render).not.toHaveBeenCalled();
+  });
+  it("keeps an active upload processing even if unrelated IDs happen to match", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.pending.mockResolvedValue({ projectId: "project", videoId: "version-id" });
+    expect(await createShareService("/project").status()).toMatchObject({
+      state: "processing",
+      ready: false,
+      url: null,
+    });
   });
 });
