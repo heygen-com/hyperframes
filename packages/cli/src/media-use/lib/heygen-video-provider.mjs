@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { refuseUnderLimit } from "./credit-limit.mjs";
 import { freezeUrl } from "./freeze.mjs";
 import {
   classifyHeygenErrorCode,
@@ -44,6 +45,7 @@ function defaultStarfishVoiceId(onError) {
 }
 
 export async function heygenVideoGenerate(intent, ctx) {
+  refuseUnderLimit(ctx?.projectDir ?? process.cwd(), "a HeyGen avatar video", "avatar");
   let discoveryFailureReason = null;
   const captureReason = (reason) => {
     discoveryFailureReason ??= reason;

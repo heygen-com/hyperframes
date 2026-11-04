@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,6 +75,55 @@ describe("runJob", () => {
     vi.stubGlobal("fetch", async () => answers.shift()!);
     await runJob(X, {}, "k2", { log, intervalMs: 1 });
     expect(rows()).toEqual(["completed", "pending", "completed"]);
+  });
+
+  describe("with a run credit limit", () => {
+    const project = (limit: number) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-limit-"));
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      return { projectDir, what: "a line" };
+    };
+    const sent = () => {
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(url);
+        return reply(200, { data: { id: "j", status: "completed" } });
+      });
+      return calls;
+    };
+
+    it("refuses a call over what is left, before sending, with no --max-credits given", async () => {
+      const calls = sent();
+      const log = project(100);
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      await expect(runJob(X, {}, "k2", { log, credits: 60 })).rejects.toThrow(/leaves 40/);
+      expect(calls).toHaveLength(1);
+      await runJob(X, {}, "k3", { log, credits: 40 });
+      expect(calls).toHaveLength(2);
+    });
+
+    it("refuses a call that cannot be priced ahead", async () => {
+      const calls = sent();
+      await expect(runJob(X, {}, "k", { log: project(100) })).rejects.toThrow(/cannot be priced/);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("lets the same job resume, and gives back a refused call's credits", async () => {
+      const log = project(100);
+      const calls = sent();
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      expect(calls).toHaveLength(2);
+      const fresh = project(100);
+      vi.stubGlobal("fetch", async () => reply(422, { error: { code: "bad", message: "no" } }));
+      await expect(runJob(X, {}, "k2", { log: fresh, credits: 100 })).rejects.toThrow();
+      vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j", status: "completed" } }));
+      await runJob(X, {}, "k3", { log: fresh, credits: 100 });
+    });
   });
 
   it("turns refusals into what to do next", async () => {
