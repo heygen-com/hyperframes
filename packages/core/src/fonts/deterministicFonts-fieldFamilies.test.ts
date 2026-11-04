@@ -1,9 +1,5 @@
 // @vitest-environment node
-/**
- * Family spellings from distributed renders that failed closed with
- * "Unresolved fonts in fail-closed mode". Each one names a family the
- * resolver can serve once it reads the declaration the way the browser does.
- */
+// Family spellings that failed distributed renders closed although the browser draws them.
 
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
