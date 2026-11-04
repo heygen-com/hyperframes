@@ -152,12 +152,16 @@ describe("getFFmpegInstallCommand / getFFmpegInstallHint", () => {
     setPlatform(realPlatform);
   });
 
-  it("gives macOS a pasteable command and uses it verbatim as the hint", async () => {
+  it("gives macOS a pasteable command and a hint that works without Homebrew", async () => {
     setPlatform("darwin");
     const { getFFmpegInstallCommand, getFFmpegInstallHint } = await import("./ffmpeg.js");
 
     expect(getFFmpegInstallCommand()).toBe("brew install ffmpeg");
-    expect(getFFmpegInstallHint()).toBe("brew install ffmpeg");
+    const hint = getFFmpegInstallHint();
+    expect(hint.startsWith("brew install ffmpeg, ")).toBe(true);
+    expect(hint).toContain("HYPERFRAMES_FFMPEG_PATH");
+    expect(hint).toContain("HYPERFRAMES_FFPROBE_PATH");
+    expect(hint).toContain(".hyperframes/bin");
   });
 
   it("gives Windows a winget command and keeps the manual route in the hint", async () => {
