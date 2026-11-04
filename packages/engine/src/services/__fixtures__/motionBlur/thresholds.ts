@@ -9,9 +9,7 @@ export const MEASURED_RENDER_NOISE = 0;
 export const MEASURED_RENDER_REWIND_MUTATION = 97.02;
 
 // Worst-tile MAE of each pinned known bug, where it was pinned. A pin passes only within half to double of it.
-export const MEASURED_SCROLL_LOSS_FRESH_PAINT = 24.65;
 export const MEASURED_LABEL_EARLY_FRESH_PAINT = 54.3;
-export const MEASURED_SCROLL_LOSS_RENDER = 18.82;
 export const MEASURED_LABEL_EARLY_RENDER = 53.87;
 
 export const MEASURED_INSIDE_NOISE = 10.993;

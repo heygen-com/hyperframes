@@ -26,7 +26,6 @@ import {
 import {
   INVARIANTS,
   MEASURED_LABEL_EARLY_RENDER,
-  MEASURED_SCROLL_LOSS_RENDER,
   RENDER_OUTSIDE_MAX_MAE,
 } from "../../../../engine/src/services/__fixtures__/motionBlur/thresholds.js";
 import { createRenderJob, executeRenderJob } from "../renderOrchestrator.js";
@@ -81,14 +80,6 @@ function cssPx(f: BlurFixture, id: string, property: string): number {
   return Number(px);
 }
 
-/** The element's box from its inline left, top, width and height. */
-const boxFromMarkup = (f: BlurFixture, id: string): Rect => ({
-  x: cssPx(f, id, "left"),
-  y: cssPx(f, id, "top"),
-  width: cssPx(f, id, "width"),
-  height: cssPx(f, id, "height"),
-});
-
 /** One glyph of the element's text: left and top from its inline style; a monospace advance is 0.6 em, a line 1.2 em. */
 function glyphFromMarkup(f: BlurFixture, id: string): Rect {
   const size = Number(/font:\s*\d+\s+([\d.]+)px/.exec(markupOf(f, id))?.[1]);
@@ -102,18 +93,6 @@ function glyphFromMarkup(f: BlurFixture, id: string): Rect {
  * appear and fails once it is fixed; the others only bound it, because it is a race.
  */
 const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
-  [
-    "scroll-list",
-    {
-      title:
-        "scroll-list: any loss after a worker's first wrap stays inside #list (KNOWN BUG, flip lives in the engine differential)",
-      reason: "scroll-list loses its scroll offset after a worker's first wrap",
-      regionId: "list",
-      region: (f) => boxFromMarkup(f, "list"),
-      frames: (n) => n >= 28,
-      measuredMae: MEASURED_SCROLL_LOSS_RENDER,
-    },
-  ],
   [
     "callbacks",
     {

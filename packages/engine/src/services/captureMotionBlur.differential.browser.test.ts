@@ -21,7 +21,6 @@ import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.j
 import {
   INVARIANTS,
   MEASURED_LABEL_EARLY_FRESH_PAINT,
-  MEASURED_SCROLL_LOSS_FRESH_PAINT,
 } from "./__fixtures__/motionBlur/thresholds.js";
 
 const FPS = 30;
@@ -38,11 +37,6 @@ interface KnownBug {
   measuredMae: number;
 }
 
-const SCROLL_LOSS: KnownBug = {
-  reason: "scroll-list loses its scroll offset on a fresh first paint",
-  regionId: "list",
-  measuredMae: MEASURED_SCROLL_LOSS_FRESH_PAINT,
-};
 const LABEL_EARLY: KnownBug = {
   reason: "callbacks shows its label B before the call that sets it",
   regionId: "label",
@@ -51,9 +45,6 @@ const LABEL_EARLY: KnownBug = {
 
 /** Cases where blur on really differs from blur off today. They pin the symptom and fail once it is fixed. */
 const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
-  ["outside:scroll-list@1", SCROLL_LOSS],
-  ["outside:scroll-list@1.2", SCROLL_LOSS],
-  ["outside:scroll-list@1.5", SCROLL_LOSS],
   ["outside:callbacks@0.2", LABEL_EARLY],
   ["outside:callbacks@0.3", LABEL_EARLY],
   ["outside:callbacks@0.4", LABEL_EARLY],
