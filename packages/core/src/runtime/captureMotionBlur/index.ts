@@ -203,7 +203,15 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   let rendering = false;
 
   function moveRootThenResync(move: () => void): void {
+    // Chrome resets a scrolled container's offset when its subtree is removed from the document.
+    const scrolled = [root, ...root.querySelectorAll<HTMLElement>("*")]
+      .filter((el) => el.scrollLeft !== 0 || el.scrollTop !== 0)
+      .map((el) => ({ el, left: el.scrollLeft, top: el.scrollTop }));
     (host.ignoreMutations ?? ((write: () => void) => write()))(move);
+    for (const { el, left, top } of scrolled) {
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    }
     host.seek(host.now(), true);
   }
 
