@@ -232,6 +232,22 @@ p { FONT-FAMILY: "Real Brand", sans-serif !important; }
       expect(findings[0]!.message).not.toContain("inter");
     });
 
+    it.each([
+      "16px / 1.5 Inter",
+      "var(--weight) 16px Inter",
+      "var(--size) 'Brand Sans'",
+      "'Brand Sans' 16px",
+    ])("does not invent a family from a valid or unreadable shorthand: font: %s", async (font) => {
+      const findings = await findByCode(
+        `<div data-composition-id="test"><style>
+:root { --weight: 700; --size: 16px; }
+p { font: ${font}; }
+</style></div>`,
+        "font_family_without_font_face",
+      );
+      expect(findings).toHaveLength(0);
+    });
+
     it("flags font-family used without @font-face", async () => {
       const html = `<div data-composition-id="test" data-width="1920" data-height="1080">
         <style>body { font-family: 'GT Walsheim', sans-serif; }</style>

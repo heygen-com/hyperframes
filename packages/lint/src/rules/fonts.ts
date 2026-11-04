@@ -2,7 +2,7 @@ import postcss from "postcss";
 import type { SourceLocation } from "../sourceCoordinates";
 import {
   FONT_ALIAS_KEYS,
-  fontShorthandFamilies,
+  parseFontShorthand,
   resolveAliasDisplayName,
 } from "@hyperframes/parsers/composition";
 import type { LintContext, HyperframeLintFinding } from "../context";
@@ -113,7 +113,9 @@ function resolveUsedFontNames(
 
 function usedFamilyList(decl: postcss.Declaration): string {
   if (isFontFaceDeclaration(decl)) return "";
-  return decl.prop.toLowerCase() === "font" ? fontShorthandFamilies(decl.value) : decl.value;
+  if (decl.prop.toLowerCase() !== "font") return decl.value;
+  const shorthand = parseFontShorthand(decl.value);
+  return shorthand.certain ? shorthand.families : "";
 }
 
 const FONT_FAMILY_PROPS = /^font(?:-family)?$/i;
