@@ -191,6 +191,9 @@ describe("skillsUpdateCheck", () => {
     gate.noTty = true;
     const text = await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 });
     expect(text).toContain("3 HyperFrames skills out of date or missing");
+    // The agent reads stderr too: the command is the person's to run (DeltaVerdict D5).
+    expect(text).toContain("For the user: npx hyperframes skills update");
+    expect(text).not.toMatch(/\bRun:/);
   });
 
   it("prints at most once a day per project", async () => {

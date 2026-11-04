@@ -202,6 +202,14 @@ describe("hyperframes update --check", () => {
     expect(text).not.toContain("latest");
   });
 
+  it("names both commands for the person, not as a bare Run: line", async () => {
+    await runUpdate(ENTRIES.npm, { check: true });
+    const text = stdout.join("\n");
+    expect(text).toContain("For the user: run npm install -g hyperframes@0.9.8");
+    expect(text).toContain("For the user: run hyperframes update");
+    expect(text).not.toMatch(/\bRun:/);
+  });
+
   it.each([
     ["npm", ENTRIES.npm, "npm install -g hyperframes@0.9.8"],
     ["pnpm", ENTRIES.pnpm, "pnpm add -g hyperframes@0.9.8"],
