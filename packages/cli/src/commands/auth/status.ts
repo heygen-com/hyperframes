@@ -41,6 +41,7 @@ import {
   type UnconfiguredContext,
 } from "./status-guidance.js";
 import { jsonFailure } from "../../utils/jsonError.js";
+import { NetworkFailure } from "../../utils/networkFailure.js";
 import { defaultClientId, resolveClientId } from "../../auth/config.js";
 
 type BillingProduct = "hyperframes" | "heygen" | "unknown";
@@ -97,8 +98,7 @@ export default defineCommand({
       return;
     }
 
-    const resolved = credential;
-    const status = await verify(await refreshIfNeeded(resolved).catch(() => resolved));
+    const status = await verifyRefreshed(credential);
     if (asJson) printJsonStatus(status);
     else await printHumanStatus(status);
     setCommandExitCode(status.apiError ? 1 : 0);
@@ -163,6 +163,18 @@ function handleResolveError(err: unknown, asJson: boolean): never {
   failCommand();
 }
 
+/** An offline refresh says so at once rather than waiting out a second request with the stale token. */
+async function verifyRefreshed(credential: ResolvedCredential): Promise<VerifiedStatus> {
+  let current = credential;
+  try {
+    current = await refreshIfNeeded(credential);
+  } catch (error) {
+    if (error instanceof NetworkFailure)
+      return unreachable(credential, error, await loadPersistedUser(credential));
+  }
+  return await verify(current);
+}
+
 async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
   const client = new AuthClient({
     // Return the full new token set so the retry's credential carries
@@ -175,6 +187,7 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
     const user = await client.getCurrentUser(credential);
     return { credential, user, persistedUser, apiError: null, plan: await readPlan() };
   } catch (err) {
+    if (err instanceof NetworkFailure) return unreachable(credential, err, persistedUser);
     if (!isAuthError(err)) throw err;
     return {
       credential,
@@ -183,6 +196,14 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
       apiError: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+function unreachable(
+  credential: ResolvedCredential,
+  failure: NetworkFailure,
+  persistedUser: StoredUserInfo | null,
+): VerifiedStatus {
+  return { credential, user: null, persistedUser, apiError: `${failure.message} ${failure.hint}` };
 }
 
 /**

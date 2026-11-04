@@ -82,16 +82,16 @@ Rules support comments, globs, and negation. A later rule can override a default
 
 ## Render options
 
-| Flag                   | Default                     | Meaning                                                                                                                        |
-| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `--fps`                | `30`                        | Frames per second, 1–240.                                                                                                      |
-| `--quality`            | `standard`                  | `draft`, `standard`, or `high`.                                                                                                |
-| `--format`             | `mp4`                       | `mp4`, `webm`, or `mov` (webm/mov carry alpha).                                                                                |
-| `--resolution`         | `1080p`                     | `1080p` or `4k` (4k billed at 1.5×).                                                                                           |
-| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto from a local project's `data-width`/`data-height`; defaults to `16:9` for `--asset-id`/`--url`. |
-| `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip.                                                                                                |
-| `--output` / `-o`      | `renders/<render_id>.<ext>` | Local download destination.                                                                                                    |
-| `--dry-run`            | off                         | Build and inspect a local project zip without authenticating, uploading, or rendering.                                         |
+| Flag                   | Default                     | Meaning                                                                                                                                                                                    |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--fps`                | `30`                        | Frames per second, 1–240.                                                                                                                                                                  |
+| `--quality`            | `standard`                  | `draft`, `standard`, or `high`.                                                                                                                                                            |
+| `--format`             | `mp4`                       | `mp4`, `webm`, or `mov` (webm/mov carry alpha).                                                                                                                                            |
+| `--resolution`         | `1080p`                     | `1080p` or `4k` (4k billed at 1.5×).                                                                                                                                                       |
+| `--aspect-ratio`       | auto                        | Any `W:H`, auto from a local project's `data-width`/`data-height`. At `1080p` the output keeps the composition's size at any ratio (2:1 stays 2:1); `4k` takes only `16:9`, `9:16`, `1:1`. |
+| `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip.                                                                                                                                                            |
+| `--output` / `-o`      | `renders/<render_id>.<ext>` | Local download destination.                                                                                                                                                                |
+| `--dry-run`            | off                         | Build and inspect a local project zip without authenticating, uploading, or rendering.                                                                                                     |
 
 ```bash
 npx hyperframes cloud render . \

@@ -31,11 +31,19 @@ import { failCommand, failUsage } from "../../utils/commandResult.js";
 import { defineCommand } from "../../utils/defineCommand.js";
 
 import {
+  ASPECT_RATIO_MATCH_TOLERANCE,
   detectAspectRatioFromHtml,
   type AspectRatioDetection,
+  type SupportedAspectRatio,
 } from "../../cloud/detectAspectRatio.js";
+import {
+  CANVAS_DIMENSIONS,
+  checkOutputResolutionCompatibility,
+  type CanvasResolution,
+} from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
+import { describeUnresolvedFontUse } from "../../cloud/fontFailure.js";
 import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { readProjectConfig } from "../../utils/projectConfig.js";
@@ -65,6 +73,7 @@ import {
   pollUntilTerminal,
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
+import { describeUnresolvedFonts, embedSystemFonts } from "../../cloud/fontPreflight.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
 import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "../../cloud/upload.js";
 import {
@@ -133,7 +142,8 @@ export default defineCommand({
     },
     "aspect-ratio": {
       type: "string",
-      description: "Aspect ratio: 16:9 | 9:16 | 1:1 (default: 16:9)",
+      description:
+        "W:H; detected from the composition, so rarely needed. The render keeps the composition's own size; 4k needs 16:9, 9:16 or 1:1",
     },
     composition: {
       type: "string",
@@ -225,9 +235,7 @@ export default defineCommand({
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
-    const explicitAspectRatio = parseEnumFlag(args["aspect-ratio"], VALID_ASPECT_RATIO, {
-      flag: "--aspect-ratio",
-    });
+    const explicitAspectRatio = parseAspectRatioFlag(args["aspect-ratio"]);
     const pollIntervalMs = parsePollIntervalMs(args["poll-interval"]);
     const maxWaitMs = parseMaxWaitMs(args["max-wait"]);
     validateIdempotencyKey(args["idempotency-key"]);
@@ -260,6 +268,7 @@ export default defineCommand({
       args.composition,
       explicitAspectRatio,
       asJson,
+      resolution,
     );
 
     if (args["dry-run"]) {
@@ -340,7 +349,7 @@ export default defineCommand({
     });
 
     if (detail.status === "failed") {
-      handleFailedRender(detail, asJson);
+      handleFailedRender(detail, asJson, project.kind === "dir" ? (project.dir ?? ".") : undefined);
     }
 
     if (!detail.video_url) {
@@ -441,18 +450,14 @@ function resolveProjectInput(opts: {
 /**
  * Resolve the aspect ratio for the submit body, validating local inputs.
  *
- * Aspect ratio is a property of the composition (its `data-width`/
- * `data-height`), not an independent render knob — the pipeline supersamples
- * to a *matching* ratio and can't reshape. So for a local dir we auto-detect
- * from the entry HTML and the user rarely needs `--aspect-ratio`. Behaviour:
+ * Aspect ratio is a property of the composition (its `data-width`/`data-height`), not a render knob: at 1080p the
+ * cloud renders at the composition's own size whatever `aspect_ratio` says, and a 4k render scales it up to a 16:9,
+ * 9:16 or 1:1 preset, the only values the API accepts. So:
  *
- *   - Local dir, no explicit flag → auto-detect and log the result.
- *   - Local dir, explicit flag that conflicts with the detected dims → hard
- *     error (the render would otherwise fail or silently ignore the request).
- *   - Local dir with a missing `--composition` entry → hard error before
- *     upload, instead of a generic server-side render failure.
- *   - `--asset-id` / `--url` → the zip isn't on disk; trust an explicit flag,
- *     otherwise let the server default (16:9) apply.
+ *   - a detected 16:9 / 9:16 / 1:1 is sent;
+ *   - any other ratio (2:1, 4:5, …) is not sent at 1080p, where the output keeps the composition's size, and is
+ *     refused before upload at 4k, where no preset fits it;
+ *   - an explicit `--aspect-ratio W:H` that contradicts the composition is refused before upload.
  *
  * Logs are suppressed in `--json` mode so machine output stays clean.
  */
@@ -460,15 +465,16 @@ function resolveProjectInput(opts: {
 export function resolveAspectRatioForSubmit(
   project: ProjectInputSource,
   compositionArg: string | undefined,
-  explicit: "16:9" | "9:16" | "1:1" | undefined,
+  explicit: string | undefined,
   asJson: boolean,
-): "16:9" | "9:16" | "1:1" | undefined {
+  resolution: "1080p" | "4k" = "1080p",
+): SupportedAspectRatio | undefined {
   if (project.kind !== "dir") {
-    if (!explicit) {
-      const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
-      logDetection(asJson, `Auto-detect skipped (project is ${reason})`);
-    }
-    return explicit;
+    if (explicit && isSupportedAspectRatio(explicit)) return explicit;
+    if (explicit) refuseUnsupportedAt4k(resolution, `--aspect-ratio ${explicit}`);
+    const reason = project.kind === "asset_id" ? "--asset-id" : "--url";
+    logDetection(asJson, `Auto-detect skipped (project is ${reason}); ${KEEPS_OWN_SIZE}`);
+    return undefined;
   }
 
   const dir = project.dir ?? ".";
@@ -479,47 +485,108 @@ export function resolveAspectRatioForSubmit(
     failCommand();
   }
   const entryRelative = entry.value ?? "index.html";
-  const entryPath = resolvePath(dir, entryRelative);
+  const detection = detectAspectRatioFromHtml(resolvePath(dir, entryRelative));
+  const dims = detection.kind === "matched" || detection.kind === "no-match" ? detection : null;
 
-  const detection = detectAspectRatioFromHtml(entryPath);
-
-  if (explicit) {
-    // The renderer matches the composition's authored aspect ratio — it can't
-    // reshape. Both a `matched` ratio that differs from `explicit` AND a
-    // `no-match` (dims are known but the ratio isn't 16:9/9:16/1:1, so it can
-    // never equal the requested supported ratio) are definite conflicts.
-    // Other kinds (no-dims / no-root-div / invalid-dims / read-error) leave the
-    // ratio unknown, so we can't prove a conflict and forward the explicit value.
-    const conflictDetail =
-      detection.kind === "matched" && detection.aspectRatio !== explicit
-        ? `${detection.width}×${detection.height} → ${detection.aspectRatio}`
-        : detection.kind === "no-match"
-          ? `${detection.width}×${detection.height}, ratio ${detection.ratio.toFixed(2)} — not a supported ratio`
-          : undefined;
-    if (conflictDetail) {
-      errorBox(
-        "Aspect ratio mismatch",
-        `--aspect-ratio ${explicit} doesn't match the composition (${conflictDetail}).`,
-        "The renderer matches the composition's authored aspect ratio — it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
-      );
-      failCommand();
-    }
-    return explicit;
+  if (explicit && dims && !sameRatio(explicit, dims.width / dims.height)) {
+    errorBox(
+      "Aspect ratio mismatch",
+      `--aspect-ratio ${explicit} doesn't match the composition (${dims.width}×${dims.height}, ${ratioLabel(dims.width, dims.height)}).`,
+      "The renderer keeps the composition's authored aspect ratio; it can't reshape it. Drop --aspect-ratio (it's auto-detected) or re-author the composition at the target ratio.",
+    );
+    failCommand();
   }
-
-  logDetection(asJson, summarizeDetection(detection, entryRelative));
-  return detection.kind === "matched" ? detection.aspectRatio : undefined;
+  if (detection.kind === "matched") {
+    if (resolution === "4k") refuseUnfit4kPreset(detection);
+    logDetection(asJson, summarizeDetection(detection, entryRelative));
+    return detection.aspectRatio;
+  }
+  if (detection.kind === "no-match") {
+    refuseUnsupportedAt4k(
+      resolution,
+      `This composition (${detection.width}×${detection.height}, ${ratioLabel(detection.width, detection.height)})`,
+      `Render it at 1080p, which keeps ${detection.width}×${detection.height}, or re-author it at a supported ratio.`,
+    );
+    logDetection(asJson, summarizeDetection(detection, entryRelative));
+    return undefined;
+  }
+  if (explicit && isSupportedAspectRatio(explicit)) return explicit;
+  if (explicit) refuseUnsupportedAt4k(resolution, `--aspect-ratio ${explicit}`);
+  logDetection(asJson, `${summarizeDetection(detection, entryRelative)}; ${KEEPS_OWN_SIZE}`);
+  return undefined;
 }
 
-const ASPECT_FALLBACK_HINT =
-  "server will default aspect_ratio to 16:9. Pass --aspect-ratio to override.";
+const KEEPS_OWN_SIZE = "the render keeps the composition's own size.";
+
+const isSupportedAspectRatio = (value: string): value is SupportedAspectRatio =>
+  (VALID_ASPECT_RATIO as readonly string[]).includes(value);
+
+function sameRatio(aspect: string, ratio: number): boolean {
+  const [w, h] = aspect.split(":").map(Number);
+  return Math.abs(w! / h! - ratio) <= ASPECT_RATIO_MATCH_TOLERANCE;
+}
+
+function ratioLabel(width: number, height: number): string {
+  if (!Number.isInteger(width) || !Number.isInteger(height)) return (width / height).toFixed(2);
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const d = gcd(width, height);
+  return `${width / d}:${height / d}`;
+}
+
+const PRESET_4K: Record<SupportedAspectRatio, CanvasResolution> = {
+  "16:9": "landscape-4k",
+  "9:16": "portrait-4k",
+  "1:1": "square-4k",
+};
+
+/** The detector matches a ratio within a tolerance; the renderer's 4K preset has to fit the exact size. */
+function refuseUnfit4kPreset(detection: {
+  aspectRatio: SupportedAspectRatio;
+  width: number;
+  height: number;
+}): void {
+  const preset = PRESET_4K[detection.aspectRatio];
+  const compat = checkOutputResolutionCompatibility({
+    compositionWidth: detection.width,
+    compositionHeight: detection.height,
+    outputResolution: preset,
+  });
+  if (compat.ok) return;
+  const exact = CANVAS_DIMENSIONS[preset];
+  errorBox(
+    "No 4K preset fits this composition",
+    `${detection.width}×${detection.height} cannot render at 4K as ${detection.aspectRatio}: ${compat.message}`,
+    `Render it at 1080p, which keeps ${detection.width}×${detection.height}, or re-author it at ${exact.width / 2}×${exact.height / 2}.`,
+  );
+  failCommand();
+}
+
+function refuseUnsupportedAt4k(
+  resolution: "1080p" | "4k",
+  subject: string,
+  fix = "Render at 1080p, which keeps the composition's own size.",
+): void {
+  if (resolution !== "4k") return;
+  errorBox(
+    "No 4K preset for this aspect ratio",
+    `${subject} is not 16:9, 9:16 or 1:1, the only ratios a 4K cloud render can scale to.`,
+    fix,
+  );
+  failCommand();
+}
+
+/** `--aspect-ratio` takes any `W:H`; only 16:9, 9:16 and 1:1 are sent, the rest are checked against the composition. */
+export function parseAspectRatioFlag(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const match = /^([1-9]\d*):([1-9]\d*)$/.exec(raw.trim());
+  if (match) return `${match[1]}:${match[2]}`;
+  errorBox("Invalid --aspect-ratio", `Got "${raw}". Use W:H, such as 16:9, 9:16, 1:1 or 2:1.`);
+  failUsage();
+}
 
 function logDetection(asJson: boolean, message: string): void {
   if (asJson) return;
-  // `matched` is the only branch with its own affirmative phrasing; the
-  // rest share the fallback hint to keep the user oriented after a miss.
-  const suffix = message.startsWith("Detected aspect ratio") ? "" : `; ${ASPECT_FALLBACK_HINT}`;
-  console.log(c.dim(`   ${message}${suffix}`));
+  console.log(c.dim(`   ${message}`));
 }
 
 // fallow-ignore-next-line complexity
@@ -534,7 +601,7 @@ function summarizeDetection(detection: AspectRatioDetection, entryRelative: stri
     case "invalid-dims":
       return `${entryRelative} root has invalid dims (${detection.width}×${detection.height})`;
     case "no-match":
-      return `${entryRelative} dims ${detection.width}×${detection.height} (ratio ${detection.ratio.toFixed(2)}) don't match 16:9, 9:16, or 1:1`;
+      return `Detected aspect ratio: ${ratioLabel(detection.width, detection.height)} (from ${entryRelative} dims ${detection.width}×${detection.height}); the cloud render keeps that size`;
     case "read-error":
       return `Couldn't read ${entryRelative} for aspect-ratio detection (${detection.error})`;
   }
@@ -604,6 +671,16 @@ async function prepareLocalArchive(
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
   const { fileMap, entryPath } = stageProjectFiles(project, composition);
+  const missingFonts = await embedSystemFonts({
+    dir: project.dir,
+    entryFile: composition,
+    entryPath,
+    fileMap,
+  });
+  if (missingFonts.length > 0) {
+    errorBox("Fonts not on this computer", describeUnresolvedFonts(missingFonts));
+    failCommand();
+  }
   const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
@@ -946,14 +1023,22 @@ function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): str
 // Terminal handlers
 // ---------------------------------------------------------------------------
 
-function handleFailedRender(detail: HyperframesRenderDetail, asJson: boolean): never {
+function handleFailedRender(
+  detail: HyperframesRenderDetail,
+  asJson: boolean,
+  projectDir?: string,
+): never {
   if (asJson) {
     console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
     failCommand();
   }
+  const fontUse =
+    projectDir && detail.failure_message
+      ? describeUnresolvedFontUse(detail.failure_message, projectDir)
+      : undefined;
   errorBox(
     "Render failed",
-    detail.failure_message ?? "(no failure_message returned)",
+    [detail.failure_message ?? "(no failure_message returned)", fontUse].filter(Boolean).join("\n"),
     `Inspect: hyperframes cloud get ${detail.render_id}`,
   );
   failCommand();
