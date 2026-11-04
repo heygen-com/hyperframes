@@ -12,7 +12,7 @@
     "unpacked": 4268445
   },
   "@hyperframes/engine": {
-    "packed": 462420,
+    "packed": 490452,
     "unpacked": 1620913
   },
   "@hyperframes/gcp-cloud-run": {
@@ -24,7 +24,7 @@
     "unpacked": 3645432
   },
   "@hyperframes/lint": {
-    "packed": 179338,
+    "packed": 191022,
     "unpacked": 737342
   },
   "@hyperframes/parsers": {

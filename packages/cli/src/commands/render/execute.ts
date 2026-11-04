@@ -43,6 +43,7 @@ export interface RenderExecutionDependencies {
   renderDocker: RenderExecutor;
   renderLocal: RenderExecutor;
   checkResolution: ResolutionPreflight;
+  acquireRenderSlot?: (plan: RenderPlan, signal?: AbortSignal) => Promise<() => void>;
 }
 
 // Exported only through render.ts so command tests can lock the user-facing guidance.
@@ -105,6 +106,30 @@ export async function executeRenderPlan(
   await runResolutionPreflight(plan, dependencies.checkResolution);
   assertRenderActive(cancellation);
 
+  const releaseSlot = await dependencies.acquireRenderSlot?.(plan, cancellation?.signal);
+  try {
+    assertRenderActive(cancellation);
+    await executeHeldRender(plan, browserPath, variables, dependencies, cancellation, {
+      batchModule,
+      preparedBatch,
+    });
+  } finally {
+    releaseSlot?.();
+  }
+}
+
+async function executeHeldRender(
+  plan: RenderPlan,
+  browserPath: string | undefined,
+  variables: RenderOptions["variables"],
+  dependencies: RenderExecutionDependencies,
+  cancellation: RenderCancellationScope | undefined,
+  batch: {
+    batchModule?: typeof import("../batchRender.js");
+    preparedBatch?: import("../batchRender.js").PreparedBatchRender;
+  },
+): Promise<void> {
+  const { batchModule, preparedBatch } = batch;
   if (plan.batchPath && batchModule && preparedBatch) {
     await executeBatchRender(
       plan,
@@ -117,6 +142,13 @@ export async function executeRenderPlan(
     return;
   }
 
+  reportSingleRenderNotes(plan, variables);
+  const options = renderOptionsFromPlan(plan, browserPath, variables);
+  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
+  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+}
+
+function reportSingleRenderNotes(plan: RenderPlan, variables: RenderOptions["variables"]): void {
   if (variables && Object.keys(variables).length > 0) {
     const issues = validateVariablesAgainstProject(plan.renderTarget, variables);
     reportVariableIssues(issues, { strict: plan.strictVariables, quiet: plan.effectiveQuiet });
@@ -127,10 +159,6 @@ export async function executeRenderPlan(
       c.dim(`ProRes ${plan.proresProfile} has no alpha channel: transparent areas render black.`),
     );
   }
-
-  const options = renderOptionsFromPlan(plan, browserPath, variables);
-  const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
 }
 
 /**
