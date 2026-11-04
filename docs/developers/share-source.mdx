@@ -1,0 +1,72 @@
+---
+title: "Editable source in a share"
+description: "Choose whether a CLI review includes the project files used by its rendered video."
+---
+
+`hyperframes share` can attach editable project files to the same review page
+used by Desktop. Source is available when the workspace's sharing and
+Composition Sync permissions allow it. The recipient's access still depends on
+the share's settings and their plan.
+
+```bash
+hyperframes share --public               # Video and source when eligible
+hyperframes share --update               # Update the existing review
+hyperframes share --update --video-only  # Explicitly omit editable source
+```
+
+The five-free-project sharing limit is unchanged. A workspace that cannot use
+Composition Sync can still share its rendered video. The command reports
+`source.at: "video_only"` and a reason in JSON; this is a successful video share.
+A source upload does not grant anyone editing access by itself. Manage access
+through `hyperframes share --manage`.
+
+## What travels
+
+Source uses the same portable project policy as Desktop: authored HTML, scripts,
+styles, assets, and supported Studio edit metadata. Credentials, environment
+files, dependency directories, chat history, local sharing state, and recorded
+render outputs stay out. Unsupported symlinks and invalid file names stop source
+preparation rather than silently producing an incomplete editable project.
+
+The upload uses the workspace's file-count, per-file, project-size and manifest
+limits. Large media uploads in parts. Only a verified published snapshot that
+still matches the rendered project can be attached to the video version.
+
+## Interrupted uploads and unavailable source
+
+Retry the same command after a network interruption. Its local record preserves
+the composition identity, upload idempotency key and completed file parts.
+The source record lives at `.hyperframes/share-sync.<backend-hash>.json` and
+contains no sign-in token. Do not copy that record into another project or edit
+its account, workspace or path: mismatches stop sharing to avoid overwriting
+another project's source.
+
+If source changed, conflicts with another snapshot, or remains under verification,
+the command explains why it stopped. Retry after resolving the problem, or pass
+`--video-only` to share just the rendered video. An unexpected source upload
+failure never silently turns an eligible source share into video-only.
+
+`--status` reads the review without uploading anything. Its source state is
+`not_checked`; it does not promise that local files match the shared version.
+The upload result uses `ready` only after source verification and attachment
+preparation; video readiness remains the separate top-level `ready` field.
+
+## Integrating another local host
+
+`@hyperframes/share` exports `shareSources` and
+`createProjectShareSourceStore`. Call `prepare(projectPath, renderedFingerprint)`
+before `addVersion`, then pass `filesForExport` and `requireSource: true` for a
+ready source result. `requireSource` prevents a later mismatch from degrading to
+a video-only version.
+
+A host may inject its existing binding store, or supply a read-only
+`existingBinding` resolver for Desktop bindings. Exact snapshots can be reused
+only in the same account and owner workspace, without a pending sync operation.
+Unsynced changes in a Desktop-owned binding require a Desktop sync first. The
+standalone CLI keeps its own project-local sync record; it does not discover or
+modify Desktop's application data directory.
+
+## Related topics
+
+- [CLI reference](/packages/cli#share) — audiences, updates, and processing status.
+- [CLI guide](/developers/cli) — choose the command for your task.

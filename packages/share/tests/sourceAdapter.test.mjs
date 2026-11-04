@@ -1,0 +1,286 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm, readFile, symlink, mkdir, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { shareSources, createProjectShareSourceStore } from "../src/shareSources.mjs";
+import { projectFingerprint } from "../src/projectSnapshot.mjs";
+import { captureProject } from "../src/sources/capture.mjs";
+import { sourceApi } from "../src/sources/api.mjs";
+import { V1_LIMITS } from "../src/sources/limits.mjs";
+
+const signed = {
+  token: "test-token",
+  owner: "owner",
+  heygen: "https://app.test",
+  heygenApi: "https://api.test",
+};
+async function fixture(t, files = {}) {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "hf-source-test-")));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "index.html"), "<html>video</html>");
+  for (const [file, content] of Object.entries(files)) await writeFile(join(root, file), content);
+  const rendered = await projectFingerprint(root);
+  const store = createProjectShareSourceStore();
+  return {
+    root,
+    rendered,
+    store,
+    key: { backend: signed.heygenApi, account: signed.owner, projectPath: root },
+  };
+}
+function fakeServer(overrides = {}) {
+  const calls = { create: 0, begin: [], puts: [], submit: 0, snapshot: 0 };
+  let held;
+  let composition;
+  const receipt = (status = "pending") => ({
+    uploadId: "upload",
+    compositionId: composition,
+    snapshotId: "snapshot",
+    status,
+    errorCode: null,
+    baseSnapshotId: null,
+    resolvesConflictSnapshotIds: [],
+    manifestSha256: held.manifest.sha256,
+    uploadDeadline: "2099-01-01T00:00:00Z",
+    verificationDeadline: null,
+    completedAt: null,
+    result:
+      status === "completed"
+        ? {
+            snapshotId: "snapshot",
+            publicationOutcome: "published",
+            conflictedWithSnapshotId: null,
+          }
+        : null,
+  });
+  const api = {
+    limits: async () => ({
+      at: "read",
+      syncAllowed: true,
+      maxCompositions: 5,
+      compositions: 0,
+      push: V1_LIMITS,
+    }),
+    create: async (_space, id) => {
+      calls.create++;
+      composition = id;
+      return { id };
+    },
+    begin: async (_space, id, request) => {
+      composition = id;
+      held = request;
+      calls.begin.push(request);
+      return { ...receipt(), created: true, present: [], needed: request.manifest.document.files };
+    },
+    uploadUrls: async (_space, _comp, _upload, files) =>
+      files.map((file) => ({
+        ...file,
+        url: `https://storage.test/${file.sha256}`,
+        headers: {},
+        expiresAt: "2099-01-01T00:00:00Z",
+        parts: [],
+      })),
+    submit: async () => {
+      calls.submit++;
+      return receipt("completed");
+    },
+    status: async () => receipt("completed"),
+    snapshot: async (_space, id, snapshot) => {
+      calls.snapshot++;
+      return {
+        id: snapshot,
+        compositionId: id,
+        manifestSha256: held.manifest.sha256,
+        manifest: held.manifest,
+        publicationOutcome: "published",
+      };
+    },
+    ...overrides,
+  };
+  const fetchImpl = async (url, init) => {
+    assert.equal(init.headers.authorization, undefined);
+    const bytes = Buffer.from(await new Response(init.body).arrayBuffer());
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), url.split("/").at(-1));
+    calls.puts.push(bytes);
+    return new Response(null, { status: 200 });
+  };
+  return { api, calls, fetchImpl, receipt };
+}
+
+test("source upload verifies before attachment and a fresh adapter reuses the exact published snapshot", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const options = { access: async () => signed, spaceId: "personal", ...server };
+  const source = shareSources(options);
+  assert.equal(await source.filesForExport(f.root, f.rendered), null);
+  const result = await source.prepare(f.root, f.rendered);
+  assert.equal(result.at, "ready");
+  assert.equal(server.calls.puts.length, 1);
+  assert.equal(server.calls.submit, 1);
+  assert.deepEqual(await source.filesForExport(f.root, f.rendered), result.snapshot);
+  assert.equal((await shareSources(options).prepare(f.root, f.rendered)).at, "ready");
+  assert.equal(server.calls.begin.length, 1);
+  assert.equal(server.calls.snapshot, 1);
+  const binding = await f.store.read(f.key);
+  assert.equal(binding.inflight, null);
+  assert.equal(binding.base.snapshotId, "snapshot");
+});
+
+test("changed assets invalidate prepared source even when the HTML render fingerprint stays unchanged", async (t) => {
+  const f = await fixture(t, { "media.mp4": "first" });
+  const source = shareSources({
+    access: async () => signed,
+    spaceId: "personal",
+    ...fakeServer(),
+    fingerprint: async () => f.rendered,
+  });
+  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+  await writeFile(join(f.root, "media.mp4"), "other");
+  assert.equal(await source.filesForExport(f.root, f.rendered), null);
+});
+
+test("eligibility and busy edits refuse before creating cloud compositions", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer({ limits: async () => ({ syncAllowed: false }) });
+  assert.deepEqual(
+    await shareSources({ access: async () => signed, spaceId: "personal", ...server }).prepare(
+      f.root,
+      f.rendered,
+    ),
+    { at: "unavailable", reason: "source_plan_required" },
+  );
+  assert.equal(server.calls.create, 0);
+  await mkdir(join(f.root, ".hyperframes"), { recursive: true });
+  await writeFile(join(f.root, ".hyperframes/history-turn.json"), "{}");
+  const next = fakeServer();
+  assert.equal(
+    (
+      await shareSources({ access: async () => signed, spaceId: "personal", ...next }).prepare(
+        f.root,
+        f.rendered,
+      )
+    ).reason,
+    "source_edit_in_progress",
+  );
+  assert.equal(next.calls.create, 0);
+});
+
+test("lost Begin response retries the durable idempotency key, without creating a second composition", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const begin = server.api.begin;
+  let fail = true;
+  server.api.begin = async (...args) => {
+    const answer = await begin(...args);
+    if (fail) {
+      fail = false;
+      throw new Error("network lost");
+    }
+    return answer;
+  };
+  const opts = { access: async () => signed, spaceId: "personal", ...server };
+  await assert.rejects(shareSources(opts).prepare(f.root, f.rendered), /network lost/);
+  assert.equal((await shareSources(opts).prepare(f.root, f.rendered)).at, "ready");
+  assert.equal(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
+  assert.deepEqual(server.calls.begin[0].manifest, server.calls.begin[1].manifest);
+});
+
+test("conflict and pending verification cannot be attached and keep recovery intent", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  server.api.submit = async () => ({
+    ...server.receipt("completed"),
+    result: { snapshotId: "snapshot", publicationOutcome: "conflict_saved" },
+  });
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+  assert.equal((await source.prepare(f.root, f.rendered)).reason, "source_conflict");
+  assert.equal(await source.filesForExport(f.root, f.rendered), null);
+  assert.ok((await f.store.read(f.key)).inflight);
+  server.api.submit = async () => server.receipt("verifying");
+  const pending = shareSources({
+    access: async () => signed,
+    spaceId: "personal",
+    ...server,
+    verificationTimeoutMs: 0,
+  });
+  assert.equal((await pending.prepare(f.root, f.rendered)).reason, "source_verification_pending");
+});
+
+test("Desktop-owned source is read-only and never re-shared into a different workspace", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const capture = await captureProject(f.root);
+  const binding = {
+    ...f.key,
+    version: 1,
+    compositionId: "desktop",
+    ownerSpaceId: "team",
+    base: { manifestSha256: capture.manifest.sha256, snapshotId: "desktop-snapshot" },
+    inflight: null,
+  };
+  const opts = {
+    access: async () => signed,
+    spaceId: "personal",
+    existingBinding: async () => binding,
+    ...server,
+  };
+  assert.equal(
+    (await shareSources(opts).prepare(f.root, f.rendered)).reason,
+    "source_other_workspace",
+  );
+  binding.ownerSpaceId = "personal";
+  binding.sharedFrom = { reviewProjectId: "someone-elses-share" };
+  assert.equal(
+    (await shareSources(opts).prepare(f.root, f.rendered)).reason,
+    "source_owned_by_someone_else",
+  );
+  assert.equal(server.calls.create, 0);
+});
+
+test("binding reads reject copied folders, account changes, and symlink state files", async (t) => {
+  const f = await fixture(t);
+  await shareSources({ access: async () => signed, spaceId: "personal", ...fakeServer() }).prepare(
+    f.root,
+    f.rendered,
+  );
+  await assert.rejects(f.store.read({ ...f.key, account: "other" }), /another account/);
+  const g = await fixture(t);
+  const hash = createHash("sha256").update(signed.heygenApi).digest("hex").slice(0, 16);
+  const name = `.hyperframes/share-sync.${hash}.json`;
+  await mkdir(join(g.root, ".hyperframes"));
+  await writeFile(join(g.root, name), await readFile(join(f.root, name)));
+  await assert.rejects(g.store.read(g.key), /another account/);
+  await rm(join(g.root, name));
+  await symlink(join(f.root, name), join(g.root, name));
+  await assert.rejects(g.store.read(g.key));
+});
+
+test("HTTP adapter identifies CLI and sends credentials only to the API host", async () => {
+  const requests = [];
+  const api = sourceApi({
+    access: async () => signed,
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      return Response.json({
+        data: {
+          upload_id: "up",
+          composition_id: "comp",
+          snapshot_id: "snap",
+          status: "pending",
+          manifest_sha256: "hash",
+          upload_deadline: "2099-01-01T00:00:00Z",
+        },
+      });
+    },
+  });
+  await api.begin("space", "comp", {
+    idempotencyKey: "key",
+    baseSnapshotId: null,
+    manifest: { sha256: "hash", document: {} },
+  });
+  assert.equal(JSON.parse(requests[0].init.body).client_type, "cli");
+  assert.equal(requests[0].init.headers.authorization, "Bearer test-token");
+  assert.match(requests[0].url, /^https:\/\/api.test\/v3\//);
+});

@@ -80,3 +80,5 @@ export { bindShareHost } from "./host.mjs";
 /** @typedef {import("./types/share.js").AccessMode} AccessMode */
 /** @typedef {import("./types/share.js").ReviewExportProgress} ReviewExportProgress */
 export { pendingReviewExport } from "./reviewExport.mjs";
+
+export { shareSources, createProjectShareSourceStore } from "./shareSources.mjs";

@@ -50,3 +50,45 @@ Metadata mutations and version uploads use separate cross-process locks under `.
 `snapshotProject` skips symlinks by default, retaining Desktop watcher, change-set and saved-render compatibility; `snapshotFiles` also skips symlink entries. Set `followSymlinks: true` for a link-aware full snapshot. The CLI-facing `projectFingerprint` opts into following linked media (with cycle detection), so edited linked files invalidate its cached render. Both comparisons ignore HTML ID stamps. Export/history metadata, caches, hidden folders and installed packages are excluded. Hosts must record the fingerprint of the actual rendered source and must not relabel an old render with a newer fingerprint.
 
 Public type exports include `ShareHost`, `ReviewClient`, `ReviewShare`, `VersionRequest`, and `Wire`, plus `@hyperframes/share/types/reviewWire` and `types/share`. Per-module entry points preserve Desktop imports during adoption.
+
+## Source snapshots
+
+`shareSources({access, spaceId})` prepares editable source for a rendered version:
+
+```js
+const sources = shareSources({ access, spaceId });
+const result = await sources.prepare(projectPath, renderedFingerprint);
+if (result.at === "ready") {
+  await addVersion({
+    projectPath,
+    title,
+    client,
+    filesForExport: sources.filesForExport,
+    requireSource: true,
+  });
+}
+```
+
+Handle `unavailable.reason` before creating the video version. Plan ineligibility
+can use video-only; changed source, conflicts and unexpected upload failures need
+an explicit choice to omit source. The CLI exposes `--video-only` for that choice.
+`filesForExport` only validates already-prepared source; it does not upload.
+
+The adapter extracts Desktop's portable-source-v4 capture/manifest rules and
+multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
+and server manifest vectors travel with the package. Source is captured through
+verified file handles; upload bytes are streamed and checked against their hash.
+Workspace limits, upload receipts and published snapshot identity are checked.
+Pending uploads retain their original idempotency key across retries. A conflict
+or changed pending source is never auto-resolved or cancelled.
+
+Default state uses `.hyperframes/share-sync.<backend-hash>.json`, with strict
+account/backend/realpath binding, private atomic writes, and a process lock.
+Hosts can inject a compatible `store` or read-only `existingBinding` resolver.
+An external Desktop binding is reused only when exact and settled; this adapter
+never writes Desktop's binding or starts a second upload on its behalf.
+
+Source sharing requires an authorized account and a workspace that supports editable project files.
+Source-plan/feature eligibility remains server controlled. Automated fixtures do
+not establish live entitlement, moderation, source download or outside-editor
+acceptance. See [the source guide](../../docs/developers/share-source.mdx).
