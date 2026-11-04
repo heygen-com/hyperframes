@@ -199,6 +199,17 @@ async function completeWithRetry(
   throw lastErr ?? new Error("completeAssetUpload retries exhausted");
 }
 
+// The server refuses a stored file with a bare INVALID_PARAMETER; say which file and keep its words.
+function nameRefusedFile(err: unknown, filename: string, contentType: string): unknown {
+  if (!(err instanceof HyperframesApiError) || err.code !== "invalid_parameter") return err;
+  const kind = contentType.split("/")[0];
+  const noun = kind === "audio" || kind === "video" || kind === "image" ? `${kind} file` : "file";
+  return new HyperframesApiError({
+    ...err,
+    message: `The cloud couldn't read this ${noun}'s type: ${filename}. It said: ${err.message}`,
+  });
+}
+
 export async function uploadAssetViaDirectUpload(
   opts: Omit<UploadZipViaDirectOptions, "bytes"> & { contentType: string } & (
       | { bytes: Uint8Array }
@@ -231,7 +242,13 @@ export async function uploadAssetViaDirectUpload(
   opts.onProgress?.({ phase: "upload", percent: 100 });
 
   opts.onProgress?.({ phase: "complete" });
-  const completed = await completeWithRetry(opts.client, initialize.asset_id, checksum_sha256);
+  const completed = await completeWithRetry(
+    opts.client,
+    initialize.asset_id,
+    checksum_sha256,
+  ).catch((err: unknown) => {
+    throw nameRefusedFile(err, filename, opts.contentType);
+  });
   return {
     asset_id: completed.asset_id,
     url: completed.url,
