@@ -478,6 +478,12 @@ async function updateSkillsOffline(
   }
 
   const foreign = new Set(foreignSkillNames({ scope: "global" }));
+  const unknown = requested.filter((name) => foreign.has(name));
+  if (unknown.length > 0) {
+    const message = `Skill(s) owned by another publisher: ${unknown.join(", ")}. Leaving them unchanged.`;
+    if (opts.strict) throw new Error(message);
+    clack.log.warn(c.warn(message));
+  }
   const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])].filter(
     (name) => !foreign.has(name),
   );
@@ -504,7 +510,7 @@ async function updateSkillsOffline(
     targets,
     installed: absent,
     current: [...present],
-    unknown: [],
+    unknown,
     presenceOnly: true,
   };
 }

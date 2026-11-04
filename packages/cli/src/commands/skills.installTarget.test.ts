@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { buildManifest, FALLBACK_CORE_SKILLS } from "../utils/skillsManifest.js";
 import { updateSkills } from "./skills.js";
+import { log } from "../ui/prompts.js";
 
 const installer = vi.hoisted(() => ({ run: vi.fn<(args: readonly string[]) => void>() }));
 
@@ -100,12 +101,51 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   rmSync(fixture, { recursive: true, force: true });
 });
 
 describe("skills update install destination", () => {
+  it.each([false, true])(
+    "reports a requested foreign skill while offline (strict: %s)",
+    async (strict) => {
+      seedCore(store);
+      const path = join(store, "reverse-any-video", "SKILL.md");
+      write(path, "# Another publisher\n");
+      write(
+        join(home, ".agents", ".skill-lock.json"),
+        JSON.stringify({
+          skills: { "reverse-any-video": { source: "another/publisher" } },
+        }),
+      );
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new Error("offline");
+        }),
+      );
+      const warning = vi.spyOn(log, "warn").mockImplementation(() => {});
+
+      const update = updateSkills({ cwd, requested: ["reverse-any-video"], strict });
+
+      if (strict) {
+        await expect(update).rejects.toThrow(
+          "Skill(s) owned by another publisher: reverse-any-video",
+        );
+      } else {
+        const result = await update;
+        expect(result.unknown).toEqual(["reverse-any-video"]);
+        expect(warning).toHaveBeenCalledWith(
+          expect.stringContaining("owned by another publisher: reverse-any-video"),
+        );
+      }
+      expect(installer.run).not.toHaveBeenCalled();
+      expect(readFileSync(path, "utf8")).toBe("# Another publisher\n");
+    },
+  );
+
   it("installs the core in one run with only Cursor skills present, then becomes a no-op", async () => {
     seedCore(cursor);
     rmSync(join(cursor, "media-use"), { recursive: true });
