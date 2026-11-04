@@ -40,6 +40,25 @@ function priceLine(
 
 const WAIT_TIMEOUT_EXIT = 124;
 
+async function openCheckout(
+  kind: "plans" | "credits",
+  offer: Offer,
+  missing: number | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  if (isUnattended()) {
+    console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
+    return;
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    await rl.question("Press Enter to pay ", { signal });
+  } finally {
+    rl.close();
+  }
+  await openBrowser(await createCheckout(kind, offer, missing));
+}
+
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
@@ -51,17 +70,7 @@ async function offerCheckout(
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
   try {
-    if (isUnattended()) {
-      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-      return null;
-    }
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      await rl.question("Press Enter to pay ", { signal });
-    } finally {
-      rl.close();
-    }
-    await openBrowser(await createCheckout(kind, offer, missing));
+    await openCheckout(kind, offer, missing, signal);
     return null;
   } catch (error) {
     if (signal.aborted) return null;
