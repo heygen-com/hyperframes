@@ -9,6 +9,30 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.13"
+  description="Released - 2026-11-04"
+  tags={["Release", "Producer", "Lint", "Studio Server"]}
+>
+A render that stalls while its pages load now retries with fewer workers instead of hanging. A full disk now says so, and splitting a clip that follows another clip cuts where it plays.
+
+## Fixes
+
+- **Producer:** Retry with fewer workers when every page times out loading ([04bc4737ad1d3](https://github.com/heygen-com/hyperframes/commit/04bc4737ad1d300e45c8ad3ebb220ebec1b7ed2d), [#7171](https://github.com/heygen-com/hyperframes/pull/7171)).
+- **Lint:** Flag a data-automation or data-fx-chain the render cannot read ([cd7b7383cb19c](https://github.com/heygen-com/hyperframes/commit/cd7b7383cb19c36d63e6d7ad039221bcaccce34a), [#7169](https://github.com/heygen-com/hyperframes/pull/7169)).
+- **Studio Server:** Splitting a clip that starts after another clip cuts where it plays ([0bbc9b2943ad6](https://github.com/heygen-com/hyperframes/commit/0bbc9b2943ad6d97edd4acd9b50bb8d648e208d2), [#7172](https://github.com/heygen-com/hyperframes/pull/7172)).
+- **Producer:** A drive that refuses frame links gets a copy, whatever code it refuses with ([845bd638a7784](https://github.com/heygen-com/hyperframes/commit/845bd638a7784d0859df047e16c61b8790b9a8bb), [#7163](https://github.com/heygen-com/hyperframes/pull/7163)).
+- **Engine:** A full disk during frame extraction says so, not that the video is broken ([ac1948a88b89a](https://github.com/heygen-com/hyperframes/commit/ac1948a88b89a2ef08d02d748f107d55e50d3f9c), [#7161](https://github.com/heygen-com/hyperframes/pull/7161)).
+- **CLI:** Address skills install and update hints to the person ([604a25fbaaba5](https://github.com/heygen-com/hyperframes/commit/604a25fbaaba5c3b9dac5deab1d51859fee2516c), [#7160](https://github.com/heygen-com/hyperframes/pull/7160)).
+- **CLI:** A failed run exits 1 when its output pipe closes early ([b3b6a8116bb58](https://github.com/heygen-com/hyperframes/commit/b3b6a8116bb58afd100d6a16a79d03310ad486f8), [#7158](https://github.com/heygen-com/hyperframes/pull/7158)).
+
+## Docs & Examples
+
+- Discord in the top bar and footer, and each Discord link tagged by where it sits ([21f2119194ffd](https://github.com/heygen-com/hyperframes/commit/21f2119194ffdf525ff9f423d67cf09e788afa6c), [#7153](https://github.com/heygen-com/hyperframes/pull/7153)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.12...v0.9.13).
+</Update>
+
+<Update
   label="HyperFrames v0.9.12"
   description="Released - 2026-11-04"
   tags={["Release", "Producer", "CLI", "Skills"]}
