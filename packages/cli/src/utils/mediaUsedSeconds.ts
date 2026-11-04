@@ -28,12 +28,7 @@ function plannedDuration(video: Element): number | undefined {
   return undefined;
 }
 
-/**
- * How many seconds from the start of each file the composition can play, by pathname. A file is
- * left out (play it whole) unless every `<video>` naming it plays a known stretch: no loop, a
- * `data-duration` on the video or an ancestor, and nothing but `<video>` elements naming it.
- * Rate and offsets only ever round the answer up.
- */
+/** Seconds from the start of each file the composition plays, by pathname; a file with any unknown use is left out. */
 export function mediaUsedSeconds(html: string): Map<string, number> {
   const { document } = parseHTML(html);
   const used = new Map<string, number>();

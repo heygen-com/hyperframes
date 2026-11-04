@@ -224,11 +224,7 @@ function keyVariant(variant: ProxyVariant, limitSeconds: number | undefined): st
   return limitSeconds === undefined ? variant : `${variant}@${limitSeconds}s`;
 }
 
-/**
- * The length worth copying for a caller that plays only the first `neededSeconds` of a source: that
- * length rounded up to whole pieces, or undefined (copy it whole, sharing the preview's copy) when
- * that would save less than a piece or the length is unknown.
- */
+/** The first-stretch length to copy for a caller playing `neededSeconds`, or undefined to copy the whole file. */
 export async function proxyWindowSeconds(
   absoluteSourcePath: string,
   neededSeconds: number,
