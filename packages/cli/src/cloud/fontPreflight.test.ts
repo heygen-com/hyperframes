@@ -29,6 +29,7 @@ describe("embedSystemFonts", () => {
     });
     expect(left).toEqual([]);
     expect(calls.map((c) => c.allowSystemFontCapture)).toEqual([false, true]);
+    expect(calls.map((c) => c.systemFontsByInnerName)).toEqual([undefined, true]);
     // The resolver only injects into a full document, so the probe for the capture pass must be one.
     expect(probes[1]).toContain("<head>");
     const entry = s.fileMap.get("index.html")!.toString();

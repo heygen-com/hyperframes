@@ -89,6 +89,7 @@ export async function embedSystemFonts(
     out = await run(probe, {
       failClosedFontFetch: true,
       allowSystemFontCapture: true,
+      systemFontsByInnerName: true,
       logger: QUIET,
     });
   } catch (err) {

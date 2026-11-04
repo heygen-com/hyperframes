@@ -1,15 +1,12 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { makeTtc } from "./sfntFixture.js";
+import { fixtureFontDir, makeTtc } from "./sfntFixture.js";
 
-const home = mkdtempSync(join(tmpdir(), "hf-home-ttc-"));
-process.env.HOME = home;
-mkdirSync(join(home, ".fonts"), { recursive: true });
+const fonts = fixtureFontDir();
 writeFileSync(
-  join(home, ".fonts", "PingFang.ttc"),
+  join(fonts, "PingFang.ttc"),
   makeTtc([{ families: ["PingFang SC"] }, { families: ["PingFang TC"] }]).file,
 );
 
@@ -21,6 +18,7 @@ describe("system font capture of a family inside a .ttc collection", () => {
     const out = await injectDeterministicFontFaces(html, {
       failClosedFontFetch: true,
       allowSystemFontCapture: true,
+      systemFontsByInnerName: true,
       logger: { warn() {}, info() {} },
       fetchImpl: (async () => new Response("", { status: 400 })) as unknown as typeof fetch,
     });
@@ -30,5 +28,15 @@ describe("system font capture of a family inside a .ttc collection", () => {
     expect(embedded).toHaveLength(1);
     expect(embedded[0]).toContain("glyph-data-PingFang SC");
     expect(embedded[0]).not.toContain("glyph-data-PingFang TC");
+  });
+
+  it("embeds nothing from inside a collection unless asked", async () => {
+    const html = `<!doctype html><html><head><style>h1{font-family:"PingFang SC"}</style></head><body><h1>x</h1></body></html>`;
+    const out = await injectDeterministicFontFaces(html, {
+      allowSystemFontCapture: true,
+      logger: { warn() {}, info() {} },
+      fetchImpl: (async () => new Response("", { status: 400 })) as unknown as typeof fetch,
+    });
+    expect(out).not.toContain("base64,");
   });
 });

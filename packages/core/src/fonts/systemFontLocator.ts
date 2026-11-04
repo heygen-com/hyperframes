@@ -265,7 +265,6 @@ export function locateSystemFont(family: string): LocatedFont | null {
 export interface LocatedFontVariant extends LocatedFont {
   weight: string;
   style: "normal" | "italic";
-  /** Where the face starts inside a font collection (.ttc), which is the only way to load one face of it. */
   face?: number;
 }
 
@@ -301,7 +300,10 @@ function inferWeightAndStyle(fileName: string): { weight: string; style: "normal
   return { weight: "400", style };
 }
 
-export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
+export function locateSystemFontVariants(
+  family: string,
+  options: { byInnerName?: boolean } = {},
+): LocatedFontVariant[] {
   const normalized = normalizeName(family);
   if (!normalized) return [];
 
@@ -314,39 +316,58 @@ export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
     const { weight, style } = inferWeightAndStyle(c.path);
     variants.push({ path: c.path, format: c.format, weight, style });
   }
-  if (variants.length === 0) return dedupeVariants(variantsByInnerName(normalized));
+  if (variants.length === 0 && options.byInnerName) {
+    return regularAndBold(dedupeVariants(variantsByInnerName(normalized)));
+  }
   return dedupeVariants(variants);
 }
 
-// A file name rarely equals the family (PingFang.ttc holds "PingFang SC"), so fall back to the names inside.
 const INNER_NAME_MAX_DEPTH = 4;
 let innerNameIndex: Map<string, LocatedFontVariant[]> | null = null;
 
-function variantsByInnerName(normalized: string): LocatedFontVariant[] {
-  if (!innerNameIndex) {
-    innerNameIndex = new Map();
-    for (const dir of fontDirectories()) {
-      for (const entry of collectFontFileEntries(dir, 0, INNER_NAME_MAX_DEPTH)) {
-        const ext = entry.fileName.match(FONT_EXT_RE)?.[1] ?? "ttf";
-        if (!/^(ttf|otf|ttc)$/i.test(ext)) continue;
-        const collection = ext.toLowerCase() === "ttc";
-        for (const face of readSfntFaces(entry.path)) {
-          for (const family of face.families) {
-            const key = normalizeName(family);
-            const list = innerNameIndex.get(key) ?? [];
-            list.push({
-              path: entry.path,
-              format: collection ? "ttc" : extensionToFormat(ext),
-              weight: face.weight,
-              style: face.style,
-              ...(collection && { face: face.offset }),
-            });
-            innerNameIndex.set(key, list);
-          }
-        }
-      }
-    }
+function innerNameVariants(entry: FontFileEntry): [string, LocatedFontVariant][] {
+  const ext = entry.fileName.match(FONT_EXT_RE)?.[1]?.toLowerCase() ?? "";
+  if (ext !== "ttf" && ext !== "otf" && ext !== "ttc") return [];
+  const collection = ext === "ttc";
+  return readSfntFaces(entry.path).flatMap((face) =>
+    face.families.map((family): [string, LocatedFontVariant] => [
+      normalizeName(family),
+      {
+        path: entry.path,
+        format: collection ? "ttc" : extensionToFormat(ext),
+        weight: face.weight,
+        style: face.style,
+        ...(collection && { face: face.offset }),
+      },
+    ]),
+  );
+}
+
+function buildInnerNameIndex(): Map<string, LocatedFontVariant[]> {
+  const index = new Map<string, LocatedFontVariant[]>();
+  const entries = fontDirectories().flatMap((dir) =>
+    collectFontFileEntries(dir, 0, INNER_NAME_MAX_DEPTH),
+  );
+  for (const [family, variant] of entries.flatMap(innerNameVariants)) {
+    index.set(family, [...(index.get(family) ?? []), variant]);
   }
+  return index;
+}
+
+function regularAndBold(variants: LocatedFontVariant[]): LocatedFontVariant[] {
+  const nearest = (target: number) =>
+    variants.reduce<LocatedFontVariant | undefined>(
+      (best, v) =>
+        !best || Math.abs(Number(v.weight) - target) < Math.abs(Number(best.weight) - target)
+          ? v
+          : best,
+      undefined,
+    );
+  return [...new Set([nearest(400), nearest(700)])].filter((v): v is LocatedFontVariant => !!v);
+}
+
+function variantsByInnerName(normalized: string): LocatedFontVariant[] {
+  innerNameIndex ??= buildInnerNameIndex();
   return innerNameIndex.get(normalized) ?? [];
 }
 

@@ -1,4 +1,36 @@
 // Builds small font files in memory so tests need no binary fixtures.
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { afterAll } from "vitest";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+/** Points the locator's per-user font folder, on every platform, at an empty folder and returns it. */
+export function fixtureFontDir(): string {
+  const home = mkdtempSync(join(tmpdir(), "hf-home-"));
+  const set = {
+    HOME: home,
+    USERPROFILE: home,
+    WINDIR: join(home, "Win"),
+    LOCALAPPDATA: join(home, "Local"),
+  };
+  const before = Object.fromEntries(Object.keys(set).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, set);
+  afterAll(() => {
+    for (const [k, v] of Object.entries(before)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+  const dir =
+    process.platform === "win32"
+      ? join(home, "Local", "Microsoft", "Windows", "Fonts")
+      : process.platform === "darwin"
+        ? join(home, "Library", "Fonts")
+        : join(home, ".fonts");
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 interface FaceSpec {
   families: string[];
   weight?: number;
