@@ -127,6 +127,19 @@ it("distributed materialization stays physically self-contained after cache remo
   expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
 });
 
+it.skipIf(process.platform === "win32")(
+  "relinks over a dangling frame link left where the frames go",
+  () => {
+    const { root, compiled, extracted } = fixture();
+    const dest = join(compiled, "__hyperframes_video_frames", "clip");
+    mkdirSync(join(compiled, "__hyperframes_video_frames"), { recursive: true });
+    symlinkSync(join(root, "collected-cache"), dest, "dir");
+    materializeExtractedFramesForCompiledDir([extracted], compiled);
+    expect(lstatSync(dest).isSymbolicLink()).toBe(true);
+    expect(readFileSync(extracted.framePaths.get(0)!, "utf8")).toBe("frame bytes");
+  },
+);
+
 describe("Windows link fallbacks", () => {
   const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
   beforeEach(() => Object.defineProperty(process, "platform", { value: "win32" }));
