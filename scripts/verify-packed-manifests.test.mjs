@@ -195,6 +195,19 @@ describe("packed manifest verifier", () => {
     }
   }
 
+  it("ignores JSDoc type imports and string examples while checking executable imports", () => {
+    withPackedFiles(
+      {
+        "src/index.mjs": `/** @typedef {import("./types").Host} Host */\nconst example = 'import("./example")';\nimport("./missing");\n`,
+      },
+      ["src/index.mjs"],
+      (tarball, files) => {
+        assert.deepEqual(listPackedJavaScriptImportIssues(tarball, files), [
+          "src/index.mjs:3 imports ./missing",
+        ]);
+      },
+    );
+  });
   it("passes explicit relative JavaScript imports whose target is packed", () => {
     withPackedFiles(
       {
