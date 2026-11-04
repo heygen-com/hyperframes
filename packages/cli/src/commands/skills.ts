@@ -10,6 +10,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
   FALLBACK_CORE_SKILLS,
+  foreignSkillNames,
   hyperframesSkillNames,
   isCoreSkill,
   presentSkills,
@@ -346,7 +347,12 @@ export async function updateSkills(
     // that no longer exists, and verifyInstalled would strict-throw on a
     // "failure" that was never real. Resolving canonically means a retired
     // skill simply never appears as a target in the first place.
-    check = await checkSkills({ cwd: opts.cwd, canonical: true, cliVersion: VERSION });
+    check = await checkSkills({
+      cwd: opts.cwd,
+      canonical: true,
+      cliVersion: VERSION,
+      installTarget: true,
+    });
   } catch (err) {
     // A *malformed* canonical manifest (the server was reached, but served a
     // bad shape) is otherwise indistinguishable from being offline — both fall
@@ -408,7 +414,7 @@ export async function updateSkills(
 
   if (toInstall.length > 0) {
     await installSkills(result.installed, { cwd: opts.cwd, strict, ref: check.ref ?? "main" });
-    verifyInstalled(result.installed, { strict, cwd: opts.cwd });
+    verifyInstalled(result.targets, { strict, cwd: opts.cwd });
   }
   // The install (or the fresh canonical check confirming everything current)
   // supersedes whatever the background nudge cached before it — drop the
@@ -432,7 +438,7 @@ export async function updateSkills(
  * skills hiccup must never break scaffolding.
  */
 function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?: string }): void {
-  const present = new Set(presentSkills(names, { cwd: opts.cwd }));
+  const present = new Set(presentSkills(names, { cwd: opts.cwd, installTarget: true }));
   const absent = names.filter((name) => !present.has(name));
   if (absent.length === 0) return;
   const message = `Skill(s) still missing after install: ${absent.join(", ")}`;
@@ -471,8 +477,17 @@ async function updateSkillsOffline(
     );
   }
 
-  const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])];
-  const present = new Set(presentSkills(targets, { cwd: opts.cwd }));
+  const foreign = new Set(foreignSkillNames({ scope: "global" }));
+  const unknown = requested.filter((name) => foreign.has(name));
+  if (unknown.length > 0) {
+    const message = `Skill(s) owned by another publisher: ${unknown.join(", ")}. Leaving them unchanged.`;
+    if (opts.strict) throw new Error(message);
+    clack.log.warn(c.warn(message));
+  }
+  const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])].filter(
+    (name) => !foreign.has(name),
+  );
+  const present = new Set(presentSkills(targets, { cwd: opts.cwd, installTarget: true }));
   const absent = targets.filter((name) => !present.has(name));
 
   console.log(
@@ -489,13 +504,13 @@ async function updateSkillsOffline(
       strict: opts.strict,
       ref: cliReleaseTag(VERSION) ?? "main",
     });
-    verifyInstalled(absent, opts);
+    verifyInstalled(targets, opts);
   }
   return {
     targets,
     installed: absent,
     current: [...present],
-    unknown: [],
+    unknown,
     presenceOnly: true,
   };
 }

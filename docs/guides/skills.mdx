@@ -50,6 +50,15 @@ npx hyperframes skills update
 
 This installs or refreshes the core set and any HyperFrames skills already present in the global install, then links those bundles into compatible installed agents. It does not add every optional skill.
 
+Updates check the Claude global store (`~/.claude/skills`, or the `skills/` folder
+under `CLAUDE_CONFIG_DIR`) that the installer writes to. Skills found only in
+another agent's directory do not make a missing core skill count as installed
+there, and optional skills in that other directory are not automatically added
+to the managed store. Name an optional skill explicitly to add it. The install
+record's publisher attribution is respected even before the managed store exists.
+An explicit update request for a skill owned by another publisher fails without
+overwriting it, including when the freshness check is unavailable offline.
+
 Check freshness without changing anything:
 
 ```bash
