@@ -990,8 +990,7 @@ function findDeclaredFamilyAlias(
   return match;
 }
 
-// Design exports name a family by class, `font-<Family>-<weight>`; serve <Family> under that name.
-// ponytail: every face is emitted, so the element's own font-weight still picks the face.
+// Design exports name a family by class, `font-<Family>-<weight>`; serve all <Family> faces under that name.
 const WEIGHTED_CLASS_FAMILY = /^font-(.+)-[1-9]00$/i;
 
 async function resolveWeightedClassFamily(
