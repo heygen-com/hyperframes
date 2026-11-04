@@ -216,18 +216,18 @@ export interface RunOptions {
   credits?: number;
 }
 
-/** Refuses, before anything is sent, a new job past the project's credit limit. Every paid call comes through
- *  runJob, so a limit the person named holds whether or not the caller passed --max-credits. */
+/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits.
+ *  Every paid call comes through runJob. True when this call reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
   credits: number | undefined,
-): void {
-  if (!limitLog?.projectDir) return;
+): boolean {
+  if (!limitLog?.projectDir) return false;
   const limit = creditLimit(limitLog.projectDir);
-  if (limit === undefined) return;
+  if (limit === undefined) return false;
   const spent = creditsSpent(limitLog.projectDir);
-  if (spent.keys.has(sent)) return;
+  if (spent.keys.has(sent)) return false;
   const left = limit - spent.total;
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
