@@ -21,7 +21,11 @@ export function contentKey(html) {
 /** A file renamed away between readdir and stat (atomic writes), or one the app may not read, is simply not there
  * (undefined): one unreadable entry must not blind the whole scan. @param {string} full @param {boolean} byContent */
 async function snapshotKey(full, byContent) {
-  const handle = await fs.open(full, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => null);
+  const resolved = await fs.realpath(full).catch(() => null);
+  if (!resolved) return undefined;
+  const handle = await fs
+    .open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW)
+    .catch(() => null);
   if (!handle) return undefined;
   try {
     const stat = await handle.stat();
@@ -36,6 +40,10 @@ async function snapshotKey(full, byContent) {
   }
 }
 
+/** @param {import("node:fs").Dirent} entry @param {string} full */
+const entryKind = async (entry, full) =>
+  entry.isSymbolicLink() ? fs.stat(full).catch(() => null) : entry;
+
 // What a run is judged against: each file's mtime and size, except html, whose key ignores the data-hf-id stamps an
 // open or a save writes. Files the film cannot use are not part of the snapshot.
 /** @typedef {Map<string, unknown>} Snapshot */
@@ -43,8 +51,11 @@ async function snapshotKey(full, byContent) {
 export async function snapshotProject(dir, { byContent = false } = {}) {
   /** @type {Snapshot} */
   const result = new Map();
-  /** @param {string} current */
-  async function walk(current) {
+  /** @param {string} current @param {Set<string>} ancestors */
+  async function walk(current, ancestors) {
+    const real = await fs.realpath(current).catch(() => null);
+    if (!real || ancestors.has(real)) return;
+    const parents = new Set([...ancestors, real]);
     /** @type {import("node:fs").Dirent[]} */
     let entries;
     try {
@@ -55,14 +66,15 @@ export async function snapshotProject(dir, { byContent = false } = {}) {
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (isOutsideFilm(path.relative(dir, full))) continue;
-      if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile()) {
+      const kind = await entryKind(entry, full);
+      if (kind?.isDirectory()) await walk(full, parents);
+      else if (kind?.isFile()) {
         const key = await snapshotKey(full, byContent);
         if (key !== undefined) result.set(path.relative(dir, full), key);
       }
     }
   }
-  await walk(dir);
+  await walk(dir, new Set());
   return result;
 }
 
@@ -81,7 +93,7 @@ export async function snapshotFiles(dir, files) {
   const result = new Map();
   for (const file of files) {
     const full = path.join(dir, file);
-    const stat = await fs.lstat(full).catch(() => null);
+    const stat = await fs.stat(full).catch(() => null);
     if (stat?.isDirectory()) return null;
     const holds = stat?.isFile() && !isOutsideFilm(path.relative(dir, full));
     result.set(file, holds ? await snapshotKey(full, false) : undefined);

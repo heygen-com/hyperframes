@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -261,4 +261,15 @@ test("failed upload releases its input even when fetch does not cancel it", asyn
     reader.read(),
     (error) => error.code === "ERR_STREAM_PREMATURE_CLOSE" || error.code === "ABORT_ERR",
   );
+});
+
+test("linked media changes invalidate the rendered source and link cycles terminate", async (t) => {
+  const dir = await folder(t);
+  const media = await folder(t);
+  await writeFile(join(media, "clip.mp4"), "first video");
+  await symlink(media, join(dir, "assets"), "dir");
+  await symlink(dir, join(media, "cycle"), "dir");
+  const before = await projectFingerprint(dir);
+  await writeFile(join(media, "clip.mp4"), "updated video bytes");
+  assert.notEqual(await projectFingerprint(dir), before);
 });
