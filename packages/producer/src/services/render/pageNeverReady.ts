@@ -2,12 +2,10 @@ import { isEvaluateTimeout } from "./captureCost.js";
 
 const PAGE_NEVER_READY = "PAGE_NEVER_READY" as const;
 
-export class PageNeverReadyError extends Error {
+class PageNeverReadyError extends Error {
   readonly code = PAGE_NEVER_READY;
   // The producer server reads these off the error for the wire envelope.
-  // fallow-ignore-next-line unused-class-member
   readonly owner = "user" as const;
-  // fallow-ignore-next-line unused-class-member
   readonly retryable = false as const;
 
   constructor(cause: unknown) {
@@ -25,7 +23,7 @@ export function checkPageNeverReady(input: {
   calibrationEvaluateTimedOut: boolean;
   framesRendered: number;
   error: unknown;
-}): PageNeverReadyError | undefined {
+}): Error | undefined {
   const { calibrationEvaluateTimedOut, framesRendered, error } = input;
   if (!calibrationEvaluateTimedOut || framesRendered > 0 || !isEvaluateTimeout(error)) {
     return undefined;
