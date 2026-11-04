@@ -206,13 +206,11 @@ describe("loadEnvFile", () => {
 
   it("loads supported vision provider settings without replacing inherited credentials", () => {
     const settings = {
-      OPENROUTER_API_KEY: "router-key",
       GOOGLE_API_KEY: "google-key",
       HYPERFRAMES_VERTEX_PROJECT_ID: "example-project",
       HYPERFRAMES_VERTEX_SERVICE_ACCOUNT: '{"client_email":"test@example.com"}',
       HYPERFRAMES_VERTEX_LOCATION: "us-central1",
       HYPERFRAMES_VERTEX_MODEL: "vertex-model",
-      HYPERFRAMES_OPENROUTER_MODEL: "router-model",
       HYPERFRAMES_GEMINI_MODEL: "gemini-model",
       HYPERFRAMES_VISION_TIMEOUT_MS: "2000",
     };
