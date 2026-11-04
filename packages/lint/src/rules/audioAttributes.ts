@@ -51,7 +51,7 @@ export function findUnreadableAudioAttributeFindings(ctx: LintContext): Hyperfra
   for (const tag of ctx.tags) {
     for (const attr of Object.keys(AUDIO_ATTRIBUTES) as AudioAttribute[]) {
       const value = readDecodedAttr(tag.raw, attr);
-      if (value === null) continue;
+      if (value === null || value === "") continue;
       const reason = audioAttributeShapeError(attr, value);
       if (!reason) continue;
       const id = readAttr(tag.raw, "id");

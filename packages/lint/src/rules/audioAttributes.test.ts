@@ -29,6 +29,14 @@ describe("audio_attribute_unreadable", () => {
     expect(found[0]!.fixHint).toContain('{"version": 1, "lanes": [...]}');
   });
 
+  it("ignores an empty or valueless attribute, as the mixer does, but not a blank one it would parse", async () => {
+    for (const attr of ["data-automation", "data-fx-chain"]) {
+      expect(await findings(`<audio ${CUE} ${attr}=""></audio>`)).toEqual([]);
+      expect(await findings(`<audio ${CUE} ${attr}></audio>`)).toEqual([]);
+      expect(await findings(`<audio ${CUE} ${attr}="  "></audio>`)).toHaveLength(1);
+    }
+  });
+
   it("passes a well-formed lane and chain", async () => {
     const chain = `{"version": 1, "nodes": [{"type": "highpass", "id": "n1", "params": {"frequency": 70}}]}`;
     const body = `<audio ${CUE} data-automation='{"version": 1, "lanes": [${LANE}]}' data-fx-chain='${chain}'></audio>`;
