@@ -1,3 +1,4 @@
+import { checkPublishTransition } from "../share/publishTransition.js";
 import { join, posix, relative, resolve } from "node:path";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
@@ -60,7 +61,7 @@ export function parseUpdateTarget(value: string): string {
 export default defineCommand({
   meta: {
     name: "publish",
-    description: "Upload the project to a stable URL (private by default)",
+    description: "Legacy source publishing; use share for new video reviews",
   },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
@@ -95,6 +96,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    checkPublishTransition(args);
     if (args.yes !== true && isUnattended()) {
       clack.confirmationRequired("hyperframes publish", "Pass --yes to publish without asking.");
     }
