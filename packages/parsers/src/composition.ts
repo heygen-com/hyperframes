@@ -9,6 +9,7 @@ export {
   CANONICAL_FONT_DISPLAY_NAMES,
   resolveAliasDisplayName,
 } from "./fontAliases.js";
+export { fontShorthandFamilies } from "./fontShorthand.js";
 export { decodeUrlPathVariants } from "./utils/urlPath.js";
 export {
   parseCompositionVariables,
