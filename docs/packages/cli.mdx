@@ -1145,8 +1145,8 @@ npx hyperframes open --json     # for agents
 When it runs under Claude Code, Codex, or Grok, the app's chat picks up that
 conversation. When it cannot open the app, for example because the app is not
 installed, `open` exits 1 and prints a download link. With `--json`, the result
-names the `reason` and the `downloadUrl`. The hand-off works on macOS only for
-now: on Windows and Linux, `open` always exits 1 with the download link.
+names the `reason` and the `downloadUrl`. The hand-off works on macOS, Windows
+and Linux.
 
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
