@@ -2,48 +2,69 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { describeUnresolvedFonts, unresolvedCloudFonts } from "./fontPreflight.js";
+import { describeUnresolvedFonts, embedSystemFonts } from "./fontPreflight.js";
 
-function project(): string {
+const PAGE = `<html><head><style>h1{font-family:"PingFang SC"}</style></head><body><h1>x</h1></body></html>`;
+
+function setup() {
   const dir = mkdtempSync(join(tmpdir(), "hf-font-pre-"));
-  writeFileSync(
-    join(dir, "index.html"),
-    `<html><head><style>h1{font-family:"PingFang SC"}</style></head><body><h1 data-composition-id="m" data-width="1920" data-height="1080">x</h1></body></html>`,
-  );
-  return dir;
+  writeFileSync(join(dir, "index.html"), PAGE);
+  return { dir, entryPath: "index.html", fileMap: new Map([["index.html", Buffer.from(PAGE)]]) };
 }
 
-describe("unresolvedCloudFonts", () => {
-  it("returns the families the resolver cannot find, as the compile step would refuse them", async () => {
-    const calls: object[] = [];
-    const families = await unresolvedCloudFonts(project(), undefined, async (_html, options) => {
-      calls.push(options);
-      throw Object.assign(new Error("x"), {
-        code: "FONT_FETCH_FAILED",
-        unresolvedFamilies: ["PingFang SC"],
-      });
+const missing = (families: string[]) =>
+  Object.assign(new Error("x"), { code: "FONT_FETCH_FAILED", unresolvedFamilies: families });
+
+describe("embedSystemFonts", () => {
+  it("puts a system font the cloud lacks into the entry page as an inline @font-face", async () => {
+    const s = setup();
+    const calls: Record<string, unknown>[] = [];
+    const probes: string[] = [];
+    const left = await embedSystemFonts(s, async (html, options) => {
+      calls.push(options as Record<string, unknown>);
+      probes.push(html);
+      if ((options as { allowSystemFontCapture: boolean }).allowSystemFontCapture)
+        return `${html}<style>@font-face{font-family:"PingFang SC";src:url(data:font/woff2;base64,AAAA)}</style>`;
+      throw missing(["PingFang SC"]);
     });
-    expect(families).toEqual(["PingFang SC"]);
-    expect(calls).toMatchObject([{ failClosedFontFetch: true, allowSystemFontCapture: false }]);
+    expect(left).toEqual([]);
+    expect(calls.map((c) => c.allowSystemFontCapture)).toEqual([false, true]);
+    // The resolver only injects into a full document, so the probe for the capture pass must be one.
+    expect(probes[1]).toContain("<head>");
+    const entry = s.fileMap.get("index.html")!.toString();
+    expect(entry).toContain('<style data-hf-system-fonts>@font-face{font-family:"PingFang SC"');
+    expect(entry.indexOf("data-hf-system-fonts")).toBeLessThan(entry.indexOf("</head>"));
   });
 
-  it("lets the render go when every font resolves", async () => {
-    expect(await unresolvedCloudFonts(project(), undefined, async (html) => html)).toEqual([]);
+  it("returns the fonts whose file is not on this machine and leaves the page alone", async () => {
+    const s = setup();
+    const left = await embedSystemFonts(s, async () => {
+      throw missing(["PingFang SC"]);
+    });
+    expect(left).toEqual(["PingFang SC"]);
+    expect(s.fileMap.get("index.html")!.toString()).toBe(PAGE);
+  });
+
+  it("changes nothing when every font resolves", async () => {
+    const s = setup();
+    expect(await embedSystemFonts(s, async (html) => html)).toEqual([]);
+    expect(s.fileMap.get("index.html")!.toString()).toBe(PAGE);
   });
 
   it("does not block on a network failure: the server decides", async () => {
-    const families = await unresolvedCloudFonts(project(), undefined, async () => {
+    const s = setup();
+    const left = await embedSystemFonts(s, async () => {
       throw Object.assign(new Error("x"), { code: "FONT_FETCH_UNAVAILABLE" });
     });
-    expect(families).toEqual([]);
+    expect(left).toEqual([]);
   });
 });
 
 describe("describeUnresolvedFonts", () => {
   it("names the font and a look-alike when there is one", () => {
     expect(describeUnresolvedFonts(["PingFang SC", "Zapfino"])).toBe(
-      "PingFang SC isn't available in the cloud: use Noto Sans SC, switch to a font in your project or render on this computer.\n" +
-        "Zapfino isn't available in the cloud: switch to a font in your project or render on this computer.",
+      "PingFang SC isn't on this computer, so the cloud can't have it: use Noto Sans SC, switch to a font in your project or render on this computer.\n" +
+        "Zapfino isn't on this computer, so the cloud can't have it: switch to a font in your project or render on this computer.",
     );
   });
 });

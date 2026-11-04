@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../cloud/fontPreflight.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../cloud/fontPreflight.js")>()),
-  unresolvedCloudFonts: vi.fn(async () => ["PingFang SC"]),
+  embedSystemFonts: vi.fn(async () => ["PingFang SC"]),
 }));
 
 import render from "./render.js";
@@ -40,15 +40,17 @@ afterEach(() => {
 });
 
 describe("cloud render font preflight", () => {
-  it("stops before any upload and names the font the cloud does not have", async () => {
+  it("stops before any upload and names the font that is not on this computer", async () => {
     await expect(runCommand(render, { rawArgs: [project, "--no-wait", "--json"] })).rejects.toThrow(
       CliRuntimeError,
     );
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(errorBox).toHaveBeenCalledWith(
-      "Fonts the cloud doesn't have",
-      expect.stringContaining("PingFang SC isn't available in the cloud: use Noto Sans SC"),
+      "Fonts not on this computer",
+      expect.stringContaining(
+        "PingFang SC isn't on this computer, so the cloud can't have it: use Noto Sans SC",
+      ),
     );
   });
 });

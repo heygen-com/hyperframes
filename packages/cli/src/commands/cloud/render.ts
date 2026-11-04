@@ -65,7 +65,7 @@ import {
   pollUntilTerminal,
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
-import { describeUnresolvedFonts, unresolvedCloudFonts } from "../../cloud/fontPreflight.js";
+import { describeUnresolvedFonts, embedSystemFonts } from "../../cloud/fontPreflight.js";
 import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
 import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "../../cloud/upload.js";
 import {
@@ -276,14 +276,6 @@ export default defineCommand({
       project,
       args.composition,
     );
-
-    if (project.kind === "dir") {
-      const missing = await unresolvedCloudFonts(project.dir, args.composition);
-      if (missing.length > 0) {
-        errorBox("Fonts the cloud doesn't have", describeUnresolvedFonts(missing));
-        failCommand();
-      }
-    }
 
     const client = await createCloudClient();
     const preparedArchive =
@@ -613,6 +605,16 @@ async function prepareLocalArchive(
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
   const { fileMap, entryPath } = stageProjectFiles(project, composition);
+  const missingFonts = await embedSystemFonts({
+    dir: project.dir,
+    entryFile: composition,
+    entryPath,
+    fileMap,
+  });
+  if (missingFonts.length > 0) {
+    errorBox("Fonts not on this computer", describeUnresolvedFonts(missingFonts));
+    failCommand();
+  }
   const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
