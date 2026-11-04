@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeOutputFolder } from "./outputFolder.js";
 
-// Windows answers a recursive mkdir of a drive root (D:\) with EPERM though the root exists: stand that in here.
+// Windows answers a recursive mkdir of a drive root (D:\) with EPERM though the root exists, so an output there
+// failed before it was written. makeOutputFolder leaves an existing folder alone; this mock stands in for Windows.
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
   return {
