@@ -88,7 +88,7 @@ export function createReviewBoardManifest(
 ): ReviewBoardManifest {
   assertFrameIdentities(storyboard);
   if (storyboard.frames.length < 1 || storyboard.frames.length > 200)
-    throw new Error("A review board needs 1–200 frames");
+    throw new Error("A review board needs 1 to 200 frames");
   const ids = new Set(storyboard.frames.map((frame) => frame.frameId));
   for (const id of options.stills?.keys() ?? []) {
     if (!ids.has(id)) throw new Error("Still receipt refers to an unknown frame");
