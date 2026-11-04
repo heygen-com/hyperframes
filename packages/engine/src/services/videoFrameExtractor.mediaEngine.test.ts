@@ -182,6 +182,29 @@ describe.skipIf(process.platform === "win32")("extraction decode on the Mac's me
     }
   });
 
+  it("does not decode again in software when the media engine's pass filled the disk", async () => {
+    const real = vi.mocked(runFfmpeg).getMockImplementation()!;
+    vi.mocked(runFfmpeg).mockImplementation(async (args, options) =>
+      args.includes("-hwaccel")
+        ? {
+            success: false,
+            exitCode: 228,
+            stderr:
+              "[out#0/image2 @ 0x2] Task finished with error code: -28 (No space left on device)",
+            durationMs: 0,
+            terminationReason: "exit",
+          }
+        : real(args, options),
+    );
+    try {
+      await extractOn("darwin", clips.h264, "mac-vt-disk-full").catch(() => {});
+      const runs = vi.mocked(runFfmpeg).mock.calls.map(([callArgs]) => hwaccel(callArgs));
+      expect(runs).toEqual(["videotoolbox"]);
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+  });
+
   it.runIf(realPlatform === "darwin")("writes the same frames as software decode", async () => {
     const engine = await extractOn("darwin", clips.h264, "same-engine");
     probe.hasVideoToolbox = false;
