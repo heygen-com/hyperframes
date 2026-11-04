@@ -7,11 +7,13 @@ import {
   pageUrl,
   readOffer,
   readPlan,
+  CheckoutError,
   type Offer,
   type Plan,
 } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
-import { failCommand } from "../utils/commandResult.js";
+import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
@@ -41,7 +43,7 @@ async function offerCheckout(
   before: Plan | null,
   signal: AbortSignal,
   needed?: number,
-) {
+): Promise<boolean> {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
@@ -49,7 +51,7 @@ async function offerCheckout(
   try {
     if (isUnattended()) {
       console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-      return;
+      return true;
     }
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
@@ -58,9 +60,14 @@ async function offerCheckout(
       rl.close();
     }
     await openBrowser(await createCheckout(kind, offer, missing));
+    return true;
   } catch (error) {
-    if (signal.aborted) return;
+    if (signal.aborted) return true;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
+    trackBillingCheckoutFailed({
+      reason: error instanceof CheckoutError ? error.reason : "checkout_unavailable",
+    });
+    return false;
   }
 }
 
@@ -112,15 +119,25 @@ export default defineCommand({
     await openBrowser(url);
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
     const stop = new AbortController();
+    const giveUp = new AbortController();
     const waiting = (async () => {
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && !giveUp.signal.aborted) {
         await new Promise((r) => setTimeout(r, 2000));
         const now = await readPlan();
         if (done(now)) return now;
       }
       return null;
     })().finally(() => stop.abort());
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, stop.signal, needed);
+    const opened = await offerCheckout(
+      action === "subscribe" ? "plans" : "credits",
+      before,
+      stop.signal,
+      needed,
+    );
+    if (!opened) {
+      giveUp.abort();
+      failCommand();
+    }
     console.log("Waiting for the person to finish ...");
     const now = await waiting;
     if (now) {
@@ -132,6 +149,8 @@ export default defineCommand({
         `Still waiting on the ${action === "subscribe" ? "plans" : "credits"} page; run this again once it is done.`,
       ),
     );
-    failCommand();
+    // Exit 124 (timeout): the person did not finish, which is not a failed command or a cli_error.
+    trackBillingWaitTimeout({ action });
+    setCommandExitCode(124);
   },
 });

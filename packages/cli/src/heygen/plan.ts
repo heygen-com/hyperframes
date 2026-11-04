@@ -156,6 +156,19 @@ export function stripeCheckoutUrl(value: unknown): string | undefined {
     : undefined;
 }
 
+export type CheckoutFailure = "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+
+/** A checkout that could not be opened, tagged with a closed reason for telemetry. */
+export class CheckoutError extends Error {
+  constructor(
+    readonly reason: CheckoutFailure,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CheckoutError";
+  }
+}
+
 /** Creates the checkout with the CLI's own token and returns Stripe's page; throws when HeyGen refuses. */
 export async function createCheckout(
   kind: "plans" | "credits",
@@ -164,7 +177,10 @@ export async function createCheckout(
 ): Promise<string> {
   const addon = kind === "credits" ? offer.addon : undefined;
   if (kind === "credits" && !addon)
-    throw new Error("Credits are not on sale for this account right now.");
+    throw new CheckoutError(
+      "checkout_unavailable",
+      "Credits are not on sale for this account right now.",
+    );
   const body = addon
     ? {
         quantity: addonBlocks(addon, missing),
@@ -184,7 +200,12 @@ export async function createCheckout(
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(20_000),
     },
-  );
+  ).catch((error: unknown) => {
+    throw new CheckoutError(
+      "checkout_network",
+      `Could not reach HeyGen to open a checkout: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
   const reply: unknown = await res.json().catch(() => null);
   const data = isRecord(reply) && isRecord(reply.data) ? reply.data : reply;
   const url = res.ok && isRecord(data) ? stripeCheckoutUrl(data.url) : undefined;
@@ -193,5 +214,5 @@ export async function createCheckout(
     isRecord(reply) && typeof reply.message === "string"
       ? reply.message.slice(0, 200)
       : `HTTP ${res.status}`;
-  throw new Error(`HeyGen would not open a checkout: ${why}`);
+  throw new CheckoutError("checkout_rejected", `HeyGen would not open a checkout: ${why}`);
 }
