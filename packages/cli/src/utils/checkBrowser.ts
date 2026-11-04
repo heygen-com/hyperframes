@@ -43,6 +43,7 @@ import {
 } from "./contrastMotion.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { findStageProxyBox } from "./compositionViewport.js";
+import { mediaUsedSeconds } from "./mediaUsedSeconds.js";
 import type { PreviewProxyBox } from "@hyperframes/core";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import {
@@ -58,6 +59,7 @@ import {
 import {
   FfmpegUnavailableError,
   getProxyCachePath,
+  proxyWindowSeconds,
   resolveProxies,
   type ProxyProgress,
 } from "@hyperframes/studio-server/proxy-transcoder";
@@ -224,7 +226,12 @@ export async function preResolveHostileMediaProxies(
   autoProxyOverride?: boolean,
   budgetMs?: number,
 ): Promise<ProxyPreResolution> {
-  const none: ProxyPreResolution = { findings: [], failedPaths: new Set(), files: [] };
+  const none: ProxyPreResolution = {
+    findings: [],
+    failedPaths: new Set(),
+    files: [],
+    limits: new Map(),
+  };
   if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
@@ -242,7 +249,14 @@ export async function preResolveHostileMediaProxies(
 
   const startedAt = Date.now();
   const stageBox = findStageProxyBox(html);
-  const sources = hostileEntries.map(([pathname, facts]) => {
+  const sources: Array<{
+    pathname: string;
+    file: string;
+    sourcePath: string;
+    variant: ReturnType<typeof proxyVariantFor>;
+    box: PreviewProxyBox | undefined;
+    limitSeconds?: number;
+  }> = hostileEntries.map(([pathname, facts]) => {
     const file = pathname.replace(/^\/+/, "");
     return {
       pathname,
@@ -252,6 +266,17 @@ export async function preResolveHostileMediaProxies(
       box: stageBox,
     };
   });
+  const usedSeconds = mediaUsedSeconds(html);
+  if (usedSeconds.size > 0) {
+    await Promise.all(
+      sources.map(async (source) => {
+        const used = usedSeconds.get(source.pathname);
+        if (used !== undefined) {
+          source.limitSeconds = await proxyWindowSeconds(source.sourcePath, used);
+        }
+      }),
+    );
+  }
   const total = hostileEntries.length;
   const cached = sources.map((source) => proxyCached(projectDir, source));
   const toMake = cached.filter((isCached) => !isCached).length;
@@ -322,7 +347,17 @@ export async function preResolveHostileMediaProxies(
     }
     return { file, state: cached[index] ? "cached" : "ready" };
   });
-  return { findings, failedPaths: new Set(failures.map(({ pathname }) => pathname)), files };
+  const limits = new Map(
+    sources.flatMap(({ sourcePath, limitSeconds }) =>
+      limitSeconds === undefined ? [] : [[sourcePath, limitSeconds] as const],
+    ),
+  );
+  return {
+    findings,
+    failedPaths: new Set(failures.map(({ pathname }) => pathname)),
+    files,
+    limits,
+  };
 }
 
 function proxyCached(
@@ -331,10 +366,19 @@ function proxyCached(
     sourcePath: string;
     variant: ReturnType<typeof proxyVariantFor>;
     box?: PreviewProxyBox;
+    limitSeconds?: number;
   },
 ): boolean {
   try {
-    return existsSync(getProxyCachePath(projectDir, source.sourcePath, source.variant, source.box));
+    return existsSync(
+      getProxyCachePath(
+        projectDir,
+        source.sourcePath,
+        source.variant,
+        source.box,
+        source.limitSeconds,
+      ),
+    );
   } catch {
     return false;
   }
@@ -352,6 +396,8 @@ interface ProxyPreResolution {
   failedPaths: Set<string>;
   /** One entry per browser-hostile video, in project order. */
   files: PreparedMediaFile[];
+  /** Absolute path -> seconds from the start that the composition plays, for the copies made short. */
+  limits: Map<string, number>;
 }
 
 function proxyFailedDraft(message: string): RuntimeDraft {
@@ -380,12 +426,11 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const html = await loadCheckHtmlWithDeferredMedia(project.dir);
   deadline?.enter("copies");
-  const { findings: drafts, failedPaths } = await preResolveHostileMediaProxies(
-    project.dir,
-    html,
-    options.autoProxy,
-    COPY_BUDGET_MS,
-  );
+  const {
+    findings: drafts,
+    failedPaths,
+    limits,
+  } = await preResolveHostileMediaProxies(project.dir, html, options.autoProxy, COPY_BUDGET_MS);
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
     project.dir,
@@ -393,6 +438,7 @@ export async function runBrowserCheck(
     "Failed to bind check server",
     [],
     options.autoProxy,
+    limits,
   );
   const clock = createRuntimeClock();
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
