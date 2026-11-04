@@ -503,7 +503,9 @@ samp {
     color: var(--hf-heading);
   }
 
-  #navbar .nav-tabs-item[aria-current] {
+  /* Mintlify marks the current tab with aria-current, except the Docs dropdown, which gets .text-primary instead */
+  #navbar .nav-tabs-item[aria-current],
+  #navbar .nav-tabs-item.text-primary {
     background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
     color: var(--hf-heading) !important;
   }
