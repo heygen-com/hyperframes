@@ -418,6 +418,16 @@ test("a HeyGen sound effect under the confident score is flagged with its score,
   assert.equal(parsed.provenance.provider, "heygen.audio.sounds");
   assert.deepEqual(parsed.match, { score: 0.43, min_score: 0.4, low_confidence: true });
   assert.match(result.stderr, /low-confidence match for "rubber stamp".*search score 0\.43/);
+
+  const again = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(again.status, 0, again.stderr);
+  const reused = JSON.parse(again.stdout);
+  assert.equal(reused._source, "cached", "a second identical resolve reuses the first sound");
+  assert.deepEqual(reused.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(again.stderr, /low-confidence match for "rubber stamp"/);
   cleanup();
 });
 

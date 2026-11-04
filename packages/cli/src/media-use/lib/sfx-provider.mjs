@@ -8,6 +8,15 @@ export const OPENVERSE_SFX_PROVIDER = "openverse.audio";
 export const SFX_MIN_SCORE = 0.4;
 export const SFX_CONFIDENT_SCORE = 0.5;
 
+export function scoreMatch(score) {
+  const known = typeof score === "number" ? score : null;
+  return {
+    score: known,
+    min_score: SFX_MIN_SCORE,
+    low_confidence: known === null || known < SFX_CONFIDENT_SCORE,
+  };
+}
+
 export const heygenSfxProvider = {
   async search(intent) {
     const results = heygenSearch("audio sounds list", intent, {
@@ -20,15 +29,10 @@ export const heygenSfxProvider = {
     });
     if (!results) return null;
     const best = results[0];
-    const score = typeof best.score === "number" ? best.score : null;
     return {
       url: best.audio_url,
       source: "search",
-      match: {
-        score,
-        min_score: SFX_MIN_SCORE,
-        low_confidence: score === null || score < SFX_CONFIDENT_SCORE,
-      },
+      match: scoreMatch(best.score),
       metadata: {
         description: best.description || intent,
         duration: best.duration || null,

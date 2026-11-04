@@ -61,7 +61,12 @@ import {
   BundledSfxAssetsError,
   inspectBundledSfxAssets,
 } from "./lib/bundled-sfx-provider.mjs";
-import { OPENVERSE_SFX_PROVIDER, SFX_CONFIDENT_SCORE, SFX_MIN_SCORE } from "./lib/sfx-provider.mjs";
+import {
+  OPENVERSE_SFX_PROVIDER,
+  SFX_CONFIDENT_SCORE,
+  SFX_MIN_SCORE,
+  scoreMatch,
+} from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
 import {
   fetchMediaVectors,
@@ -1317,7 +1322,17 @@ function warnLowConfidence(record, match) {
   );
 }
 
-async function result(record, source, match) {
+// A reused record gets back the advisory its first resolve gave, rebuilt from its provenance.
+function recordedMatch(record) {
+  const kept = record.provenance ?? {};
+  if (record.type === "sfx" && kept.provider === "heygen.audio.sounds")
+    return scoreMatch(kept.score);
+  if (kept.adopted && record.path)
+    return nameMatch(intent, basename(record.path, extname(record.path)), kept.prompt);
+  return undefined;
+}
+
+async function result(record, source, match = recordedMatch(record)) {
   warnLowConfidence(record, match);
   const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
   // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
