@@ -5755,6 +5755,23 @@ describe("initSandboxRuntimeModular", () => {
       expect(card.style.height).toBe("100%");
     });
 
+    it("leaves a still-loading image at its own size instead of filling the frame", () => {
+      const root = makeRoot();
+      const logo = document.createElement("img");
+      logo.setAttribute("data-start", "0");
+      logo.setAttribute("data-duration", "5");
+      logo.style.width = "340px";
+      root.appendChild(logo);
+      // Before its file loads, a width-only <img> measures 0px tall.
+      modelBrowserLayout(logo, { width: "340px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(logo.style.height).toBe("");
+      expect(logo.style.width).toBe("340px");
+    });
+
     it("puts back an author's display:none !important after measuring the clip", () => {
       const root = makeRoot();
       const card = document.createElement("div");
