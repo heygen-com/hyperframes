@@ -3,6 +3,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { matchesKey } from "./studioShortcuts";
 import { clipToTweenPercentage } from "../../components/editor/KeyframeNavigation";
 import { progressAtTime, runEaseOf, timeAtProgress } from "../../utils/gsapKeyframeEases";
 import {
@@ -451,7 +452,7 @@ export function beginTimelineKeyframeRetime(
     if (actor.phase === "active" && matchesPointer(event)) cancel(actor);
   };
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") cancel(actor);
+    if (matchesKey(event, "cancel")) cancel(actor);
   };
 
   window.addEventListener("pointermove", onPointerMove, true);

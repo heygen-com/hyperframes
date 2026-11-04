@@ -1,8 +1,8 @@
 /**
  * Capture motion blur, in preview and render. Root attributes: data-motion-blur="on"|"off",
  * -shutter (0–720°, default 240), -samples (2–64; unset: at least 32, more for a long smear),
- * -events="on" (run timeline callbacks at sub-frame samples). PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that
- * could not blur) turns all off.
+ * -events="on" (callbacks run in the scan, and in pose reads when they move a mover).
+ * PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that could not blur) turns all off.
  *
  * Per frame: read movers' poses across the shutter (seeks, no paint), capture the root and crop
  * the movers, hide them and capture the background, then redraw each along its path.
@@ -36,7 +36,7 @@ import {
 import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
-import { discoverMovers } from "./discover";
+import { scanMovers } from "./discover";
 import { createFilterTier } from "./filterTier";
 import { readMoverFrames } from "./frames";
 import { createPoseReader } from "./pose";
@@ -65,6 +65,9 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
+const SVG_DRAWN_BY_REFERENCE = ["defs", "clipPath", "mask", "pattern", "marker", "symbol"];
+const IN_SVG_RESOURCE = SVG_DRAWN_BY_REFERENCE.flatMap((tag) => [tag, `${tag} *`]).join(", ");
+const NESTED_CANVAS_KEEPS_ITS_PLACE = `:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`;
 
 interface Job {
   seq: number;
@@ -168,8 +171,10 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     `[${HIDE_ATTR}] { opacity: 0 !important; }`,
     // The root stays visible: a rotated or scaled mover under a hidden root is captured at the origin, untransformed.
     `[${ONLY_ATTR}] { background: none !important; border-color: transparent !important; box-shadow: none !important; outline-color: transparent !important; }`,
-    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *) { visibility: hidden !important; }`,
+    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *, ${IN_SVG_RESOURCE}) { visibility: hidden !important; }`,
     `[${ONLY_ATTR}] [${MOVER_ATTR}] { visibility: visible !important; }`,
+    `[${ONLY_ATTR}] :is(${SVG_DRAWN_BY_REFERENCE.join(", ")}) { visibility: visible !important; }`,
+    NESTED_CANVAS_KEEPS_ITS_PLACE,
   ].join("\n");
 
   let movers: HTMLElement[] = [];
@@ -238,20 +243,24 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   }
 
   const seek = (t: number): void => host.seek(t, !config.events);
+  let readEvents = false;
+  const readSeek = (t: number): void => host.seek(t, !readEvents);
 
   function discover(restoreTo: number): void {
     scannedTimeline = host.timeline();
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
     const s0 = performance.now();
-    const found = discoverMovers({
+    const found = scanMovers({
       scene: root,
       durationSeconds: duration,
       fps: host.fps,
-      seek,
+      seek: host.seek,
+      events: config.events,
       onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
     });
     seek(restoreTo);
+    readEvents = found.readEvents;
     scanDefect = defects.result();
     faceNow = defects.facesNow;
     movers = found.movers;
@@ -266,13 +275,15 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     return readMoverFrames({
       movers,
       reader,
-      seek,
+      seek: readSeek,
+      restore: readEvents ? undefined : host.holdFrame?.(),
       t,
       reads,
       shutterSeconds: config.shutterDeg / 360 / host.fps,
       taps: config.samples,
       pads,
       frameW: width,
+      scene: root,
       frameH: height,
     });
   }

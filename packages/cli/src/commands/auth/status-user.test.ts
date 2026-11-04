@@ -51,6 +51,7 @@ describe("auth status — persisted user block surface", () => {
   afterEach(async () => {
     consumeCommandResult();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await envFixture.restore();
   });
 
@@ -129,6 +130,31 @@ describe("auth status — persisted user block surface", () => {
           : "OAuth product not verified",
       );
     }
+  });
+
+  it("gives no 'balance unavailable' notice when the HyperFrames plan is shown", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              subscription: { plan_name: "pro", status: "active" },
+              usage: { remaining_units: 25000 },
+            },
+          }),
+        ),
+    );
+    await configureBillingCredential("hyperframes");
+    expect(await runStatus(true)).toBe(0);
+    const payload = lastJson();
+    expect(payload["hyperframes"]).toEqual({ plan: "pro", credits: 25000 });
+    expect(payload).not.toHaveProperty("billing_notice");
+    stdout = [];
+    expect(await runStatus(false)).toBe(0);
+    const text = stdout.join("\n");
+    expect(text).toContain("pro plan, 25,000 credits");
+    expect(text).not.toContain("balance unavailable");
   });
 
   it("surfaces the persisted user block (with resolved display_name) for a file credential", async () => {

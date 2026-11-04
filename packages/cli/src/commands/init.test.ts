@@ -146,6 +146,30 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  it("scaffolds into a folder holding only the hyperframes.json reverse start wrote, and keeps it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "proj");
+    try {
+      mkdirSync(target);
+      const saved = { registry: "https://r.test", reverseSessionId: "rvs_fixture" };
+      writeFileSync(join(target, "hyperframes.json"), JSON.stringify(saved));
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(existsSync(join(target, "index.html"))).toBe(true);
+      expect(JSON.parse(readFileSync(join(target, "hyperframes.json"), "utf-8"))).toEqual(saved);
+
+      const other = join(dir, "other");
+      mkdirSync(other);
+      writeFileSync(join(other, "hyperframes.json"), "{}");
+      writeFileSync(join(other, "notes.txt"), "mine");
+      const refused = runInit([other, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(refused.status).not.toBe(0);
+      expect(refused.stderr).toContain("not empty");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("--skip-skills alone leaves skills alone, without the env opt-out", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");

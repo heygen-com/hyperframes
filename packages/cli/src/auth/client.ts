@@ -19,7 +19,6 @@ import { ErrApi, ErrUnauthenticated, isAuthError } from "./errors.js";
 import type { ResolvedCredential } from "./resolver.js";
 import { scrubCredentials } from "./scrub.js";
 import type { OAuthTokens } from "./store.js";
-import { oauthEnvironment } from "./config.js";
 
 export const HEYGEN_CLI_SOURCE_HEADER = "X-HeyGen-Source";
 export const HEYGEN_CLI_SOURCE = "cli";
@@ -32,9 +31,7 @@ export const HEYGEN_CLIENT_SOURCE = "hyperframes";
 
 export function apiBaseUrl(): string {
   const override = process.env["HEYGEN_API_URL"];
-  return override && override.length > 0
-    ? override.replace(/\/+$/, "")
-    : `https://api.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com`;
+  return override && override.length > 0 ? override.replace(/\/+$/, "") : "https://api.heygen.com";
 }
 
 export type BillingType = "wallet" | "subscription" | "usage_based" | string;

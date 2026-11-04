@@ -46,6 +46,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -271,7 +272,7 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
     findManagedHeadlessShell(ours) ??

@@ -88,7 +88,7 @@ import {
   markCommandDelivered,
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
-import { closestMatch, synonymMatch } from "./utils/didYouMean.js";
+import { closestMatch, fileHint, synonymMatch } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import {
@@ -97,6 +97,7 @@ import {
   CliUsageError,
   USAGE_EXIT_CODE,
   consumeCommandResult,
+  endProcess,
   outputWritten,
   registerRootExitCodeSanitizer,
   registerRootExitRequester,
@@ -175,6 +176,11 @@ const commandLoaders = {
     import("./commands/media-treatment.js").then((m) => m.mediaTreatmentCommand),
   "grade-compare": () => import("./commands/grade-compare.js").then((m) => m.default),
   compare: () => import("./commands/compare.js").then((m) => m.default),
+  diff: () => import("./commands/diff.js").then((m) => m.default),
+  measure: () => import("./commands/measure.js").then((m) => m.default),
+  reverse: () => import("./commands/reverse.js").then((m) => m.default),
+  billing: () => import("./commands/billing.js").then((m) => m.default),
+  templates: () => import("./commands/templates.js").then((m) => m.default),
   capture: () => import("./commands/capture.js").then((m) => m.default),
   lambda: () => import("./commands/lambda.js").then((m) => m.default),
   cloudrun: () => import("./commands/cloudrun.js").then((m) => m.default),
@@ -370,7 +376,13 @@ registerRootExitRequester((exitCode) => {
     presented: true,
   }).finally(async () => {
     await outputWritten();
-    process.exit(exitCode);
+    endProcess(exitCode, {
+      exit: (code) => process.exit(code),
+      setExitCode: (code) => {
+        process.exitCode = code;
+      },
+      later: setTimeout,
+    });
   });
 });
 
@@ -536,14 +548,15 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
   const match =
     (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
     closestMatch(word, names);
+  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, requested.path, names);
   console.error(`Unknown command: ${word}`);
-  if (match) console.error(`Did you mean '${group} ${match}'?`);
+  if (hint) console.error(hint);
   console.error("");
   await showUsage(requested.command, requested.parent, console.error);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
     code: "unknown_command",
-    hint: match ? `Did you mean '${group} ${match}'?` : undefined,
+    hint,
   });
 }
 

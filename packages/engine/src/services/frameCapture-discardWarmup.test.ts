@@ -210,3 +210,15 @@ describe("discardWarmupCapture", () => {
     }
   });
 });
+
+describe("getCapturePerfSummary", () => {
+  it("reports the beyond-viewport value the session captured with", () => {
+    const session = makeFakeSession();
+    try {
+      session.options.captureBeyondViewport = false;
+      expect(getCapturePerfSummary(session).captureBeyondViewport).toBe(false);
+    } finally {
+      rmSync(session.outputDir, { recursive: true, force: true });
+    }
+  });
+});

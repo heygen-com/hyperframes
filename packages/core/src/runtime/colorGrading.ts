@@ -34,6 +34,7 @@ import {
 } from "../colorGradingCurves";
 import {
   DEFAULT_MAX_CUBE_LUT_SIZE,
+  fitCubeLutToTexture,
   packCubeLutToRgba8,
   parseCubeLut,
   unitFloatToByte,
@@ -2057,13 +2058,14 @@ function uploadEntryLut(
   lut: CubeLut3D,
 ): RuntimeLutTexture | null {
   if (entry.lut?.src === src) return entry.lut;
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = entry;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   try {
     uploadLutTexture(gl, program.lutTexture, packed);
     entry.lut = {
       src,
-      size: lut.size,
+      size: fitted.size,
       domainMin: lut.domainMin,
       domainMax: lut.domainMax,
       textureWidth: packed.width,
@@ -2114,12 +2116,13 @@ function uploadPreviewLut(
   src: string,
   lut: CubeLut3D,
 ): RuntimeLutTexture {
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = renderer;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   uploadLutTexture(gl, program.lutTexture, packed);
   return {
     src,
-    size: lut.size,
+    size: fitted.size,
     domainMin: lut.domainMin,
     domainMax: lut.domainMax,
     textureWidth: packed.width,

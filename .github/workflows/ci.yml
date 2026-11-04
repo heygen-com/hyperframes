@@ -581,17 +581,21 @@ jobs:
       - run: bun run --filter '@hyperframes/{core,engine}' test
 
   test-cli:
-    name: Test (cli)
+    name: Test (cli ${{ matrix.shard }}/2)
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
-      - run: bun run --filter '@hyperframes/cli' test
+      - run: bun run --filter '@hyperframes/cli' test --shard=${{ matrix.shard }}/2
 
   test-support:
     name: Test (support)
@@ -637,9 +641,11 @@ jobs:
         with:
           chrome: "true"
           engine: "true"
+          headless-shell: "true"
       - if: steps.plan.outputs.any == 'true'
         env:
           HYPERFRAMES_BROWSER_PATH: ${{ steps.workspace.outputs.chrome-path }}
+          HF_BEGINFRAME_SHELL: ${{ steps.workspace.outputs.headless-shell-path }}
         run: node scripts/ci/flake-gate.mjs --base "${{ steps.plan.outputs.base }}"
 
   test:
@@ -862,6 +868,8 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts
+        env:
+          HF_NPX_SHIM_E2E: "1"
 
   sdk-tests:
     name: "SDK: unit + contract + smoke"

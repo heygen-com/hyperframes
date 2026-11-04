@@ -5,7 +5,12 @@ import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs
 import { tmpdir } from "os";
 import { basename, join, resolve } from "path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { extractMediaMetadata, extractPngMetadataFromBuffer, parseFrameRate } from "./ffprobe.js";
+import {
+  extractMediaMetadata,
+  extractPngMetadataFromBuffer,
+  formatFfmpegSeconds,
+  parseFrameRate,
+} from "./ffprobe.js";
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
@@ -2233,5 +2238,56 @@ describe.skipIf(!HAS_FFPROBE)("VP8/VP9 decoded alpha plane probe on real files",
     const other = await extractMediaMetadata(mpeg4);
     expect(other.videoCodec).toBe("mpeg4");
     expect("alphaPlaneDecoded" in other).toBe(false);
+  });
+});
+
+describe("formatFfmpegSeconds", () => {
+  it("never writes an exponent, which ffmpeg and ffprobe reject", () => {
+    expect(formatFfmpegSeconds(8.881784197001252e-16)).toBe("0");
+    expect(formatFfmpegSeconds(-8.881784197001252e-16)).toBe("0");
+    expect(formatFfmpegSeconds(1.5e-7)).toBe("0");
+  });
+
+  it("keeps ordinary times exactly as String() writes them", () => {
+    expect(formatFfmpegSeconds(1.35)).toBe("1.35");
+    expect(formatFfmpegSeconds(4.666666666666667)).toBe("4.666666666666667");
+    expect(formatFfmpegSeconds(0)).toBe("0");
+  });
+});
+
+describe("the audio tail probe's read interval", () => {
+  it("starts at a plain decimal when the duration is a hair over one second", async () => {
+    const probe = {
+      kind: "exit" as const,
+      code: 0,
+      stdout: JSON.stringify({
+        streams: [
+          {
+            codec_type: "audio",
+            codec_name: "aac",
+            sample_rate: "48000",
+            channels: 2,
+            start_time: "0.000000",
+            duration: "1.000001",
+          },
+        ],
+        format: {
+          format_name: "mov,mp4,m4a,3gp,3g2,mj2",
+          start_time: "0.000000",
+          duration: "1.000001",
+        },
+      }),
+    };
+    const { spawn, calls } = createSpawnSpy([probe, { kind: "exit", code: 0, stdout: "" }]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractAudioMetadata } = await import("./ffprobe.js");
+    await extractAudioMetadata("/probe-tail/asset.m4a");
+    const intervals = calls.flatMap((call) => {
+      const at = call.args.indexOf("-read_intervals");
+      return at === -1 ? [] : [call.args[at + 1]!];
+    });
+    expect(intervals.length).toBeGreaterThan(0);
+    for (const interval of intervals) expect(interval.split("%")[0]).toMatch(/^\d+(\.\d+)?$/);
   });
 });

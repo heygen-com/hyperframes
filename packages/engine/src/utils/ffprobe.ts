@@ -522,6 +522,16 @@ export function videoStartOnMediaTimeline(
   return (metadata.videoStreamLeadSeconds ?? 0) + (metadata.mediaTimeOffsetSeconds ?? 0);
 }
 
+export function formatFfmpegSeconds(seconds: number): string {
+  const text = String(seconds);
+  return text.includes("e") ? String(+seconds.toFixed(6)) : text;
+}
+
+function readIntervalSpec(startSeconds: number, end: number | string): string {
+  const to = typeof end === "number" ? formatFfmpegSeconds(end) : end;
+  return `${formatFfmpegSeconds(startSeconds)}%${to}`;
+}
+
 export function ffmpegSeekSeconds(
   metadata: Pick<VideoMetadata, "mediaTimeOffsetSeconds">,
   mediaTime: number,
@@ -1104,7 +1114,7 @@ async function extractFinalPacketDuration(
       "-select_streams",
       "v:0",
       "-read_intervals",
-      `${intervalStart}%${streamEnd}`,
+      readIntervalSpec(intervalStart, streamEnd),
       "-show_entries",
       "packet=pts_time,duration_time",
       "-of",
@@ -1200,7 +1210,7 @@ export async function extractFinalVideoFrameTimestamp(
       return parseFinalTimestamp(stdout);
     };
     const timestamp =
-      (await probe(`${intervalStart}%${streamEnd}`)) ?? (await probe(/* full scan */));
+      (await probe(readIntervalSpec(intervalStart, streamEnd))) ?? (await probe(/* full scan */));
     if (timestamp === undefined) {
       throw new Error("[FFmpeg] ffprobe found no decodable final video frame");
     }
@@ -1386,7 +1396,8 @@ async function probeDecodedAudioDuration(
     startSeconds + containerDurationSeconds - AUDIO_DURATION_PROBE_TAIL_SECONDS,
   );
   const lastFrame =
-    (await probe(`${tailStart}%${FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END}`)) ?? (await probe());
+    (await probe(readIntervalSpec(tailStart, FFPROBE_READ_INTERVAL_EXPLICIT_FAR_END))) ??
+    (await probe());
   if (!lastFrame) return null;
   return lastFrame.timestamp + lastFrame.nbSamples / sampleRate - startSeconds;
 }
@@ -1442,7 +1453,7 @@ export async function keyframeGapSeconds(
     filePath,
     [
       ...["-select_streams", "v:0", "-show_entries", "packet=pts_time", "-of", "csv=p=0"],
-      ...["-read_intervals", `${seekSeconds}%+#1`],
+      ...["-read_intervals", readIntervalSpec(seekSeconds, "+#1")],
     ],
     signal,
   );

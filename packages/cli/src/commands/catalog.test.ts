@@ -73,6 +73,7 @@ describe("countUnindexed", () => {
 
 const state = vi.hoisted(() => ({
   registry: [] as Array<{ name: string; type: string; tags?: string[] }>,
+  registryUnreadable: "",
   artifactRevision: "revision-current",
   cachedVectorRevision: "revision-current",
   vectorFetches: 0,
@@ -108,10 +109,10 @@ vi.mock("../registry/resolver.js", () => ({
 }));
 
 vi.mock("../registry/remote.js", () => ({
-  fetchRegistryManifest: async () => ({
-    items: state.registry,
-    catalogArtifact: { revision: state.artifactRevision },
-  }),
+  readRegistryManifest: async () => {
+    if (state.registryUnreadable) throw new Error(state.registryUnreadable);
+    return { items: state.registry, catalogArtifact: { revision: state.artifactRevision } };
+  },
 }));
 
 // The terminal and CI switches below decide attendance; the agent running the suite must not.
@@ -276,6 +277,7 @@ async function runForExit(
 }
 
 beforeEach(() => {
+  state.registryUnreadable = "";
   state.modelStatus = "ready";
   state.artifactRevision = "revision-current";
   state.cachedVectorRevision = "revision-current";
@@ -299,6 +301,20 @@ beforeEach(() => {
     { name: "whip-pan", score: 0.42 },
     { name: "fade-through", score: 0.31 },
   ];
+});
+
+describe("catalog when the registry cannot be read", () => {
+  it("exits non-zero with the reason instead of printing an empty list", async () => {
+    state.registryUnreadable =
+      "The registry could not be read: fetch failed (getaddrinfo ENOTFOUND raw.githubusercontent.com)";
+
+    const { exitCode, err } = await runForExit({ json: true });
+
+    expect(exitCode).toBe(1);
+    expect(err).toContain("The registry could not be read: fetch failed");
+    expect(err).toContain("raw.githubusercontent.com");
+    expect(err).not.toContain("[]");
+  });
 });
 
 describe("catalog --json meaning search", () => {

@@ -7,8 +7,9 @@ import { loadProducer } from "./producer.js";
 
 /** The render's own media list for a project: what it extracts, probes and mixes. */
 export interface ProjectMedia {
-  videos: readonly Pick<VideoElement, "src" | "hasAudio">[];
-  images: readonly { src: string }[];
+  videos: readonly Pick<VideoElement, "src" | "hasAudio" | "graded">[];
+  images: readonly { src: string; graded?: boolean }[];
+  gradedCanvas?: boolean;
   audios: readonly AudioElement[];
   /** The bundled document the lists were read from. */
   html: string;

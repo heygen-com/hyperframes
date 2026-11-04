@@ -130,6 +130,20 @@ describe("releasing a clip's download", () => {
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
+  it("frees a clip whose whole file is buffered when asked to", () => {
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    Object.defineProperty(video, "duration", { value: 6.67 });
+    Object.defineProperty(video, "buffered", {
+      value: { length: 1, start: () => 0, end: () => 6.67 },
+    });
+    video.load = vi.fn();
+
+    releaseMedia(video, true);
+    expect(video.load).toHaveBeenCalledTimes(1);
+    expect(video.getAttribute("src")).toBe("a.mp4");
+  });
+
   it.each([
     [0, 15],
     [430, 2642],
@@ -160,6 +174,7 @@ describe("releasing a clip's download", () => {
 });
 
 describe("preparing upcoming video playback", () => {
+  afterEach(() => vi.restoreAllMocks());
   function video() {
     const element = document.createElement("video");
     element.setAttribute("data-media-start", "6");
@@ -219,7 +234,7 @@ describe("preparing upcoming video playback", () => {
     expect(element.currentTime).toBe(0);
   });
 
-  it("does not prepare an audio clip's source offset", () => {
+  it("does not prepare an audio clip's source offset outside WebKit", () => {
     const element = document.createElement("audio");
     element.setAttribute("data-media-start", "6");
     element.load = vi.fn();
@@ -228,6 +243,21 @@ describe("preparing upcoming video playback", () => {
     prepareUpcomingMedia(element, () => true);
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBe(0);
+    element.remove();
+  });
+
+  it("prepares an upcoming audio clip's source offset in WebKit, so the cut has no seek to wait for", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    );
+    const element = document.createElement("audio");
+    element.setAttribute("data-media-start", "6");
+    element.load = vi.fn();
+    document.body.appendChild(element);
+
+    prepareUpcomingMedia(element, () => true);
+    element.dispatchEvent(new Event("loadedmetadata"));
+    expect(element.currentTime).toBeCloseTo(6, 3);
     element.remove();
   });
 });

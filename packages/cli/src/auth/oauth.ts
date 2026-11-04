@@ -19,10 +19,7 @@ import { failCommand } from "../utils/commandResult.js";
  *   - **Revoke** — POST https://api2.heygen.com/v1/oauth/revoke
  *     Same host/prefix as token.
  *
- * The `heygen-oauth-urls.ts` default in `hyperframes-internal/demo-next`
- * lists `app.heygen.com/oauth/token` as the default — that's either
- * proxied via a Next.js rewrite or set via `HEYGEN_OAUTH_TOKEN_URL` in
- * their prod env. A direct fetch to it returns the SPA shell, so we
+ * `app.heygen.com/oauth/token` returns the SPA shell on a direct fetch, so we
  * use the api2 endpoint here.
  *
  * Overrides:
@@ -83,7 +80,7 @@ export interface AuthorizeFlowOptions {
   scope?: string;
   /** Inject a custom fetch (used by tests). */
   fetchImpl?: typeof fetch;
-  /** Override timeout in ms (default 120s). */
+  /** Override timeout in ms (default 60 minutes). */
   timeoutMs?: number;
 }
 
@@ -146,31 +143,32 @@ export async function startAuthorizationCodeFlow(
   const state = generateState();
 
   const loopback = await startLoopback({ state, timeoutMs: opts.timeoutMs });
-  const authorizeUrl = buildAuthorizeUrl({
-    clientId,
-    redirectUri: loopback.redirectUri,
-    scope,
-    state,
-    challenge: pkce.challenge,
-  });
-
-  // Print the host+path only (no state / code_challenge) so live
-  // values can't leak into scrollback / CI logs during the 120s window.
-  console.log(`Opening browser to ${c.dim(authorizeHost(authorizeUrl))} ...`);
-  const { opened } = await openBrowser(authorizeUrl);
-  if (!opened) {
-    // openBrowser already printed the manual URL; surface it as the
-    // last on-screen instruction so it isn't buried above "Waiting…".
-    console.log(c.dim("(open the URL above to continue)"));
-  }
-  console.log(`Waiting for callback on ${c.accent(loopback.redirectUri)} ...`);
-
   let codeResult;
   try {
+    const authorizeUrl = buildAuthorizeUrl({
+      clientId,
+      redirectUri: loopback.redirectUri,
+      scope,
+      state,
+      challenge: pkce.challenge,
+    });
+
+    // Print the host+path only (no state / code_challenge) so live
+    // values can't leak into scrollback / CI logs during the wait.
+    console.log(`Opening browser to ${c.dim(authorizeHost(authorizeUrl))} ...`);
+    const { opened } = await openBrowser(authorizeUrl);
+    if (!opened) {
+      // openBrowser already printed the manual URL; surface it as the
+      // last on-screen instruction so it isn't buried above "Waiting…".
+      console.log(c.dim("(open the URL above to continue)"));
+    }
+    console.log(
+      `Waiting for callback on ${c.accent(loopback.redirectUri)} (up to ${loopback.timeoutLabel}, Ctrl+C to cancel) ...`,
+    );
+
     codeResult = await loopback.result;
-  } catch (err) {
+  } finally {
     await loopback.close().catch(() => {});
-    throw err;
   }
 
   const tokens = await exchangeCodeForTokens({
@@ -357,10 +355,21 @@ function retryAfterSeconds(response: Response, nowMs: number): number | undefine
   return Math.min(Math.max(Math.ceil((retryAt - nowMs) / 1000), 0), MAX_DEVICE_POLL_SECONDS);
 }
 
-export async function refreshTokens(
+const refreshing = new Map<string, Promise<OAuthTokens>>();
+
+/** Refresh the stored login. Calls that overlap in this process share one request, since the server rotates the token. */
+export function refreshTokens(
   refresh_token: string,
   opts: RefreshOptions = {},
 ): Promise<OAuthTokens> {
+  const pending = refreshing.get(refresh_token);
+  if (pending) return pending;
+  const request = refreshOnce(refresh_token, opts).finally(() => refreshing.delete(refresh_token));
+  refreshing.set(refresh_token, request);
+  return request;
+}
+
+async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise<OAuthTokens> {
   const { credentials } = await readStore();
   if (credentials.oauth?.refresh_token !== refresh_token) throw ErrLoginChanged();
   assertOAuthIdentity(credentials.oauth);
@@ -382,7 +391,7 @@ export async function refreshTokens(
   });
 
   if (res.status === 400 || res.status === 401) {
-    throw ErrRefreshFailed(await safeText(res));
+    throw ErrRefreshFailed(await safeText(res), { refused: true });
   }
   if (!res.ok) {
     throw ErrApi(res.status, (await safeText(res)) || res.statusText);
@@ -474,7 +483,9 @@ function buildAuthorizeUrl(args: {
     code_challenge: args.challenge,
     code_challenge_method: "S256",
   });
-  return `${authorizeEndpoint()}?${params.toString()}`;
+  const urlWithEndpointQuery = new URL(authorizeEndpoint());
+  for (const [key, value] of params) urlWithEndpointQuery.searchParams.set(key, value);
+  return urlWithEndpointQuery.toString();
 }
 
 async function exchangeCodeForTokens(args: {

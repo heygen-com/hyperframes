@@ -16,7 +16,6 @@ import ignore, { type Ignore } from "ignore";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
-import { oauthEnvironment } from "../auth/config.js";
 import { tryResolveCredential } from "../auth/index.js";
 import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
@@ -191,7 +190,9 @@ export async function resolvePublishCredential(
     const expired =
       credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
     if (expired && !credential.refresh_token) throw new Error(LOGIN_EXPIRED);
-    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
+    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential, {
+      envFallback: checked === undefined,
+    });
   } catch (error) {
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
       throw new Error(LOGIN_EXPIRED);
@@ -701,7 +702,7 @@ export function getPublishApiBaseUrl(): string {
   return (
     process.env["HYPERFRAMES_PUBLISHED_PROJECTS_API_URL"] ||
     process.env["HEYGEN_API_URL"] ||
-    `https://api2.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com`
+    "https://api2.heygen.com"
   ).replace(/\/$/, "");
 }
 

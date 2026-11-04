@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 function editDistance(a: string, b: string): number {
   let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
@@ -55,4 +57,10 @@ const COMMAND_SYNONYMS: Record<string, string> = {
 export function synonymMatch(input: string, candidates: Iterable<string>): string | undefined {
   const target = COMMAND_SYNONYMS[input];
   return target !== undefined && [...candidates].includes(target) ? target : undefined;
+}
+
+export function fileHint(word: string, path: string[], names: string[]): string | undefined {
+  if (path.length === 0 || names.length === 0 || !existsSync(word)) return undefined;
+  const group = ["hyperframes", ...path].join(" ");
+  return `'${word}' is a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
 }

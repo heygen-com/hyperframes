@@ -67,6 +67,15 @@ function unknownFlagIn(tok: string, known: Set<string>): string | null {
   return null;
 }
 
+// Flags agents carry over from other commands or tools, and the one that means the same here.
+const FLAG_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
+  from: ["start"],
+  to: ["end"],
+  start: ["from"],
+  end: ["to"],
+  o: ["out", "output"],
+};
+
 function unknownFlagError(flag: string, known: Set<string>, path: string): CliUsageError {
   const command = `hyperframes ${path ? `${path} ` : ""}`.trim();
   if (flag === "--json") {
@@ -76,7 +85,10 @@ function unknownFlagError(flag: string, known: Set<string>, path: string): CliUs
     });
   }
   const longNames = [...known].filter((name) => name.length > 1);
-  const match = flag.startsWith("--") ? closestMatch(flag.slice(2), longNames) : undefined;
+  const name = flag.replace(/^--?/, "");
+  const match =
+    FLAG_SYNONYMS[name]?.find((s) => known.has(s)) ??
+    (flag.startsWith("--") ? closestMatch(name, longNames) : undefined);
   const help = `Run 'hyperframes ${path ? `${path} ` : ""}--help' to see its flags.`;
   const hint = match ? `Did you mean --${match}? ${help}` : help;
   return new CliUsageError(`Unknown flag: ${flag}`, { hint, code: "unknown_flag" });

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
   parseVideoElements,
+  hasGradedCanvas,
   parseImageElements,
   extractAllVideoFrames,
   extractVideoFramesRange,
@@ -23,6 +24,7 @@ import {
   createFrameLookupTable,
   FrameLookupTable,
   rebaseVideoToWindow,
+  alignClipStartToFirstOutputFrame,
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
@@ -31,6 +33,7 @@ import {
   getFrameAtTime,
   analyzeClipMediaFit,
   classifyVideoExtractionError,
+  videoExtractionSourceLabel,
   runVideoExtractionWithRetry,
   VideoSourceExtractionError,
   type VideoElement,
@@ -190,6 +193,14 @@ describe("resolveVideoExtractionDuration", () => {
     // composition second 2 is 3s into the authored lane: source 4.6586
     const seconds = clip.mediaStart + sourceTimeAt(clip.playbackRate ?? 1, 2 - clip.start);
     expect(seconds).toBeCloseTo(4.6586, 3);
+  });
+
+  it("leaves media start untouched for a nested clip whose start sums to a frame boundary with float dust", () => {
+    // 3.3 + 1.3666666666666667 = 4.666666666666666, frame 140 at 30 fps
+    const clip = video({ start: 3.3 + 1.3666666666666667, end: 8, mediaStart: 1.35 });
+    alignClipStartToFirstOutputFrame(clip, 30);
+    expect(clip.mediaStart).toBe(1.35);
+    expect(clip.start).toBe(140 / 30);
   });
 
   it("snaps a float-noise composition start to the timeline origin so the first frame is kept", () => {
@@ -618,6 +629,54 @@ describe("video extraction failure taxonomy and bounded retry", () => {
     ).rejects.toMatchObject({ kind: "ffmpeg_timeout", retryable: true });
     expect(attempts).toBe(1);
   });
+
+  it("names a failed clip by its project-relative file, never a host, query or absolute path", () => {
+    expect(videoExtractionSourceLabel("assets/clips/a.mp4", "/proj")).toBe("assets/clips/a.mp4");
+    expect(videoExtractionSourceLabel("/proj/assets/a.mp4?x=1", "/proj")).toBe("assets/a.mp4");
+    expect(videoExtractionSourceLabel("/elsewhere/private/b.mp4", "/proj")).toBe("b.mp4");
+    expect(videoExtractionSourceLabel("https://cdn.example/v/c%201.mp4?Signature=s", "/proj")).toBe(
+      "c 1.mp4",
+    );
+    expect(videoExtractionSourceLabel("HTTPS://cdn.example/v/d.mp4?Signature=s", "/proj")).toBe(
+      "d.mp4",
+    );
+  });
+
+  it("never prints a scheme payload, username or drive path for a source that is not a project file", () => {
+    expect(videoExtractionSourceLabel("file:///Users/me/private/a.mp4", "/proj")).toBe("a.mp4");
+    expect(videoExtractionSourceLabel("data:video/mp4;base64,AAAA", "/proj")).toBe("inline video");
+    expect(videoExtractionSourceLabel("blob:https://cdn.example/1f3a", "/proj")).toBe(
+      "inline video",
+    );
+    expect(videoExtractionSourceLabel("ftp://host.example/pub/e.mp4", "/proj")).toBe("e.mp4");
+    expect(videoExtractionSourceLabel("C:\\Users\\me\\private\\f.mp4", "/proj")).toBe("f.mp4");
+    expect(videoExtractionSourceLabel("C:\\proj\\assets\\g.mp4", "C:\\proj")).toBe("assets/g.mp4");
+  });
+
+  it("reports which clip failed when a source file is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-names-"));
+    try {
+      const result = await extractAllVideoFrames(
+        [
+          {
+            id: "v1",
+            src: "assets/missing.mp4",
+            start: 0,
+            end: 1,
+            mediaStart: 0,
+            loop: false,
+            hasAudio: false,
+          },
+        ],
+        dir,
+        { fps: 30, outputDir: join(dir, "out") },
+      );
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ videoId: "v1", source: "assets/missing.mp4" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // Codec-based alpha defaulting replaces tag-based detection (the
@@ -738,6 +797,25 @@ describe("resolveFrameFormat", () => {
 });
 
 describe("parseVideoElements", () => {
+  it("marks a graded video and image, and only those", () => {
+    const html = `<video id="g" src="g.mp4" data-color-grading='{"preset":"clean-studio"}'></video>
+      <video id="p" src="p.mp4"></video>
+      <img id="gi" src="gi.png" data-color-grading='{"adjust":{"exposure":0.2}}'>
+      <img id="pi" src="pi.png">`;
+    expect(parseVideoElements(html).map(({ id, graded }) => [id, graded])).toEqual([
+      ["g", true],
+      ["p", undefined],
+    ]);
+    expect(parseImageElements(html).map(({ id, graded }) => [id, graded])).toEqual([
+      ["gi", true],
+      ["pi", undefined],
+    ]);
+    expect(hasGradedCanvas(html)).toBe(false);
+    expect(
+      hasGradedCanvas(`<canvas data-color-grading='{"preset":"clean-studio"}'></canvas>`),
+    ).toBe(true);
+  });
+
   it.each([
     {
       label: "valueless playback-start",

@@ -1822,6 +1822,25 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    it("hands a clip that decodes short to its element, and keeps one short only by its priming", async () => {
+      // Measured in Chromium 156 and WebKit 27.2: a 4 s AAC file whose mdhd timescale says 44.1 kHz over a
+      // 48 kHz stream decodes to 3.669 s; Apple's HE-AAC of the same tone decodes to 4.0 s under a 4.133 s element.
+      const withDuration = (src: string, duration: number) =>
+        Object.assign(el(src), { duration }) as HTMLMediaElement;
+      const transport = transportWithDecode(async () => ({ duration: 3.669 }) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+      expect(await transport.decodeAudioElement(withDuration("vo.m4a", 4))).toBeNull();
+      expect(failedSrcs(transport).has(key("vo.m4a"))).toBe(true);
+
+      const primed = transportWithDecode(async () => ({ duration: 4 }) as AudioBuffer);
+      expect(await primed.decodeAudioElement(withDuration("he.m4a", 4.133))).not.toBeNull();
+      expect(await primed.decodeAudioElement(withDuration("rec.webm", Infinity))).not.toBeNull();
+      vi.unstubAllGlobals();
+    });
+
     it("fetches and decodes a source once when a play and a seek both ask before it decodes", async () => {
       const decoded = {} as AudioBuffer;
       const transport = transportWithDecode(async () => decoded);

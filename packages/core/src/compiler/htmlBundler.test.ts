@@ -201,6 +201,45 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it.each([
+    [
+      "UTF-16LE",
+      (text: string) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]),
+    ],
+    [
+      "UTF-16BE",
+      (text: string) =>
+        Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(text, "utf16le").swap16()]),
+    ],
+    [
+      "UTF-8 with a BOM",
+      (text: string) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]),
+    ],
+  ])(
+    "reads a page saved as %s by its byte order mark, as a browser does",
+    async (_name, encode) => {
+      const dir = makeTempProject({});
+      writeFileSync(
+        join(dir, "index.html"),
+        encode(`<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="2">
+          <div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+        </div></body></html>`),
+      );
+      writeFileSync(
+        join(dir, "scene.html"),
+        encode(`<template><div data-composition-id="scene"><h1>Café scene</h1></div></template>`),
+      );
+
+      const bundled = await bundleToSingleHtml(dir);
+
+      expect(bundled).not.toContain("\u0000");
+      expect(bundled).not.toContain("\uFEFF");
+      expect(bundled).toContain('data-composition-id="root"');
+      expect(bundled).toContain("Café scene");
+    },
+  );
+
   it("bundles a direct composition entry with paths relative to its file", async () => {
     const dir = makeTempProject({
       "index.html": "<html><body>wrong entry</body></html>",

@@ -69,8 +69,8 @@ describe("auth/client", () => {
   });
 
   it("apiBaseUrl honors HEYGEN_API_URL and strips trailing slash", () => {
-    process.env["HEYGEN_API_URL"] = "https://api.dev.heygen.com/";
-    expect(apiBaseUrl()).toBe("https://api.dev.heygen.com");
+    process.env["HEYGEN_API_URL"] = "https://api.example.test/";
+    expect(apiBaseUrl()).toBe("https://api.example.test");
   });
 
   it("buildAuthHeaders uses Bearer for oauth", () => {

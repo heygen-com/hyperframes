@@ -848,6 +848,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       expect(a.chunkCount).toBe(b.chunkCount);
       expect(a.totalFrames).toBe(b.totalFrames);
       expect(Object.keys(b)).toEqual([
+        "reference_background",
         "planDir",
         "planProtocol",
         "planHash",

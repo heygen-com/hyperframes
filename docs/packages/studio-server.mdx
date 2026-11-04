@@ -78,6 +78,16 @@ The server retains ten snapshots per file by default, including snapshots
 with the older backup names. The source path must still fit your filesystem's
 own limits.
 
+## Serving finished renders
+
+Studio streams finished render files from disk, including exports larger than
+2 GiB. This applies to the project's `/renders/file/*` route and each render
+job's `/view` and `/download` routes. A host mounting the API should forward
+the response body as a stream so it can deliver large exports without
+buffering the whole file in memory.
+
+`HEAD` requests return the same file metadata without opening a file stream.
+
 ## Where Studio loads GSAP from
 
 Studio adds GSAP scripts to previews when a composition needs them: the GSAP

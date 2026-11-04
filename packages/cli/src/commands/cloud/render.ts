@@ -36,7 +36,9 @@ import {
 } from "../../cloud/detectAspectRatio.js";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
+import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
+import { readProjectConfig } from "../../utils/projectConfig.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
   readStaged,
@@ -119,14 +121,12 @@ export default defineCommand({
   meta: { name: "render", description: "Render a HyperFrames composition in the cloud" },
   args: {
     dir: { type: "positional", required: false, description: "Project directory (default: .)" },
-    fps: { type: "string", description: "Frames per second (1-240). Default: 30." },
+    fps: {
+      type: "string",
+      description: "Frames per second (1-240). Default: the composition's root data-fps, else 30.",
+    },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
-    "page-motion-blur": {
-      type: "string",
-      description:
-        "Set off to disable authored page motion blur. Omit to keep the current cloud behavior.",
-    },
     resolution: {
       type: "string",
       description: "Resolution tier: 1080p | 4k (default: 1080p; 4k is billed at 1.5x)",
@@ -220,12 +220,8 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args }) {
     const asJson = Boolean(args.json);
-    const fps = parseIntFlag(args.fps, { flag: "--fps", min: 1, max: 240 });
     const quality = parseEnumFlag(args.quality, VALID_QUALITY, { flag: "--quality" });
     const format = parseEnumFlag(args.format, VALID_FORMAT, { flag: "--format" });
-    const pageMotionBlur = parseEnumFlag(args["page-motion-blur"], ["off"] as const, {
-      flag: "--page-motion-blur",
-    });
     const resolution = parseEnumFlag(args.resolution, VALID_RESOLUTION, {
       flag: "--resolution",
     });
@@ -245,6 +241,12 @@ export default defineCommand({
       url: args.url,
     });
     validateDryRunSource(project, args["dry-run"] ?? false);
+
+    const fps = parseIntFlag(resolveCloudFpsArg(project, args.fps, args.composition), {
+      flag: "--fps",
+      min: 1,
+      max: 240,
+    });
 
     // Aspect ratio is derived from the composition's authored dimensions: for
     // a local dir we parse the entry HTML and auto-detect, so the user rarely
@@ -277,8 +279,12 @@ export default defineCommand({
     const client = await createCloudClient();
     const preparedArchive =
       project.kind === "dir"
-        ? await prepareLocalArchive(project, args.composition, asJson, (file) =>
-            uploadAssetViaDirectUpload({ client, ...file }),
+        ? await prepareLocalArchive(
+            project,
+            args.composition,
+            asJson,
+            (file) => uploadAssetViaDirectUpload({ client, ...file }),
+            variables && JSON.stringify(variables),
           )
         : undefined;
 
@@ -295,7 +301,6 @@ export default defineCommand({
       quality,
       format,
       resolution,
-      pageMotionBlur,
       aspectRatio,
       composition: args.composition,
       variables,
@@ -303,6 +308,7 @@ export default defineCommand({
       callbackUrl: args["callback-url"],
       callbackId: args["callback-id"],
       idempotencyKey: args["idempotency-key"],
+      reverseSessionId: reverseSessionIdOf(project),
     });
 
     const renderId = submitted.render_id;
@@ -590,6 +596,7 @@ async function prepareLocalArchive(
   composition: string | undefined,
   asJson: boolean,
   upload?: OffloadOptions["upload"],
+  variablesText?: string,
 ): Promise<PreparedLocalArchive> {
   const project = resolveProject(source.dir);
   if (!asJson) {
@@ -597,7 +604,7 @@ async function prepareLocalArchive(
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
   const { fileMap, entryPath } = stageProjectFiles(project, composition);
-  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload);
+  const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
   const onDiskBytes = [...fileMap.values()]
@@ -656,6 +663,7 @@ async function offloadMedia(
   entryPath: string,
   asJson: boolean,
   upload: OffloadOptions["upload"],
+  variablesText?: string,
 ): Promise<OffloadedMedia[]> {
   let offloaded: OffloadedMedia[];
   try {
@@ -663,6 +671,7 @@ async function offloadMedia(
       apiBaseUrl: resolveCloudBaseUrl(),
       upload,
       entryPath,
+      variablesText,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
     });
@@ -679,6 +688,19 @@ async function offloadMedia(
     }
   }
   return offloaded;
+}
+
+/** --fps, else the entry's root data-fps (the owner local render uses), else the server default. */
+export function resolveCloudFpsArg(
+  source: ProjectInputSource,
+  fps: string | undefined,
+  composition: string | undefined,
+): string | undefined {
+  if (source.kind !== "dir") return fps;
+  const { dir } = resolveProject(source.dir);
+  const resolved = resolveDefaultFpsArg(fps, dir, resolvePath(dir, "index.html"), composition);
+  // The cloud API takes whole frame rates; a fractional data-fps (29.97) leaves it to the server.
+  return resolved !== undefined && /^\d+$/.test(resolved) ? resolved : fps;
 }
 
 export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSummary[]): void {
@@ -811,7 +833,6 @@ interface SubmitOptions {
   fps: number | undefined;
   quality: "draft" | "standard" | "high" | undefined;
   format: "mp4" | "webm" | "mov" | undefined;
-  pageMotionBlur: NonNullable<CreateHyperframesRenderRequest["page_motion_blur"]> | undefined;
   resolution: CreateHyperframesRenderRequest["resolution"] | undefined;
   aspectRatio: CreateHyperframesRenderRequest["aspect_ratio"] | undefined;
   composition: string | undefined;
@@ -820,6 +841,15 @@ interface SubmitOptions {
   callbackUrl: string | undefined;
   callbackId: string | undefined;
   idempotencyKey: string | undefined;
+  reverseSessionId: string | undefined;
+}
+
+type RenderRequestBody = CreateHyperframesRenderRequest & { reverse_session_id?: string };
+
+function reverseSessionIdOf(project: ProjectInputSource): string | undefined {
+  return project.kind === "dir"
+    ? readProjectConfig(project.dir ?? ".")?.reverseSessionId
+    : undefined;
 }
 
 async function submitRender(
@@ -835,12 +865,11 @@ async function submitRender(
 }
 
 // fallow-ignore-next-line complexity
-function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
-  const body: CreateHyperframesRenderRequest = { project: opts.projectInput };
+function buildRenderBody(opts: SubmitOptions): RenderRequestBody {
+  const body: RenderRequestBody = { project: opts.projectInput };
   if (opts.fps !== undefined) body.fps = opts.fps;
   if (opts.quality !== undefined) body.quality = opts.quality;
   if (opts.format !== undefined) body.format = opts.format;
-  if (opts.pageMotionBlur !== undefined) body.page_motion_blur = opts.pageMotionBlur;
   if (opts.resolution !== undefined) body.resolution = opts.resolution;
   if (opts.aspectRatio !== undefined) body.aspect_ratio = opts.aspectRatio;
   if (opts.composition !== undefined) body.composition = opts.composition;
@@ -848,6 +877,7 @@ function buildRenderBody(opts: SubmitOptions): CreateHyperframesRenderRequest {
   if (opts.title !== undefined) body.title = opts.title;
   if (opts.callbackUrl !== undefined) body.callback_url = opts.callbackUrl;
   if (opts.callbackId !== undefined) body.callback_id = opts.callbackId;
+  if (opts.reverseSessionId !== undefined) body.reverse_session_id = opts.reverseSessionId;
   return body;
 }
 

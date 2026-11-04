@@ -18,6 +18,7 @@ const {
   fetchItemFile,
   fetchItemManifest,
   fetchRegistryManifest,
+  readRegistryManifest,
   DEFAULT_REGISTRY_URL,
 } = await import("./remote.js");
 
@@ -74,6 +75,21 @@ afterEach(() => {
 
 afterAll(() => {
   rmSync(scratchHome, { recursive: true, force: true });
+});
+
+describe("readRegistryManifest", () => {
+  it("throws why when the registry host cannot be reached and nothing is cached", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      Object.assign(new TypeError("fetch failed"), {
+        cause: Object.assign(new Error("getaddrinfo ENOTFOUND raw.githubusercontent.com"), {
+          code: "ENOTFOUND",
+        }),
+      }),
+    );
+    await expect(readRegistryManifest(DEFAULT_REGISTRY_URL)).rejects.toThrow(
+      "The registry could not be read: fetch failed (getaddrinfo ENOTFOUND raw.githubusercontent.com)",
+    );
+  });
 });
 
 describe("fetchRegistryManifest", () => {

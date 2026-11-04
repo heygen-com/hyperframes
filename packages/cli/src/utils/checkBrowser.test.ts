@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,7 @@ import {
   collectSeekClock,
   mergeHelperDrafts,
   samplingBrowserCount,
+  RENDER_READY_WARNING_SUFFIX,
 } from "./checkBrowser.js";
 import { CheckDeadline } from "./checkDeadline.js";
 import { closeManagedBrowser } from "../browser/launch.js";
@@ -1174,6 +1176,37 @@ describe("keepBrokenImageAborts", () => {
     ]);
   });
 
+  it("reports a still-broken aborted image even when its URL ends in a video suffix", async () => {
+    const base = "http://127.0.0.1:3000/assets";
+    mountCanvasFixture(`<img id="stuck" src="${base}/plate.mkv">`);
+    (document.getElementById("stuck") as HTMLImageElement).decode = () =>
+      Promise.reject(new Error("broken"));
+    const aborted = (url: string, resourceType: string) => ({
+      url: () => url,
+      failure: () => ({ errorText: "net::ERR_ABORTED" }),
+      resourceType: () => resourceType,
+    });
+    const page = fakePage();
+    page.on = vi.fn((event: string, handler: (request: ReturnType<typeof aborted>) => void) => {
+      if (event !== "requestfailed") return;
+      handler(aborted(`${base}/plate.mkv`, "image"));
+      handler(aborted(`${base}/clip.mkv`, "fetch"));
+    });
+    installSessionMock(page);
+
+    const result = await runBrowserCheck(
+      PROJECT,
+      { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+      { kind: "none" },
+      runAuditGrid,
+    );
+
+    const failed = result.runtimeFindings.filter((finding) => finding.code === "request_failed");
+    expect(failed.map((finding) => finding.message)).toEqual([
+      "Failed to load assets/plate.mkv: net::ERR_ABORTED",
+    ]);
+  });
+
   it("does not report an aborted image whose reload is still pending at the cap", async () => {
     const url = "http://127.0.0.1:3000/assets/slow.png";
     mountCanvasFixture(`<img id="slow" src="${url}">`);
@@ -1660,13 +1693,13 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
-  it("pre-resolves an alpha VP9 asset through the Chromium-compatible VP8 proxy", async () => {
+  it("pre-resolves an alpha asset through the Chromium-compatible VP8 proxy", async () => {
     const projectDir = mkProjectDir();
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
-      "/alpha.webm": {
-        codecName: "vp9",
+      "/alpha.mov": {
+        codecName: "prores",
         browserHostile: true,
-        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        representativeMime: null,
         hasAlpha: true,
       },
     });
@@ -1676,9 +1709,31 @@ describe("preResolveHostileMediaProxies", () => {
     expect(mocks.resolveProxy).toHaveBeenCalledTimes(1);
     expect(mocks.resolveProxy).toHaveBeenCalledWith(
       projectDir,
-      join(projectDir, "alpha.webm"),
+      join(projectDir, "alpha.mov"),
       "vp8",
     );
+  });
+
+  it("does not copy VP9 or AV1 videos, which Chrome plays (alpha included)", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/cutout.webm": {
+        codecName: "vp9",
+        browserHostile: true,
+        representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+        hasAlpha: true,
+      },
+      "/clip.mp4": {
+        codecName: "av1",
+        browserHostile: true,
+        representativeMime: 'video/mp4; codecs="av01.0.08M.08"',
+        hasAlpha: false,
+      },
+    });
+
+    await preResolveHostileMediaProxies(projectDir, "<html></html>");
+
+    expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
   it("is a no-op when the codec map has no hostile entries", async () => {
@@ -2197,5 +2252,12 @@ describe("finding frame capture", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("the render-ready warning's advice", () => {
+  it("names a --timeout above the default, so following it never lowers the wait", () => {
+    const example = /for example (\d+)s\)/.exec(RENDER_READY_WARNING_SUFFIX)?.[1];
+    expect(Number(example) * 1000).toBeGreaterThan(DEFAULT_CONFIG.playerReadyTimeout);
   });
 });

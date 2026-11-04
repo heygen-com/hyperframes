@@ -1,4 +1,6 @@
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import type { CheckDeadline } from "./checkDeadline.js";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
@@ -51,6 +53,7 @@ import {
   decideMediaProxyEligibility,
   proxyVariantFor,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
 } from "@hyperframes/studio-server/media-codec-map";
 import {
   FfmpegUnavailableError,
@@ -89,6 +92,8 @@ import type {
   SeekClock,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
+
+export const RENDER_READY_WARNING_SUFFIX = `the scene may still be building, so results can miss late content; raise --timeout (for example ${(DEFAULT_CONFIG.playerReadyTimeout * 2) / 1000}s)`;
 
 interface RuntimeDraft {
   code: string;
@@ -193,7 +198,7 @@ function startCopyHeartbeat(
 /**
  * Awaits the H.264 authoring proxy for every browser-hostile local video
  * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
- * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
+ * render-ready wait defaults to 45 s (`DEFAULT_CHECK_OPTIONS.timeout`,
  * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
  * cannot fit inside that window — without this, a project's first
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
@@ -219,7 +224,7 @@ export async function preResolveHostileMediaProxies(
     return none;
   }
   const hostileEntries = Object.entries(codecMap).filter(
-    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible && shouldPrewarmProxy(facts),
   );
   if (hostileEntries.length === 0) return none;
 
@@ -379,8 +384,7 @@ export async function runBrowserCheck(
     const session = await openSettledCompositionPage(html, server.url, {
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
-      renderReadyWarningSuffix:
-        "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+      renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
       prelaunched,
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       signal: deadline?.signal,
@@ -536,8 +540,7 @@ async function openHelperSession(
   const session = await openSettledCompositionPage(html, url, {
     navigationTimeoutMs: options.timeout,
     renderReadyTimeoutMs: options.timeout,
-    renderReadyWarningSuffix:
-      "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+    renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
     browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     signal: owner.signal,
     onBrowser: owner.onBrowser,
@@ -1269,6 +1272,7 @@ async function overlapGridInPage(
     fallback: boolean;
     skipDraws: boolean;
     videoFrames: boolean;
+    timeoutMs: number;
   },
   seek: typeof seekInPage,
   anchors: typeof anchorsInPage,
@@ -1276,11 +1280,15 @@ async function overlapGridInPage(
   const audit = Reflect.get(window, "__hyperframesOverlapAudit");
   const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
   const samples: OverlapGridSample[] = [];
+  const deadline = performance.now() + grid.timeoutMs;
   for (const time of grid.times) {
     console.debug(`${grid.marker}${time}`);
     seek(time, grid.fallback, false, grid.skipDraws);
     if (typeof waitForCompletion === "function") {
-      await Reflect.apply(waitForCompletion, window, [{ videoFrames: grid.videoFrames }]);
+      const timeoutMs = Math.max(0, deadline - performance.now());
+      await Reflect.apply(waitForCompletion, window, [
+        { videoFrames: grid.videoFrames, timeoutMs },
+      ]);
     }
     const result: unknown =
       typeof audit === "function" ? Reflect.apply(audit, window, [{ time }]) : [];
@@ -1304,6 +1312,7 @@ async function collectOverlapGrid(page: Page, times: number[]): Promise<Anchored
     fallback: DENSE_GEOMETRY_SEEK_OPTIONS.fallbackToBridgeAndTimelines,
     skipDraws: DENSE_GEOMETRY_SEEK_OPTIONS.skipWebglDraws,
     videoFrames: DENSE_GEOMETRY_SEEK_OPTIONS.waitForVideoFrames,
+    timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
   };
   const samples = (await page.evaluate(
     `(${overlapGridInPage})(${JSON.stringify(grid)}, ${seekInPage}, ${anchorsInPage})`,

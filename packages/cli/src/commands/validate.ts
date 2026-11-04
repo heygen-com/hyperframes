@@ -51,7 +51,9 @@ interface ContrastEntry {
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
-const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+// Media files a proxy swap can abandon mid-fetch; an aborted non-image request for one is not a load failure.
+const MEDIA_EXTENSIONS =
+  /\.(3gp|aac|aif|aiff|avi|flac|flv|m2ts|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|mts|mxf|oga|ogg|ogv|opus|wav|weba|webm|wma|wmv)$/i;
 // Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
 // actionable message: the usual cause is a slow blocking CDN <script>. Returns a
 // replacement Error for a navigation timeout, or null for any other error.
@@ -74,6 +76,7 @@ export function shouldIgnoreRequestFailure(
   if (errorText === "net::ERR_ABORTED" && isOptionalCaptionOverridesRequest(url)) return true;
   if (errorText !== "net::ERR_ABORTED") return false;
   if (resourceType === "media") return true;
+  if (resourceType === "image") return false;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
   } catch {
