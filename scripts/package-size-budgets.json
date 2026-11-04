@@ -5,7 +5,7 @@
   },
   "@hyperframes/cli": {
     "packed": 7902966,
-    "unpacked": 23722874
+    "unpacked": 25159107
   },
   "@hyperframes/core": {
     "packed": 1762752,
@@ -25,7 +25,7 @@
   },
   "@hyperframes/lint": {
     "packed": 179338,
-    "unpacked": 695173
+    "unpacked": 737342
   },
   "@hyperframes/parsers": {
     "packed": 203731,
