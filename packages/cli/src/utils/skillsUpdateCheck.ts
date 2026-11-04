@@ -113,7 +113,7 @@ function skillsNoticeText(meta: SkillsUpdateMeta): string | null {
   const total = meta.outdated + meta.missing;
   if (total < 1) return null;
   const noun = total === 1 ? "skill" : "skills";
-  return `\n  ${total} HyperFrames ${noun} out of date or missing.\n  Run: npx hyperframes skills update\n\n`;
+  return `\n  ${total} HyperFrames ${noun} out of date or missing.\n  For the user: npx hyperframes skills update refreshes them.\n\n`;
 }
 
 /**

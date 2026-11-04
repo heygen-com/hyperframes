@@ -380,7 +380,7 @@ export async function updateSkills(
       // reinstate the 26-skill sweep this path exists to avoid.
       clack.log.warn(
         c.warn(
-          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. Re-run `hyperframes skills` online for the full set.",
+          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. For the user: `hyperframes skills` installs the full set once online.",
         ),
       );
     }
@@ -550,7 +550,7 @@ function renderCheck(result: SkillsCheckResult): void {
 
   if (!result.location) {
     console.log(`  ${c.dim("No HyperFrames skills found in the usual locations.")}`);
-    console.log(`  ${c.accent("Install: npx hyperframes skills")}`);
+    console.log(`  ${c.accent("For the user: npx hyperframes skills installs them")}`);
     console.log();
     return;
   }
@@ -577,14 +577,14 @@ function renderCheck(result: SkillsCheckResult): void {
   printSkillSection(
     result,
     "missing",
-    "Available on demand (install with `hyperframes skills update <name>`):",
+    "Available on demand (`hyperframes skills update <name>` installs one):",
     "◦",
     c.dim,
     (s) => !isCoreSkill(s.name),
   );
   console.log();
   if (result.updateAvailable) {
-    console.log(`  ${c.accent("Update: npx hyperframes skills update")}`);
+    console.log(`  ${c.accent("For the user: npx hyperframes skills update refreshes them")}`);
   } else {
     console.log(`  ${c.success("◇")}  ${c.success("Installed skills are up to date")}`);
   }
