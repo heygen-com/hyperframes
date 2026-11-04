@@ -44,3 +44,30 @@ export const INVARIANTS = {
   minCheckedFraction: 0.5,
   shutterSamples: 8,
 };
+
+// Oracle: the engine's 32-sample sub-frame blur. Noise: worst tile MAE on the sweep fixtures' clean frames.
+export const MEASURED_ORACLE_NOISE = 3.94;
+export const MEASURED_ORACLE_SMALLEST_SYMPTOM = 14.47;
+
+export const ORACLE = {
+  samples: 32,
+  maxMae: geometricMean(MEASURED_ORACLE_NOISE, MEASURED_ORACLE_SMALLEST_SYMPTOM),
+};
+
+export const SWEEP_SYMPTOMS = {
+  A: 47.67,
+  B: 148.63,
+  C: 73.02,
+  D_CAPTURE: 107.66,
+  D_FILTER: 107.66,
+  E: 27.6,
+  F_CAPTURE: 40.62,
+  F_FILTER: 126.54,
+  H: 135.67,
+  I: 53.63,
+  J: 25.79,
+  K: MEASURED_ORACLE_SMALLEST_SYMPTOM,
+  M: 18.31,
+  O_CAPTURE: 50.38,
+  O_FILTER: 50.38,
+} as const;
