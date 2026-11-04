@@ -758,12 +758,16 @@ async function collectMotionOverlapSamples(
     const craftStart = performance.now();
     // The render's last frame lands before the duration, where the runtime has already unmounted clips.
     const craftTimes = buildCraftSampleTimes(grid.duration).filter((time) => time < grid.duration);
-    for (const [index, time] of craftTimes.entries()) {
+    const last = craftTimes.length - 1;
+    for (let index = 0, sampled = 1; index <= last; sampled += 1) {
+      const time = craftTimes[index]!;
       progress(`craft frame at ${time}s`);
       await driver.seekGeometry(time, { draws: true });
       collected.craftFrames.push(...(await collectCraftFrame(driver, time)));
       progress();
       report("craft", index + 1, craftTimes.length);
+      index =
+        index === last ? last + 1 : Math.min(last, index + craftStride(craftStart, sampled, last - index));
     }
     collected.craftMs = Math.round(performance.now() - craftStart);
   }
@@ -785,6 +789,14 @@ async function collectMotionOverlapSamples(
 // Craft times how long a line shows, so it keeps 8 fps past the overlap pass's ceiling, up to ~75 s.
 const CRAFT_SAMPLE_FPS = 8;
 const CRAFT_MAX_SAMPLES = 600;
+const CRAFT_BUDGET_MS = 90_000;
+
+function craftStride(startedAt: number, sampled: number, remaining: number): number {
+  const spent = performance.now() - startedAt;
+  const left = CRAFT_BUDGET_MS - spent;
+  if (left <= 0) return remaining;
+  return Math.max(1, Math.ceil(((spent / sampled) * remaining) / left));
+}
 
 function buildCraftSampleTimes(duration: number): number[] {
   if (!Number.isFinite(duration) || duration <= 0) return [];
