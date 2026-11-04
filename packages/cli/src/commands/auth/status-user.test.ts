@@ -12,8 +12,9 @@ import { consumeCommandResult } from "../../utils/commandResult.js";
 //   - user:      the live identity returned on success
 const probeState = vi.hoisted(
   () =>
-    ({ apiReject: false, user: { email: "live@example.com" } }) as {
+    ({ apiReject: false, offline: false, user: { email: "live@example.com" } }) as {
       apiReject: boolean;
+      offline: boolean;
       user: Record<string, unknown>;
     },
 );
@@ -22,6 +23,16 @@ vi.mock("../../auth/index.js", async (orig) => {
   const actual = await orig<typeof import("../../auth/index.js")>();
   class MockAuthClient {
     async getCurrentUser(): Promise<Record<string, unknown>> {
+      if (probeState.offline) {
+        const { explainNetworkFailure } = await import("../../utils/networkFailure.js");
+        const lookup = Object.assign(new Error("getaddrinfo ENOTFOUND api.heygen.com"), {
+          code: "ENOTFOUND",
+        });
+        throw explainNetworkFailure(
+          new TypeError("fetch failed", { cause: lookup }),
+          "https://api.heygen.com/v3/users/me",
+        );
+      }
       if (probeState.apiReject) {
         const { ErrApi } = await import("../../auth/errors.js");
         throw ErrApi(503, "service unavailable");
@@ -39,6 +50,7 @@ describe("auth status — persisted user block surface", () => {
   beforeEach(async () => {
     envFixture = await setupTempAuthEnv("hf-status-99-");
     probeState.apiReject = false;
+    probeState.offline = false;
     probeState.user = { email: "live@example.com" };
     stdout = [];
     consumeCommandResult();
@@ -210,5 +222,17 @@ describe("auth status — persisted user block surface", () => {
     expect(text).toContain("API check failed");
     expect(text).toContain("cached@example.com");
     expect(text).toContain("cached");
+  });
+
+  it("reports an unreachable API as such, with the host and a next step, instead of a bare fetch failure", async () => {
+    await writeStore({ api_key: "hg_x", user: { email: "cached@example.com" } });
+    probeState.offline = true;
+
+    expect(await runStatus(true)).toBe(1);
+    expect(String(lastJson()["api_error"])).toMatch(
+      /^Could not reach api\.heygen\.com: .*offline\. Check the internet connection/,
+    );
+    expect(await runStatus(false)).toBe(1);
+    expect(stdout.join("\n")).toContain("cached@example.com");
   });
 });

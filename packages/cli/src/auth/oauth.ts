@@ -42,6 +42,8 @@ import { generatePkcePair, generateState } from "./pkce.js";
 import { startLoopback } from "./loopback.js";
 import { openBrowser } from "./browser.js";
 import { scrubCredentials } from "./scrub.js";
+import { ACCOUNT_REQUEST_TIMEOUT_MS } from "./client.js";
+import { explainNetworkFailure } from "../utils/networkFailure.js";
 import {
   isHeaderSafe,
   readStore,
@@ -388,6 +390,9 @@ async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise
       accept: "application/json",
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    throw explainNetworkFailure(error, tokenEndpoint());
   });
 
   if (res.status === 400 || res.status === 401) {
@@ -510,6 +515,9 @@ async function exchangeCodeForTokens(args: {
       accept: "application/json",
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    throw explainNetworkFailure(error, tokenEndpoint());
   });
   if (res.status === 400 || res.status === 401) {
     // The authorization code is single-use and short-lived. A 400/401

@@ -20,6 +20,7 @@ import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
+import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
 export interface TemplatePack {
@@ -61,15 +62,16 @@ export const TEMPLATES: Record<string, TemplatePack> = {
 /** A pull that stopped, with the one line the agent relays. Nothing was written. */
 export class PullRefused extends Error {}
 
-const LINK_TIMEOUT_MS = 30_000;
+const LINK_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 20 * 60_000;
 
 async function bundleUrl(pack: TemplatePack, retries = 1): Promise<string> {
-  const headers = await resolveCloudAuthHeaders().catch(() => {
+  const headers = await resolveCloudAuthHeaders().catch((error: unknown) => {
+    if (error instanceof NetworkFailure) throw error;
     throw new PullRefused("Not signed in. Run `npx hyperframes auth login`.");
   });
   const route = `${billingBaseUrl()}/v1/hyperframes/moments/${pack.id}/bundle?sha256=${pack.sha256}`;
-  const res = await fetch(route, {
+  const res = await fetchExplained(route, {
     headers: { ...headers, accept: "application/json" },
     signal: AbortSignal.timeout(LINK_TIMEOUT_MS),
   });
@@ -87,7 +89,7 @@ async function bundleUrl(pack: TemplatePack, retries = 1): Promise<string> {
 }
 
 async function download(url: string, pack: TemplatePack): Promise<Buffer> {
-  const res = await fetch(url, {
+  const res = await fetchExplained(url, {
     signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });
   if (!res.ok) throw new PullRefused(`The download failed (${res.status}). Run it again.`);
@@ -226,8 +228,9 @@ export default defineCommand({
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
-      if (!(error instanceof PullRefused)) throw error;
+      if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
       console.error(c.error(error.message));
+      if (error instanceof NetworkFailure) console.error(c.dim(error.hint));
       failCommand();
     }
   },

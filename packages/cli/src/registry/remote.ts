@@ -1,4 +1,5 @@
 import { readBoundedRegistryFile } from "./boundedFile.js";
+import { describeCauseChain } from "../utils/networkFailure.js";
 import { publishRegistryFile, registryRoot } from "./publication.js";
 import { fetchRegistryHttps, registryHttpsUrl, registryPathUrl } from "./transport.js";
 import { readBoundedResponse, type DownloadByteBudget } from "../capture/readBoundedResponse.js";
@@ -180,32 +181,6 @@ export async function fetchItemManifest(
     if (cached) return cached.data;
     throw err;
   }
-}
-
-/**
- * Flatten an error and its `cause` chain into one readable line.
- *
- * `fetch failed` on its own is useless. `fetch failed (self-signed certificate
- * in certificate chain)` tells the reader exactly which knob to turn, and that
- * string only exists one or two levels down the chain.
- */
-export function describeCauseChain(err: unknown): string {
-  const parts: string[] = [];
-  let current: unknown = err;
-  const seen = new Set<unknown>();
-  while (current instanceof Error && !seen.has(current)) {
-    seen.add(current);
-    const code = (current as { code?: unknown }).code;
-    const text =
-      code && !current.message.includes(String(code))
-        ? `${current.message} [${String(code)}]`
-        : current.message;
-    if (text && !parts.includes(text)) parts.push(text);
-    current = current.cause;
-  }
-  if (parts.length === 0) return String(err);
-  const [head, ...rest] = parts;
-  return rest.length ? `${head} (${rest.join("; ")})` : head!;
 }
 
 /**

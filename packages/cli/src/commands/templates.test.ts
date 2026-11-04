@@ -206,6 +206,21 @@ describe("pullTemplate", () => {
     expect(process.listeners("SIGINT").filter((listener) => !before.has(listener))).toEqual([]);
   });
 
+  it("names the unreachable host instead of a bare fetch failure when offline", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error("getaddrinfo ENOTFOUND"), { code: "ENOTFOUND" }),
+        });
+      }),
+    );
+    await expect(pullTemplate("sample", dir)).rejects.toThrow(
+      /^Could not reach api2\.heygen\.test: .*offline/,
+    );
+    expect(existsSync(join(dir, "templates", "sample"))).toBe(false);
+  });
+
   it("names the templates when the slug is unknown", async () => {
     await expect(pullTemplate("nope", dir)).rejects.toThrow("sample");
   });
