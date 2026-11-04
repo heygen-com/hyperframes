@@ -767,7 +767,9 @@ async function collectMotionOverlapSamples(
       progress();
       report("craft", index + 1, craftTimes.length);
       index =
-        index === last ? last + 1 : Math.min(last, index + craftStride(craftStart, sampled, last - index));
+        index === last
+          ? last + 1
+          : Math.min(last, index + craftStride(craftStart, sampled, last - index));
     }
     collected.craftMs = Math.round(performance.now() - craftStart);
   }
