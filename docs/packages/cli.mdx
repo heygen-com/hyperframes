@@ -1259,7 +1259,7 @@ cover every finding from the full check.
 
 A video Chrome cannot decode (HEVC, ProRes) is copied once, and the first check waits
 for it for up to 2 minutes; past that, check stops with a `media_copies_unfinished` finding that names
-each unfinished file and its progress. Run `--prepare-media` (no time limit) to finish them. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
+each unfinished file and its progress. Run `--prepare-media` (no time limit) to finish them. When every use of a long video in the composition has a known `data-duration` (on the video or the element that times it, no `loop`), check copies only that stretch from the start of the file, rounded up to whole 15-second pieces, instead of the whole file. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
 copy that is stopped continues from its finished pieces on the next run. While it works, the
 check prints each copy's progress to stderr every 10 seconds (stdout stays clean for `--json`),
 and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
