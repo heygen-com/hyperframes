@@ -262,18 +262,26 @@ export class VideoExtractionStageError extends Error {
 }
 
 export function assertVideoExtractionSucceeded(result: ExtractionResult): void {
-  throwIfEncoderInterrupted(result);
+  throwIfHostFailure(result);
   const error = buildVideoExtractionStageError(result);
   if (error) throw error;
 }
 
-function throwIfEncoderInterrupted(result: ExtractionResult): void {
+/** Failures of the machine, not of a source: an interrupted encoder, or a disk that filled up. */
+function throwIfHostFailure(result: ExtractionResult): void {
   const interrupted = result.errors.find((failure) => failure.kind === "external_interruption");
-  if (!interrupted) return;
-  throw encoderFailureError("Video frame extraction failed", {
-    error: String(interrupted.error),
-    failureReason: "external_interruption",
-  });
+  if (interrupted) {
+    throw encoderFailureError("Video frame extraction failed", {
+      error: String(interrupted.error),
+      failureReason: "external_interruption",
+    });
+  }
+  const full = result.errors.filter((failure) => failure.kind === "disk_full").length;
+  if (full === 0) return;
+  throw Object.assign(
+    new Error(`ENOSPC: no space left on device, extracting the frames of ${full} video source(s)`),
+    { code: "ENOSPC" },
+  );
 }
 
 function buildVideoExtractionStageError(
@@ -561,7 +569,7 @@ export async function runExtractVideosStage(
     extractionResult.phaseBreakdown.transientRetries =
       (extractionResult.phaseBreakdown.transientRetries ?? 0) + hdrProbeTransientRetries;
     assertNotAborted();
-    throwIfEncoderInterrupted(extractionResult);
+    throwIfHostFailure(extractionResult);
     failureToEnforce = applyVideoExtractionFailurePolicy(extractionResult, extractionPolicy, log);
 
     materializeExtractedFramesForCompiledDir(extractionResult.extracted, compiledDir, {
