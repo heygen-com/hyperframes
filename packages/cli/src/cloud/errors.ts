@@ -75,18 +75,22 @@ export function reportApiError(
     const code = hintCode(err);
     const hint = code ? hints[code] : undefined;
     const title = `${stage} (HTTP ${err.status})`;
+    const message =
+      err.param && !err.message.includes(err.param)
+        ? `${err.message} (parameter: ${err.param})`
+        : err.message;
     // Priority: code-specific hint > caller suggestion > bare code
     // label > no third line. Code-specific hints win because they
     // address the specific failure mode; the caller suggestion is a
     // generic-context fallback.
     if (hint) {
-      errorBox(title, err.message, hint);
+      errorBox(title, message, hint);
     } else if (options.suggestion) {
-      errorBox(title, err.message, options.suggestion);
+      errorBox(title, message, options.suggestion);
     } else if (err.code) {
-      errorBox(title, err.message, `code: ${err.code}`);
+      errorBox(title, message, `code: ${err.code}`);
     } else {
-      errorBox(title, err.message);
+      errorBox(title, message);
     }
     failCommand();
   }

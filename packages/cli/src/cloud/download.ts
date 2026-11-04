@@ -13,7 +13,8 @@
  * existing destination is replaced only after the download succeeds.
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -73,7 +74,7 @@ export async function downloadToFile(
   const ranged = first.status === 206;
   const total = ranged ? contentRangeTotal(first) : contentLength(first);
 
-  mkdirSync(dirname(destPath), { recursive: true });
+  makeOutputFolder(dirname(destPath));
 
   // Writes through a caller-selected symlink, as before.
   const destination = resolveWritePath(destPath);

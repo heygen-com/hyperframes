@@ -581,6 +581,11 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
 // One-time guard for the symlink→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
+const copyCannotFix = (error: unknown): boolean =>
+  ["ENOSPC", "EDQUOT", "EEXIST", "ENOENT"].includes(
+    (error as NodeJS.ErrnoException | undefined)?.code ?? "",
+  );
+
 // Junctions avoid Windows symlink privileges. POSIX keeps its copy fallback.
 function tryWindowsFrameJunction(
   fileSystem: MaterializeFileSystem,
@@ -592,30 +597,20 @@ function tryWindowsFrameJunction(
     fileSystem.symlinkSync(src, dest, "junction");
     return true;
   } catch (error) {
-    const code =
-      error instanceof Error && "code" in error && typeof error.code === "string"
-        ? error.code
-        : undefined;
-    if (
-      ["EPERM", "EACCES", "UNKNOWN", "EINVAL", "ENOSYS", "EOPNOTSUPP", "ENOTSUP"].includes(
-        code ?? "",
-      )
-    ) {
-      return false;
-    }
-    throw error;
+    if (copyCannotFix(error)) throw error;
+    return false;
   }
 }
 
-// Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN), trying a Windows junction first.
-// Other symlink errors and non-capability junction errors propagate.
+// Create the symlink; a drive that refuses it, with any code, gets a Windows junction, then a copy.
+// A full disk, a missing source or an entry already at dest (stageExtractedFrameDir clears a stale one)
+// propagate: copying would not fix them.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
     fileSystem.symlinkSync(src, dest, "dir");
   } catch (err) {
+    if (copyCannotFix(err)) throw err;
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
     if (tryWindowsFrameJunction(fileSystem, src, dest)) return;
     // Copying is measurably slower than symlinking, so surface the degrade once
     // — it explains a render that suddenly got heavier and saves a support

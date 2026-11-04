@@ -126,6 +126,39 @@ describe.skipIf(process.platform === "win32")("extraction decode on the Mac's me
     );
   });
 
+  it("calls an extraction that filled the disk disk_full, not a source that cannot be decoded", async () => {
+    probe.hasVideoToolbox = false;
+    // ffmpeg 8's own words when its frames fill the disk (exit 228); the summary after them is all a tail shows.
+    const stderr = [
+      "[vost#0:0/mjpeg @ 0x1] Error submitting a packet to the muxer: No space left on device",
+      "[out#0/image2 @ 0x2] Error muxing a packet",
+      "[out#0/image2 @ 0x2] Task finished with error code: -28 (No space left on device)",
+      "[out#0/image2 @ 0x2] Terminating thread with return code -28 (No space left on device)",
+      "[out#0/image2 @ 0x2] video:40374KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB",
+      "frame=  307 fps=124 q=2.0 Lsize=N/A time=00:00:10.23 bitrate=N/A speed=4.14x",
+      "Conversion failed!",
+    ].join("\n");
+    const real = vi.mocked(runFfmpeg).getMockImplementation()!;
+    vi.mocked(runFfmpeg).mockImplementation(async (args, options) =>
+      args.includes("-vf")
+        ? { success: false, exitCode: 228, stderr, durationMs: 1, terminationReason: "exit" }
+        : real(args, options),
+    );
+    let errors: Awaited<ReturnType<typeof extractAllVideoFrames>>["errors"] = [];
+    try {
+      const video = { id: "full", src: clips.h264, start: 0, end: 1, mediaStart: 0 };
+      ({ errors } = await extractAllVideoFrames([{ ...video, loop: false, hasAudio: false }], dir, {
+        fps: 10,
+        outputDir: join(dir, "full"),
+      }));
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+    expect(errors.map(({ kind, retryable }) => ({ kind, retryable }))).toEqual([
+      { kind: "disk_full", retryable: false },
+    ]);
+  });
+
   it("decodes in software when the media engine refuses a picture", async () => {
     const real = vi.mocked(runFfmpeg).getMockImplementation()!;
     vi.mocked(runFfmpeg).mockImplementation(async (args, options) =>
@@ -144,6 +177,29 @@ describe.skipIf(process.platform === "win32")("extraction decode on the Mac's me
       const runs = vi.mocked(runFfmpeg).mock.calls.map(([callArgs]) => hwaccel(callArgs));
       expect(runs).toEqual(["videotoolbox", null]);
       expect(frames).toHaveLength(10);
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+  });
+
+  it("does not decode again in software when the media engine's pass filled the disk", async () => {
+    const real = vi.mocked(runFfmpeg).getMockImplementation()!;
+    vi.mocked(runFfmpeg).mockImplementation(async (args, options) =>
+      args.includes("-hwaccel")
+        ? {
+            success: false,
+            exitCode: 228,
+            stderr:
+              "[out#0/image2 @ 0x2] Task finished with error code: -28 (No space left on device)",
+            durationMs: 0,
+            terminationReason: "exit",
+          }
+        : real(args, options),
+    );
+    try {
+      await extractOn("darwin", clips.h264, "mac-vt-disk-full").catch(() => {});
+      const runs = vi.mocked(runFfmpeg).mock.calls.map(([callArgs]) => hwaccel(callArgs));
+      expect(runs).toEqual(["videotoolbox"]);
     } finally {
       vi.mocked(runFfmpeg).mockImplementation(real);
     }

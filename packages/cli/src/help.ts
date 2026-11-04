@@ -85,6 +85,7 @@ const GROUPS: Group[] = [
       ["doctor", "Check system dependencies and environment"],
       ["clean", "Find and remove what HyperFrames left on disk"],
       ["upgrade", "Check for updates and show upgrade instructions"],
+      ["update", "Check the CLI and the skills for updates in one call, and install them"],
     ],
   },
   {

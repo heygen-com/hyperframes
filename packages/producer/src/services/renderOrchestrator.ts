@@ -172,6 +172,7 @@ import {
   checkRenderEta,
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
+import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
 import {
@@ -1471,6 +1472,32 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
       const remainingCount = countFrameRanges(remaining);
       const madeProgress = captureAttemptMadeProgress(frameCount, remainingCount);
 
+      // A browser that times out starting up or loading its page before any frame exists had too many pages
+      // opening at once: retry with half the workers, down to one. Other zero-progress errors fail below.
+      // A lone worker gets one retry: here for Network.enable, as the transient retry below for a page load.
+      if (
+        options.allowRetry &&
+        !madeProgress &&
+        (currentWorkers > 1 ||
+          (initializationRetriesUsed === 0 && failure.kind === "protocol_timeout")) &&
+        /\bNetwork\.enable timed out|Navigation timeout of \d+ ms exceeded/i.test(failure.message)
+      ) {
+        initializationRetriesUsed++;
+        const nextWorkers = getNextRetryWorkerCount(currentWorkers);
+        options.log.warn(
+          "[Render] Browser initialization timed out; retrying with fewer workers.",
+          {
+            fromWorkers: currentWorkers,
+            toWorkers: nextWorkers,
+            error: failure.message,
+          },
+        );
+        currentWorkers = nextWorkers;
+        missingRanges = remaining;
+        attempt++;
+        continue;
+      }
+
       // Single bounded retry for a transient browser death (`Target closed` /
       // `Page crashed` / `Session closed`): the tab died mid-capture, not the
       // composition. Unlike the worker-halving retry below, this keeps the same
@@ -1496,32 +1523,6 @@ export async function executeDiskCaptureWithAdaptiveRetry(options: {
         missingRanges = remaining;
         attempt++;
         pendingTransientRetry = true;
-        continue;
-      }
-
-      // CDP initialization can time out before any frame exists. Give that
-      // specific startup failure one fresh attempt with less concurrency;
-      // arbitrary zero-progress authoring/capture errors still fail below.
-      if (
-        options.allowRetry &&
-        !madeProgress &&
-        initializationRetriesUsed === 0 &&
-        failure.kind === "protocol_timeout" &&
-        /\bNetwork\.enable timed out/i.test(failure.message)
-      ) {
-        initializationRetriesUsed++;
-        const nextWorkers = getNextRetryWorkerCount(currentWorkers);
-        options.log.warn(
-          "[Render] Browser initialization timed out; retrying once with fresh sessions.",
-          {
-            fromWorkers: currentWorkers,
-            toWorkers: nextWorkers,
-            error: failure.message,
-          },
-        );
-        currentWorkers = nextWorkers;
-        missingRanges = remaining;
-        attempt++;
         continue;
       }
 
@@ -3088,6 +3089,7 @@ async function executeRenderPipeline(input: {
   const onProgress = execution.onProgress;
   const tooSlow = new AbortController();
   let tooSlowError: RenderTooSlowError | undefined;
+  let calibrationEvaluateTimedOut = false;
   const executionSignal = job.config.maxRenderMs
     ? AbortSignal.any([tooSlow.signal, ...(execution.signal ? [execution.signal] : [])])
     : execution.signal;
@@ -4169,6 +4171,7 @@ async function executeRenderPipeline(input: {
         { heartbeatMessage: "browser calibrating (frames not started)" },
       );
       captureCalibration = outcome.calibration;
+      calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
       updateCaptureObservability({ forceScreenshot: captureForceScreenshot });
       probeSession = outcome.probeSession;
@@ -5677,7 +5680,12 @@ async function executeRenderPipeline(input: {
     await eventPublisher.flush();
   } catch (caught) {
     await pendingAudio;
-    const error = surfaceScriptFailure(tooSlowError ?? caught, job);
+    const pageNeverReady = checkPageNeverReady({
+      calibrationEvaluateTimedOut,
+      framesRendered: job.framesRendered ?? 0,
+      error: caught,
+    });
+    const error = surfaceScriptFailure(tooSlowError ?? pageNeverReady ?? caught, job);
     if (!tooSlowError && (error instanceof RenderCancelledError || executionSignal?.aborted)) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);

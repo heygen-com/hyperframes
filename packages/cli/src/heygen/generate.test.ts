@@ -1069,7 +1069,7 @@ describe("pickVoice", () => {
     );
     await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
       message: "HeyGen 401 listing its voices",
-      fix: "run the same command again",
+      fix: "npx hyperframes auth login",
     });
   });
 
