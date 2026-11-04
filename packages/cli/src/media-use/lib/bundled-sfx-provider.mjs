@@ -27,7 +27,7 @@ export const BUNDLED_SFX_RECOVERY_COMMAND = "npx hyperframes skills update media
 export class BundledSfxAssetsError extends Error {
   constructor(health) {
     super(
-      `bundled SFX assets are missing or incomplete (${health.detail}). Repair the installed media-use skill: ${health.fix}`,
+      `bundled SFX assets are missing or incomplete (${health.detail}). For the user: \`${health.fix}\` repairs the installed media-use skill.`,
     );
     this.name = "BundledSfxAssetsError";
     this.code = health.code;

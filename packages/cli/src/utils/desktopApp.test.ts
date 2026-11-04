@@ -361,7 +361,7 @@ describe("desktopInstalled", () => {
 });
 
 describe("desktopHint", () => {
-  const mac = { env: {}, platform: "darwin" as const };
+  const mac = { env: {}, platform: "darwin" as const, tty: true };
 
   it("points to the download while gated, and when the app is missing", () => {
     expect(desktopHint(process.cwd(), { ...mac, ready: false, installed: true })).toBe(MAC_HINT);
@@ -369,23 +369,31 @@ describe("desktopHint", () => {
   });
 
   it("offers the Linux and Windows builds there, and nothing where there is no build", () => {
-    expect(desktopHint(process.cwd(), { env: {}, platform: "linux", installed: false })).toBe(
+    expect(
+      desktopHint(process.cwd(), { env: {}, platform: "linux", installed: false, tty: true }),
+    ).toBe(
       `Keep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.studio/studio/download?os=linux&src=cli`,
     );
     const windowsHint = `Keep editing by chatting with Framey in the HyperFrames desktop app → https://hyperframes.studio/studio/download?os=windows&src=cli`;
-    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", installed: false })).toBe(
-      windowsHint,
-    );
-    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", ready: true })).toBe(
+    expect(
+      desktopHint(process.cwd(), { env: {}, platform: "win32", installed: false, tty: true }),
+    ).toBe(windowsHint);
+    expect(desktopHint(process.cwd(), { env: {}, platform: "win32", ready: true, tty: true })).toBe(
       windowsHint,
     );
     expect(
-      desktopHint(process.cwd(), { env: {}, platform: "freebsd", installed: false }),
+      desktopHint(process.cwd(), { env: {}, platform: "freebsd", installed: false, tty: true }),
     ).toBeNull();
   });
 
   it("points an installed Windows app to `hyperframes open`", () => {
-    const windows = { env: {}, platform: "win32" as const, ready: true, installed: true };
+    const windows = {
+      env: {},
+      platform: "win32" as const,
+      ready: true,
+      installed: true,
+      tty: true,
+    };
     expect(desktopHint(process.cwd(), windows)).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );
@@ -405,5 +413,18 @@ describe("desktopHint", () => {
       installed: true,
     };
     expect(desktopHint(process.cwd(), inApp)).toBeNull();
+  });
+
+  it("says nothing to CI or a script reading the output, where nobody can open the app", () => {
+    const installedMac = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installedMac, env: { CI: "true" } })).toBeNull();
+    expect(desktopHint(process.cwd(), { ...installedMac, tty: false })).toBeNull();
+  });
+
+  it("still gives the line to a coding agent, which passes it on to the person", () => {
+    const agent = { ...mac, ready: true, installed: true, tty: false, env: { CLAUDECODE: "1" } };
+    expect(desktopHint(process.cwd(), agent)).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
+    );
   });
 });

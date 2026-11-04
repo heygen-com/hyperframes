@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 
 const trackCheckReport = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -498,6 +499,24 @@ describe("skip contrast in motion", () => {
   });
 });
 
+it("waits for the composition as long as snapshot and render do unless --timeout says otherwise", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+  await runCommand(command, { rawArgs: ["--json", "--timeout", "20s"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].timeout).toBe(DEFAULT_CONFIG.playerReadyTimeout);
+  expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
+});
+
 it("parses the caption-zone grammar and enables the frame gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -751,12 +770,12 @@ it("fails the check on an audio error and reports it in its own section", async 
   expect(report.ok).toBe(false);
 });
 
-it("still checks audio when lint errors skip the browser pass", async () => {
+it("still checks audio when a lint error skips the browser pass", async () => {
   const { report, browser } = await runScenario(
     fakeDriver(),
     {},
     {
-      lint: lintWith("error", "missing_timeline_registry", "No timeline"),
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
       inspectAudio: vi.fn(async () => [
         {
           code: "audio_none",
@@ -1549,7 +1568,7 @@ describe("check pipeline", () => {
     });
   });
 
-  it("short-circuits on lint errors without launching a browser, and flags the skipped sections", async () => {
+  it("short-circuits on a lint error that leaves nothing to load, and flags the skipped sections", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1569,7 +1588,27 @@ describe("check pipeline", () => {
     expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
-  it("says in plain words that a lint error is why the browser pass was skipped", async () => {
+  it("runs the browser checks past a lint error that still loads, and fails on the lint error", async () => {
+    const failingContrast = vi.fn(async (time: number) => ({
+      entries: time === 0.5 ? [contrastEntry()] : [],
+      pngBase64: PNG_BASE64,
+    }));
+    const lint = lintWith("error", "missing_timeline_registry", "No timeline registered.");
+    const { report, browser } = await runScenario(
+      fakeDriver({ collectContrast: failingContrast }),
+      {},
+      { lint },
+    );
+
+    expect(browser).toHaveBeenCalled();
+    expect(report.browserSkipped).toBe(false);
+    expect(report.lint.errorCount).toBe(1);
+    expect(report.contrast.errorCount).toBeGreaterThan(0);
+    expect(report.ok).toBe(false);
+    expect(checkExitCode(report)).toBe(1);
+  });
+
+  it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1587,7 +1626,7 @@ describe("check pipeline", () => {
     await runViaCli(command, { rawArgs: [] });
 
     const said = log.mock.calls.map((call) => String(call[0])).join("\n");
-    expect(said).toContain("Browser validation skipped because of the lint error above");
+    expect(said).toContain("the lint error above leaves no composition to load");
     expect(said).not.toContain("Browser session never ran");
   });
 
@@ -1654,7 +1693,10 @@ describe("check pipeline", () => {
 
   it.each([
     { lint: cleanLint(), handed: true },
-    { lint: lintWith("error", "lint_error", "Lint error."), handed: false },
+    {
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
+      handed: false,
+    },
   ])(
     "closes the browser started during lint unless the browser pass took it",
     async ({ lint, handed }) => {

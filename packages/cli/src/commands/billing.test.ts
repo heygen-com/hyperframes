@@ -1,5 +1,5 @@
 import { runCommand } from "citty";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { consumeCommandResult } from "../utils/commandResult.js";
 
 const opened = vi.hoisted(() => [] as string[]);
@@ -22,6 +22,10 @@ vi.mock("node:readline/promises", () => ({
 vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
 }));
+vi.mock("../cloud/auth.js", () => ({
+  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudBaseUrl: () => "https://api.example.test",
+}));
 vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
@@ -40,7 +44,15 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
 
 const { default: billing } = await import("./billing.js");
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    async () => new Response(JSON.stringify({ data: { space_info: { space_id: "sp-1" } } })),
+  );
+});
+
 afterEach(() => {
+  vi.unstubAllGlobals();
   opened.length = 0;
   plan.calls = 0;
   terminal.attended = false;
@@ -62,28 +74,35 @@ describe("billing subscribe", () => {
     const url = new URL(opened[0] ?? "");
     expect(url.searchParams.get("feature")).toBe("reverse");
     expect(url.searchParams.get("rs")).toBe("rvs_abc");
+    expect(url.searchParams.get("workspace_hint")).toBe("sp-1");
   });
 });
 
 describe("billing add-credits", () => {
-  it.each(["add-credits", "top-up"])(
-    "opens the credits page for `%s`, with no notice",
-    async (name) => {
-      vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://plans.test/p");
-      vi.stubEnv("HYPERFRAMES_CREDITS_URL", "https://credits.test/c");
-      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      vi.useFakeTimers();
-      const done = runCommand(billing, { rawArgs: [name] });
-      await vi.advanceTimersByTimeAsync(2000);
-      await done;
-      vi.useRealTimers();
-      vi.unstubAllEnvs();
-      expect(new URL(opened[0] ?? "").origin).toBe("https://credits.test");
-      expect(error).not.toHaveBeenCalled();
-      expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
-    },
-  );
+  it("opens the credits page", async () => {
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://plans.test/p");
+    vi.stubEnv("HYPERFRAMES_CREDITS_URL", "https://credits.test/c");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["add-credits"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+    expect(new URL(opened[0] ?? "").origin).toBe("https://credits.test");
+    expect(error).not.toHaveBeenCalled();
+    expect(log.mock.calls.flat().join("\n")).not.toMatch(/deprecat|renamed|top-up/i);
+  });
+
+  it("refuses the old name `top-up` like any unknown action, naming the valid ones", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(runCommand(billing, { rawArgs: ["top-up"] })).rejects.toThrow();
+    expect(error.mock.calls.flat().join("\n")).toContain(
+      "Use `billing subscribe` or `billing add-credits`.",
+    );
+    expect(opened).toEqual([]);
+  });
 });
 
 describe("billing without a terminal", () => {

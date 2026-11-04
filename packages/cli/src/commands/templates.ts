@@ -1,9 +1,13 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   renameSync,
@@ -12,11 +16,14 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { makeOutputFolder } from "../utils/outputFolder.js";
+import { processIsAlive } from "../utils/processTree.js";
+import { basename, dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
+import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
 export interface TemplatePack {
@@ -30,43 +37,44 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "animated-science-explainer": {
     id: "M9003",
-    sha256: "4ead405395892545c658a03b48630529943f5598cc15770930c0ffa6b8de58e9",
-    bytes: 25559788,
+    sha256: "42fc622292e323c5d620480428a4f3162b6a8844c0330abf29a367fa214bbe6a",
+    bytes: 25535207,
   },
   "finance-explainer": {
     id: "M9002",
-    sha256: "b10efcfad35097ddac8118062701eeb3ef4012f3c9b41704e474964d09d37d11",
-    bytes: 140688140,
+    sha256: "52be65859022d8c6b1ed2e3701d875d95b6dce87a8e5bf16e4f2581a56cf746e",
+    bytes: 140483725,
   },
   "3d-true-crime": {
     id: "M9005",
-    sha256: "53d1f51eb5b78e3cb60a23625d160952236d5f5fb8d41118798d782a6168eec1",
-    bytes: 5977486,
+    sha256: "62959b0b978fb97727f06346b9ea5aaf3d8dcf6992f574cbe525bbe893cff287",
+    bytes: 6544603,
   },
   "collage-explainer": {
     id: "M9001",
-    sha256: "395362e3c629706143724e99d72dacb4997d35b978ecc4173901cdef6e70205c",
-    bytes: 36711101,
+    sha256: "a25529d8ee1dfb09187a6ccc0978d7127a4306992287e68c06f358914d9f1496",
+    bytes: 36702236,
   },
   "3d-brand-explainer": {
     id: "M9004",
-    sha256: "4e5c5eb574f977d3f97a170a5a0d8d442234d34dd51f925dc4a2b93e32826ae8",
-    bytes: 20181051,
+    sha256: "24d1f3e4bc1d5e6d843e12fc094223f8df6f27f798094940f23c33076ac434a6",
+    bytes: 20126746,
   },
 };
 
 /** A pull that stopped, with the one line the agent relays. Nothing was written. */
 export class PullRefused extends Error {}
 
-const LINK_TIMEOUT_MS = 30_000;
+const LINK_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 20 * 60_000;
 
 async function bundleUrl(pack: TemplatePack, retries = 1): Promise<string> {
-  const headers = await resolveCloudAuthHeaders().catch(() => {
+  const headers = await resolveCloudAuthHeaders().catch((error: unknown) => {
+    if (error instanceof NetworkFailure) throw error;
     throw new PullRefused("Not signed in. Run `npx hyperframes auth login`.");
   });
   const route = `${billingBaseUrl()}/v1/hyperframes/moments/${pack.id}/bundle?sha256=${pack.sha256}`;
-  const res = await fetch(route, {
+  const res = await fetchExplained(route, {
     headers: { ...headers, accept: "application/json" },
     signal: AbortSignal.timeout(LINK_TIMEOUT_MS),
   });
@@ -84,7 +92,7 @@ async function bundleUrl(pack: TemplatePack, retries = 1): Promise<string> {
 }
 
 async function download(url: string, pack: TemplatePack): Promise<Buffer> {
-  const res = await fetch(url, {
+  const res = await fetchExplained(url, {
     signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
   });
   if (!res.ok) throw new PullRefused(`The download failed (${res.status}). Run it again.`);
@@ -108,19 +116,93 @@ function assertSafeEntries(data: Buffer): void {
 
 const PULLED_HASH = ".template-sha256";
 
-/** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-function unpack(data: Buffer, dest: string, pack: TemplatePack): void {
-  mkdirSync(dirname(dest), { recursive: true });
-  const work = mkdtempSync(`${dest}.part-`);
+const extract = (data: Buffer, out: string) =>
+  new Promise<void>((done, fail) => {
+    const tar = execFile("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], (error) =>
+      error ? fail(error) : done(),
+    );
+    tar.stdin?.end(data);
+  });
+const STOP_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
+function removeOnStop(work: string): () => void {
+  const handlers = STOP_SIGNALS.map((signal) => {
+    const handler = (): void => {
+      rmSync(work, { recursive: true, force: true });
+      stopWatching();
+      process.kill(process.pid, signal);
+    };
+    process.once(signal, handler);
+    return [signal, handler] as const;
+  });
+  const stopWatching = (): void => {
+    for (const [signal, handler] of handlers) process.off(signal, handler);
+  };
+  return stopWatching;
+}
+
+const partPrefix = (dest: string) => `${basename(dest)}.part-`;
+const PULL_MARKER = ".hyperframes-pull.json";
+const PULL_OWNER = "hyperframes templates pull";
+
+function pidInPartName(name: string, dest: string): number | null {
+  if (!name.startsWith(partPrefix(dest))) return null;
+  const match = /^(\d+)-[A-Za-z0-9]{6}$/.exec(name.slice(partPrefix(dest).length));
+  return match ? Number(match[1]) : null;
+}
+
+function readPullMarker(path: string): unknown {
+  let fd: number | undefined;
   try {
+    fd = openSync(join(path, PULL_MARKER), constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    return fstatSync(fd).isFile() ? JSON.parse(readFileSync(fd, "utf8")) : null;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+const hasMarkerFields = (value: unknown): value is { owner: unknown; pid: unknown } =>
+  typeof value === "object" && value !== null && "owner" in value && "pid" in value;
+
+const markedBy = (marker: unknown, pid: number): boolean =>
+  hasMarkerFields(marker) && marker.owner === PULL_OWNER && marker.pid === pid;
+
+/** The pid of the pull that made `path`, read from the marker it wrote; null for anything this CLI did not make. */
+function pullOwner(path: string, name: string, dest: string): number | null {
+  const pid = pidInPartName(name, dest);
+  return pid !== null && markedBy(readPullMarker(path), pid) ? pid : null;
+}
+
+function removeAbandonedParts(dest: string): void {
+  const parent = dirname(dest);
+  if (!existsSync(parent)) return;
+  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = join(parent, entry.name);
+    const pid = pullOwner(path, entry.name, dest);
+    if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
+  }
+}
+
+/** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
+async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
+  makeOutputFolder(dirname(dest));
+  removeAbandonedParts(dest);
+  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  const stopWatching = removeOnStop(work);
+  try {
+    writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
     const out = join(work, "template");
     assertSafeEntries(data);
     mkdirSync(out);
-    execFileSync("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], { input: data });
+    await extract(data, out);
     writeFileSync(join(out, PULLED_HASH), pack.sha256);
     removeEmptyPlaceholder(dest);
     renameSync(out, dest);
   } finally {
+    stopWatching();
     rmSync(work, { recursive: true, force: true });
   }
 }
@@ -134,7 +216,7 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  await unpack(await download(await bundleUrl(pack), pack), dest, pack);
   return dest;
 }
 
@@ -184,8 +266,9 @@ export default defineCommand({
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
-      if (!(error instanceof PullRefused)) throw error;
+      if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
       console.error(c.error(error.message));
+      if (error instanceof NetworkFailure) console.error(c.dim(error.hint));
       failCommand();
     }
   },

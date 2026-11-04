@@ -532,6 +532,12 @@ Or keep the element `visibility: hidden` until its draw tween starts.
 
 Source: `packages/lint/src/rules/media.ts`.
 
+### `audio_attribute_unreadable`
+
+**Error.** A `data-automation` or `data-fx-chain` is not one the render can parse: not JSON, no `"version": 1`, no `lanes` / `nodes` array, a lane without `target` or `points`, or a node without `type`. The audio mix fails on it, locally and in the cloud.
+
+**Fix:** Write it as `{"version": 1, "lanes": [...]}` (automation) or `{"version": 1, "nodes": [...]}` (effect chain), or remove the attribute.
+
 ### `audio_carve_ungrouped_sources`
 
 **Warning.** A voiceover carve names its member clips directly instead of carving an `<hf-audio-group>`, so the list silently rots when clips change.
@@ -771,7 +777,13 @@ Source: `packages/lint/src/rules/fonts.ts`.
 
 **Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
 
-The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional.
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional. Families named in a `font` shorthand (`font: 500 16px/1 "PingFang SC", sans-serif`) count the same as `font-family`.
+
+### `font_face_local_only`
+
+**Warning.** An `@font-face` names only `local()` sources. A local render draws the font installed on this machine; a cloud render, or another machine without it, falls back to a different font.
+
+**Fix:** Add a `url()` source pointing at a `.woff2` file inside the project, or use a Google Fonts family.
 
 ### `system_font_will_alias`
 

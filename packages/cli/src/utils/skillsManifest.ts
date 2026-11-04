@@ -392,6 +392,14 @@ function locateInstall(
   return null;
 }
 
+function globalInstallRoot(home = homedir()): SkillRoot {
+  return {
+    dir: join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(home, ".claude"), "skills"),
+    agent: "claude-code",
+    scope: "global",
+  };
+}
+
 /**
  * Names from `skillNames` that are present (their SKILL.md exists) in the
  * located install. Local-only — no manifest fetch — so callers can verify the
@@ -399,9 +407,11 @@ function locateInstall(
  */
 export function presentSkills(
   skillNames: readonly string[],
-  opts: { dir?: string; cwd?: string; home?: string } = {},
+  opts: { dir?: string; cwd?: string; home?: string; installTarget?: boolean } = {},
 ): string[] {
-  const root = locateInstall([...skillNames], opts);
+  const root = opts.installTarget
+    ? globalInstallRoot(opts.home)
+    : locateInstall([...skillNames], opts);
   if (!root) return [];
   return skillNames.filter((name) => existsSync(join(root.dir, name, "SKILL.md")));
 }
@@ -547,6 +557,17 @@ export function hyperframesSkillNames(opts: {
 }): string[] {
   const lockPath = lockPathForScope(opts.scope, { cwd: opts.cwd, home: opts.home });
   return skillsAttributedToSource(readSkillLock(lockPath), DEFAULT_REPO_SLUG);
+}
+
+export function foreignSkillNames(opts: {
+  scope: "project" | "global";
+  cwd?: string;
+  home?: string;
+}): string[] {
+  const lock = readSkillLock(lockPathForScope(opts.scope, opts));
+  return Object.entries(lock?.skills ?? {})
+    .filter(([, entry]) => isFromOtherSource(entry, DEFAULT_REPO_SLUG))
+    .map(([name]) => name);
 }
 
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
@@ -757,6 +778,8 @@ export async function checkSkills(
     canonical?: boolean;
     /** Read the remote manifest at this CLI version's release tag (see fetchRemoteManifest). */
     cliVersion?: string;
+    /** Check the global store written by the installer, even before it exists. */
+    installTarget?: boolean;
   } = {},
 ): Promise<SkillsCheckResult> {
   const { manifest: latest, ref } = await resolveLatestManifest(opts.source, opts.cwd, {
@@ -764,14 +787,14 @@ export async function checkSkills(
     cliVersion: opts.cliVersion,
   });
   const skillNames = Object.keys(latest.skills);
-  const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
+  const root = opts.installTarget ? globalInstallRoot(opts.home) : locateInstall(skillNames, opts);
   // A directory sharing a name with one of ours can belong to another publisher.
   // The lock says so; such a skill is never compared, refreshed or overwritten.
   const lock = root ? readSkillLock(lockPathForScope(root.scope, opts)) : null;
   const foreign = root
     ? skillNames.filter(
         (name) =>
-          existsSync(join(root.dir, name, "SKILL.md")) &&
+          (opts.installTarget || existsSync(join(root.dir, name, "SKILL.md"))) &&
           isFromOtherSource(lock?.skills?.[name], latest.source),
       )
     : [];

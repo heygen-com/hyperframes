@@ -1,5 +1,6 @@
 import { failCommand } from "../utils/commandResult.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, join, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
@@ -319,7 +320,7 @@ function summarizeManifest(manifest: BatchManifest): void {
 
 function writeManifest(manifest: BatchManifest): void {
   summarizeManifest(manifest);
-  mkdirSync(dirname(manifest.manifestPath), { recursive: true });
+  makeOutputFolder(dirname(manifest.manifestPath));
   writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 }
 
@@ -341,7 +342,7 @@ async function renderBatchRow(
   }
 
   try {
-    mkdirSync(dirname(row.outputPath), { recursive: true });
+    makeOutputFolder(dirname(row.outputPath));
     const result = await options.renderOne(row);
     manifestRow.status = "completed";
     manifestRow.durationMs = result.durationMs ?? null;

@@ -194,6 +194,15 @@ npx hyperframes upgrade
 npx hyperframes upgrade --check --json  # machine-readable for agents
 ```
 
+### `update`
+
+Check the CLI and the installed skills for updates in one call, or install both:
+
+```bash
+npx hyperframes update --check --json  # report only, machine-readable for agents
+npx hyperframes update --yes           # upgrade the CLI, then refresh the skills
+```
+
 ## Documentation
 
 Full documentation: [hyperframes.heygen.com/packages/cli](https://hyperframes.heygen.com/packages/cli)

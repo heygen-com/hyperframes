@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
@@ -28,7 +29,7 @@ import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import type { ProjectDir } from "./project.js";
-import { lintProject, shouldBlockRender, type ProjectLintResult } from "./lintProject.js";
+import { lintProject, type ProjectLintResult } from "./lintProject.js";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
@@ -120,7 +121,7 @@ export const DEFAULT_CHECK_OPTIONS: CheckOptions = {
   maxIssues: 80,
   collapseStatic: true,
   tolerance: 2,
-  timeout: 10_000,
+  timeout: DEFAULT_CONFIG.playerReadyTimeout,
   contrast: true,
   strict: false,
   snapshots: false,
@@ -1658,6 +1659,12 @@ export async function runAuditGrid(
   };
 }
 
+export const leavesNothingToLoad = (finding: { code: string; severity: string }): boolean =>
+  finding.severity === "error" && finding.code === "root_missing_composition_id";
+
+const compositionCannotLoad = (lintResult: ProjectLintResult): boolean =>
+  lintResult.results[0]?.result.findings.some(leavesNothingToLoad) ?? false;
+
 export async function runCheckPipeline(
   project: ProjectDir,
   options: CheckOptions,
@@ -1684,7 +1691,7 @@ export async function runCheckPipeline(
 
     const lint = buildLintSection(lintResult);
     const { hdr, audio } = await inspectProjectMedia(project, dependencies);
-    if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
+    if (compositionCannotLoad(lintResult)) {
       return buildReport(
         options,
         lint,

@@ -1011,8 +1011,8 @@
   "footer": {
     "socials": {
       "github": "https://github.com/heygen-com/hyperframes",
-      "x": "https://x.com/HeyGen",
-      "instagram": "https://www.instagram.com/heygen_official/"
+      "discord": "https://discord.gg/7uMDe3PwQn",
+      "x": "https://x.com/HyperFrames_"
     },
     "links": [
       {
@@ -1057,12 +1057,21 @@
             "href": "/product-updates"
           },
           {
-            "label": "Download the Studio app",
+            "label": "Download the app",
             "href": "https://hyperframes.studio/studio/download?src=docs-footer"
           },
           {
             "label": "GitHub",
             "href": "https://github.com/heygen-com/hyperframes"
+          }
+        ]
+      },
+      {
+        "header": "Made by HeyGen",
+        "items": [
+          {
+            "label": "heygen.com",
+            "href": "https://www.heygen.com"
           }
         ]
       }
@@ -1073,6 +1082,10 @@
       {
         "type": "github",
         "href": "https://github.com/heygen-com/hyperframes"
+      },
+      {
+        "type": "discord",
+        "href": "https://discord.gg/7uMDe3PwQn"
       }
     ],
     "primary": {

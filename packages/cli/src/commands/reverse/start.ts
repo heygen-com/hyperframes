@@ -30,22 +30,22 @@ export function subscribeCommand(sessionId?: string): string {
   return `npx hyperframes billing subscribe --feature reverse${sessionId ? ` --session ${sessionId}` : ""}`;
 }
 
-function freeFields(session: ReverseSession) {
-  const link = reverseUpgradeUrl(session);
+async function freeFields(session: ReverseSession) {
+  const link = await reverseUpgradeUrl(session);
   return {
     upgrade_url: link,
     subscribe_command: link === null ? null : subscribeCommand(session.sessionId),
   };
 }
 
-function summary(started: ReverseStart, savedTo: string | undefined) {
+async function summary(started: ReverseStart, savedTo: string | undefined) {
   if (!started.recorded) {
     return {
       signed_in: started.reason !== "not_signed_in",
       plan: started.plan ?? null,
       recorded: false,
       ...(started.plan === "free"
-        ? { upgrade_url: reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
+        ? { upgrade_url: await reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
         : {}),
     };
   }
@@ -57,13 +57,13 @@ function summary(started: ReverseStart, savedTo: string | undefined) {
     session_id: session.sessionId,
     gate: session.gate,
     saved_to: savedTo ?? null,
-    ...(session.plan === "free" ? freeFields(session) : {}),
+    ...(session.plan === "free" ? await freeFields(session) : {}),
   };
 }
 
-function refusalWhenServerBlocksFree(session: ReverseSession): Fix | undefined {
+async function refusalWhenServerBlocksFree(session: ReverseSession): Promise<Fix | undefined> {
   if (session.gate !== "block" || session.plan !== "free") return undefined;
-  if (reverseUpgradeUrl(session) === null) {
+  if ((await reverseUpgradeUrl(session)) === null) {
     return new Fix(
       "Reverse is part of HyperFrames Pro, and a plan can't be purchased right now.",
       "Run reverse start again once this account is on Pro.",
@@ -103,9 +103,11 @@ export default defineCommand({
       const savedTo = save
         ? recordProjectReverseSession(projectDir, started.session.sessionId, SKILL)
         : undefined;
-      const refused = started.recorded ? refusalWhenServerBlocksFree(started.session) : undefined;
+      const refused = started.recorded
+        ? await refusalWhenServerBlocksFree(started.session)
+        : undefined;
       if (refused) throw refused;
-      return { reverse: summary(started, savedTo), ...probe };
+      return { reverse: await summary(started, savedTo), ...probe };
     });
   },
 });

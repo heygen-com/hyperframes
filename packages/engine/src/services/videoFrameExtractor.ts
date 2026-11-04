@@ -412,6 +412,7 @@ export type VideoExtractionFailureKind =
   | "ffmpeg_timeout"
   | "ffmpeg_transient"
   | "ffmpeg_failed"
+  | "disk_full"
   | "zero_output"
   | "internal";
 
@@ -556,6 +557,9 @@ function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
     .join(" | ")
     .slice(-FFMPEG_REASON_CHARS);
 }
+
+// ffmpeg ends a full disk with its last frames' summary, so the strerror text is the only sign of it
+const DISK_FULL = /no space left on device|disk quota exceeded/i;
 
 export function isVideoSourceExtractionError(error: unknown): error is VideoSourceExtractionError {
   return (
@@ -1439,7 +1443,8 @@ async function extractVideoFramesRangeUnredacted(
     !processResult.success &&
     !processResult.failureReason;
   const videoToolboxWasOptional = decodeWithVideoToolbox && !keepsHdrForChrome;
-  if (ffmpegExitedFailing && videoToolboxWasOptional) processResult = await extract([]);
+  if (ffmpegExitedFailing && videoToolboxWasOptional && !DISK_FULL.test(processResult.stderr))
+    processResult = await extract([]);
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
@@ -1477,6 +1482,15 @@ async function extractVideoFramesRangeUnredacted(
         "ffmpeg_timeout",
         true,
         "Video frame extraction timed out",
+        diagnostic,
+        ffmpegReason,
+      );
+    }
+    if (DISK_FULL.test(processResult.stderr)) {
+      throw new VideoSourceExtractionError(
+        "disk_full",
+        false,
+        "The disk filled up while video frames were extracted",
         diagnostic,
         ffmpegReason,
       );

@@ -29,7 +29,7 @@ export function pluginVersion(pluginRoot = root) {
     return manifest.version;
   }
   throw new Error(
-    "No HyperFrames plugin manifest found. Use the standalone skills installation instructions.",
+    "No HyperFrames plugin manifest found. This is a standalone skill install; run `npx hyperframes` directly.",
   );
 }
 
@@ -45,7 +45,7 @@ export function invocation(
 ) {
   if (args[0] === "skills")
     throw new Error(
-      "Update HyperFrames through your agent's plugin manager; bundled skills are release-managed.",
+      "Bundled skills are release-managed; the person updates HyperFrames through their agent's plugin manager.",
     );
   const childEnv = {
     ...env,
