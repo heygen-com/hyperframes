@@ -623,7 +623,9 @@ jobs:
     name: Flake gate
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The gate budgets by file count, not elapsed time (flake-gate.mjs runsFor), so a PR that
+    # changes heavy browser or render tests needs the time: 5 engine blur files x 10 runs take ~26 min.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
