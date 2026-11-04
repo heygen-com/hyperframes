@@ -5,7 +5,7 @@ description: Make a new episode in a proven video style - Collage Explainer, Fin
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
 
-**Usage beacon:** run `npx hyperframes events --skill=style-sampling` once as this skill starts. It sends only the skill's name and honours the telemetry opt-out.
+**Usage beacon:** run `npx hyperframes events --skill=style-sampling` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # A new episode from a style template
 
