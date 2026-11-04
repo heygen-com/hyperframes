@@ -4,7 +4,7 @@ import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, renameSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { rewritePinnedHyperframesText, rewriteProjectPinnedScripts } from "../utils/projectPin.js";
@@ -22,7 +22,11 @@ import {
   isSafeVersion,
   type UpdateCheckResult,
 } from "../utils/updateCheck.js";
-import { detectInstaller, installInvocation } from "../utils/installerDetection.js";
+import {
+  detectInstaller,
+  installInvocation,
+  type InstallInvocation,
+} from "../utils/installerDetection.js";
 
 export default defineCommand({
   meta: { name: "upgrade", description: "Check for updates and show upgrade instructions" },
@@ -124,24 +128,93 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
     return;
   }
 
-  const installer = detectInstaller();
-  const invocation = installInvocation(installer.kind, result.latest);
-  const displayCmd = installer.installCommand(result.latest);
-  const npxFallback = `npx hyperframes@${result.latest}`;
-
-  // Undetectable / ephemeral (npx, bunx) / project-local / workspace: don't
-  // guess a manager command; point at the universal npx fallback instead.
-  if (!invocation || !displayCmd) {
-    printNpxFallback(installer.reason, npxFallback, autoYes);
+  const plan = upgradePlan(result.latest);
+  if ("manual" in plan) {
+    printNpxFallback(plan.reason, plan.manual, autoYes);
     return;
   }
 
   if (!autoYes) {
-    printManualCommands(displayCmd, npxFallback);
+    printManualCommands(plan.displayCmd, `npx hyperframes@${result.latest}`);
     return;
   }
 
-  runDetectedInstall(invocation, displayCmd, result.latest);
+  runDetectedInstall(plan.invocation, plan.displayCmd, result.latest);
+}
+
+const NPX_LATEST = "npx hyperframes@latest";
+
+/**
+ * How `upgrade --yes` moves this install to `latest`: the detected manager's argv, or, for an
+ * install no manager owns (npx/bunx, project-local, workspace, unknown), the npx line to run
+ * instead of a guessed manager command.
+ */
+function upgradePlan(
+  latest: string,
+):
+  | { invocation: InstallInvocation; displayCmd: string; pinsVersion: boolean }
+  | { manual: string; reason: string } {
+  const installer = detectInstaller();
+  const invocation = installInvocation(installer.kind, latest);
+  const displayCmd = installer.installCommand(latest);
+  if (!invocation || !displayCmd) return { manual: NPX_LATEST, reason: installer.reason };
+  return { invocation, displayCmd, pinsVersion: installer.kind !== "brew" };
+}
+
+export type CliUpgradeOutcome =
+  | { status: "upgraded"; version: string; command: string }
+  | { status: "unchanged"; version: string; command: string; reason: string }
+  | { status: "unverified"; command: string; reason: string }
+  | { status: "manual"; command: string; reason: string }
+  | { status: "failed"; command: string };
+
+/** The version Homebrew's linked `hyperframes` reports, or null when it cannot be read. */
+function brewInstalledVersion(): string | null {
+  try {
+    const prefix = execFileSync("brew", ["--prefix", "hyperframes"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: false,
+    }).trim();
+    const version = execFileSync(join(prefix, "bin", "hyperframes"), ["--version"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      shell: false,
+      env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_TELEMETRY: "1" },
+    }).trim();
+    return isSafeVersion(version) ? version : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `upgrade --yes` without its prose, for `hyperframes update`: the same plan and argv, and the
+ * installer's output goes to stderr so a --json stdout stays one parseable object.
+ */
+export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
+  if (!isSafeVersion(latest)) return { status: "failed", command: NPX_LATEST };
+  const plan = upgradePlan(latest);
+  if ("manual" in plan) return { status: "manual", command: plan.manual, reason: plan.reason };
+  try {
+    execFileSync(plan.invocation.bin, plan.invocation.args, {
+      stdio: ["inherit", 2, 2],
+      shell: false,
+    });
+  } catch {
+    return { status: "failed", command: plan.displayCmd };
+  }
+  // `brew upgrade` installs whatever the formula pins, which can lag npm, and exits 0 on a no-op.
+  const installed = plan.pinsVersion ? latest : brewInstalledVersion();
+  const command = plan.displayCmd;
+  if (installed === null) {
+    return { status: "unverified", command, reason: "the installed version could not be read" };
+  }
+  if (installed === VERSION) {
+    const reason = `${command} left ${installed} in place; npm has ${latest}`;
+    return { status: "unchanged", version: installed, command, reason };
+  }
+  return { status: "upgraded", version: installed, command };
 }
 
 function printNpxFallback(reason: string, npxFallback: string, autoYes: boolean): void {

@@ -166,6 +166,7 @@ const commandLoaders = {
   doctor: () => import("./commands/doctor.js").then((m) => m.default),
   clean: () => import("./commands/clean.js").then((m) => m.default),
   upgrade: () => import("./commands/upgrade.js").then((m) => m.default),
+  update: () => import("./commands/update.js").then((m) => m.default),
   skills: () => import("./commands/skills.js").then((m) => m.default),
   feedback: () => import("./commands/feedback.js").then((m) => m.default),
   telemetry: () => import("./commands/telemetry.js").then((m) => m.default),
@@ -282,6 +283,7 @@ if (
 if (
   !isHelp &&
   command !== "upgrade" &&
+  command !== "update" &&
   command !== "events" &&
   command !== "telemetry" &&
   command !== "skills" &&

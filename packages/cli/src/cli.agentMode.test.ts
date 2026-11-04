@@ -370,7 +370,7 @@ describe("agent-mode contract", () => {
     expect(run.stderr).toContain("Did you mean --output?");
   });
 
-  it.each([["publish"], ["upgrade"]])(
+  it.each([["publish"], ["upgrade"], ["update"]])(
     "%s without --yes refuses to prompt, names --yes, and exits 2",
     async (name) => {
       const run = await runAsAgent([name]);

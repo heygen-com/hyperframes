@@ -32,7 +32,7 @@ npm install -g hyperframes
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
 | Make a file              | [`render`](#render), [`benchmark`](#benchmark)                                                                                                                                                                                   |
 | Render somewhere else    | [`cloud`](#hyperframes-cloud), [`lambda`](#hyperframes-lambda), [`cloudrun`](#hyperframes-cloudrun)                                                                                                                              |
-| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
+| Fix your setup           | [`doctor`](#doctor), [`browser`](#browser), [`update`](#update), [`upgrade`](#upgrade), [`docs`](#docs), [`info`](#info-and-compositions), [`compositions`](#info-and-compositions), [`clean`](#clean)                                                                   |
 | Connect other tools      | [`auth`](#hyperframes-auth), [`billing`](#billing), [`templates`](#templates), [`skills`](#skills), [`usage`](#usage), [`figma`](#figma-and-events), [`events`](#figma-and-events), [`telemetry`](#telemetry), [`feedback`](#feedback)                                                                            |
 
 `validate`, `inspect`, and `layout` still work but are
@@ -59,15 +59,36 @@ second call:
   "_meta": {
     "version": "0.1.4",
     "latestVersion": "0.1.5",
-    "updateAvailable": true
+    "updateAvailable": true,
+    "checkedAt": "2026-11-03T08:00:00.000Z",
+    "skillsOutdated": 2,
+    "skillsMissing": 0,
+    "updateNotice": "For the user: HyperFrames CLI 0.1.5 is available (this run is 0.1.4), and 2 installed HyperFrames skills are out of date. To update both, run: npx hyperframes update"
   }
 }
 ```
 
-The version numbers come from a cache refreshed at most once a day, in a
+The version numbers come from a cache refreshed at most every two hours, in a
 background process, and never under CI or `HYPERFRAMES_NO_UPDATE_CHECK=1`.
-`--json` never makes a network request of its own. Deprecated commands add
-`_meta.deprecated: true`.
+`checkedAt` says when npm answered. A cached latest older than the running CLI
+is left out and rechecked on the next run. `skillsOutdated` counts the installed
+HyperFrames skills that are behind this CLI's release, and `skillsMissing` the
+core skills that are not installed, from the same background check; both are
+absent until that check has run for this version, once it is more than a day old
+(as when `HYPERFRAMES_NO_UPDATE_CHECK=1` stops the checks), and under
+`HYPERFRAMES_SKIP_SKILLS=1`. `--json` never makes a network request of its own.
+Deprecated commands add `_meta.deprecated: true`.
+
+`updateNotice` is one sentence for the agent to pass on to the person when the
+CLI or the skills are behind: what is newer and the command that updates it.
+The person decides whether to run it. The command is `npx hyperframes update`
+(`npx hyperframes@latest update` from an `npx` run whose cache may hold the old
+CLI); a Homebrew install names `brew upgrade hyperframes`, or its own
+`hyperframes update` when the skills are behind too. The skills half is left
+out when no skill is behind or under `HYPERFRAMES_SKIP_SKILLS=1`. The notice
+appears at most once a day per project, while the numeric fields stay on every
+result. It is never added under CI, `HYPERFRAMES_NO_UPDATE_CHECK=1`, or an agent
+plugin (`HYPERFRAMES_PLUGIN_VERSION`), and `update`'s own output leaves it out.
 
 A failure under `--json` always prints one JSON object on stdout, with a
 machine-readable `code` and, when there is a next step, a `hint`:
@@ -127,7 +148,8 @@ notice; `HYPERFRAMES_NO_AUTO_INSTALL=1` turns off only the install.
 **Skills notice.** When installed HyperFrames skills are out of date or missing,
 a command ends with one line on stderr naming `npx hyperframes skills update`.
 It shows at most once a day per project. In an unattended run it shows only when
-a core skill is missing. `HYPERFRAMES_SKIP_SKILLS=1` turns it off. No notice
+a core skill is missing; outdated skills reach agents as `_meta.skillsOutdated`
+and `_meta.updateNotice` instead. `HYPERFRAMES_SKIP_SKILLS=1` turns it off. No notice
 follows a usage error.
 
 ## Create a project
@@ -1972,6 +1994,7 @@ npx hyperframes doctor --json
 hyperframes doctor
 
   ✓ Version          0.1.4 (latest)
+  ✓ CLI binary       npm global install · /usr/local/lib/node_modules/hyperframes/dist/cli.js
   ✓ Node.js          v22.x (linux x64)
   ✓ FFmpeg            7.x
   ✓ FFprobe           7.x
@@ -1982,7 +2005,9 @@ hyperframes doctor
   ◇  All checks passed
 ```
 
-It reports CLI version, Node.js, CPU, memory, disk, the extracted-frame cache,
+It reports CLI version, which binary is running and from where (a global npm,
+pnpm, bun or Homebrew install, a project's `node_modules`, `npx`, or an agent
+plugin) with its path, Node.js, CPU, memory, disk, the extracted-frame cache,
 the archive extractor, `/dev/shm` on Linux, environment, whisper-cpp, local TTS
 and BGM models, FFmpeg, FFprobe, Chrome, and Docker.
 
@@ -2032,6 +2057,52 @@ files, the browser download and models are never touched.
 duration, element counts by type, track count, and total size.
 `npx hyperframes compositions` lists every composition in the project with its
 ID, duration, resolution, and element count. Both take `--json`.
+
+### `update`
+
+```bash
+npx hyperframes update --check          # report the CLI and the skills, install nothing
+npx hyperframes update --check --json   # the same, for agents
+npx hyperframes update --yes            # update both without prompting
+```
+
+`update` asks npm for the latest CLI (past the two-hour cache) and checks the
+installed skills against the manifest at this CLI's release tag, in one call.
+`--check` only reports. Without it, `update` upgrades the CLI the way
+`upgrade --yes` does (an `npx` or project-local run gets
+`npx hyperframes@latest` to run instead) and then runs `skills update` at the
+release tag of the CLI that is now installed. Homebrew installs whatever its
+formula has, which can trail npm, so `update` reads the installed version back
+and reports `unchanged` when the formula has not moved. An unattended run without `--yes` or
+`--check` exits 2. Under an agent plugin it reports, but leaves updating to the
+plugin manager, and `HYPERFRAMES_SKIP_SKILLS=1` leaves the skills alone.
+`--check --json` returns:
+
+```json
+{
+  "cli": {
+    "current": "0.9.5",
+    "latest": "0.9.8",
+    "updateAvailable": true,
+    "checkedAt": "2026-11-03T08:00:00.000Z",
+    "install": { "channel": "npm", "path": "/usr/local/lib/node_modules/hyperframes/dist/cli.js" },
+    "command": "npm install -g hyperframes@0.9.8"
+  },
+  "skills": {
+    "status": "checked",
+    "ref": "v0.9.5",
+    "location": "/Users/me/.claude/skills",
+    "updateAvailable": true,
+    "outdated": 2,
+    "missing": 0,
+    "command": "npx hyperframes update"
+  },
+  "_meta": { "version": "0.9.5", "latestVersion": "0.9.8", "updateAvailable": true }
+}
+```
+
+`cli.checkedAt` is `null` when npm did not answer. `install.channel` is one of
+`npm`, `pnpm`, `bun`, `brew`, `npx`, `project`, `workspace`, `plugin` or `unknown`.
 
 ### `upgrade`
 

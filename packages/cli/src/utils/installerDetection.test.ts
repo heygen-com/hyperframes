@@ -156,3 +156,88 @@ describe("installInvocation", () => {
     expect(installInvocation("skip", "1.2.3")).toBeNull();
   });
 });
+
+describe("runningInstall: which binary runs, and the command that updates it", () => {
+  afterEach(() => {
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  async function runningAt(realPath: string) {
+    vi.resetModules();
+    vi.stubEnv("HYPERFRAMES_PLUGIN_VERSION", "");
+    vi.doMock("node:fs", async () => ({
+      ...(await vi.importActual<typeof import("node:fs")>("node:fs")),
+      realpathSync: () => realPath,
+    }));
+    const origArgv1 = process.argv[1];
+    process.argv[1] = "/usr/local/bin/hyperframes";
+    try {
+      const mod = await import("./installerDetection.js");
+      const install = mod.runningInstall();
+      return {
+        install,
+        command: mod.updateCommandFor(install, "0.9.8"),
+        label: mod.installChannelLabel(install.channel),
+        mod,
+      };
+    } finally {
+      process.argv[1] = origArgv1 ?? "";
+    }
+  }
+
+  it.each([
+    [
+      "npm",
+      "/usr/local/lib/node_modules/hyperframes/dist/cli.js",
+      "npm install -g hyperframes@0.9.8",
+    ],
+    [
+      "pnpm",
+      "/home/me/.local/share/pnpm/global/5/node_modules/hyperframes/dist/cli.js",
+      "pnpm add -g hyperframes@0.9.8",
+    ],
+    [
+      "bun",
+      "/home/me/.bun/install/global/node_modules/hyperframes/dist/cli.js",
+      "bun add -g hyperframes@0.9.8",
+    ],
+    [
+      "brew",
+      "/opt/homebrew/Cellar/hyperframes/0.9.5/libexec/lib/node_modules/hyperframes/dist/cli.js",
+      "brew upgrade hyperframes",
+    ],
+    [
+      "npx",
+      "/home/me/.npm/_npx/4f1c2a/node_modules/hyperframes/dist/cli.js",
+      "npx hyperframes@latest",
+    ],
+    [
+      "npx",
+      "/tmp/bunx-1000-hyperframes@latest/node_modules/hyperframes/dist/cli.js",
+      "npx hyperframes@latest",
+    ],
+    ["project", "/home/me/video/node_modules/hyperframes/dist/cli.js", "npx hyperframes@latest"],
+    [
+      "project",
+      "/home/me/video/node_modules/.pnpm/hyperframes@0.9.5/node_modules/hyperframes/dist/cli.js",
+      "npx hyperframes@latest",
+    ],
+    ["workspace", "/home/me/hyperframes/packages/cli/dist/cli.js", "npx hyperframes@latest"],
+    ["unknown", "/opt/tools/hyperframes/cli.js", "npx hyperframes@latest"],
+  ])("classifies a %s install at %s; update with: %s", async (channel, path, command) => {
+    const run = await runningAt(path);
+    expect(run.install).toEqual({ channel, path });
+    expect(run.command).toBe(command);
+    expect(run.label).toBeTruthy();
+  });
+
+  it("names a plugin install (plugin-cli.mjs marks its pinned npx child) and never an npx command for it", async () => {
+    const run = await runningAt("/home/me/.npm/_npx/4f1c2a/node_modules/hyperframes/dist/cli.js");
+    vi.stubEnv("HYPERFRAMES_PLUGIN_VERSION", "0.9.5");
+    const install = run.mod.runningInstall();
+    expect(install.channel).toBe("plugin");
+    expect(run.mod.updateCommandFor(install, "0.9.8")).toMatch(/plugin/);
+  });
+});
