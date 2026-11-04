@@ -81,8 +81,12 @@ async function probeVideo(file) {
       "v:0",
       "-show_entries",
       "stream=width,height:format=duration",
+      "-of",
+      "json",
+      "--",
+      file,
     ];
-    const { stdout } = await run$(ffBinary("ffprobe"), [...args, "-of", "json", file]);
+    const { stdout } = await run$(ffBinary("ffprobe"), args);
     return factsOf(stdout);
   } catch {
     return null;
