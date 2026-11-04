@@ -241,8 +241,8 @@ function withinLimit(
       `this call is about ${credits} credits and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
       fix,
     );
-  // Reserved before sending, so a call in flight counts against the limit for the calls beside it.
   log(limitLog, { key: sent, status: "reserved", credits });
+  return true;
 }
 
 /** Starts a job (or picks up the one this key already started) and polls its status until it ends. */
@@ -256,7 +256,7 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  withinLimit(opts.log, sent, opts.credits);
+  const reserved = withinLimit(opts.log, sent, opts.credits);
   let job: Job;
   try {
     job = await call(
@@ -268,8 +268,7 @@ export async function runJob(
     );
   } catch (err) {
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
-    // A refusal charged nothing, so its reservation is given back.
-    if (err instanceof Refused && opts.log)
+    if (reserved && err instanceof Refused && !KEEPS_KEY.has(err.status) && opts.log)
       log(opts.log, { key: sent, status: "refused", credits: 0 });
     throw err;
   }

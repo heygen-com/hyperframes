@@ -112,6 +112,29 @@ describe("runJob", () => {
       expect(calls).toHaveLength(0);
     });
 
+    it.each([429, 422])(
+      "keeps a lost job's reservation through a resume refused with %i",
+      async (status) => {
+        const log = project(100);
+        vi.stubGlobal("fetch", async () => {
+          throw new Error("socket hang up");
+        });
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        vi.stubGlobal("fetch", async () => reply(status, { error: { code: "no", message: "no" } }));
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        const calls = sent();
+        await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+        expect(calls).toHaveLength(0);
+      },
+    );
+
+    it("keeps the reservation of a fresh call refused with 429, which says nothing about the job", async () => {
+      const log = project(100);
+      vi.stubGlobal("fetch", async () => reply(429, { error: { code: "rate", message: "slow" } }));
+      await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+      await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+    });
+
     it("lets the same job resume, and gives back a refused call's credits", async () => {
       const log = project(100);
       const calls = sent();
