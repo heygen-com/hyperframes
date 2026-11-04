@@ -8,7 +8,13 @@ import { isDevMode } from "./env.js";
 import { asNotice } from "./jsonError.js";
 import { hostAnswers } from "./hostAnswers.js";
 import { claimDailyNotice } from "./dailyNotice.js";
-import { detectInstaller, runningInstall, updateCommandFor } from "./installerDetection.js";
+import {
+  detectInstaller,
+  runningInstall,
+  updateCommandFor,
+  type InstallChannel,
+  type RunningInstall,
+} from "./installerDetection.js";
 import { readPinnedHyperframesVersions } from "./projectPin.js";
 import { isSafeVersion } from "./safeVersion.js";
 
@@ -189,19 +195,40 @@ function skillsBehindPhrase(meta: UpdateMeta): string | null {
   return parts.length > 0 ? parts.join(" and ") : null;
 }
 
+const GLOBAL_CHANNELS: ReadonlySet<InstallChannel> = new Set(["npm", "pnpm", "bun", "brew"]);
+
+/** A project-local CLI moves with its project's manager; `update` there then only does the skills. */
+function projectNoticeCommand(
+  install: RunningInstall,
+  cliBehind: boolean,
+  skillsBehind: boolean,
+  latest: string,
+): string {
+  if (!cliBehind) return "npx hyperframes update";
+  const bump = updateCommandFor(install, latest);
+  return skillsBehind ? `${bump}, then npx hyperframes update` : bump;
+}
+
 /**
- * The command that updates what the notice names. `hyperframes update` covers the CLI and the
- * skills; a Homebrew install updates its CLI with brew, and runs its own `update` (which calls
- * brew) for both, since an npx copy would put the skills at npm's tag, not brew's.
+ * A command that moves THIS install. A global CLI runs its own `hyperframes update` (or just its
+ * manager's command when only the CLI is behind): `npx hyperframes` would run a project's copy or
+ * a fresh npx one instead. An npx run pins `@latest`, since npx's cache can hold the old CLI.
  */
-function noticeCommand(cliBehind: boolean, skillsBehind: boolean, latest: string): string {
+export function updateCommandForThisInstall(
+  cliBehind: boolean,
+  skillsBehind: boolean,
+  latest: string,
+): string {
   const install = runningInstall();
-  if (install.channel === "brew") {
+  if (GLOBAL_CHANNELS.has(install.channel)) {
     return skillsBehind ? "hyperframes update" : updateCommandFor(install, latest);
   }
-  // A bare `npx hyperframes` can reuse the stale copy in npx's cache.
-  if (install.channel === "npx" && cliBehind) return "npx hyperframes@latest update";
-  return "npx hyperframes update";
+  if (install.channel === "project") {
+    return projectNoticeCommand(install, cliBehind, skillsBehind, latest);
+  }
+  return install.channel === "npx" && cliBehind
+    ? "npx hyperframes@latest update"
+    : "npx hyperframes update";
 }
 
 /** The sentence itself: the newer CLI, the skills behind, or both, and the command. */
@@ -223,9 +250,29 @@ function updateNoticeText(meta: UpdateMeta): string | null {
   const latest = meta.updateAvailable ? (meta.latestVersion ?? null) : null;
   const skills = skillsBehindPhrase(meta);
   if (!latest && !skills) return null;
-  const command = noticeCommand(latest !== null, skills !== null, latest ?? meta.version);
+  const command = updateCommandForThisInstall(
+    latest !== null,
+    skills !== null,
+    latest ?? meta.version,
+  );
   return noticeSentence(meta.version, latest, skills, command);
 }
+
+/** The notice when it is due for this project today; a failure here never fails the command. */
+function noticeOrNull(meta: UpdateMeta): string | null {
+  try {
+    const notice = updateNoticeText(meta);
+    return notice && claimDailyNotice("update", resolve(process.cwd())) ? notice : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * For `withMeta` in commands whose own output is about updating (`update`, `upgrade`, `skills`):
+ * the same commands `cli.ts` keeps the stderr notices away from.
+ */
+export const NO_UPDATE_NOTICE = { updateNotice: false };
 
 /**
  * Wrap a JSON payload with the _meta version envelope.
@@ -245,8 +292,8 @@ export function withMeta<T extends object>(
 ): T & { _meta: UpdateMeta } {
   const meta = getUpdateMeta();
   if (options?.updateNotice !== false) {
-    const notice = updateNoticeText(meta);
-    if (notice && claimDailyNotice("update", resolve(process.cwd()))) meta.updateNotice = notice;
+    const notice = noticeOrNull(meta);
+    if (notice) meta.updateNotice = notice;
   }
   if (options?.deprecated) meta.deprecated = true;
   return { ...data, _meta: meta };

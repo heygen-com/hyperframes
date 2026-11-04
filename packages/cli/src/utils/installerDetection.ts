@@ -6,8 +6,9 @@
  * in charge.
  */
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { posix } from "node:path";
+import { isSafeVersion } from "./safeVersion.js";
 
 export type InstallerKind = "npm" | "bun" | "pnpm" | "brew" | "skip";
 
@@ -245,13 +246,36 @@ export function runningInstall(): RunningInstall {
   return { channel: "unknown", path };
 }
 
+const PROJECT_LOCKFILES: [string, (spec: string) => string][] = [
+  ["bun.lock", (spec) => `bun add ${spec}`],
+  ["bun.lockb", (spec) => `bun add ${spec}`],
+  ["pnpm-lock.yaml", (spec) => `pnpm add ${spec}`],
+  ["yarn.lock", (spec) => `yarn add ${spec}`],
+];
+
 /**
- * The command that moves this install to `latest`: the owning manager's for a global
- * install, `npx hyperframes@latest` everywhere a manager command would not apply.
+ * What moves a project-local CLI: its project's manager (named by the lockfile beside the
+ * project's `node_modules`, npm without one) adding `hyperframes@<version>`. Each of the four
+ * keeps the dependency in the section it is in. `upgrade --project` only rewrites script pins.
+ */
+function projectInstallCommand(path: string, version: string): string {
+  const normalized = normalizePath(path);
+  const root = normalized.slice(0, normalized.indexOf("/node_modules/"));
+  const spec = `hyperframes@${version}`;
+  const lockfile = PROJECT_LOCKFILES.find(([name]) => existsSync(posix.join(root, name)));
+  return lockfile ? lockfile[1](spec) : `npm install ${spec}`;
+}
+
+/**
+ * The command that moves this install to `latest`: the owning manager's for a global or
+ * project-local install, `npx hyperframes@latest` everywhere a manager command would not apply.
  */
 export function updateCommandFor(install: RunningInstall, latest: string): string {
   if (install.channel === "plugin") return "update the HyperFrames plugin in your agent";
   if (install.channel === "brew") return "brew upgrade hyperframes";
+  if (install.channel === "project" && install.path && isSafeVersion(latest)) {
+    return projectInstallCommand(install.path, latest);
+  }
   const kind = install.channel;
   if (kind === "npm" || kind === "pnpm" || kind === "bun") {
     const invocation = installInvocation(kind, latest);

@@ -71,7 +71,7 @@ describe("doctor: the update hint fits the install", () => {
     ["npm", ENTRIES.npm, "Run: npm install -g hyperframes@0.9.8"],
     ["brew", ENTRIES.brew, "Run: brew upgrade hyperframes"],
     ["npx", ENTRIES.npx, "Run: npx hyperframes@latest"],
-    ["project", ENTRIES.project, "Run: npx hyperframes@latest"],
+    ["project", ENTRIES.project, "Run: npm install hyperframes@0.9.8"],
   ])("%s", async (_channel, entry, hint) => {
     const { checkVersion } = await doctorAt(entry, "0.9.8");
     expect(checkVersion()).toEqual({ ok: false, detail: "0.9.5 → 0.9.8 available", hint });

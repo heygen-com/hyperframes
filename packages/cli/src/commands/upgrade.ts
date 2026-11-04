@@ -18,6 +18,7 @@ export const examples: Example[] = [
 import { VERSION } from "../version.js";
 import {
   checkForUpdate,
+  NO_UPDATE_NOTICE,
   withMeta,
   isSafeVersion,
   type UpdateCheckResult,
@@ -49,7 +50,7 @@ export default defineCommand({
       const p = resolveProjectArgs(args.project, { check: checkOnly, json: useJson });
       const res = await upgradeProjectPins(resolve(p.dir), { json: p.json, check: p.check });
       if (p.json) {
-        console.log(JSON.stringify(withMeta(res), null, 2));
+        console.log(JSON.stringify(withMeta(res, NO_UPDATE_NOTICE), null, 2));
         return;
       }
       printProjectPinResult(res, p.check);
@@ -59,7 +60,7 @@ export default defineCommand({
     // JSON mode: always force-check and output structured data
     if (useJson) {
       const result = await checkForUpdate(true);
-      console.log(JSON.stringify(withMeta(result), null, 2));
+      console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
       return;
     }
 

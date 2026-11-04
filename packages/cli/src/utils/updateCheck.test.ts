@@ -556,11 +556,15 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       skillsMissingCount: 0,
       ...over,
     });
-    const loadNotice = (config: Record<string, unknown>, channel = "npm") => {
+    const loadNotice = (
+      config: Record<string, unknown>,
+      channel = "npm",
+      path = "/test/lib/node_modules/hyperframes/dist/cli.js",
+    ) => {
       vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
       vi.doMock("./installerDetection.js", async (importOriginal) => ({
         ...(await importOriginal<typeof import("./installerDetection.js")>()),
-        runningInstall: () => ({ channel, path: "/test/cli.js" }),
+        runningInstall: () => ({ channel, path }),
       }));
       return load(config);
     };
@@ -568,7 +572,7 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     it("names the newer CLI, the skills behind, and the one command that updates both", async () => {
       const mod = await loadNotice(behind());
       expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
-        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6), and 3 installed HyperFrames skills are out of date. To update both, run: npx hyperframes update",
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6), and 3 installed HyperFrames skills are out of date. To update both, run: hyperframes update",
       );
     });
 
@@ -582,14 +586,14 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     it("speaks of the skills alone when the CLI is current", async () => {
       const mod = await loadNotice(behind({ latestVersion: "0.9.6" }));
       expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
-        "For the user: 3 installed HyperFrames skills are out of date (this run is HyperFrames CLI 0.9.6). To update them, run: npx hyperframes update",
+        "For the user: 3 installed HyperFrames skills are out of date (this run is HyperFrames CLI 0.9.6). To update them, run: hyperframes update",
       );
     });
 
     it("leaves out the skills half when no skill is behind", async () => {
       const mod = await loadNotice(behind({ skillsOutdatedCount: 0 }));
       expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
-        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npx hyperframes update",
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npm install -g hyperframes@0.9.8",
       );
     });
 
@@ -598,27 +602,73 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
       const notice = mod.withMeta({ ok: true })._meta.updateNotice;
       expect(notice).toBe(
-        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npx hyperframes update",
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npm install -g hyperframes@0.9.8",
       );
     });
 
-    it("names brew for a Homebrew CLI, and brew's own `hyperframes update` when skills are behind too", async () => {
-      const cliOnly = await loadNotice(behind({ skillsOutdatedCount: 0 }), "brew");
-      expect(cliOnly.withMeta({ ok: true })._meta.updateNotice).toMatch(
-        /To update, run: brew upgrade hyperframes$/,
-      );
-      const both = await loadNotice(behind(), "brew");
-      expect(both.withMeta({ ok: true })._meta.updateNotice).toMatch(
-        /To update both, run: hyperframes update$/,
-      );
-    });
-
-    it("pins @latest for an npx run, whose cache can hold the old CLI", async () => {
-      const mod = await loadNotice(behind(), "npx");
-      expect(mod.withMeta({ ok: true })._meta.updateNotice).toMatch(
-        /run: npx hyperframes@latest update$/,
-      );
-    });
+    // Each command moves the install that is running: a global CLI's own `update` (npx would run a
+    // project's copy or a fresh one), a project's manager for a project-local CLI.
+    const PROJECT = "/test/video/node_modules/hyperframes/dist/cli.js";
+    it.each([
+      [
+        "npm",
+        undefined,
+        "hyperframes update",
+        "npm install -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      [
+        "pnpm",
+        undefined,
+        "hyperframes update",
+        "pnpm add -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      [
+        "bun",
+        undefined,
+        "hyperframes update",
+        "bun add -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      ["brew", undefined, "hyperframes update", "brew upgrade hyperframes", "hyperframes update"],
+      [
+        "project",
+        PROJECT,
+        "npm install hyperframes@0.9.8, then npx hyperframes update",
+        "npm install hyperframes@0.9.8",
+        "npx hyperframes update",
+      ],
+      [
+        "npx",
+        undefined,
+        "npx hyperframes@latest update",
+        "npx hyperframes@latest update",
+        "npx hyperframes update",
+      ],
+      [
+        "unknown",
+        undefined,
+        "npx hyperframes update",
+        "npx hyperframes update",
+        "npx hyperframes update",
+      ],
+    ])(
+      "%s: names a command that moves this install",
+      async (channel, path, both, cliOnly, skillsOnly) => {
+        const cases: [Record<string, unknown>, string][] = [
+          [behind(), both],
+          [behind({ skillsOutdatedCount: 0 }), cliOnly],
+          [behind({ latestVersion: "0.9.6" }), skillsOnly],
+        ];
+        for (const [config, command] of cases) {
+          const mod = await loadNotice(config, channel, path);
+          expect(mod.withMeta({ ok: true })._meta.updateNotice).toMatch(
+            new RegExp(`run: ${command.replaceAll(".", "\\.")}$`),
+          );
+        }
+      },
+    );
 
     it.each([
       ["the update check is off", { HYPERFRAMES_NO_UPDATE_CHECK: "1" }],

@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The module inspects `process.argv[1]` + `realpathSync`. We stub both so
@@ -218,11 +221,15 @@ describe("runningInstall: which binary runs, and the command that updates it", (
       "/tmp/bunx-1000-hyperframes@latest/node_modules/hyperframes/dist/cli.js",
       "npx hyperframes@latest",
     ],
-    ["project", "/home/me/video/node_modules/hyperframes/dist/cli.js", "npx hyperframes@latest"],
+    [
+      "project",
+      "/home/me/video/node_modules/hyperframes/dist/cli.js",
+      "npm install hyperframes@0.9.8",
+    ],
     [
       "project",
       "/home/me/video/node_modules/.pnpm/hyperframes@0.9.5/node_modules/hyperframes/dist/cli.js",
-      "npx hyperframes@latest",
+      "npm install hyperframes@0.9.8",
     ],
     ["workspace", "/home/me/hyperframes/packages/cli/dist/cli.js", "npx hyperframes@latest"],
     ["unknown", "/opt/tools/hyperframes/cli.js", "npx hyperframes@latest"],
@@ -231,6 +238,21 @@ describe("runningInstall: which binary runs, and the command that updates it", (
     expect(run.install).toEqual({ channel, path });
     expect(run.command).toBe(command);
     expect(run.label).toBeTruthy();
+  });
+
+  // `upgrade --project` only rewrites script pins; the dependency moves with the project's manager.
+  it.each([
+    ["bun.lock", "bun add hyperframes@0.9.8"],
+    ["bun.lockb", "bun add hyperframes@0.9.8"],
+    ["pnpm-lock.yaml", "pnpm add hyperframes@0.9.8"],
+    ["yarn.lock", "yarn add hyperframes@0.9.8"],
+    ["package-lock.json", "npm install hyperframes@0.9.8"],
+  ])("moves a project-local CLI with the manager its %s names", async (lockfile, command) => {
+    const project = mkdtempSync(join(tmpdir(), "hf-project-"));
+    writeFileSync(join(project, lockfile), "");
+    const run = await runningAt(join(project, "node_modules", "hyperframes", "dist", "cli.js"));
+    expect(run.install.channel).toBe("project");
+    expect(run.command).toBe(command);
   });
 
   it("names a plugin install (plugin-cli.mjs marks its pinned npx child) and never an npx command for it", async () => {

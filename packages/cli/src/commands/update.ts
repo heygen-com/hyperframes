@@ -14,7 +14,12 @@ import {
 } from "../utils/installerDetection.js";
 import { checkSkills } from "../utils/skillsManifest.js";
 import { recordSkillsCheck } from "../utils/skillsUpdateCheck.js";
-import { checkForUpdate, withMeta } from "../utils/updateCheck.js";
+import {
+  checkForUpdate,
+  NO_UPDATE_NOTICE,
+  updateCommandForThisInstall,
+  withMeta,
+} from "../utils/updateCheck.js";
 import { VERSION } from "../version.js";
 import { skillsManagedExternally, updateSkills, type UpdateSkillsResult } from "./skills.js";
 import { upgradeRunningCli, type CliUpgradeOutcome } from "./upgrade.js";
@@ -25,10 +30,6 @@ export const examples: Example[] = [
   ["Update the CLI and the skills without prompting", "hyperframes update --yes"],
 ];
 
-/** `update` covers the skills too; it is the one command this report and `_meta` recommend. */
-const UPDATE_COMMAND = "npx hyperframes update";
-/** This command's own result names what to run, so its `_meta` carries no update notice. */
-const NO_NOTICE = { updateNotice: false };
 const PLUGIN_REASON =
   "This CLI runs from an agent plugin, which pins the CLI and its skills; update the plugin through your agent's plugin manager.";
 
@@ -92,8 +93,8 @@ function skillsSkipReason(channel: InstallChannel): string | null {
 }
 
 /** The skills check `skills update` would act on (manifest at this CLI's release tag), cached for `_meta`. */
-async function checkInstalledSkills(channel: InstallChannel): Promise<SkillsReport> {
-  const skip = skillsSkipReason(channel);
+async function checkInstalledSkills(cli: CliReport): Promise<SkillsReport> {
+  const skip = skillsSkipReason(cli.install.channel);
   if (skip) return { status: "skipped", reason: skip };
   try {
     const result = await checkSkills({ canonical: true, cliVersion: VERSION });
@@ -105,18 +106,28 @@ async function checkInstalledSkills(channel: InstallChannel): Promise<SkillsRepo
       updateAvailable: result.updateAvailable,
       outdated: result.summary.outdated,
       missing: result.summary.coreMissing,
-      command: result.updateAvailable ? UPDATE_COMMAND : null,
+      // The command `_meta.updateNotice` names, for both halves: it moves this install.
+      command: result.updateAvailable
+        ? updateCommandForThisInstall(cli.updateAvailable, true, cli.latest)
+        : null,
     };
   } catch (err) {
     return { status: "error", error: failureMessage(err) };
   }
 }
 
+/** The CLI half. A project-local CLI is moved by its project's manager: name that, as `--check` does. */
+function upgradeCli(cli: CliReport): UpdateOutcome["cli"] {
+  if (!cli.updateAvailable) return { status: "current" };
+  const upgrade = upgradeRunningCli(cli.latest);
+  return upgrade.status === "manual" && cli.command
+    ? { ...upgrade, command: cli.command }
+    : upgrade;
+}
+
 /** Upgrade the CLI the way `upgrade --yes` does, then refresh the skills at the tag of the CLI that runs next. */
 async function applyUpdate(cli: CliReport, skills: SkillsReport): Promise<UpdateOutcome> {
-  const cliOutcome = cli.updateAvailable
-    ? upgradeRunningCli(cli.latest)
-    : { status: "current" as const };
+  const cliOutcome = upgradeCli(cli);
   if (skills.status === "skipped") return { cli: cliOutcome, skills };
   // Still on this CLI and its skills already match its tag: nothing to install.
   if (cliOutcome.status !== "upgraded" && skills.status === "checked" && !skills.updateAvailable) {
@@ -139,7 +150,7 @@ function printCheck(cli: CliReport, skills: SkillsReport): void {
   console.log();
   const version = cli.updateAvailable
     ? c.warn(`${cli.current} → ${cli.latest} available`)
-    : c.success(`${cli.current} (latest${cli.checkedAt ? "" : ", npm registry not reached"})`);
+    : c.success(`${cli.current} (${cli.checkedAt ? "latest" : "npm registry not reached"})`);
   console.log(`  ${c.bold("CLI".padEnd(8))}${version}`);
   console.log(`  ${" ".repeat(8)}${c.dim(where)}`);
   if (cli.command) console.log(`  ${" ".repeat(8)}${c.accent(`Run: ${cli.command}`)}`);
@@ -212,7 +223,11 @@ function installAllowed(channel: InstallChannel, mode: Mode): boolean {
   if (channel === "plugin") {
     if (mode.json) {
       console.log(
-        JSON.stringify(withMeta(jsonFailure("plugin_managed", PLUGIN_REASON), NO_NOTICE), null, 2),
+        JSON.stringify(
+          withMeta(jsonFailure("plugin_managed", PLUGIN_REASON), NO_UPDATE_NOTICE),
+          null,
+          2,
+        ),
       );
     } else {
       clack.log.error(c.error(PLUGIN_REASON));
@@ -223,7 +238,7 @@ function installAllowed(channel: InstallChannel, mode: Mode): boolean {
   if (!mode.yes && (mode.json || isUnattended())) {
     clack.confirmationRequired(
       "hyperframes update",
-      "Ask the person first; pass --yes only when they asked to update. --check only reports.",
+      "Updating is the person's call; `update --check` only reports.",
     );
   }
   return true;
@@ -246,7 +261,9 @@ async function installUpdates(cli: CliReport, skills: SkillsReport, mode: Mode):
   if (!(await confirmed(cli, skills, mode))) return;
   const outcome = await applyUpdate(cli, skills);
   if (mode.json)
-    console.log(JSON.stringify(withMeta({ cli, skills, updated: outcome }, NO_NOTICE), null, 2));
+    console.log(
+      JSON.stringify(withMeta({ cli, skills, updated: outcome }, NO_UPDATE_NOTICE), null, 2),
+    );
   else printOutcome(outcome);
   if (outcome.cli.status === "failed" || outcome.skills.status === "failed") {
     setCommandExitCode(1);
@@ -269,9 +286,10 @@ export default defineCommand({
     if (args.check !== true && !installAllowed(install.channel, mode)) return;
 
     const cli = await checkCli();
-    const skills = await checkInstalledSkills(install.channel);
+    const skills = await checkInstalledSkills(cli);
     if (args.check === true) {
-      if (mode.json) console.log(JSON.stringify(withMeta({ cli, skills }, NO_NOTICE), null, 2));
+      if (mode.json)
+        console.log(JSON.stringify(withMeta({ cli, skills }, NO_UPDATE_NOTICE), null, 2));
       else printCheck(cli, skills);
       return;
     }

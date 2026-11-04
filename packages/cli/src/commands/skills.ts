@@ -6,7 +6,7 @@ import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import { VERSION } from "../version.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { NO_UPDATE_NOTICE, withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
   FALLBACK_CORE_SKILLS,
@@ -608,7 +608,7 @@ const checkCommand = defineCommand({
       cliVersion: VERSION,
     });
 
-    if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));
+    if (args.json) console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
     else renderCheck(result);
 
     // This check just displayed a fresh verdict, superseding whatever the
@@ -643,7 +643,10 @@ function reportSkillsManagedExternally(requested: readonly string[], json: boole
   if (json) {
     console.log(
       JSON.stringify(
-        withMeta({ skipped: true, reason: SKILLS_MANAGED_EXTERNALLY_NOTICE, requested }),
+        withMeta(
+          { skipped: true, reason: SKILLS_MANAGED_EXTERNALLY_NOTICE, requested },
+          NO_UPDATE_NOTICE,
+        ),
         null,
         2,
       ),
@@ -678,7 +681,7 @@ function reportUpdate(
   json: boolean,
 ): void {
   if (json) {
-    console.log(JSON.stringify(withMeta(result), null, 2));
+    console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
     return;
   }
   for (const name of result.retired) console.log(c.warn(retiredSkillNotice(name)));
@@ -708,7 +711,9 @@ function reportUpdate(
  */
 function reportUpdateFailure(message: string, json: boolean): void {
   if (json) {
-    console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", message)), null, 2));
+    console.log(
+      JSON.stringify(withMeta(jsonFailure("runtime_error", message), NO_UPDATE_NOTICE), null, 2),
+    );
     return;
   }
   clack.log.error(c.error(message));

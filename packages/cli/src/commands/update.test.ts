@@ -170,7 +170,8 @@ describe("hyperframes update --check", () => {
       ref: "v0.9.5",
       outdated: 2,
       updateAvailable: true,
-      command: "npx hyperframes update",
+      // The global CLI runs its own update: `npx hyperframes` could run another copy.
+      command: "hyperframes update",
     });
     expect(out._meta).toMatchObject({
       latestVersion: "0.9.8",
@@ -193,13 +194,21 @@ describe("hyperframes update --check", () => {
     expect(json().cli).toMatchObject({ updateAvailable: false, checkedAt: null });
   });
 
+  it("does not call the CLI latest when npm was not reached", async () => {
+    state.registryLatest = null;
+    await runUpdate(ENTRIES.npm, { check: true });
+    const text = stdout.join("\n");
+    expect(text).toContain("(npm registry not reached)");
+    expect(text).not.toContain("latest");
+  });
+
   it.each([
     ["npm", ENTRIES.npm, "npm install -g hyperframes@0.9.8"],
     ["pnpm", ENTRIES.pnpm, "pnpm add -g hyperframes@0.9.8"],
     ["bun", ENTRIES.bun, "bun add -g hyperframes@0.9.8"],
     ["brew", ENTRIES.brew, "brew upgrade hyperframes"],
     ["npx", ENTRIES.npx, "npx hyperframes@latest"],
-    ["project", ENTRIES.project, "npx hyperframes@latest"],
+    ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])("names the %s install and the command that updates it", async (channel, entry, command) => {
     await runUpdate(entry, { check: true, json: true });
     expect(json().cli.install).toEqual({ channel, path: entry });
@@ -254,17 +263,15 @@ describe("hyperframes update (install)", () => {
   );
 
   it.each([
-    ["npx", ENTRIES.npx],
-    ["project", ENTRIES.project],
+    ["npx", ENTRIES.npx, "npx hyperframes@latest"],
+    // The project's manager moves its dependency, as `--check` names it.
+    ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])(
-    "%s: installs no CLI, points at npx hyperframes@latest, refreshes the skills at its own tag",
-    async (_channel, entry) => {
+    "%s: installs no CLI, names %s, refreshes the skills at its own tag",
+    async (_channel, entry, command) => {
       expect(await runUpdate(entry, { yes: true, json: true })).toBe(0);
       expect(installs()).toEqual([]);
-      expect(json().updated.cli).toMatchObject({
-        status: "manual",
-        command: "npx hyperframes@latest",
-      });
+      expect(json().updated.cli).toMatchObject({ status: "manual", command });
       expect(skillsAdds()[0]!.args).toContain("https://github.com/heygen-com/hyperframes#v0.9.5");
     },
   );
