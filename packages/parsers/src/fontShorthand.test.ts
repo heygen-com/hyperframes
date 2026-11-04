@@ -14,6 +14,8 @@ describe("parseFontShorthand", () => {
     ["var(--weight) calc(1rem + 2px) / var(--leading) Inter", "Inter"],
     ["oblique 10deg large Inter", "Inter"],
     ["16px var(--family)", "var(--family)"],
+    ['700 var(--size)/1.1 "Inter"', '"Inter"'],
+    ["var(--size) / 1.2 Inter, sans-serif", "Inter, sans-serif"],
   ])("reads %s as family list %s", (value, families) => {
     expect(parseFontShorthand(value)).toEqual({ families, certain: true });
   });

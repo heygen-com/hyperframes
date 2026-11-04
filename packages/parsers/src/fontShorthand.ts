@@ -53,6 +53,9 @@ function familyStart(list: Token[], at: number): number {
   return next?.startsWith("/") ? at + 2 : at + 1;
 }
 
+const carriesLineHeight = (list: Token[], at: number) =>
+  list[at]!.masked.includes("/") || (list[at + 1]?.masked.startsWith("/") ?? false);
+
 interface FontShorthandFamilies {
   families: string;
   /** False when the shorthand's size cannot be told from its family: `families` is a best guess. */
@@ -68,8 +71,10 @@ export function parseFontShorthand(value: string): FontShorthandFamilies {
   for (let i = 0; i < list.length; i++) {
     const { text, masked } = list[i]!;
     const head = text.slice(0, masked.indexOf("/") >= 0 ? masked.indexOf("/") : undefined);
-    if (isSize(head)) return { families: rest(familyStart(list, i)), certain: !unsure };
-    if (CUSTOM_PROPERTY.test(text)) continue;
+    if (isSize(head) || (CUSTOM_PROPERTY.test(head) && carriesLineHeight(list, i))) {
+      return { families: rest(familyStart(list, i)), certain: !unsure };
+    }
+    if (CUSTOM_PROPERTY.test(head)) continue;
     if (!PRE_SIZE_KEYWORD.test(text)) unsure = true;
   }
   let lastVar = -1;
