@@ -244,9 +244,10 @@ only one group, so this is the way to put one effect across everything.
   chain, group or automation of its own stays on native output.
 - An unreadable master chain **fails the whole mix**: the render stops with an
   `audio_processing_failed` error under every strictness setting, and exports
-  nothing. Preview plays dry with no message, and no lint rule checks a chain's
-  contents, so one typo on the root blocks every export of that composition.
-  Check a master chain in preview before rendering.
+  nothing. Preview plays dry with no message. `audio_attribute_unreadable` catches
+  a chain that is not JSON, has no `"version": 1` or no `nodes` array; an unknown
+  effect type still only shows up at render. Check a master chain in preview
+  before rendering.
 
 ## Effect registry
 
@@ -543,13 +544,14 @@ ends exactly at its `data-duration`. That is expected.
 
 ## What the linter checks
 
-Almost no static gate covers a mix. Three rules exist:
+Almost no static gate covers a mix. Four rules exist:
 
 | Rule | Reports |
 | --- | --- |
+| `audio_attribute_unreadable` | A `data-automation` or `data-fx-chain` the render cannot parse: not JSON, no `"version": 1`, no `lanes` / `nodes` array, a lane without `target` or `points`, a node without `type`. The render fails on it, locally and in the cloud |
 | `audio_carve_ungrouped_sources` | A carve naming two or more plain clip ids instead of a group |
 | `audio_volume_double_automation` | A `volume` lane on a track that also has a GSAP tween on `volume` — the lane wins, the tween is ignored |
 | `audio_volume_tween_overrides_gain` | An authored `data-volume` on a track whose `volume` is tweened — the tween's values are absolute and replace that gain rather than scaling it |
 
-Nothing validates the chain or the effect lanes at all. What enforces those is
-the render. Beyond that, a mix is verified by rendering and listening.
+Nothing checks a lane's target or an effect's type and parameters. What enforces
+those is the render. Beyond that, a mix is verified by rendering and listening.
