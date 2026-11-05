@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication complexity
-import { onPath, runsWithoutInstallPrompt } from "../utils/appleStubs.js";
+import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
@@ -296,7 +296,7 @@ export async function ensureWhisper(options?: {
   }
 
   // 3. Build from source (needs git + cmake + C compiler)
-  if (hasGit() && hasCmake() && runsWithoutInstallPrompt(onPath("cc") ?? "cc")) {
+  if (hasGit() && hasCmake() && runsWithoutInstallPrompt("cc")) {
     try {
       return await buildFromSource(options?.onProgress, signal);
     } catch (err) {

@@ -1,5 +1,5 @@
 import { accessSync, constants, existsSync, realpathSync } from "node:fs";
-import { basename, delimiter, dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path/posix";
 
 // Without the developer tools these /usr/bin commands are stubs that open macOS's install dialog and fail.
 const STUBS = new Set(["git", "xcrun", "make", "cc", "clang", "gcc", "python3", "swift", "swiftc"]);
@@ -45,17 +45,17 @@ function developerDirs(h: Host): string[] {
   return chosen ? [chosen] : [XCODE, COMMAND_LINE_TOOLS];
 }
 
-/** Whether running `command` (a resolved path or a stub's name) does the work rather than open that dialog. */
+/** Whether running `command` (a path, or a name looked up on PATH) does the work rather than open that dialog. */
 export function runsWithoutInstallPrompt(command: string, h: Host = host): boolean {
   if (h.platform !== "darwin") return true;
-  const inUsrBin = !command.includes("/") || dirname(command) === "/usr/bin";
-  if (!inUsrBin || !STUBS.has(basename(command))) return true;
+  const file = command.includes("/") ? command : (onPath(command, h) ?? join("/usr/bin", command));
+  if (dirname(file) !== "/usr/bin" || !STUBS.has(basename(file))) return true;
   return developerDirs(h).some((dir) => h.exists(join(dir, "usr", "bin")));
 }
 
-/** The first executable `name` on PATH, found without running anything. */
-export function onPath(name: string, h: Host = host): string | undefined {
-  for (const dir of (h.env.PATH ?? "").split(delimiter)) {
+/** The first executable `name` on a Mac's PATH, found without running anything. */
+function onPath(name: string, h: Host): string | undefined {
+  for (const dir of (h.env.PATH ?? "").split(":")) {
     const file = dir && join(dir, name);
     if (file && h.executable(file)) return file;
   }
