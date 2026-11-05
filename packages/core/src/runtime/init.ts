@@ -498,12 +498,10 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
-// About 230 MB of stereo float PCM.
 const DECODE_FIRST_MAX_SECONDS = 600;
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
-  // A clip that has not loaded yet has no duration: it takes its source's verdict, or stays on its element.
   const shortEnough = Number.isFinite(el.duration)
     ? el.duration <= DECODE_FIRST_MAX_SECONDS
     : webAudio.isDecodedOrDecoding(el);
