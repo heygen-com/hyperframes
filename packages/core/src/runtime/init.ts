@@ -3408,7 +3408,12 @@ export function initSandboxRuntimeModular(): void {
         style.setProperty("visibility", shown, isVisibleNow ? "" : "important");
       }
       rawNode.toggleAttribute(CLIP_HIDDEN_ATTR, !isRuntimeStamped && !isVisibleNow);
-      if (!isRuntimeStamped && !isVisibleNow && !clipsStyledVisible.has(rawNode))
+      if (
+        !isRuntimeStamped &&
+        !isVisibleNow &&
+        !clipsStyledVisible.has(rawNode) &&
+        rawNode.isConnected
+      )
         clipsNeverStyledVisible.add(rawNode);
       const upcoming =
         (hiddenImagesSkipped || mediaDeferred) &&
@@ -4673,6 +4678,8 @@ export function initSandboxRuntimeModular(): void {
     stopSceneAnimations([host]);
     const placeholder = parkScene(name);
     if (placeholder) moveDisplayHide(host, placeholder);
+    for (const clip of clipsNeverStyledVisible)
+      if (!clip.isConnected) clipsNeverStyledVisible.delete(clip);
     parkedNames.add(name);
     releaseDetachedMedia();
     webAudio.releaseDecodedExcept(webAudioMediaIn(document));
