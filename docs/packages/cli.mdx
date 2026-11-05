@@ -2007,7 +2007,10 @@ default 3); `--json` prints the results as JSON.
 ## Keep the environment healthy
 
 HyperFrames keeps what it downloads and builds (the headless browser, models, optional packages, fonts and project
-history) under `~/.cache/hyperframes`. Set `HYPERFRAMES_CACHE_DIR` to an absolute path to keep it somewhere else.
+history) under `~/.cache/hyperframes`. Set `HYPERFRAMES_CACHE_DIR` to an absolute path to keep it somewhere else;
+background preview records, the registry's manifest cache, the local search model and catalog, and the records of
+what an app already showed then move there too, so a sandbox that only lets the CLI write inside your project can
+run them.
 
 ### `doctor`
 

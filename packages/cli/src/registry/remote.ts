@@ -21,6 +21,7 @@ import { validRegistryName, validRegistryManifest, validRegistryItem } from "./v
 import { join, basename } from "node:path";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import {
   ITEM_TYPE_DIRS,
   type FileTarget,
@@ -39,7 +40,7 @@ const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 // 24h TTL on manifest fetches so the interactive picker stays snappy offline.
 // Item files aren't cached — they're written straight to destDir on install.
 
-const CACHE_DIR = join(homedir(), ".hyperframes", "cache");
+const cacheDir = () => namedCacheDir("registry") ?? join(homedir(), ".hyperframes", "cache");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface CacheEntry<T> {
@@ -49,7 +50,7 @@ interface CacheEntry<T> {
 
 function cachePath(baseUrl: string, key: string): string {
   const slug = baseUrl.replace(/[^a-zA-Z0-9]/g, "_");
-  return join(CACHE_DIR, `${slug}__${key}.json`);
+  return join(cacheDir(), `${slug}__${key}.json`);
 }
 
 /**
@@ -90,8 +91,8 @@ function isFresh<T>(entry: CacheEntry<T>): boolean {
 
 function writeCache<T>(path: string, data: T): void {
   try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    const root = registryRoot(CACHE_DIR);
+    mkdirSync(cacheDir(), { recursive: true });
+    const root = registryRoot(cacheDir());
     const entry: CacheEntry<T> = { fetchedAt: Date.now(), data };
     publishRegistryFile(root, basename(path), JSON.stringify(entry));
   } catch {

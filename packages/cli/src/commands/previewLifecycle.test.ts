@@ -1490,3 +1490,20 @@ describe("background preview lifecycle", () => {
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
   });
 });
+
+describe("where a preview's session is kept", () => {
+  it("is under HYPERFRAMES_CACHE_DIR when it is set, not the state folder", () => {
+    const cache = tempDir("hf-preview-cache-");
+    const state = tempDir("hf-preview-state-");
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.stubEnv("XDG_STATE_HOME", state);
+    vi.stubEnv("LOCALAPPDATA", state);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    writePreviewSession({ pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" });
+    expect(previewSessionPath(projectDir).startsWith(cache)).toBe(true);
+    expect(existsSync(previewSessionPath(projectDir))).toBe(true);
+    expect(readdirSync(state)).toEqual([]);
+  });
+});

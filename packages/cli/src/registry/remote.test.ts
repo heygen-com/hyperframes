@@ -92,6 +92,19 @@ describe("readRegistryManifest", () => {
 });
 
 describe("fetchRegistryManifest", () => {
+  it("caches manifests under HYPERFRAMES_CACHE_DIR when it is set", async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    try {
+      vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(MANIFEST));
+      await fetchRegistryManifest(DEFAULT_REGISTRY_URL);
+      expect(readdirSync(join(cache, "registry"))).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+
   it("rejects poisoned stale cache data instead of returning it on network failure", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(MANIFEST));
     await fetchRegistryManifest(DEFAULT_REGISTRY_URL);
