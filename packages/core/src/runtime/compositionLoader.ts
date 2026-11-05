@@ -895,7 +895,7 @@ function namespaceMountedSvgIds(
   const hosts = composed
     .filter((scope) => scope.referenceTarget !== "document")
     .map(({ host }) => host);
-  const mounted = [
+  const mounted: MountedSvgScope[] = [
     ...composed,
     ...sceneClipRoots(document, hosts).map((host, index) => ({
       host,
