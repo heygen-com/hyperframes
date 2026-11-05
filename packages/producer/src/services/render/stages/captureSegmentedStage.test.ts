@@ -30,6 +30,9 @@ const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 const createdSessionConfigs: Array<{ enableBrowserPool?: boolean }> = [];
 class DrawElementVerificationError extends Error {}
+/** PSNR the fake comparison reports for a frame; every call is recorded. */
+let samplePsnr = (_frame: Buffer) => 50;
+const psnrCalls: Array<{ frame: Buffer; truth: Buffer }> = [];
 
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
@@ -133,7 +136,12 @@ mock.module("@hyperframes/engine", () => ({
       throw new Error("prepare reuse failed: ENOSPC");
     }
   },
+  psnrDb: async (frame: Buffer, truth: Buffer) => {
+    psnrCalls.push({ frame, truth });
+    return samplePsnr(frame);
+  },
   recaptureDrawElementFrameForVerify: async () => Buffer.from("frame"),
+  resolveDeVerifyMinDb: () => 32,
   resolveHeadlessShellPath: () => "/headless-shell",
   shouldDisableBrowserPoolForParallelWorker: ({ parallel }: { parallel?: boolean }) =>
     Boolean(parallel),
@@ -926,5 +934,67 @@ describe("runCaptureSegmentedStage", () => {
     // without the wait this assertion passes before they would have.
     await new Promise((r) => setTimeout(r, 40));
     expect(capturedAfterClose).toBe(0);
+  });
+
+  describe("drawElement self-verify", () => {
+    const truths = new Map([
+      [2, Buffer.from("truth-2")],
+      [7, Buffer.from("truth-7")],
+    ]);
+    const frameBuffer = (i: number) => Buffer.from(`frame-${i}`);
+
+    function verifiedRun(dir: string, written: number[]) {
+      return runCaptureSegmentedStage({
+        ...fakeStageInput({ totalFrames: 9 }),
+        probeSession: null,
+        segmentFrames: 3,
+        segmentDir: join(fixtureRoot, dir),
+        workerCount: 2,
+        sessionFactoryForWorker: (id) => ({
+          create: async () => ({
+            ...fakeSession(id),
+            captureMode: "drawelement" as const,
+            deVerifyFrames: truths,
+          }),
+        }),
+        deps: {
+          spawnEncoder: mock(async () => ({
+            ...okEncoder(),
+            writeFrame: async (buf: Buffer) => {
+              written.push(Number(buf.toString().split("-")[1]));
+              return true;
+            },
+          })),
+          captureFrame: mock(async (_s: unknown, i: number) => ({ buffer: frameBuffer(i) })),
+          concat: mock(async () => ({ success: true as const })),
+          closeSession: mock(async () => {}),
+          removeFile: () => {},
+        },
+      });
+    }
+
+    it("compares every armed sample against its ground truth", async () => {
+      psnrCalls.length = 0;
+      samplePsnr = () => 50;
+      const result = await verifiedRun("verify-pass", []);
+      expect(result.success).toBe(true);
+      const checked = psnrCalls
+        .map((c) => ({ frame: c.frame.toString(), truth: c.truth.toString() }))
+        .sort((a, b) => a.frame.localeCompare(b.frame));
+      expect(checked).toEqual([
+        { frame: "frame-2", truth: "truth-2" },
+        { frame: "frame-7", truth: "truth-7" },
+      ]);
+    });
+
+    it("fails the render before a sample below the floor is encoded", async () => {
+      psnrCalls.length = 0;
+      samplePsnr = (frame) => (frame.toString() === "frame-7" ? 20 : 50);
+      const written: number[] = [];
+      const error = await verifiedRun("verify-breach", written).catch((e: unknown) => e);
+      expect((error as { cause?: unknown }).cause).toBeInstanceOf(DrawElementVerificationError);
+      expect(written).not.toContain(7);
+      samplePsnr = () => 50;
+    });
   });
 });

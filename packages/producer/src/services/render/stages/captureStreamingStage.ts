@@ -462,43 +462,64 @@ function createDrainFrameGuard(args: {
       sizes.push(buf.length);
       if (sizes.length > 60) sizes.shift();
     }
-    const truth = session.deVerifyFrames?.get(idx);
-    if (truth) {
-      let db: number;
-      try {
-        db = await psnrDb(buf, truth);
-      } catch (err) {
-        // Infrastructure failure (ffmpeg spawn/parse/tmpdir), not evidence of
-        // damage — skip this sample rather than failing or falling back.
-        log.warn("[Render] drawElement self-verify sample skipped (psnr infrastructure)", {
-          frame: idx,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return buf;
-      }
-      if (db < verifyMinDb) {
-        // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
-        const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
-        if (dumpDir) {
-          await Promise.all([
-            writeFile(join(dumpDir, `frame-${idx}-de.jpg`), buf),
-            writeFile(join(dumpDir, `frame-${idx}-truth.jpg`), truth),
-          ]).catch(() => {});
-        }
-        throw new DrawElementVerificationError(
-          `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
-          { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
-        );
-      }
-      stats.verifyChecked += 1;
-      stats.verifyMinDb = stats.verifyMinDb === undefined ? db : Math.min(stats.verifyMinDb, db);
-      log.info("[Render] drawElement self-verify passed", {
-        frame: idx,
-        psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
-      });
-    }
+    await verifyDrawElementSample(session, idx, buf, { log, stats, verifyMinDb });
     return buf;
   };
+}
+
+/**
+ * Self-verification: at the K sample indices the session armed, compare the drawElement frame
+ * against its pre-injection screenshot (session.deVerifyFrames). The streaming drain and the segmented
+ * frame loop call it on every frame they encode; a breach throws DrawElementVerificationError.
+ */
+export async function verifyDrawElementSample(
+  session: CaptureSession,
+  idx: number,
+  buf: Buffer,
+  ctx: {
+    log: CaptureStreamingStageInput["log"];
+    /** Telemetry counters; the stages that report none pass nothing. */
+    stats?: Pick<DeDrainStats, "verifyChecked" | "verifyMinDb">;
+    verifyMinDb: number;
+  },
+): Promise<void> {
+  const { log, stats, verifyMinDb } = ctx;
+  const truth = session.deVerifyFrames?.get(idx);
+  if (!truth) return;
+  let db: number;
+  try {
+    db = await psnrDb(buf, truth);
+  } catch (err) {
+    // Infrastructure failure (ffmpeg spawn/parse/tmpdir), not evidence of
+    // damage — skip this sample rather than failing or falling back.
+    log.warn("[Render] drawElement self-verify sample skipped (psnr infrastructure)", {
+      frame: idx,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+  if (db < verifyMinDb) {
+    // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
+    const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
+    if (dumpDir) {
+      await Promise.all([
+        writeFile(join(dumpDir, `frame-${idx}-de.jpg`), buf),
+        writeFile(join(dumpDir, `frame-${idx}-truth.jpg`), truth),
+      ]).catch(() => {});
+    }
+    throw new DrawElementVerificationError(
+      `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
+      { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
+    );
+  }
+  if (stats) {
+    stats.verifyChecked += 1;
+    stats.verifyMinDb = stats.verifyMinDb === undefined ? db : Math.min(stats.verifyMinDb, db);
+  }
+  log.info("[Render] drawElement self-verify passed", {
+    frame: idx,
+    psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
+  });
 }
 
 /** Frames drawElement cannot reproduce, and how to capture one by screenshot. */
