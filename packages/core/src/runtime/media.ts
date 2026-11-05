@@ -396,9 +396,9 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
 // A muted video starts 0.04 to 0.4 s after play() and cannot be timed from the last start, so an upcoming
 // video is played from its pre-roll, hidden, and catches up on the playhead at a speed the eye never sees.
 const VIDEO_PREROLL_SECONDS = 1;
-// A clip with less source before its first frame has less to run up from, and a clip with none starts
-// on its first frame this far ahead and slows down to the playhead.
-const VIDEO_MIN_LEAD_SECONDS = 0.25;
+// A clip with no source before its first frame starts on that frame this far ahead; half the lead hold keeps a
+// clip that starts instantly under it, since the hold would pause the clip at the cut and it would restart late.
+const VIDEO_MIN_LEAD_SECONDS = VIDEO_LEAD_HOLD_SECONDS / 2;
 
 /** A render (export or frame-injected) paints video from its own frames, so a pre-roll would only seek it. */
 const isRenderDriven = (el: HTMLMediaElement): boolean =>

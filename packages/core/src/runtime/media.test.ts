@@ -2256,20 +2256,43 @@ describe("syncRuntimeMedia", () => {
         expect(clip.el.play).toHaveBeenCalledTimes(1);
       });
 
-      it("starts a video that plays from the very start of its file a quarter second early, on its first frame", () => {
+      it("starts a video that plays from the very start of its file 50 ms early, on its first frame", () => {
         const clip = videoClip({ start: 10, end: 20, mediaStart: 0 });
-        tick(clip, 9.7);
+        tick(clip, 9.9);
         expect(clip.el.play).not.toHaveBeenCalled();
-        tick(clip, 9.8);
+        tick(clip, 9.96);
         expect(clip.el.play).toHaveBeenCalledTimes(1);
       });
 
+      it.each([0, 0.04])(
+        "plays a from-file-start clip that starts in %d s through its cut without pausing it",
+        (startLatency) => {
+          const clip = videoClip({ start: 10, end: 20, mediaStart: 0 });
+          clip.el.pause = vi.fn();
+          let playedAt: number | null = null;
+          clip.el.play = vi.fn(() => {
+            playedAt = lastTick;
+            Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+            return Promise.resolve();
+          });
+          let lastTick = 9.9;
+          for (let t = 9.9; t < 10.3; t += 1 / 60) {
+            if (playedAt !== null && t - playedAt >= startLatency)
+              clip.el.currentTime += (1 / 60) * clip.el.playbackRate;
+            tick(clip, t);
+            lastTick = t;
+          }
+          expect(clip.el.play).toHaveBeenCalledTimes(1);
+          expect(clip.el.pause).not.toHaveBeenCalled();
+        },
+      );
+
       it("slows a video that started ahead on its first frame, hidden, instead of holding it", () => {
         const clip = videoClip({ start: 10, end: 20, mediaStart: 0 });
-        tick(clip, 9.8);
+        tick(clip, 9.96);
         playing(clip, 0.1);
         clip.el.pause = vi.fn();
-        tick(clip, 9.85);
+        tick(clip, 9.97);
         expect(clip.el.pause).not.toHaveBeenCalled();
         expect(clip.el.playbackRate).toBeLessThan(1);
       });
