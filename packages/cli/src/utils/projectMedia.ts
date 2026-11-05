@@ -46,7 +46,7 @@ const PROBE: HeardProbe = {
 };
 
 /** Every clip the render mixes, read as the render reads them (scenes inlined, on the film's clock), each ended where
- * its media runs out if that comes first, and left out if it starts past that; a ramped rate or a loop keeps its end. */
+ * its media runs out if sooner, and left out if it starts past that; a ramped rate or a loop keeps its end. */
 export async function heardClips(
   projectDir: string,
   probe: HeardProbe = PROBE,
