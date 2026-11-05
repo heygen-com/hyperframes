@@ -190,8 +190,7 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
     tolerance,
   );
   const filePath = resolve(project.dir, targetTag.file);
-  const heldByLimit =
-    plan.mode === "absolute" && targetTag.volume > 0 && absoluteOutcome(plan, tolerance) === "held";
+  const heldByLimit = targetTag.volume > 0 && heldAtLimit(plan, tolerance);
   const wrote = options.write && !withinTolerance && !heldByLimit;
   if (wrote) {
     writeAtomically(
@@ -200,6 +199,11 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
     );
   }
   return { ok: true, wrote, withinTolerance, tolerance, filePath, ...plan };
+}
+
+function heldAtLimit(plan: ModePlan, tolerance: number): boolean {
+  if (plan.mode === "absolute") return absoluteOutcome(plan, tolerance) === "held";
+  return plan.limitedBy !== null && Math.abs(plan.changeDb) <= tolerance;
 }
 
 const LIMIT_TEXT: Record<LoudnessLimit, string> = {
@@ -213,6 +217,13 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
       `${c.bold(`#${result.referenceId}`)} ${result.referenceLufs.toFixed(1)} LUFS → ` +
         `${c.bold(`#${result.targetId}`)} ${result.targetLufs.toFixed(1)} LUFS`,
     );
+    if (result.limitedBy) {
+      const short = result.referenceLufs - result.projectedLufs;
+      console.log(
+        `Reaches ${result.projectedLufs.toFixed(1)} LUFS, ${short.toFixed(1)} dB under the reference ` +
+          `(${LIMIT_TEXT[result.limitedBy]}).`,
+      );
+    }
     return;
   }
   const limit = result.limitedBy ? ` (${LIMIT_TEXT[result.limitedBy]})` : "";
@@ -231,11 +242,7 @@ function printHumanResult(result: NormalizeAudioResult): void {
     return;
   }
 
-  if (
-    result.mode === "absolute" &&
-    result.previousVolume > 0 &&
-    absoluteOutcome(result, result.tolerance) === "held"
-  ) {
+  if (result.previousVolume > 0 && heldAtLimit(result, result.tolerance)) {
     console.log(c.dim("Cannot get closer to the target; the gain is unchanged."));
     return;
   }

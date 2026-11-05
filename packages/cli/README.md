@@ -67,8 +67,9 @@ npx hyperframes normalize-audio --reference target-audio --target user-audio
 npx hyperframes normalize-audio --reference target-audio --target user-audio --write
 ```
 
-It updates only the target element's `data-volume` and refuses unsafe boosts
-that exceed Studio's +12 dB ceiling or would clip.
+It updates only the target element's `data-volume`. Where a full match would pass
+Studio's +12 dB ceiling or -1.5 dBTP, it applies the most that fits and says how far
+under the reference that leaves the target.
 
 ### `render`
 
