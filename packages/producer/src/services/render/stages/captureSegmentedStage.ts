@@ -60,13 +60,9 @@ export interface SegmentedStageDeps {
   removeFile: (path: string) => void;
 }
 
-/**
- * Opens a fresh, initialized capture session with the video injector attached.
- * `injector` replaces the stage's own injector for this session; the default
- * factory honours it, and a custom factory is free to ignore it.
- */
+/** Opens a fresh, initialized capture session with the video injector attached; a custom factory may ignore the override. */
 export interface SessionFactory {
-  create: (injector?: () => BeforeCaptureHook | null) => Promise<CaptureSession>;
+  create: (injectorOverride?: () => BeforeCaptureHook | null) => Promise<CaptureSession>;
 }
 
 export interface CaptureSegmentedStageInput {
@@ -85,11 +81,7 @@ export interface CaptureSegmentedStageInput {
   streamingEncoderOptions: StreamingEncoderOptions;
   buildCaptureOptions: () => CaptureOptions;
   createRenderVideoFrameInjector: () => BeforeCaptureHook | null;
-  /**
-   * Windowed video frames: each segment extracts the source frames it shows
-   * just before capture and deletes them when it closes, and the segment files
-   * are deleted once joined. Absent, the stage keeps its segment files.
-   */
+  /** Windowed frames: extracted per segment, deleted when it closes; segment files are deleted once joined. */
   segmentVideoFrames?: SegmentVideoFrames;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
@@ -240,10 +232,7 @@ async function captureSegmentFrames(
   }
 }
 
-/**
- * Capture one segment, reading its video frames first when the render is
- * windowed. The frames go when the segment closes, however it ends.
- */
+/** Capture one segment; when windowed, its video frames are read first and released however it ends. */
 async function captureSegment(
   ctx: SegmentCaptureContext,
   segment: SegmentSlice,
