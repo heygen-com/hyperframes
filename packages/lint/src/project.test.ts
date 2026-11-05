@@ -34,6 +34,7 @@ function makeProject(indexHtml: string, subComps?: Record<string, string>): stri
     const compsDir = join(dir, "compositions");
     mkdirSync(compsDir, { recursive: true });
     for (const [name, html] of Object.entries(subComps)) {
+      mkdirSync(dirname(join(compsDir, name)), { recursive: true });
       writeFileSync(join(compsDir, name), html);
     }
   }
@@ -112,6 +113,24 @@ describe("blank_root_with_standalone_composition", () => {
     expect(finding?.message).toContain("publish");
     expect(finding?.fixHint).toContain("data-composition-src");
     expect(finding?.suggestedComposition).toBe("compositions/index.html");
+  });
+
+  it("does not count a composition in a folder the project's .hyperframesignore leaves out", async () => {
+    const project = makeProject(validHtml(), {
+      "archive/index.html": `<!doctype html><html><body>
+  <div data-composition-id="old-cut" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div class="clip" data-start="0" data-duration="5">Old cut</div>
+  </div>
+</body></html>`,
+    });
+    writeFileSync(join(project, ".hyperframesignore"), "compositions/archive/\n");
+
+    const { results } = await lintProject(project);
+
+    expect(results.map((entry) => entry.file)).toEqual(["index.html"]);
+    expect(
+      results.flatMap((entry) => entry.result.findings).map((finding) => finding.code),
+    ).not.toContain("blank_root_with_standalone_composition");
   });
 
   it("treats non-rendering script, style, link, meta, and template children as blank", async () => {

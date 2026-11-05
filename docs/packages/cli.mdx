@@ -2545,7 +2545,8 @@ video to disk.
 
 The zip excludes root `renders` and `snapshots`, `.git`, `node_modules`, `dist`,
 `.next`, `coverage`, dotfiles, and anything your `.hyperframesignore` rules
-match. Those rules use gitignore syntax and apply to `hyperframes publish` too.
+match. Those rules use gitignore syntax and apply to `hyperframes publish` too, and
+the project lint behind `lint`, `check`, `snapshot` and `render` does not read compositions they match.
 Keep them narrow — a dynamically selected asset may have no static reference to
 protect it.
 
