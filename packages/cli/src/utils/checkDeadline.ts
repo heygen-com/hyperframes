@@ -89,6 +89,7 @@ export class CheckDeadline {
     this.expiry = new Promise((_, reject) => {
       this.rejectExpiry = reject;
     });
+    this.expiry.catch(() => undefined);
     this.budgetTimer =
       budget &&
       setTimeout(

@@ -1848,7 +1848,7 @@ async function withFindingCrops(
     );
     return { ...report, snapshots: { ...report.snapshots, findingFiles } };
   } catch (error) {
-    if (error instanceof CheckDeadlineError || error instanceof CheckBudgetError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1882,11 +1882,7 @@ async function withOptionalFindingFrames(
     const captured = await deadline.run(() => capture(project, options, requests, deadline));
     return withFindingFrameFields(report, plan, captured);
   } catch (error) {
-    if (
-      error instanceof CheckDeadlineError ||
-      error instanceof CheckStoppedError ||
-      error instanceof CheckBudgetError
-    ) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1895,6 +1891,11 @@ async function withOptionalFindingFrames(
     return report;
   }
 }
+
+const isCheckExpiry = (error: unknown): boolean =>
+  error instanceof CheckDeadlineError ||
+  error instanceof CheckStoppedError ||
+  error instanceof CheckBudgetError;
 
 const MAX_FINDING_CROPS = 12;
 
