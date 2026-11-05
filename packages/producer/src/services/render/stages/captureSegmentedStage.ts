@@ -13,7 +13,7 @@
  * recycling and retry are 2c, multi-worker is 2d.
  */
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import {
   captureFrameToBuffer,
   closeCaptureSession,
@@ -140,8 +140,22 @@ export type CaptureSegmentedStageResult =
   | { success: false };
 
 /** Zero-padded so lexical order equals frame order in the concat list and on disk. */
-export function segmentOutputPath(segmentDir: string, index: number): string {
-  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
+export function segmentOutputPath(
+  segmentDir: string,
+  index: number,
+  containerExtension: string = "mp4",
+): string {
+  const ext = containerExtension.startsWith(".")
+    ? containerExtension.slice(1)
+    : containerExtension;
+  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.${ext || "mp4"}`);
+}
+
+function segmentExtensionOf(input: CaptureSegmentedStageInput): string {
+  const fromPath = extname(input.videoOnlyPath);
+  if (fromPath) return fromPath;
+  if (input.outputFormat) return input.outputFormat;
+  return "mp4";
 }
 
 /**
@@ -179,6 +193,7 @@ interface SegmentCaptureContext {
   totalFrames: number;
   segmentCount: number;
   segmentDir: string;
+  segmentExtension: string;
   skipped: number;
   streamingEncoderOptions: StreamingEncoderOptions;
   spawnEncoder: SegmentedStageDeps["spawnEncoder"];
@@ -233,7 +248,7 @@ async function captureSegment(
   ctx: SegmentCaptureContext,
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
-  const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index, ctx.segmentExtension);
   let encoder: StreamingEncoder;
   try {
     encoder = await ctx.spawnEncoder(
@@ -385,6 +400,7 @@ interface SegmentRun {
   segments: readonly SegmentSlice[];
   pending: readonly SegmentSlice[];
   segmentDir: string;
+  segmentExtension: string;
   skipSize: number;
   workerCount: number;
   recycleEvery: number;
@@ -406,6 +422,7 @@ async function createSegmentWorker(run: SegmentRun, id: number): Promise<Segment
       totalFrames: input.totalFrames,
       segmentCount: run.segments.length,
       segmentDir: run.segmentDir,
+      segmentExtension: run.segmentExtension,
       skipped: run.skipSize,
       streamingEncoderOptions: input.streamingEncoderOptions,
       spawnEncoder: deps.spawnEncoder,
@@ -512,7 +529,7 @@ async function runOneSegment(
   worker: SegmentWorker,
   segment: SegmentSlice,
 ): Promise<"done" | "fallback"> {
-  const segmentPath = segmentOutputPath(run.segmentDir, segment.index);
+  const segmentPath = segmentOutputPath(run.segmentDir, segment.index, run.segmentExtension);
   if (run.recycleEvery > 0 && worker.sessionSegments >= run.recycleEvery) {
     await recycleWorkerSession(run, worker, "cadence");
   }
@@ -574,6 +591,7 @@ export async function runCaptureSegmentedStage(
   const skip = input.completedSegments ?? new Set<number>();
   const pending = segments.filter((s) => !skip.has(s.index));
   for (const index of skip) log.info("[Render] segment skipped (resume)", { index });
+  const segmentExtension = segmentExtensionOf(input);
   const run: SegmentRun = {
     input,
     deps,
@@ -581,6 +599,7 @@ export async function runCaptureSegmentedStage(
     segments,
     pending,
     segmentDir,
+    segmentExtension,
     skipSize: skip.size,
     workerCount: Math.max(1, input.workerCount ?? 1),
     recycleEvery: input.browserRecycleEverySegments ?? 0,
@@ -589,7 +608,7 @@ export async function runCaptureSegmentedStage(
   const queue = createSegmentQueue(pending);
   // Built from the plan, not from completion order: workers finish out of
   // order, so the concat list must not depend on who finished when.
-  const segmentPaths = segments.map((s) => segmentOutputPath(segmentDir, s.index));
+  const segmentPaths = segments.map((s) => segmentOutputPath(segmentDir, s.index, segmentExtension));
   if (pending.length === 0) return concatResumedRun(run, segmentPaths);
   let fellBackToStreaming = false;
 
