@@ -17,7 +17,7 @@ function isAmbientTween(tween: ContrastTweenState): boolean {
   return tween.infiniteAncestor || tween.repeat !== 0 || tween.duration >= AMBIENT_TWEEN_SECONDS;
 }
 
-/** True when a non-ambient tween on the text or an ancestor is running at the current seek, or the text is not fully opaque. */
+/** True when a non-ambient tween on the text, an ancestor, or a layer overlapping the text is running at the current seek, or the text is not fully opaque. */
 export function measuredInMotion(sample: ContrastMotionSample): boolean {
   if (Math.round(sample.opacity * 1000) < 1000) return true;
   return sample.tweens.some((tween) => !isAmbientTween(tween) && tween.active);
@@ -58,8 +58,14 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
   function activeInRoot(animation: Animation, root: Animation): boolean {
     if (animation === root) return true;
     const parent = animation.parent;
-    if (!parent || animation.paused() || animation.timeScale() === 0) return false;
+    if (!parent || animation.timeScale() === 0) return false;
     const time = parent.time();
+    // A sub-composition's own timeline is registered paused and seeked with the root: a paused one is stopped unless
+    // it is registered and its clock is where the parent's puts it.
+    const seekedWithParent =
+      registered.has(animation) &&
+      Math.abs(animation.time() - (time - animation.startTime())) <= 1e-3;
+    if (animation.paused() && !seekedWithParent) return false;
     return (
       animation.startTime() <= time + 1e-6 &&
       time < animation.endTime() - 1e-6 &&
@@ -100,6 +106,15 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
       tweens.push(...(byTarget.get(node) ?? []));
       const own = Number.parseFloat(getComputedStyle(node).opacity);
       if (Number.isFinite(own)) opacity *= own;
+    }
+    const text = element.getBoundingClientRect();
+    for (const [node, states] of byTarget) {
+      if (node.contains(element) || element.contains(node)) continue;
+      const box = node.getBoundingClientRect();
+      const across = Math.min(text.right, box.right) - Math.max(text.left, box.left);
+      const down = Math.min(text.bottom, box.bottom) - Math.max(text.top, box.top);
+      // A layer under the text that is entering or leaving moves what the text is measured against.
+      if (across > 0 && down > 0) tweens.push(...states);
     }
     return tweens.length > 0 ? { opacity, tweens } : null;
   }
