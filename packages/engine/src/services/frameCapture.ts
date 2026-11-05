@@ -1899,8 +1899,7 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic, timeoutMs?: numb
         "During a render, Date and performance.now stay at 0 and requestAnimationFrame " +
         "callbacks wait until the first frame, so setup that awaits an animation frame or " +
         "the clock never finishes. Await the library's own readiness promise instead (for " +
-        "Three.js, renderer.compileAsync). Do not poll with scheduler.yield(): it outranks " +
-        "the timers that library work runs on, so the loop never ends.",
+        "Three.js, renderer.compileAsync).",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
