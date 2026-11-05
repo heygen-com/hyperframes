@@ -82,7 +82,6 @@ export class CheckDeadline {
   private readonly budgetTimer: NodeJS.Timeout | undefined;
   private readonly stopAt: number | undefined;
 
-  /** `budget` ends the check at `stopAt` (a Date.now() time), however much progress it is making. */
   constructor(
     private readonly idleMs = CHECK_IDLE_MS,
     budget?: { ms: number; stopAt: number },
@@ -99,7 +98,6 @@ export class CheckDeadline {
     this.stopAt = budget?.stopAt;
   }
 
-  /** What is left before `--budget` ends the check, if it has one. */
   remainingMs(): number | undefined {
     return this.stopAt === undefined ? undefined : Math.max(0, this.stopAt - Date.now());
   }

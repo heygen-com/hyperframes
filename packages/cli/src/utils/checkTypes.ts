@@ -23,7 +23,6 @@ export interface CheckOptions {
   collapseStatic: boolean;
   tolerance: number;
   timeout: number;
-  /** `--budget`: the check stops at `stopAt` (a Date.now() time, its report time kept back) and reports what it found. */
   budget?: { ms: number; stopAt: number };
   contrast: boolean;
   skipContrastInMotion?: boolean;

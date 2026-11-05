@@ -354,7 +354,6 @@ function reportCheckFailure(
 
 const REPORT_GRACE_MS = 5_000;
 const MIN_BUDGET_MS = 30_000;
-/** What `--budget` keeps back for writing the report and closing Chrome. */
 const BUDGET_REPORT_MS = 10_000;
 
 function parseBudget(raw: unknown): CheckOptions["budget"] {
