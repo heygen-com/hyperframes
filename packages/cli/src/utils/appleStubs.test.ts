@@ -7,6 +7,7 @@ function mac(files: string[], { env = {}, link }: { env?: NodeJS.ProcessEnv; lin
     platform: "darwin" as const,
     env,
     exists: (path: string) => files.includes(path),
+    executable: (path: string) => files.includes(path),
     realpath: (path: string) => (path === "/var/db/xcode_select_link" ? (link ?? null) : null),
   };
 }
@@ -22,11 +23,22 @@ describe("runsWithoutInstallPrompt", () => {
     expect(runsWithoutInstallPrompt("/usr/bin/git", mac([TOOLS]))).toBe(true);
   });
 
+  it("runs them on a Mac with only Xcode.app, where xcode-select never chose a folder", () => {
+    const xcode = "/Applications/Xcode.app/Contents/Developer/usr/bin";
+    for (const command of ["/usr/bin/git", "xcrun", "/usr/bin/cc"])
+      expect(runsWithoutInstallPrompt(command, mac([xcode])), command).toBe(true);
+  });
+
   it("follows the developer folder xcode-select chose, or DEVELOPER_DIR", () => {
     const xcode = "/Applications/Xcode-beta.app/Contents/Developer";
-    expect(runsWithoutInstallPrompt("xcrun", mac([`${xcode}/usr/bin`], { link: xcode }))).toBe(true);
+    expect(runsWithoutInstallPrompt("xcrun", mac([`${xcode}/usr/bin`], { link: xcode }))).toBe(
+      true,
+    );
     expect(
-      runsWithoutInstallPrompt("xcrun", mac([`${xcode}/usr/bin`], { env: { DEVELOPER_DIR: xcode } })),
+      runsWithoutInstallPrompt(
+        "xcrun",
+        mac([`${xcode}/usr/bin`], { env: { DEVELOPER_DIR: xcode } }),
+      ),
     ).toBe(true);
   });
 
