@@ -127,6 +127,56 @@ describe("runAudioStage", () => {
     expect(existsSync(pcm)).toBe(false);
   });
 
+  it("leaves the delivered PCM for assembly when asked to keep it", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+
+    const result = await runAudioStage(input);
+
+    expect(result.deliverySourcePath).toBe(pcm);
+    expect(existsSync(pcm)).toBe(true);
+  });
+
+  it("does not hand assembly an uncut PCM whose rewrite failed and whose delete was refused", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "uncut mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: true,
+      loweredDb: 2,
+      sourceStale: true,
+    });
+
+    const result = await runAudioStage(input);
+
+    expect(result.audioLoweredDb).toBe(2);
+    expect(result.deliverySourcePath).toBeUndefined();
+  });
+
+  it("removes a PCM it was asked to keep when the peak check fails", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "retained mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: false,
+      error: "peak probe failed",
+      loweredDb: undefined,
+    });
+
+    await expect(runAudioStage(input)).rejects.toThrow("peak probe failed");
+    expect(existsSync(pcm)).toBe(false);
+  });
+
   it("surfaces the mixer's error as audioError when the mix fails", async () => {
     processCompositionAudioMock.mockResolvedValue({
       success: false,

@@ -3681,6 +3681,7 @@ async function executeRenderPipeline(input: {
           abortSignal: executionSignal,
           assertNotAborted,
           log,
+          keepDeliverySource: true,
         }),
     );
     pendingAudio = audioStage.catch(() => undefined);
@@ -4732,7 +4733,7 @@ async function executeRenderPipeline(input: {
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
     const audioResult = await audioStage;
-    const { audioOutputPath, hasAudio } = audioResult;
+    const { audioOutputPath, deliverySourcePath, hasAudio } = audioResult;
     perfStages.audioProcessMs = audioResult.audioProcessMs;
     recordLimiterAttenuation(job, audioResult.audioLoweredDb);
     if (audioResult.audioError) {
@@ -5547,6 +5548,7 @@ async function executeRenderPipeline(input: {
             job,
             videoOnlyPath,
             audioOutputPath,
+            audioPcmPath: deliverySourcePath,
             outputPath: stagedOutputPath,
             hasAudio,
             format: outputFormat,
