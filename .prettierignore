@@ -35,6 +35,7 @@ registry/blocks/cuboid-carousel/assets/addons/**/*.js
 registry/blocks/orbit-card/assets/three.core.min.js
 registry/blocks/orbit-card/assets/three.module.min.js
 registry/blocks/orbit-card/assets/gsap-3.14.2.min.js
+registry/examples/path-traced-3d/assets/vendor/three-path-tracer.min.js
 # generated Lottie data: pretty-printing multiplies its size
 registry/blocks/lottie-character-walk/assets/mascot.json
 # repo-native skill examples with intentional pseudo-markup placeholders
