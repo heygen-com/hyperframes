@@ -229,11 +229,15 @@ const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
 const SHORT_DECODE_SECONDS = 0.25;
+const DECODE_BUDGET_BYTES = 256 * 1024 * 1024;
+const ASSUMED_CHANNELS = 2;
+const BYTES_PER_SAMPLE = 4;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
+  private _pendingDecodeBytes = new Map<string, number>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
   private _handedOver = new WeakSet<HTMLMediaElement>();
@@ -358,15 +362,35 @@ export class WebAudioTransport {
     if (!src) return Promise.resolve(null);
     const pending = this._decoding.get(src);
     if (pending) return pending;
-    const decoding = this.fetchAndDecode(src, el).finally(() => this._decoding.delete(src));
+    this._pendingDecodeBytes.set(src, this.estimateDecodedBytes(el.duration));
+    const decoding = this.fetchAndDecode(src, el).finally(() => {
+      this._decoding.delete(src);
+      this._pendingDecodeBytes.delete(src);
+    });
     this._decoding.set(src, decoding);
     return decoding;
   }
 
-  /** True once the source of `el` is decoded or decoding. */
-  isDecodedOrDecoding(el: HTMLMediaElement): boolean {
+  fitsDecodeBudget(el: HTMLMediaElement): boolean {
     const src = decodeKey(el);
-    return !!src && (this._bufferCache.has(src) || this._decoding.has(src));
+    if (!src) return false;
+    if (this._bufferCache.has(src) || this._decoding.has(src)) return true;
+    if (!Number.isFinite(el.duration)) return false;
+    return this.decodedBytes() + this.estimateDecodedBytes(el.duration) <= DECODE_BUDGET_BYTES;
+  }
+
+  private estimateDecodedBytes(seconds: number): number {
+    const rate = this._ctx?.sampleRate ?? 48000;
+    if (!Number.isFinite(seconds)) return 0;
+    return seconds * rate * ASSUMED_CHANNELS * BYTES_PER_SAMPLE;
+  }
+
+  private decodedBytes(): number {
+    let bytes = 0;
+    for (const buffer of this._bufferCache.values())
+      bytes += buffer.length * buffer.numberOfChannels * BYTES_PER_SAMPLE;
+    for (const pending of this._pendingDecodeBytes.values()) bytes += pending;
+    return bytes;
   }
 
   private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
