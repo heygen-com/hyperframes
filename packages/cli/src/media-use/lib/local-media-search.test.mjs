@@ -15,6 +15,9 @@ test("media vectors are read from the cache folder's catalog when HYPERFRAMES_CA
     rmSync(cache, { recursive: true, force: true });
   });
   mkdirSync(join(cache, "catalog"));
-  writeFileSync(join(cache, "catalog", "media-vectors.json"), JSON.stringify({ rows: [{ id: "a" }] }));
+  writeFileSync(
+    join(cache, "catalog", "media-vectors.json"),
+    JSON.stringify({ rows: [{ id: "a" }] }),
+  );
   assert.deepEqual(mediaVectorRows(), [{ id: "a" }]);
 });
