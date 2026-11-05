@@ -1023,8 +1023,12 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       ? await probeDecodedAlphaPlane(filePath, alphaDecoder)
       : undefined;
 
-    const containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
+    let containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
+    // Recorder output (WebM/Matroska written to a pipe) carries no duration header: read it off the packets.
+    if (!(containerDuration > 0) && !(streamDuration > 0) && !isPng) {
+      containerDuration = (await scanPacketDuration(filePath)) ?? 0;
+    }
     const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
     const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
     // `nb_frames` is populated by the container demuxer; a muxer that requires
@@ -1116,6 +1120,31 @@ export function readStoredFinalFrame(
       ? stored
       : undefined;
   });
+}
+
+/** The video stream's length from its packets (last end time), for a file whose headers state none. */
+async function scanPacketDuration(filePath: string): Promise<number | undefined> {
+  try {
+    // The tail holds the last packets; the cap keeps a long film's scan from filling memory.
+    const stdout = await runFfprobe(
+      filePath,
+      [
+        ...["-select_streams", "v:0", "-show_entries", "packet=pts_time,duration_time"],
+        ...["-of", "csv=p=0"],
+      ],
+      undefined,
+      { retainTail: true, maxChars: 64 * 1024 },
+    );
+    const ends = stdout
+      .split("\n")
+      .map((line) => line.trim().split(",").map(Number))
+      .filter(([pts, duration]) => Number.isFinite(pts) && Number.isFinite(duration))
+      .map(([pts, duration]) => pts! + duration!);
+    return ends.length ? Math.max(...ends) : undefined;
+  } catch {
+    // expected: a file ffprobe cannot scan keeps its "no duration" verdict.
+    return undefined;
+  }
 }
 
 /**
