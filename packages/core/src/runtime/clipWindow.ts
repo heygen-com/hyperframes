@@ -1,4 +1,5 @@
 import { sameInstant } from "../clipFacts";
+import { exportClipWindow } from "../inline-scripts/parityContract";
 
 export const hasClipStarted = (time: number, start: number) =>
   time >= start || sameInstant(time, start);
@@ -23,3 +24,16 @@ export const isClipVisibleAt = (
   (hasClipStarted(time, start) &&
     compositionDuration > 0 &&
     end >= compositionDuration - TERMINAL_EPSILON_SECONDS);
+
+/** Whether a clip is on screen: the one rule render, snapshot and preview share. Its edges snap to frames as render's
+ * seeks do, so an edge a hair off a frame (a start chained after a measured media length) counts as on it everywhere. */
+export const isClipOnScreenAt = (
+  time: number,
+  start: number,
+  end: number,
+  fps: number,
+  compositionDuration: number,
+): boolean => {
+  const snapped = exportClipWindow(start, end, fps);
+  return isClipVisibleAt(time, snapped.start, snapped.end, compositionDuration);
+};
