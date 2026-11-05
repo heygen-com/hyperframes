@@ -161,7 +161,12 @@ function spanOnParent(
 
 function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWrite | null {
   let span: [number, number] | null = [Number(tween._start), Number(tween.totalDuration?.() ?? 0)];
-  for (let parent = tween.parent; span && parent && parent !== timeline; parent = parent.parent) {
+  const realTimeline = (timeline as { __hfReal?: object }).__hfReal ?? timeline;
+  for (
+    let parent = tween.parent;
+    span && parent && parent !== realTimeline;
+    parent = parent.parent
+  ) {
     span = spanOnParent(span, parent);
   }
   return (
