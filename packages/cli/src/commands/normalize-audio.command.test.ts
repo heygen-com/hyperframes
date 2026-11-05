@@ -160,4 +160,36 @@ describe("reference normalize-audio command", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("says where the target stays when the ceiling leaves less gain than the tolerance", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-reference-held-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html =
+        `<audio id="speaker-opening" src="open.wav" data-volume="1"></audio>` +
+        `<audio id="speaker-closing" src="close.wav" data-volume="1"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "open.wav"), "audio bytes");
+      writeFileSync(join(dir, "close.wav"), "audio bytes");
+      measureAudio
+        .mockResolvedValueOnce({ integratedLufs: -15, truePeakDbfs: -3 })
+        .mockResolvedValueOnce({ integratedLufs: -18, truePeakDbfs: -1.8 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--reference", "speaker-opening", "--target", "speaker-closing", "--write"],
+      });
+
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain(
+        "Stays at -18.0 LUFS, 3.0 dB under the reference (stopped short of -1.5 dBTP).",
+      );
+      expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
+      expect(readFileSync(path, "utf8")).toBe(html);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
