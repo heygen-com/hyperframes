@@ -73,7 +73,6 @@ export async function runIds(args: Record<string, unknown>): Promise<void> {
   if (json) console.log(JSON.stringify(withMeta(result), null, 2));
   else console.log(`ids: stamped ${receipts.length} file${receipts.length === 1 ? "" : "s"}`);
 }
-/** A moved or trimmed clip, and its verb, whose overlap with its neighbours is judged once the whole plan has run. */
 type SettledClip = { verb: MutationVerb; ref: string };
 type ApplyEditResult =
   | { ok: true; file: string; after: string; settled?: SettledClip }
@@ -170,7 +169,6 @@ function applyPlanEdit(
   return { ok: true, file: row.file, after: decision.after, ...(settled && { settled }) };
 }
 
-/** The plan's end state: no clip it moved or trimmed overlaps a neighbour, however the steps were ordered. */
 function overlapAtEnd(
   settled: SettledClip[],
   timeline: ProjectTimeline,
