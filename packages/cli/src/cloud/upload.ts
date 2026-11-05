@@ -25,7 +25,7 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { type IncomingMessage, request as httpRequest } from "node:http";
+import { type ClientRequest, type IncomingMessage, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -80,17 +80,20 @@ class PutRefusedError extends Error {
   }
 }
 
+/** An error no second try can change: a refusal below 500, or a file that is missing or unreadable. */
+function isFinal(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return (
+    (err instanceof PutRefusedError && err.status < 500) || code === "ENOENT" || code === "EACCES"
+  );
+}
+
 async function putWithRetry(attempt: () => Promise<void>, signal?: AbortSignal): Promise<void> {
   for (let tried = 0; ; tried++) {
     try {
       return await attempt();
     } catch (err) {
-      const code = (err as { code?: unknown }).code;
-      const final =
-        (err instanceof PutRefusedError && err.status < 500) ||
-        code === "ENOENT" ||
-        code === "EACCES";
-      if (final || signal?.aborted || tried >= putTimings.retries) throw err;
+      if (isFinal(err) || signal?.aborted || tried >= putTimings.retries) throw err;
       await sleep(putTimings.backoffMs * 2 ** tried, signal);
     }
   }
@@ -193,6 +196,23 @@ function bodyStream(body: Uint8Array | UploadFileSource): Readable {
   );
 }
 
+/** Ends `req` when no byte has been accepted by its socket for stallMs (its buffer is full and the link drains
+ * nothing). Returns the function that stops the watch. */
+function watchStall(req: ClientRequest): () => void {
+  let written = -1;
+  let movedAt = Date.now();
+  const watch = setInterval(
+    () => {
+      const now = req.socket?.bytesWritten ?? 0;
+      if (now !== written) [written, movedAt] = [now, Date.now()];
+      else if (Date.now() - movedAt >= putTimings.stallMs)
+        req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
+    },
+    Math.min(1000, putTimings.stallMs / 3),
+  );
+  return () => clearInterval(watch);
+}
+
 async function putStreamToPresignedUrl(
   uploadUrl: string,
   headers: Record<string, string>,
@@ -209,18 +229,7 @@ async function putStreamToPresignedUrl(
   const response = new Promise<IncomingMessage>((resolve, reject) => {
     req.once("response", resolve).once("error", reject);
   });
-  // No byte accepted by the socket for stallMs (its buffer is full and the link drains nothing) ends the try.
-  let written = -1;
-  let movedAt = Date.now();
-  const watch = setInterval(
-    () => {
-      const now = req.socket?.bytesWritten ?? 0;
-      if (now !== written) [written, movedAt] = [now, Date.now()];
-      else if (Date.now() - movedAt >= putTimings.stallMs)
-        req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
-    },
-    Math.min(1000, putTimings.stallMs / 3),
-  );
+  const stopWatching = watchStall(req);
   const source = bodyStream(body);
   const sent = pipeline(source, req);
   let res: IncomingMessage;
@@ -230,11 +239,16 @@ async function putStreamToPresignedUrl(
     await sent.catch(() => undefined);
     throw err;
   } finally {
-    clearInterval(watch);
+    stopWatching();
   }
+  await settle(res, sent);
+}
+
+/** Reads S3's answer: a refusal is thrown with its words; a refused upload can close the connection mid-body, so the
+ * write error is the status's to explain. */
+async function settle(res: IncomingMessage, sent: Promise<void>): Promise<void> {
   const status = res.statusCode ?? 0;
   const ok = status >= 200 && status < 300;
-  // A refused upload can close the connection mid-body; its status explains that write error.
   await sent.catch((err: unknown) => {
     if (ok) throw err;
   });
