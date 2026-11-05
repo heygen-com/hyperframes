@@ -1,0 +1,42 @@
+name: drq-mem
+on:
+  push:
+    branches: [drenderq/mem-measure]
+jobs:
+  render:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        load: [idle, cpu, ram, both]
+        workers: [1, 2, 4]
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ffmpeg
+        shell: pwsh
+        run: choco install ffmpeg -y --no-progress 2>&1 | Select-Object -Last 1
+      - name: install the CLI desktop pins
+        shell: pwsh
+        run: |
+          npm i -g hyperframes@0.9.13 2>&1 | Select-Object -Last 1
+          hyperframes browser ensure 2>&1 | Select-Object -Last 1
+          Push-Location $env:RUNNER_TEMP; hyperframes init demo --non-interactive 2>&1 | Select-Object -Last 1
+      - name: render at 4K, workers ${{ matrix.workers }}, load ${{ matrix.load }}
+        shell: pwsh
+        run: |
+          $load = "${{ matrix.load }}"
+          if ($load -eq "cpu" -or $load -eq "both") { 1..12 | ForEach-Object { Start-Job -ScriptBlock { $x = 0; while ($true) { $x++ } } | Out-Null } }
+          if ($load -eq "ram" -or $load -eq "both") {
+            Start-Job -ScriptBlock { $l = New-Object System.Collections.ArrayList; 1..10 | ForEach-Object { $a = New-Object byte[] 1GB; for ($i = 0; $i -lt $a.Length; $i += 4096) { $a[$i] = 1 }; [void]$l.Add($a) }; Start-Sleep 1200 } | Out-Null
+            Start-Sleep -Seconds 45
+          }
+          Start-Sleep -Seconds 10
+          $os = Get-CimInstance Win32_OperatingSystem
+          "FREE_RAM_MB={0} TOTAL_MB={1}" -f [int]($os.FreePhysicalMemory / 1024), [int]($os.TotalVisibleMemorySize / 1024)
+          Set-Location (Join-Path $env:RUNNER_TEMP demo)
+          $t = Get-Date
+          hyperframes render . -o out.mp4 --workers ${{ matrix.workers }} --resolution landscape-4k --fps 30 --quality standard --sdr 2>&1 | Select-Object -Last 3
+          "RESULT load=$load workers=${{ matrix.workers }} secs={0:n1} out_bytes={1}" -f ((Get-Date) - $t).TotalSeconds, (Get-Item out.mp4 -ErrorAction SilentlyContinue).Length
