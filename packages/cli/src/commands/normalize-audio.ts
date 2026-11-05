@@ -78,6 +78,7 @@ interface WriteOutcome {
   wrote: boolean;
   withinTolerance: boolean;
   heldByLimit: boolean;
+  reachedLufs: number;
   tolerance: number;
   filePath: string;
 }
@@ -199,7 +200,8 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
       updateAudioVolume(readFileSync(filePath, "utf8"), targetTag.id, plan.volume),
     );
   }
-  return { ok: true, wrote, withinTolerance, heldByLimit, tolerance, filePath, ...plan };
+  const reachedLufs = heldByLimit ? plan.projectedLufs - plan.changeDb : plan.projectedLufs;
+  return { ok: true, wrote, withinTolerance, heldByLimit, reachedLufs, tolerance, filePath, ...plan };
 }
 
 function heldAtLimit(plan: ModePlan, tolerance: number): boolean {
@@ -219,10 +221,10 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
         `${c.bold(`#${result.targetId}`)} ${result.targetLufs.toFixed(1)} LUFS`,
     );
     if (result.limitedBy) {
-      const lufs = result.heldByLimit ? result.targetLufs : result.projectedLufs;
       console.log(
-        `${result.heldByLimit ? "Stays at" : "Reaches"} ${lufs.toFixed(1)} LUFS, ` +
-          `${(result.referenceLufs - lufs).toFixed(1)} dB under the reference (${LIMIT_TEXT[result.limitedBy]}).`,
+        `${result.heldByLimit ? "Stays at" : "Reaches"} ${result.reachedLufs.toFixed(1)} LUFS, ` +
+          `${(result.referenceLufs - result.reachedLufs).toFixed(1)} dB under the reference ` +
+          `(${LIMIT_TEXT[result.limitedBy]}).`,
       );
     }
     return;
@@ -230,8 +232,7 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
   const limit = result.limitedBy ? ` (${LIMIT_TEXT[result.limitedBy]})` : "";
   console.log(
     `${c.bold(`#${result.targetId}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
-      `${(result.heldByLimit ? result.sourceLufs : result.projectedLufs).toFixed(1)} LUFS, ` +
-      `target ${result.targetLufs.toFixed(1)}${limit}`,
+      `${result.reachedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
   );
 }
 

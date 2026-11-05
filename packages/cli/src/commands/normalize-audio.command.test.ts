@@ -127,6 +127,33 @@ describe("normalize-audio on a clip inside a mounted scene", () => {
   });
 });
 
+describe("absolute normalize-audio command held by a limit", () => {
+  it("prints the level the clip plays at, its data-volume included", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-absolute-held-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = join(dir, "index.html");
+      const html = `<audio id="voice" src="voice.wav" data-volume="2" data-duration="2"></audio>`;
+      writeFileSync(path, html);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -7.8 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--lufs", "-12", "--write"],
+      });
+
+      const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
+      expect(printed).toContain("-20.0 LUFS → -14.0 LUFS, target -12.0 (stopped short of -1.5 dBTP)");
+      expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
+      expect(readFileSync(path, "utf8")).toBe(html);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("reference normalize-audio command", () => {
   it("writes the most gain that stays under -1.5 dBTP and says how far under the reference that leaves it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-normalize-reference-test-"));
