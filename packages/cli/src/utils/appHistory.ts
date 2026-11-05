@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { realpath } from "@hyperframes/core/safe-path";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import { windowsLocalAppData } from "./windowsAppData.js";
 import { readPlainFile, readRecord, recordChangedAt, replaceFile } from "./projectRecords.js";
 
@@ -65,8 +66,8 @@ export function seenPath(dir: string): string {
   const key = createHash("sha256").update(real).digest("hex").slice(0, 32);
   const base = windowsLocalAppData();
   return join(
-    base ? join(base, "hyperframes") : join(homedir(), ".hyperframes"),
-    "catch-up",
+    namedCacheDir("catch-up") ??
+      join(base ? join(base, "hyperframes") : join(homedir(), ".hyperframes"), "catch-up"),
     `${key}.json`,
   );
 }
