@@ -332,9 +332,7 @@ function journalDom(doc: Document): DomJournal {
       }
       for (const [node, values] of firstValues) {
         for (const [ns, name, old] of values.values()) {
-          if (!isElement(node)) (node as CharacterData).data = old ?? "";
-          else if (old === null) node.removeAttributeNS(ns, name);
-          else node.setAttributeNS(ns, name, old);
+          putBack(node, ns, name, old);
         }
       }
     },
@@ -342,6 +340,17 @@ function journalDom(doc: Document): DomJournal {
 }
 
 const isElement = (node: Node): node is Element => node.nodeType === 1;
+
+function putBack(node: Node, ns: string | null, name: string, old: string | null): void {
+  if (!isElement(node)) {
+    const text = old ?? "";
+    if ((node as CharacterData).data !== text) (node as CharacterData).data = text;
+    return;
+  }
+  if (node.getAttributeNS(ns, name) === old) return;
+  if (old === null) node.removeAttributeNS(ns, name);
+  else node.setAttributeNS(ns, name, old);
+}
 
 // A callback a loud seek fired cannot be un-fired: land with callbacks on, then put the DOM back.
 export function landThenUndoDom(
