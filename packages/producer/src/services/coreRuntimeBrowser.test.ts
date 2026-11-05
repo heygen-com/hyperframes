@@ -1597,20 +1597,23 @@ describe("core runtime browser contract", () => {
   const builtAsItRuns = (i: number) =>
     `const tl = gsap.timeline({ paused: true }); tl.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); window.__timelines["s${i}"] = tl;`;
   it.each([
-    ["its timeline built as the script runs", builtAsItRuns],
+    ["its timeline built as the script runs", builtAsItRuns, true],
+    ["its timeline built as the script runs, scrubbed while paused", builtAsItRuns, false],
     [
       "its timeline driving one built after a font wait",
       (i: number) =>
         `const tl = gsap.timeline({ paused: true }); Promise.all([document.fonts.load("16px serif")]).then(() => { const inner = gsap.timeline({ paused: true }); inner.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); tl.add(inner.tweenFromTo(0, 1), 0); window.__timelines["s${i}"] = tl; });`,
+      true,
     ],
     [
       "a timeline built after a font wait to pose it once",
       (i: number) =>
         `const tl = gsap.timeline({ paused: true }); window.__timelines["s${i}"] = tl; Promise.all([document.fonts.load("16px serif")]).then(() => { const pose = gsap.timeline({ paused: true }); pose.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); pose.time(0.5); });`,
+      true,
     ],
-  ])(
-    "lets go of each scene the preview mounts and unmounts while it plays, its captured audio included (%s)",
-    async (_, sceneScript) => {
+  ] as const)(
+    "lets go of each scene the preview mounts and unmounts, its captured audio included (%s)",
+    async (_, sceneScript, plays) => {
       const dir = mkdtempSync(resolve(tmpdir(), "scene-window-memory-"));
       // Its own browser: Web Audio only captures media where the context may start without a gesture.
       const audioBrowser = await puppeteer.launch({
@@ -1659,8 +1662,7 @@ describe("core runtime browser contract", () => {
         await page.waitForFunction(() => window.__playerReady && window.__renderReady);
         const cdp = await page.createCDPSession();
         await cdp.send("Performance.enable");
-        // DOM nodes alive but out of the page, after a full collection.
-        const kept = async () => {
+        const keptOnce = async () => {
           await cdp.send("HeapProfiler.collectGarbage");
           const { metrics } = await cdp.send("Performance.getMetrics");
           const inPage = await page.evaluate(() => {
@@ -1671,19 +1673,30 @@ describe("core runtime browser contract", () => {
           });
           return metrics.find((m) => m.name === "Nodes")!.value - inPage;
         };
+        // DOM nodes alive but out of the page. One collection can leave a freed scene unswept;
+        // a held one survives every collection.
+        const kept = async () => {
+          let count = await keptOnce();
+          for (let round = 0; round < 5; round++) {
+            const next = await keptOnce();
+            if (next >= count) return next;
+            count = next;
+          }
+          return count;
+        };
         const before = await kept();
-        await page.evaluate(async () => {
+        await page.evaluate(async (plays) => {
           const player = window.__player as unknown as {
             play: () => void;
             seek: (time: number, options: { keepPlaying: boolean }) => void;
           };
-          player.play();
+          if (plays) player.play();
           for (const time of [2.5, 4.5, 6.5, 8.5, 10.5]) {
-            player.seek(time, { keepPlaying: true });
+            player.seek(time, { keepPlaying: plays });
             await window.__hfWaitForSeekCompletion?.();
             await new Promise((settle) => setTimeout(settle, 200));
           }
-        });
+        }, plays);
         // The window unmounts only once it has mounted what is ahead.
         await page.waitForFunction(
           () => document.querySelectorAll("[data-hf-parked-scene]").length >= 5,

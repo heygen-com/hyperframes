@@ -1439,16 +1439,16 @@ export function initSandboxRuntimeModular(): void {
   // second cache checking for itself would be told nothing changed.
   let compositionTimingRevision = 0;
 
-  const queryCache = new Map<string, { revision: number; nodes: Element[] }>();
+  const queryCache = new Map<string, Element[]>();
   const queryForTransport = (selector: string): Element[] => {
     if (!compositionTimingObserver || renderCaptureSeekStarted)
       return Array.from(document.querySelectorAll(selector));
     if (recordsMoveTiming(compositionTimingObserver.takeRecords()))
       invalidateCompositionTimingCaches();
     const cached = queryCache.get(selector);
-    if (cached?.revision === compositionTimingRevision) return cached.nodes;
+    if (cached) return cached;
     const nodes = Array.from(document.querySelectorAll(selector));
-    queryCache.set(selector, { revision: compositionTimingRevision, nodes });
+    queryCache.set(selector, nodes);
     return nodes;
   };
 
@@ -1461,6 +1461,7 @@ export function initSandboxRuntimeModular(): void {
 
   const invalidateCompositionTimingCaches = () => {
     compositionTimingRevision += 1;
+    queryCache.clear();
     // The same records that stale the duration caches are what a parked
     // transport is waiting for: a timing attribute edited, a sub-composition
     // mounted, media metadata arriving. One signal, two readers.
@@ -2965,10 +2966,10 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
+  let neverStyledStarts = { revision: -1, starts: new WeakMap<StylableElement, number>() };
   const neverStyledStart = (el: StylableElement, revision: number): number => {
     if (neverStyledStarts.revision !== revision)
-      neverStyledStarts = { revision, starts: new Map() };
+      neverStyledStarts = { revision, starts: new WeakMap() };
     let start = neverStyledStarts.starts.get(el);
     if (start === undefined) {
       start = resolveStartForElement(el, Number.NaN);
@@ -3407,7 +3408,12 @@ export function initSandboxRuntimeModular(): void {
         style.setProperty("visibility", shown, isVisibleNow ? "" : "important");
       }
       rawNode.toggleAttribute(CLIP_HIDDEN_ATTR, !isRuntimeStamped && !isVisibleNow);
-      if (!isRuntimeStamped && !isVisibleNow && !clipsStyledVisible.has(rawNode))
+      if (
+        !isRuntimeStamped &&
+        !isVisibleNow &&
+        !clipsStyledVisible.has(rawNode) &&
+        rawNode.isConnected
+      )
         clipsNeverStyledVisible.add(rawNode);
       const upcoming =
         (hiddenImagesSkipped || mediaDeferred) &&
@@ -4672,6 +4678,8 @@ export function initSandboxRuntimeModular(): void {
     stopSceneAnimations([host]);
     const placeholder = parkScene(name);
     if (placeholder) moveDisplayHide(host, placeholder);
+    for (const clip of clipsNeverStyledVisible)
+      if (!clip.isConnected) clipsNeverStyledVisible.delete(clip);
     parkedNames.add(name);
     releaseDetachedMedia();
     webAudio.releaseDecodedExcept(webAudioMediaIn(document));
