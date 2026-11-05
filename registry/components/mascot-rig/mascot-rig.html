@@ -1,0 +1,752 @@
+<!doctype html>
+<!--
+  mascot-rig: HyperFrames character primitive (explainer / mascot)
+
+  A speech-bubble creature built as a layered SVG rig, so one drawing can
+  change expression and pose on cue: eyes with pupils that look around, brows,
+  four mouths (smile, neutral, frown, open), stubby arms that rotate at the
+  shoulder, feet, cheeks, and an antenna whose dot is the single accent.
+
+  Two ways to use it:
+
+  1. Mount this file as a sub-composition. It plays a short performance
+     (pop in, blink, glance, then the chosen action) and holds. Variables:
+       body, ink, cheek, accent (color): fills; every part reads them as
+         --mr-body / --mr-ink / --mr-cheek / --mr-accent.
+       size (20-100): rig height as a percentage of the frame's short side.
+       action (wave | cheer | point-left | point-right | sad | surprised).
+
+  2. Paste the .mr-rig CSS, one or more <svg class="mr-rig"> copies and the
+     window.mascotRig script into your own composition, then cue it from YOUR
+     timeline. Every cue takes (tl, root, ..., at) and returns the time it
+     finishes, so cues chain; root is the <svg class="mr-rig"> or any element
+     containing exactly one, so several mascots share one page:
+       mascotRig.enter(tl, root, at)
+       mascotRig.mood(tl, root, "happy" | "neutral" | "sad" | "surprised", at)
+       mascotRig.look(tl, root, dx, dy, at)      dx, dy in -1..1
+       mascotRig.blink(tl, root, at)
+       mascotRig.point(tl, root, "left" | "right", at)   holds until rest()
+       mascotRig.rest(tl, root, at)
+       mascotRig.wave(tl, root, at, times, side)   side defaults to "right"
+       mascotRig.cheer(tl, root, at)
+       mascotRig.hop(tl, root, at, height)
+       mascotRig.droop(tl, root, at) / mascotRig.perk(tl, root, at)
+     Theme a copy by setting the --mr-* properties on it or on any ancestor.
+
+  Cues that move the same part must not overlap in time. GSAP records a
+  tween's start value the first time it renders, so an overlap makes a frame
+  depend on the seek path. Different parts overlap freely (mood + droop).
+
+  #mr-root only, container-type: size, transparent ground, one paused
+  timeline registered under the literal "mascot-rig" key. Deterministic.
+-->
+<html
+  lang="en"
+  data-composition-id="mascot-rig"
+  data-composition-duration="4.5"
+  data-composition-variables='[{"id": "action", "type": "enum", "role": "content", "label": "Action", "description": "What the mascot does after it pops in and glances around.", "default": "wave", "options": [{"value": "wave", "label": "Wave"}, {"value": "cheer", "label": "Cheer"}, {"value": "point-left", "label": "Point left"}, {"value": "point-right", "label": "Point right"}, {"value": "sad", "label": "Sad"}, {"value": "surprised", "label": "Surprised"}]}, {"id": "size", "type": "number", "role": "style", "label": "Size", "description": "Rig height as a percentage of the frame&#39;s short side.", "default": 72, "min": 20, "max": 100, "step": 1, "unit": "%"}, {"id": "body", "type": "color", "role": "style", "label": "Body", "description": "Body and arm fill.", "default": "#ececed"}, {"id": "ink", "type": "color", "role": "style", "label": "Ink", "description": "Outlines, eyes, mouth, brows and feet.", "default": "#18181b"}, {"id": "cheek", "type": "color", "role": "style", "label": "Cheeks", "description": "Cheek fill, shown on the happy mood.", "default": "#c6c6c7"}, {"id": "accent", "type": "color", "role": "style", "label": "Accent", "description": "The antenna dot, the one accent element.", "default": "#ff5b36"}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mascot Rig</title>
+  </head>
+  <body>
+    <template>
+      <div id="mr-root" data-composition-id="mascot-rig" data-duration="4.5" data-fps="30">
+        <style>
+          *,
+          *::before,
+          *::after {
+            box-sizing: border-box;
+          }
+          #mr-root {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            container-type: size;
+            isolation: isolate;
+            background: transparent;
+            pointer-events: none;
+          }
+          .mr-stage {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            height: calc(var(--mr-size, 72) * 1cqmin);
+            aspect-ratio: 400 / 440;
+            transform: translate(-50%, -50%);
+          }
+          .mr-rig {
+            --_ink: var(--mr-ink, #18181b);
+            --_body: var(--mr-body, color-mix(in srgb, var(--_ink) 8%, #fff));
+            --_cheek: var(--mr-cheek, color-mix(in srgb, var(--_ink) 18%, var(--_body)));
+            --_accent: var(--mr-accent, var(--accent, #ff5b36));
+            --_eye: var(--mr-eye, #fff);
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+          }
+          .mr-rig .mr-shadow {
+            fill: var(--_ink);
+            fill-opacity: 0.1;
+          }
+          .mr-rig .mr-body {
+            fill: var(--_body);
+            stroke: var(--_ink);
+            stroke-width: 7;
+            stroke-linejoin: round;
+          }
+          .mr-rig .mr-limb-edge {
+            stroke: var(--_ink);
+            stroke-width: 30;
+            stroke-linecap: round;
+          }
+          .mr-rig .mr-limb-core {
+            stroke: var(--_body);
+            stroke-width: 16;
+            stroke-linecap: round;
+          }
+          .mr-rig .mr-foot,
+          .mr-rig .mr-iris,
+          .mr-rig .mr-mouth-fill {
+            fill: var(--_ink);
+          }
+          .mr-rig .mr-mouth-fill {
+            stroke: var(--_ink);
+            stroke-width: 5;
+            stroke-linejoin: round;
+          }
+          .mr-rig .mr-stalk,
+          .mr-rig .mr-brow,
+          .mr-rig .mr-mouth-line {
+            fill: none;
+            stroke: var(--_ink);
+            stroke-width: 7;
+            stroke-linecap: round;
+          }
+          .mr-rig .mr-dot {
+            fill: var(--_accent);
+            stroke: var(--_ink);
+            stroke-width: 6;
+          }
+          .mr-rig .mr-sclera {
+            fill: var(--_eye);
+            stroke: var(--_ink);
+            stroke-width: 5;
+          }
+          .mr-rig .mr-shine {
+            fill: var(--_eye);
+          }
+          .mr-rig .mr-cheek {
+            fill: var(--_cheek);
+          }
+          .mr-rig .mr-off {
+            opacity: 0;
+            visibility: hidden;
+          }
+        </style>
+        <div class="mr-stage" data-layout-allow-overflow>
+          <svg class="mr-rig" viewBox="0 0 400 440" role="img" aria-label="Mascot">
+            <ellipse class="mr-shadow" cx="212" cy="396" rx="118" ry="12" />
+            <g class="mr-hop">
+              <ellipse class="mr-foot" cx="180" cy="374" rx="30" ry="18" />
+              <ellipse class="mr-foot" cx="248" cy="374" rx="30" ry="18" />
+              <g class="mr-lean">
+                <g class="mr-antenna">
+                  <path class="mr-stalk" d="M205 116 C205 88 212 68 224 52" />
+                  <circle class="mr-dot" cx="226" cy="47" r="15" />
+                </g>
+                <g class="mr-arm-l">
+                  <line class="mr-limb-edge" x1="72" y1="252" x2="36.3" y2="319.1" />
+                  <line class="mr-limb-core" x1="72" y1="252" x2="36.3" y2="319.1" />
+                </g>
+                <g class="mr-arm-r">
+                  <line class="mr-limb-edge" x1="338" y1="252" x2="373.7" y2="319.1" />
+                  <line class="mr-limb-core" x1="338" y1="252" x2="373.7" y2="319.1" />
+                </g>
+                <path
+                  class="mr-body"
+                  d="M150 110 H260 A88 88 0 0 1 348 198 V276 A88 88 0 0 1 260 364 H150 C126 364 94 380 60 396 C74 372 62 334 62 290 V198 A88 88 0 0 1 150 110 Z"
+                />
+                <g class="mr-face">
+                  <ellipse class="mr-cheek" cx="120" cy="266" rx="20" ry="11" />
+                  <ellipse class="mr-cheek" cx="290" cy="266" rx="20" ry="11" />
+                  <g class="mr-eye mr-eye-l">
+                    <g class="mr-lid">
+                      <ellipse class="mr-sclera" cx="165" cy="214" rx="25" ry="29" />
+                      <g class="mr-pupil">
+                        <circle class="mr-iris" cx="165" cy="216" r="13" />
+                        <circle class="mr-shine" cx="170" cy="210" r="4.5" />
+                      </g>
+                    </g>
+                  </g>
+                  <g class="mr-eye mr-eye-r">
+                    <g class="mr-lid">
+                      <ellipse class="mr-sclera" cx="245" cy="214" rx="25" ry="29" />
+                      <g class="mr-pupil">
+                        <circle class="mr-iris" cx="245" cy="216" r="13" />
+                        <circle class="mr-shine" cx="250" cy="210" r="4.5" />
+                      </g>
+                    </g>
+                  </g>
+                  <path class="mr-brow mr-brow-l" d="M143 170 Q163 160 183 165" />
+                  <path class="mr-brow mr-brow-r" d="M227 165 Q247 160 267 170" />
+                  <path
+                    class="mr-mouth mr-mouth-fill mr-mouth-smile"
+                    d="M181 262 Q205 298 229 262 Z"
+                  />
+                  <path
+                    class="mr-mouth mr-mouth-line mr-mouth-neutral mr-off"
+                    d="M190 268 Q205 280 220 268"
+                  />
+                  <path
+                    class="mr-mouth mr-mouth-line mr-mouth-frown mr-off"
+                    d="M186 284 Q205 264 224 284"
+                  />
+                  <ellipse
+                    class="mr-mouth mr-mouth-fill mr-mouth-open mr-off"
+                    cx="205"
+                    cy="274"
+                    rx="13"
+                    ry="17"
+                  />
+                </g>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+        <script>
+          (function () {
+            "use strict";
+
+            function makeRig() {
+              // Pivots are viewBox coordinates, so a joint stays on its joint at any rendered size.
+              var PIVOT = {
+                feet: "212 392",
+                shadow: "212 396",
+                armL: "72 252",
+                armR: "338 252",
+                antenna: "205 116",
+                eyeL: "165 214",
+                eyeR: "245 214",
+                browL: "163 165",
+                browR: "247 165",
+                mouth: "205 272",
+              };
+              // Degrees past the resting hang; the left arm swings clockwise, the right mirrors it.
+              var ARM = { point: 62, cheer: 117, waveUp: 107, waveHi: 124, waveLo: 90, droop: -16 };
+              var MOODS = {
+                happy: { mouth: "smile", brow: 0, browY: -6, eye: [1, 1], cheek: 1 },
+                neutral: { mouth: "neutral", brow: 0, browY: 0, eye: [1, 1], cheek: 0 },
+                sad: { mouth: "frown", brow: -16, browY: 3, eye: [1, 0.8], cheek: 0 },
+                surprised: { mouth: "open", brow: 0, browY: -16, eye: [1.12, 1.16], cheek: 0 },
+              };
+              var cache = new WeakMap();
+
+              function clamp(v, lo, hi) {
+                return Math.min(hi, Math.max(lo, v));
+              }
+              function num(v, fallback) {
+                return typeof v === "number" && isFinite(v) ? v : fallback;
+              }
+              function when(tl, at) {
+                return num(at, tl.duration());
+              }
+              function parts(target) {
+                var el = typeof target === "string" ? document.querySelector(target) : target;
+                var svg = el && (el.matches(".mr-rig") ? el : el.querySelector(".mr-rig"));
+                if (!svg) throw new Error("mascotRig: no .mr-rig found for " + target);
+                if (cache.has(svg)) return cache.get(svg);
+                function one(s) {
+                  return svg.querySelector(s);
+                }
+                function all(s) {
+                  return Array.prototype.slice.call(svg.querySelectorAll(s));
+                }
+                var p = {
+                  svg: svg,
+                  shadow: one(".mr-shadow"),
+                  hop: one(".mr-hop"),
+                  lean: one(".mr-lean"),
+                  antenna: one(".mr-antenna"),
+                  armL: one(".mr-arm-l"),
+                  armR: one(".mr-arm-r"),
+                  face: one(".mr-face"),
+                  eyeL: one(".mr-eye-l"),
+                  eyeR: one(".mr-eye-r"),
+                  lidL: one(".mr-eye-l .mr-lid"),
+                  lidR: one(".mr-eye-r .mr-lid"),
+                  pupils: all(".mr-pupil"),
+                  browL: one(".mr-brow-l"),
+                  browR: one(".mr-brow-r"),
+                  cheeks: all(".mr-cheek"),
+                  mouths: {
+                    smile: one(".mr-mouth-smile"),
+                    neutral: one(".mr-mouth-neutral"),
+                    frown: one(".mr-mouth-frown"),
+                    open: one(".mr-mouth-open"),
+                  },
+                };
+                cache.set(svg, p);
+                return p;
+              }
+              function arm(tl, p, side, deg, at, duration, ease) {
+                var left = side === "left";
+                tl.to(
+                  left ? p.armL : p.armR,
+                  {
+                    rotation: left ? deg : -deg,
+                    svgOrigin: left ? PIVOT.armL : PIVOT.armR,
+                    duration: duration,
+                    ease: ease,
+                  },
+                  at,
+                );
+              }
+
+              function enter(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                tl.fromTo(
+                  p.svg,
+                  { autoAlpha: 0 },
+                  { autoAlpha: 1, duration: 0.12, ease: "none" },
+                  at,
+                );
+                tl.fromTo(
+                  p.hop,
+                  { scale: 0.2, svgOrigin: PIVOT.feet },
+                  { scale: 1, svgOrigin: PIVOT.feet, duration: 0.5, ease: "back.out(1.7)" },
+                  at,
+                );
+                tl.fromTo(
+                  p.shadow,
+                  { scaleX: 0.2, opacity: 0, svgOrigin: PIVOT.shadow },
+                  {
+                    scaleX: 1,
+                    opacity: 1,
+                    svgOrigin: PIVOT.shadow,
+                    duration: 0.4,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                return at + 0.5;
+              }
+
+              function mood(tl, root, name, at) {
+                var p = parts(root);
+                var m = MOODS[name] || MOODS.happy;
+                at = when(tl, at);
+                Object.keys(p.mouths).forEach(function (key) {
+                  var el = p.mouths[key];
+                  if (key === m.mouth) {
+                    // set + to instead of fromTo: a fromTo would paint its from-state over the
+                    // earlier mood whenever the playhead seeks back before this cue.
+                    tl.set(el, { scale: 0.5, svgOrigin: PIVOT.mouth }, at + 0.04);
+                    tl.to(
+                      el,
+                      {
+                        autoAlpha: 1,
+                        scale: 1,
+                        svgOrigin: PIVOT.mouth,
+                        duration: 0.22,
+                        ease: "back.out(2.2)",
+                      },
+                      at + 0.04,
+                    );
+                  } else {
+                    tl.to(el, { autoAlpha: 0, duration: 0.06, ease: "none" }, at);
+                  }
+                });
+                tl.to(
+                  p.browL,
+                  {
+                    rotation: m.brow,
+                    y: m.browY,
+                    svgOrigin: PIVOT.browL,
+                    duration: 0.25,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.browR,
+                  {
+                    rotation: -m.brow,
+                    y: m.browY,
+                    svgOrigin: PIVOT.browR,
+                    duration: 0.25,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.eyeL,
+                  {
+                    scaleX: m.eye[0],
+                    scaleY: m.eye[1],
+                    svgOrigin: PIVOT.eyeL,
+                    duration: 0.25,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.eyeR,
+                  {
+                    scaleX: m.eye[0],
+                    scaleY: m.eye[1],
+                    svgOrigin: PIVOT.eyeR,
+                    duration: 0.25,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                tl.to(p.cheeks, { autoAlpha: m.cheek, duration: 0.25, ease: "none" }, at);
+                return at + 0.3;
+              }
+
+              function look(tl, root, dx, dy, at) {
+                var p = parts(root);
+                var x = clamp(num(dx, 0), -1, 1);
+                var y = clamp(num(dy, 0), -1, 1);
+                at = when(tl, at);
+                tl.to(p.pupils, { x: x * 10, y: y * 11, duration: 0.3, ease: "power2.inOut" }, at);
+                // The face drifts less than the pupils; the gap reads as the head turning.
+                tl.to(p.face, { x: x * 12, y: y * 8, duration: 0.36, ease: "power2.inOut" }, at);
+                return at + 0.36;
+              }
+
+              function blink(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                [
+                  [p.lidL, PIVOT.eyeL],
+                  [p.lidR, PIVOT.eyeR],
+                ].forEach(function (lid) {
+                  tl.to(
+                    lid[0],
+                    { scaleY: 0.08, svgOrigin: lid[1], duration: 0.07, ease: "power2.in" },
+                    at,
+                  );
+                  tl.to(
+                    lid[0],
+                    { scaleY: 1, svgOrigin: lid[1], duration: 0.1, ease: "power2.out" },
+                    at + 0.07,
+                  );
+                });
+                return at + 0.17;
+              }
+
+              function point(tl, root, side, at) {
+                var p = parts(root);
+                var left = side === "left";
+                at = when(tl, at);
+                arm(tl, p, left ? "left" : "right", ARM.point, at, 0.38, "back.out(2.4)");
+                arm(tl, p, left ? "right" : "left", 0, at, 0.3, "power2.inOut");
+                tl.to(
+                  p.lean,
+                  {
+                    rotation: left ? -4 : 4,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.4,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                look(tl, root, left ? -1 : 1, -0.15, at);
+                return at + 0.4;
+              }
+
+              function rest(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                arm(tl, p, "left", 0, at, 0.32, "power2.inOut");
+                arm(tl, p, "right", 0, at, 0.32, "power2.inOut");
+                tl.to(
+                  p.lean,
+                  {
+                    rotation: 0,
+                    scaleX: 1,
+                    scaleY: 1,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.32,
+                    ease: "power2.inOut",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.antenna,
+                  { rotation: 0, svgOrigin: PIVOT.antenna, duration: 0.5, ease: "back.out(2)" },
+                  at,
+                );
+                return at + 0.5;
+              }
+
+              function hop(tl, root, at, height) {
+                var p = parts(root);
+                var h = clamp(num(height, 36), 0, 160);
+                at = when(tl, at);
+                // Squash before take-off and on landing carries the weight; the shadow carries the height.
+                tl.to(
+                  p.lean,
+                  {
+                    scaleX: 1.06,
+                    scaleY: 0.9,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.08,
+                    ease: "power2.out",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.lean,
+                  {
+                    scaleX: 0.97,
+                    scaleY: 1.04,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.12,
+                    ease: "power2.out",
+                  },
+                  at + 0.08,
+                );
+                tl.to(p.hop, { y: -h, duration: 0.2, ease: "power2.out" }, at + 0.08);
+                tl.to(
+                  p.shadow,
+                  {
+                    scaleX: 0.72,
+                    opacity: 0.5,
+                    svgOrigin: PIVOT.shadow,
+                    duration: 0.2,
+                    ease: "power2.out",
+                  },
+                  at + 0.08,
+                );
+                tl.to(p.hop, { y: 0, duration: 0.18, ease: "power2.in" }, at + 0.28);
+                tl.to(
+                  p.shadow,
+                  {
+                    scaleX: 1,
+                    opacity: 1,
+                    svgOrigin: PIVOT.shadow,
+                    duration: 0.18,
+                    ease: "power2.in",
+                  },
+                  at + 0.28,
+                );
+                tl.to(
+                  p.lean,
+                  {
+                    scaleX: 1.05,
+                    scaleY: 0.93,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.07,
+                    ease: "power2.out",
+                  },
+                  at + 0.46,
+                );
+                tl.to(
+                  p.lean,
+                  {
+                    scaleX: 1,
+                    scaleY: 1,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.2,
+                    ease: "back.out(2)",
+                  },
+                  at + 0.53,
+                );
+                return at + 0.73;
+              }
+
+              function wiggle(tl, p, at) {
+                tl.to(
+                  p.antenna,
+                  { rotation: -14, svgOrigin: PIVOT.antenna, duration: 0.12, ease: "power2.out" },
+                  at,
+                );
+                tl.to(
+                  p.antenna,
+                  { rotation: 10, svgOrigin: PIVOT.antenna, duration: 0.14, ease: "sine.inOut" },
+                  at + 0.12,
+                );
+                tl.to(
+                  p.antenna,
+                  {
+                    rotation: 0,
+                    svgOrigin: PIVOT.antenna,
+                    duration: 0.5,
+                    ease: "elastic.out(1, 0.35)",
+                  },
+                  at + 0.26,
+                );
+              }
+
+              function cheer(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                mood(tl, root, "happy", at);
+                arm(tl, p, "left", ARM.cheer, at, 0.24, "back.out(2)");
+                arm(tl, p, "right", ARM.cheer, at, 0.24, "back.out(2)");
+                tl.to(
+                  p.lean,
+                  { rotation: 0, svgOrigin: PIVOT.feet, duration: 0.24, ease: "power2.out" },
+                  at,
+                );
+                hop(tl, root, at + 0.06, 46);
+                wiggle(tl, p, at + 0.1);
+                hop(tl, root, at + 0.8, 26);
+                arm(tl, p, "left", 0, at + 1.3, 0.3, "power2.inOut");
+                arm(tl, p, "right", 0, at + 1.3, 0.3, "power2.inOut");
+                return at + 1.6;
+              }
+
+              function wave(tl, root, at, times, side) {
+                var p = parts(root);
+                var n = clamp(Math.round(num(times, 3)), 1, 8);
+                var s = side === "left" ? "left" : "right";
+                at = when(tl, at);
+                arm(tl, p, s, ARM.waveUp, at, 0.26, "back.out(1.8)");
+                var t = at + 0.26;
+                for (var i = 0; i < n; i += 1) {
+                  arm(tl, p, s, ARM.waveHi, t, 0.15, "sine.inOut");
+                  arm(tl, p, s, ARM.waveLo, t + 0.15, 0.15, "sine.inOut");
+                  t += 0.3;
+                }
+                arm(tl, p, s, 0, t + 0.1, 0.3, "power2.inOut");
+                return t + 0.4;
+              }
+
+              function droop(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                tl.to(
+                  p.lean,
+                  {
+                    rotation: 0,
+                    scaleX: 1.03,
+                    scaleY: 0.94,
+                    svgOrigin: PIVOT.feet,
+                    duration: 0.55,
+                    ease: "power2.inOut",
+                  },
+                  at,
+                );
+                tl.to(
+                  p.antenna,
+                  { rotation: -58, svgOrigin: PIVOT.antenna, duration: 0.7, ease: "back.out(1.4)" },
+                  at,
+                );
+                arm(tl, p, "left", ARM.droop, at, 0.55, "power2.inOut");
+                arm(tl, p, "right", ARM.droop, at, 0.55, "power2.inOut");
+                tl.to(p.face, { x: 0, y: 10, duration: 0.55, ease: "power2.inOut" }, at);
+                tl.to(p.pupils, { x: 0, y: 9, duration: 0.5, ease: "power2.inOut" }, at);
+                return at + 0.7;
+              }
+
+              function perk(tl, root, at) {
+                var p = parts(root);
+                at = when(tl, at);
+                hop(tl, root, at, 30);
+                tl.to(
+                  p.antenna,
+                  {
+                    rotation: 0,
+                    svgOrigin: PIVOT.antenna,
+                    duration: 0.9,
+                    ease: "elastic.out(1.1, 0.35)",
+                  },
+                  at + 0.1,
+                );
+                arm(tl, p, "left", 0, at, 0.3, "back.out(2)");
+                arm(tl, p, "right", 0, at, 0.3, "back.out(2)");
+                tl.to(p.face, { x: 0, y: -4, duration: 0.3, ease: "power2.out" }, at);
+                tl.to(p.pupils, { x: 0, y: -3, duration: 0.3, ease: "power2.out" }, at);
+                return at + 1;
+              }
+
+              return {
+                enter: enter,
+                mood: mood,
+                look: look,
+                blink: blink,
+                point: point,
+                rest: rest,
+                hop: hop,
+                cheer: cheer,
+                wave: wave,
+                droop: droop,
+                perk: perk,
+              };
+            }
+
+            window.mascotRig = window.mascotRig || makeRig();
+
+            var vars =
+              window.__hyperframes && typeof window.__hyperframes.getVariables === "function"
+                ? window.__hyperframes.getVariables()
+                : {};
+            function color(v) {
+              if (typeof v !== "string") return null;
+              var c = v.trim();
+              return c && CSS.supports("color", c) ? c : null;
+            }
+            function pick(table, value, fallback) {
+              return table.indexOf(value) >= 0 ? value : fallback;
+            }
+
+            var root = document.getElementById("mr-root");
+            [
+              ["body", "--mr-body"],
+              ["ink", "--mr-ink"],
+              ["cheek", "--mr-cheek"],
+              ["accent", "--mr-accent"],
+            ].forEach(function (pair) {
+              var c = color(vars[pair[0]]);
+              if (c) root.style.setProperty(pair[1], c);
+            });
+            var size = Number(vars.size);
+            size = isFinite(size) ? Math.min(100, Math.max(20, size)) : 72;
+            root.style.setProperty("--mr-size", String(size));
+            var action = pick(
+              ["wave", "cheer", "point-left", "point-right", "sad", "surprised"],
+              vars.action,
+              "wave",
+            );
+
+            var R = window.mascotRig;
+            var tl = gsap.timeline({ paused: true });
+            R.enter(tl, root, 0.1);
+            R.blink(tl, root, 0.8);
+            R.look(tl, root, -0.8, -0.2, 1);
+            R.look(tl, root, 0, 0, 1.5);
+            var ACT = 1.9;
+            if (action === "wave") {
+              R.mood(tl, root, "happy", ACT);
+              R.wave(tl, root, ACT, 3);
+            } else if (action === "cheer") {
+              R.cheer(tl, root, ACT);
+            } else if (action === "point-left" || action === "point-right") {
+              R.mood(tl, root, "happy", ACT);
+              R.point(tl, root, action === "point-left" ? "left" : "right", ACT);
+            } else if (action === "sad") {
+              R.mood(tl, root, "sad", ACT);
+              R.droop(tl, root, ACT);
+            } else {
+              R.mood(tl, root, "surprised", ACT);
+              R.perk(tl, root, ACT);
+            }
+            R.blink(tl, root, 3.95);
+            tl.set({}, {}, 4.5);
+            tl.seek(0);
+            window.__timelines = window.__timelines || {};
+            window.__timelines["mascot-rig"] = tl;
+          })();
+        </script>
+      </div>
+    </template>
+  </body>
+</html>
