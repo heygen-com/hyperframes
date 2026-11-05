@@ -25,9 +25,31 @@ it("lints at the lowest CPU priority so it never competes with a Studio boot", a
   expect(write).toHaveBeenCalledWith(expect.stringContaining('{"ok":true}'));
 });
 
-it("still lints when a sandbox forbids lowering the priority", async () => {
+const nodeSystemErrorWithOsCodeInInfo = (code: string) =>
+  Object.assign(new Error(`A system error occurred: uv_os_setpriority returned ${code}`), {
+    code: "ERR_SYSTEM_ERROR",
+    info: { code, syscall: "uv_os_setpriority" },
+  });
+
+it.each(["EPERM", "EACCES"])(
+  "still lints, saying nothing, when a sandbox refuses lowering the priority (%s)",
+  async (code) => {
+    os.setPriority.mockImplementation(() => {
+      throw nodeSystemErrorWithOsCodeInInfo(code);
+    });
+    const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const warn = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    await import("./renderSetupWorker.js");
+
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('{"ok":true}'));
+    expect(warn).not.toHaveBeenCalled();
+  },
+);
+
+it("still names any other priority failure, and lints", async () => {
   os.setPriority.mockImplementation(() => {
-    throw new Error("uv_os_setpriority returned EPERM (operation not permitted)");
+    throw nodeSystemErrorWithOsCodeInInfo("ESRCH");
   });
   const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
   const warn = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
@@ -36,5 +58,5 @@ it("still lints when a sandbox forbids lowering the priority", async () => {
 
   expect(write).toHaveBeenCalledWith(expect.stringContaining('{"ok":true}'));
   expect(warn).toHaveBeenCalledTimes(1);
-  expect(warn).toHaveBeenCalledWith(expect.stringContaining("EPERM"));
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining("ESRCH"));
 });
