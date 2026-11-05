@@ -82,7 +82,7 @@ async function bundleUrl(pack: TemplatePack, retries = 1): Promise<string> {
   if (res.status === 401) throw new PullRefused("Not signed in. Run `npx hyperframes auth login`.");
   if (res.status === 402)
     throw new PullRefused(
-      "Creator templates are part of HyperFrames Pro; nothing was downloaded. Run `npx hyperframes billing subscribe`: it opens the page and waits.",
+      "Creator templates are part of HyperFrames Pro; nothing was downloaded. Run `npx hyperframes billing subscribe --feature templates --skill style-sampling`: it opens the page and waits.",
     );
   if (res.status === 404) throw new PullRefused("That template version is no longer available.");
   if (!res.ok) throw new PullRefused(`HeyGen could not hand over the template (${res.status}).`);

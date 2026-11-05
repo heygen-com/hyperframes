@@ -2,6 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../auth/browser.js";
 import {
   addonBlocks,
+  checkoutSkill,
   createCheckout,
   money,
   pageUrl,
@@ -40,14 +41,17 @@ function priceLine(
 
 const WAIT_TIMEOUT_EXIT = 124;
 
+type CheckoutSource = { skill?: string; baseline?: number };
+
 async function openCheckout(
   kind: "plans" | "credits",
   offer: Offer,
   missing: number | undefined,
   signal: AbortSignal,
+  source: CheckoutSource,
 ): Promise<void> {
   if (isUnattended()) {
-    console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
+    console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing, source))}`);
     return;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -56,21 +60,22 @@ async function openCheckout(
   } finally {
     rl.close();
   }
-  await openBrowser(await createCheckout(kind, offer, missing));
+  await openBrowser(await createCheckout(kind, offer, missing, source));
 }
 
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
   signal: AbortSignal,
-  needed?: number,
+  needed: number | undefined,
+  source: CheckoutSource,
 ): Promise<CheckoutError | null> {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
   try {
-    await openCheckout(kind, offer, missing, signal);
+    await openCheckout(kind, offer, missing, signal, source);
     return null;
   } catch (error) {
     if (signal.aborted) return null;
@@ -100,6 +105,11 @@ export default defineCommand({
       description: "The feature that sent the person here, so a purchase is credited to it",
     },
     session: { type: "string", description: "The run to credit the purchase to (with --feature)" },
+    skill: {
+      type: "string",
+      description:
+        "The skill that sent the person here, sent with the pricing link (default: the project's own skill)",
+    },
     timeout: { type: "string", description: "Seconds to wait (default 600)" },
   },
   // fallow-ignore-next-line complexity
@@ -110,6 +120,7 @@ export default defineCommand({
       failCommand();
     }
     const needed = Number(args.needed) || undefined;
+    const skill = checkoutSkill(args.skill);
     const before = await readPlan();
     const done = (p: Plan | null) =>
       action === "subscribe"
@@ -124,6 +135,7 @@ export default defineCommand({
       tool: args.tool,
       feature: args.feature,
       rs: args.session,
+      skill,
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
@@ -143,6 +155,7 @@ export default defineCommand({
       before,
       stop.signal,
       needed,
+      { skill, baseline: before?.credits },
     );
     if (checkoutFailure?.reason === "checkout_unavailable") {
       giveUp.abort();
