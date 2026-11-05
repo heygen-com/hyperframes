@@ -117,7 +117,7 @@ import {
   MISSING_RUNTIME_ENV_SNAPSHOT,
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
-  shownDeferredFrameIndexes,
+  shownPlanFrameIndexes,
 } from "./chunkFrames.js";
 
 export {
@@ -697,7 +697,7 @@ export async function renderChunk(
     const chunkFps = { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen };
     const deferredVideos = planVideos?.extracted.filter((video) => video.deferredRange) ?? [];
     const shownFrames = planVideos
-      ? shownDeferredFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
+      ? shownPlanFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
       : new Map<string, Set<number>>();
     // The browser cannot load a source read by URL; size its <video> from the plan instead.
     const remoteVideoIds = new Set(
