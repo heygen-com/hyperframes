@@ -1,7 +1,6 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
-  isTransientBrowserError,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -10,6 +9,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
 import { reportArtifacts } from "../utils/toolContext.js";
@@ -353,17 +353,6 @@ interface SnapshotCompositePage {
     quality: number;
     clip: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array>;
-}
-
-export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
-  try {
-    return await shoot();
-  } catch (err) {
-    if (!isTransientBrowserError(err)) throw err;
-    return shoot().catch(() => {
-      throw err;
-    });
-  }
 }
 
 /** Recapture canvas composites once the decoded video overlays have been injected. */
