@@ -1659,8 +1659,7 @@ describe("core runtime browser contract", () => {
         await page.waitForFunction(() => window.__playerReady && window.__renderReady);
         const cdp = await page.createCDPSession();
         await cdp.send("Performance.enable");
-        // DOM nodes alive but out of the page, after a full collection.
-        const kept = async () => {
+        const keptOnce = async () => {
           await cdp.send("HeapProfiler.collectGarbage");
           const { metrics } = await cdp.send("Performance.getMetrics");
           const inPage = await page.evaluate(() => {
@@ -1670,6 +1669,16 @@ describe("core runtime browser contract", () => {
             return count;
           });
           return metrics.find((m) => m.name === "Nodes")!.value - inPage;
+        };
+        // DOM nodes alive but out of the page. One collection can leave a freed scene unswept; a held one survives every collection.
+        const kept = async () => {
+          let count = await keptOnce();
+          for (let round = 0; round < 5; round++) {
+            const next = await keptOnce();
+            if (next >= count) return next;
+            count = next;
+          }
+          return count;
         };
         const before = await kept();
         await page.evaluate(async () => {
