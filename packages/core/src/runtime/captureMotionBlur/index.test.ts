@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createGsapAdapter } from "../adapters/gsap";
+import { createGsapAdapter, muteDiscreteCallbacks } from "../adapters/gsap";
 import type { RuntimeTimelineLike } from "../types";
 import {
   type CaptureMotionBlurHost,
@@ -184,7 +184,7 @@ function gsapCallsFilm(movesSlider = false) {
   tl.to(el, { x: 300, duration: 1, ease: "none" }, 0)
     .call(() => void (label.textContent = "B"), [], 0.5)
     .call(() => void label.classList.toggle("on"), [], 0.6);
-  if (movesSlider) tl.call(() => void (el.style.left = el.style.left ? "" : "40px"), [], 0.2);
+  if (movesSlider) tl.eventCallback("onUpdate", () => void (el.style.left = `${tl.time() * 40}px`));
   const x = () => Number(gsap.getProperty(el, "x")) + (parseFloat(el.style.left) || 0);
   el.getBoundingClientRect = () =>
     ({ left: x(), top: 0, right: x() + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
@@ -192,7 +192,11 @@ function gsapCallsFilm(movesSlider = false) {
   const seek = vi.fn((t: number, suppressEvents: boolean) =>
     adapter.seek({ time: t, suppressEvents }),
   );
-  initCaptureMotionBlur({ ...h, seek });
+  initCaptureMotionBlur({
+    ...h,
+    seek,
+    muteCallbacks: () => muteDiscreteCallbacks([tl as unknown as RuntimeTimelineLike]),
+  });
   const paintAt = (t: number): string => {
     seek(t, false);
     void paintCaptureMotionBlur(t, PLAY);
@@ -1181,6 +1185,44 @@ describe("painting", () => {
     const paintAt = gsapCallsFilm(true);
     expect(paintAt(0.49)).toBe("A");
     expect(paintAt.seek.mock.calls.some(([t, quiet]) => t > 0.5 && t < 0.51 && !quiet)).toBe(true);
+  });
+
+  it("restores callbacks when onUpdate throws during the scan", () => {
+    installHtmlInCanvas();
+    const { el, h } = movingHost({
+      "data-motion-blur": "on",
+      "data-motion-blur-events": "on",
+    });
+    const called = vi.fn();
+    let thrown = false;
+    const tl = gsap.timeline({
+      paused: true,
+      onUpdate: () => {
+        if (thrown || tl.time() < 0.4) return;
+        thrown = true;
+        throw new Error("onUpdate threw mid-scan");
+      },
+    });
+    tl.to(el, { x: 300, duration: 1, ease: "none" }, 0).call(called, [], 0.5);
+    el.getBoundingClientRect = () => {
+      const x = Number(gsap.getProperty(el, "x"));
+      return { left: x, top: 0, right: x + 10, bottom: 10, width: 10, height: 10 } as DOMRect;
+    };
+    const adapter = createGsapAdapter({ getTimeline: () => tl as unknown as RuntimeTimelineLike });
+    initCaptureMotionBlur({
+      ...h,
+      seek: (t, suppressEvents) => adapter.seek({ time: t, suppressEvents }),
+      muteCallbacks: () => muteDiscreteCallbacks([tl as unknown as RuntimeTimelineLike]),
+    });
+    try {
+      void paintCaptureMotionBlur(0.3, PLAY);
+    } catch {
+      // The scan may rethrow; what matters is that the callbacks are back.
+    }
+    expect(thrown).toBe(true);
+    expect(called).not.toHaveBeenCalled();
+    tl.seek(0.7, false);
+    expect(called).toHaveBeenCalledTimes(1);
   });
 
   it("fires timeline callbacks during discovery only when the root allows events", () => {

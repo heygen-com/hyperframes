@@ -56,6 +56,7 @@ import { createCssAdapter } from "./adapters/css";
 import {
   createGsapAdapter,
   holdFrameMarks,
+  muteDiscreteCallbacks,
   rerenderGsapTimelineAt,
   gsapTimelineOf,
   seekGsapTimeline,
@@ -4141,6 +4142,11 @@ export function initSandboxRuntimeModular(): void {
             seekRootChildrenAndAdapters(state.capturedTimeline, t, { suppressEvents: true }),
           );
       },
+      muteCallbacks: () =>
+        muteDiscreteCallbacks([
+          ...sceneTimelines().map(([, timeline]) => timeline),
+          ...(state.capturedTimeline ? [state.capturedTimeline] : []),
+        ]),
       ignoreMutations: withoutOwnCompositionRecords,
     });
   }
