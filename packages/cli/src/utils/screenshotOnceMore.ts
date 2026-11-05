@@ -1,7 +1,6 @@
 import { isTransientBrowserError } from "@hyperframes/engine";
 
-/** Takes a screenshot again, once, when Chrome refuses it for a passing reason (it dropped the frame mid-paint). A
- * second failure reports the first error. */
+/** Retries once on a passing Chrome refusal; a second failure rethrows the first error. */
 export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
   try {
     return await shoot();
