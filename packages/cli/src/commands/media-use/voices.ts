@@ -7,7 +7,7 @@ export const examples: Example[] = [
   ["The voice clones the film's workspace can speak with", "hyperframes media-use voices"],
 ];
 
-export const WHOSE =
+const WHOSE =
   "Every clone this workspace can use, a teammate's included: HeyGen does not say who made one. Use a clone only when the person names it, or gives its id, as their own; never pick one by count, language or name.";
 
 export default defineCommand({

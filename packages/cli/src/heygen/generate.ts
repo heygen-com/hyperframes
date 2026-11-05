@@ -631,7 +631,7 @@ export async function pickVoice(r: GenerateRequest): Promise<Voice> {
 const LANGUAGE_TAG = /^([a-z]{2,3})(?:[-_][a-z0-9]{2,8})*$/i;
 const LANGUAGE_NAMES = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" });
 
-export function languageName(spelled: string): string {
+function languageName(spelled: string): string {
   const tag = LANGUAGE_TAG.exec(spelled.trim());
   if (!tag) return spelled;
   return LANGUAGE_NAMES.of(tag[1]!.toLowerCase()) ?? spelled;
