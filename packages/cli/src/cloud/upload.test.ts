@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HyperframesApiError } from "./_gen/client.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
-import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "./upload.js";
+import { putTimings, uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "./upload.js";
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -368,6 +368,87 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
           contentType: "video/mp4",
         }),
       ).rejects.toThrow(/Direct upload PUT failed: 403.*SignatureDoesNotMatch/);
+    });
+  });
+});
+
+describe("a PUT that stalls or fails on the network is sent again", () => {
+  /** A server that answers its Nth request as `plan[n]` ("hang" never answers; a number is the status) and keeps
+   * the last answer for any later one. */
+  async function withPlan(
+    plan: Array<"hang" | number>,
+    run: (url: string, requests: () => number) => Promise<void>,
+  ): Promise<void> {
+    let n = 0;
+    const open: Array<() => void> = [];
+    const server = createServer(async (req, res) => {
+      const answer = plan[Math.min(n++, plan.length - 1)]!;
+      for await (const _ of req) void _;
+      if (answer === "hang") return void open.push(() => res.destroy());
+      res.writeHead(answer).end(answer === 200 ? "" : "refused");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}/put`, () => n);
+    } finally {
+      for (const close of open) close();
+      server.close();
+    }
+  }
+
+  const upload = (url: string, asBytes = false) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-upload-retry-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, "clip.mp4"), "bytes");
+    const was = { ...putTimings };
+    Object.assign(putTimings, { stallMs: 150, backoffMs: 5 });
+    onTestFinished(() => void Object.assign(putTimings, was));
+    return uploadAssetViaDirectUpload({
+      client: makeClient({
+        createAssetUpload: vi.fn(async () => ({
+          asset_id: "asset_xyz",
+          upload_url: url,
+          upload_headers: {},
+          expires_in_seconds: 3600,
+          max_bytes: 200 * 1024 * 1024,
+          status: "pending_upload" as const,
+        })),
+      } as Partial<HyperframesCloudClient>),
+      ...(asBytes ? { bytes: Buffer.from("bytes") } : { path: join(dir, "clip.mp4"), size: 5 }),
+      filename: "clip.mp4",
+      contentType: "video/mp4",
+    });
+  };
+
+  it("ends a try that moves no data and sends the file again", async () => {
+    await withPlan(["hang", 200], async (url, requests) => {
+      await upload(url);
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("bounds the project zip, which is sent from memory, the same way", async () => {
+    await withPlan(["hang", 200], async (url, requests) => {
+      await upload(url, true);
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("sends it again after a server error, and gives up after the retries with the last words", async () => {
+    await withPlan([503, 200], async (url, requests) => {
+      await upload(url);
+      expect(requests()).toBe(2);
+    });
+    await withPlan(["hang"], async (url, requests) => {
+      await expect(upload(url)).rejects.toThrow(/Upload stalled/);
+      expect(requests()).toBe(1 + putTimings.retries);
+    });
+  });
+
+  it("does not send it again when S3 refuses it", async () => {
+    await withPlan([403], async (url, requests) => {
+      await expect(upload(url)).rejects.toThrow(/PUT failed: 403/);
+      expect(requests()).toBe(1);
     });
   });
 });
