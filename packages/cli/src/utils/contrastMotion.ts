@@ -17,7 +17,7 @@ function isAmbientTween(tween: ContrastTweenState): boolean {
   return tween.infiniteAncestor || tween.repeat !== 0 || tween.duration >= AMBIENT_TWEEN_SECONDS;
 }
 
-/** True when a non-ambient tween on the text, an ancestor, or a layer overlapping the text is running at the current seek, or the text is not fully opaque. */
+/** True when text, an ancestor or a layer under it is mid-tween (not ambient), or the text is not fully opaque. */
 export function measuredInMotion(sample: ContrastMotionSample): boolean {
   if (Math.round(sample.opacity * 1000) < 1000) return true;
   return sample.tweens.some((tween) => !isAmbientTween(tween) && tween.active);
