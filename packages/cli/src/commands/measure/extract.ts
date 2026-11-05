@@ -62,7 +62,7 @@ async function record(
   return entry.id;
 }
 
-const crop = (roi: Roi) => `crop=${roi[2]}:${roi[3]}:${roi[0]}:${roi[1]}`;
+const crop = (roi: Roi) => `crop=${roi[2]}:${roi[3]}:${roi[0]}:${roi[1]}:exact=1`;
 
 /** The frame shown at `at` seconds, cropped, as a picture. */
 export async function cutStill(info: VideoInfo, at: number, roi: Roi, out: string) {

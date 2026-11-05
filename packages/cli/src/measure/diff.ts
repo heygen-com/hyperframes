@@ -368,7 +368,7 @@ function ssimSeries(ref: Clip, yours: Clip, logPath: string): Series {
     `[1:v]${side([...yours.filters, `scale=${ref.width}:${ref.height}:flags=bicubic`])},split=${n}${tags("o")}`,
     "[o0][r0]ssim=stats_file=-:shortest=1[s0]",
     ...Array.from({ length: GRID * GRID }, (_, i) => {
-      const crop = `crop=${cw}:${ch}:${(i % GRID) * cw}:${Math.floor(i / GRID) * ch}`;
+      const crop = `crop=${cw}:${ch}:${(i % GRID) * cw}:${Math.floor(i / GRID) * ch}:exact=1`;
       const k = i + 1;
       return `[r${k}]${crop}[rc${k}];[o${k}]${crop}[oc${k}];[oc${k}][rc${k}]ssim=stats_file=cell${i}.log:shortest=1[s${k}]`;
     }),
