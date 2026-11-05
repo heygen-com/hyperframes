@@ -2,8 +2,8 @@
 // on the segmented route, once reading a segment's frames at a time and once extracting whole
 // videos, and the two outputs must match frame for frame. Needs Chrome + ffmpeg: integration lane.
 // Known gap: this test pins `browserGpuMode: "software"`, so every render here takes the screenshot
-// path. Windowed drawElement parity, including self-verify through the on-demand hook, was measured
-// by hand on real footage and has no automated guard.
+// path. Windowed drawElement output parity was measured by hand on real footage and has no automated
+// guard.
 //
 // HF_TEST_RETRY_BROWSER_STALL=1 renders once more after Chrome dies, for an overloaded local host.
 // Never set it in CI: a windowed render that needs the retry alone fails the case.
