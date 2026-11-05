@@ -370,7 +370,7 @@ describe("agent-mode contract", () => {
     expect(captions.code).toBe(2);
     expect(captions.stderr).toContain("Unknown command: captions");
     expect(captions.stderr).toContain(
-      "Run 'hyperframes transcribe', then read references/captions.md",
+      "Run 'hyperframes transcribe', then read ../hyperframes/references/captions.md",
     );
     expect(typo.code).toBe(2);
     expect(typo.stderr).toContain("Did you mean 'hyperframes render'?");

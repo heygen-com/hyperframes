@@ -54,7 +54,7 @@ const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
   install: { command: "add" },
   captions: {
     command: "transcribe",
-    then: "then read references/captions.md",
+    then: "then read ../hyperframes/references/captions.md",
   },
 };
 
