@@ -1563,7 +1563,9 @@ with a `reverse` field: whether you are signed in, the plan (`free`, `pro`, or
 purchase to this run (both `null` when HeyGen says no plan can be bought right now). It stops the
 run only when HeyGen blocks it for a Free account: it then exits non-zero with that command, or,
 without one, says a plan can't be purchased right now. Signed out, offline, or on a server without
-the route, it skips the session and still probes.
+the route, it skips the session and still probes; `--dir` is still created with a
+`hyperframes.json` naming the skill. `init` accepts that folder with the video already in it when
+it is the `--video` it was given.
 
 ```bash
 npx hyperframes reverse start ref.mp4 --dir my-rebuild
