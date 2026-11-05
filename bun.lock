@@ -234,6 +234,7 @@
         "acorn": "^8.17.0",
         "acorn-walk": "^8.3.5",
         "htmlparser2": "^10.1.0",
+        "ignore": "^5.3.2",
         "linkedom": "^0.18.12",
         "postcss": "^8.5.8",
         "postcss-selector-parser": "^7.1.4",
