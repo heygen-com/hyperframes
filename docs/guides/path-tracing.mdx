@@ -1,0 +1,84 @@
+---
+title: "Path-Traced 3D"
+description: "Preview a Three.js scene with fast raster frames, then export it path traced, with every frame identical however it is seeked."
+---
+
+Use the `path-traced-3d` example when a 3D shot needs real light: soft shadows, light bouncing between objects and reflections of the scene itself. It previews with ordinary Three.js raster rendering and exports with a path tracer, from the same scene file.
+
+```bash Terminal
+npx hyperframes init my-3d --example path-traced-3d
+cd my-3d
+npx hyperframes preview
+```
+
+The tracer is opt-in. A project gets it only by starting from this example, so 2D projects never load it.
+
+## What is in the project
+
+| File | Holds |
+| --- | --- |
+| `index.html` | The 1920×1080, 6-second root and its three variables |
+| `assets/scene.js` | The scene and `poseAt(t)`, the only code that moves anything |
+| `assets/render.js` | Setup, the seek handler and the tracer settings |
+| `assets/vendor/three-path-tracer.min.js` | three 0.180.0, three-gpu-pathtracer 0.0.24 and three-mesh-bvh 0.9.5 as one local ES module, with their licences and a note on how to rebuild it |
+
+Everything loads from the project folder, so a render never fetches a library from the network.
+
+## Preview in raster, export path traced
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `renderer` | `raster` | `raster` draws a frame in milliseconds. `path` traces it. |
+| `samples` | `64` | Path samples per pixel, traced for every frame. |
+| `bounces` | `4` | How many times a ray may bounce. |
+
+Work in raster, then export once with the tracer:
+
+```bash Terminal
+npx hyperframes render --variables '{"renderer":"path","samples":64}' -o final.mp4
+```
+
+Path tracing costs far more than raster. Measured on an Apple M4 Max with a hardware GPU, an 8-second 720p clip took 10.8 s rasterized and 810.5 s path traced at 32 samples per pixel and 6 bounces. Noise falls with the square root of the samples, so halving it costs four times the samples, and every extra bounce makes each path longer.
+
+<Note>
+  Without a hardware GPU, Chrome draws WebGL in software and the tracer is much slower: on SwiftShader its first shader run alone took about a minute at 320×180, longer than the default 45-second readiness wait. Check path mode at a small size with 1 or 2 samples, and raise the wait with `--timeout 170000` for `check` and `snapshot` or `--player-ready-timeout 180000` for `render`.
+</Note>
+
+## How it stays deterministic
+
+HyperFrames seeks frames one by one, in any order and across several workers, so `render.js` follows these rules. Keep them when you change it.
+
+- **Setup is one `window.__hf.buildReady` promise.** It builds the scene, compiles the shaders, sets up the tracer and draws one throwaway frame, because the first frame a renderer draws differs from later ones. It then reads one pixel back, so the GPU has really finished that first, slowest run before setup resolves.
+- **Frames are drawn only in the `hf-seek` listener**, registered with `event.detail.waitUntil(promise)`. Nothing runs a render loop.
+- **Each new time starts from zero.** The handler poses the scene for that time, rebuilds the tracer's copy of it and traces exactly `samples` passes. A seek back to the time already on screen does no work.
+- **The tracer never waits on time.** `renderDelay` and `fadeDuration` are 0, because the tracer times them with a clock that does not move during a render.
+- **Randomness is seeded.** Three's object uuids, which set the order the tracer sorts lights, meshes and textures in, and the tracer's noise textures come from `Math.random`, so the scene and the tracer are built under a fixed seed. Without it, every render worker draws different grain. Anything you add later, such as a model loaded during setup, must also be created under the seed.
+
+### The frozen clock
+
+During a render, `Date.now()` and `performance.now()` return the current seek time and do not move between seeks (they read 0 until the first seek), and `requestAnimationFrame` callbacks wait for a seek. The first seek waits for setup. Setup that waits for an animation frame or for the clock to advance never finishes. Composition code uses no timers of its own either. Await the library's readiness promise instead:
+
+```js assets/render.js
+await renderer.compileAsync(scene, camera);
+```
+
+three-gpu-pathtracer 0.0.24 shows its shader compilation only as the `isCompiling` flag. The promise behind that flag is three's `compileAsync`, so `render.js` awaits it in one helper, `tracerCompiled()`, whenever a `renderSample()` call leaves `isCompiling` set. It decides only when drawing may start, never what is drawn.
+
+Do not wait with `scheduler.yield()`. Its continuations run ahead of timers, so a loop that yields until a compile finishes starves the timer `compileAsync` polls with, and the page never becomes ready. Do not swap `compileAsync` for the synchronous `compile` to hide that; fix the wait.
+
+## Check a change
+
+Seek to a time, an earlier time, then the first time again, and compare the two stills:
+
+```bash Terminal
+npx hyperframes snapshot --at 4,0,4 --no-end
+```
+
+The two stills at 4 s must be byte-identical. Then render a short clip and look at its frames. In the HyperFrames repository, `registry/examples/path-traced-3d/source/verify-render.mjs` runs these checks in both modes at 320×180 and checks the exported pixels.
+
+## Related
+
+- [Frame adapters](/concepts/frame-adapters) for how the runtime seeks Three.js
+- [Variables](/concepts/variables) for `--variables` and batch renders
+- [Determinism](/concepts/determinism) for the general rules
+- [Performance](/guides/performance) for render speed
