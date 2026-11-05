@@ -239,13 +239,15 @@ function printJsonStatus(s: VerifiedStatus): void {
   };
   if (s.credential.type === "oauth") {
     payload["hyperframes_balance"] = null;
-    // With the plan read, `hyperframes` above holds the plan and credits, so there is no notice to give.
     if (product !== "hyperframes")
       payload["billing_notice"] =
         "OAuth billing product is not verified here; user billing fields describe the HeyGen account.";
     else if (!s.plan)
       payload["billing_notice"] =
         "HyperFrames balance is unavailable here; user billing fields describe the HeyGen account.";
+    else
+      payload["billing_notice"] =
+        "`hyperframes` is the HyperFrames plan and credits. user.subscription is the HeyGen app's plan and does not unlock HyperFrames features.";
     payload["expires_at"] = s.credential.expires_at?.toISOString() ?? null;
     payload["refreshable"] = s.credential.refreshable;
     payload["scope"] = s.credential.scope ?? null;

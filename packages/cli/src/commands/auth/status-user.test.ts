@@ -144,7 +144,7 @@ describe("auth status — persisted user block surface", () => {
     }
   });
 
-  it("gives no 'balance unavailable' notice when the HyperFrames plan is shown", async () => {
+  it("names `hyperframes` as the plan, not the HeyGen app's, when the HyperFrames plan is shown", async () => {
     vi.stubGlobal(
       "fetch",
       async () =>
@@ -161,7 +161,8 @@ describe("auth status — persisted user block surface", () => {
     expect(await runStatus(true)).toBe(0);
     const payload = lastJson();
     expect(payload["hyperframes"]).toEqual({ plan: "pro", credits: 25000 });
-    expect(payload).not.toHaveProperty("billing_notice");
+    expect(payload["billing_notice"]).toContain("`hyperframes` is the HyperFrames plan");
+    expect(payload["billing_notice"]).not.toContain("unavailable");
     stdout = [];
     expect(await runStatus(false)).toBe(0);
     const text = stdout.join("\n");
