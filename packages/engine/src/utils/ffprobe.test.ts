@@ -2348,3 +2348,69 @@ describe("the audio tail probe's read interval", () => {
     for (const interval of intervals) expect(interval.split("%")[0]).toMatch(/^\d+(\.\d+)?$/);
   });
 });
+
+describe("a video whose headers state no duration", () => {
+  it("is measured from its packets, so a recorder's WebM or Matroska is not refused", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-no-duration-"));
+    const file = resolve(dir, "recording.mkv");
+    writeFileSync(file, "x");
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24, avg_frame_rate: "10/1" }],
+          format: {},
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: "0.000000,0.100000\n2.800000,0.100000\n2.700000,0.100000\n",
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } =
+      await import("./ffprobe.js");
+    try {
+      const metadata = await mocked(file);
+      expect(resolvePlayableVideoDuration(metadata)).toBeCloseTo(2.9);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      vi.resetModules();
+      vi.doUnmock("child_process");
+    }
+  });
+
+  it("ignores the half line a long film's output is cut at, and counts a packet with no stated duration as one frame", async () => {
+    const file = resolve(mkdtempSync(resolve(tmpdir(), "hf-no-duration-long-")), "long.mkv");
+    writeFileSync(file, "x");
+    const packets = (n: number) =>
+      Array.from({ length: n }, (_, i) => `${(i / 30).toFixed(6)},N/A`).join("\n") + "\n";
+    // The cut must land just after a decimal point, so its leftover digits read as a huge time.
+    let frames = 5000;
+    while (packets(frames).at(-(64 * 1024) - 1) !== ".") frames++;
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24, avg_frame_rate: "30/1" }],
+          format: {},
+        }),
+      },
+      { kind: "exit", code: 0, stdout: packets(frames) },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } =
+      await import("./ffprobe.js");
+    try {
+      expect(resolvePlayableVideoDuration(await mocked(file))).toBeCloseTo(frames / 30, 1);
+    } finally {
+      vi.resetModules();
+      vi.doUnmock("child_process");
+    }
+  });
+});
