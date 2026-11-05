@@ -1896,8 +1896,9 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic, timeoutMs?: numb
       `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
         "The runtime holds render-ready until every registered buildReady promise settles. " +
         "Find where the composition registers that key and confirm it actually resolves. " +
-        "During a render, Date and performance.now stay at 0 until the first frame, so setup " +
-        "that waits for the clock to advance never finishes.",
+        "During a render, Date and performance.now stay at 0 and requestAnimationFrame " +
+        "callbacks wait until the first frame, so setup that awaits an animation frame or " +
+        "the clock never finishes. Wait with setTimeout or scheduler.yield() instead.",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
