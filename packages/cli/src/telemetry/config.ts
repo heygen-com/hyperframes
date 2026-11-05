@@ -7,14 +7,14 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
 import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
-import { hyperframesConfigDir } from "../utils/configDir.js";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
 // ---------------------------------------------------------------------------
 
 const configDir = () => hyperframesConfigDir();
-const configFile = () => hyperframesConfigDir("config.json");
+const configFile = () => seededConfigFile("config.json");
 
 // ---------------------------------------------------------------------------
 // Install-state file: ~/.hyperframes/install-state.json
@@ -48,7 +48,7 @@ const configFile = () => hyperframesConfigDir("config.json");
 // telemetry status` prints its exact location.
 // ---------------------------------------------------------------------------
 
-const stateFile = () => hyperframesConfigDir("install-state.json");
+const stateFile = () => seededConfigFile("install-state.json");
 
 // Pre-move location. Read once, migrated, then deleted — an install that
 // wrote state under the old scheme keeps its tripped breaker instead of

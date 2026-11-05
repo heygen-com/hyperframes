@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { hyperframesConfigDir } from "./configDir.js";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
 interface ProjectLink {
   projectId: string;
@@ -11,7 +11,7 @@ interface ProjectLink {
 type ProjectLinks = Record<string, ProjectLink>;
 
 const configDir = () => hyperframesConfigDir();
-const projectsFile = () => hyperframesConfigDir("projects.json");
+const projectsFile = () => seededConfigFile("projects.json");
 
 /** Read + parse a JSON object file, or null if it's missing, unreadable, or not an object. */
 function readJsonRecord(path: string): Record<string, unknown> | null {

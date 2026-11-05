@@ -95,6 +95,24 @@ test("the shared config is read from HYPERFRAMES_CONFIG_DIR when it is set", () 
   }
 });
 
+test("an opt-out in ~/.hyperframes holds until HYPERFRAMES_CONFIG_DIR has its own config", () => {
+  const savedEnv = { ...process.env };
+  const { root, home } = sandbox();
+  try {
+    withoutTelemetryOptOut();
+    mkdirSync(join(home, ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(home, ".hyperframes", "config.json"),
+      JSON.stringify({ telemetryEnabled: false }),
+    );
+    process.env.HYPERFRAMES_CONFIG_DIR = join(root, "moved");
+    assert.equal(optedOut(), true);
+  } finally {
+    restoreEnv(savedEnv);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("track is a no-op (no network, resolves) when opted out", async () => {
   const savedEnv = { ...process.env };
   const originalFetch = globalThis.fetch;

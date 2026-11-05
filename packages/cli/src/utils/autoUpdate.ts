@@ -37,7 +37,7 @@ import {
   installInvocation,
   type InstallInvocation,
 } from "./installerDetection.js";
-import { hyperframesConfigDir } from "./configDir.js";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
 const configDir = () => hyperframesConfigDir();
 const logFile = () => hyperframesConfigDir("auto-update.log");
@@ -208,7 +208,7 @@ function launchDetachedInstall(
   version: string,
 ): void {
   mkdirSync(configDir(), { recursive: true, mode: 0o700 });
-  const configFile = join(configDir(), "config.json");
+  const configFile = seededConfigFile("config.json");
 
   const nodeScript = installerScript({
     configFile,

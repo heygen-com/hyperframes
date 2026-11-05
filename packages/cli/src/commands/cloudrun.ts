@@ -31,7 +31,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
-import { hyperframesConfigDir } from "../utils/configDir.js";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -270,7 +270,7 @@ function stateDir(): string {
   return hyperframesConfigDir();
 }
 function statePath(): string {
-  return join(stateDir(), "cloudrun-state.json");
+  return seededConfigFile("cloudrun-state.json");
 }
 function writeState(state: StackState): void {
   mkdirSync(stateDir(), { recursive: true });
