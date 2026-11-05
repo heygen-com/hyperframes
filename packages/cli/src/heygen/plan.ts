@@ -1,6 +1,7 @@
 // The HyperFrames plan and credits the signed-in account holds, and the web pages that change them.
 import { randomUUID } from "node:crypto";
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { trackBillingCheckoutReturnRefused } from "../telemetry/events.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
 import { readProjectConfig } from "../utils/projectConfig.js";
 
@@ -234,6 +235,7 @@ export async function createCheckout(
     // A server whose allow-list lacks the plans page still sells Pro, only without the CLI's origin.
     const refused = error instanceof CheckoutError && error.reason === "checkout_rejected";
     if (!refused || !RETURN_REFUSED.test(error.message)) throw error;
+    trackBillingCheckoutReturnRefused();
     return postCheckout("checkout", pro());
   }
 }

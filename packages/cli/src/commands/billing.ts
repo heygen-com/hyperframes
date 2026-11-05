@@ -108,7 +108,7 @@ export default defineCommand({
     skill: {
       type: "string",
       description:
-        "The skill that sent the person here, recorded with the purchase (default: the project's own skill)",
+        "The skill that sent the person here, sent with the pricing link (default: the project's own skill)",
     },
     timeout: { type: "string", description: "Seconds to wait (default 600)" },
   },

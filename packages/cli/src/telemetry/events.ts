@@ -1017,6 +1017,10 @@ export function trackBillingCheckoutFailed(props: {
   trackEvent("cli_billing_checkout_failed", { reason: props.reason });
 }
 
+export function trackBillingCheckoutReturnRefused(): void {
+  trackEvent("cli_billing_checkout_return_refused", {});
+}
+
 // `billing` waited out its timeout with no payment: the person did not finish, nothing is broken.
 export function trackBillingWaitTimeout(props: { action: "subscribe" | "add-credits" }): void {
   trackEvent("cli_billing_wait_timeout", { action: props.action });

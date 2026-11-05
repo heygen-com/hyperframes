@@ -7,6 +7,8 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
+const returnRefused = vi.hoisted(() => vi.fn());
+vi.mock("../telemetry/events.js", () => ({ trackBillingCheckoutReturnRefused: returnRefused }));
 
 const {
   addonBlocks,
@@ -254,9 +256,11 @@ describe("where a purchase came from", () => {
     expect(sent).toHaveLength(2);
     expect(sent[1]).not.toHaveProperty("return_url");
     expect(sent[1]!.request_id).not.toBe(sent[0]!.request_id);
+    expect(returnRefused).toHaveBeenCalledTimes(1);
   });
 
   it("does not retry any other refusal", async () => {
+    returnRefused.mockClear();
     let calls = 0;
     vi.stubGlobal("fetch", async () => {
       calls += 1;
@@ -266,5 +270,6 @@ describe("where a purchase came from", () => {
     });
     await expect(createCheckout("plans", {})).rejects.toThrow(/purchases are unavailable/);
     expect(calls).toBe(1);
+    expect(returnRefused).not.toHaveBeenCalled();
   });
 });
