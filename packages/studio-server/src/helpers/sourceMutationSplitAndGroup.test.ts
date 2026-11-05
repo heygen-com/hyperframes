@@ -600,7 +600,12 @@ describe("splitElementInHtml — a start that names another clip", () => {
   it("leaves the file as it was for a cut before the clip's real start, instead of rewriting it to start at 0", () => {
     const source = after("b");
     const result = splitElementInHtml(source, { id: "a" }, 2, "a-split", { start: 3, duration: 4 });
-    expect(result).toEqual({ html: source, matched: false, newId: null });
+    expect(result).toEqual({
+      html: source,
+      matched: false,
+      newId: null,
+      refusal: "outside-clip",
+    });
   });
 
   it("refuses when it cannot know where the clip plays", () => {
@@ -609,13 +614,14 @@ describe("splitElementInHtml — a start that names another clip", () => {
       html: source,
       matched: false,
       newId: null,
+      refusal: "reference-without-range",
     });
   });
 });
 
 describe("splitElementInHtml — a cut the file's own timing does not allow", () => {
   const clip = `<html><body><div data-composition-id="root"><div id="a" class="clip" data-start="2" data-duration="4"></div></div></body></html>`;
-  const untouched = { html: clip, matched: false, newId: null };
+  const untouched = { html: clip, matched: false, newId: null, refusal: "outside-clip" };
 
   it.each([
     ["exactly at the clip's start", 2, { start: 2, duration: 4 }],

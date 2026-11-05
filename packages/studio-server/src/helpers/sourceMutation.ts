@@ -417,11 +417,26 @@ export function probeElementInSource(source: string, target: SourceMutationTarge
   return probeElementsInSource(source, [target])[0] ?? false;
 }
 
+/** Why a split changed nothing: the cut route says it, so a report names the cause and not just "rejected". */
+export type SplitRefusal =
+  | "target-not-found"
+  | "reference-without-range"
+  | "no-duration"
+  | "outside-clip";
+
 export interface SplitElementResult {
   html: string;
   matched: boolean;
   newId: string | null;
+  refusal?: SplitRefusal;
 }
+
+const refused = (html: string, refusal: SplitRefusal): SplitElementResult => ({
+  html,
+  matched: false,
+  newId: null,
+  refusal,
+});
 
 function resolveElementTiming(el: Element): {
   start: number;
@@ -476,7 +491,7 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
+  if (!el || !isHTMLElement(el)) return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
   // media: cut the media and leave the wrappers untimed. A GSAP scene keeps its own window.
@@ -498,7 +513,7 @@ export function splitElementInHtml(
   const reference = readClipTiming(timed).startExpression;
   const startsAfter = reference?.kind === "reference" ? reference : null;
   if (startsAfter) {
-    if (!fallbackTiming) return { html: source, matched: false, newId: null };
+    if (!fallbackTiming) return refused(source, "reference-without-range");
     start = fallbackTiming.start;
   }
   // GSAP-animated elements carry their timing in the script, not in data-* attrs,
@@ -509,12 +524,12 @@ export function splitElementInHtml(
     start = fallbackTiming.start;
     duration = fallbackTiming.duration;
   }
+  if (duration <= 0) return refused(source, "no-duration");
   if (
-    duration <= 0 ||
     splitTime < start + SPLIT_BOUNDARY_EPSILON_S ||
     splitTime > start + duration - SPLIT_BOUNDARY_EPSILON_S
   ) {
-    return { html: source, matched: false, newId: null };
+    return refused(source, "outside-clip");
   }
 
   newId = nextUniqueId(document, newId);
@@ -523,7 +538,7 @@ export function splitElementInHtml(
   const secondDuration = duration - firstDuration;
 
   const clone = el.cloneNode(true);
-  if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
+  if (!isHTMLElement(clone)) return refused(source, "target-not-found");
   clone.setAttribute("id", newId);
   dedupeClonedCompositionId(document, clone);
   clone.removeAttribute("data-hf-id");
