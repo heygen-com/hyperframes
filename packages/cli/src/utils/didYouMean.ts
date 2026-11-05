@@ -45,8 +45,6 @@ export function closestNames(input: string, candidates: Iterable<string>, limit 
     .map(({ name }) => name);
 }
 
-/** Words an agent or person types for a job a command does, the command that does it, and what to do after it.
- * The hyperframes-cli skill's "Not commands" line is built from the same rows (redirectLine). */
 const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
   search: { command: "catalog" },
   find: { command: "catalog" },
@@ -56,7 +54,7 @@ const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
   install: { command: "add" },
   captions: {
     command: "transcribe",
-    then: "then build the caption track as the hyperframes skill's references/captions.md says",
+    then: "then read references/captions.md",
   },
 };
 
@@ -68,7 +66,6 @@ export function commandRedirect(
   return row !== undefined && [...candidates].includes(row.command) ? row : undefined;
 }
 
-/** The skill's line for each redirect that has a next step: the words the CLI prints, kept in one place. */
 export const redirectLine = (word: string): string => {
   const row = COMMAND_REDIRECTS[word]!;
   return `\`${word}\` is not a command: run \`${row.command}\`${row.then ? `, ${row.then}` : ""}.`;

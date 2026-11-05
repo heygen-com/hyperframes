@@ -558,8 +558,7 @@ async function unknownCommandError(requested: ResolvedCommandUsage): Promise<Cli
 function unknownCommandHint(word: string, path: string[], names: string[]): string | undefined {
   const group = ["hyperframes", ...path].join(" ");
   const redirect = path.length === 0 ? commandRedirect(word, names) : undefined;
-  if (redirect?.then)
-    return `'${word}' is not a command. Run '${group} ${redirect.command}', ${redirect.then}.`;
+  if (redirect?.then) return `Run '${group} ${redirect.command}', ${redirect.then}.`;
   const match = redirect?.command ?? closestMatch(word, names);
   if (match) return `Did you mean '${group} ${match}'?`;
   const close = closestNames(word, names, 3);

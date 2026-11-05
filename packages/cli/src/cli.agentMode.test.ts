@@ -369,7 +369,9 @@ describe("agent-mode contract", () => {
     const typo = await runAsAgent(["rendr"]);
     expect(captions.code).toBe(2);
     expect(captions.stderr).toContain("Unknown command: captions");
-    expect(captions.stderr).toContain("Run 'hyperframes transcribe', then build the caption track");
+    expect(captions.stderr).toContain(
+      "Run 'hyperframes transcribe', then read references/captions.md",
+    );
     expect(typo.code).toBe(2);
     expect(typo.stderr).toContain("Did you mean 'hyperframes render'?");
     for (const run of [captions, typo]) {
