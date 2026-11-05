@@ -22,8 +22,6 @@ export interface SceneRootLookup {
   hasLiveRoot: boolean;
 }
 
-// linkedom has no inert <template> content, so the template's innerHTML is re-parsed.
-// Elements outside the template are the document's live DOM.
 export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
   const template = document.querySelector("template");
@@ -35,7 +33,6 @@ export function locateSceneRoot(html: string): SceneRootLookup {
   return { root, hasTemplate: true, hasLiveRoot: liveRoot !== null };
 }
 
-/** A scene file whose composition root exists only inside a <template>, with no live root beside it. */
 export function isTemplateEntry(html: string): boolean {
   const { root, hasTemplate, hasLiveRoot } = locateSceneRoot(html);
   return hasTemplate && root !== null && !hasLiveRoot;
