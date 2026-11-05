@@ -127,6 +127,13 @@ describe("render diagnostic wire", () => {
       "COMPOSITION_ZERO_DURATION",
     ],
     [
+      new CaptureFailure({
+        kind: "transient_browser",
+        message: `[Parallel] Capture failed: Worker 0: [FrameCapture] Composition setup did not finish within 45000ms. ${PRIVATE}`,
+      }),
+      "COMPOSITION_SETUP_TIMEOUT",
+    ],
+    [
       new CaptureFailure({ kind: "authoring", message: PRIVATE, pageErrorLines: [PRIVATE] }),
       "PAGE_ERROR",
     ],
