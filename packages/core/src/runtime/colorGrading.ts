@@ -3347,11 +3347,19 @@ function readAnimatedGrading(entry: ColorGradingEntry): ResolvedHfColorGrading {
   return animated;
 }
 
+const CLI_SEEK_DRAW_GATE = Symbol.for("hyperframes.webglDrawGate");
+
+function drawsGated(): boolean {
+  const gate: unknown = Reflect.get(window, CLI_SEEK_DRAW_GATE);
+  return typeof gate === "object" && gate !== null && Reflect.get(gate, "skip") === true;
+}
+
 function uploadSourceTexture(
   gl: WebGLRenderingContext,
   texture: WebGLTexture,
   source: TexImageSource,
 ): void {
+  if (drawsGated()) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
