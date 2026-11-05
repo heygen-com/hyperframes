@@ -3,11 +3,13 @@ import { execFileSync, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -127,9 +129,65 @@ it.skipIf(!hevc).each(["original.mp4", "original.MP4"])(
     encode(source, ["-c:v", "libx265", "-tag:v", "hvc1"]);
     const video = readFileSync(source);
     await initWithVideo(source, false);
+    // On a case-sensitive disk original.mp4 is a free name beside original.MP4.
+    const out = name === "original.mp4" || caseBlind ? "original.h264.mp4" : "original.mp4";
     expect(readFileSync(source).equals(video)).toBe(true);
+    expect(codecOf(join(project, out))).toBe("h264");
+    expect(readFileSync(join(project, "index.html"), "utf-8")).toContain(out);
+  },
+  60_000,
+);
+
+const linkKinds = [
+  ["hard link", linkSync],
+  ["symlink", symlinkSync],
+] as const;
+
+it.skipIf(!hevc).each(linkKinds)(
+  "never transcodes onto the HEVC source through a %s where its .mp4 would go",
+  async (_, link) => {
+    rmSync(join(project, "original.mp4"));
+    const source = join(project, "original.mov");
+    encode(source, ["-c:v", "libx265", "-tag:v", "hvc1"]);
+    link(source, join(project, "original.mp4"));
+    const video = readFileSync(source);
+    await initWithVideo(source, false);
+    expect(readFileSync(source).equals(video)).toBe(true);
+    expect(codecOf(source)).toBe("hevc");
     expect(codecOf(join(project, "original.h264.mp4"))).toBe("h264");
-    expect(readFileSync(join(project, "index.html"), "utf-8")).toContain("original.h264.mp4");
+  },
+  60_000,
+);
+
+it.skipIf(!hevc).each(linkKinds)(
+  "never transcodes onto the HEVC source through a %s where its .h264.mp4 would go",
+  async (_, link) => {
+    rmSync(join(project, "original.mp4"));
+    const source = join(project, "original.mp4");
+    encode(source, ["-c:v", "libx265", "-tag:v", "hvc1"]);
+    link(source, join(project, "original.h264.mp4"));
+    const video = readFileSync(source);
+    await initWithVideo(source, false);
+    expect(readFileSync(source).equals(video)).toBe(true);
+    expect(codecOf(source)).toBe("hevc");
+    expect(codecOf(join(project, "original.h264-2.mp4"))).toBe("h264");
+  },
+  60_000,
+);
+
+it.skipIf(!hevc)(
+  "never transcodes onto the HEVC source when it is named through a linked folder",
+  async () => {
+    rmSync(join(project, "original.mp4"));
+    encode(join(project, "original.mp4"), ["-c:v", "libx265", "-tag:v", "hvc1"]);
+    const alias = join(dir, "alias");
+    symlinkSync(project, alias);
+    const source = join(alias, "original.mp4");
+    const video = readFileSync(source);
+    await initWithVideo(source, false);
+    expect(readFileSync(source).equals(video)).toBe(true);
+    expect(codecOf(source)).toBe("hevc");
+    expect(codecOf(join(project, "original.h264.mp4"))).toBe("h264");
   },
   60_000,
 );

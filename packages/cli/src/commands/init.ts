@@ -23,6 +23,7 @@ export const examples: Example[] = [
 ];
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   copyFileSync,
   statSync,
@@ -306,6 +307,27 @@ function holdsFilesBesideProjectConfigOrSources(
   );
 }
 
+function nothingAt(path: string): boolean {
+  try {
+    lstatSync(path);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The first of `name.mp4`, `name.h264.mp4`, `name.h264-2.mp4`, ... with nothing at its path. FFmpeg
+ * overwrites its output, and a link or a case-only spelling there can be the source itself.
+ */
+function freeTranscodeName(destDir: string, localVideoName: string): string {
+  const stem = localVideoName.replace(/\.[^.]+$/, "");
+  for (let n = 0; ; n++) {
+    const name = n === 0 ? `${stem}.mp4` : `${stem}.h264${n === 1 ? "" : `-${n}`}.mp4`;
+    if (nothingAt(resolve(destDir, name))) return name;
+  }
+}
+
 function copyIntoProjectUnlessAlreadyThere(src: string, dest: string): void {
   const same = resolve(src) === resolve(dest) || fileOnDisk(src) === (fileOnDisk(dest) ?? "");
   if (!same) copyFileSync(src, dest);
@@ -521,11 +543,7 @@ async function handleVideoFile(
       }
 
       if (shouldTranscode) {
-        const sameName = localVideoName.replace(/\.[^.]+$/, ".mp4");
-        const mp4Name =
-          resolve(destDir, sameName).toLowerCase() === resolve(videoPath).toLowerCase()
-            ? sameName.replace(/\.mp4$/, ".h264.mp4")
-            : sameName;
+        const mp4Name = freeTranscodeName(destDir, localVideoName);
         const mp4Path = resolve(destDir, mp4Name);
         const spin = clack.spinner();
         spin.start("Transcoding to H.264 MP4...");
