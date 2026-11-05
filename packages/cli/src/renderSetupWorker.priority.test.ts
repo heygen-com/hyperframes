@@ -12,16 +12,30 @@ beforeEach(() => {
   vi.resetModules();
   os.setPriority.mockReset();
   process.argv[2] = "lint";
-  process.env.HYPERFRAMES_RENDER_SETUP_INPUT = JSON.stringify({ projectDir: "/project" });
+  process.env.HYPERFRAMES_RENDER_SETUP_INPUT = JSON.stringify({
+    projectDir: "/project",
+    background: true,
+  });
 });
 afterEach(() => vi.restoreAllMocks());
 
-it("lints at the lowest CPU priority so it never competes with a Studio boot", async () => {
+it("a background lint runs at the lowest CPU priority so it never competes with a Studio boot", async () => {
   const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
   await import("./renderSetupWorker.js");
 
   expect(os.setPriority).toHaveBeenCalledWith(constants.priority.PRIORITY_LOW);
+  expect(write).toHaveBeenCalledWith(expect.stringContaining('{"ok":true}'));
+});
+
+// fails without the fix: a render waits on its lint, and at idle priority a busy Windows PC starved it for minutes.
+it("a render's lint keeps normal priority", async () => {
+  process.env.HYPERFRAMES_RENDER_SETUP_INPUT = JSON.stringify({ projectDir: "/project" });
+  const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+  await import("./renderSetupWorker.js");
+
+  expect(os.setPriority).not.toHaveBeenCalled();
   expect(write).toHaveBeenCalledWith(expect.stringContaining('{"ok":true}'));
 });
 
