@@ -47,45 +47,64 @@ export async function limitDeliveryPeaks(
 ): Promise<{ success: boolean; error?: string; failureReason?: "external_interruption" }> {
   const { audioPath, sourcePath, signal, timeoutMs } = input;
   if (!deps.sourceExists(sourcePath)) return { success: true };
-  let peak = await deps.measure(audioPath, { timeoutMs, signal });
+  const peak = await deps.measure(audioPath, { timeoutMs, signal });
   if (peak <= AAC_DELIVERY_TRUE_PEAK_DBFS) return { success: true };
 
-  const alternating = ["a", "b"].map((k) => join(dirname(sourcePath), `audio-source-limited-${k}.wav`));
+  const alternating = ["a", "b"].map((k) =>
+    join(dirname(sourcePath), `audio-source-limited-${k}.wav`),
+  );
   let encodedFrom: string | undefined;
   let ceiling = AAC_DELIVERY_TRUE_PEAK_DBFS;
   for (let pass = 0; pass < LIMIT_PASSES; pass++) {
     const limitedPath = alternating[pass % 2]!;
-    try {
-      await deps.applyChain(sourcePath, limitChain(ceiling), limitedPath, {
-        trackId: "delivery",
-        signal,
-      });
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      input.warn?.("[audio] true-peak limit failed, the whole-mix cut applies", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      break;
-    }
-    const encoded = await deps.encode(limitedPath, audioPath, input.targetDurationSeconds, {
-      signal,
-      timeout: timeoutMs,
-    });
-    if (!encoded.success) {
-      return {
-        success: false,
-        error: `[audioDeliveryLimit] ${describeFfmpegFailure(encoded, timeoutMs)}`,
-        failureReason: encoded.failureReason,
-      };
-    }
+    const result = await limitPass(input, deps, ceiling, limitedPath);
+    if ("encodeFailure" in result) return result.encodeFailure;
+    if ("limitFailed" in result) break;
     encodedFrom = limitedPath;
-    peak = await deps.measure(audioPath, { timeoutMs, signal });
-    if (peak <= AAC_DELIVERY_TRUE_PEAK_DBFS || ceiling <= LOWEST_CEILING_DBTP) break;
+    if (result.peak <= AAC_DELIVERY_TRUE_PEAK_DBFS || ceiling <= LOWEST_CEILING_DBTP) break;
     ceiling = Math.max(
-      ceiling - (peak - AAC_DELIVERY_TRUE_PEAK_DBFS) - PASS_HEADROOM_DB,
+      ceiling - (result.peak - AAC_DELIVERY_TRUE_PEAK_DBFS) - PASS_HEADROOM_DB,
       LOWEST_CEILING_DBTP,
     );
   }
   if (encodedFrom) deps.rename(encodedFrom, sourcePath, { copyFallback: true });
   return { success: true };
+}
+
+type DeliveryLimitResult = Awaited<ReturnType<typeof limitDeliveryPeaks>>;
+
+/** One pass: the original mix limited at `ceiling` into `limitedPath`, encoded to the delivery file, and measured. */
+async function limitPass(
+  input: Parameters<typeof limitDeliveryPeaks>[0],
+  deps: DeliveryLimitDeps,
+  ceiling: number,
+  limitedPath: string,
+): Promise<{ peak: number } | { limitFailed: true } | { encodeFailure: DeliveryLimitResult }> {
+  const { audioPath, sourcePath, signal, timeoutMs } = input;
+  try {
+    await deps.applyChain(sourcePath, limitChain(ceiling), limitedPath, {
+      trackId: "delivery",
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    input.warn?.("[audio] true-peak limit failed, the whole-mix cut applies", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { limitFailed: true };
+  }
+  const encoded = await deps.encode(limitedPath, audioPath, input.targetDurationSeconds, {
+    signal,
+    timeout: timeoutMs,
+  });
+  if (!encoded.success) {
+    return {
+      encodeFailure: {
+        success: false,
+        error: `[audioDeliveryLimit] ${describeFfmpegFailure(encoded, timeoutMs)}`,
+        failureReason: encoded.failureReason,
+      },
+    };
+  }
+  return { peak: await deps.measure(audioPath, { timeoutMs, signal }) };
 }

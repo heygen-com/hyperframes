@@ -28,6 +28,7 @@
   "src/services/htmlCompiler.naturalDuration.test.ts",
   "src/services/htmlCompiler.probeCount.test.ts",
   "src/services/htmlCompiler.variableMedia.test.ts",
+  "src/services/render/audioDeliveryLimit.integration.test.ts",
   "src/services/render/audioPadTrim.integration.test.ts",
   "src/services/render/audioTruePeak.test.ts",
   "src/services/render/blurDifferential.integration.test.ts",
