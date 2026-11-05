@@ -165,6 +165,11 @@ async function saveCheckReport(
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  "lint-verbose": {
+    type: "boolean",
+    description: "Accepted as render's spelling; check always prints every lint finding",
+    default: false,
+  },
   samples: {
     type: "string",
     description: "Number of midpoint samples across the duration (default: 9)",
