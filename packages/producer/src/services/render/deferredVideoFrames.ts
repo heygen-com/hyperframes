@@ -110,9 +110,7 @@ export async function extractAllDeferredFrames(
     cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
     signal?: AbortSignal;
     sourceOf?: (video: ExtractedFrames) => string;
-    /** Retries after a transient failure, as the engine's full extraction does. */
     maxTransientRetries?: number;
-    /** Frames extracted so far of all those to extract, after each video. */
     onProgress?: (framesDone: number, framesTotal: number) => void;
   },
 ): Promise<void> {

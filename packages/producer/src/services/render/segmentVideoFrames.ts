@@ -28,10 +28,7 @@ export interface SegmentWorkerFrames {
 
 export interface SegmentVideoFrames {
   forWorker(): SegmentWorkerFrames;
-  /**
-   * Extracts the given output frames into `segment-frames/<name>/` ahead of time. `injector()`
-   * makes a hook over them for one page, and `release()` deletes the folder; safe to call again.
-   */
+  /** Extracts the given output frames into `segment-frames/<name>/` ahead of time; `release()` is idempotent. */
   forFrames(
     frames: readonly number[],
     name: string,

@@ -205,10 +205,9 @@ export function computeVideoFrameCoverage(
   for (const video of videos) {
     const entry = byId.get(video.id);
     const expectedFrames = expectedFramesForVideo(video, entry, fps);
-    // framePaths is a Map — `size` is the number of distinct captured frames
-    // delivered to the runtime injector, which is the load-bearing count
-    // (some extractors report a total that includes cache-hit-skipped frames
-    // via a stale `totalFrames`, so we trust the delivered-path count).
+    // framePaths is a Map — `size` is the number of distinct captured frames delivered to the
+    // runtime injector (some extractors report a stale `totalFrames` that includes cache-hit-skipped
+    // frames, so we trust the delivered-path count).
     // A deferred video has none yet by design; its `totalFrames` is exact.
     const capturedFrames = entry
       ? entry.deferredRange
