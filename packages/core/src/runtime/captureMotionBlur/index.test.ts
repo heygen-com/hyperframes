@@ -637,6 +637,55 @@ describe("wrapping", () => {
     expect(events).toEqual(["quiet:begin", "quiet:end:plain", "seek:0.5:true"]);
   });
 
+  it("keeps the offset of a scrolled container when the root moves in and out of the canvas", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const list = document.createElement("div");
+    const inner = document.createElement("div");
+    list.append(inner);
+    root.append(list);
+    const offsets = new Map<HTMLElement, [number, number]>([
+      [root, [0, 0]],
+      [list, [0, 0]],
+      [inner, [0, 0]],
+    ]);
+    for (const [el] of offsets) {
+      Object.defineProperties(el, {
+        scrollLeft: {
+          get: () => offsets.get(el)?.[0],
+          set: (v: number) => offsets.set(el, [v, offsets.get(el)?.[1] ?? 0]),
+          configurable: true,
+        },
+        scrollTop: {
+          get: () => offsets.get(el)?.[1],
+          set: (v: number) => offsets.set(el, [offsets.get(el)?.[0] ?? 0, v]),
+          configurable: true,
+        },
+      });
+    }
+    const reset = () => {
+      for (const el of offsets.keys()) offsets.set(el, [0, 0]);
+    };
+    initCaptureMotionBlur({
+      ...h,
+      ignoreMutations: (write) => {
+        write();
+        reset();
+      },
+    });
+    offsets.set(list, [12, 300]);
+    offsets.set(inner, [0, 40]);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(inner)).toEqual([0, 40]);
+    offsets.set(root, [0, 7]);
+    expect(paintCaptureMotionBlur(0.5)).toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(root)).toEqual([0, 7]);
+  });
+
   it("does not re-seek when there was nothing to unwrap", () => {
     installHtmlInCanvas();
     const { h } = movingHost();
