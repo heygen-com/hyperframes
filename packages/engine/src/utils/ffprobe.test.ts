@@ -77,6 +77,63 @@ describe("extractMediaMetadata", () => {
   });
 });
 
+describe("a phone clip's display size", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  async function probed(stream: Record<string, unknown>) {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "hevc",
+              width: 1920,
+              height: 1080,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              ...stream,
+            },
+          ],
+          format: { duration: "3" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, displaySize } = await import("./ffprobe.js");
+    const dir = mkdtempSync(`${tmpdir()}/hf-turned-`);
+    try {
+      writeFileSync(`${dir}/clip.mov`, "");
+      return displaySize(await mocked(`${dir}/clip.mov`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("is portrait for an iPhone clip stored landscape with a -90 display matrix", async () => {
+    const shown = await probed({ side_data_list: [{ rotation: -90 }] });
+    expect(shown).toEqual({ width: 1080, height: 1920 });
+  });
+
+  it("reads an older muxer's rotate tag, and keeps a half turn's size", async () => {
+    expect(await probed({ tags: { rotate: "270" } })).toEqual({ width: 1080, height: 1920 });
+    expect(await probed({ side_data_list: [{ rotation: 180 }] })).toEqual({
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it("widens anamorphic pixels before the turn", async () => {
+    const shown = await probed({ sample_aspect_ratio: "4:3", side_data_list: [{ rotation: 90 }] });
+    expect(shown).toEqual({ width: 1080, height: 2560 });
+  });
+});
+
 describe("extractMediaMetadata nb_frames duration cross-check", () => {
   afterEach(() => {
     vi.resetModules();

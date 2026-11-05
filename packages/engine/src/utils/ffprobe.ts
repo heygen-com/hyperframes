@@ -225,6 +225,8 @@ export interface VideoMetadata {
   colorRange?: string;
   pixelFormat?: string;
   sampleAspectRatio?: number;
+  /** The display matrix's turn in degrees, as a phone stores a portrait clip; absent when there is none. */
+  rotation?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -274,6 +276,7 @@ interface FFProbeStream {
   color_primaries?: string;
   color_space?: string;
   tags?: Record<string, string>;
+  side_data_list?: { rotation?: number }[];
   disposition?: { attached_pic?: number };
 }
 
@@ -855,6 +858,28 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
   return rounded > 0 ? rounded : 0.01;
 }
 
+function displayRotation(stream: FFProbeStream): { rotation?: number } {
+  const turn = Number(
+    stream.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ??
+      stream.tags?.rotate ??
+      0,
+  );
+  return Number.isFinite(turn) && turn % 360 !== 0 ? { rotation: turn } : {};
+}
+
+/** The size a video plays at, as Chrome lays it out and ffmpeg's autorotate decodes it: stored size, sample aspect
+ * applied, then turned a quarter when the display matrix says so. */
+export function displaySize(
+  metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
+): { width: number; height: number } {
+  const sar = metadata.sampleAspectRatio;
+  // Even, as the decode's `scale=trunc(iw*sar/2)*2` widens it (videoFrameExtractor.ts).
+  const width = sar === undefined ? metadata.width : Math.trunc((metadata.width * sar) / 2) * 2;
+  return Math.abs(metadata.rotation ?? 0) % 180 === 90
+    ? { width: metadata.height, height: width }
+    : { width, height: metadata.height };
+}
+
 export function parseSampleAspectRatio(value: string | undefined): number | undefined {
   const [num, den] = (value ?? "").split(":").map(Number);
   if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
@@ -1052,6 +1077,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       colorRange: videoStream.color_range,
       pixelFormat,
       ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
+      ...displayRotation(videoStream),
       frames,
     };
   })();

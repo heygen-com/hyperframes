@@ -381,6 +381,7 @@ export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCa
 
 export {
   extractMediaMetadata,
+  displaySize,
   extractVideoMetadata,
   extractFinalVideoFrameTimestamp,
   extractAudioMetadata,

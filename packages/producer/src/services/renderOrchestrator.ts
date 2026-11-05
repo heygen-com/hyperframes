@@ -109,6 +109,7 @@ import {
   getDrawElementVerificationDetails,
   augmentProtocolTimeoutError,
   augmentPageNavigationTimeoutError,
+  displaySize,
   type MotionBlurOptions,
 } from "@hyperframes/engine";
 import {
@@ -954,10 +955,7 @@ export function collectVideoReadinessSkipIds(
 
 interface ExtractedVideoReadinessInput {
   videoId: string;
-  metadata: {
-    width: number;
-    height: number;
-  };
+  metadata: Parameters<typeof displaySize>[0];
 }
 
 function hasUsableVideoDimensions(metadata: ExtractedVideoReadinessInput["metadata"]) {
@@ -972,13 +970,10 @@ function hasUsableVideoDimensions(metadata: ExtractedVideoReadinessInput["metada
 export function collectVideoMetadataHints(
   extractedVideos: readonly ExtractedVideoReadinessInput[],
 ): CaptureVideoMetadataHint[] {
+  // The size Chrome lays the element out at: a phone's portrait clip is stored sideways with a turn.
   return extractedVideos
     .filter((video) => hasUsableVideoDimensions(video.metadata))
-    .map((video) => ({
-      id: video.videoId,
-      width: video.metadata.width,
-      height: video.metadata.height,
-    }))
+    .map((video) => ({ id: video.videoId, ...displaySize(video.metadata) }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
