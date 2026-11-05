@@ -167,4 +167,17 @@ describe("cloud/errors reportApiError", () => {
     expect(() => reportApiError("Weird failure", "just a string")).toThrow(CliRuntimeError);
     expect(errorBox).toHaveBeenCalledWith("Weird failure", "just a string", undefined);
   });
+
+  it("names the network cause of a failed fetch on the third line, and nothing for a free-text cause", () => {
+    const cause = Object.assign(new Error("connect ETIMEDOUT 1.2.3.4:443"), { code: "ETIMEDOUT" });
+    expect(() => reportApiError("Upload failed", new TypeError("fetch failed", { cause }))).toThrow(
+      CliRuntimeError,
+    );
+    expect(errorBox).toHaveBeenLastCalledWith("Upload failed", "fetch failed", "code: ETIMEDOUT");
+    const odd = Object.assign(new Error("x"), { code: "see /Users/me/file.mp4" });
+    expect(() =>
+      reportApiError("Upload failed", new TypeError("fetch failed", { cause: odd })),
+    ).toThrow(CliRuntimeError);
+    expect(errorBox).toHaveBeenLastCalledWith("Upload failed", "fetch failed", undefined);
+  });
 });
