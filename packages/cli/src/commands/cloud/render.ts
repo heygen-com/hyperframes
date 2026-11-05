@@ -1020,7 +1020,7 @@ async function pollWithProgress(
   }
 }
 
-export const STILL_RUNNING_EVERY_MS = 60_000;
+const STILL_RUNNING_EVERY_MS = 60_000;
 
 export function logsTick(
   status: string,
