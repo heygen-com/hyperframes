@@ -2404,7 +2404,8 @@ describe("a video whose headers state no duration", () => {
     ]);
     vi.resetModules();
     vi.doMock("child_process", () => ({ spawn }));
-    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } = await import("./ffprobe.js");
+    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } =
+      await import("./ffprobe.js");
     try {
       expect(resolvePlayableVideoDuration(await mocked(file))).toBeCloseTo(frames / 30, 1);
     } finally {
