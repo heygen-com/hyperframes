@@ -49,13 +49,8 @@ export function steerMedia(
     return { rate: baseRate, seek: true };
   }
   const direction = Math.sign(offset);
-  if (hidden && !audioOnly && lag > MEDIA_SYNC_TOLERANCE_SECONDS) {
-    steering.set(el, direction);
-    return {
-      rate: baseRate * (1 + direction * Math.min(direction > 0 ? 1 : 0.5, lag * HIDDEN_GAIN)),
-      seek: false,
-    };
-  }
+  if (hidden && lag > MEDIA_SYNC_TOLERANCE_SECONDS)
+    return steerHidden(el, direction, lag, baseRate);
   const current = steering.get(el);
   if (lag > MEDIA_SYNC_TOLERANCE_SECONDS) steering.set(el, direction);
   else if (current !== direction || lag <= MEDIA_STEER_RELEASE_SECONDS) {
@@ -64,6 +59,12 @@ export function steerMedia(
   }
   const step = MEDIA_STEER_STEPS.find(([from]) => lag > from)?.[1] ?? MEDIA_STEER;
   const steer = audioOnly ? Math.min(step, AUDIO_MAX_STEER) : step;
+  return { rate: baseRate * (1 + direction * steer), seek: false };
+}
+
+function steerHidden(el: HTMLMediaElement, direction: number, lag: number, baseRate: number) {
+  steering.set(el, direction);
+  const steer = Math.min(direction > 0 ? 1 : 0.5, lag * HIDDEN_GAIN);
   return { rate: baseRate * (1 + direction * steer), seek: false };
 }
 

@@ -2272,7 +2272,11 @@ describe("syncRuntimeMedia", () => {
           let playedAt: number | null = null;
           clip.el.play = vi.fn(() => {
             playedAt = lastTick;
-            Object.defineProperty(clip.el, "paused", { value: false, writable: true, configurable: true });
+            Object.defineProperty(clip.el, "paused", {
+              value: false,
+              writable: true,
+              configurable: true,
+            });
             return Promise.resolve();
           });
           let lastTick = 9.9;

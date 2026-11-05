@@ -393,14 +393,9 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
   return last?.outPoint === outPoint ? last.at : outPoint;
 }
 
-// A muted video starts 0.04 to 0.4 s after play() and cannot be timed from the last start, so an upcoming
-// video is played from its pre-roll, hidden, and catches up on the playhead at a speed the eye never sees.
 const VIDEO_PREROLL_SECONDS = 1;
-// A clip with no source before its first frame starts on that frame this far ahead; half the lead hold keeps a
-// clip that starts instantly under it, since the hold would pause the clip at the cut and it would restart late.
 const VIDEO_MIN_LEAD_SECONDS = VIDEO_LEAD_HOLD_SECONDS / 2;
 
-/** A render (export or frame-injected) paints video from its own frames, so a pre-roll would only seek it. */
 const isRenderDriven = (el: HTMLMediaElement): boolean =>
   !!findInjectedRenderFrame(el) ||
   ("__HF_EXPORT_RENDER_SEEK_CONFIG" in window && !!window.__HF_EXPORT_RENDER_SEEK_CONFIG);
@@ -491,8 +486,6 @@ export function syncRuntimeMedia(params: {
       !inWindow &&
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
-    // A pre-rolled video's target runs up to its first frame from before it (not before the file's start),
-    // where the clip's own time is clamped.
     const relTime =
       startsEarly && isNonLoopVideo
         ? Math.max(0, clip.mediaStart - dueIn * rateAt(clipRate, 0))
@@ -726,10 +719,10 @@ export function syncRuntimeMedia(params: {
         strictDriftSamples.set(el, 0);
       }
       const forceSync = !isPlayingMedia && !holdingAhead && params.forceSync && drift > 0.02;
-      // A pre-rolled video is steered hard, which assumes the visibility pass hides it until its clip starts.
+      const isHiddenPreRoll = el.tagName === "VIDEO" && startedEarly.has(el);
       const steered =
         isPlayingMedia && !hardSync
-          ? steerMedia(el, offset, baseRate, offsetStabilized, undefined, startedEarly.has(el))
+          ? steerMedia(el, offset, baseRate, offsetStabilized, undefined, isHiddenPreRoll)
           : null;
       const steerSeeks = steered?.seek === true;
       const dipped = steerSeeks && params.seekUnderDip?.(el, relTime) === true;
@@ -743,7 +736,6 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      // A pre-rolled video is seeked to its pre-roll before it plays, once.
       const prerollSeek =
         startsEarly &&
         isNonLoopVideo &&
