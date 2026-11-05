@@ -398,6 +398,7 @@ export async function constrainAacTruePeak(input: {
   error?: string;
   failureReason?: "external_interruption";
   loweredDb?: number;
+  sourceStale?: true;
 }> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   return enforceAacTruePeak({
@@ -438,20 +439,22 @@ interface EnforceAacTruePeakInput {
   rewriteSource?: SourceRewriter;
 }
 
-/** Applies the delivered cut to the PCM, or removes it when it cannot, so no stale source outlives it. */
+/** Applies the delivered cut to the PCM. False means the PCM no longer matches the delivered AAC, even if deleting it was refused. */
 async function cutSource(
   input: EnforceAacTruePeakInput,
   scratchDir: string,
   attenuationDb: number,
-) {
-  if (!input.sourcePath || !input.rewriteSource) return;
+): Promise<boolean> {
+  if (!input.sourcePath || !input.rewriteSource) return true;
   const cutPath = join(scratchDir, "source.wav");
   try {
     const result = await input.rewriteSource(input.sourcePath, cutPath, gainFilter(attenuationDb));
     if (!result.success) throw new Error(result.error);
     renameWithRetry(cutPath, input.sourcePath, { copyFallback: true });
+    return true;
   } catch {
     removeScratch(input.sourcePath);
+    return false;
   }
 }
 
@@ -460,6 +463,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
   error?: string;
   failureReason?: "external_interruption";
   loweredDb?: number;
+  sourceStale?: true;
 }> {
   let scratchDir: string | undefined;
   try {
@@ -479,9 +483,12 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       }
       if (truePeakDbfs <= AAC_DELIVERY_TRUE_PEAK_DBFS) {
         if (measuredPath !== correctedPath) return { success: true };
-        await cutSource(input, scratchDir, attenuationDb);
+        const sourceCut = await cutSource(input, scratchDir, attenuationDb);
         renameWithRetry(correctedPath, input.audioPath, { copyFallback: true });
-        return { success: true, loweredDb: Number((-attenuationDb).toFixed(2)) };
+        const loweredDb = Number((-attenuationDb).toFixed(2));
+        return sourceCut
+          ? { success: true, loweredDb }
+          : { success: true, loweredDb, sourceStale: true };
       }
       if (pass === MAX_TRUE_PEAK_CORRECTION_PASSES) break;
 

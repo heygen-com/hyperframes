@@ -141,6 +141,25 @@ describe("runAudioStage", () => {
     expect(existsSync(pcm)).toBe(true);
   });
 
+  it("does not hand assembly an uncut PCM whose rewrite failed and whose delete was refused", async () => {
+    const input = makeInput({ keepDeliverySource: true });
+    const pcm = join(input.workDir, "audio-source.wav");
+    processCompositionAudioMock.mockImplementationOnce(async () => {
+      writeFileSync(pcm, "uncut mix");
+      return { success: true, tracksProcessed: 1 };
+    });
+    constrainAacTruePeakMock.mockResolvedValueOnce({
+      success: true,
+      loweredDb: 2,
+      sourceStale: true,
+    });
+
+    const result = await runAudioStage(input);
+
+    expect(result.audioLoweredDb).toBe(2);
+    expect(result.deliverySourcePath).toBeUndefined();
+  });
+
   it("removes a PCM it was asked to keep when the peak check fails", async () => {
     const input = makeInput({ keepDeliverySource: true });
     const pcm = join(input.workDir, "audio-source.wav");

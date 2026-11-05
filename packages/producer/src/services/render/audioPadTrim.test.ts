@@ -728,7 +728,7 @@ describe("constrainAacTruePeak keeps its PCM source matching the delivered AAC",
     try {
       const { run, sourcePath } = peakHarness(dir, { success: false });
 
-      expect(await run(0.5)).toEqual({ success: true, loweredDb: 2 });
+      expect(await run(0.5)).toEqual({ success: true, loweredDb: 2, sourceStale: true });
       expect(existsSync(sourcePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });

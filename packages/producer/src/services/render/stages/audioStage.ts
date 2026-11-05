@@ -115,14 +115,17 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
     let audioLoweredDb: number | undefined;
     if (result.hasAudio) {
       const guardStart = Date.now();
-      audioLoweredDb = await guardDeliveryPeaks(
+      const guard = await guardDeliveryPeaks(
         input,
         result.audioOutputPath,
         pcmSourcePath,
         duration,
       );
+      audioLoweredDb = guard.loweredDb;
       input.log?.info("[audio] phases", { ...result.audioPhaseMs, guard: Date.now() - guardStart });
-      if (input.keepDeliverySource && existsSync(pcmSourcePath)) deliverySourcePath = pcmSourcePath;
+      if (input.keepDeliverySource && !guard.sourceStale && existsSync(pcmSourcePath)) {
+        deliverySourcePath = pcmSourcePath;
+      }
     }
     return {
       ...result,
@@ -140,7 +143,7 @@ async function guardDeliveryPeaks(
   audioPath: string,
   sourcePath: string,
   duration: number,
-): Promise<number | undefined> {
+): Promise<{ loweredDb?: number; sourceStale?: true }> {
   const limited = await limitDeliveryPeaks({
     audioPath,
     sourcePath,
@@ -158,7 +161,7 @@ async function guardDeliveryPeaks(
     timeoutMs: input.ffmpegProcessTimeout,
   });
   if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
-  return peak.loweredDb;
+  return { loweredDb: peak.loweredDb, sourceStale: peak.sourceStale };
 }
 
 async function mixAudioForDelivery(
