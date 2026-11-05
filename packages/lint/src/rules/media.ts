@@ -647,7 +647,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
         message: `<video> with data-start is nested inside <${parent.name}${parent.id ? ` id="${parent.id}"` : ""}> which also has data-start. The frame extractor resolves the video's start from its own data-start without the wrapper's offset, while visibility uses the wrapper's window, so the two disagree: the clip shows the wrong source frames and then disappears partway through its slot.`,
         elementId: readAttr(tag.raw, "id") || undefined,
         fixHint:
-          "Time the wrapper OR the video, never both: remove data-start from the wrapper (use it as a non-timed visual container), or move the <video> up to be a direct child of the stage.",
+          "A <video> takes no timing from its wrapper: time the <video> and leave the wrapper untimed (remove its data-start; it only places or animates), or move the <video> up to be a direct child of the stage.",
         snippet: truncateSnippet(tag.raw),
       });
     }
@@ -740,7 +740,7 @@ export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = 
           message: `<${tag.name}${hasId ? ` id="${hasId}"` : ""}> has src but no data-start. HyperFrames cannot own playback for untimed media, so preview and render behavior can diverge.`,
           elementId: hasId || undefined,
           fixHint: wrapper
-            ? `This <${tag.name}> sits inside the timed <${wrapper.name}${wrapper.id ? ` id="${wrapper.id}"` : ""}> (data-start="${wrapper.start}"), and the wrapper's data-start would then clash. Move the <${tag.name}> out as a direct child of the stage and give it that wrapper's data-start="${wrapper.start}"${wrapper.duration ? ` and data-duration="${wrapper.duration}"` : ""}.`
+            ? `This <${tag.name}> sits inside the timed <${wrapper.name}${wrapper.id ? ` id="${wrapper.id}"` : ""}> (data-start="${wrapper.start}") and takes no timing from it, so without its own data-start it plays from composition time 0, and a data-start on it would clash with the wrapper's. Move the <${tag.name}> out as a direct child of the stage and give it that wrapper's data-start="${wrapper.start}"${wrapper.duration ? ` and data-duration="${wrapper.duration}"` : ""}.`
             : `Add data-start="0" (or the intended start time) and data-duration if the clip should stop before the source ends.`,
           snippet: truncateSnippet(tag.raw),
         });
