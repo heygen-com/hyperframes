@@ -684,7 +684,7 @@ describe("buildZeroDurationDiagnostic", () => {
     expect(message).not.toContain("zero duration");
     expect(message).toContain("data-duration: 6s");
     expect(message).toContain("requestAnimationFrame callbacks wait until the first frame");
-    expect(message).toContain("Wait with setTimeout or scheduler.yield() instead.");
+    expect(message).toContain("Wait with setTimeout instead");
   });
 
   it("does not guess at duration inference while setup is still pending", () => {

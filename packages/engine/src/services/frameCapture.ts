@@ -1898,7 +1898,8 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic, timeoutMs?: numb
         "Find where the composition registers that key and confirm it actually resolves. " +
         "During a render, Date and performance.now stay at 0 and requestAnimationFrame " +
         "callbacks wait until the first frame, so setup that awaits an animation frame or " +
-        "the clock never finishes. Wait with setTimeout or scheduler.yield() instead.",
+        "the clock never finishes. Wait with setTimeout instead: a loop that polls with " +
+        "scheduler.yield() outranks timers and never lets them run.",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
