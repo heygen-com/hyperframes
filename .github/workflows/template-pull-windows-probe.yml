@@ -1,0 +1,42 @@
+name: Template pull into a watched project (Windows probe)
+
+# Probe, removed before review: main's pull and this branch's, each into projects Desktop's project history watches.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/template-pull-windows-probe.yml"
+      - "packages/cli/src/commands/templates.watched.probe.test.ts"
+
+permissions:
+  contents: read
+
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
+jobs:
+  probe:
+    name: "Template pull probe (${{ matrix.code }})"
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        code: [main, fix]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Main's pull, for the before run
+        if: matrix.code == 'main'
+        shell: bash
+        run: |
+          git checkout origin/main -- packages/cli/src/commands/templates.ts
+          git status --short
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: bun run --cwd packages/cli test src/commands/templates.watched.probe.test.ts
