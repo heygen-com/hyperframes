@@ -23,6 +23,7 @@ import {
   getCapturePerfSummary,
   initializeSession,
   prepareCaptureSessionForReuse,
+  resolveDeVerifyMinDb,
   shouldDisableBrowserPoolForParallelWorker,
   spawnStreamingEncoder,
   type BeforeCaptureHook,
@@ -48,6 +49,7 @@ import { isTargetLossError } from "../segmentRecycle.js";
 import {
   raceAgainstStall,
   resolveCaptureStallTimeoutMs,
+  verifyDrawElementSample,
   type StreamingEncoderOptions,
 } from "./captureStreamingStage.js";
 
@@ -188,6 +190,8 @@ interface SegmentCaptureContext {
   spawnEncoder: SegmentedStageDeps["spawnEncoder"];
   captureFrame: SegmentedStageDeps["captureFrame"];
   stallTimeoutMs: number;
+  log: ProducerLogger;
+  verifyMinDb: number;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -215,6 +219,10 @@ async function captureSegmentFrames(
       },
       ctx.abortSignal,
     );
+    await verifyDrawElementSample(ctx.session, i, buffer, {
+      log: ctx.log,
+      verifyMinDb: ctx.verifyMinDb,
+    });
     ensureFrameWritten(await encoder.writeFrame(buffer), i, encoder);
     ctx.job.framesRendered = i + 1;
     lastProgressAt = Date.now();
@@ -451,6 +459,8 @@ async function createSegmentWorker(run: SegmentRun, id: number): Promise<Segment
       spawnEncoder: deps.spawnEncoder,
       captureFrame: deps.captureFrame,
       stallTimeoutMs: resolveCaptureStallTimeoutMs(),
+      log: input.log,
+      verifyMinDb: resolveDeVerifyMinDb(),
       abortSignal: input.abortSignal,
       assertNotAborted: input.assertNotAborted,
       onProgress: input.onProgress,
