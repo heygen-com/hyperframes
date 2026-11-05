@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   createFrameLookupTable,
   type EngineConfig,
@@ -95,4 +95,40 @@ export async function extractDeferredFrames(input: {
       return { ...video, outputDir, framePaths: extracted.framePaths, ownedByLookup: false };
     }),
   );
+}
+
+/**
+ * Fills every deferred video in place with the frames a full extraction writes, into the folder it
+ * already has. For a route that cannot read frames per segment.
+ */
+export async function extractAllDeferredFrames(
+  extracted: ExtractedFrames[],
+  input: {
+    fps: { num: number; den: number };
+    cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
+    signal?: AbortSignal;
+    sourceOf?: (video: ExtractedFrames) => string;
+  },
+): Promise<void> {
+  for (const video of extracted) {
+    const range = video.deferredRange;
+    if (!range) continue;
+    const filled = await extractVideoFramesRange(
+      input.sourceOf?.(video) ?? video.srcPath,
+      video.videoId,
+      range.startTime,
+      range.durationSeconds,
+      { fps: input.fps, outputDir: dirname(video.outputDir), format: range.format },
+      input.signal,
+      input.cfg,
+    );
+    if (filled.framePaths.size < video.totalFrames) {
+      throw new Error(
+        `[Render] video ${JSON.stringify(video.videoId)} has ${filled.framePaths.size} frames; ` +
+          `it was expected to have ${video.totalFrames} frames.`,
+      );
+    }
+    video.framePaths = filled.framePaths;
+    delete video.deferredRange;
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
-import { shownDeferredFrameIndexes } from "./deferredVideoFrames.js";
+import { extractAllDeferredFrames, shownDeferredFrameIndexes } from "./deferredVideoFrames.js";
 
 const metadata = {
   durationSeconds: 4,
@@ -27,6 +27,11 @@ const deferredVideo = (videoId: string, totalFrames: number): ExtractedFrames =>
   framePaths: new Map(),
   deferredRange: { startTime: 1.5, durationSeconds: totalFrames / 30, format: "jpg" },
 });
+
+const fullyExtracted = (videoId: string): ExtractedFrames => {
+  const { deferredRange: _deferred, ...rest } = deferredVideo(videoId, 90);
+  return rest;
+};
 
 const element = (id: string, start: number, end: number): VideoElement => ({
   id,
@@ -55,5 +60,19 @@ describe("shownDeferredFrameIndexes", () => {
 
     expect([...shown.get("clip")!].sort((a, b) => a - b)).toEqual(span(30, 45));
     expect(shown.has("later")).toBe(false);
+  });
+});
+
+describe("extractAllDeferredFrames", () => {
+  it("reads nothing when no video is deferred", async () => {
+    const whole = fullyExtracted("whole");
+    await extractAllDeferredFrames([whole], {
+      fps,
+      cfg: {},
+      sourceOf: () => {
+        throw new Error("a fully extracted video must not be read again");
+      },
+    });
+    expect(whole.framePaths.size).toBe(0);
   });
 });

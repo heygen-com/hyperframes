@@ -209,6 +209,10 @@ export interface RenderCaptureObservability {
   /** Segmented capture only (Phase 2): current segment and retries so far. */
   segmentIndex?: number;
   segmentRetries?: number;
+  /** Whether source-video frames are read one capture segment at a time (`HF_VIDEO_FRAME_WINDOW`). */
+  videoFrameWindow?: "on" | "off";
+  /** With the window on: the most bytes of source-video frames held in `segment-frames` at once. */
+  videoFrameWindowPeakBytes?: number;
 }
 
 export interface RenderExtractionObservability {
