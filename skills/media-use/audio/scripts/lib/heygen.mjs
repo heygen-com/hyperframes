@@ -230,7 +230,7 @@ export function billingRefusal(e) {
   if (code === "hf_subscription_required")
     return "This needs a HyperFrames plan. Run `npx hyperframes billing subscribe`: it opens the page and waits.";
   if (code === "hf_usage_exhausted")
-    return "Out of HyperFrames credits. Run `npx hyperframes billing top-up`: it opens the page and waits.";
+    return "Out of HyperFrames credits. Run `npx hyperframes billing add-credits`: it opens the page and waits.";
   if (code === "api_key_required")
     return "This HeyGen feature isn't available with this sign-in yet. Nothing was charged. Use a HeyGen API key, or wait for HyperFrames billing in the CLI.";
   return null;

@@ -94,6 +94,23 @@ describe("launchBackgroundChecks", () => {
     expect(spawnedChecks()).toEqual(["update", "skills"]);
   });
 
+  it("refreshes both caches once they are 3 hours old, and leaves 1-hour-old ones alone", () => {
+    const at = (hours: number) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const caches = (hours: number) => ({
+      lastUpdateCheck: at(hours),
+      latestVersion: "1.0.0",
+      lastSkillsCheck: at(hours),
+      skillsCheckedVersion: "0.0.0-dev",
+    });
+    disk.config = caches(1);
+    launchBackgroundChecks();
+    expect(spawn).not.toHaveBeenCalled();
+
+    disk.config = caches(3);
+    launchBackgroundChecks();
+    expect(spawnedChecks()).toEqual(["update", "skills"]);
+  });
+
   it("ignores an attempt stamp dated in the future, as after a clock correction", () => {
     const later = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     disk.config = { lastUpdateAttemptAt: later, lastSkillsAttemptAt: later };

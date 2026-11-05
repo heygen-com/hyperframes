@@ -65,6 +65,7 @@ interface VerifiedStatus {
   apiError: string | null;
   /** The HyperFrames plan and credits, when the server (or the mock) answers. */
   plan?: Plan | null;
+  upgradeUrl?: string;
 }
 
 /** True for credentials resolved from the HyperFrames store (not env). */
@@ -99,7 +100,7 @@ export default defineCommand({
     const resolved = credential;
     const status = await verify(await refreshIfNeeded(resolved).catch(() => resolved));
     if (asJson) printJsonStatus(status);
-    else printHumanStatus(status);
+    else await printHumanStatus(status);
     setCommandExitCode(status.apiError ? 1 : 0);
   },
 });
@@ -249,8 +250,11 @@ function persistedUserJson(u: StoredUserInfo | null): Record<string, unknown> | 
   };
 }
 
-function printHumanStatus(s: VerifiedStatus): void {
-  const rows = collectStatusRows(s);
+async function printHumanStatus(s: VerifiedStatus): Promise<void> {
+  const rows = collectStatusRows({
+    ...s,
+    ...(s.plan?.plan === "none" ? { upgradeUrl: await pageUrl("plans") } : {}),
+  });
   for (const [label, value] of rows) console.log(`${c.bold(label)} ${value}`);
 }
 
@@ -276,7 +280,7 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
     rows.push([
       "HyperFrames:",
       plan.plan === "none"
-        ? `Free · Upgrade to Pro: ${pageUrl("plans")}${tag}`
+        ? `Free · Upgrade to Pro: ${s.upgradeUrl}${tag}`
         : `${plan.plan} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
     ]);
   }

@@ -95,9 +95,21 @@ async function readToolVersion(
     };
   } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
-    const status =
-      typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
-    const exitDetail = typeof status === "number" ? ` (exit code ${status})` : "";
+    const field = (name: string) =>
+      typeof error === "object" && error !== null && name in error
+        ? (error as Record<string, unknown>)[name]
+        : undefined;
+    const status = field("status");
+    const code = field("code");
+    const killedBy = field("signal");
+    const exitDetail =
+      typeof status === "number"
+        ? ` (exit code ${status})`
+        : typeof code === "string"
+          ? ` (${code})`
+          : typeof killedBy === "string"
+            ? ` (signal ${killedBy})`
+            : "";
     return {
       ok: false,
       detail: `Failed to run "${binaryPath}" -version${exitDetail}.`,

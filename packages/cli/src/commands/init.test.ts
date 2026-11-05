@@ -180,6 +180,10 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(0);
       expect(res.stdout).not.toContain("Checking AI coding skills");
       expect(res.stdout).not.toContain("temporarily ignored");
+      // Installing skills is the person's step, so the hint is addressed to them.
+      expect(res.stdout).toContain(
+        "For the user: use your HyperFrames plugin, or install standalone skills with:",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

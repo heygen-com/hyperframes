@@ -6,10 +6,11 @@ import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
 import { VERSION } from "../version.js";
-import { withMeta } from "../utils/updateCheck.js";
+import { NO_UPDATE_NOTICE, withMeta } from "../utils/updateCheck.js";
 import {
   checkSkills,
   FALLBACK_CORE_SKILLS,
+  foreignSkillNames,
   hyperframesSkillNames,
   isCoreSkill,
   presentSkills,
@@ -327,12 +328,18 @@ export async function updateSkills(
     all?: boolean;
     strict?: boolean;
     cwd?: string;
+    /**
+     * The CLI version whose release tag to install from (default: this one). `hyperframes
+     * update` passes the version it just upgraded to, so the skills match the CLI that runs next.
+     */
+    cliVersion?: string;
   } = {},
 ): Promise<UpdateSkillsResult> {
   const named = [...new Set(opts.requested ?? [])];
   const retired = named.filter((name) => RETIRED_SKILLS.includes(name));
   const requested = named.filter((name) => !retired.includes(name));
   const strict = opts.strict ?? false;
+  const cliVersion = opts.cliVersion ?? VERSION;
 
   let check: SkillsCheckResult | null = null;
   try {
@@ -346,7 +353,12 @@ export async function updateSkills(
     // that no longer exists, and verifyInstalled would strict-throw on a
     // "failure" that was never real. Resolving canonically means a retired
     // skill simply never appears as a target in the first place.
-    check = await checkSkills({ cwd: opts.cwd, canonical: true, cliVersion: VERSION });
+    check = await checkSkills({
+      cwd: opts.cwd,
+      canonical: true,
+      cliVersion,
+      installTarget: true,
+    });
   } catch (err) {
     // A *malformed* canonical manifest (the server was reached, but served a
     // bad shape) is otherwise indistinguishable from being offline — both fall
@@ -368,11 +380,14 @@ export async function updateSkills(
       // reinstate the 26-skill sweep this path exists to avoid.
       clack.log.warn(
         c.warn(
-          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. Re-run `hyperframes skills` online for the full set.",
+          "Can't resolve the published skill set (manifest unreachable) — installing the pinned core set only. For the user: `hyperframes skills` installs the full set once online.",
         ),
       );
     }
-    return { ...(await updateSkillsOffline(requested, { strict, cwd: opts.cwd })), retired };
+    return {
+      ...(await updateSkillsOffline(requested, { strict, cwd: opts.cwd, cliVersion })),
+      retired,
+    };
   }
 
   const manifestSkills = check.skills;
@@ -408,7 +423,7 @@ export async function updateSkills(
 
   if (toInstall.length > 0) {
     await installSkills(result.installed, { cwd: opts.cwd, strict, ref: check.ref ?? "main" });
-    verifyInstalled(result.installed, { strict, cwd: opts.cwd });
+    verifyInstalled(result.targets, { strict, cwd: opts.cwd });
   }
   // The install (or the fresh canonical check confirming everything current)
   // supersedes whatever the background nudge cached before it — drop the
@@ -432,7 +447,7 @@ export async function updateSkills(
  * skills hiccup must never break scaffolding.
  */
 function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?: string }): void {
-  const present = new Set(presentSkills(names, { cwd: opts.cwd }));
+  const present = new Set(presentSkills(names, { cwd: opts.cwd, installTarget: true }));
   const absent = names.filter((name) => !present.has(name));
   if (absent.length === 0) return;
   const message = `Skill(s) still missing after install: ${absent.join(", ")}`;
@@ -463,7 +478,7 @@ function verifyInstalled(names: readonly string[], opts: { strict: boolean; cwd?
  */
 async function updateSkillsOffline(
   requested: readonly string[],
-  opts: { strict: boolean; cwd?: string },
+  opts: { strict: boolean; cwd?: string; cliVersion: string },
 ): Promise<Omit<UpdateSkillsResult, "retired">> {
   if (requested.length === 0 && opts.strict) {
     throw new Error(
@@ -471,8 +486,17 @@ async function updateSkillsOffline(
     );
   }
 
-  const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])];
-  const present = new Set(presentSkills(targets, { cwd: opts.cwd }));
+  const foreign = new Set(foreignSkillNames({ scope: "global" }));
+  const unknown = requested.filter((name) => foreign.has(name));
+  if (unknown.length > 0) {
+    const message = `Skill(s) owned by another publisher: ${unknown.join(", ")}. Leaving them unchanged.`;
+    if (opts.strict) throw new Error(message);
+    clack.log.warn(c.warn(message));
+  }
+  const targets = [...new Set([...requested, ...FALLBACK_CORE_SKILLS])].filter(
+    (name) => !foreign.has(name),
+  );
+  const present = new Set(presentSkills(targets, { cwd: opts.cwd, installTarget: true }));
   const absent = targets.filter((name) => !present.has(name));
 
   console.log(
@@ -487,15 +511,15 @@ async function updateSkillsOffline(
     await installSkills(absent, {
       cwd: opts.cwd,
       strict: opts.strict,
-      ref: cliReleaseTag(VERSION) ?? "main",
+      ref: cliReleaseTag(opts.cliVersion) ?? "main",
     });
-    verifyInstalled(absent, opts);
+    verifyInstalled(targets, opts);
   }
   return {
     targets,
     installed: absent,
     current: [...present],
-    unknown: [],
+    unknown,
     presenceOnly: true,
   };
 }
@@ -526,7 +550,7 @@ function renderCheck(result: SkillsCheckResult): void {
 
   if (!result.location) {
     console.log(`  ${c.dim("No HyperFrames skills found in the usual locations.")}`);
-    console.log(`  ${c.accent("Install: npx hyperframes skills")}`);
+    console.log(`  ${c.accent("For the user: npx hyperframes skills installs them")}`);
     console.log();
     return;
   }
@@ -553,14 +577,14 @@ function renderCheck(result: SkillsCheckResult): void {
   printSkillSection(
     result,
     "missing",
-    "Available on demand (install with `hyperframes skills update <name>`):",
+    "Available on demand (`hyperframes skills update <name>` installs one):",
     "◦",
     c.dim,
     (s) => !isCoreSkill(s.name),
   );
   console.log();
   if (result.updateAvailable) {
-    console.log(`  ${c.accent("Update: npx hyperframes skills update")}`);
+    console.log(`  ${c.accent("For the user: npx hyperframes skills update refreshes them")}`);
   } else {
     console.log(`  ${c.success("◇")}  ${c.success("Installed skills are up to date")}`);
   }
@@ -584,7 +608,7 @@ const checkCommand = defineCommand({
       cliVersion: VERSION,
     });
 
-    if (args.json) console.log(JSON.stringify(withMeta(result), null, 2));
+    if (args.json) console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
     else renderCheck(result);
 
     // This check just displayed a fresh verdict, superseding whatever the
@@ -607,7 +631,7 @@ const checkCommand = defineCommand({
  * the router's trigger-time `skills update <workflow>` replaces a pinned install
  * with the latest upstream skills (GH #5695).
  */
-function skillsManagedExternally(): boolean {
+export function skillsManagedExternally(): boolean {
   return process.env["HYPERFRAMES_SKIP_SKILLS"] === "1";
 }
 
@@ -619,7 +643,10 @@ function reportSkillsManagedExternally(requested: readonly string[], json: boole
   if (json) {
     console.log(
       JSON.stringify(
-        withMeta({ skipped: true, reason: SKILLS_MANAGED_EXTERNALLY_NOTICE, requested }),
+        withMeta(
+          { skipped: true, reason: SKILLS_MANAGED_EXTERNALLY_NOTICE, requested },
+          NO_UPDATE_NOTICE,
+        ),
         null,
         2,
       ),
@@ -654,7 +681,7 @@ function reportUpdate(
   json: boolean,
 ): void {
   if (json) {
-    console.log(JSON.stringify(withMeta(result), null, 2));
+    console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
     return;
   }
   for (const name of result.retired) console.log(c.warn(retiredSkillNotice(name)));
@@ -684,7 +711,9 @@ function reportUpdate(
  */
 function reportUpdateFailure(message: string, json: boolean): void {
   if (json) {
-    console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", message)), null, 2));
+    console.log(
+      JSON.stringify(withMeta(jsonFailure("runtime_error", message), NO_UPDATE_NOTICE), null, 2),
+    );
     return;
   }
   clack.log.error(c.error(message));

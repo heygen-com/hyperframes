@@ -109,6 +109,31 @@ describe("media probe registry", () => {
     expect(getDurationFromMetadata).toHaveBeenCalledTimes(2);
   });
 
+  it("hands back every clip of one file in a single apply, so the store is written once per file", async () => {
+    const apply = vi.fn();
+    await probeMissingSourceDurations(
+      [
+        { id: "a1", tag: "audio", src: "assets/voice.wav" },
+        { id: "a2", tag: "audio", src: "assets/voice.wav" },
+        { id: "a3", tag: "audio", src: "assets/voice.wav" },
+        { id: "v1", tag: "video", src: "assets/clip.mp4" },
+      ],
+      "project-a",
+      apply,
+    );
+
+    expect(requestedSources).toHaveLength(2);
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply).toHaveBeenCalledWith(
+      new Map([
+        ["a1", 5],
+        ["a2", 5],
+        ["a3", 5],
+      ]),
+    );
+    expect(apply).toHaveBeenCalledWith(new Map([["v1", 5]]));
+  });
+
   it("probes a dropped clip's URL-spelled src at its own file", async () => {
     await probeMissingSourceDurations(
       [{ id: "clip", tag: "video", src: "assets/My%20clip%20%231.mp4" }],
@@ -138,7 +163,7 @@ describe("media probe registry", () => {
     expect(requestedSources).toEqual([
       `${window.location.origin}/api/projects/project-a/preview/assets/clip.mp4`,
     ]);
-    expect(apply).toHaveBeenCalledWith("clip", 5);
+    expect(apply).toHaveBeenCalledWith(new Map([["clip", 5]]));
     expect(
       applyCachedSourceDurations(
         [

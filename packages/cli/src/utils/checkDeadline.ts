@@ -17,6 +17,7 @@ const PHASE_LABELS = {
   load: "loading the page",
   settle: "waiting for the page to be ready",
   samples: "checking samples",
+  analysis: "analyzing the samples",
   overlap: "running the overlap pass",
   crops: "capturing finding crops",
   frames: "capturing finding frames",

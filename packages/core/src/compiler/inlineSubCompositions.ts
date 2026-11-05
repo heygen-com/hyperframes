@@ -224,8 +224,8 @@ export interface InlineSubCompositionsOptions {
 
   /**
    * Identity map produced by `assignBundledRuntimeCompositionIds`.
-   * When provided, authoredCompositionId and runtimeCompositionId are read
-   * from this map instead of from the host element's attributes directly.
+   * When provided, a host's ids are read from this map; a host it lacks (one
+   * inside a scene) is read from its own attributes, as without a map.
    * The bundler uses this; the producer can omit it.
    */
   hostIdentityMap?: Map<
@@ -471,10 +471,10 @@ export function inlineSubCompositions(
     // Determine composition IDs
     let compId: string | null;
     let runtimeCompId: string;
-    if (hostIdentityMap) {
-      const identity = hostIdentityMap.get(hostEl);
-      compId = identity?.authoredCompositionId || null;
-      runtimeCompId = identity?.runtimeCompositionId || compId || "";
+    const identity = hostIdentityMap?.get(hostEl);
+    if (identity) {
+      compId = identity.authoredCompositionId || null;
+      runtimeCompId = identity.runtimeCompositionId || compId || "";
     } else {
       compId = hostEl.getAttribute("data-composition-id") || null;
       runtimeCompId = compId || "";

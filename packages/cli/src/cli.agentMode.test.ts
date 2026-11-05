@@ -381,6 +381,16 @@ describe("agent-mode contract", () => {
     },
   );
 
+  // Updating is the person's decision: the hint states that and names no step for the agent.
+  it("update without --yes refuses to prompt, exits 2, and leaves updating to the person", async () => {
+    const run = await runAsAgent(["update"]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("Updating is the person's call; `update --check` only reports.");
+    expect(run.stderr).not.toContain("--yes");
+  });
+
   it("only the prompt wrapper loads @clack/prompts, statically or dynamically", () => {
     const offenders = (readdirSync(srcDir, { recursive: true }) as string[]).filter(
       (file) =>

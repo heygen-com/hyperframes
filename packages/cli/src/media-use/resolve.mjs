@@ -56,7 +56,11 @@ import {
   flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
-import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
+import {
+  BUNDLED_SFX_RECOVERY_COMMAND,
+  BundledSfxAssetsError,
+  inspectBundledSfxAssets,
+} from "./lib/bundled-sfx-provider.mjs";
 import { OPENVERSE_SFX_PROVIDER } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
 import {
@@ -1150,7 +1154,13 @@ function printDoctor(checks) {
     const freePath = heygenChecks.has(check.name)
       ? " — free-usage path: bgm/image/voice/avatar-video"
       : "";
-    const fix = check.ok || !check.fix ? "" : ` — fix: ${check.fix}`;
+    // Repairing a skill is the person's step, so that fix is addressed to them, not to the agent.
+    const fix =
+      check.ok || !check.fix
+        ? ""
+        : check.fix === BUNDLED_SFX_RECOVERY_COMMAND
+          ? ` — For the user: \`${check.fix}\` repairs it`
+          : ` — fix: ${check.fix}`;
     console.log(`${prefix} ${check.detail}${freePath}${fix}`);
   }
 }

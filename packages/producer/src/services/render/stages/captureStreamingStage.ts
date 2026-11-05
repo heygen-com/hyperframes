@@ -79,6 +79,7 @@ import {
   pushWorkerPageErrors,
   withWorkerPageErrors,
 } from "../perfSummary.js";
+import { createStallClock } from "../stallClock.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { reportEncodeProgress, reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
@@ -220,24 +221,31 @@ export function raceAgainstStall<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => {
-        reject(
-          signal?.aborted
-            ? new Error(
-                `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
-                  `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
-              )
-            : new SequentialCaptureStallError(
-                input.session,
-                input.stallTimeoutMs,
-                input.frameIndex,
-                input.totalFrames,
-              ),
-        );
-      },
-      Math.max(0, deadlineMs),
-    );
+    const clock = createStallClock();
+    const trip = () =>
+      reject(
+        signal?.aborted
+          ? new Error(
+              `[Render] Sequential ${captureModeLabel(input.session.captureMode)} capture aborted ` +
+                `while a capture call was in flight (frame ${input.frameIndex}/${input.totalFrames}).`,
+            )
+          : new SequentialCaptureStallError(
+              input.session,
+              input.stallTimeoutMs,
+              input.frameIndex,
+              input.totalFrames,
+            ),
+      );
+    const deadline = Math.max(0, deadlineMs);
+    let wait = Math.min(deadline, DE_STALL_POLL_MS);
+    let timer: ReturnType<typeof setTimeout>;
+    const look = () => {
+      const idle = clock.idle(wait);
+      if (idle >= deadline) return trip();
+      wait = Math.min(deadline - idle, DE_STALL_POLL_MS);
+      timer = setTimeout(look, wait);
+    };
+    timer = setTimeout(look, wait);
     promise.then(
       (value) => {
         clearTimeout(timer);
@@ -500,6 +508,7 @@ async function runWorkerEncodePipelineLoop(
   log: CaptureStreamingStageInput["log"],
   stats: DeDrainStats,
   abortSignal: AbortSignal | undefined,
+  resume: { from: number; written: number },
   risk?: RiskFrameCapture,
 ): Promise<void> {
   /** A frame whose encode is in flight; `trusted` frames came from the screenshot session. */
@@ -513,21 +522,21 @@ async function runWorkerEncodePipelineLoop(
     item.trusted ? Promise.resolve(buf) : guard(session, item.idx, buf);
   const captureRisk = async (idx: number): Promise<Buffer> => {
     await risk!.open();
-    lastProgressAt = Date.now();
+    quiet.reset();
     return raceAgainstStall(
       risk!.capture(idx, frameTime(idx)),
-      stallTimeoutMs - (Date.now() - lastProgressAt),
+      stallTimeoutMs - quiet.idle(0),
       { session, frameIndex: idx, totalFrames, stallTimeoutMs },
       abortSignal,
     );
   };
 
   const stallTimeoutMs = resolveCaptureStallTimeoutMs();
-  let lastProgressAt = Date.now();
+  const quiet = createStallClock();
   const captureWithStallGuard = <T>(idx: number, promise: Promise<T>): Promise<T> =>
     raceAgainstStall(
       promise,
-      stallTimeoutMs - (Date.now() - lastProgressAt),
+      stallTimeoutMs - quiet.idle(0),
       { session, frameIndex: idx, totalFrames, stallTimeoutMs },
       abortSignal,
     );
@@ -543,7 +552,8 @@ async function runWorkerEncodePipelineLoop(
     ensureFrameWritten(await currentEncoder.writeFrame(buf), prev.idx, currentEncoder);
     reorderBuffer.advanceTo(prev.idx + 1);
     job.framesRendered = prev.idx + 1;
-    lastProgressAt = Date.now();
+    resume.written = prev.idx + 1;
+    quiet.reset();
     reportFrameProgress(
       job,
       `Streaming frame ${prev.idx + 1}/${totalFrames}`,
@@ -571,7 +581,8 @@ async function runWorkerEncodePipelineLoop(
       ensureFrameWritten(await currentEncoder.writeFrame(buf), item.idx, currentEncoder);
       reorderBuffer.advanceTo(item.idx + 1);
       job.framesRendered = item.idx + 1;
-      lastProgressAt = Date.now();
+      resume.written = item.idx + 1;
+      quiet.reset();
       reportFrameProgress(
         job,
         `Streaming frame ${item.idx + 1}/${totalFrames}`,
@@ -589,7 +600,7 @@ async function runWorkerEncodePipelineLoop(
       !(boundarySS && session.clipBoundaryFrames?.has(f)) &&
       !risk?.frames.has(f);
     let prevBatch: Pending[] = [];
-    let i = 0;
+    let i = resume.from;
     while (i < totalFrames) {
       assertNotAborted();
       if (batchable(i)) {
@@ -634,7 +645,7 @@ async function runWorkerEncodePipelineLoop(
   // close. produceDrawElementFrame attaches a no-op catch to every encodeResult
   // at creation so that orphaned rejection is never an unhandled rejection — so
   // the loop needs no special guard here.
-  for (let i = 0; i < totalFrames; i++) {
+  for (let i = resume.from; i < totalFrames; i++) {
     assertNotAborted();
     if (risk?.frames.has(i)) {
       const buffer = await captureRisk(i);
@@ -651,6 +662,23 @@ async function runWorkerEncodePipelineLoop(
     prev = { idx: i, encodeResult };
   }
   await drainPrev();
+}
+
+const STALL_RESUMES_BEFORE_FALLBACK = 3;
+
+/** A sequential stall resumes at the first unwritten frame when frames landed since the last resume. */
+function resumesAfterStall(
+  error: unknown,
+  abortSignal: AbortSignal | undefined,
+  resume: { from: number; written: number },
+  resumes: number,
+): boolean {
+  return (
+    error instanceof SequentialCaptureStallError &&
+    abortSignal?.aborted !== true &&
+    resume.written > resume.from &&
+    resumes < STALL_RESUMES_BEFORE_FALLBACK
+  );
 }
 
 export async function runCaptureStreamingStage(
@@ -770,7 +798,7 @@ export async function runCaptureStreamingStage(
       let parallelGuardRan = false;
       let writtenFrames = 0;
       let resumeFrom = 0;
-      let resumedAfterStall = false;
+      let resumes = 0;
       let workerResults: Awaited<ReturnType<typeof executeParallelCapture>>;
       for (;;) {
         const parallelReorder = createFrameReorderBuffer(resumeFrom, totalFrames);
@@ -817,7 +845,7 @@ export async function runCaptureStreamingStage(
         }
         const stallTimeoutMs = resolveCaptureStallTimeoutMs();
         let lastCapturedFrames = 0;
-        let lastProgressAt = Date.now();
+        const quiet = createStallClock();
         const workerPhases = new Map<number, string>();
         const phaseDetail = (phase: ParallelWorkerPhaseDiagnostic) =>
           `phase=${phase.phase} frame=${phase.frameIndex ?? "n/a"} step=${phase.readStep?.() ?? "n/a"} ` +
@@ -836,23 +864,21 @@ export async function runCaptureStreamingStage(
             captureLabel === "BeginFrame",
             cfg,
           );
-        const stallTimer = setInterval(
-          () => {
-            if (!watchdogArmed || Date.now() - lastProgressAt <= budget()) return;
-            stalled = true;
-            const stallErr = new ParallelCaptureStallError({
-              variant: "drain",
-              captureLabel,
-              stallTimeoutMs: budget(),
-              lastCapturedFrames: resumeFrom + lastCapturedFrames,
-              totalFrames,
-              phaseSummary: phaseSummary(),
-            });
-            parallelReorder.abort(stallErr);
-            stallController.abort();
-          },
-          Math.min(budget(), DE_STALL_POLL_MS),
-        );
+        const pollMs = Math.min(budget(), DE_STALL_POLL_MS);
+        const stallTimer = setInterval(() => {
+          if (!watchdogArmed || quiet.idle(pollMs) <= budget()) return;
+          stalled = true;
+          const stallErr = new ParallelCaptureStallError({
+            variant: "drain",
+            captureLabel,
+            stallTimeoutMs: budget(),
+            lastCapturedFrames: resumeFrom + lastCapturedFrames,
+            totalFrames,
+            phaseSummary: phaseSummary(),
+          });
+          parallelReorder.abort(stallErr);
+          stallController.abort();
+        }, pollMs);
 
         try {
           workerResults = await executeParallelCapture(
@@ -868,7 +894,7 @@ export async function runCaptureStreamingStage(
                 workerPhases.set(phase.workerId, phaseDetail(phase));
                 if (phase.phase === "frame_capture" && !watchdogArmed) {
                   watchdogArmed = true;
-                  lastProgressAt = Date.now();
+                  quiet.reset();
                 }
                 log.info("[Render] Parallel capture worker phase", {
                   workerId: phase.workerId,
@@ -884,7 +910,7 @@ export async function runCaptureStreamingStage(
               }
               if (progress.capturedFrames > lastCapturedFrames) {
                 lastCapturedFrames = progress.capturedFrames;
-                lastProgressAt = Date.now();
+                quiet.reset();
                 watchdogArmed = true;
               }
               const doneFrames = resumeFrom + progress.capturedFrames;
@@ -915,26 +941,21 @@ export async function runCaptureStreamingStage(
             },
           );
         } catch (err) {
-          // A wedged worker loses nothing already written: BeginFrame ticks derive from the
-          // absolute frame index, so fresh workers continue the same stream from the first
-          // unwritten frame. A second stall, or one before any new frame landed, falls through.
+          // A wedged worker loses nothing already written: fresh workers continue from the first
+          // unwritten frame. A stall before any new frame landed falls through.
           if (
             stalled &&
             abortSignal?.aborted !== true &&
-            captureLabel === "BeginFrame" &&
-            !resumedAfterStall &&
-            writtenFrames > resumeFrom
+            writtenFrames > resumeFrom &&
+            resumes < STALL_RESUMES_BEFORE_FALLBACK
           ) {
-            resumedAfterStall = true;
-            log.warn(
-              "[Render] Parallel BeginFrame capture stalled; resuming from the first unwritten frame",
-              {
-                resumeFrom: writtenFrames,
-                totalFrames,
-                workerPhases: phaseSummary(),
-              },
-            );
+            log.warn("[Render] Parallel capture stalled; resuming from the first unwritten frame", {
+              resumeFrom: writtenFrames,
+              totalFrames,
+              workerPhases: phaseSummary(),
+            });
             resumeFrom = writtenFrames;
+            resumes++;
             continue;
           }
           // Surface the TYPED drain error (DrawElementVerificationError) so the
@@ -978,142 +999,159 @@ export async function runCaptureStreamingStage(
     } else {
       // Sequential capture → streaming encode
 
-      const videoInjector = createRenderVideoFrameInjector();
-      const session =
-        probeSession ??
-        (await createCaptureSession(
-          fileServer.url,
-          framesDir,
-          buildCaptureOptions(),
-          videoInjector,
-          captureCfg,
-        ));
-      captureBeyondViewport = session.options.captureBeyondViewport;
-      if (probeSession) {
-        prepareCaptureSessionForReuse(session, framesDir, videoInjector);
-        probeSession = null;
-      }
-      // The screenshot capture of today: same config with fast capture off. Its frames are not
-      // consecutive, so static-frame reuse is off.
-      let riskSession: CaptureSession | null = null;
-      const openRiskSession = async (): Promise<CaptureSession> => {
-        const opened = await createCaptureSession(
-          fileServer.url,
-          framesDir,
-          buildCaptureOptions(),
-          createRenderVideoFrameInjector(),
-          {
-            ...captureCfg,
-            useDrawElement: false,
-            staticFrameDedup: false,
-            enableBrowserPool: false,
-          },
-        );
-        riskSession = opened;
-        await initializeSession(opened);
-        return opened;
-      };
-
-      try {
-        if (!session.isInitialized) {
-          await initializeSession(session);
+      const resume = { from: 0, written: 0 };
+      let resumes = 0;
+      for (;;) {
+        const videoInjector = createRenderVideoFrameInjector();
+        const session =
+          probeSession ??
+          (await createCaptureSession(
+            fileServer.url,
+            framesDir,
+            buildCaptureOptions(),
+            videoInjector,
+            captureCfg,
+          ));
+        captureBeyondViewport = session.options.captureBeyondViewport;
+        if (probeSession) {
+          prepareCaptureSessionForReuse(session, framesDir, videoInjector);
+          probeSession = null;
         }
-        // Probe-initialized video comps defer verification + canvas injection
-        // until the injector exists (attached by prepareCaptureSessionForReuse
-        // above) — complete it now so drawElement runs VERIFIED on video comps.
-        await completeDeferredDrawElementInit(session);
-        assertNotAborted();
-        lastBrowserConsole = session.browserConsoleBuffer;
-
-        if (session.workerEncodeEnabled) {
-          // Worker-encode pipeline: depth-2. Frame N's in-page Worker encodes
-          // while frame N+1's main thread does seek+paint+drawElement+kick.
-          deDrainStats = {
-            verifyChecked: 0,
-            blankSuspects: 0,
-            blankDeterministicAccepts: 0,
-            blankRecaptures: 0,
-          };
-          const riskFrames = session.deRiskFrames;
-          await runWorkerEncodePipelineLoop(
-            session,
-            totalFrames,
-            job,
-            currentEncoder,
-            reorderBuffer,
-            assertNotAborted,
-            onProgress,
-            log,
-            deDrainStats,
-            abortSignal,
-            riskFrames && riskFrames.size > 0
-              ? {
-                  frames: riskFrames,
-                  // Opened on the first risk frame, in a browser of its own: pages sharing a
-                  // browser share a compositor, which starves the drawElement page's paint events.
-                  open: async () => {
-                    riskSession ??= await openRiskSession();
-                  },
-                  capture: async (frameIndex, time) =>
-                    (await captureFrameToBuffer(riskSession!, frameIndex, time)).buffer,
-                }
-              : undefined,
+        // The screenshot capture of today: same config with fast capture off. Its frames are not
+        // consecutive, so static-frame reuse is off.
+        let riskSession: CaptureSession | null = null;
+        const openRiskSession = async (): Promise<CaptureSession> => {
+          const opened = await createCaptureSession(
+            fileServer.url,
+            framesDir,
+            buildCaptureOptions(),
+            createRenderVideoFrameInjector(),
+            {
+              ...captureCfg,
+              useDrawElement: false,
+              staticFrameDedup: false,
+              enableBrowserPool: false,
+            },
           );
-        } else {
-          const stallTimeoutMs = resolveCaptureStallTimeoutMs();
-          let lastProgressAt = Date.now();
-          for (let i = 0; i < totalFrames; i++) {
-            assertNotAborted();
-            const time = (i * job.config.fps.den) / job.config.fps.num;
-            const budget = stallBudgetMs(
-              stallTimeoutMs,
-              i,
-              session.captureMode === "beginframe",
-              cfg,
-            );
-            const { buffer } = await raceAgainstStall(
-              captureFrameToBuffer(session, i, time),
-              budget - (Date.now() - lastProgressAt),
-              { session, frameIndex: i, totalFrames, stallTimeoutMs: budget },
-              abortSignal,
-            );
-            await reorderBuffer.waitForFrame(i);
-            ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
-            reorderBuffer.advanceTo(i + 1);
-            job.framesRendered = i + 1;
-            lastProgressAt = Date.now();
+          riskSession = opened;
+          await initializeSession(opened);
+          return opened;
+        };
 
-            const frameProgress = (i + 1) / totalFrames;
-            const progress = 25 + frameProgress * 55;
-
-            // Keep status cadence identical to disk sequential capture; the
-            // capture error wrapper below must remain separate from finally so it
-            // can throw with the browser console before encoder cleanup runs.
-            // fallow-ignore-next-line code-duplication
-            reportFrameProgress(
-              job,
-              `Streaming frame ${i + 1}/${totalFrames}`,
-              Math.round(progress),
-              onProgress,
-              i + 1,
-              totalFrames,
-            );
+        let resumed = false;
+        try {
+          if (!session.isInitialized) {
+            await initializeSession(session);
           }
+          // Probe-initialized video comps defer verification + canvas injection
+          // until the injector exists (attached by prepareCaptureSessionForReuse
+          // above) — complete it now so drawElement runs VERIFIED on video comps.
+          await completeDeferredDrawElementInit(session);
+          assertNotAborted();
+          lastBrowserConsole = session.browserConsoleBuffer;
+
+          if (session.workerEncodeEnabled) {
+            // Worker-encode pipeline: depth-2. Frame N's in-page Worker encodes
+            // while frame N+1's main thread does seek+paint+drawElement+kick.
+            deDrainStats ??= {
+              verifyChecked: 0,
+              blankSuspects: 0,
+              blankDeterministicAccepts: 0,
+              blankRecaptures: 0,
+            };
+            const riskFrames = session.deRiskFrames;
+            await runWorkerEncodePipelineLoop(
+              session,
+              totalFrames,
+              job,
+              currentEncoder,
+              reorderBuffer,
+              assertNotAborted,
+              onProgress,
+              log,
+              deDrainStats,
+              abortSignal,
+              resume,
+              riskFrames && riskFrames.size > 0
+                ? {
+                    frames: riskFrames,
+                    // Opened on the first risk frame, in a browser of its own: pages sharing a
+                    // browser share a compositor, which starves the drawElement page's paint events.
+                    open: async () => {
+                      riskSession ??= await openRiskSession();
+                    },
+                    capture: async (frameIndex, time) =>
+                      (await captureFrameToBuffer(riskSession!, frameIndex, time)).buffer,
+                  }
+                : undefined,
+            );
+          } else {
+            const stallTimeoutMs = resolveCaptureStallTimeoutMs();
+            let lastProgressAt = Date.now();
+            for (let i = resume.from; i < totalFrames; i++) {
+              assertNotAborted();
+              const time = (i * job.config.fps.den) / job.config.fps.num;
+              const budget = stallBudgetMs(
+                stallTimeoutMs,
+                i,
+                session.captureMode === "beginframe",
+                cfg,
+              );
+              const { buffer } = await raceAgainstStall(
+                captureFrameToBuffer(session, i, time),
+                budget - (Date.now() - lastProgressAt),
+                { session, frameIndex: i, totalFrames, stallTimeoutMs: budget },
+                abortSignal,
+              );
+              await reorderBuffer.waitForFrame(i);
+              ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
+              reorderBuffer.advanceTo(i + 1);
+              job.framesRendered = i + 1;
+              resume.written = i + 1;
+              lastProgressAt = Date.now();
+
+              const frameProgress = (i + 1) / totalFrames;
+              const progress = 25 + frameProgress * 55;
+
+              // Keep status cadence identical to disk sequential capture; the
+              // capture error wrapper below must remain separate from finally so it
+              // can throw with the browser console before encoder cleanup runs.
+              // fallow-ignore-next-line code-duplication
+              reportFrameProgress(
+                job,
+                `Streaming frame ${i + 1}/${totalFrames}`,
+                Math.round(progress),
+                onProgress,
+                i + 1,
+                totalFrames,
+              );
+            }
+          }
+          // Capture the session's static-dedup perf before close (counters valid
+          // only while the session is live).
+          dedupPerfs.push(getCapturePerfSummary(session));
+          // This must mirror disk capture: catch wraps the original failure with
+          // browser diagnostics, finally only handles cleanup.
+          // fallow-ignore-next-line code-duplication
+        } catch (error) {
+          lastBrowserConsole = session.browserConsoleBuffer;
+          if (!resumesAfterStall(error, abortSignal, resume, resumes)) {
+            throw wrapCaptureStageError(error, lastBrowserConsole);
+          }
+          log.warn("[Render] Sequential capture stalled; resuming from the first unwritten frame", {
+            resumeFrom: resume.written,
+            totalFrames,
+          });
+          resume.from = resume.written;
+          resumes++;
+          resumed = true;
+        } finally {
+          // Keep the latest console buffer for success and cleanup-error summaries.
+          lastBrowserConsole = session.browserConsoleBuffer;
+          await closeCaptureSession(session);
+          if (riskSession) await closeCaptureSession(riskSession);
         }
-        // Capture the session's static-dedup perf before close (counters valid
-        // only while the session is live).
-        dedupPerfs.push(getCapturePerfSummary(session));
-        // This must mirror disk capture: catch wraps the original failure with
-        // browser diagnostics, finally only handles cleanup.
-        // fallow-ignore-next-line code-duplication
-      } catch (error) {
-        lastBrowserConsole = session.browserConsoleBuffer;
-        throw wrapCaptureStageError(error, lastBrowserConsole);
-      } finally {
-        // Keep the latest console buffer for success and cleanup-error summaries.
-        lastBrowserConsole = session.browserConsoleBuffer;
-        await closeCaptureSession(session);
-        if (riskSession) await closeCaptureSession(riskSession);
+        if (!resumed) break;
       }
     }
 
