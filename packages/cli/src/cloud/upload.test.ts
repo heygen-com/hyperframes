@@ -396,7 +396,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     }
   }
 
-  const upload = (url: string) => {
+  const upload = (url: string, asBytes = false) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-upload-retry-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     writeFileSync(join(dir, "clip.mp4"), "bytes");
@@ -414,8 +414,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
           status: "pending_upload" as const,
         })),
       } as Partial<HyperframesCloudClient>),
-      path: join(dir, "clip.mp4"),
-      size: 5,
+      ...(asBytes ? { bytes: Buffer.from("bytes") } : { path: join(dir, "clip.mp4"), size: 5 }),
       filename: "clip.mp4",
       contentType: "video/mp4",
     });
@@ -424,6 +423,13 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
   it("ends a try that moves no data and sends the file again", async () => {
     await withPlan(["hang", 200], async (url, requests) => {
       await upload(url);
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("bounds the project zip, which is sent from memory, the same way", async () => {
+    await withPlan(["hang", 200], async (url, requests) => {
+      await upload(url, true);
       expect(requests()).toBe(2);
     });
   });
