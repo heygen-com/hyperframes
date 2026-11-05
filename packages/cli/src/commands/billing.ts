@@ -43,7 +43,6 @@ const WAIT_TIMEOUT_EXIT = 124;
 
 type CheckoutSource = { skill?: string; baseline?: number };
 
-// `signal` fires once the wait ends (paid or timed out): from then on no checkout is created, printed or opened.
 async function openCheckout(
   kind: "plans" | "credits",
   offer: Offer,
@@ -83,12 +82,15 @@ async function offerCheckout(
     await openCheckout(kind, offer, missing, signal, source);
     return null;
   } catch (error) {
-    if (signal.aborted) return null;
-    console.error(c.error(error instanceof Error ? error.message : String(error)));
-    if (!(error instanceof CheckoutError)) return null;
-    trackBillingCheckoutFailed({ reason: error.reason });
-    return error;
+    return signal.aborted ? null : reportCheckoutFailure(error);
   }
+}
+
+function reportCheckoutFailure(error: unknown): CheckoutError | null {
+  console.error(c.error(error instanceof Error ? error.message : String(error)));
+  if (!(error instanceof CheckoutError)) return null;
+  trackBillingCheckoutFailed({ reason: error.reason });
+  return error;
 }
 
 /** Opens the plans or credits page, then waits until the account shows the change, so the run continues on its own. */
