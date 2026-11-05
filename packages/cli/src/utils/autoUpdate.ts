@@ -25,7 +25,6 @@
 
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
-import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
