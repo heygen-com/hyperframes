@@ -201,7 +201,16 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
     );
   }
   const reachedLufs = heldByLimit ? plan.projectedLufs - plan.changeDb : plan.projectedLufs;
-  return { ok: true, wrote, withinTolerance, heldByLimit, reachedLufs, tolerance, filePath, ...plan };
+  return {
+    ok: true,
+    wrote,
+    withinTolerance,
+    heldByLimit,
+    reachedLufs,
+    tolerance,
+    filePath,
+    ...plan,
+  };
 }
 
 function heldAtLimit(plan: ModePlan, tolerance: number): boolean {

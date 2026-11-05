@@ -143,7 +143,9 @@ describe("absolute normalize-audio command held by a limit", () => {
       });
 
       const printed = log.mock.calls.map((call) => String(call[0])).join("\n");
-      expect(printed).toContain("-20.0 LUFS → -14.0 LUFS, target -12.0 (stopped short of -1.5 dBTP)");
+      expect(printed).toContain(
+        "-20.0 LUFS → -14.0 LUFS, target -12.0 (stopped short of -1.5 dBTP)",
+      );
       expect(printed).toContain("Cannot get closer to the target; the gain is unchanged.");
       expect(readFileSync(path, "utf8")).toBe(html);
     } finally {
