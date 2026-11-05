@@ -396,6 +396,9 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
 // A muted video starts 0.04 to 0.4 s after play() and cannot be timed from the last start, so an upcoming
 // video is played from its pre-roll, hidden, and catches up on the playhead at a speed the eye never sees.
 const VIDEO_PREROLL_SECONDS = 1;
+// A clip with less source before its first frame has less to run up from, and a clip with none starts
+// on its first frame this far ahead and slows down to the playhead.
+const VIDEO_MIN_LEAD_SECONDS = 0.25;
 
 /** A render (export or frame-injected) paints video from its own frames, so a pre-roll would only seek it. */
 const isRenderDriven = (el: HTMLMediaElement): boolean =>
@@ -469,7 +472,10 @@ export function syncRuntimeMedia(params: {
       el.tagName === "AUDIO"
         ? (params.cueAheadSeconds ?? 0)
         : params.playing && (el.paused || startedEarly.has(el)) && !isRenderDriven(el)
-          ? VIDEO_PREROLL_SECONDS * params.playbackRate
+          ? Math.min(
+              VIDEO_PREROLL_SECONDS,
+              Math.max(VIDEO_MIN_LEAD_SECONDS, clip.mediaStart / rateAt(clipRate, 0)),
+            ) * params.playbackRate
           : 0;
     const startsEarly =
       !inWindow &&
@@ -485,10 +491,11 @@ export function syncRuntimeMedia(params: {
       !inWindow &&
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
-    // A pre-rolled video's target runs up to its first frame from before it, where the clip's own time is clamped.
+    // A pre-rolled video's target runs up to its first frame from before it (not before the file's start),
+    // where the clip's own time is clamped.
     const relTime =
       startsEarly && isNonLoopVideo
-        ? clip.mediaStart - dueIn * rateAt(clipRate, 0)
+        ? Math.max(0, clip.mediaStart - dueIn * rateAt(clipRate, 0))
         : mediaSourceTimeAt(clip, params.timeSeconds);
     const isHeldVideoTail =
       isTerminalVideo ||
@@ -719,6 +726,7 @@ export function syncRuntimeMedia(params: {
         strictDriftSamples.set(el, 0);
       }
       const forceSync = !isPlayingMedia && !holdingAhead && params.forceSync && drift > 0.02;
+      // A pre-rolled video is steered hard, which assumes the visibility pass hides it until its clip starts.
       const steered =
         isPlayingMedia && !hardSync
           ? steerMedia(el, offset, baseRate, offsetStabilized, undefined, startedEarly.has(el))

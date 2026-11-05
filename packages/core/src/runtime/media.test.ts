@@ -1013,7 +1013,7 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
-    it("starts nothing early while paused, and never a video", () => {
+    it("starts no audio early while paused", () => {
       const audio = createMockClip({ start: 5, end: 6 }, "audio");
       syncRuntimeMedia({
         clips: [audio],
@@ -1022,15 +1022,17 @@ describe("syncRuntimeMedia", () => {
         playbackRate: 1,
         cueAheadSeconds: 0.017,
       });
+      expect(audio.el.play).not.toHaveBeenCalled();
+    });
+
+    it("starts no video early while paused", () => {
       const video = createMockClip({ start: 5, end: 6 }, "video");
       syncRuntimeMedia({
         clips: [video],
         timeSeconds: 4.99,
-        playing: true,
+        playing: false,
         playbackRate: 1,
-        cueAheadSeconds: 0.017,
       });
-      expect(audio.el.play).not.toHaveBeenCalled();
       expect(video.el.play).not.toHaveBeenCalled();
     });
 
@@ -2246,12 +2248,30 @@ describe("syncRuntimeMedia", () => {
         expect(clip.el.currentTime).toBe(mediaElementTime(4));
       });
 
-      it("starts a video whose first frame is under a second in at the start of its source, not before it", () => {
+      it("starts a video with less than a second of source before its first frame from the start of the file", () => {
         const clip = videoClip({ start: 10, end: 20, mediaStart: 0.3 });
         tick(clip, 9.5);
         expect(clip.el.play).not.toHaveBeenCalled();
         tick(clip, 9.75);
         expect(clip.el.play).toHaveBeenCalledTimes(1);
+      });
+
+      it("starts a video that plays from the very start of its file a quarter second early, on its first frame", () => {
+        const clip = videoClip({ start: 10, end: 20, mediaStart: 0 });
+        tick(clip, 9.7);
+        expect(clip.el.play).not.toHaveBeenCalled();
+        tick(clip, 9.8);
+        expect(clip.el.play).toHaveBeenCalledTimes(1);
+      });
+
+      it("slows a video that started ahead on its first frame, hidden, instead of holding it", () => {
+        const clip = videoClip({ start: 10, end: 20, mediaStart: 0 });
+        tick(clip, 9.8);
+        playing(clip, 0.1);
+        clip.el.pause = vi.fn();
+        tick(clip, 9.85);
+        expect(clip.el.pause).not.toHaveBeenCalled();
+        expect(clip.el.playbackRate).toBeLessThan(1);
       });
 
       it("runs a pre-rolled video that is late up to twice as fast, hidden", () => {
