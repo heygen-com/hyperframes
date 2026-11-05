@@ -20,6 +20,7 @@ const held = vi.hoisted(() => ({
   headerCalls: 0,
   holdHeadersAfter: undefined as number | undefined,
   stallPoll: false,
+  reads: undefined as Array<{ plan: string; credits: number } | null> | undefined,
 }));
 
 vi.mock("../telemetry/events.js", () => ({
@@ -67,6 +68,7 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
     readPlan: async (stop?: AbortSignal) => {
       if (++plan.calls > 1 && held.stallPoll)
         return new Promise((resolve) => stop?.addEventListener("abort", () => resolve(null)));
+      if (held.reads) return held.reads[Math.min(plan.calls, held.reads.length) - 1];
       return {
         plan: plan.calls === 1 || !never.paid ? "none" : "pro",
         credits: plan.calls === 1 || !never.paid ? 0 : 500,
@@ -103,6 +105,7 @@ afterEach(() => {
     headerCalls: 0,
     holdHeadersAfter: undefined,
     stallPoll: false,
+    reads: undefined,
   });
   vi.restoreAllMocks();
   consumeCommandResult();
@@ -203,6 +206,73 @@ describe("billing at a terminal", () => {
   });
 });
 
+describe("billing when the page may already have been paid", () => {
+  it("makes no second checkout when Enter is pressed after the page took the payment", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).toContain("no second checkout");
+  });
+
+  it("buys only what is still short when the page sold part of it before Enter", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    never.paid = false;
+    held.reads = [
+      { plan: "pro", credits: 1000 },
+      { plan: "pro", credits: 4000 },
+      { plan: "pro", credits: 4000 },
+    ];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["add-credits", "--needed", "5000", "--timeout", "4"],
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.args.map((a) => a[2])).toEqual([1000]);
+  });
+
+  it("sells nothing from the terminal when the account's plan cannot be read", async () => {
+    never.paid = false;
+    held.reads = [null];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["add-credits", "--needed", "5000", "--timeout", "6"],
+    });
+    await vi.advanceTimersByTimeAsync(8000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(error.mock.calls.flat().join("\n")).toContain("Could not read this account's plan");
+  });
+
+  it("prices from the balance when the first plan read fails once, not from zero", async () => {
+    never.paid = false;
+    held.reads = [null, { plan: "pro", credits: 4000 }];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, {
+      rawArgs: ["add-credits", "--needed", "5000", "--timeout", "4"],
+    });
+    await vi.advanceTimersByTimeAsync(6000);
+    await done;
+    vi.useRealTimers();
+    expect(terminal.args.map((a) => a[2])).toEqual([1000]);
+  });
+});
+
 describe("billing outcomes", () => {
   it("keeps waiting after a failed checkout, because the open pricing page can still take the payment", async () => {
     const { CheckoutError } = await import("../heygen/plan.js");
@@ -295,12 +365,14 @@ describe("billing once the wait has ended", () => {
   it("opens no checkout page when the purchase lands while Enter's checkout is being created", async () => {
     terminal.attended = true;
     terminal.enter = true;
+    const free = { plan: "none", credits: 0 };
+    held.reads = [free, free, { plan: "pro", credits: 500 }];
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     const checkout = release<string>();
     held.checkout = checkout.promise;
     vi.useFakeTimers();
     const done = runCommand(billing, { rawArgs: ["subscribe"] });
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(4000);
     checkout.resolve("https://checkout.stripe.com/c/pay/cs_late");
     await done;
     vi.useRealTimers();
