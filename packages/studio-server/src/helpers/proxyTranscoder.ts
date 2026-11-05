@@ -183,8 +183,14 @@ function getCanonicalProxyCachePath(
   source: CanonicalProxySource,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
+  limitSeconds?: number,
 ): string {
-  const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, variant, box);
+  const key = fastCopyKey(
+    source.sourcePath,
+    PROXY_PARAMS_VERSION,
+    keyVariant(variant, limitSeconds),
+    box,
+  );
   const made = join(
     source.projectDir,
     CACHE_DIR_NAME,
@@ -203,12 +209,35 @@ export function getProxyCachePath(
   absoluteSourcePath: string,
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
+  limitSeconds?: number,
 ): string {
   return getCanonicalProxyCachePath(
     canonicalizeProxySource(projectDir, absoluteSourcePath),
     variant,
     box,
+    limitSeconds,
   );
+}
+
+function copiedSeconds(duration: number | undefined, limitSeconds: number | undefined) {
+  return limitSeconds === undefined ? duration : Math.min(limitSeconds, duration ?? limitSeconds);
+}
+
+function lengthArgs(seconds: number | undefined): string[] {
+  return seconds === undefined ? [] : ["-t", String(seconds)];
+}
+
+function keyVariant(variant: ProxyVariant, limitSeconds: number | undefined): string {
+  return limitSeconds === undefined ? variant : `${variant}@${limitSeconds}s`;
+}
+
+export async function proxyWindowSeconds(
+  absoluteSourcePath: string,
+  neededSeconds: number,
+): Promise<number | undefined> {
+  const { durationSeconds } = await probeMediaMetadata(absoluteSourcePath);
+  const window = Math.ceil((neededSeconds + 1) / PROXY_CHUNK_SECONDS) * PROXY_CHUNK_SECONDS;
+  return durationSeconds && window + PROXY_CHUNK_SECONDS <= durationSeconds ? window : undefined;
 }
 
 // --- global concurrency limiter -------------------------------------------
@@ -694,6 +723,7 @@ async function runFfmpeg(
   chunkPrefix: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
+  limitSeconds: number | undefined,
   signal: AbortSignal,
   onProgress: (progress: ProxyProgress) => void,
   isBackground: () => boolean = () => false,
@@ -711,7 +741,7 @@ async function runFfmpeg(
     ...["-map", "0:V:0"],
     ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
   ];
-  const totalSeconds = metadata.durationSeconds;
+  const totalSeconds = copiedSeconds(metadata.durationSeconds, limitSeconds);
   // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
   const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
   const vp8Threads = (pieces: number) => [
@@ -731,7 +761,7 @@ async function runFfmpeg(
         "-i",
         sourcePath,
         ...streamArgs,
-        ...(range ? ["-t", String(range.lengthSeconds)] : []),
+        ...lengthArgs(range?.lengthSeconds ?? limitSeconds),
         "-vf",
         videoFilter,
         ...KEYFRAME_EVERY_SECOND_ARGS,
@@ -883,6 +913,7 @@ async function transcodeToCache(
   cachePath: string,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
+  limitSeconds: number | undefined,
 ): Promise<string> {
   await acquireSlot(job);
   try {
@@ -896,7 +927,7 @@ async function transcodeToCache(
       await contentCopyKey(
         absoluteSourcePath,
         PROXY_PARAMS_VERSION,
-        variant,
+        keyVariant(variant, limitSeconds),
         box,
         job.abandoned.signal,
       ),
@@ -928,6 +959,7 @@ async function transcodeToCache(
         chunkPrefix,
         variant,
         box,
+        limitSeconds,
         job.abandoned.signal,
         (progress) => reportProgress(job, progress),
         () => job.background && !job.priority,
@@ -1001,7 +1033,7 @@ export async function resolveProxy(
 ): Promise<string> {
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source, variant, box);
+  const cachePath = getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
   if (existsSync(cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
@@ -1035,6 +1067,7 @@ export async function resolveProxy(
       cachePath,
       variant,
       box,
+      options.limitSeconds,
     )
       .catch((err: unknown) => {
         if (!(err instanceof ProxyDroppedError) && !job.abandoned.signal.aborted) {
@@ -1066,7 +1099,12 @@ export async function resolveProxy(
  * progress (TRANSCODE_STALL_MS), so a long source that keeps moving is never cut by a clock. */
 export async function resolveProxies(
   projectDir: string,
-  sources: ReadonlyArray<{ sourcePath: string; variant: ProxyVariant; box?: PreviewProxyBox }>,
+  sources: ReadonlyArray<{
+    sourcePath: string;
+    variant: ProxyVariant;
+    box?: PreviewProxyBox;
+    limitSeconds?: number;
+  }>,
   onSettled: (index: number) => void = () => {},
   onProgress: (index: number, progress: ProxyProgress) => void = () => {},
   signal?: AbortSignal,
@@ -1085,8 +1123,9 @@ export async function resolveProxies(
   let next = 0;
   const worker = async (): Promise<void> => {
     for (let index = next++; index < sources.length; index = next++) {
-      const { sourcePath, variant, box } = sources[index]!;
+      const { sourcePath, variant, box, limitSeconds } = sources[index]!;
       results[index] = await resolveProxy(projectDir, sourcePath, variant, box, {
+        limitSeconds,
         onProgress: (progress) => onProgress(index, progress),
         signal,
       }).then(
@@ -1153,6 +1192,7 @@ async function makeStill(
 }
 
 export interface ResolveProxyOptions {
+  limitSeconds?: number;
   priority?: boolean;
   background?: boolean;
   signal?: AbortSignal;

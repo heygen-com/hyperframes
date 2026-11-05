@@ -16,6 +16,7 @@ import {
   readClipTiming,
   SPLIT_BOUNDARY_EPSILON_S,
   writeClipTiming,
+  type ReferenceExpression,
 } from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
@@ -430,14 +431,16 @@ function resolveElementTiming(el: Element): {
   return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
+const roundMs = (seconds: number) => Math.round(seconds * 1000) / 1000;
+
 function setElementDuration(
   el: Element,
-  start: number,
+  start: number | ReferenceExpression,
   duration: number,
   trackIndex?: number,
 ): void {
   writeClipTiming(el, {
-    start: Math.round(start * 1000) / 1000,
+    start: typeof start === "number" ? Math.round(start * 1000) / 1000 : start,
     duration: Math.round(duration * 1000) / 1000,
     ...(trackIndex != null ? { trackIndex } : {}),
   });
@@ -490,6 +493,14 @@ export function splitElementInHtml(
 
   const timing = resolveElementTiming(timed);
   let { start, duration } = timing;
+  // A start that names another clip ("intro", "intro - 0.5") resolves to where that clip ends, which only the
+  // client's resolved range knows; reading it as 0 cut the wrong span, or rewrote the clip to start at 0.
+  const reference = readClipTiming(timed).startExpression;
+  const startsAfter = reference?.kind === "reference" ? reference : null;
+  if (startsAfter) {
+    if (!fallbackTiming) return { html: source, matched: false, newId: null };
+    start = fallbackTiming.start;
+  }
   // GSAP-animated elements carry their timing in the script, not in data-* attrs,
   // so the source has no authored duration. Fall back to the store's (GSAP-derived)
   // range — the runtime windows visibility off data-start/data-duration regardless
@@ -525,7 +536,14 @@ export function splitElementInHtml(
     duplicateCssRulesForId(document, timedMedia.id, mediaId);
     clonedTimed.setAttribute("id", mediaId);
   }
-  setElementDuration(clonedTimed, splitTime, secondDuration, fallbackTiming?.track);
+  setElementDuration(
+    clonedTimed,
+    startsAfter
+      ? { ...startsAfter, offset: roundMs(startsAfter.offset + firstDuration) }
+      : splitTime,
+    secondDuration,
+    fallbackTiming?.track,
+  );
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
@@ -566,7 +584,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  setElementDuration(timed, start, firstDuration, fallbackTiming?.track);
+  setElementDuration(timed, startsAfter ?? start, firstDuration, fallbackTiming?.track);
 
   // Insert clone after original
   if (el.nextSibling) {

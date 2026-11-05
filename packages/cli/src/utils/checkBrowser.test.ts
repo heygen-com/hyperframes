@@ -28,6 +28,7 @@ import {
 } from "./checkBrowser.js";
 import { CheckDeadline } from "./checkDeadline.js";
 import { closeManagedBrowser } from "../browser/launch.js";
+import { serveStaticProjectHtml } from "./staticProjectServer.js";
 import type { ProjectDir } from "./project.js";
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +54,10 @@ const mocks = vi.hoisted(() => ({
       ) => Promise<string>
     >(),
   FfmpegUnavailableError: class FfmpegUnavailableError extends Error {},
+  proxyLimits: [] as Array<number | undefined>,
+  proxyWindowSeconds: vi.fn(
+    async (_sourcePath: string, _neededSeconds: number): Promise<number | undefined> => undefined,
+  ),
   getProxyCachePath: vi.fn(
     (projectDir: string, sourcePath: string, _variant?: string, _box?: unknown) =>
       `${sourcePath}.proxy.mp4`,
@@ -126,12 +131,14 @@ vi.mock("@hyperframes/studio-server/media-codec-map", async (importOriginal) => 
 vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
   FfmpegUnavailableError: mocks.FfmpegUnavailableError,
   getProxyCachePath: mocks.getProxyCachePath,
+  proxyWindowSeconds: mocks.proxyWindowSeconds,
   resolveProxies: (
     projectDir: string,
     sources: Array<{
       sourcePath: string;
       variant: string;
       box?: { width: number; height: number };
+      limitSeconds?: number;
     }>,
     onSettled: (index: number) => void = () => {},
     onProgress: (
@@ -141,6 +148,7 @@ vi.mock("@hyperframes/studio-server/proxy-transcoder", () => ({
     signal?: AbortSignal,
   ) => {
     mocks.proxySignal = signal;
+    mocks.proxyLimits = sources.map(({ limitSeconds }) => limitSeconds);
     mocks.proxyProgress.feed?.(onProgress);
     return Promise.allSettled(
       sources.map(({ sourcePath, variant, box }, index) =>
@@ -1441,6 +1449,7 @@ describe("preResolveHostileMediaProxies", () => {
       join(projectDir, "clip.mp4"),
       "h264",
       box,
+      undefined,
     );
   });
 
@@ -1480,6 +1489,7 @@ describe("preResolveHostileMediaProxies", () => {
       ],
       failedPaths: new Set(["/clip.mp4"]),
       files: [{ file: "clip.mp4", state: "failed", reason: "ffmpeg exited with code 1" }],
+      limits: new Map(),
     });
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("media proxy pre-resolve: 0/1 ready, 1 failed"),
@@ -1566,6 +1576,61 @@ describe("preResolveHostileMediaProxies", () => {
       expect(errorSpy.mock.calls.map(([line]) => line)).toContain(
         "[hyperframes] making browser-playable copies: 0 of 1 done. clip.mov: 25% (10s so far)",
       );
+    } finally {
+      mocks.proxyProgress.feed = undefined;
+      vi.useRealTimers();
+    }
+  });
+
+  it("copies only the stretch of a long video the composition plays", async () => {
+    const projectDir = mkProjectDir();
+    mocks.scanProjectMediaCodecMap.mockResolvedValue({
+      "/clip.mov": {
+        codecName: "hevc",
+        browserHostile: true,
+        representativeMime: null,
+        hasAlpha: false,
+      },
+    });
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    mocks.resolveProxy.mockResolvedValue("/cache/clip.mov.mp4");
+    const html =
+      '<html><body><video src="clip.mov" data-start="0" data-duration="12" data-media-start="3"></video></body></html>';
+
+    const { limits } = await preResolveHostileMediaProxies(projectDir, html);
+
+    expect(mocks.proxyWindowSeconds).toHaveBeenCalledWith(join(projectDir, "clip.mov"), 15);
+    expect(mocks.proxyLimits).toEqual([30]);
+    expect(limits).toEqual(new Map([[join(projectDir, "clip.mov"), 30]]));
+  });
+
+  it("stops a check whose copies outrun the copy budget, naming each file and the way to finish", async () => {
+    vi.useFakeTimers();
+    try {
+      const projectDir = mkProjectDir();
+      mocks.scanProjectMediaCodecMap.mockResolvedValue({
+        "/clip.mov": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      });
+      mocks.resolveProxy.mockImplementation(
+        () =>
+          new Promise<string>((_, reject) =>
+            mocks.proxySignal?.addEventListener("abort", () => reject(new Error("aborted"))),
+          ),
+      );
+      mocks.proxyProgress.feed = (report) => report(0, { doneSeconds: 30, totalSeconds: 120 });
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const pending = preResolveHostileMediaProxies(projectDir, "<html></html>", undefined, 60_000);
+      const outcome = expect(pending).rejects.toThrow(
+        /clip\.mov 25%.*hyperframes check --prepare-media/s,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      await outcome;
     } finally {
       mocks.proxyProgress.feed = undefined;
       vi.useRealTimers();
@@ -1683,6 +1748,7 @@ describe("preResolveHostileMediaProxies", () => {
       findings: [],
       failedPaths: new Set(),
       files: [],
+      limits: new Map(),
     });
 
     expect(errorSpy).toHaveBeenCalledWith(
@@ -2226,6 +2292,25 @@ describe("finding frame capture", () => {
         { time: 1, filename: "a.png", inspect: [] },
       ]);
       expect(mocks.prepareFindingInspector).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves the page the same copy windows the check made, so a capture starts no full copy", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "finding-frames-windows-"));
+    installSessionMock(fakePage());
+    mocks.bundleWithLocalizedFonts.mockResolvedValueOnce(
+      '<html><body><video src="clip.mov" data-duration="5"></video></body></html>',
+    );
+    mocks.proxyWindowSeconds.mockResolvedValue(30);
+    try {
+      await captureFindingFrames({ ...PROJECT, dir }, DEFAULT_CHECK_OPTIONS, [
+        { time: 1, filename: "a.png" },
+      ]);
+      expect(vi.mocked(serveStaticProjectHtml).mock.calls.at(-1)?.[5]).toEqual(
+        new Map([[join(dir, "clip.mov"), 30]]),
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

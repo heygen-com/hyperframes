@@ -751,6 +751,34 @@ export async function retryOnStall<T>(
   }
 }
 
+const LOCK_ATTEMPTS = 5;
+const LOCK_FIRST_WAIT_MS = 250;
+
+/** Windows refuses to rename or unlink a file a scanner has open, for a moment.
+ * A real permission error is retried too, then thrown. */
+function isLockedFileError(err: unknown): boolean {
+  if (process.platform !== "win32") return false;
+  const said = `${(err as NodeJS.ErrnoException | undefined)?.code ?? ""} ${normalizeErrorMessage(err)}`;
+  return /\b(EBUSY|EPERM|EACCES)\b/.test(said);
+}
+
+export async function retryWhileLocked<T>(
+  run: () => Promise<T> | T,
+  onRetry: () => void = () => {},
+  attempts = LOCK_ATTEMPTS,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (!isLockedFileError(err) || attempt >= attempts) throw err;
+      await wait(LOCK_FIRST_WAIT_MS * 2 ** (attempt - 1));
+      onRetry();
+    }
+  }
+}
+
 function downloadHostOf(
   browsers: PuppeteerBrowsers,
   platform: Parameters<PuppeteerBrowsers["getDownloadUrl"]>[1],
@@ -830,25 +858,33 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
 
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
-  const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
+  const clearStaging = () =>
+    rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
   const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
 
   try {
-    const staged = await retryOnStall(
+    const staged = await retryWhileLocked(
       () =>
-        installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
-          console.warn(
-            `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
-          ),
+        retryOnStall(
+          () =>
+            installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
+              console.warn(
+                `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+              ),
+            ),
+          clearStaging,
+          options?.downloadAttempts,
         ),
       clearStaging,
-      options?.downloadAttempts,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
     unzipLog.lines = [];
-    return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
+    const executablePath = await retryWhileLocked(() =>
+      moveStagedInstallIntoCache(stagingDir, staged),
+    );
+    return { executablePath, source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog.lines);
   } finally {

@@ -8,7 +8,7 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
-import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,6 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
-  stampProjectHfIds,
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   HistoryBusyError,
@@ -435,6 +434,14 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
   }
 }
 
+function createStateFolderBeforeWatching(projectDir: string): void {
+  try {
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+  } catch {
+    return;
+  }
+}
+
 export function createStudioServer(options: StudioServerOptions): StudioServer {
   const { projectDir, projectName } = options;
   const projectId = projectName || basename(projectDir);
@@ -442,7 +449,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const gsapVendorDir = resolveGsapVendorDir();
-  stampProjectHfIds(projectDir);
+  createStateFolderBeforeWatching(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────

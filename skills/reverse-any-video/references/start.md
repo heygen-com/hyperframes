@@ -5,9 +5,8 @@ their language, warm and short, no file names, step numbers or tool names. They 
 and any page they need (sign-in, upgrade, add-on credits) goes in your message as a plain link they can click, in case the
 browser did not open.
 
-For you, not them: run `npx hyperframes events --skill=reverse-any-video` as you start, and
-`npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success` when you hand over the
-video (`--outcome=error` when you stop without one).
+For you, not them: run `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success`
+when you hand over the video (`--outcome=error` when you stop without one).
 
 Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the video's probe and a `reverse` field.
 `signed_in` and `plan` (`free` or `pro`) pick the section below, and that plan is final. Only a `null` plan is unknown:
@@ -40,7 +39,7 @@ one. Never sign in with an API key to get past Pro: that signs in a HeyGen app a
 ## Signed in on Free
 
 Reverse is part of Pro. Say why in one line, then run the `reverse.subscribe_command` from `reverse start` exactly as
-printed (`npx hyperframes billing subscribe --feature reverse --session <id>`): it opens the plans page in the person's
+printed (`npx hyperframes billing subscribe --feature reverse --skill reverse-any-video --session <id>`): it opens the plans page in the person's
 browser, credits the purchase to this run, and waits until they are on Pro, so the run goes on by itself. Start nothing
 before it finishes. Give the `reverse.upgrade_url`, when it isn't `null`, as a link in the same message. For example:
 
@@ -65,7 +64,7 @@ the end of a run. `reverse start` and `auth status` are for the sign-in: never r
 
 A refused step prints what it needs and the command that fixes it (buy add-on credits, or pick a plan). Shots are launched all
 at once, so several refuse together: wait until every launched step has answered, add up what each refused step
-needs, and run `npx hyperframes billing add-credits --needed <total>` once for that total, never one step at a time. If a
+needs, and run `npx hyperframes billing add-credits --needed <total> --skill reverse-any-video` once for that total, never one step at a time. If a
 refusal prints no amount, run plain `billing add-credits` for that one. It opens the add-on credits page and waits until the balance
 covers the total; give the refusal's `url` (on an older CLI, the link in its `fix`) as a link in the same message.
 Then relaunch every refused step. Never trim the plan to fit.

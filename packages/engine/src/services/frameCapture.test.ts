@@ -453,6 +453,14 @@ describe("navigation diagnostics", () => {
     );
   });
 
+  it("keeps only the path of bare and dot-relative URLs", () => {
+    expect(sanitizeDiagnosticUrl("./assets/bg.webp?example=REDACT_ME#fragment")).toBe(
+      "/assets/bg.webp",
+    );
+    expect(sanitizeDiagnosticUrl("assets/bg.webp?example=REDACT_ME")).toBe("/assets/bg.webp");
+    expect(sanitizeDiagnosticUrl("//user:pw@cdn.test/bg.jpg?t=1")).toBe("/bg.jpg");
+  });
+
   it("formats page.goto failures with mode, timeout, elapsed time, and sanitized URL", () => {
     const diagnostic = formatNavigationFailureDiagnostic({
       captureMode: "screenshot",

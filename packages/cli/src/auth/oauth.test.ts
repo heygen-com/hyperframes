@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { openBrowser } from "./browser.js";
+import { ACCOUNT_REQUEST_TIMEOUT_MS } from "./client.js";
 import { isAuthError } from "./errors.js";
 import { startLoopback } from "./loopback.js";
 import {
@@ -248,7 +249,7 @@ describe("auth/oauth", () => {
       await fetched;
       deadline.abort();
       await expect(refresh).rejects.toThrow();
-      expect(timeout).toHaveBeenCalledWith(20_000);
+      expect(timeout).toHaveBeenCalledWith(ACCOUNT_REQUEST_TIMEOUT_MS);
       timeout.mockRestore();
     });
 

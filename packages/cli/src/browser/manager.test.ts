@@ -1294,6 +1294,78 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  describe("retryWhileLocked", () => {
+    const lock = (code: string) =>
+      Object.assign(new Error(`${code}: operation not permitted, rename 'a' -> 'b'`), { code });
+    const quickly = async (): Promise<void> => {};
+    const onWindows = async (run: () => Promise<void>) => {
+      const real = Object.getOwnPropertyDescriptor(process, "platform");
+      Object.defineProperty(process, "platform", { value: "win32" });
+      try {
+        await run();
+      } finally {
+        if (real) Object.defineProperty(process, "platform", real);
+      }
+    };
+
+    // fails without the fix: a file a virus scanner held for a moment failed the whole install with EPERM.
+    it.each(["EBUSY", "EPERM", "EACCES"])(
+      "on Windows, goes on after a %s that clears, waiting longer each time",
+      async (code) => {
+        await onWindows(async () => {
+          const { retryWhileLocked } = await import("./manager.js");
+          const waits: number[] = [];
+          const run = vi
+            .fn<() => Promise<string>>()
+            .mockRejectedValueOnce(lock(code))
+            .mockRejectedValueOnce(lock(code))
+            .mockResolvedValue("moved");
+          const cleared = vi.fn();
+          await expect(
+            retryWhileLocked(run, cleared, 5, async (ms) => void waits.push(ms)),
+          ).resolves.toBe("moved");
+          expect(run).toHaveBeenCalledTimes(3);
+          expect(cleared).toHaveBeenCalledTimes(2);
+          expect(waits).toEqual([250, 500]);
+        });
+      },
+    );
+
+    it("on Windows, gives the lock's error after the last attempt", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi.fn<() => Promise<string>>().mockRejectedValue(lock("EPERM"));
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).rejects.toThrow("EPERM");
+        expect(run).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    it("on Windows, reads the lock from the message when a child process carried it without a code", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi
+          .fn<() => Promise<string>>()
+          .mockRejectedValueOnce(new Error("EBUSY: resource busy or locked, unlink 'x'"))
+          .mockResolvedValue("ok");
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).resolves.toBe("ok");
+      });
+    });
+
+    it("does not retry any other error, or a lock error off Windows", async () => {
+      const { retryWhileLocked } = await import("./manager.js");
+      const missing = vi.fn(async () => {
+        throw lock("ENOENT");
+      });
+      await expect(retryWhileLocked(missing, undefined, 3, quickly)).rejects.toThrow();
+      expect(missing).toHaveBeenCalledTimes(1);
+      const here = vi.fn(async () => {
+        throw lock("EPERM");
+      });
+      await expect(retryWhileLocked(here, undefined, 3, quickly)).rejects.toThrow();
+      expect(here).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("withBrowserWaitNotice speaks every 15 s while the task runs and stops when it ends", async () => {
     vi.useFakeTimers();
     try {

@@ -3,6 +3,7 @@ import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
   CheckDeadline,
+  CheckCopiesUnfinishedError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -29,7 +30,7 @@ import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import type { ProjectDir } from "./project.js";
-import { lintProject, shouldBlockRender, type ProjectLintResult } from "./lintProject.js";
+import { lintProject, type ProjectLintResult } from "./lintProject.js";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
@@ -758,12 +759,18 @@ async function collectMotionOverlapSamples(
     const craftStart = performance.now();
     // The render's last frame lands before the duration, where the runtime has already unmounted clips.
     const craftTimes = buildCraftSampleTimes(grid.duration).filter((time) => time < grid.duration);
-    for (const [index, time] of craftTimes.entries()) {
+    const last = craftTimes.length - 1;
+    for (let index = 0, sampled = 1; index <= last; sampled += 1) {
+      const time = craftTimes[index]!;
       progress(`craft frame at ${time}s`);
       await driver.seekGeometry(time, { draws: true });
       collected.craftFrames.push(...(await collectCraftFrame(driver, time)));
       progress();
       report("craft", index + 1, craftTimes.length);
+      index =
+        index === last
+          ? last + 1
+          : Math.min(last, index + craftStride(craftStart, sampled, last - index));
     }
     collected.craftMs = Math.round(performance.now() - craftStart);
   }
@@ -785,6 +792,15 @@ async function collectMotionOverlapSamples(
 // Craft times how long a line shows, so it keeps 8 fps past the overlap pass's ceiling, up to ~75 s.
 const CRAFT_SAMPLE_FPS = 8;
 const CRAFT_MAX_SAMPLES = 600;
+const CRAFT_BUDGET_MS = 90_000;
+const CRAFT_MAX_STRIDE = 12;
+
+function craftStride(startedAt: number, sampled: number, remaining: number): number {
+  const spent = performance.now() - startedAt;
+  const left = CRAFT_BUDGET_MS - spent;
+  const wanted = left <= 0 ? remaining : Math.ceil(((spent / sampled) * remaining) / left);
+  return Math.min(CRAFT_MAX_STRIDE, Math.max(1, wanted));
+}
 
 function buildCraftSampleTimes(duration: number): number[] {
   if (!Number.isFinite(duration) || duration <= 0) return [];
@@ -1659,6 +1675,12 @@ export async function runAuditGrid(
   };
 }
 
+export const leavesNothingToLoad = (finding: { code: string; severity: string }): boolean =>
+  finding.severity === "error" && finding.code === "root_missing_composition_id";
+
+const compositionCannotLoad = (lintResult: ProjectLintResult): boolean =>
+  lintResult.results[0]?.result.findings.some(leavesNothingToLoad) ?? false;
+
 export async function runCheckPipeline(
   project: ProjectDir,
   options: CheckOptions,
@@ -1685,7 +1707,7 @@ export async function runCheckPipeline(
 
     const lint = buildLintSection(lintResult);
     const { hdr, audio } = await inspectProjectMedia(project, dependencies);
-    if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
+    if (compositionCannotLoad(lintResult)) {
       return buildReport(
         options,
         lint,
@@ -2236,9 +2258,12 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
-function runtimeFailure(error: unknown, code = "check_runtime_failure"): CheckFinding {
+function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(
-    code,
+    code ??
+      (error instanceof CheckCopiesUnfinishedError
+        ? "media_copies_unfinished"
+        : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

@@ -185,7 +185,7 @@ describe("reverse start", () => {
     );
     const dir = join(root, "rebuild");
     await expect(run("--dir", dir)).rejects.toThrow(CliRuntimeError);
-    const command = `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`;
+    const command = `npx hyperframes billing subscribe --feature reverse --skill reverse-any-video --session ${SESSION}`;
     expect(output()).toMatchObject({
       ok: false,
       error: expect.stringContaining(command),
@@ -198,7 +198,7 @@ describe("reverse start", () => {
     server.answer = recorded("free");
     await run();
     expect(output().reverse).toMatchObject({
-      subscribe_command: `npx hyperframes billing subscribe --feature reverse --session ${SESSION}`,
+      subscribe_command: `npx hyperframes billing subscribe --feature reverse --skill reverse-any-video --session ${SESSION}`,
     });
   });
 

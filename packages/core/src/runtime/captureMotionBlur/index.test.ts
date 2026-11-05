@@ -637,6 +637,55 @@ describe("wrapping", () => {
     expect(events).toEqual(["quiet:begin", "quiet:end:plain", "seek:0.5:true"]);
   });
 
+  it("keeps the offset of a scrolled container when the root moves in and out of the canvas", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const list = document.createElement("div");
+    const inner = document.createElement("div");
+    list.append(inner);
+    root.append(list);
+    const offsets = new Map<HTMLElement, [number, number]>([
+      [root, [0, 0]],
+      [list, [0, 0]],
+      [inner, [0, 0]],
+    ]);
+    for (const [el] of offsets) {
+      Object.defineProperties(el, {
+        scrollLeft: {
+          get: () => offsets.get(el)?.[0],
+          set: (v: number) => offsets.set(el, [v, offsets.get(el)?.[1] ?? 0]),
+          configurable: true,
+        },
+        scrollTop: {
+          get: () => offsets.get(el)?.[1],
+          set: (v: number) => offsets.set(el, [offsets.get(el)?.[0] ?? 0, v]),
+          configurable: true,
+        },
+      });
+    }
+    const reset = () => {
+      for (const el of offsets.keys()) offsets.set(el, [0, 0]);
+    };
+    initCaptureMotionBlur({
+      ...h,
+      ignoreMutations: (write) => {
+        write();
+        reset();
+      },
+    });
+    offsets.set(list, [12, 300]);
+    offsets.set(inner, [0, 40]);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(inner)).toEqual([0, 40]);
+    offsets.set(root, [0, 7]);
+    expect(paintCaptureMotionBlur(0.5)).toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(root)).toEqual([0, 7]);
+  });
+
   it("does not re-seek when there was nothing to unwrap", () => {
     installHtmlInCanvas();
     const { h } = movingHost();
@@ -2020,5 +2069,39 @@ describe("the movers-alone capture", () => {
     expect(selecting(shape, "hidden")).toBe(false);
     expect(selecting(clip, "hidden")).toBe(false);
     expect(selecting(defs, "visible")).toBe(true);
+  });
+});
+
+describe("shutter phase on the root", () => {
+  /** The pose reads around a frame at 0.5 s: the scan's own steps are on the 1/30 grid, outside these. */
+  function readsAroundHalf(attrs: Record<string, string>): number[] {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", ...attrs });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, { engineMode: true });
+    return h.seek.mock.calls
+      .map(([t]) => Number(t))
+      .filter((t) => t > 0.47 && t < 0.53 && t !== 0.5);
+  }
+
+  it.each(["capture", "filter"])("opens the %s tier's shutter at the phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-phase": "0",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeGreaterThan(0.5);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 60, 8);
+  });
+
+  it.each(["capture", "filter"])("keeps the %s tier centred with no phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeCloseTo(0.5 - 1 / 120, 8);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 120, 8);
   });
 });

@@ -8,7 +8,7 @@
 import { swallow } from "../diagnostics";
 import { scanMovers } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { readMoverFrames } from "./frames";
+import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 
@@ -186,7 +186,7 @@ export function createFilterTier(
       restore: readEvents ? undefined : host.holdFrame?.(),
       t,
       reads: engineMode ? RENDER_READS : PREVIEW_READS,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
+      ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
       taps: COPIES,
       frameW: width,
       scene: root,
@@ -229,6 +229,7 @@ export function createFilterTier(
       moverNames: movers.map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}`),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames,
       meanMs: frames ? Math.round((totalMs / frames) * 10) / 10 : 0,
       failures: 0,

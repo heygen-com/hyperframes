@@ -4540,6 +4540,91 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  // GH #5603: a rejected hold must fail render, snapshot and check rather than let them capture a
+  // scene that was never built.
+  describe("a rejected window.__hf.buildReady promise", () => {
+    const mountRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(10) };
+    };
+    const flush = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+
+    afterEach(() => {
+      delete window.__hfStartupError;
+    });
+
+    it("records a startup error naming the key and the reason", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        mesh: Promise.resolve(),
+        scene: Promise.reject(new Error("build failed: bad baked data")),
+      };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__hfStartupError).toContain('window.__hf.buildReady["scene"] rejected');
+      expect(window.__hfStartupError).toContain("Error: build failed: bad baked data");
+      expect(window.__hfStartupError).not.toContain('"mesh"');
+    });
+
+    it("holds render-ready until the rejection, then releases it with the error set", async () => {
+      mountRoot();
+      let rejectBuild: (reason: unknown) => void = () => {};
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        scene: new Promise<void>((_, reject) => {
+          rejectBuild = reject;
+        }),
+      };
+
+      initSandboxRuntimeModular();
+      expect(window.__renderReady).toBe(false);
+      expect(window.__hfStartupError).toBeUndefined();
+
+      rejectBuild("no WebGPU adapter");
+      await flush();
+
+      // The error lands in the same tick as render-ready, so no readiness poll sees one without the other.
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toContain('["scene"] rejected: no WebGPU adapter');
+    });
+
+    it("leaves no startup error when every hold resolves", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.resolve() };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toBeUndefined();
+    });
+
+    it("does not fail the next composition loaded after teardown", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.reject(new Error("first build failed")) };
+      initSandboxRuntimeModular();
+      await flush();
+      expect(window.__hfStartupError).toContain("first build failed");
+
+      window.__hfRuntimeTeardown?.();
+
+      expect(window.__hfStartupError).toBeUndefined();
+    });
+  });
+
   it("clears a stale buildReady entry on teardown so the next init isn't blocked by it", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -5753,6 +5838,23 @@ describe("initSandboxRuntimeModular", () => {
       expect(card.style.display).toBe("none");
       expect(card.style.width).toBe("100%");
       expect(card.style.height).toBe("100%");
+    });
+
+    it("leaves a still-loading image at its own size instead of filling the frame", () => {
+      const root = makeRoot();
+      const logo = document.createElement("img");
+      logo.setAttribute("data-start", "0");
+      logo.setAttribute("data-duration", "5");
+      logo.style.width = "340px";
+      root.appendChild(logo);
+      // Before its file loads, a width-only <img> measures 0px tall.
+      modelBrowserLayout(logo, { width: "340px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(logo.style.height).toBe("");
+      expect(logo.style.width).toBe("340px");
     });
 
     it("puts back an author's display:none !important after measuring the clip", () => {

@@ -28,6 +28,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  leavesNothingToLoad,
   prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
@@ -164,6 +165,11 @@ async function saveCheckReport(
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  "lint-verbose": {
+    type: "boolean",
+    description: "Accepted as render's spelling; check always prints every lint finding",
+    default: false,
+  },
   samples: {
     type: "string",
     description: "Number of midpoint samples across the duration (default: 9)",
@@ -653,9 +659,8 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 }
 
 function browserSkippedLine(report: CheckReport): string {
-  const lintError = report.lint.findings.some((finding) => finding.severity === "error");
-  return lintError
-    ? "Browser validation skipped because of the lint error above: fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
+  return report.lint.findings.some(leavesNothingToLoad)
+    ? "Browser validation skipped: the lint error above leaves no composition to load. Fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
     : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
 }
 

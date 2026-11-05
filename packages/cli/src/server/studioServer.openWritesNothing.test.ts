@@ -29,13 +29,29 @@ beforeEach(() => {
     fs.writeFileSync(path.join(dir, "compositions", `${id}.html`), scene(id));
 });
 
+const snapshot = () =>
+  Object.fromEntries(
+    fs
+      .readdirSync(dir, { recursive: true, encoding: "utf-8" })
+      .filter((file) => !file.startsWith(".hyperframes"))
+      .sort()
+      .map((file) => {
+        try {
+          return [file, fs.readFileSync(path.join(dir, file), "utf-8")];
+        } catch {
+          return [file, null];
+        }
+      }),
+  );
+
 afterEach(() => {
   server?.watcher.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 describe("opening a film of external scenes", () => {
-  it("writes nothing to the project mid-session, so Studio sees no outside edit to reload for", async () => {
+  it("writes nothing to the project, so opening it neither edits a file nor reloads Studio", async () => {
+    const before = snapshot();
     server = createStudioServer({ projectDir: dir, projectName: "film" });
     const changed: string[] = [];
     server.watcher.addListener((changedPath) => changed.push(changedPath));
@@ -46,12 +62,12 @@ describe("opening a film of external scenes", () => {
         `/api/projects/film/preview/comp/compositions/${id}.html`,
       );
       expect(comp.status).toBe(200);
+      expect(await comp.text()).toContain("data-hf-id=");
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    expect(snapshot()).toEqual(before);
     expect(changed).toEqual([]);
-    const stamped = fs.readFileSync(path.join(dir, "compositions", "s23.html"), "utf-8");
-    expect(stamped).toContain("data-hf-id=");
   });
 
   it("serves a scene added after open with the ids its source mints, so a save can find them", async () => {
@@ -72,28 +88,30 @@ describe("opening a film of external scenes", () => {
     expect(fs.readFileSync(path.join(dir, "index.html"), "utf-8")).toBe(root(["added"]));
   });
 
-  it("stamps a composition rewritten since the last open even when its size and mtime match", () => {
-    const file = path.join(dir, "compositions", "s00.html");
-    const pinned = new Date("2026-01-01T00:00:00Z");
-    const open = () => {
-      server?.watcher.close();
-      server = createStudioServer({ projectDir: dir, projectName: "film" });
-    };
-    open();
-    fs.utimesSync(file, pinned, pinned);
-    open();
-    // What `cp -p` or rsync leaves: new content at the recorded size and mtime.
-    const stamped = fs.readFileSync(file, "utf-8");
-    const unstamped = stamped.replace(/ data-hf-id="[^"]*"/, "").padEnd(stamped.length, " ");
-    fs.writeFileSync(file, unstamped);
-    fs.utimesSync(file, pinned, pinned);
+  it("pins the ids into a file when an edit to it is saved", async () => {
+    server = createStudioServer({ projectDir: dir, projectName: "film" });
+    const served = await (
+      await server.app.request("/api/projects/film/preview/comp/compositions/s00.html")
+    ).text();
+    const hfId = /<h1[^>]*data-hf-id="([^"]+)"/.exec(served)?.[1];
+    expect(hfId).toBeTruthy();
 
-    open();
-
-    const reopened = fs.readFileSync(file, "utf-8");
-    expect(reopened).not.toBe(unstamped);
-    expect(reopened.match(/data-hf-id=/g)?.length).toBe(
-      unstamped.match(/data-hf-id=/g)!.length + 1,
+    const res = await server.app.request(
+      "/api/projects/film/file-mutations/patch-element/compositions/s00.html",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target: { hfId },
+          operations: [{ type: "inline-style", property: "color", value: "red" }],
+        }),
+      },
     );
+
+    expect(res.status).toBe(200);
+    const saved = fs.readFileSync(path.join(dir, "compositions", "s00.html"), "utf-8");
+    const heading = /<h1[^>]*>/.exec(saved)?.[0] ?? "";
+    expect(heading).toContain(`data-hf-id="${hfId}"`);
+    expect(heading).toContain("color: red");
   });
 });

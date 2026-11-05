@@ -124,6 +124,7 @@ export interface CreateHyperframesRenderRequest {
   title?: string | null;
   callback_id?: string | null;
   callback_url?: string | null;
+  reverse_session_id?: string | null;
 }
 
 export interface CreateHyperframesRenderResponse {
@@ -200,6 +201,7 @@ export interface CreateVideoFromAvatar {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -241,6 +243,7 @@ export interface CreateVideoFromImage {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -288,6 +291,19 @@ export interface DeleteHyperframesRenderResponse {
   render_id: string;
 }
 
+export type DeliveryArtifact = "video" | "captions" | "thumbnail";
+
+export type DeliveryErrorCode =
+  | "upload_url_expired"
+  | "upload_rejected"
+  | "upload_target_not_found"
+  | "output_too_large"
+  | "provider_unavailable"
+  | "source_missing"
+  | "internal_error";
+
+export type DeliveryStatus = "pending" | "in_progress" | "succeeded" | "failed";
+
 export interface ElevenLabsEngineSettings {
   model?: ElevenLabsModel | null;
   similarity_boost?: number | null;
@@ -316,6 +332,15 @@ export interface ElevenLabsSpeechSettings {
 
 export type Expressiveness = "high" | "medium" | "low";
 
+export interface FileDeliveryStatus {
+  artifact: DeliveryArtifact;
+  status: DeliveryStatus;
+  target_host: string;
+  size_bytes?: number | null;
+  error_code?: DeliveryErrorCode | null;
+  completed_at?: number | null;
+}
+
 export interface FishEngineSettings {
   model?: FishModel | null;
   stability?: number | null;
@@ -339,6 +364,11 @@ export interface HeyGenVoiceEngineSettings {
 
 export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
 
+export interface HyperframesReferenceBackground {
+  kind: "solid" | "none" | "unsupported_non_solid" | "unknown";
+  rgb?: Array<unknown> | null;
+}
+
 export interface HyperframesRenderDetail {
   render_id: string;
   status: HyperframesRenderStatus;
@@ -353,6 +383,7 @@ export interface HyperframesRenderDetail {
   resolution?: HyperframesResolution | null;
   aspect_ratio?: HyperframesAspectRatio | null;
   composition?: string | null;
+  reference_background?: HyperframesReferenceBackground | null;
   created_at?: number | null;
   completed_at?: number | null;
   failure_message?: string | null;
@@ -481,6 +512,12 @@ export interface NanoBanana2Request {
   num_images?: number;
   aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9" | null;
   reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface OutputUploadRequest {
+  video: UploadTargetRequest;
+  captions?: UploadTargetRequest | null;
+  thumbnail?: UploadTargetRequest | null;
 }
 
 export interface PlaybackInput {
@@ -660,6 +697,11 @@ export interface UploadAssetV3Response {
   size_bytes: number;
 }
 
+export interface UploadTargetRequest {
+  url: string;
+  headers?: Record<string, unknown>;
+}
+
 export type VideoAspectRatio = "16:9" | "9:16" | "4:5" | "5:4" | "1:1" | "auto";
 
 export interface VideoDetail {
@@ -679,6 +721,7 @@ export interface VideoDetail {
   failure_code?: string | null;
   failure_message?: string | null;
   video_page_url?: string | null;
+  delivery?: Array<FileDeliveryStatus> | null;
 }
 
 export type VideoGenerationModel = "heygen-video-1";
