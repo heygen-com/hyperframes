@@ -1122,12 +1122,11 @@ export function readStoredFinalFrame(
   });
 }
 
-/** The video stream's length from its packets (last end time), for a file whose headers state none. */
 const PACKET_TAIL_CHARS = 64 * 1024;
 
+/** The video stream's length from its packets (last end time), for a file whose headers state none. */
 async function scanPacketDuration(filePath: string, fps: number): Promise<number | undefined> {
   try {
-    // The tail holds the last packets; the cap keeps a long film's scan from filling memory.
     const stdout = await runFfprobe(
       filePath,
       [
@@ -1140,7 +1139,6 @@ async function scanPacketDuration(filePath: string, fps: number): Promise<number
     const lines = stdout.split("\n");
     // A tail cut at the cap starts partway through a line, and its number would read as a huge time.
     if (stdout.length >= PACKET_TAIL_CHARS) lines.shift();
-    // A packet with no stated duration (N/A) lasts one frame.
     const frame = fps > 0 ? 1 / fps : 0;
     const ends = lines
       .map((line) => line.trim().split(",").map(Number))
