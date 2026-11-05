@@ -140,7 +140,7 @@ function collectLocalStylesheets(
   return styles;
 }
 
-export function collectExternalStyles(
+function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
