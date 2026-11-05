@@ -50,5 +50,6 @@
   "src/utils/streamDurationParity.test.ts",
   "src/services/distributed/referenceBackground.integration.test.ts",
   "src/services/render/planReferenceBackground.polling.test.ts",
-  "src/services/render/deferredVideoFrames.integration.test.ts"
+  "src/services/render/deferredVideoFrames.integration.test.ts",
+  "src/services/render/stages/extractVideosStage.integration.test.ts"
 ]
