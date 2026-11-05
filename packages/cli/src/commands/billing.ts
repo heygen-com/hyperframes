@@ -128,7 +128,11 @@ export default defineCommand({
     }
     const needed = Number(args.needed) || undefined;
     const skill = checkoutSkill(args.skill);
-    const before = await readPlan();
+    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
+    const stop = new AbortController();
+    const atDeadline = setTimeout(() => stop.abort(), deadline - Date.now());
+    atDeadline.unref?.();
+    const before = await readPlan(stop.signal);
     const done = (p: Plan | null) =>
       action === "subscribe"
         ? !!p && p.plan !== "none"
@@ -146,17 +150,18 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
-    const stop = new AbortController();
     const giveUp = new AbortController();
     const waiting = (async () => {
-      while (Date.now() < deadline && !giveUp.signal.aborted) {
+      while (!stop.signal.aborted && !giveUp.signal.aborted) {
         await new Promise((r) => setTimeout(r, 2000));
-        const now = await readPlan();
+        const now = await readPlan(stop.signal);
         if (done(now)) return now;
       }
       return null;
-    })().finally(() => stop.abort());
+    })().finally(() => {
+      clearTimeout(atDeadline);
+      stop.abort();
+    });
     const checkoutFailure = await offerCheckout(
       action === "subscribe" ? "plans" : "credits",
       before,

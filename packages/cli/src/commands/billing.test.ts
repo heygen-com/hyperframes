@@ -19,6 +19,7 @@ const held = vi.hoisted(() => ({
   realOffer: false,
   headerCalls: 0,
   holdHeadersAfter: undefined as number | undefined,
+  stallPoll: false,
 }));
 
 vi.mock("../telemetry/events.js", () => ({
@@ -63,10 +64,14 @@ vi.mock("../heygen/plan.js", async (importOriginal) => {
       terminal.args.push(args);
       return held.checkout ?? "https://checkout.stripe.com/c/pay/cs_test_1";
     },
-    readPlan: async () => ({
-      plan: ++plan.calls === 1 || !never.paid ? "none" : "pro",
-      credits: plan.calls === 1 || !never.paid ? 0 : 500,
-    }),
+    readPlan: async (stop?: AbortSignal) => {
+      if (++plan.calls > 1 && held.stallPoll)
+        return new Promise((resolve) => stop?.addEventListener("abort", () => resolve(null)));
+      return {
+        plan: plan.calls === 1 || !never.paid ? "none" : "pro",
+        credits: plan.calls === 1 || !never.paid ? 0 : 500,
+      };
+    },
   };
 });
 
@@ -97,6 +102,7 @@ afterEach(() => {
     realOffer: false,
     headerCalls: 0,
     holdHeadersAfter: undefined,
+    stallPoll: false,
   });
   vi.restoreAllMocks();
   consumeCommandResult();
@@ -324,6 +330,29 @@ describe("billing once the wait has ended", () => {
     expect(settled).toBe(true);
     await done;
     expect(terminal.checkouts).toBe(0);
+  });
+
+  it("creates no checkout after --timeout while a plan poll is still unanswered", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    never.paid = false;
+    held.stallPoll = true;
+    const offer = release<object>();
+    held.offer = offer.promise;
+    vi.useFakeTimers();
+    let settled = false;
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    offer.resolve({ pro: { amount: 2900, currency: "usd" } });
+    await vi.advanceTimersByTimeAsync(0);
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("Checkout link");
+    expect(settled).toBe(true);
+    await done;
   });
 
   it("ends when the purchase lands while a sign-in refresh is still unanswered", async () => {
