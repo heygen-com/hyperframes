@@ -6,7 +6,7 @@
  */
 
 import { swallow } from "../diagnostics";
-import { scanMovers } from "./discover";
+import { landThenUndoDom, scanMovers } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
@@ -123,14 +123,21 @@ export function createFilterTier(
   function discover(restoreTo: number): void {
     scanned = host.timeline();
     const s0 = performance.now();
-    const found = scanMovers({
-      scene: root,
-      durationSeconds: host.durationSeconds(),
-      fps: host.fps,
-      seek: host.seek,
-      events: config.events,
-    });
-    seek(restoreTo);
+    const landing = config.events ? landThenUndoDom(seek, document) : null;
+    let found: ReturnType<typeof scanMovers>;
+    try {
+      found = scanMovers({
+        scene: root,
+        durationSeconds: host.durationSeconds(),
+        fps: host.fps,
+        seek: host.seek,
+        events: config.events,
+        onStep: landing?.flush,
+      });
+      (landing?.land ?? seek)(restoreTo);
+    } finally {
+      landing?.stop();
+    }
     readEvents = found.readEvents;
     movers = found.movers;
     pads = found.pads;
@@ -179,19 +186,25 @@ export function createFilterTier(
   function plansAt(t: number, engineMode: boolean): Array<[HTMLElement, FilterPlan]> {
     if (!reader || host.timeline() !== scanned) discover(t);
     if (!reader) return [];
-    const read = readMoverFrames({
-      movers,
-      reader,
-      seek: readSeek,
-      restore: readEvents ? undefined : host.holdFrame?.(),
-      t,
-      reads: engineMode ? RENDER_READS : PREVIEW_READS,
-      ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
-      taps: COPIES,
-      frameW: width,
-      scene: root,
-      frameH: height,
-    });
+    const landing = readEvents ? landThenUndoDom(readSeek, document) : null;
+    let read: ReturnType<typeof readMoverFrames>;
+    try {
+      read = readMoverFrames({
+        movers,
+        reader,
+        seek: readSeek,
+        restore: landing?.land ?? host.holdFrame?.(),
+        t,
+        reads: engineMode ? RENDER_READS : PREVIEW_READS,
+        ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
+        taps: COPIES,
+        frameW: width,
+        scene: root,
+        frameH: height,
+      });
+    } finally {
+      landing?.stop();
+    }
     const plans: Array<[HTMLElement, FilterPlan]> = [];
     read.els.forEach((el, i) => {
       const frame = read.frames[i];

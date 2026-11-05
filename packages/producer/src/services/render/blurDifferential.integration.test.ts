@@ -11,12 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodePng, distributeFrames, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
 import {
   compareTiles,
-  tilesOutsideRegion,
   trailMask,
-  withinSymptomBand,
-  type BadBlock,
   type Differential,
-  type Rect,
   type Rgba,
 } from "../../../../engine/src/services/__fixtures__/blurDifferential.js";
 import {
@@ -25,7 +21,6 @@ import {
 } from "../../../../engine/src/services/__fixtures__/motionBlur/fixtures.js";
 import {
   INVARIANTS,
-  MEASURED_LABEL_EARLY_RENDER,
   RENDER_OUTSIDE_MAX_MAE,
 } from "../../../../engine/src/services/__fixtures__/motionBlur/thresholds.js";
 import { createRenderJob, executeRenderJob } from "../renderOrchestrator.js";
@@ -36,8 +31,8 @@ const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status
 const FPS = 30;
 const WORKERS = 4;
 /**
- * `callbacks` calls at frames 15, 16 and 30. A worker whose block starts on a call
- * sees the bug only by timing; one starting strictly between the calls always does (#6967).
+ * `callbacks` calls at frames 15, 16 and 30. A worker whose block starts strictly between the
+ * calls shows any call state its scan leaves behind; one starting on a call only by timing (#6967).
  * 7 workers over 60 frames start at 0, 9, 18, 27, 36, 45 and 54.
  */
 const WORKERS_BY_FIXTURE = new Map<string, number>([["callbacks", 7]]);
@@ -56,57 +51,6 @@ const FIXTURE_NAMES = [
   "held-card",
   "overflow-wordmark",
 ] as const;
-
-interface KnownBug {
-  title: string;
-  reason: string;
-  /** The element whose rect every bad tile must touch, in CSS px from the fixture's markup. */
-  regionId: string;
-  region: (f: BlurFixture) => Rect;
-  /** Output frames in which blur on really differs from blur off today. */
-  frames: (n: number) => boolean;
-  /** Worst-tile MAE of the symptom where it was pinned. */
-  measuredMae: number;
-  /** Set when the symptom must appear in those frames: what to edit when it no longer does. */
-  ifFixed?: string;
-}
-
-const markupOf = (f: BlurFixture, id: string): string =>
-  new RegExp(`<[^>]*id="${id}"[^>]*>`).exec(f.html("off"))?.[0] ?? "";
-
-function cssPx(f: BlurFixture, id: string, property: string): number {
-  const px = new RegExp(`(?:^|[;"\\s])${property}:\\s*(-?[\\d.]+)px`).exec(markupOf(f, id))?.[1];
-  if (px === undefined) throw new Error(`#${id} in ${f.name} has no ${property} in px`);
-  return Number(px);
-}
-
-/** One glyph of the element's text: left and top from its inline style; a monospace advance is 0.6 em, a line 1.2 em. */
-function glyphFromMarkup(f: BlurFixture, id: string): Rect {
-  const size = Number(/font:\s*\d+\s+([\d.]+)px/.exec(markupOf(f, id))?.[1]);
-  if (Number.isNaN(size)) throw new Error(`#${id} in ${f.name} has no font size in px`);
-  return { x: cssPx(f, id, "left"), y: cssPx(f, id, "top"), width: 0.6 * size, height: 1.2 * size };
-}
-
-/**
- * Cases where blur on really differs from blur off today. Whatever differs must stay inside the
- * pinned region and keep its measured size. A case with `ifFixed` also requires the symptom to
- * appear and fails once it is fixed; the others only bound it, because it is a race.
- */
-const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
-  [
-    "callbacks",
-    {
-      title: "KNOWN BUG on main: callbacks shows its label B before the call that sets it",
-      reason: "callbacks shows its label B before the call that sets it",
-      regionId: "label",
-      region: (f) => glyphFromMarkup(f, "label"),
-      frames: (n) => n < 15,
-      measuredMae: MEASURED_LABEL_EARLY_RENDER,
-      ifFixed:
-        "delete the callbacks entry from KNOWN_REAL_DIFFERENCES; keep WORKERS_BY_FIXTURE and REQUIRED_STARTS, which make the rewind regression visible after the fix",
-    },
-  ],
-]);
 
 interface Renders {
   off: Rgba[];
@@ -210,38 +154,6 @@ function firstBad(results: readonly FrameResult[]): string {
   );
 }
 
-function expectNoNewDefect(f: BlurFixture, known: KnownBug, bad: readonly BadBlock[]): void {
-  const region = known.region(f);
-  expect(
-    tilesOutsideRegion(bad, INVARIANTS.block, region, 1),
-    `a new defect outside the ${known.regionId} rect ${JSON.stringify(region)}`,
-  ).toEqual([]);
-}
-
-function expectKnownBug(f: BlurFixture, known: KnownBug, results: readonly FrameResult[]): void {
-  const pinned = results.filter((x) => known.frames(x.frame));
-  const rest = results.filter((x) => !known.frames(x.frame));
-  const bad = pinned.flatMap((x) => x.outside.bad);
-  if (known.ifFixed) {
-    expect(
-      bad.length,
-      `${known.reason}: this case pins a known bug; if it now passes, ${known.ifFixed}`,
-    ).toBeGreaterThan(0);
-  }
-  expectNoNewDefect(f, known, bad);
-  if (bad.length > 0) {
-    const worstMae = Math.max(...pinned.map((x) => x.outside.worstMae));
-    expect(
-      withinSymptomBand(worstMae, known.measuredMae),
-      `the pinned symptom changed: re-measure (worst MAE ${worstMae.toFixed(2)}, pinned at ${known.measuredMae})`,
-    ).toBe(true);
-  }
-  expect(
-    rest.flatMap((x) => x.outside.bad),
-    `${f.name} outside the pinned frames ${firstBad(rest)}`,
-  ).toEqual([]);
-}
-
 function expectEqualOutsideTrail(f: BlurFixture, results: readonly FrameResult[]): void {
   expect(
     results.flatMap((x) => x.outside.bad),
@@ -282,13 +194,8 @@ function defineFixtureCases(f: BlurFixture): void {
       }
     });
 
-    const known = KNOWN_REAL_DIFFERENCES.get(f.name);
-    if (known) {
-      it(known.title, () => expectKnownBug(f, known, results));
-    } else {
-      it("outside the trail, blur on equals blur off in every frame", () =>
-        expectEqualOutsideTrail(f, results));
-    }
+    it("outside the trail, blur on equals blur off in every frame", () =>
+      expectEqualOutsideTrail(f, results));
 
     if (f.name === "held-card") {
       it("blurs the card, so the comparison is not vacuous", () => {

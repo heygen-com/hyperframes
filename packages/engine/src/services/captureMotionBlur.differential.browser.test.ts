@@ -3,11 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   compareTiles,
   meanFrame,
-  tilesOutsideRegion,
   trailMask,
-  withinSymptomBand,
   type Differential,
-  type Rect,
   type Rgba,
 } from "./__fixtures__/blurDifferential.js";
 import { closeTestChrome } from "./__fixtures__/loopback.js";
@@ -18,10 +15,7 @@ import {
   openFixture,
 } from "./__fixtures__/motionBlur/blurPage.js";
 import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.js";
-import {
-  INVARIANTS,
-  MEASURED_LABEL_EARLY_FRESH_PAINT,
-} from "./__fixtures__/motionBlur/thresholds.js";
+import { INVARIANTS } from "./__fixtures__/motionBlur/thresholds.js";
 
 const FPS = 30;
 const frameTime = (n: number): number => n / FPS;
@@ -29,28 +23,7 @@ const SUB_FRAME_DIVISIONS = 24;
 const SHUTTER_SECONDS = 240 / 360 / FPS;
 const CASE_TIMEOUT_MS = 60_000;
 
-interface KnownBug {
-  reason: string;
-  /** The element whose rect every bad tile must touch. */
-  regionId: string;
-  /** Worst-tile MAE of the symptom where it was pinned. */
-  measuredMae: number;
-}
-
-const LABEL_EARLY: KnownBug = {
-  reason: "callbacks shows its label B before the call that sets it",
-  regionId: "label",
-  measuredMae: MEASURED_LABEL_EARLY_FRESH_PAINT,
-};
-
-/** Cases where blur on really differs from blur off today. They pin the symptom and fail once it is fixed. */
-const KNOWN_REAL_DIFFERENCES = new Map<string, KnownBug>([
-  ["outside:callbacks@0.2", LABEL_EARLY],
-  ["outside:callbacks@0.3", LABEL_EARLY],
-  ["outside:callbacks@0.4", LABEL_EARLY],
-]);
-
-/** Before the label's first call: blur on gets it wrong at these frames, so they are the known-bug cases above. */
+/** Before the label's first call: a regression guard that a scan leaves no call's DOM behind to show it early. */
 const EXTRA_OUTSIDE_TIMES = new Map<string, readonly number[]>([
   ["callbacks", [frameTime(6), frameTime(9), frameTime(12)]],
 ]);
@@ -103,32 +76,17 @@ function firstFive(d: Differential): string {
   return JSON.stringify(d.bad.slice(0, 5));
 }
 
-async function measureOutside(
-  browser: Browser,
-  f: BlurFixture,
-  t: number,
-  regionId?: string,
-): Promise<{ d: Differential; region: Rect }> {
-  const { offFrames, region } = await onFreshPage(browser, f, "off", async (p) => ({
-    offFrames: await captureInOrder(p, neighbourTimes(t)),
-    region: await elementRect(p, regionId),
-  }));
+async function measureOutside(browser: Browser, f: BlurFixture, t: number): Promise<Differential> {
+  const offFrames = await onFreshPage(browser, f, "off", (p) =>
+    captureInOrder(p, neighbourTimes(t)),
+  );
   const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t));
   const reference = offFrames[INVARIANTS.radiusFrames];
   if (!reference) throw new Error("missing reference frame");
-  const d = compareTiles(reference, onFrame, trailMask(offFrames, radiusPx(f)), "outside", {
+  return compareTiles(reference, onFrame, trailMask(offFrames, radiusPx(f)), "outside", {
     block: INVARIANTS.block,
     maxMae: INVARIANTS.outsideMaxMae,
   });
-  return { d, region };
-}
-
-async function elementRect(page: Page, id: string | undefined): Promise<Rect> {
-  const box = await page.evaluate((elementId) => {
-    const el = elementId ? document.getElementById(elementId) : null;
-    return el ? el.getBoundingClientRect().toJSON() : null;
-  }, id);
-  return box ?? { x: 0, y: 0, width: 0, height: 0 };
 }
 
 const caseName = (what: string, f: BlurFixture, t: number): string => `${what}: ${f.name} at ${t}`;
@@ -147,34 +105,12 @@ function fixtureNamed(name: string): BlurFixture {
   return f;
 }
 
-function defineKnownBugCase(f: BlurFixture, t: number, known: KnownBug): void {
-  it(
-    `KNOWN BUG on main: ${known.reason} (outside, ${t} s)`,
-    async (ctx) => {
-      if (!supported) ctx.skip();
-      const { d, region } = await measureOutside(chrome(), f, t, known.regionId);
-      const fixed = `${known.reason}: this case pins a known bug; if it now passes, delete its \`outside:${f.name}@${t}\` entry from KNOWN_REAL_DIFFERENCES, which makes it an ordinary outside case`;
-      expect(d.checkedFraction).toBeGreaterThanOrEqual(INVARIANTS.minCheckedFraction);
-      expect(d.bad.length, fixed).toBeGreaterThan(0);
-      expect(
-        tilesOutsideRegion(d.bad, INVARIANTS.block, region, f.dpr),
-        `a new defect outside the ${known.regionId} rect ${JSON.stringify(region)}: ${firstFive(d)}`,
-      ).toEqual([]);
-      expect(
-        withinSymptomBand(d.worstMae, known.measuredMae),
-        `the pinned symptom changed: re-measure (worst MAE ${d.worstMae.toFixed(2)}, pinned at ${known.measuredMae})`,
-      ).toBe(true);
-    },
-    CASE_TIMEOUT_MS,
-  );
-}
-
 function defineOutsideCase(f: BlurFixture, t: number): void {
   it(
     caseName("outside the trail, blur on equals blur off", f, t),
     async (ctx) => {
       if (!supported) ctx.skip();
-      const { d } = await measureOutside(chrome(), f, t);
+      const d = await measureOutside(chrome(), f, t);
       expect(d.bad, `${f.name} ${firstFive(d)}`).toEqual([]);
       expect(d.checkedFraction).toBeGreaterThanOrEqual(INVARIANTS.minCheckedFraction);
     },
@@ -249,9 +185,7 @@ function defineSubFrameCase(): void {
 
 function defineFixtureCases(f: BlurFixture): void {
   for (const t of [...f.checkpoints, ...(EXTRA_OUTSIDE_TIMES.get(f.name) ?? [])]) {
-    const known = KNOWN_REAL_DIFFERENCES.get(`outside:${f.name}@${t}`);
-    if (known) defineKnownBugCase(f, t, known);
-    else defineOutsideCase(f, t);
+    defineOutsideCase(f, t);
   }
   for (const t of f.moving) defineInsideCase(f, t);
 }
