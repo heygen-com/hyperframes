@@ -1,5 +1,6 @@
 // The reverse session the server opens when a reverse run starts, and the plan it read for the account.
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { trackReverseStartUnrecorded, type ReverseUnrecordedCause } from "../telemetry/events.js";
 import { normalizeReverseSessionId } from "../utils/projectConfig.js";
 import { cliCheckoutLink, pageUrl, readPlan } from "./plan.js";
 
@@ -18,7 +19,12 @@ export interface ReverseSession {
 
 export type ReverseStart =
   | { recorded: true; session: ReverseSession }
-  | { recorded: false; reason: "not_signed_in" | "unavailable"; plan?: "free" | "pro" };
+  | {
+      recorded: false;
+      reason: "not_signed_in" | "unavailable";
+      cause?: ReverseUnrecordedCause;
+      plan?: "free" | "pro";
+    };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -76,8 +82,11 @@ export async function startReverseSession(
   try {
     headers = await resolveCloudAuthHeaders();
   } catch {
+    trackReverseStartUnrecorded({ cause: "not_signed_in" });
     return { recorded: false, reason: "not_signed_in" };
   }
+  let cause: ReverseUnrecordedCause;
+  let status: number | undefined;
   try {
     const res = await fetch(`${api2BaseUrl()}/v1/hyperframes/reverse/start`, {
       method: "POST",
@@ -88,11 +97,18 @@ export async function startReverseSession(
       }),
       signal: AbortSignal.timeout(10_000),
     });
-    const session = res.ok ? parseSession(await res.json().catch(() => null)) : undefined;
-    if (session) return { recorded: true, session };
+    if (res.ok) {
+      const session = parseSession(await res.json().catch(() => null));
+      if (session) return { recorded: true, session };
+      cause = "bad_body";
+    } else {
+      status = res.status;
+      cause = res.status >= 500 ? "http_5xx" : res.status >= 400 ? "http_4xx" : "http_other";
+    }
   } catch {
-    // Fall through to the unrecorded answer below.
+    cause = "network";
   }
+  trackReverseStartUnrecorded({ cause, status });
   const plan = await fallbackPlan().catch(() => undefined);
-  return { recorded: false, reason: "unavailable", ...(plan ? { plan } : {}) };
+  return { recorded: false, reason: "unavailable", cause, ...(plan ? { plan } : {}) };
 }

@@ -232,6 +232,7 @@ async function serveProxyRequest(
   rangeHeader: string | undefined,
   res: ServerResponse,
   signal: AbortSignal,
+  limitSeconds?: number,
 ): Promise<void> {
   const contentType = getMimeType(filePath);
   if (!autoProxy || !contentType.startsWith("video/")) {
@@ -259,7 +260,10 @@ async function serveProxyRequest(
       return;
     }
     recordProxyRequest();
-    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, { signal });
+    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, {
+      signal,
+      limitSeconds,
+    });
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
@@ -278,6 +282,7 @@ export async function serveStaticProjectHtml(
   // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
   // committed hyperframes.json setting.
   autoProxyOverride?: boolean,
+  proxyLimits: ReadonlyMap<string, number> = new Map(),
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
   // Codec-map injection lives here (not per-caller) so all seven callers of
@@ -336,6 +341,7 @@ export async function serveStaticProjectHtml(
             req.headers.range,
             res,
             copies.signal,
+            proxyLimits.get(filePath),
           );
         } else {
           if (!serveUntaggedPng(filePath, res))

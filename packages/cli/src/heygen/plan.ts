@@ -182,6 +182,19 @@ export function stripeCheckoutUrl(value: unknown): string | undefined {
     : undefined;
 }
 
+export type CheckoutFailure = "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+
+/** A checkout that could not be opened, tagged with a closed reason for telemetry. */
+export class CheckoutError extends Error {
+  constructor(
+    readonly reason: CheckoutFailure,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CheckoutError";
+  }
+}
+
 // `from=cli` on the return page is how a purchase made from the terminal is told apart from one made on the site.
 function cliCheckoutReturn(skill?: string, baseline?: number): string {
   const url = new URL(plansUrl());
@@ -203,7 +216,10 @@ export async function createCheckout(
 ): Promise<string> {
   const addon = kind === "credits" ? offer.addon : undefined;
   if (kind === "credits" && !addon)
-    throw new Error("Credits are not on sale for this account right now.");
+    throw new CheckoutError(
+      "checkout_unavailable",
+      "Credits are not on sale for this account right now.",
+    );
   if (addon)
     return postCheckout("addon.checkout", {
       quantity: addonBlocks(addon, missing),
@@ -216,7 +232,8 @@ export async function createCheckout(
     return await postCheckout("checkout", { ...pro(), return_url: returnUrl });
   } catch (error) {
     // A server whose allow-list lacks the plans page still sells Pro, only without the CLI's origin.
-    if (!(error instanceof Error && RETURN_REFUSED.test(error.message))) throw error;
+    const refused = error instanceof CheckoutError && error.reason === "checkout_rejected";
+    if (!refused || !RETURN_REFUSED.test(error.message)) throw error;
     return postCheckout("checkout", pro());
   }
 }
@@ -231,6 +248,11 @@ async function postCheckout(route: string, body: Record<string, unknown>): Promi
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20_000),
+  }).catch((error: unknown) => {
+    throw new CheckoutError(
+      "checkout_network",
+      `Could not reach HeyGen to open a checkout: ${error instanceof Error ? error.message : String(error)}`,
+    );
   });
   const reply: unknown = await res.json().catch(() => null);
   const data = isRecord(reply) && isRecord(reply.data) ? reply.data : reply;
@@ -240,5 +262,5 @@ async function postCheckout(route: string, body: Record<string, unknown>): Promi
     isRecord(reply) && typeof reply.message === "string"
       ? reply.message.slice(0, 200)
       : `HTTP ${res.status}`;
-  throw new Error(`HeyGen would not open a checkout: ${why}`);
+  throw new CheckoutError("checkout_rejected", `HeyGen would not open a checkout: ${why}`);
 }

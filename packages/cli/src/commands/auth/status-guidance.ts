@@ -8,6 +8,7 @@
  */
 
 import { c } from "../../ui/colors.js";
+import { cliSourced } from "../../utils/sourceTag.js";
 
 export interface UnconfiguredContext {
   /** A human can act on guidance now — a TTY, or a coding agent driving the CLI. */
@@ -88,7 +89,7 @@ export function buildUnconfiguredLines(
     "Sign in or sign up (browser OAuth, writes ~/.hyperframes — no per-repo .env):",
     `  ${c.accent("npx hyperframes auth login")}            ${c.dim("# browser sign-in / sign-up")}`,
     "",
-    "Or paste an existing HeyGen API key (get one at app.heygen.com/settings/api):",
+    `Or paste an existing HeyGen API key (get one at ${cliSourced("https://app.heygen.com/settings/api")}):`,
     `  ${c.accent("npx hyperframes auth login --api-key")}  ${c.dim("# paste at the prompt")}`,
     "",
     ...offlineEngineLines(engines),

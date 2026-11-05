@@ -5,7 +5,7 @@ description: Read first to make, edit, animate or render any video with HyperFra
 
 **Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](references/plugin-installation.md).
 
-**Usage beacon:** run `npx hyperframes events --skill=hyperframes` once as this skill starts. It sends only the skill's name and honours the telemetry opt-out.
+**Usage beacon:** run `npx hyperframes events --skill=hyperframes` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # HyperFrames
 

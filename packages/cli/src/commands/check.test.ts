@@ -2943,6 +2943,24 @@ describe("check pipeline", () => {
       expect(sampled.some((time) => Math.round(time * 1000) % 125 !== 0)).toBe(true);
     });
 
+    it("thins the craft grid when frames are slow, so the pass stays near its budget and still reaches the end", async () => {
+      let clock = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => clock);
+      const driver = craftDriver({
+        getDuration: vi.fn(async () => 60),
+        collectCraftFrame: vi.fn(async (time: number) => {
+          clock += 1000;
+          return craftFrame(time);
+        }),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.craft.samples).toBeGreaterThan(20);
+      expect(report.craft.samples).toBeLessThan(120);
+      expect(report.craft.step).toBeGreaterThan(0.5);
+      expect(report.craft.step).toBeLessThanOrEqual(1.5);
+    });
+
     it("samples a long film at 8 fps, finer than the overlap pass's capped grid", async () => {
       // A 60 s film whose seven-word line shows 10.1-10.3 s, between two of the overlap grid's samples.
       const driver = craftDriver({

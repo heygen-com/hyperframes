@@ -251,6 +251,9 @@ export const CatalogGallery = ({ catalog, initialGroup = "", initialSection = ""
                 React.createElement(MotionWord, null),
                 " ready to install."),
             React.createElement("p", null, initialGroup ? `${matches.length} items. Preview a piece and open it to explore its controls, code, and installation.` : "Find the scene, caption, or finishing touch for your next video. Preview the motion, pick a favorite, and make it your own."),
+            // The filter already reads ?q=; this is the place to type it. Every keystroke filters in memory, and the
+            // URL keeps the words so a search can be shared.
+            React.createElement("input", { className: "hfc-search", type: "search", value: filters.q, onChange: (event) => update({ q: event.target.value }), placeholder: `Search ${items.length || ""} items: captions, charts, 3D, transitions…`.replace("  ", " "), "aria-label": "Search the catalog" }),
             !still && React.createElement("button", { type: "button", className: "hfc-pause", "aria-pressed": paused, onClick: togglePaused }, paused ? "Play previews" : "Pause previews")),
         React.createElement("section", { className: "hfc-browser", "aria-label": "Browse catalog", ref: resultsRef }, searching ? React.createElement(React.Fragment, null,
             matches.length ? React.createElement("div", { className: "hfc-grid" }, matches.slice(0, limit).map((item) => card(item))) : React.createElement("div", { className: "hfc-empty" },

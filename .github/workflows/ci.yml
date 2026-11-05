@@ -980,6 +980,14 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --cwd packages/core build:hyperframes-runtime
+      - name: Set up the Chrome build the work-count ceilings were measured on
+        # The ceilings are counted on one Chrome build, so a Chrome release cannot move them.
+        # Bump this with the ceilings in packages/studio/tests/e2e/perf-ceilings.json, never alone.
+        id: chrome
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
+        with:
+          chrome-version: 156.0.8078.47
+      - run: echo "CHROME_PATH=${{ steps.chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
       - name: Install the fixture as a Studio project
         # Studio resolves projects from packages/studio/data/projects, which is
         # gitignored. The fixture composition is tracked under tests/e2e, so
