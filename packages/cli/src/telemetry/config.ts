@@ -7,26 +7,22 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
 import { isAttendedTerminal } from "../utils/attendedTerminal.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
 
 // ---------------------------------------------------------------------------
 // Config directory: ~/.hyperframes/
 // ---------------------------------------------------------------------------
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+const configDir = () => hyperframesConfigDir();
+const configFile = () => seededConfigFile("config.json");
 
 // ---------------------------------------------------------------------------
 // Install-state file: ~/.hyperframes/install-state.json
 //
 // A separate FILE, but deliberately the same DIRECTORY as config.json, so
-// `rm -rf ~/.hyperframes` really is a full reset. It previously lived in
-// ~/.local/state/hyperframes/ specifically to survive that delete; review
-// rejected that ("if someone is deleting their hyperframes config it should
-// wipe all hyperframes state — I'm not sure we should try and persist state
-// elsewhere to get around this"), and the measurement agreed: the churn this
-// actually defends against is not users running `rm -rf`.
+// `rm -rf ~/.hyperframes` really is a full reset.
 //
-// The threat it does defend against is config.json itself. That file is hot
+// What it defends against is config.json itself. That file is hot
 // and wide — ~20 fields rewritten on every command and every render — and
 // readConfig recovers from ANY parse/permission/IO failure by minting a fresh
 // identity. Splitting these two facts into their own file decouples them from
@@ -37,7 +33,7 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 // no counters, nothing emitted that links the old install to the new one:
 //
 //   1. `markerAt` — "a hyperframes install existed on this machine". Now that
-//      it shares CONFIG_DIR, `predecessorFound` measures the churn we care
+//      it shares configDir(), `predecessorFound` measures the churn we care
 //      about (config.json lost, install-state survived => corruption/re-mint)
 //      rather than deliberate directory deletion, which takes both.
 //   2. `deParallelRouterTrialFired` — the DE parallel-router circuit
@@ -45,18 +41,18 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 //      install into an experimental path that already FAILED on this machine.
 //   3. `bucketSeed` — the canary bucketing unit, so a re-mint does not
 //      reshuffle cohorts mid-rollout. Never transmitted; only the resulting
-//      true/false assignments are. Sharing CONFIG_DIR is what keeps it from
+//      true/false assignments are. Sharing configDir() is what keeps it from
 //      being a persistent identifier that outlives the user's reset.
 //
 // Removal path: delete ~/.hyperframes (or just this file). `hyperframes
 // telemetry status` prints its exact location.
 // ---------------------------------------------------------------------------
 
-const STATE_FILE = join(CONFIG_DIR, "install-state.json");
+const stateFile = () => seededConfigFile("install-state.json");
 
 // Pre-move location. Read once, migrated, then deleted — an install that
 // wrote state under the old scheme keeps its tripped breaker instead of
-// silently re-enrolling, and no file is left behind outside CONFIG_DIR.
+// silently re-enrolling, and no file is left behind outside configDir().
 const LEGACY_STATE_FILE = join(homedir(), ".local", "state", "hyperframes", "install-state.json");
 
 interface InstallState {
@@ -231,7 +227,7 @@ function isInstallState(value: InstallState | InstallStateMiss): value is Instal
  * re-read harmlessly next time.
  */
 function readInstallState(): InstallState | InstallStateMiss {
-  const current = parseInstallState(STATE_FILE);
+  const current = parseInstallState(stateFile());
   if (isInstallState(current)) {
     removeLegacyStateFile();
     return current;
@@ -281,10 +277,10 @@ export function __resetInstallStateSyncForTests(): void {
  * since a corrupted state file silently reads as absent.
  */
 function writeInstallState(next: InstallState): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const tmpFile = `${STATE_FILE}.${process.pid}.tmp`;
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  const tmpFile = `${stateFile()}.${process.pid}.tmp`;
   writeFileSync(tmpFile, JSON.stringify(next, null, 2) + "\n", { mode: 0o600 });
-  renameSync(tmpFile, STATE_FILE);
+  renameSync(tmpFile, stateFile());
 }
 
 /**
@@ -344,7 +340,7 @@ function syncInstallState(config: HyperframesConfig): boolean {
   // the freshly minted seed lived in config.json alone, and the NEXT
   // config-only re-mint rolled a third seed instead of inheriting the second.
   // One existsSync on a path we are about to write anyway.
-  if (stateMarkerSynced && !existsSync(STATE_FILE)) {
+  if (stateMarkerSynced && !existsSync(stateFile())) {
     stateMarkerSynced = false;
     stateFiredSynced = false;
   }
@@ -799,10 +795,10 @@ function materializeConfig(parsed: Partial<HyperframesConfig>): HyperframesConfi
 export function readConfig(): HyperframesConfig {
   if (cachedConfig) return { ...cachedConfig };
 
-  if (!existsSync(CONFIG_FILE)) return mintAndCacheConfig();
+  if (!existsSync(configFile())) return mintAndCacheConfig();
 
   try {
-    const raw = readFileSync(CONFIG_FILE, "utf-8");
+    const raw = readFileSync(configFile(), "utf-8");
     const parsed = JSON.parse(raw) as Partial<HyperframesConfig>;
 
     const config = materializeConfig(parsed);
@@ -958,7 +954,7 @@ function consentFrom(value: unknown): boolean | undefined {
 
 function localModelConsentOnDisk(): boolean | undefined {
   try {
-    return consentFrom(JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).localEmbeddingEnabled);
+    return consentFrom(JSON.parse(readFileSync(configFile(), "utf-8")).localEmbeddingEnabled);
   } catch (error) {
     // A settings file that exists but cannot be read may hold a no; only a missing one was never asked.
     return (error as NodeJS.ErrnoException).code === "ENOENT" ? undefined : false;
@@ -970,8 +966,8 @@ let holdingConfigLock = false;
 /** One process at a time between reading config.json and replacing it; re-entrant within this one. */
 function withConfigLock<T>(task: () => T): T {
   if (holdingConfigLock) return task();
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  return withFileLock(`${CONFIG_FILE}.lock`, fs, () => {
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  return withFileLock(`${configFile()}.lock`, fs, () => {
     holdingConfigLock = true;
     try {
       return task();
@@ -983,10 +979,10 @@ function withConfigLock<T>(task: () => T): T {
 
 function persistConfig(config: HyperframesConfig): ConfigWriteResult {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    const tmpFile = `${CONFIG_FILE}.${process.pid}.tmp`;
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    const tmpFile = `${configFile()}.${process.pid}.tmp`;
     writeFileSync(tmpFile, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-    renameSync(tmpFile, CONFIG_FILE);
+    renameSync(tmpFile, configFile());
     cachedConfig = { ...config };
     // Mirror into the install-state file (marker + tripped breaker) so no
     // breaker write site has to remember to do it. A failed mirror does NOT
@@ -1013,7 +1009,7 @@ export function incrementCommandCount(): number {
 }
 
 /** Expose the config directory path for the telemetry command output */
-export const CONFIG_PATH = CONFIG_FILE;
+export const CONFIG_PATH = configFile();
 
 /** Expose the install-state path for the telemetry command output. */
-export const STATE_PATH = STATE_FILE;
+export const STATE_PATH = stateFile();

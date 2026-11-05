@@ -25,22 +25,21 @@
 
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { isUnattended } from "./attendedTerminal.js";
 import { updateCheckDisabled } from "./updateCheck.js";
-import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
+import { RUNNING_STALE_MS, registeredAsRunning, runningDir } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
   type InstallInvocation,
 } from "./installerDetection.js";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
+const configDir = () => hyperframesConfigDir();
+const logFile = () => hyperframesConfigDir("auto-update.log");
 /** An install that hasn't finished after this many ms is considered stuck. */
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 /** A waiting installer gives up after this long; the next run schedules it again. */
@@ -66,8 +65,8 @@ function breakingLine(version: string): string | null {
  */
 function log(line: string): void {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    appendFileSync(logFile(), `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
   } catch {
     /* best-effort */
   }
@@ -207,21 +206,21 @@ function launchDetachedInstall(
   displayCommand: string,
   version: string,
 ): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const configFile = join(CONFIG_DIR, "config.json");
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  const configFile = seededConfigFile("config.json");
 
   const nodeScript = installerScript({
     configFile,
     version,
     bin: invocation.bin,
     args: invocation.args,
-    runningDir: RUNNING_DIR,
+    runningDir: runningDir(),
     pollMs: INSTALL_POLL_MS,
     maxWaitMs: INSTALL_MAX_WAIT_MS,
     staleMs: RUNNING_STALE_MS,
   });
 
-  const out = openSync(LOG_FILE, "a", 0o600);
+  const out = openSync(logFile(), "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
     detached: true,
     stdio: ["ignore", out, out],
@@ -277,6 +276,12 @@ function backgroundInstaller(
 export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
+  if (!registeredAsRunning()) {
+    log(
+      `[skip] ${latestVersion}: this CLI is not on record as running, so an install could replace it mid-run`,
+    );
+    return false;
+  }
 
   const installer = backgroundInstaller(latestVersion);
   if (!installer) return false;

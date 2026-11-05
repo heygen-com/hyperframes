@@ -22,7 +22,7 @@ describe("auth/paths", () => {
 
   it("honors HYPERFRAMES_CONFIG_DIR override", () => {
     process.env["HYPERFRAMES_CONFIG_DIR"] = "/tmp/some-test-dir";
-    expect(configDir()).toBe("/tmp/some-test-dir");
+    expect(configDir()).toBe(join("/tmp/some-test-dir"));
     expect(credentialPath()).toBe(join("/tmp/some-test-dir", CREDENTIAL_FILENAME));
   });
 

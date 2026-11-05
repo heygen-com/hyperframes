@@ -43,6 +43,10 @@ async function patchAvailableAt(entry: string) {
     VERSION: "0.8.231",
   }));
   vi.doMock("./env.js", () => ({ isDevMode: () => false }));
+  vi.doMock("./runningCli.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./runningCli.js")>()),
+    registeredAsRunning: () => true,
+  }));
   vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
     ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
     isUnattended: () => false,
