@@ -1,0 +1,60 @@
+name: drq-nfd
+on:
+  push:
+    branches: [drenderq/nfd-audio]
+jobs:
+  audio:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        form: [nfc, nfd, ascii]
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ffmpeg
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then choco install ffmpeg -y --no-progress | tail -1; else brew install ffmpeg 2>&1 | tail -1; fi
+      - name: CLI
+        shell: bash
+        run: |
+          npm i -g hyperframes@0.9.14 2>&1 | tail -1
+          hyperframes browser ensure 2>&1 | tail -1
+          cd "$RUNNER_TEMP" && hyperframes init demo --non-interactive 2>&1 | tail -1
+      - name: check and render with an accented audio name
+        shell: node {0}
+        run: |
+          const fs = require("fs"), path = require("path"), cp = require("child_process");
+          const dir = path.join(process.env.RUNNER_TEMP, "demo");
+          const nfc = "Caf" + String.fromCharCode(0xe9) + " music.wav";
+          const nfd = "Cafe" + String.fromCharCode(0x301) + " music.wav";
+          const form = "${{ matrix.form }}";
+          const onDisk = form === "nfd" ? nfd : form === "nfc" ? nfc : "cafe music.wav";
+          const srcName = form === "ascii" ? "cafe music.wav" : nfc;
+          fs.mkdirSync(path.join(dir, "assets"), { recursive: true });
+          const wav = path.join(dir, "assets", onDisk);
+          cp.execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3", wav]);
+          console.log("on disk:", JSON.stringify(fs.readdirSync(path.join(dir, "assets")).map((n) => Buffer.from(n).toString("hex"))));
+          const index = path.join(dir, "index.html");
+          let html = fs.readFileSync(index, "utf8");
+          const audio = `<audio id="music-audio" src="assets/${srcName}" data-start="0" data-duration="3" data-track-index="9"></audio>`;
+          html = html.replace(/(<div[^>]*data-composition-id="main"[^>]*>)/, `$1${audio}`);
+          fs.writeFileSync(index, html);
+          console.log("audio element present:", html.includes("music-audio"));
+          const run = (args) => {
+            const r = cp.spawnSync("hyperframes", args, { cwd: dir, encoding: "utf8", shell: true });
+            return { code: r.status, out: (r.stdout || "") + (r.stderr || "") };
+          };
+          const check = run(["check", "--json"]);
+          console.log("CHECK exit", check.code, "codes:", [...new Set(check.out.match(/"code":\s*"[a-z_]+"/g) || [])].join(" "));
+          const render = run(["render", ".", "-o", "out.mp4", "--workers", "1", "--fps", "15", "--quality", "draft"]);
+          console.log("RENDER exit", render.code, render.out.split(/\r?\n/).filter((l) => /Source not found|audio|error/i.test(l)).slice(0, 6).join(" | "));
+          if (fs.existsSync(path.join(dir, "out.mp4"))) {
+            const probe = cp.spawnSync("ffprobe", ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "csv=p=0", "out.mp4"], { cwd: dir, encoding: "utf8" });
+            const vol = cp.spawnSync("ffmpeg", ["-i", "out.mp4", "-af", "volumedetect", "-vn", "-f", "null", "-"], { cwd: dir, encoding: "utf8" });
+            console.log("OUT audio stream:", JSON.stringify(probe.stdout.trim()), (vol.stderr.match(/mean_volume: [-\d.]+ dB/) || ["no level"])[0]);
+          } else console.log("OUT: no file");
