@@ -17,6 +17,7 @@ describe("classifyCaptureFailure", () => {
     ["JavaScript heap out of memory", "memory_exhaustion"],
     ["drawElement self-verify failed", "verification"],
     ["Composition has zero duration. Runtime ready: true", "authoring"],
+    ["[FrameCapture] Composition setup did not finish within 45000ms.", "transient_browser"],
     ["Protocol error (Page.captureScreenshot): Unable to capture screenshot", "transient_browser"],
     [
       "[Parallel] Capture failed: Worker 0: Protocol error (Page.captureScreenshot): Unable to capture screenshot",
