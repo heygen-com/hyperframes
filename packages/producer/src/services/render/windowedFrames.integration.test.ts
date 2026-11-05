@@ -1,6 +1,11 @@
 // Windowed source-video frames (HF_VIDEO_FRAME_WINDOW), rendered for real: each case renders twice
 // on the segmented route, once reading a segment's frames at a time and once extracting whole
 // videos, and the two outputs must match frame for frame. Needs Chrome + ffmpeg: integration lane.
+// Known gap: every render here takes the screenshot capture path, so the drawElement self-verify is
+// not exercised against windowed frames; no host this runs on can engage drawElement.
+//
+// HF_TEST_RETRY_BROWSER_STALL=1 renders once more after Chrome dies, for an overloaded local host.
+// Never set it in CI: a windowed render that needs the retry alone fails the case.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -8,15 +13,21 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { resolveConfig, type MotionBlurOptions } from "@hyperframes/engine";
-import { createRenderJob, executeRenderJob, type RenderJob } from "../renderOrchestrator.js";
+import {
+  createRenderJob,
+  executeRenderJob,
+  resolveRenderWorkDirPrefix,
+  type RenderJob,
+} from "../renderOrchestrator.js";
 import { FFMPEG, HAS_FFMPEG } from "./frameLevelsTestFixtures.js";
 
 const WIDTH = 160;
@@ -48,8 +59,8 @@ interface Case {
   motionBlur?: MotionBlurOptions;
   /** Whether the windowed render is expected to read frames a segment at a time. */
   windowed: boolean;
-  /** Set when a video in the case is never deferred, so the windowed render still extracts some. */
-  extractsUpFront?: boolean;
+  /** Frames of the videos that are never deferred, which the windowed render still extracts whole. */
+  upFrontFrames?: number;
   /** Set when the orchestrator measures capture speed before it captures. */
   calibrates?: boolean;
   /** Caps the worker count the orchestrator picks, to keep the Chromes it opens few. */
@@ -62,6 +73,8 @@ interface Run {
   capturePath: string | undefined;
   videoFrameWindow: string | undefined;
   workerCount: number | undefined;
+  /** The render died on Chrome and was rendered again (HF_TEST_RETRY_BROWSER_STALL). */
+  retried: boolean;
   peakBytes: number | undefined;
   extractedFrames: number | undefined;
   calibration: string;
@@ -200,16 +213,28 @@ function setRenderEnv(windowed: boolean, keepWorkDir: boolean | undefined): () =
   };
 }
 
-const WORK_DIR_PREFIX = "hf-render-";
+function ownedByThisProcess(dir: string): boolean {
+  try {
+    return JSON.parse(readFileSync(join(dir, "owner.json"), "utf-8")).pid === process.pid;
+  } catch {
+    return false;
+  }
+}
 
-/** The render makes its work dir under the system temp dir; the ones that are new are its own. */
-function watchWorkDirs() {
-  const systemTemp = tmpdir();
-  const before = new Set(readdirSync(systemTemp));
+/**
+ * This render's work dir, where the orchestrator puts it on this platform: named by the job on
+ * Linux, and a shared `hf-render-` prefix in the system temp dir elsewhere, where the owner record's
+ * pid tells it from a concurrent render's.
+ */
+function watchWorkDirs(output: string, jobId: string) {
+  const prefix = resolveRenderWorkDirPrefix(output, jobId);
+  const parent = dirname(prefix);
+  const before = new Set(readdirSync(parent));
   const own = () =>
-    readdirSync(systemTemp)
-      .filter((name) => name.startsWith(WORK_DIR_PREFIX) && !before.has(name))
-      .map((name) => join(systemTemp, name));
+    readdirSync(parent)
+      .filter((name) => name.startsWith(basename(prefix)) && !before.has(name))
+      .map((name) => join(parent, name))
+      .filter(ownedByThisProcess);
   return { own };
 }
 
@@ -250,13 +275,15 @@ function describeRun(
     capturePath: capture?.capturePath,
     videoFrameWindow: capture?.videoFrameWindow,
     workerCount: capture?.workerCount,
+    retried: false,
     peakBytes: capture?.videoFrameWindowPeakBytes,
     extractedFrames: perf?.observability?.extraction?.totalFramesExtracted,
     calibration: String(calibration?.message ?? "not reached"),
   };
 }
 
-const BROWSER_STALL = /capture stalled|Connection closed|Navigation timeout/;
+const RETRY_BROWSER_DEATH = process.env.HF_TEST_RETRY_BROWSER_STALL === "1";
+const BROWSER_DEATH = /Connection closed|Chrome started and kept running/;
 
 interface RenderOptions {
   /** Leaves the work dir behind (KEEP_TEMP) and reports what `segment-frames` held at the end. */
@@ -265,11 +292,7 @@ interface RenderOptions {
   sampleFolder?: boolean;
 }
 
-/**
- * A render, tried again once when Chrome stalls or dies. On a machine out of memory Chrome does
- * that to full and windowed renders alike; a second stall fails the case, and the frames of two
- * finished renders are compared exactly as before.
- */
+/** A render; with HF_TEST_RETRY_BROWSER_STALL=1, rendered once more if Chrome died under it. */
 async function render(
   testCase: Case,
   windowed: boolean,
@@ -278,9 +301,9 @@ async function render(
   try {
     return await renderOnce(testCase, windowed, options);
   } catch (error) {
-    if (!BROWSER_STALL.test(String(error))) throw error;
+    if (!RETRY_BROWSER_DEATH || !BROWSER_DEATH.test(String(error))) throw error;
     console.log(`[windowedFrames] ${String(error).slice(0, 160)}; rendering it again`);
-    return renderOnce(testCase, windowed, options);
+    return { ...(await renderOnce(testCase, windowed, options)), retried: true };
   }
 }
 
@@ -322,11 +345,11 @@ async function renderOnce(testCase: Case, windowed: boolean, options: RenderOpti
   const trace: Array<Record<string, unknown>> = [];
   const job = createJob(testCase, trace);
   const restoreEnv = setRenderEnv(windowed, options.keepWorkDir);
-  const { own } = watchWorkDirs();
+  const output = join(root, `${label}.mp4`);
+  const { own } = watchWorkDirs(output, job.id);
   const sampler = options.sampleFolder ? sampleSegmentFrames(own) : NO_SAMPLER;
   const kept: string[] = [];
   try {
-    const output = join(root, `${label}.mp4`);
     await executeRenderJob(job, root, output).catch((error: unknown) => {
       throw new Error(`${label} failed: ${String(error)}`, { cause: error });
     });
@@ -355,8 +378,11 @@ function renderPair(testCase: Case): Promise<{ windowed: Run; full: Run }> {
         keepWorkDir: testCase.name === PEAK_CASE,
         sampleFolder: testCase.name === PEAK_CASE,
       });
+      if (windowed.retried && !full.retried) {
+        throw new Error(`${testCase.name}: only the windowed render needed a retry`);
+      }
       console.log(
-        `[windowedFrames] ${testCase.name}: mode=${windowed.mode} (full: ${full.mode}); ` +
+        `[windowedFrames] ${testCase.name}: retried windowed=${windowed.retried} full=${full.retried}; mode=${windowed.mode} (full: ${full.mode}); ` +
           `window=${windowed.videoFrameWindow}; workers=${windowed.workerCount}; calibration=${windowed.calibration}; ` +
           `frames=${windowed.frames.length}; peak=${windowed.peakBytes ?? "n/a"} B; ` +
           `extracted frames windowed=${windowed.extractedFrames} full=${full.extractedFrames}`,
@@ -433,7 +459,7 @@ function cases(): Case[] {
     {
       ...base,
       name: "a VFR source beside a CFR one",
-      extractsUpFront: true,
+      upFrontFrames: 90,
       seconds: 3,
       clips: [
         { id: "vfr", src: "assets/vfr.mp4", start: 0, duration: 3, box: { left: 0, width: 80 } },
@@ -465,6 +491,21 @@ function cases(): Case[] {
       clips: [{ id: "clip", src: CFR, start: 0, duration: 4 }],
     },
   ];
+}
+
+/** What the windowed render read up front, and whether capture calibration ran, against the case. */
+function expectWindowing(testCase: Case, windowed: Run, full: Run): void {
+  if (testCase.windowed) {
+    expect(windowed.peakBytes ?? 0).toBeGreaterThan(0);
+    // Deferred videos are left out of the count, so a window that deferred nothing would tie.
+    expect(windowed.extractedFrames ?? 0).toBeLessThan(full.extractedFrames ?? 0);
+    // What is still extracted up front is exactly the videos that cannot be deferred.
+    expect(windowed.extractedFrames).toBe(testCase.upFrontFrames ?? 0);
+  }
+  if (testCase.calibrates) {
+    expect(windowed.calibration).toBe("resolved");
+    expect(full.calibration).toBe("resolved");
+  }
 }
 
 describe.skipIf(!HAS_FFMPEG)("windowed source-video frames — real render", () => {
@@ -499,11 +540,7 @@ describe.skipIf(!HAS_FFMPEG)("windowed source-video frames — real render", () 
       expect(windowed.videoFrameWindow).toBe(testCase.windowed ? "on" : "off");
       // A fall back to a different capture mode is the failure a parity pass would hide.
       expect(windowed.mode).toBe(full.mode);
-      if (testCase.windowed) {
-        expect(windowed.peakBytes ?? 0).toBeGreaterThan(0);
-        // Deferred videos are left out of the count, so a window that deferred nothing would tie.
-        expect(windowed.extractedFrames ?? 0).toBeLessThan(full.extractedFrames ?? 0);
-      }
+      expectWindowing(testCase, windowed, full);
     }, 600_000);
   }
 
@@ -514,7 +551,9 @@ describe.skipIf(!HAS_FFMPEG)("windowed source-video frames — real render", () 
 
     // A poll that saw no frame file would pass every bound below.
     expect(sampled.largestFileBytes).toBeGreaterThan(0);
-    const bound = testCase.workers! * SEGMENT_FRAMES * sampled.largestFileBytes * LOOSENESS;
+    // The count the render ran with, which a clamp could have lowered from the one asked for.
+    expect(windowed.workerCount).toBe(testCase.workers);
+    const bound = windowed.workerCount! * SEGMENT_FRAMES * sampled.largestFileBytes * LOOSENESS;
     expect(sampled.peakBytes).toBeGreaterThan(0);
     expect(sampled.peakBytes).toBeLessThanOrEqual(bound);
     expect(windowed.peakBytes ?? 0).toBeGreaterThan(0);
