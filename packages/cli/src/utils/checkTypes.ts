@@ -23,6 +23,7 @@ export interface CheckOptions {
   collapseStatic: boolean;
   tolerance: number;
   timeout: number;
+  budget?: { ms: number; stopAt: number };
   contrast: boolean;
   skipContrastInMotion?: boolean;
   strict: boolean;

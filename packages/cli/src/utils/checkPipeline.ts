@@ -2,6 +2,7 @@ import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
+  CheckBudgetError,
   CheckDeadline,
   CheckCopiesUnfinishedError,
   CheckDeadlineError,
@@ -1734,7 +1735,7 @@ export async function runCheckPipeline(
           ]
         : [];
 
-    const deadline = new CheckDeadline(idleWindow(options.timeout));
+    const deadline = new CheckDeadline(idleWindow(options.timeout), options.budget);
     const forgetStop = onStopSignal(deadline.stop);
     let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
     try {
@@ -1839,7 +1840,7 @@ async function withFindingCrops(
   deadline: CheckDeadline,
 ): Promise<CheckReport> {
   const cropRequests = selectFindingCropRequests(report);
-  if (cropRequests.length === 0) return report;
+  if (cropRequests.length === 0 || deadline.signal.aborted) return report;
   try {
     deadline.enter("crops");
     const findingFiles = await deadline.run(() =>
@@ -1847,7 +1848,7 @@ async function withFindingCrops(
     );
     return { ...report, snapshots: { ...report.snapshots, findingFiles } };
   } catch (error) {
-    if (error instanceof CheckDeadlineError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1881,7 +1882,7 @@ async function withOptionalFindingFrames(
     const captured = await deadline.run(() => capture(project, options, requests, deadline));
     return withFindingFrameFields(report, plan, captured);
   } catch (error) {
-    if (error instanceof CheckDeadlineError || error instanceof CheckStoppedError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1890,6 +1891,11 @@ async function withOptionalFindingFrames(
     return report;
   }
 }
+
+const isCheckExpiry = (error: unknown): boolean =>
+  error instanceof CheckDeadlineError ||
+  error instanceof CheckStoppedError ||
+  error instanceof CheckBudgetError;
 
 const MAX_FINDING_CROPS = 12;
 
@@ -2263,7 +2269,9 @@ function runtimeFailure(error: unknown, code?: string): CheckFinding {
     code ??
       (error instanceof CheckCopiesUnfinishedError
         ? "media_copies_unfinished"
-        : "check_runtime_failure"),
+        : error instanceof CheckBudgetError
+          ? "check_budget_reached"
+          : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

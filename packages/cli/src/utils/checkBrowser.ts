@@ -443,7 +443,12 @@ export async function runBrowserCheck(
     findings: drafts,
     failedPaths,
     limits,
-  } = await preResolveHostileMediaProxies(project.dir, html, options.autoProxy, COPY_BUDGET_MS);
+  } = await preResolveHostileMediaProxies(
+    project.dir,
+    html,
+    options.autoProxy,
+    Math.min(COPY_BUDGET_MS, deadline?.remainingMs() ?? COPY_BUDGET_MS),
+  );
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
     project.dir,

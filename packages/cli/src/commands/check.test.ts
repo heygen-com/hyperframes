@@ -518,6 +518,28 @@ it("waits for the composition as long as snapshot and render do unless --timeout
   expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
 });
 
+it("--budget sets when the whole check stops, its report time kept back, counted from the command's start", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  const startedAt = Date.now();
+  await runCommand(command, { rawArgs: ["--json", "--budget", "8m"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  const budget = runPipeline.mock.calls[0]?.[1].budget;
+  expect(budget?.ms).toBe(480_000);
+  expect(budget?.stopAt).toBeGreaterThanOrEqual(startedAt + 470_000);
+  expect(budget?.stopAt).toBeLessThanOrEqual(Date.now() + 470_000);
+  expect(runPipeline.mock.calls[1]?.[1].budget).toBeUndefined();
+});
+
 it("parses the caption-zone grammar and enables the frame gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -2492,6 +2514,58 @@ describe("check pipeline", () => {
       expect(
         report.runtime.findings.some((finding) => finding.code === "check_runtime_failure"),
       ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("--budget ends a check that is still within its idle window and keeps what its finished samples found", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted!: AbortSignal;
+      const driver = fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          layoutIssue("warning", { time, code: "container_overflow" }),
+        ]),
+        collectOverlapGrid: vi.fn(
+          () =>
+            new Promise<never>((_, reject) =>
+              aborted.addEventListener("abort", () => reject(aborted.reason)),
+            ),
+        ),
+      });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        aborted = deadline!.signal;
+        deadline!.start();
+        return runAuditGrid(
+          driver,
+          options,
+          motion,
+          undefined,
+          deadline!.enter,
+          undefined,
+          deadline!.keepPartial,
+        );
+      };
+      const budget = { ms: 70_000, stopAt: Date.now() + 60_000 };
+      const pending = runCheckPipeline(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, timeout: 400_000, budget },
+        deps,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      const report = await pending;
+      const reached = report.runtime.findings.find(
+        (finding) => finding.code === "check_budget_reached",
+      );
+      expect(reached?.message).toMatch(
+        /^Check reached its --budget of 70 s while running the overlap pass .*Seconds per phase: /,
+      );
+      expect(report.ok).toBe(false);
+      expect(report.layout.findings.some((finding) => finding.code === "container_overflow")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
