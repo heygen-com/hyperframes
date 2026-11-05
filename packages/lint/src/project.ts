@@ -140,7 +140,7 @@ function collectLocalStylesheets(
   return styles;
 }
 
-export function collectExternalStyles(
+function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
@@ -158,6 +158,17 @@ export function collectExternalStyles(
 }
 
 const MAX_EXTERNAL_SCRIPT_BYTES = 1_000_000;
+
+export function linkedSources(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): Pick<HyperframeLinterOptions, "externalStyles" | "externalScripts"> {
+  return {
+    externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+    externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
+  };
+}
 
 function collectExternalScripts(
   projectDir: string,
@@ -304,9 +315,8 @@ export async function lintProject(
     ...hostOptions,
     filePath: indexPath,
     compSrcPath: rootFile,
-    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
+    ...linkedSources(projectDir, rootHtml, rootCompSrcPath),
     projectFontFamilies,
-    externalScripts: collectExternalScripts(projectDir, rootHtml, rootCompSrcPath),
   });
   results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
   totalErrors += rootResult.errorCount;
@@ -350,9 +360,8 @@ export async function lintProject(
         filePath,
         isSubComposition: true,
         compSrcPath,
-        externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+        ...linkedSources(projectDir, html, compSrcPath),
         projectFontFamilies,
-        externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
       });
       results.push({
         file: `compositions/${file}`,
