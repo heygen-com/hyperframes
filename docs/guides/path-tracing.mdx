@@ -52,11 +52,11 @@ HyperFrames seeks frames one by one, in any order and across several workers, so
 - **Frames are drawn only in the `hf-seek` listener**, registered with `event.detail.waitUntil(promise)`. Nothing runs a render loop.
 - **Each new time starts from zero.** The handler poses the scene for that time, rebuilds the tracer's copy of it and traces exactly `samples` passes. A seek back to the time already on screen does no work.
 - **The tracer never waits on time.** `renderDelay` and `fadeDuration` are 0, because the tracer times them with a clock that does not move during a render.
-- **Randomness is seeded.** Three's object ids and the tracer's noise textures come from `Math.random`, so the scene and the tracer are built under a fixed seed. Without it, every render worker draws different grain.
+- **Randomness is seeded.** Three's object uuids, which set the order the tracer sorts lights, meshes and textures in, and the tracer's noise textures come from `Math.random`, so the scene and the tracer are built under a fixed seed. Without it, every render worker draws different grain. Anything you add later, such as a model loaded during setup, must also be created under the seed.
 
 ### The frozen clock
 
-During a render, `Date.now()` and `performance.now()` stay at 0 and `requestAnimationFrame` callbacks wait for a seek, and the first seek waits for setup. Setup that waits for an animation frame or for the clock to advance never finishes. Composition code uses no timers of its own either. Await the library's readiness promise instead:
+During a render, `Date.now()` and `performance.now()` return the current seek time and do not move between seeks (they read 0 until the first seek), and `requestAnimationFrame` callbacks wait for a seek. The first seek waits for setup. Setup that waits for an animation frame or for the clock to advance never finishes. Composition code uses no timers of its own either. Await the library's readiness promise instead:
 
 ```js assets/render.js
 await renderer.compileAsync(scene, camera);

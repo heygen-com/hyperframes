@@ -28,12 +28,19 @@ const bounces = Math.max(1, Math.round(Number(variables.bounces) || 4));
 // promise behind that flag is three's `renderer.compileAsync`, so await it directly rather than
 // polling the flag. It only decides when drawing may start, never what is drawn.
 function tracerCompiled() {
-  return tracer._pathTracer._compilePromise ?? Promise.resolve();
+  const compiling = tracer._pathTracer._compilePromise;
+  // Waiting on nothing here would spin renderSample() forever; fail loudly if a tracer upgrade
+  // moves the promise.
+  if (!compiling)
+    throw new Error("path-traced-3d: tracer is compiling but exposes no compile promise");
+  return compiling;
 }
 
-// Math.random decides two things the tracer bakes in: three's object ids, which set the order
-// lights are sampled in, and the tracer's noise textures, built when it is constructed. With a
-// fixed seed around both, every page (every render worker, every reload) draws the same grain.
+// Math.random decides two things the tracer bakes in: three's object uuids, which set the order
+// lights, meshes and textures are sorted in, and the tracer's noise textures, built when it is
+// constructed. With a fixed seed around both, every page (every render worker, every reload)
+// draws the same grain. Only synchronous construction is covered: anything created later, such
+// as a model loaded during setup, must be built under the seed too.
 function withSeededRandom(seed, build) {
   const nativeRandom = Math.random;
   let state = seed >>> 0;
