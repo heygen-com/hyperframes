@@ -1,6 +1,6 @@
 ---
 name: hyperframes-cli
-description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
+description: HyperFrames CLI - scaffold, check frames, edit timelines, preview, render, share and project history; read JSON and recover from failures.
 ---
 
 **Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
@@ -20,7 +20,7 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 | Edit the timeline | `timeline` with `move`, `trim`, `split`, `set`, `duplicate`, `delete`, `apply`, `undo`, `ids` |
 | Reuse | `catalog`, `add` (`/hyperframes-registry`) |
 | Media and sound | `media-treatment`, `grade-compare`, `remove-background`, `tts`, `transcribe`, `beats`, `normalize-audio` (`/media-use`) |
-| Show and ship | `preview`, `present` (`/slideshow`), `render`, `publish`, `cloud`, `lambda`, `cloudrun` |
+| Show and ship | `preview`, `present` (`/slideshow`), `render`, `share`, `publish` (legacy), `cloud`, `lambda`, `cloudrun` |
 | Desktop app | `open`, `catch-up` |
 | Upkeep | `doctor`, `browser`, `upgrade`, `skills`, `usage`, `clean`, `feedback` |
 
@@ -88,7 +88,7 @@ Read the row before running its command.
 | `lint`, `check`, motion sidecars, `snapshot` | `references/lint-validate-inspect.md` |
 | `compare`, `grade-compare`, `render --batch` | `references/compare-and-batch.md` |
 | `beats` | `references/beats.md` |
-| `preview`, `play`, `render`, `publish`, Studio context | `references/preview-render.md` |
+| `preview`, `play`, `render`, `share`, `publish` (legacy), Studio context | `references/preview-render.md` |
 | `doctor`, `browser` | `references/doctor-browser.md` |
 | `auth`, `cloud`, template variables | `references/cloud.md` |
 | `lambda`, `cloudrun` | `references/lambda.md`, `references/cloudrun.md` |
