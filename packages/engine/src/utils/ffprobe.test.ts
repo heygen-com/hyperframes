@@ -128,7 +128,7 @@ describe("a phone clip's display size", () => {
     });
   });
 
-  it("widens anamorphic pixels before the turn", async () => {
+  it("widens anamorphic pixels, then turns, as Chrome lays the element out", async () => {
     const shown = await probed({ sample_aspect_ratio: "4:3", side_data_list: [{ rotation: 90 }] });
     expect(shown).toEqual({ width: 1080, height: 2560 });
   });

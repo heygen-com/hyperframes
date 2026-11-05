@@ -970,7 +970,6 @@ function hasUsableVideoDimensions(metadata: ExtractedVideoReadinessInput["metada
 export function collectVideoMetadataHints(
   extractedVideos: readonly ExtractedVideoReadinessInput[],
 ): CaptureVideoMetadataHint[] {
-  // The size Chrome lays the element out at: a phone's portrait clip is stored sideways with a turn.
   return extractedVideos
     .filter((video) => hasUsableVideoDimensions(video.metadata))
     .map((video) => ({ id: video.videoId, ...displaySize(video.metadata) }))

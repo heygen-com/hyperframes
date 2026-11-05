@@ -225,7 +225,6 @@ export interface VideoMetadata {
   colorRange?: string;
   pixelFormat?: string;
   sampleAspectRatio?: number;
-  /** The display matrix's turn in degrees, as a phone stores a portrait clip; absent when there is none. */
   rotation?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
@@ -867,14 +866,10 @@ function displayRotation(stream: FFProbeStream): { rotation?: number } {
   return Number.isFinite(turn) && turn % 360 !== 0 ? { rotation: turn } : {};
 }
 
-/** The size a video plays at, as Chrome lays it out and ffmpeg's autorotate decodes it: stored size, sample aspect
- * applied, then turned a quarter when the display matrix says so. */
 export function displaySize(
   metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
 ): { width: number; height: number } {
-  const sar = metadata.sampleAspectRatio;
-  // Even, as the decode's `scale=trunc(iw*sar/2)*2` widens it (videoFrameExtractor.ts).
-  const width = sar === undefined ? metadata.width : Math.trunc((metadata.width * sar) / 2) * 2;
+  const width = Math.round(metadata.width * (metadata.sampleAspectRatio ?? 1));
   return Math.abs(metadata.rotation ?? 0) % 180 === 90
     ? { width: metadata.height, height: width }
     : { width, height: metadata.height };

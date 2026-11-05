@@ -52,7 +52,6 @@ import {
   mediaFileIdentity,
   readMetadataCache,
   readStoredFinalFrame,
-  displaySize,
   resolvePlayableVideoDuration,
   videoStartOnMediaTimeline,
   writeMetadataCache,
@@ -1244,8 +1243,7 @@ export async function buildVideoLayerInput(
     isHdr: false,
   });
   const filters = chain(startTime);
-  const shown = displaySize(metadata);
-  if (shown.width !== canvas.width || shown.height !== canvas.height) {
+  if (metadata.width !== canvas.width || metadata.height !== canvas.height) {
     filters.push(
       fit === "cover"
         ? `scale=${canvas.width}:${canvas.height}:force_original_aspect_ratio=increase:flags=bicubic,crop=${canvas.width}:${canvas.height}`
