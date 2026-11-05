@@ -116,7 +116,8 @@ export default defineCommand({
     script: { type: "string", description: "avatar, voice: the words spoken" },
     voice: {
       type: "string",
-      description: "avatar, voice: a HeyGen voice id, or a language for its first voice in it",
+      description:
+        "avatar, voice: a HeyGen voice id, or a language (English, Chinese, en, zh-CN) for its first voice in it",
     },
     seconds: {
       type: "string",
