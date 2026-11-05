@@ -56,6 +56,14 @@ function hintCode(err: HyperframesApiError): string | undefined {
  *     errors) so the user can recover without having to remember the
  *     render_id.
  */
+/** `code: ETIMEDOUT` for a failed fetch, whose own message is only "fetch failed"; the cause names why. */
+function networkCode(err: Error): string | undefined {
+  const code = (err.cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code)
+    ? `code: ${code}`
+    : undefined;
+}
+
 // fallow-ignore-next-line complexity
 export function reportApiError(
   stage: string,
@@ -95,7 +103,7 @@ export function reportApiError(
     failCommand();
   }
   if (err instanceof Error) {
-    errorBox(stage, err.message, options.suggestion);
+    errorBox(stage, err.message, options.suggestion ?? networkCode(err));
     failCommand();
   }
   errorBox(stage, String(err), options.suggestion);
