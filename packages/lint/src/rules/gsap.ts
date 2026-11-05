@@ -1030,7 +1030,7 @@ function collectCssOpacityZeroSelectors(
     try {
       root = postcss.parse(style.content);
     } catch {
-      continue; // css_parse_error reports this block.
+      continue;
     }
     root.walkRules((rule) => {
       if (!rule.nodes.some((node) => opacityExactlyZero.test(node.toString()))) return;
