@@ -656,8 +656,9 @@ npx hyperframes media-use resolve --type bgm --reuse 06e052c0
 # Bring in a file you already have
 npx hyperframes media-use resolve --type image --from ./photo.jpg
 
-# The voice clones on the account that makes the film
+# The voice clones and avatar looks on the account that makes the film
 npx hyperframes media-use voices
+npx hyperframes media-use avatars --limit 10
 
 # Check the setup, and see what has been used
 npx hyperframes media-use doctor
@@ -676,6 +677,7 @@ file yourself.
 | `adopt`      | Record the files already in `assets/` so later requests find them, with duration and size read by `ffprobe`                                                               |
 | `analyze`    | Measure an image or video and print suggested exposure and color corrections, saving nothing. Needs `--type grade --for <file>`                                           |
 | `voices`     | List the voice clones on the HyperFrames account you are signed in with, for `--voice` in `generate`. Never lists the separate `heygen` CLI's account |
+| `avatars`    | List the avatar looks on the HyperFrames account you are signed in with, as `{avatars: [{avatar_id, name, avatar_type, group_id, gender, status, default_voice_id, preview_image_url}]}`, for `--avatar` in `generate --type avatar`. `--limit` (default 20). Never lists the separate `heygen` CLI's account |
 | `doctor`     | Check ffmpeg, ffprobe, Node.js, the bundled sound library, and the `heygen` CLI (installed, v0.3.0 or newer, signed in). Changes nothing                                  |
 | `stats`      | Count requests, misses, and reuse from the project's `.media/` and the global `~/.media/`                                                                                 |
 
@@ -776,8 +778,8 @@ into the audio; `strength` (0–1) is relative loudness. Beats you add, move, or
 delete in Studio save back to the same file.
 
 A track without a steady beat (ambient, rubato, too short) gets no beat file:
-the command fails and writes nothing rather than inventing a grid. Results
-match Studio's to within a frame or two — Studio decodes in the browser, often
+the command answers an empty result (`count: 0`, exit 0) and writes nothing rather
+than inventing a grid. Results match Studio's to within a frame or two — Studio decodes in the browser, often
 at a different sample rate, which can shift a beat slightly.
 
 ### `audio`
@@ -1143,8 +1145,8 @@ npx hyperframes open --json     # for agents
 When it runs under Claude Code, Codex, or Grok, the app's chat picks up that
 conversation. When it cannot open the app, for example because the app is not
 installed, `open` exits 1 and prints a download link. With `--json`, the result
-names the `reason` and the `downloadUrl`. The hand-off works on macOS only for
-now: on Windows and Linux, `open` always exits 1 with the download link.
+names the `reason` and the `downloadUrl`. The hand-off works on macOS, Windows
+and Linux.
 
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
@@ -1190,6 +1192,7 @@ npx hyperframes lint [dir] --json
 Errors (`✗`) must be fixed before rendering — a missing adapter library, invalid
 attributes. Warnings (`⚠`) are likely problems. Info (`ℹ`) notices are hidden
 unless you pass `--verbose`, which keeps output clean for agents and CI.
+`--lint-verbose`, which `render`, `preview` and `publish` use for the same wish, works here and on `check` too.
 `--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
 
 The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
@@ -1209,7 +1212,9 @@ npx hyperframes check [dir] --at 1.5,4,7.25
 npx hyperframes check [dir] --strict       # warnings fail too
 ```
 
-`check` runs the linter first and skips the browser entirely on a lint error.
+`check` runs the linter first. A lint error fails the check but does not stop
+it: the browser checks still run and both are reported, unless the lint error
+leaves no composition to load (a root with no `data-composition-id`).
 Then it loads the bundled composition once and sweeps a single seek grid,
 running every audit at every sample: runtime console errors and failed requests,
 layout defects (overflow, clipping, held overlaps, occlusion, coordinate-frame
@@ -1221,8 +1226,8 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
-When the browser never ran (lint errors, a linter crash, or a browser launch
-failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
+When the browser never ran (no composition to load, a linter crash, or a
+browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
 
 Scoped checks add `scope` to the JSON report with the requested range and
@@ -1254,10 +1259,11 @@ cover every finding from the full check.
 | `--prepare-media`                            | Only make the browser-playable video copies, then exit: no browser, no report. `--json` lists each file as `ready`, `cached` or `failed`; exit 1 if any failed |
 
 A video Chrome cannot decode (HEVC, ProRes) is copied once, and the first check waits
-for it. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
+for it for up to 2 minutes; past that, check stops with a `media_copies_unfinished` finding that names
+each unfinished file and its progress. Run `--prepare-media` (no time limit) to finish them. When every use of a long video in the composition has a known `data-duration` (on the video or the element that times it, no `loop`), check copies only that stretch from the start of the file, rounded up to whole 15-second pieces, instead of the whole file. A source longer than 22 seconds is copied in 15-second pieces that are kept, so a
 copy that is stopped continues from its finished pieces on the next run. While it works, the
 check prints each copy's progress to stderr every 10 seconds (stdout stays clean for `--json`),
-and ends a copy only when it makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
+and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
 
@@ -1820,12 +1826,22 @@ How it uses the machine, and when it gives up:
 | `--frames-cache-dir`                                     | `<tmpdir>/hyperframes-extract-cache-<uid>` | Where extracted source frames cache. `off`, `none`, `false`, or `0` disables it. `doctor` reports the live value.   |
 | `--max-concurrent-renders`                               | `2`                                        | Concurrent jobs on the Producer server, 1–10                                                                       |
 | `--best-effort` / `--no-best-effort`                     | on                                         | Finish with capture-readiness warnings, or fail when media is missing or unready                                   |
+| `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
+
+Renders started side by side starve each other of CPU and GPU until frames stop
+landing, so a second local or `--docker` render from the same user account waits
+for the first and says which render it is waiting for (pid and project). The
+slot is a lock file in that account's HyperFrames cache folder, so renders by
+different user accounts do not queue behind each other; set
+`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
+whose process died frees its slot on its own. `--workers` is unaffected: it sets
+the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
@@ -2559,7 +2575,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--quality`            | `standard`                  | `draft`, `standard`, or `high`                                                                                                                  |
 | `--format`             | `mp4`                       | `mp4`, `webm`, or `mov`                                                                                                                         |
 | `--resolution`         | `1080p`                     | `1080p` or `4k`. 4k bills at 1.5×.                                                                       |
-| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. With `--asset-id` or `--url` the server defaults to `16:9`. |
+| `--aspect-ratio`       | auto                        | Any `W:H`, auto-detected from a local project's `data-width` and `data-height`, so you rarely need it. At `1080p` the output keeps the composition's own size, whatever its ratio (a 1920×960 composition renders 1920×960). `4k` scales only `16:9`, `9:16` and `1:1` compositions and refuses any other ratio before upload. The renderer cannot reshape a composition — a value that disagrees with the authored ratio is an error. |
 | `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip                                                                                                                   |
 | `--variables`          | —                           | Inline JSON overriding `data-composition-variables`                                                                                              |
 | `--variables-file`     | —                           | Read those overrides from a JSON file                                                                                                            |

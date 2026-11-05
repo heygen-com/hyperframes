@@ -11,17 +11,18 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every installed skill's description is listed on every turn; an entry is read in full when it opens.
 export const DESCRIPTION_MAX = 320;
+// Each budget carries +192 B for the usage beacon line (`beaconProblems`).
 export const CORE_SKILLS = {
-  hyperframes: 7168,
+  hyperframes: 7360,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
-  "hyperframes-cli": 7424,
-  "hyperframes-registry": 5120,
-  "media-use": 5120,
-  figma: 7168,
-  slideshow: 5120,
-  "remotion-to-hyperframes": 5120,
-  "reverse-any-video": 5120,
-  "style-sampling": 5120,
+  "hyperframes-cli": 7616,
+  "hyperframes-registry": 5312,
+  "media-use": 5312,
+  figma: 7360,
+  slideshow: 5312,
+  "remotion-to-hyperframes": 5312,
+  "reverse-any-video": 5312,
+  "style-sampling": 5312,
 };
 
 /** @param {string} skill */
@@ -83,6 +84,16 @@ function nameProblems(skill, content, skillDir, commands) {
   ];
 }
 
+/** The skill's own `skill_invoked` beacon, so every run of it is counted by name. */
+export const beaconCommand = (skill) => `npx hyperframes events --skill=${skill}\``;
+
+/** @param {string} skill @param {string} content */
+export function beaconProblems(skill, content) {
+  return content.includes(beaconCommand(skill))
+    ? []
+    : [`${skill}/SKILL.md does not run \`npx hyperframes events --skill=${skill}\` as it starts`];
+}
+
 /** @param {string} root */
 export function checkCoreSkills(root = REPO_ROOT) {
   const commands = registeredCommands(readFileSync(join(root, "packages/cli/src/cli.ts"), "utf8"));
@@ -90,7 +101,7 @@ export function checkCoreSkills(root = REPO_ROOT) {
     const file = skillFile(skill, root);
     const content = readFileSync(file, "utf8");
     const names = maxBytes === null ? [] : nameProblems(skill, content, dirname(file), commands);
-    return [...sizeProblems(skill, content, maxBytes), ...names];
+    return [...sizeProblems(skill, content, maxBytes), ...names, ...beaconProblems(skill, content)];
   });
 }
 

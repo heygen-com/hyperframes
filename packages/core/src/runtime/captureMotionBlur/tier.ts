@@ -17,6 +17,7 @@ export interface CaptureMotionBlurHost {
 
 export interface Config {
   shutterDeg: number;
+  phaseDeg: number | null;
   samples: number | null;
   events: boolean;
   tier: "auto" | "capture" | "filter";
@@ -33,6 +34,7 @@ export interface Report {
   moverNames: string[];
   scanMs: number;
   shutterDeg: number;
+  phaseDeg: number | null;
   frames: number;
   meanMs: number;
   failures: number;

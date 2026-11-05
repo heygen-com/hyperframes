@@ -6,6 +6,7 @@ Fast-moving elements get a shutter smear along their path. It is opt-in: nothing
 
 - `data-motion-blur` — `on` enables blur; `off` opts out, on the root or on any subtree
 - `data-motion-blur-shutter` — shutter angle in degrees, 0-720 (default: 240)
+- `data-motion-blur-phase` — when the shutter opens, in degrees of a frame, -360 to 360: 0 opens on the frame (default: centred on the frame, which is minus half the shutter)
 - `data-motion-blur-samples` — samples per frame, 2-64 (default: at least 32, sized to the smear)
 - `data-motion-blur-events` — `on` runs timeline callbacks while blur looks for movers; needed when motion is set from a `render(t)` callback
 - `data-motion-blur-tier` — `auto` (default), `capture` or `filter`

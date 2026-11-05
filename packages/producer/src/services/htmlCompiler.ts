@@ -12,7 +12,7 @@ import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative } from "path";
 import { parseHTML } from "linkedom";
 import {
@@ -1747,6 +1747,32 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
   return result;
 }
 
+// Families a linked project stylesheet declares with an @font-face file the project ships.
+function projectStylesheetFontFamilies(html: string, projectDir: string): string[] {
+  const families: string[] = [];
+  for (const [tag] of html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {
+    const href = /\bhref=["']([^"']+)["']/i.exec(tag)?.[1];
+    if (!href || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) continue;
+    const sheet = resolve(projectDir, decodedUrlPath(href).replace(/^(?:\.?\/)+/, ""));
+    if (!isPathInside(sheet, projectDir) || !existsSync(sheet)) continue;
+    for (const face of extractFontFaceBlocks(readFileSync(sheet, "utf8"))) {
+      const family = /font-family\s*:\s*([^;}]+)/i
+        .exec(face)?.[1]
+        ?.trim()
+        .replace(/^['"]|['"]$/g, "");
+      const shipsFile = [...face.matchAll(LOCAL_FONTFACE_URL_RE)].some(([, url = ""]) => {
+        const path = decodedUrlPath(url);
+        const file = path.startsWith("/")
+          ? resolve(projectDir, `.${path}`)
+          : resolve(dirname(sheet), path);
+        return isPathInside(file, projectDir) && existsSync(file);
+      });
+      if (family && shipsFile) families.push(family);
+    }
+  }
+  return families;
+}
+
 /**
  * Collect all remote `url(https://...)` references inside `@font-face` blocks
  * found in `<style>` tags.
@@ -1791,16 +1817,17 @@ export async function localizeRemoteFontFaces(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  // Phase 1: Inline @font-face rules from external <link rel="stylesheet"> tags.
-  const processed = await inlineExternalFontStylesheets(html);
+  return localizeFontFaceUrls(await inlineExternalFontStylesheets(html), downloadDir);
+}
 
-  // Phase 2: Download font file URLs from all @font-face blocks (both
-  // pre-existing inline blocks and the ones just inlined from external sheets).
-  const urlSet = collectFontFaceUrls(processed);
-
+/** Download the remote font files of the page's inline @font-face rules and point the rules at them. */
+function localizeFontFaceUrls(
+  html: string,
+  downloadDir: string,
+): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   return downloadAndRewriteUrls(
-    urlSet,
-    processed,
+    collectFontFaceUrls(html),
+    html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote font download failed",
     "Localized remote font face(s)",
@@ -2102,16 +2129,19 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
+  // Remote font stylesheets join the page first, or the font check below cannot see them.
+  const fontSheetHtml = await inlineExternalFontStylesheets(
+    promoteCssImportsToLinkTags(sanitizedHtml),
+  );
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
-    injectTextRenderingRule(
-      coalesceHeadStylesAndBodyScripts(promoteCssImportsToLinkTags(sanitizedHtml)),
-    ),
+    injectTextRenderingRule(coalesceHeadStylesAndBodyScripts(fontSheetHtml)),
   );
 
   const coalescedHtml = await injectDeterministicFontFaces(normalizedFontHtml, {
     logger: defaultLogger,
     failClosedFontFetch: options.failClosedFontFetch === true,
     allowSystemFontCapture: options.allowSystemFontCapture,
+    projectFontFamilies: projectStylesheetFontFamilies(fontSheetHtml, projectDir),
     abortSignal: options.abortSignal,
   });
 
@@ -2168,7 +2198,7 @@ export async function compileForRender(
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeRemoteFontFaces(htmlWithLocalBg, downloadDir);
+    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir);
 
   // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
   // so convert to JPEG before the media-type preflight sees it.

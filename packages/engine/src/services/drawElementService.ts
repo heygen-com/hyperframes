@@ -1002,7 +1002,13 @@ export async function produceDrawElementFrameBatch(
   width: number,
   height: number,
   quality = 80,
-): Promise<{ encodeResults: Array<Promise<Buffer>>; failedAt: number | null; error?: string }> {
+): Promise<{
+  encodeResults: Array<Promise<Buffer>>;
+  failedAt: number | null;
+  error?: string;
+  /** Background urls whose decode timed out during this batch. */
+  lateBackgrounds: string[];
+}> {
   const state = workerEncodeStates.get(page);
   if (!state) {
     throw new Error(
@@ -1070,7 +1076,8 @@ export async function produceDrawElementFrameBatch(
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
         __hfWaitForSeekCompletion?: () => Promise<void>;
-        __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+        __hfDecodeDynamicCssBackgroundImages?: () => Promise<string[] | void>;
+        __hf_css_background_late?: string[];
         __hfDeInvalidate?: () => boolean;
         __HF_ROOT_PROPS__?: boolean;
         __HF_ROOT_BASE_OPACITY__?: number;
@@ -1106,7 +1113,8 @@ export async function produceDrawElementFrameBatch(
         try {
           if (aw.__hf && typeof aw.__hf.seek === "function") aw.__hf.seek(t);
           await aw.__hfWaitForSeekCompletion?.();
-          await aw.__hfDecodeDynamicCssBackgroundImages?.();
+          const late = await aw.__hfDecodeDynamicCssBackgroundImages?.();
+          if (late?.length) (aw.__hf_css_background_late ??= []).push(...late);
           aw.__hf3d?.update();
           const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
           for (const c of accel) {
@@ -1233,5 +1241,9 @@ export async function produceDrawElementFrameBatch(
     }
   }
 
-  return { encodeResults, failedAt: outcome.failedAt, error: outcome.error };
+  const lateBackgrounds = await page.evaluate(() => {
+    const w = window as Window & { __hf_css_background_late?: string[] };
+    return w.__hf_css_background_late?.splice(0) ?? [];
+  });
+  return { encodeResults, failedAt: outcome.failedAt, error: outcome.error, lateBackgrounds };
 }

@@ -1,12 +1,25 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
+const returnRefused = vi.hoisted(() => vi.fn());
+vi.mock("../telemetry/events.js", () => ({ trackBillingCheckoutReturnRefused: returnRefused }));
 
-const { addonBlocks, createCheckout, pageUrl, readOffer, readPlan, stripeCheckoutUrl } =
-  await import("./plan.js");
+const {
+  addonBlocks,
+  checkoutSkill,
+  cliCheckoutLink,
+  createCheckout,
+  pageUrl,
+  readOffer,
+  readPlan,
+  stripeCheckoutUrl,
+} = await import("./plan.js");
 
 const asked: string[] = [];
 const answer = (data: unknown) =>
@@ -48,18 +61,24 @@ describe("pageUrl", () => {
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
     vi.stubEnv("HYPERFRAMES_CREDITS_URL", "");
     vi.stubEnv("HYPERFRAMES_ENV", "prod");
-    expect(await pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
-    expect(await pageUrl("credits")).toBe("https://hyperframes.studio/pricing?from=cli#packs");
+    expect(await pageUrl("plans")).toBe(
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli",
+    );
+    expect(await pageUrl("credits")).toBe(
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli#packs",
+    );
     expect(await pageUrl("plans", { feature: "reverse", rs: "rvs_x" })).toBe(
-      "https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=rvs_x",
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli&feature=reverse&rs=rvs_x",
     );
     expect(await pageUrl("credits", { needed: 180, tool: "reverse" })).toBe(
-      "https://hyperframes.studio/pricing?from=cli&needed_credits=180&tool=reverse#packs",
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli&needed_credits=180&tool=reverse#packs",
     );
     vi.stubEnv("HYPERFRAMES_ENV", "dev");
-    expect(await pageUrl("plans")).toBe("https://hyperframes.studio/pricing?from=cli");
+    expect(await pageUrl("plans")).toBe(
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli",
+    );
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "https://example.test/plans");
-    expect(await pageUrl("plans")).toBe("https://example.test/plans?from=cli");
+    expect(await pageUrl("plans")).toBe("https://example.test/plans?from=cli&utm_source=cli");
   });
 
   it("carries the workspace the sign-in is bound to on every link, read from account.get", async () => {
@@ -166,5 +185,91 @@ describe("createCheckout", () => {
       /would not open a checkout/,
     );
     expect(sent[0]).toEqual({ quantity: 3, currency: "usd", unit_amount: 100 });
+  });
+});
+
+describe("where a purchase came from", () => {
+  const project = (skill: unknown) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-plan-"));
+    writeFileSync(join(dir, "hyperframes.json"), JSON.stringify({ authoringSkill: skill }));
+    return dir;
+  };
+
+  it("names the skill passed in, else the project's own, never a non-slug", () => {
+    expect(checkoutSkill("style-sampling", project("hyperframes"))).toBe("style-sampling");
+    expect(checkoutSkill(undefined, project("hyperframes"))).toBe("hyperframes");
+    expect(checkoutSkill("not a slug", project("hyperframes"))).toBe("hyperframes");
+    expect(checkoutSkill(undefined, project("../etc"))).toBeUndefined();
+    expect(checkoutSkill(undefined, mkdtempSync(join(tmpdir(), "hf-plan-")))).toBeUndefined();
+  });
+
+  it("puts the skill on the plans page", async () => {
+    signedOut();
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
+    expect(await pageUrl("plans", { skill: "media-use" })).toBe(
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=media-use",
+    );
+  });
+
+  it("marks the server's own pricing link as the CLI's, keeping what it already says", () => {
+    expect(cliCheckoutLink("https://hyperframes.studio/pricing?feature=reverse&rs=1", "x")).toBe(
+      "https://hyperframes.studio/pricing?feature=reverse&rs=1&from=cli&skill=x&utm_source=cli",
+    );
+    expect(cliCheckoutLink("https://hyperframes.studio/pricing?from=desktop&skill=y", "x")).toBe(
+      "https://hyperframes.studio/pricing?from=desktop&skill=y&utm_source=cli",
+    );
+    expect(cliCheckoutLink("https://pay.test/credits", "x")).toBe("https://pay.test/credits");
+  });
+
+  it("sends a terminal Pro checkout back to the plans page marked as the CLI's, with the skill", async () => {
+    vi.stubEnv("HYPERFRAMES_PLANS_URL", "");
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      sent.push(JSON.parse(init.body));
+      return new Response(
+        JSON.stringify({ data: { url: "https://checkout.stripe.com/c/pay/cs_test_2" } }),
+      );
+    });
+    await createCheckout("plans", {}, undefined, { skill: "style-sampling", baseline: 120 });
+    expect(sent[0]!.return_url).toBe(
+      "https://hyperframes.studio/pricing?from=cli&skill=style-sampling&checkout=pro&from_credits=120",
+    );
+  });
+
+  it("still sells Pro, without the return page, when the server does not allow it", async () => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      sent.push(body);
+      return body.return_url
+        ? new Response(
+            JSON.stringify({ code: 400, message: "This return address is not allowed" }),
+            {
+              status: 400,
+            },
+          )
+        : new Response(
+            JSON.stringify({ data: { url: "https://checkout.stripe.com/c/pay/cs_test_3" } }),
+          );
+    });
+    expect(await createCheckout("plans", {})).toBe("https://checkout.stripe.com/c/pay/cs_test_3");
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).not.toHaveProperty("return_url");
+    expect(sent[1]!.request_id).not.toBe(sent[0]!.request_id);
+    expect(returnRefused).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry any other refusal", async () => {
+    returnRefused.mockClear();
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ message: "HyperFrames purchases are unavailable" }), {
+        status: 400,
+      });
+    });
+    await expect(createCheckout("plans", {})).rejects.toThrow(/purchases are unavailable/);
+    expect(calls).toBe(1);
+    expect(returnRefused).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
+import { connect } from "node:net";
 import { resolve } from "node:path";
 import { scanActiveServers, type ActiveServer } from "../server/portUtils.js";
 import type {
@@ -59,11 +60,40 @@ function normalizePath(path: string): string {
   return resolved.replace(/\\/g, "/").toLowerCase();
 }
 
+// A Studio on loopback accepts a connection in milliseconds.
+const LOOPBACK_CONNECT_TIMEOUT_MS = 1000;
+
+/**
+ * Fetches from a loopback Studio only once a bounded connect succeeds. Some
+ * hosts drop a connection to a closed port instead of refusing it (WSL
+ * mirrored networking, a firewall in stealth mode): fetch then waits for its
+ * 10 s connect timeout, and aborting it does not close the socket, so the
+ * command's process stays alive that long anyway. A destroyed socket does not.
+ */
+export async function fetchLoopback(url: string): Promise<Response> {
+  const { hostname, port } = new URL(url);
+  const host = hostname.replace(/^\[|\]$/g, "");
+  await new Promise<void>((accept, refuse) => {
+    const socket = connect({ host, port: Number(port) });
+    const close = (error?: Error) => {
+      socket.destroy();
+      if (error) refuse(error);
+      else accept();
+    };
+    socket.setTimeout(LOOPBACK_CONNECT_TIMEOUT_MS, () =>
+      close(new Error(`connect to ${host}:${port} timed out`)),
+    );
+    socket.once("connect", () => close());
+    socket.once("error", close);
+  });
+  return fetch(url);
+}
+
 export async function findPreviewServerForProject(
   projectDir: string,
   startPort = 3002,
   scan: (startPort?: number) => Promise<ActiveServer[]> = scanActiveServers,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: (url: string) => Promise<Response> = fetchLoopback,
   options: FindPreviewServerOptions = {},
 ): Promise<ActiveServer | null> {
   const normalizedProjectDir = normalizePath(projectDir);
@@ -104,7 +134,7 @@ const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 
 async function findViteStudioServerForProject(
   normalizedProjectDir: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: (url: string) => Promise<Response>,
   ports: readonly number[] = VITE_STUDIO_DISCOVERY_PORTS,
 ): Promise<ActiveServer | null> {
   for (const port of ports) {

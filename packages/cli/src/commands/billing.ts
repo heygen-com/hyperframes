@@ -2,16 +2,19 @@ import { createInterface } from "node:readline/promises";
 import { openBrowser } from "../auth/browser.js";
 import {
   addonBlocks,
+  checkoutSkill,
   createCheckout,
   money,
   pageUrl,
   readOffer,
   readPlan,
+  CheckoutError,
   type Offer,
   type Plan,
 } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
-import { failCommand } from "../utils/commandResult.js";
+import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
+import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
@@ -36,31 +39,50 @@ function priceLine(
   return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} add-on credits: ${price}`;
 }
 
+const WAIT_TIMEOUT_EXIT = 124;
+
+type CheckoutSource = { skill?: string; baseline?: number };
+
+async function openCheckout(
+  kind: "plans" | "credits",
+  offer: Offer,
+  missing: number | undefined,
+  signal: AbortSignal,
+  source: CheckoutSource,
+): Promise<void> {
+  if (isUnattended()) {
+    console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing, source))}`);
+    return;
+  }
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    await rl.question("Press Enter to pay ", { signal });
+  } finally {
+    rl.close();
+  }
+  await openBrowser(await createCheckout(kind, offer, missing, source));
+}
+
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
   signal: AbortSignal,
-  needed?: number,
-) {
+  needed: number | undefined,
+  source: CheckoutSource,
+): Promise<CheckoutError | null> {
   const offer = await readOffer();
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
   try {
-    if (isUnattended()) {
-      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
-      return;
-    }
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      await rl.question("Press Enter to pay ", { signal });
-    } finally {
-      rl.close();
-    }
-    await openBrowser(await createCheckout(kind, offer, missing));
+    await openCheckout(kind, offer, missing, signal, source);
+    return null;
   } catch (error) {
-    if (signal.aborted) return;
+    if (signal.aborted) return null;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
+    if (!(error instanceof CheckoutError)) return null;
+    trackBillingCheckoutFailed({ reason: error.reason });
+    return error;
   }
 }
 
@@ -83,6 +105,11 @@ export default defineCommand({
       description: "The feature that sent the person here, so a purchase is credited to it",
     },
     session: { type: "string", description: "The run to credit the purchase to (with --feature)" },
+    skill: {
+      type: "string",
+      description:
+        "The skill that sent the person here, sent with the pricing link (default: the project's own skill)",
+    },
     timeout: { type: "string", description: "Seconds to wait (default 600)" },
   },
   // fallow-ignore-next-line complexity
@@ -93,6 +120,7 @@ export default defineCommand({
       failCommand();
     }
     const needed = Number(args.needed) || undefined;
+    const skill = checkoutSkill(args.skill);
     const before = await readPlan();
     const done = (p: Plan | null) =>
       action === "subscribe"
@@ -107,20 +135,32 @@ export default defineCommand({
       tool: args.tool,
       feature: args.feature,
       rs: args.session,
+      skill,
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
     const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
     const stop = new AbortController();
+    const giveUp = new AbortController();
     const waiting = (async () => {
-      while (Date.now() < deadline) {
+      while (Date.now() < deadline && !giveUp.signal.aborted) {
         await new Promise((r) => setTimeout(r, 2000));
         const now = await readPlan();
         if (done(now)) return now;
       }
       return null;
     })().finally(() => stop.abort());
-    await offerCheckout(action === "subscribe" ? "plans" : "credits", before, stop.signal, needed);
+    const checkoutFailure = await offerCheckout(
+      action === "subscribe" ? "plans" : "credits",
+      before,
+      stop.signal,
+      needed,
+      { skill, baseline: before?.credits },
+    );
+    if (checkoutFailure?.reason === "checkout_unavailable") {
+      giveUp.abort();
+      failCommand();
+    }
     console.log("Waiting for the person to finish ...");
     const now = await waiting;
     if (now) {
@@ -132,6 +172,8 @@ export default defineCommand({
         `Still waiting on the ${action === "subscribe" ? "plans" : "credits"} page; run this again once it is done.`,
       ),
     );
-    failCommand();
+    if (checkoutFailure) failCommand();
+    trackBillingWaitTimeout({ action });
+    setCommandExitCode(WAIT_TIMEOUT_EXIT);
   },
 });

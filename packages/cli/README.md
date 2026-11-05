@@ -99,6 +99,15 @@ interruption path. Probe failures retain their existing stage/reason but do not
 gain subprocess evidence here; browser/FX failures remain classified as internal.
 Desktop ingestion and live report delivery are separate changes.
 
+Piped, non-quiet renders also emit a single `@hf-result ` JSON line after a local
+render succeeds, never after a failure. Version 1 has `operation: "render"` and
+`reference_background`, the background the render measured from the composition's
+root and body: `{"kind":"solid","rgb":[r,g,b]}`, `{"kind":"none"}`,
+`{"kind":"unsupported_non_solid"}` or `{"kind":"unknown"}`. Consumers must ignore
+unknown versions and fields. A `--docker` render prints no result line from the
+launcher. In batch mode each manifest row carries the same `reference_background` value (`null` until the row completes, and for a
+row that failed).
+
 ### `publish`
 
 Upload a project directory and get a hosted URL that keeps working after the CLI exits.

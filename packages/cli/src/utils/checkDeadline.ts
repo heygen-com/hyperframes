@@ -38,6 +38,17 @@ export class CheckDeadlineError extends Error {
   }
 }
 
+export const COPY_BUDGET_MS = 120_000;
+
+export class CheckCopiesUnfinishedError extends Error {
+  constructor(budgetMs: number, unfinished: readonly string[]) {
+    super(
+      `Making browser-playable video copies took longer than ${budgetMs / 1000} s: ${unfinished.join(", ")}. ` +
+        "Finished pieces are kept. Run `hyperframes check --prepare-media` (no time limit) to finish them, then run check again.",
+    );
+  }
+}
+
 export class CheckStoppedError extends Error {
   constructor(signal: string) {
     super(`Check stopped before finishing (${signal}).`);

@@ -993,6 +993,39 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// A reverse session could not be recorded. `cause` is a closed set (never free text) so an
+// alert can page on a failing start route; `status` is the HTTP status when there was one.
+export type ReverseUnrecordedCause =
+  | "not_signed_in"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "network"
+  | "bad_body";
+
+export function trackReverseStartUnrecorded(props: {
+  cause: ReverseUnrecordedCause;
+  status?: number;
+}): void {
+  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+}
+
+// `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.
+export function trackBillingCheckoutFailed(props: {
+  reason: "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+}): void {
+  trackEvent("cli_billing_checkout_failed", { reason: props.reason });
+}
+
+export function trackBillingCheckoutReturnRefused(): void {
+  trackEvent("cli_billing_checkout_return_refused", {});
+}
+
+// `billing` waited out its timeout with no payment: the person did not finish, nothing is broken.
+export function trackBillingWaitTimeout(props: { action: "subscribe" | "add-credits" }): void {
+  trackEvent("cli_billing_wait_timeout", { action: props.action });
+}
+
 // grade-compare / compare stand up headless Chrome and render up to 16 cells.
 // Cell count, truncation-cap hits, and whether the render-ready timeout fired
 // are the signals needed before safely lifting the cap. Low-cardinality only.

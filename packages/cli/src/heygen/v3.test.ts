@@ -160,8 +160,8 @@ describe("runJob", () => {
       reply(402, { error: { code: "hf_subscription_required", message: "no plan" } }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: "Subscribe: https://hyperframes.studio/pricing?from=cli",
-      url: "https://hyperframes.studio/pricing?from=cli",
+      fix: "Subscribe: https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=media-use",
+      url: "https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=media-use",
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { code: "hf_usage_exhausted", url: "https://pay.test/credits" }),

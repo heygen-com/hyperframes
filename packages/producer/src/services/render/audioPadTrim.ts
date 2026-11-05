@@ -78,6 +78,8 @@ export interface PadTrimAudioInput {
   audioPath: string;
   /** Path the helper writes the duration-corrected audio to. */
   outputPath: string;
+  /** The PCM `audioPath` was encoded from: a pad, trim or peak correction encodes it instead of decoding the AAC. */
+  sourcePath?: string;
   signal?: AbortSignal;
   /** Deadline for each ffmpeg process; defaults to the engine's `ffmpegProcessTimeout`. */
   timeoutMs?: number;
@@ -135,8 +137,10 @@ export interface PadTrimAudioPlan {
   cleanupPaths: string[];
 }
 
+const gainFilter = (gainDb: number) => `volume=${gainDb.toFixed(3)}dB`;
+
 function aacTruePeakCorrectionFilter(targetDurationSeconds: number, attenuationDb: number) {
-  return `volume=${attenuationDb.toFixed(3)}dB,apad,atrim=0:${formatSeconds(targetDurationSeconds)}`;
+  return `${gainFilter(attenuationDb)},apad,atrim=0:${formatSeconds(targetDurationSeconds)}`;
 }
 
 /**
@@ -235,7 +239,7 @@ export async function padOrTrimAudioToVideoFrameCount(
   const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const runner =
     input.runFfmpeg ?? ((args: string[]) => defaultRunFfmpeg(args, timeoutMs, input.signal));
-  const encode = input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal);
+  const encode = input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal, input.sourcePath);
   // Injected runners usually do not materialize media. Tests that exercise
   // peak correction opt in with a matching probe; production always uses the
   // real post-codec measurement.
@@ -309,7 +313,12 @@ export async function padOrTrimAudioToVideoFrameCount(
       const ffmpegResult =
         step.kind === "copy"
           ? await runner(step.args)
-          : await encode(input.audioPath, input.outputPath, targetDurationSeconds, step.filter);
+          : await encode(
+              input.sourcePath ?? input.audioPath,
+              input.outputPath,
+              targetDurationSeconds,
+              step.filter,
+            );
       if (!ffmpegResult.success) {
         return {
           success: false,
@@ -341,6 +350,7 @@ export async function padOrTrimAudioToVideoFrameCount(
   if (probeTruePeak) {
     const correction = await enforceAacTruePeak({
       audioPath: input.outputPath,
+      sourcePath: input.sourcePath,
       targetDurationSeconds,
       signal: input.signal,
       probeTruePeak,
@@ -382,11 +392,13 @@ export async function constrainAacTruePeak(input: {
   timeoutMs?: number;
   probeTruePeakDbfs?: (audioPath: string, signal?: AbortSignal) => Promise<number>;
   encodeAac?: AacEncoder;
+  rewriteSource?: SourceRewriter;
 }): Promise<{
   success: boolean;
   error?: string;
   failureReason?: "external_interruption";
   loweredDb?: number;
+  sourceStale?: true;
 }> {
   const timeoutMs = input.timeoutMs ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   return enforceAacTruePeak({
@@ -398,8 +410,23 @@ export async function constrainAacTruePeak(input: {
       input.probeTruePeakDbfs ??
       ((audioPath, signal) => measureTruePeakDbfs(audioPath, { timeoutMs, signal })),
     encode: input.encodeAac ?? defaultAacEncoder(timeoutMs, input.signal, input.sourcePath),
+    rewriteSource:
+      input.rewriteSource ??
+      ((sourcePath, outputPath, filter) =>
+        defaultRunFfmpeg(
+          ["-i", sourcePath, "-af", filter, "-c:a", "pcm_f32le", "-y", outputPath],
+          timeoutMs,
+          input.signal,
+        )),
   });
 }
+
+/** Writes `sourcePath` through `filter` to `outputPath` as float PCM. */
+type SourceRewriter = (
+  sourcePath: string,
+  outputPath: string,
+  filter: string,
+) => Promise<StepResult>;
 
 interface EnforceAacTruePeakInput {
   audioPath: string;
@@ -408,6 +435,27 @@ interface EnforceAacTruePeakInput {
   signal?: AbortSignal;
   probeTruePeak: (audioPath: string, signal?: AbortSignal) => Promise<number>;
   encode: AacEncoder;
+  /** Given with `sourcePath`, a cut is also applied to the PCM so it still encodes to `audioPath`. */
+  rewriteSource?: SourceRewriter;
+}
+
+/** Applies the delivered cut to the PCM. False means the PCM no longer matches the delivered AAC, even if deleting it was refused. */
+async function cutSource(
+  input: EnforceAacTruePeakInput,
+  scratchDir: string,
+  attenuationDb: number,
+): Promise<boolean> {
+  if (!input.sourcePath || !input.rewriteSource) return true;
+  const cutPath = join(scratchDir, "source.wav");
+  try {
+    const result = await input.rewriteSource(input.sourcePath, cutPath, gainFilter(attenuationDb));
+    if (!result.success) throw new Error(result.error);
+    renameWithRetry(cutPath, input.sourcePath, { copyFallback: true });
+    return true;
+  } catch {
+    removeScratch(input.sourcePath);
+    return false;
+  }
 }
 
 async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
@@ -415,6 +463,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
   error?: string;
   failureReason?: "external_interruption";
   loweredDb?: number;
+  sourceStale?: true;
 }> {
   let scratchDir: string | undefined;
   try {
@@ -434,8 +483,12 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       }
       if (truePeakDbfs <= AAC_DELIVERY_TRUE_PEAK_DBFS) {
         if (measuredPath !== correctedPath) return { success: true };
+        const sourceCut = await cutSource(input, scratchDir, attenuationDb);
         renameWithRetry(correctedPath, input.audioPath, { copyFallback: true });
-        return { success: true, loweredDb: Number((-attenuationDb).toFixed(2)) };
+        const loweredDb = Number((-attenuationDb).toFixed(2));
+        return sourceCut
+          ? { success: true, loweredDb }
+          : { success: true, loweredDb, sourceStale: true };
       }
       if (pass === MAX_TRUE_PEAK_CORRECTION_PASSES) break;
 
@@ -450,7 +503,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
       const referenceDbfs = Math.max(truePeakDbfs, (sourcePeakDbfs ?? -Infinity) + attenuationDb);
       attenuationDb += AAC_DELIVERY_TRUE_PEAK_DBFS - headroomDb - referenceDbfs;
       const result = await input.encode(
-        input.audioPath,
+        input.sourcePath ?? input.audioPath,
         correctedPath,
         input.targetDurationSeconds,
         aacTruePeakCorrectionFilter(input.targetDurationSeconds, attenuationDb),

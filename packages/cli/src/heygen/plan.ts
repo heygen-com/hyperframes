@@ -1,6 +1,9 @@
 // The HyperFrames plan and credits the signed-in account holds, and the web pages that change them.
 import { randomUUID } from "node:crypto";
 import { resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { trackBillingCheckoutReturnRefused } from "../telemetry/events.js";
+import { normalizeSkillSlug } from "../telemetry/skill.js";
+import { readProjectConfig } from "../utils/projectConfig.js";
 
 export interface Plan {
   plan: string;
@@ -66,13 +69,37 @@ async function signedInSpace(): Promise<string | undefined> {
   }
 }
 
+export function checkoutSkill(named?: unknown, projectDir = process.cwd()): string | undefined {
+  return normalizeSkillSlug(named) ?? readProjectConfig(projectDir)?.authoringSkill;
+}
+
+export function cliCheckoutLink(link: string, skill = checkoutSkill()): string {
+  if (!URL.canParse(link)) return link;
+  const url = new URL(link);
+  if (url.hostname !== new URL(webBase()).hostname) return link;
+  if (!url.searchParams.has("from")) url.searchParams.set("from", "cli");
+  if (skill && !url.searchParams.has("skill")) url.searchParams.set("skill", skill);
+  if (!url.searchParams.has("utm_source")) url.searchParams.set("utm_source", "cli");
+  return url.toString();
+}
+
 /** A plans or credits page link with what the web side reads, incl. the signed-in `workspace_hint`. */
 export async function pageUrl(
   kind: "plans" | "credits",
-  fields: { needed?: number; tool?: string; feature?: string; rs?: string; base?: string } = {},
+  fields: {
+    needed?: number;
+    tool?: string;
+    feature?: string;
+    rs?: string;
+    skill?: string;
+    base?: string;
+  } = {},
 ): Promise<string> {
   const url = new URL(fields.base ?? (kind === "plans" ? plansUrl() : creditsUrl()));
   url.searchParams.set("from", "cli");
+  url.searchParams.set("utm_source", "cli");
+  const skill = checkoutSkill(fields.skill);
+  if (skill) url.searchParams.set("skill", skill);
   if (fields.needed) url.searchParams.set("needed_credits", String(fields.needed));
   if (fields.tool) url.searchParams.set("tool", fields.tool);
   if (fields.feature) url.searchParams.set("feature", fields.feature);
@@ -156,35 +183,79 @@ export function stripeCheckoutUrl(value: unknown): string | undefined {
     : undefined;
 }
 
+export type CheckoutFailure = "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+
+/** A checkout that could not be opened, tagged with a closed reason for telemetry. */
+export class CheckoutError extends Error {
+  constructor(
+    readonly reason: CheckoutFailure,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CheckoutError";
+  }
+}
+
+// `from=cli` on the return page is how a purchase made from the terminal is told apart from one made on the site.
+function cliCheckoutReturn(skill?: string, baseline?: number): string {
+  const url = new URL(plansUrl());
+  url.searchParams.set("from", "cli");
+  if (skill) url.searchParams.set("skill", skill);
+  url.searchParams.set("checkout", "pro");
+  url.searchParams.set("from_credits", String(Math.max(0, Math.trunc(baseline ?? 0))));
+  return url.toString();
+}
+
+const RETURN_REFUSED = /return address is not allowed/i;
+
 /** Creates the checkout with the CLI's own token and returns Stripe's page; throws when HeyGen refuses. */
 export async function createCheckout(
   kind: "plans" | "credits",
   offer: Offer,
   missing?: number,
+  source: { skill?: string; baseline?: number } = {},
 ): Promise<string> {
   const addon = kind === "credits" ? offer.addon : undefined;
   if (kind === "credits" && !addon)
-    throw new Error("Credits are not on sale for this account right now.");
-  const body = addon
-    ? {
-        quantity: addonBlocks(addon, missing),
-        currency: addon.currency,
-        unit_amount: addon.unitAmount,
-      }
-    : { plan_name: "pro", period: "month", request_id: randomUUID() };
-  const res = await fetch(
-    `${billingBaseUrl()}/v1/payment/hyperframes/${addon ? "addon.checkout" : "checkout"}`,
-    {
-      method: "POST",
-      headers: {
-        ...(await resolveCloudAuthHeaders()),
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+    throw new CheckoutError(
+      "checkout_unavailable",
+      "Credits are not on sale for this account right now.",
+    );
+  if (addon)
+    return postCheckout("addon.checkout", {
+      quantity: addonBlocks(addon, missing),
+      currency: addon.currency,
+      unit_amount: addon.unitAmount,
+    });
+  const pro = () => ({ plan_name: "pro", period: "month", request_id: randomUUID() });
+  const returnUrl = cliCheckoutReturn(checkoutSkill(source.skill), source.baseline);
+  try {
+    return await postCheckout("checkout", { ...pro(), return_url: returnUrl });
+  } catch (error) {
+    // A server whose allow-list lacks the plans page still sells Pro, only without the CLI's origin.
+    const refused = error instanceof CheckoutError && error.reason === "checkout_rejected";
+    if (!refused || !RETURN_REFUSED.test(error.message)) throw error;
+    trackBillingCheckoutReturnRefused();
+    return postCheckout("checkout", pro());
+  }
+}
+
+async function postCheckout(route: string, body: Record<string, unknown>): Promise<string> {
+  const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/${route}`, {
+    method: "POST",
+    headers: {
+      ...(await resolveCloudAuthHeaders()),
+      accept: "application/json",
+      "content-type": "application/json",
     },
-  );
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
+  }).catch((error: unknown) => {
+    throw new CheckoutError(
+      "checkout_network",
+      `Could not reach HeyGen to open a checkout: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
   const reply: unknown = await res.json().catch(() => null);
   const data = isRecord(reply) && isRecord(reply.data) ? reply.data : reply;
   const url = res.ok && isRecord(data) ? stripeCheckoutUrl(data.url) : undefined;
@@ -193,5 +264,5 @@ export async function createCheckout(
     isRecord(reply) && typeof reply.message === "string"
       ? reply.message.slice(0, 200)
       : `HTTP ${res.status}`;
-  throw new Error(`HeyGen would not open a checkout: ${why}`);
+  throw new CheckoutError("checkout_rejected", `HeyGen would not open a checkout: ${why}`);
 }

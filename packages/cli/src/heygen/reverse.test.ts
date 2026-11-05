@@ -10,6 +10,9 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 
+const track = vi.hoisted(() => vi.fn());
+vi.mock("../telemetry/events.js", () => ({ trackReverseStartUnrecorded: track }));
+
 const { reverseSurface, reverseUpgradeUrl, startReverseSession } = await import("./reverse.js");
 
 const START_URL = "https://api2.example.test/v1/hyperframes/reverse/start";
@@ -38,6 +41,7 @@ const freePlan = () => Response.json({ code: 100, data: { subscription: null, us
 
 beforeEach(() => {
   calls = [];
+  track.mockClear();
   auth.signedIn = true;
   vi.stubEnv("HYPERFRAMES_CLIENT", "");
   vi.stubEnv("HYPERFRAMES_MOCK_PLAN", "");
@@ -118,6 +122,7 @@ describe("startReverseSession", () => {
     expect(await startReverseSession()).toEqual({
       recorded: false,
       reason: "unavailable",
+      cause: "http_4xx",
       plan: "free",
     });
     expect(calls.map((c) => c.url)).toEqual([START_URL, PLAN_URL]);
@@ -127,7 +132,11 @@ describe("startReverseSession", () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("fetch failed");
     });
-    expect(await startReverseSession()).toEqual({ recorded: false, reason: "unavailable" });
+    expect(await startReverseSession()).toEqual({
+      recorded: false,
+      reason: "unavailable",
+      cause: "network",
+    });
   });
 
   it.each([
@@ -145,6 +154,52 @@ describe("startReverseSession", () => {
     serve({ [START_URL]: () => new Response("boom", { status: 500 }) });
     expect(await startReverseSession()).toMatchObject({ recorded: false, reason: "unavailable" });
   });
+
+  it.each([
+    [500, "http_5xx"],
+    [401, "http_4xx"],
+    [403, "http_4xx"],
+  ])("reports status %i as %s", async (status, cause) => {
+    serve({ [START_URL]: () => new Response("no", { status }) });
+    expect(await startReverseSession()).toMatchObject({ recorded: false, cause });
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause, status });
+  });
+
+  it("reports a network failure", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("fetch failed");
+    });
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "network", status: undefined });
+  });
+
+  it("reports a timeout as a network failure", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new DOMException("timed out", "TimeoutError");
+    });
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "network", status: undefined });
+  });
+
+  it("reports a 200 whose body is not a session", async () => {
+    serve({ [START_URL]: () => new Response("<html>", { status: 200 }) });
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "bad_body", status: undefined });
+  });
+
+  it("reports nothing when the session is recorded", async () => {
+    serve({
+      [START_URL]: () => Response.json({ session_id: SESSION, plan: "pro", gate: "record" }),
+    });
+    await startReverseSession();
+    expect(track).not.toHaveBeenCalled();
+  });
+
+  it("reports not_signed_in", async () => {
+    auth.signedIn = false;
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "not_signed_in" });
+  });
 });
 
 describe("reverseUpgradeUrl", () => {
@@ -154,10 +209,10 @@ describe("reverseUpgradeUrl", () => {
       await reverseUpgradeUrl({ sessionId: SESSION, upgradeUrl: "https://u.test/p?rs=1" }),
     ).toBe("https://u.test/p?rs=1");
     expect(await reverseUpgradeUrl({ sessionId: SESSION })).toBe(
-      `https://hyperframes.studio/pricing?from=cli&feature=reverse&rs=${SESSION}`,
+      `https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=reverse-any-video&feature=reverse&rs=${SESSION}`,
     );
     expect(await reverseUpgradeUrl()).toBe(
-      "https://hyperframes.studio/pricing?from=cli&feature=reverse",
+      "https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=reverse-any-video&feature=reverse",
     );
   });
 
