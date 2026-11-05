@@ -46,29 +46,34 @@ const PROBE: HeardProbe = {
 };
 
 /** Every clip the render mixes, read as the render reads them (scenes inlined, on the film's clock), each ended where
- * its media runs out if that comes first; a ramped rate or a loop keeps its end. */
+ * its media runs out if that comes first, and left out if it starts past that; a ramped rate or a loop keeps its end. */
 export async function heardClips(
   projectDir: string,
   probe: HeardProbe = PROBE,
 ): Promise<HeardClip[]> {
-  const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const { audios } = (await loadProducer()).collectRenderMedia(
-    await bundleToSingleHtml(projectDir),
-  );
-  return Promise.all(audios.map((clip) => endedClip(clip, projectDir, probe)));
+  const { audios } = await collectProjectMedia(projectDir);
+  const lengths = new Map<string, Promise<number | null>>();
+  const length = (src: string): Promise<number | null> => {
+    const path = mediaPath(src, projectDir);
+    const known = lengths.get(path) ?? probe.seconds(path).catch(() => null);
+    lengths.set(path, known);
+    return known;
+  };
+  const clips = await Promise.all(audios.map((clip) => endedClip(clip, length)));
+  return clips.filter((clip) => clip !== null);
 }
 
 async function endedClip(
   clip: AudioElement,
-  projectDir: string,
-  probe: HeardProbe,
-): Promise<HeardClip> {
+  length: (src: string) => Promise<number | null>,
+): Promise<HeardClip | null> {
   const { id, src, start, mediaStart, playbackRate, volume, type } = clip;
   const heard = { id, src, start, end: clip.end, mediaStart, playbackRate, volume, type };
   const rate = playbackRate === undefined ? 1 : playbackRate;
   if (clip.loop || typeof rate !== "number" || !(rate > 0)) return heard;
-  const seconds = await probe.seconds(mediaPath(src, projectDir)).catch(() => null);
-  if (seconds === null || seconds <= mediaStart) return heard;
+  const seconds = await length(src);
+  if (seconds === null) return heard;
+  if (seconds <= mediaStart) return null;
   const runsOut = start + (seconds - mediaStart) / rate;
   return { ...heard, end: clip.end > 0 ? Math.min(clip.end, runsOut) : runsOut };
 }

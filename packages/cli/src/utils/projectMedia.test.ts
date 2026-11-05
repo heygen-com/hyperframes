@@ -54,6 +54,20 @@ describe("heardClips", () => {
     ]);
   });
 
+  it("leaves out a clip that starts past its media's end, and reads each file's length once", async () => {
+    const probed: string[] = [];
+    const counting = { seconds: async (path: string) => (probed.push(path), 6) };
+    const clips = await heardClips(
+      project(`<video id="late" src="../assets/talk.mp4" data-has-audio="true" data-start="0" data-media-start="7"></video>
+<video id="talk" src="../assets/talk.mp4" data-has-audio="true" data-start="8" data-duration="3"></video>`),
+      counting,
+    );
+    expect(clips.map(({ id, start, end }) => ({ id, start, end }))).toEqual([
+      { id: "talk-audio", start: 18, end: 21 },
+    ]);
+    expect(probed).toHaveLength(1);
+  });
+
   it("hears a video only when it says data-has-audio and is not muted, as the render does", async () => {
     const clips = await heardClips(
       project(`<video id="broll" src="../assets/broll.mp4" data-start="0" data-duration="3"></video>
