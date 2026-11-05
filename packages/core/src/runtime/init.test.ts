@@ -6047,10 +6047,10 @@ describe("initSandboxRuntimeModular", () => {
     const SAFARI =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
-    const startRouted = async (userAgent?: string) => {
+    const startRouted = async (userAgent?: string, duration = 10) => {
       if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
       const audio = mountAudio("/assets/track.mp3");
-      Object.defineProperty(audio, "duration", { value: 10 });
+      Object.defineProperty(audio, "duration", { value: duration });
       const capture = vi
         .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
         .mockResolvedValue({ el: audio } as never);
@@ -6069,6 +6069,31 @@ describe("initSandboxRuntimeModular", () => {
       const { audio, schedule, release } = await startRouted(SAFARI);
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
       expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands a 10 minute source to a decoded buffer", async () => {
+      const { audio, release } = await startRouted(SAFARI, 600);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("leaves an hour-long source on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, 3600);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("gives a clip that has not loaded its source's verdict", async () => {
+      vi.spyOn(WebAudioTransport.prototype, "isDecodedOrDecoding").mockReturnValue(true);
+      const { audio, release } = await startRouted(SAFARI, Number.NaN);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("keeps a clip that has not loaded, of a source nobody decodes, on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, Number.NaN);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
     });
 
     it("returns a handed-over track to its element when the speed changes, to hold its pitch", async () => {
