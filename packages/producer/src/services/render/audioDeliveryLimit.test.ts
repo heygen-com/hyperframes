@@ -7,12 +7,14 @@ const INPUT = {
   targetDurationSeconds: 8,
   timeoutMs: 1000,
 };
-const LIMITED = "/w/audio-source-limited.wav";
+const LIMITED = ["/w/audio-source-limited-a.wav", "/w/audio-source-limited-b.wav"];
 
-function deps(peak: number) {
+/** `peaks`: what each measure reads in turn, the first encode's then each limited encode's; the last one repeats. */
+function deps(...peaks: number[]) {
+  let read = 0;
   return {
-    measure: vi.fn(async () => peak),
-    applyChain: vi.fn(async () => ({ path: LIMITED, envelopeBaked: false })),
+    measure: vi.fn(async () => peaks[Math.min(read++, peaks.length - 1)]!),
+    applyChain: vi.fn(async () => ({ path: LIMITED[0]!, envelopeBaked: false })),
     encode: vi.fn(async () => ({ success: true })),
     rename: vi.fn(),
     sourceExists: vi.fn(() => true),
@@ -30,21 +32,46 @@ describe("limitDeliveryPeaks", () => {
     expect(d.encode).not.toHaveBeenCalled();
   });
 
-  it("re-encodes a mix over the ceiling through a true-peak limit 2 dB under it", async () => {
-    const d = deps(2.4);
+  const ceilings = (d: ReturnType<typeof deps>) =>
+    d.applyChain.mock.calls.map(
+      ([, chain]) =>
+        (chain as { nodes: { params: { ceiling: number } }[] }).nodes[0]!.params.ceiling,
+    );
+
+  it("limits a mix over the ceiling at the ceiling itself when its encode lands under", async () => {
+    const d = deps(2.4, -1.1);
     await limitDeliveryPeaks(INPUT, d as unknown as Deps);
+    expect(ceilings(d)).toEqual([-1]);
     expect(d.applyChain).toHaveBeenCalledWith(
       INPUT.sourcePath,
-      {
-        version: 1,
-        nodes: [{ type: "truepeak", id: "delivery", params: { ceiling: -3 } }],
-      },
-      LIMITED,
+      expect.anything(),
+      LIMITED[0],
       expect.anything(),
     );
-    expect(d.encode).toHaveBeenCalledWith(LIMITED, INPUT.audioPath, 8, expect.anything());
+    expect(d.encode).toHaveBeenCalledWith(LIMITED[0], INPUT.audioPath, 8, expect.anything());
     // The whole-mix cut behind this measures against the limited mix, not the original.
-    expect(d.rename).toHaveBeenCalledWith(LIMITED, INPUT.sourcePath, { copyFallback: true });
+    expect(d.rename).toHaveBeenCalledWith(LIMITED[0], INPUT.sourcePath, { copyFallback: true });
+  });
+
+  it("lowers the ceiling by what each encode measured over, from the original mix, never past -3", async () => {
+    const d = deps(2.4, -0.4, -0.9, 0.5);
+    await limitDeliveryPeaks(INPUT, d as unknown as Deps);
+    expect(ceilings(d).map((c) => Number(c.toFixed(2)))).toEqual([-1, -1.65, -1.8]);
+    expect(d.applyChain.mock.calls.every(([from]) => from === INPUT.sourcePath)).toBe(true);
+    expect(d.rename).toHaveBeenCalledWith(LIMITED[0], INPUT.sourcePath, { copyFallback: true });
+
+    const deep = deps(2.4, 3, 3);
+    await limitDeliveryPeaks(INPUT, deep as unknown as Deps);
+    expect(ceilings(deep)).toEqual([-1, -3]);
+  });
+
+  it("keeps the last good pass when a later limit cannot run", async () => {
+    const d = deps(2.4, -0.5);
+    d.applyChain.mockResolvedValueOnce({ path: LIMITED[0]!, envelopeBaked: false });
+    d.applyChain.mockRejectedValueOnce(new Error("browser gone"));
+    await limitDeliveryPeaks(INPUT, d as unknown as Deps);
+    expect(d.encode).toHaveBeenCalledTimes(1);
+    expect(d.rename).toHaveBeenCalledWith(LIMITED[0], INPUT.sourcePath, { copyFallback: true });
   });
 
   it("leaves the first encode for the whole-mix cut when the limit cannot run, and says so", async () => {
