@@ -4,7 +4,6 @@ export interface ToneMapSourceColour {
   colorTransfer?: string;
 }
 
-/** The first shown frame's tags, and the transfer of every SPS in the file (`keyframeTransferArgs`). */
 export interface ToneMapFrameColour extends ToneMapSourceColour {
   keyframeTransfers?: readonly string[];
 }
@@ -17,6 +16,9 @@ export const toneMapReferenceNits = (keyframeTransfers: readonly string[] | unde
   keyframeTransfers?.length && keyframeTransfers.every((transfer) => transfer === "arib-std-b67")
     ? BT2408_HLG_REFERENCE_WHITE_NITS
     : SDR_NOMINAL_PEAK_NITS;
+
+export const readsKeyframeTransfers = ({ colorTransfer }: ToneMapSourceColour): boolean =>
+  colorTransfer === "arib-std-b67" || !known(colorTransfer);
 
 function known(value: string | undefined): string | undefined {
   return value && value !== "unknown" && value !== "reserved" ? value : undefined;
@@ -40,7 +42,12 @@ export function hdrToSdrToneMapFilter(
   ].filter(([, value]) => value);
   const setTags = tags.length ? `setparams=${tags.map((tag) => tag.join("=")).join(":")},` : "";
   const resizeBeforeToneMap = size ? `w=${size.width}:h=${size.height}:` : "";
-  const npl = toneMapReferenceNits(firstFrame.keyframeTransfers);
+  const stream = known(firstFrame.colorTransfer) ?? known(probed.colorTransfer);
+  const npl = toneMapReferenceNits(
+    firstFrame.keyframeTransfers?.map((transfer) =>
+      transfer === "unspecified" ? (stream ?? transfer) : transfer,
+    ),
+  );
   return `${setTags}zscale=${resizeBeforeToneMap}t=linear:npl=${npl},tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv`;
 }
 
@@ -55,6 +62,7 @@ export function firstFrameColourArgs(videoPath: string): string[] {
 const SPS_UNIT_TYPES: Record<string, string> = { h264: "7", hevc: "33" };
 const TRANSFER_NAMES: Record<string, string> = {
   "1": "bt709",
+  "2": "unspecified",
   "16": "smpte2084",
   "18": "arib-std-b67",
 };

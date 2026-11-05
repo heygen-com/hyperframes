@@ -43,6 +43,7 @@ import {
   type ToneMapFrameColour,
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -953,17 +954,14 @@ export function parseImageElements(html: string): ImageElement[] {
 
 const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
 
-/** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
-/** An HLG source's SPS transfers, so a PQ or SDR keyframe keeps it at 100 nits (core toneMapReferenceNits). */
-function withKeyframeTransfers(videoPath: string, codec: string, first: ToneMapFrameColour) {
+/** A source's SPS transfers, so a PQ or SDR keyframe keeps an HLG one at 100 nits; null when the read failed. */
+function readKeyframeTransfers(videoPath: string, codec: string) {
   return inExtractionSlot(() =>
     runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)]),
-  ).then((result) => ({
-    ...first,
-    keyframeTransfers: result.success ? parseKeyframeTransfers(result.stderr) : [],
-  }));
+  ).then((result) => (result.success ? parseKeyframeTransfers(result.stderr) : null));
 }
 
+/** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
 function readFirstFrameColour(videoPath: string, codec: string) {
   const identity = mediaFileIdentity(videoPath);
   const cached = readMetadataCache(firstFrameColourCache, videoPath, identity);
@@ -971,15 +969,18 @@ function readFirstFrameColour(videoPath: string, codec: string) {
   // In an extraction slot, so it never adds a decoder; unsignalled, so one cancel cannot cut it short for others.
   const probe = inExtractionSlot(() =>
     runFfmpeg([...urlInputArgs(videoPath), ...firstFrameColourArgs(videoPath)]),
-  ).then((result) => {
+  ).then(async (result): Promise<ToneMapFrameColour> => {
+    const forget = () => {
+      if (firstFrameColourCache.get(videoPath)?.promise === probe)
+        firstFrameColourCache.delete(videoPath);
+    };
     // A failed probe answers this cut only; the next one probes again.
-    if (!result.success && firstFrameColourCache.get(videoPath)?.promise === probe) {
-      firstFrameColourCache.delete(videoPath);
-    }
+    if (!result.success) forget();
     const first = parseFirstFrameColour(result.stderr);
-    return first.colorTransfer === "arib-std-b67"
-      ? withKeyframeTransfers(videoPath, codec, first)
-      : first;
+    if (!result.success || !readsKeyframeTransfers(first)) return first;
+    const keyframeTransfers = await readKeyframeTransfers(videoPath, codec);
+    if (!keyframeTransfers) forget();
+    return { ...first, keyframeTransfers: keyframeTransfers ?? [] };
   });
   writeMetadataCache(firstFrameColourCache, videoPath, identity, probe);
   return probe;

@@ -78,6 +78,7 @@ import {
   isInClipWindow,
   MEDIA_RENDER_ID_ATTR,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
@@ -635,8 +636,9 @@ async function frameColour(
   codec: string,
 ): Promise<ToneMapFrameColour> {
   const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
-  const first = parseFirstFrameColour((await read(firstFrameColourArgs(videoPath))).stderr);
-  if (first.colorTransfer !== "arib-std-b67") return first;
+  const probe = await read(firstFrameColourArgs(videoPath));
+  const first = parseFirstFrameColour(probe.stderr);
+  if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
   const keyframes = await read(keyframeTransferArgs(videoPath, codec));
   const keyframeTransfers = keyframes.code === 0 ? parseKeyframeTransfers(keyframes.stderr) : [];
   return { ...first, keyframeTransfers };

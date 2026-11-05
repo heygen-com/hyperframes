@@ -146,7 +146,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
         delete process.env.HF_TEST_SHIM_DIR;
       }
       const alive = readFileSync(join(run, "alive"), "utf8").trim().split(/\s+/).map(Number);
-      expect(alive).toHaveLength(8 + 2);
+      expect(alive).toHaveLength(8 + 2 * 2);
       expect(Math.max(...alive)).toBe(1);
     },
     60_000,

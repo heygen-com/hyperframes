@@ -4,6 +4,7 @@ import {
   firstFrameColourArgs,
   keyframeTransferArgs,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
   parseKeyframeTransfers,
   type PreviewSourceFacts,
   type ToneMapFrameColour,
@@ -202,7 +203,7 @@ export async function probeFirstFrameColour(
     maxBuffer: 1024 * 1024,
   });
   const first = result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
-  if (first.colorTransfer !== "arib-std-b67") return first;
+  if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
   const keyframes = await runner(ffmpegPath, keyframeTransferArgs(filePath, codec), {
     timeout: 30_000,
     maxBuffer: 8 * 1024 * 1024,

@@ -52,6 +52,14 @@ describe("hdrToSdrToneMapFilter", () => {
     expect(hdrToSdrToneMapFilter(hlg, keyframes("arib-std-b67", "smpte2084"))).toBe(toneMap(100));
     expect(hdrToSdrToneMapFilter(hlg, keyframes("arib-std-b67", "bt709"))).toBe(toneMap(100));
     expect(hdrToSdrToneMapFilter(hlg, keyframes())).toBe(toneMap(100));
+    const untagged = (keyframeTransfers: string[]) => ({
+      colorTransfer: "unknown",
+      keyframeTransfers,
+    });
+    expect(hdrToSdrToneMapFilter(hlg, untagged(["unspecified", "arib-std-b67"]))).toContain(
+      "npl=203",
+    );
+    expect(hdrToSdrToneMapFilter(PQ, untagged(["unspecified"]))).toContain("npl=100");
     expect(hdrToSdrToneMapFilter(PQ, { ...PQ, keyframeTransfers: ["smpte2084"] })).toBe(
       toneMap(100),
     );
@@ -61,11 +69,12 @@ describe("hdrToSdrToneMapFilter", () => {
   it("names each SPS transfer trace_headers prints, and reads only keyframes' headers", () => {
     const line = (code: number) =>
       `[trace_headers @ 0x1] 287         transfer_characteristics       00010010 = ${code}`;
-    expect(parseKeyframeTransfers([18, 16, 1, 2].map(line).join("\n"))).toEqual([
+    expect(parseKeyframeTransfers([18, 16, 1, 2, 4].map(line).join("\n"))).toEqual([
       "arib-std-b67",
       "smpte2084",
       "bt709",
-      "code 2",
+      "unspecified",
+      "code 4",
     ]);
     expect(keyframeTransferArgs("clip.mov", "hevc")).toContain(
       "filter_units=pass_types=33,trace_headers",
@@ -74,6 +83,10 @@ describe("hdrToSdrToneMapFilter", () => {
   });
 });
 
+const FFMPEG_MAJOR = Number(
+  /ffmpeg version n?(\d+)/.exec(spawnSync("ffmpeg", ["-version"]).stdout?.toString() ?? "")?.[1] ??
+    0,
+);
 const HAS_ZSCALE = /\szscale\s/.test(
   spawnSync("ffmpeg", ["-hide_banner", "-filters"]).stdout?.toString() ?? "",
 );
@@ -95,8 +108,9 @@ function toneMappedGrey(code: number): number {
   return Math.round(((luma - 16) * 255) / 219);
 }
 
-describe.skipIf(!HAS_ZSCALE)("hdrToSdrToneMapFilter on HLG grey", () => {
-  // Apple's own SDR conversion (avconvert) of these 10-bit steps gives 105 and 161; at 100 nits ours gave 138 and 202.
+// ffmpeg before 8 bundles an older zimg that maps HLG white near 174, outside the tolerance.
+describe.skipIf(!HAS_ZSCALE || FFMPEG_MAJOR < 8)("hdrToSdrToneMapFilter on HLG grey", () => {
+  // Apple's own SDR conversion (avconvert) of these 10-bit steps gives 105 and 161; at 100 nits ours gave 142 and 216.
   it("puts mid grey and reference white where Apple's SDR conversion does", () => {
     expect(Math.abs(toneMappedGrey(551) - 105)).toBeLessThanOrEqual(8);
     expect(Math.abs(toneMappedGrey(745) - 161)).toBeLessThanOrEqual(8);

@@ -282,6 +282,7 @@ export {
   hdrToSdrToneMapFilter,
   keyframeTransferArgs,
   parseKeyframeTransfers,
+  readsKeyframeTransfers,
   toneMapReferenceNits,
   parseFirstFrameColour,
   type ToneMapFrameColour,

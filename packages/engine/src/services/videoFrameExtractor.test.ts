@@ -4046,6 +4046,39 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 1 });
   }, 60_000);
 
+  it("reads an HLG source's keyframes again after that read failed", async () => {
+    const source = join(fixtureDir, "keyframe-retry.mp4");
+    await synthesizeHlgClip(source);
+    const { runFfmpeg: real } =
+      await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+    vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
+      args.includes("nokey")
+        ? Promise.resolve({
+            success: false,
+            exitCode: 1,
+            stderr: "",
+            durationMs: 0,
+            terminationReason: "exit",
+          })
+        : real(args, opts),
+    );
+    const extract = (id: string) =>
+      extractVideoFramesRange(source, id, 0, 1, {
+        fps: 1,
+        outputDir: join(fixtureDir, "keyframe-retry"),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+    const before = colourProbeRuns();
+    try {
+      await extract("keyframes-failed");
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+    await extract("keyframes-again");
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 2 });
+  }, 60_000);
+
   // One stream with HLG frames, then PQ frames: each is tone-mapped with its own transfer.
   it("tone-maps each frame of a mixed HLG and PQ stream with its own transfer", async () => {
     const segment = async (name: string, transfer: number) => {
