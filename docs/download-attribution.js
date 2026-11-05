@@ -3,10 +3,10 @@
 // so the download site cannot read this one. Mintlify runs every .js file in docs/ on every page
 // (mintlify.com/docs/customize/custom-scripts). The id is added at click time only, so a copied link never carries it,
 // and only when PostHog is running here and the visitor has not opted out of it.
-// They also name where this visit began, as the homepage's links do (web-marketing downloadUtms.ts withPageUtms): the
-// first docs page's utm tags, the kind of ad click id it came with (never the id) and `ref`, the site that sent it. The
-// download site reads them as the visit's landing source (demo-next lib/downloadAttribution.ts landingSource): the
-// click's own Referer is these docs, or nothing at all, since Mintlify's navbar button is rel="noreferrer".
+// They also name where this visit began, as the homepage's download links do: the first docs page's utm tags, the
+// kind of ad click id it came with (never the id) and `ref`, the site that sent it. The download site reads them as
+// the visit's landing source: the click's own Referer is these docs, or nothing at all, since Mintlify's navbar
+// button is rel="noreferrer".
 (function () {
   var TOKEN = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
   var STATE = "ph_" + TOKEN + "_posthog";
@@ -16,7 +16,7 @@
   // The one download address the docs link to (docs.json navbar and footer, quickstart.mdx).
   var DOWNLOAD = { protocol: "https:", hostname: "hyperframes.studio", pathname: "/studio/download" };
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  // The campaign tags and ad click ids the download site reads, in its order (lib/downloadAttribution.ts AD_CLICKS).
+  // The campaign tags and ad click ids the download site reads, in its order.
   var CAMPAIGN = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"];
   var AD_CLICKS = ["gclid", "gbraid", "wbraid", "dclid", "fbclid", "msclkid", "ttclid", "twclid", "li_fat_id", "rdt_cid", "sccid", "epik"];
   // Our own sites and HeyGen's sign-in: a visit that moved between them says nothing about where it began.
