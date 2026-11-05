@@ -2559,8 +2559,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? `A sub-composition timeline script failed to load (${sources.join(", ")})` +
-            scriptLoadCauseSuffix(loadCauses)
+          ? `A sub-composition timeline script failed to load${scriptLoadCauseSuffix(loadCauses)} ` +
+            `(${sources.join(", ")})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
