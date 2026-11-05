@@ -9,9 +9,18 @@ const terminal = vi.hoisted(() => ({
   checkouts: 0,
   checkoutError: null as unknown,
   args: [] as unknown[][],
+  enter: false,
 }));
 const events = vi.hoisted(() => ({ failed: [] as unknown[], timeout: [] as unknown[] }));
 const never = vi.hoisted(() => ({ paid: true }));
+const held = vi.hoisted(() => ({
+  offer: undefined as Promise<object> | undefined,
+  checkout: undefined as Promise<string> | undefined,
+  realOffer: false,
+  headerCalls: 0,
+  holdHeadersAfter: undefined as number | undefined,
+  stallPoll: false,
+}));
 
 vi.mock("../telemetry/events.js", () => ({
   trackBillingCheckoutFailed: (p: unknown) => void events.failed.push(p),
@@ -22,10 +31,12 @@ vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => !terminal.a
 vi.mock("node:readline/promises", () => ({
   createInterface: () => ({
     question: (_q: string, opts: { signal: AbortSignal }) =>
-      new Promise((_resolve, reject) =>
-        opts.signal.addEventListener("abort", () =>
-          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
-        ),
+      new Promise((resolve, reject) =>
+        terminal.enter
+          ? resolve("")
+          : opts.signal.addEventListener("abort", () =>
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            ),
       ),
     close: () => undefined,
   }),
@@ -35,24 +46,32 @@ vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
 }));
 vi.mock("../cloud/auth.js", () => ({
-  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudAuthHeaders: () =>
+    held.holdHeadersAfter !== undefined && ++held.headerCalls > held.holdHeadersAfter
+      ? new Promise(() => undefined)
+      : Promise.resolve({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
     ...real,
-    readOffer: async () => ({}),
+    readOffer: async (stop?: AbortSignal) =>
+      held.realOffer ? real.readOffer(stop) : (held.offer ?? {}),
     createCheckout: async (...args: unknown[]) => {
       if (terminal.checkoutError) throw terminal.checkoutError;
       terminal.checkouts++;
       terminal.args.push(args);
-      return "https://checkout.stripe.com/c/pay/cs_test_1";
+      return held.checkout ?? "https://checkout.stripe.com/c/pay/cs_test_1";
     },
-    readPlan: async () => ({
-      plan: ++plan.calls === 1 || !never.paid ? "none" : "pro",
-      credits: plan.calls === 1 || !never.paid ? 0 : 500,
-    }),
+    readPlan: async (stop?: AbortSignal) => {
+      if (++plan.calls > 1 && held.stallPoll)
+        return new Promise((resolve) => stop?.addEventListener("abort", () => resolve(null)));
+      return {
+        plan: plan.calls === 1 || !never.paid ? "none" : "pro",
+        credits: plan.calls === 1 || !never.paid ? 0 : 500,
+      };
+    },
   };
 });
 
@@ -73,9 +92,18 @@ afterEach(() => {
   terminal.checkouts = 0;
   terminal.args.length = 0;
   terminal.checkoutError = null;
+  terminal.enter = false;
   events.failed.length = 0;
   events.timeout.length = 0;
   never.paid = true;
+  Object.assign(held, {
+    offer: undefined,
+    checkout: undefined,
+    realOffer: false,
+    headerCalls: 0,
+    holdHeadersAfter: undefined,
+    stallPoll: false,
+  });
   vi.restoreAllMocks();
   consumeCommandResult();
 });
@@ -109,7 +137,12 @@ describe("billing subscribe", () => {
     expect(url.searchParams.get("from")).toBe("cli");
     expect(url.searchParams.get("skill")).toBe("style-sampling");
     expect(terminal.args).toEqual([
-      ["plans", {}, undefined, { skill: "style-sampling", baseline: 0 }],
+      [
+        "plans",
+        {},
+        undefined,
+        { skill: "style-sampling", baseline: 0, stop: expect.any(AbortSignal) },
+      ],
     ]);
   });
 });
@@ -235,5 +268,104 @@ describe("billing outcomes", () => {
     vi.useRealTimers();
     expect(events.failed).toEqual([]);
     expect(events.timeout).toEqual([]);
+  });
+});
+
+function release<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+describe("billing once the wait has ended", () => {
+  it("creates no checkout when the purchase lands while the price is still being read", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const offer = release<object>();
+    held.offer = offer.promise;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    offer.resolve({ pro: { amount: 2900, currency: "usd" } });
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("Checkout link");
+  });
+
+  it("opens no checkout page when the purchase lands while Enter's checkout is being created", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const checkout = release<string>();
+    held.checkout = checkout.promise;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    checkout.resolve("https://checkout.stripe.com/c/pay/cs_late");
+    await done;
+    vi.useRealTimers();
+    expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
+  });
+
+  it("ends at --timeout while the price read is still unanswered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    held.realOffer = true;
+    never.paid = false;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) =>
+      String(url).includes("/hyperframes/plans")
+        ? new Promise((_, reject) =>
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+          )
+        : new Response(JSON.stringify({ data: { space_info: { space_id: "sp-1" } } })),
+    );
+    vi.useFakeTimers();
+    let settled = false;
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    vi.useRealTimers();
+    expect(settled).toBe(true);
+    await done;
+    expect(terminal.checkouts).toBe(0);
+  });
+
+  it("creates no checkout after --timeout while a plan poll is still unanswered", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    never.paid = false;
+    held.stallPoll = true;
+    const offer = release<object>();
+    held.offer = offer.promise;
+    vi.useFakeTimers();
+    let settled = false;
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    offer.resolve({ pro: { amount: 2900, currency: "usd" } });
+    await vi.advanceTimersByTimeAsync(0);
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("Checkout link");
+    expect(settled).toBe(true);
+    await done;
+  });
+
+  it("ends when the purchase lands while a sign-in refresh is still unanswered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    held.realOffer = true;
+    held.holdHeadersAfter = 1; // the plans page's workspace read answers; the price read's does not
+    let settled = false;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] }).then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(2000);
+    vi.useRealTimers();
+    expect(settled).toBe(true);
+    await done;
+    expect(terminal.checkouts).toBe(0);
   });
 });

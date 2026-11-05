@@ -160,6 +160,19 @@ describe("stripeCheckoutUrl", () => {
 });
 
 describe("createCheckout", () => {
+  it("sends no checkout once the wait it belongs to has ended", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchImpl);
+    const stop = new AbortController();
+    stop.abort();
+    await expect(
+      createCheckout("plans", { pro: { amount: 2900, currency: "usd" } }, undefined, {
+        stop: stop.signal,
+      }),
+    ).rejects.toBeDefined();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it("asks for Pro with the CLI's own token and returns Stripe's page", async () => {
     const sent: { url: string; body: Record<string, unknown> }[] = [];
     vi.stubGlobal("fetch", async (url: string, init: { body: string }) => {

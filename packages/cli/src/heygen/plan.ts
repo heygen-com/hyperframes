@@ -28,14 +28,35 @@ function mockPlan(): Plan | null {
 // Payment routes live on api2, beside the OAuth ones; the v3 generation routes stay on api.
 export const billingBaseUrl = () => resolveCloudBaseUrl().replace("://api.", "://api2.");
 
-export async function readPlan(): Promise<Plan | null> {
+const timeoutOrStop = (ms: number, stop?: AbortSignal) =>
+  stop ? AbortSignal.any([stop, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms);
+
+// A token refresh can't take the stop signal: overlapping callers share the one in-flight refresh.
+async function authHeadersUnlessStopped(stop?: AbortSignal): Promise<Record<string, string>> {
+  if (!stop) return resolveCloudAuthHeaders();
+  stop.throwIfAborted();
+  const headers = await Promise.race([
+    resolveCloudAuthHeaders(),
+    new Promise<never>((_, reject) =>
+      stop.addEventListener("abort", () => reject(stop.reason), { once: true }),
+    ),
+  ]);
+  stop.throwIfAborted();
+  return headers;
+}
+
+async function getBilling(route: string, stop?: AbortSignal) {
+  const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/${route}`, {
+    headers: { ...(await authHeadersUnlessStopped(stop)), accept: "application/json" },
+    signal: timeoutOrStop(15_000, stop),
+  });
+  const body: unknown = await res.json().catch(() => null);
+  return { res, data: isRecord(body) && isRecord(body.data) ? body.data : body };
+}
+
+export async function readPlan(stop?: AbortSignal): Promise<Plan | null> {
   try {
-    const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/subscription`, {
-      headers: { ...(await resolveCloudAuthHeaders()), accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body: unknown = await res.json().catch(() => null);
-    const data = isRecord(body) && isRecord(body.data) ? body.data : body;
+    const { res, data } = await getBilling("subscription", stop);
     if (!res.ok || !isRecord(data)) return mockPlan();
     const usage = isRecord(data.usage) ? data.usage : {};
     // studio-contracts' BillingSubscription: `subscription` is null on Free; an unpaid placeholder still names a plan.
@@ -126,14 +147,9 @@ export interface Offer {
 const int = (v: unknown) =>
   Number.isSafeInteger(v) && (v as number) > 0 ? (v as number) : undefined;
 
-export async function readOffer(): Promise<Offer> {
+export async function readOffer(stop?: AbortSignal): Promise<Offer> {
   try {
-    const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/plans`, {
-      headers: { ...(await resolveCloudAuthHeaders()), accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body: unknown = await res.json().catch(() => null);
-    const data = isRecord(body) && isRecord(body.data) ? body.data : body;
+    const { res, data } = await getBilling("plans", stop);
     if (!res.ok || !isRecord(data)) return {};
     const plans = Array.isArray(data.plans) ? data.plans.filter(isRecord) : [];
     const pro = plans.find((p) => p.plan_name === "pro" && p.period === "month");
@@ -213,7 +229,7 @@ export async function createCheckout(
   kind: "plans" | "credits",
   offer: Offer,
   missing?: number,
-  source: { skill?: string; baseline?: number } = {},
+  source: { skill?: string; baseline?: number; stop?: AbortSignal } = {},
 ): Promise<string> {
   const addon = kind === "credits" ? offer.addon : undefined;
   if (kind === "credits" && !addon)
@@ -222,34 +238,42 @@ export async function createCheckout(
       "Credits are not on sale for this account right now.",
     );
   if (addon)
-    return postCheckout("addon.checkout", {
-      quantity: addonBlocks(addon, missing),
-      currency: addon.currency,
-      unit_amount: addon.unitAmount,
-    });
+    return postCheckout(
+      "addon.checkout",
+      {
+        quantity: addonBlocks(addon, missing),
+        currency: addon.currency,
+        unit_amount: addon.unitAmount,
+      },
+      source.stop,
+    );
   const pro = () => ({ plan_name: "pro", period: "month", request_id: randomUUID() });
   const returnUrl = cliCheckoutReturn(checkoutSkill(source.skill), source.baseline);
   try {
-    return await postCheckout("checkout", { ...pro(), return_url: returnUrl });
+    return await postCheckout("checkout", { ...pro(), return_url: returnUrl }, source.stop);
   } catch (error) {
     // A server whose allow-list lacks the plans page still sells Pro, only without the CLI's origin.
     const refused = error instanceof CheckoutError && error.reason === "checkout_rejected";
     if (!refused || !RETURN_REFUSED.test(error.message)) throw error;
     trackBillingCheckoutReturnRefused();
-    return postCheckout("checkout", pro());
+    return postCheckout("checkout", pro(), source.stop);
   }
 }
 
-async function postCheckout(route: string, body: Record<string, unknown>): Promise<string> {
+async function postCheckout(
+  route: string,
+  body: Record<string, unknown>,
+  stop?: AbortSignal,
+): Promise<string> {
   const res = await fetch(`${billingBaseUrl()}/v1/payment/hyperframes/${route}`, {
     method: "POST",
     headers: {
-      ...(await resolveCloudAuthHeaders()),
+      ...(await authHeadersUnlessStopped(stop)),
       accept: "application/json",
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20_000),
+    signal: timeoutOrStop(20_000, stop),
   }).catch((error: unknown) => {
     throw new CheckoutError(
       "checkout_network",

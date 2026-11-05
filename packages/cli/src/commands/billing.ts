@@ -51,7 +51,8 @@ async function openCheckout(
   source: CheckoutSource,
 ): Promise<void> {
   if (isUnattended()) {
-    console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing, source))}`);
+    const link = await createCheckout(kind, offer, missing, { ...source, stop: signal });
+    if (!signal.aborted) console.log(`Checkout link: ${c.accent(link)}`);
     return;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -60,7 +61,9 @@ async function openCheckout(
   } finally {
     rl.close();
   }
-  await openBrowser(await createCheckout(kind, offer, missing, source));
+  if (signal.aborted) return;
+  const link = await createCheckout(kind, offer, missing, { ...source, stop: signal });
+  if (!signal.aborted) await openBrowser(link);
 }
 
 async function offerCheckout(
@@ -70,7 +73,8 @@ async function offerCheckout(
   needed: number | undefined,
   source: CheckoutSource,
 ): Promise<CheckoutError | null> {
-  const offer = await readOffer();
+  const offer = await readOffer(signal);
+  if (signal.aborted) return null;
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
@@ -78,12 +82,15 @@ async function offerCheckout(
     await openCheckout(kind, offer, missing, signal, source);
     return null;
   } catch (error) {
-    if (signal.aborted) return null;
-    console.error(c.error(error instanceof Error ? error.message : String(error)));
-    if (!(error instanceof CheckoutError)) return null;
-    trackBillingCheckoutFailed({ reason: error.reason });
-    return error;
+    return signal.aborted ? null : reportCheckoutFailure(error);
   }
+}
+
+function reportCheckoutFailure(error: unknown): CheckoutError | null {
+  console.error(c.error(error instanceof Error ? error.message : String(error)));
+  if (!(error instanceof CheckoutError)) return null;
+  trackBillingCheckoutFailed({ reason: error.reason });
+  return error;
 }
 
 /** Opens the plans or credits page, then waits until the account shows the change, so the run continues on its own. */
@@ -121,7 +128,11 @@ export default defineCommand({
     }
     const needed = Number(args.needed) || undefined;
     const skill = checkoutSkill(args.skill);
-    const before = await readPlan();
+    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
+    const stop = new AbortController();
+    const atDeadline = setTimeout(() => stop.abort(), deadline - Date.now());
+    atDeadline.unref?.();
+    const before = await readPlan(stop.signal);
     const done = (p: Plan | null) =>
       action === "subscribe"
         ? !!p && p.plan !== "none"
@@ -139,17 +150,18 @@ export default defineCommand({
     });
     console.log(`${action === "subscribe" ? "Plans" : "Credits"} page: ${c.accent(url)}`);
     await openBrowser(url);
-    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
-    const stop = new AbortController();
     const giveUp = new AbortController();
     const waiting = (async () => {
-      while (Date.now() < deadline && !giveUp.signal.aborted) {
+      while (!stop.signal.aborted && !giveUp.signal.aborted) {
         await new Promise((r) => setTimeout(r, 2000));
-        const now = await readPlan();
+        const now = await readPlan(stop.signal);
         if (done(now)) return now;
       }
       return null;
-    })().finally(() => stop.abort());
+    })().finally(() => {
+      clearTimeout(atDeadline);
+      stop.abort();
+    });
     const checkoutFailure = await offerCheckout(
       action === "subscribe" ? "plans" : "credits",
       before,
