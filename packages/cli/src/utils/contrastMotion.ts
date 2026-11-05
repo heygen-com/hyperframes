@@ -60,8 +60,6 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
     const parent = animation.parent;
     if (!parent || animation.timeScale() === 0) return false;
     const time = parent.time();
-    // A sub-composition's own timeline is registered paused and seeked with the root: a paused one is stopped unless
-    // it is registered and its clock is where the parent's puts it.
     const seekedWithParent =
       registered.has(animation) &&
       Math.abs(animation.time() - (time - animation.startTime())) <= 1e-3;
@@ -98,6 +96,17 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
     }
   }
 
+  function tweensUnder(text: Element): ContrastTweenState[] {
+    const box = text.getBoundingClientRect();
+    return [...byTarget].flatMap(([node, states]) => {
+      if (node.contains(text) || text.contains(node)) return [];
+      const other = node.getBoundingClientRect();
+      const across = Math.min(box.right, other.right) - Math.max(box.left, other.left);
+      const down = Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top);
+      return across > 0 && down > 0 ? states : [];
+    });
+  }
+
   function sampleOf(element: unknown): ContrastMotionSample | null {
     if (!(element instanceof Element)) return null;
     const tweens: ContrastTweenState[] = [];
@@ -107,15 +116,7 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
       const own = Number.parseFloat(getComputedStyle(node).opacity);
       if (Number.isFinite(own)) opacity *= own;
     }
-    const text = element.getBoundingClientRect();
-    for (const [node, states] of byTarget) {
-      if (node.contains(element) || element.contains(node)) continue;
-      const box = node.getBoundingClientRect();
-      const across = Math.min(text.right, box.right) - Math.max(text.left, box.left);
-      const down = Math.min(text.bottom, box.bottom) - Math.max(text.top, box.top);
-      // A layer under the text that is entering or leaving moves what the text is measured against.
-      if (across > 0 && down > 0) tweens.push(...states);
-    }
+    tweens.push(...tweensUnder(element));
     return tweens.length > 0 ? { opacity, tweens } : null;
   }
 
