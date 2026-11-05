@@ -1262,6 +1262,37 @@ describe("preview quality: lighter copies of heavy files", () => {
     expect(isProxied(el)).toBe(false);
   });
 
+  // fails without the fix: each ask while the clip played added a waiter with its own listeners and timer.
+  it("waits once for a playing clip's light copy to be put back, however often its size is asked", async () => {
+    vi.doMock("./media", async (original) => ({
+      ...(await original<typeof import("./media")>()),
+      isActiveAtPlayhead: () => true,
+    }));
+    const { video, setPreviewQuality, setProxyDisplayScale } = await stage({ "/video.mp4": HEAVY });
+    const el = video();
+    setPreviewQuality(0.5);
+    await settle();
+    expect(isProxied(el)).toBe(true);
+    let playing = true;
+    Object.defineProperty(el, "paused", { configurable: true, get: () => !playing });
+    const listen = vi.spyOn(el, "addEventListener");
+
+    // The file now counts as light at this box, so its light copy is no longer needed.
+    window.__HF_MEDIA_SOURCE_FACTS__ = { "/video.mp4": LIGHT };
+    for (const scale of [0.99, 0.98, 0.97]) {
+      setProxyDisplayScale(scale);
+      await settle();
+    }
+    expect(isProxied(el)).toBe(true);
+    expect(listen.mock.calls.filter(([type]) => type === "pause")).toHaveLength(1);
+
+    playing = false;
+    el.dispatchEvent(new Event("pause"));
+    await settle();
+    expect(el.getAttribute("src")).toBe("/video.mp4");
+    vi.doUnmock("./media");
+  });
+
   it("puts the original back at full quality", async () => {
     const { video, setPreviewQuality } = await stage({ "/video.mp4": HEAVY });
     const el = video();

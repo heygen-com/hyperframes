@@ -160,10 +160,14 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   const needed = shown && lowered ? scalePreviewProxyBox(shown, previewQuality) : shown;
   if (lowered && !needed) return;
   if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
+    // One waiter per clip: a drag of the panel asks this again and again while the clip plays.
+    if (restoreWaiting.has(el)) return;
+    restoreWaiting.add(el);
     return whenNotPlayingHere(
       el,
       () => boxedElements.get(el) === copy,
       () => restoreOriginal(el),
+      () => restoreWaiting.delete(el),
     );
   }
   if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
@@ -176,11 +180,18 @@ function playingHere(el: HTMLMediaElement): boolean {
 }
 
 const SETTLE_POLL_MS = 250;
+const restoreWaiting = new WeakSet<HTMLMediaElement>();
 
 /** Runs `apply` once `el` is not a clip playing at the playhead: now when it is not, else when it pauses, seeks, ends
- * or leaves its window. Nothing runs when `wanted` has turned false by then. */
-function whenNotPlayingHere(el: HTMLMediaElement, wanted: () => boolean, apply: () => void): void {
+ * or leaves its window. Nothing runs when `wanted` has turned false by then. `settled` runs first either way. */
+function whenNotPlayingHere(
+  el: HTMLMediaElement,
+  wanted: () => boolean,
+  apply: () => void,
+  settled?: () => void,
+): void {
   if (!playingHere(el)) {
+    settled?.();
     if (wanted()) apply();
     return;
   }
@@ -190,6 +201,7 @@ function whenNotPlayingHere(el: HTMLMediaElement, wanted: () => boolean, apply: 
     if (wanted() && playingHere(el)) return;
     events.forEach((type) => el.removeEventListener(type, check));
     clearInterval(poll);
+    settled?.();
     if (wanted()) apply();
   };
   events.forEach((type) => el.addEventListener(type, check));
