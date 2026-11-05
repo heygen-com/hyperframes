@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   extractAllVideoFrames,
   type ExtractedFrames,
@@ -122,7 +121,13 @@ describe("extractDeferredFrames", () => {
       untouched.framePaths.set(0, "/kept/frame_00001.jpg");
       const entries = [video, untouched];
 
-      await extractAllDeferredFrames(entries, { fps, cfg: {} });
+      const progress: Array<[number, number]> = [];
+      await extractAllDeferredFrames(entries, {
+        fps,
+        cfg: {},
+        onProgress: (done, total) => progress.push([done, total]),
+      });
+      expect(progress).toEqual([[90, 90]]);
 
       expect(entries[0]).toBe(video);
       expect(video.deferredRange).toBeUndefined();

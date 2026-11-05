@@ -41,6 +41,7 @@ export function trackSegmentFramePeak(
 ): SegmentVideoFrames {
   let peak = 0;
   return {
+    forFrames: (frameIndexes, name) => frames.forFrames(frameIndexes, name),
     forWorker() {
       const worker = frames.forWorker();
       return {

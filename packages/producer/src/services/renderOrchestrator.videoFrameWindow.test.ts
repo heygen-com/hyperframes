@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DrawElementCaptureError, resolveConfig, type ExtractedFrames } from "@hyperframes/engine";
+import { selectCaptureCalibrationFrames } from "./render/captureCost.js";
 import { CaptureStageError } from "./render/captureStageError.js";
 import { createRenderJob, executeRenderJob } from "./renderOrchestrator.js";
 
@@ -16,6 +17,17 @@ const { state, REACHED } = vi.hoisted(() => ({
     segmentedOutcomes: [] as Array<"spawn_failed" | "drawelement_failure">,
     offerDeferredFrames: true,
     nativeHdr: false,
+    extractions: [] as Array<{ frames: number[]; outputRoot: string }>,
+    tables: [] as Array<FrameLookupTable | null>,
+    calibrations: [] as Array<{
+      folderExisted: boolean;
+      frameIndex: number | undefined;
+      frameOnDisk: boolean;
+      extractionsBefore: number;
+    }>,
+    folderAtNextStage: [] as boolean[],
+    logs: [] as string[],
+    stages: [] as string[],
   },
   REACHED: "stage reached",
 }));
@@ -24,6 +36,10 @@ vi.mock("@hyperframes/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/engine")>()),
   assertConfiguredFfmpegBinariesExist: () => {},
   resolveBrowserGpuMode: async () => "software",
+  createVideoFrameInjector: (table: FrameLookupTable | null) => {
+    state.tables.push(table);
+    return Object.assign(async () => {}, { fresh: () => null });
+  },
   createCaptureSession: async () => ({
     browserConsoleBuffer: [],
     options: {},
@@ -140,30 +156,74 @@ vi.mock("./render/stages/extractVideosStage.js", async (importOriginal) => ({
     };
   },
 }));
-vi.mock("./render/deferredVideoFrames.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./render/deferredVideoFrames.js")>()),
-  extractAllDeferredFrames: async (extracted: ExtractedFrames[]) => {
-    state.events.push("extract-all");
-    for (const video of extracted) delete video.deferredRange;
-  },
-}));
+vi.mock("./render/deferredVideoFrames.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./render/deferredVideoFrames.js")>();
+  return {
+    ...actual,
+    extractAllDeferredFrames: async (
+      extracted: ExtractedFrames[],
+      input: { onProgress?: (done: number, total: number) => void },
+    ) => {
+      state.events.push("extract-all");
+      for (const video of extracted) delete video.deferredRange;
+      input.onProgress?.(1200, 1200);
+    },
+    // Stands in for ffmpeg: writes the frames the given output frames show, as the real one names them.
+    extractDeferredFrames: async (input: Parameters<typeof actual.extractDeferredFrames>[0]) => {
+      const frames = [...input.frames];
+      state.extractions.push({ frames, outputRoot: input.outputRoot });
+      const shown = actual.shownDeferredFrameIndexes(input, frames, input.fps);
+      return input.extracted
+        .filter((video) => video.deferredRange)
+        .map((video) => {
+          const outputDir = join(input.outputRoot, video.videoId);
+          const framePaths = new Map<number, string>();
+          for (const index of shown.get(video.videoId) ?? []) {
+            mkdirSync(outputDir, { recursive: true });
+            const path = join(outputDir, `frame_${String(index + 1).padStart(5, "0")}.jpg`);
+            writeFileSync(path, "x");
+            framePaths.set(index, path);
+          }
+          return { ...video, outputDir, framePaths, ownedByLookup: false };
+        });
+    },
+  };
+});
 vi.mock("./render/stages/audioStage.js", () => ({
   runAudioStage: async () => ({ audioOutputPath: undefined, hasAudio: false, audioProcessMs: 0 }),
 }));
 vi.mock("./render/captureCost.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/captureCost.js")>()),
   resolveRenderWorkerCount: () => 1,
-  runCaptureCalibration: async (input: { forceScreenshot: boolean; probeSession: unknown }) => ({
-    calibration: undefined,
-    forceScreenshot: input.forceScreenshot,
-    probeSession: input.probeSession,
-    lastBrowserConsole: [],
-  }),
+  runCaptureCalibration: async (input: {
+    forceScreenshot: boolean;
+    probeSession: unknown;
+    createRenderVideoFrameInjector: () => ((...args: never[]) => Promise<void>) | null;
+  }) => {
+    const root = state.extractions.find((e) => e.outputRoot.endsWith("calibration"))?.outputRoot;
+    const hook = input.createRenderVideoFrameInjector();
+    const table = state.tables.at(-1);
+    const shown = hook && root ? table?.getActiveFramePayloads(600 / 30).get("long") : undefined;
+    state.calibrations.push({
+      folderExisted: root !== undefined && existsSync(root),
+      frameIndex: shown?.frameIndex,
+      frameOnDisk: shown !== undefined && existsSync(shown.framePath),
+      extractionsBefore: state.extractions.length,
+    });
+    return {
+      calibration: undefined,
+      forceScreenshot: input.forceScreenshot,
+      probeSession: input.probeSession,
+      lastBrowserConsole: [],
+    };
+  },
 }));
 vi.mock("./render/stages/captureSegmentedStage.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/stages/captureSegmentedStage.js")>()),
   runCaptureSegmentedStage: async (input: { segmentVideoFrames?: unknown }) => {
     state.events.push("segmented");
+    const calibrationRoot = state.extractions.find((e) => e.outputRoot.endsWith("calibration"));
+    if (calibrationRoot) state.folderAtNextStage.push(existsSync(calibrationRoot.outputRoot));
     state.segmentedWindow.push(input.segmentVideoFrames !== undefined);
     const outcome = state.segmentedOutcomes.shift();
     if (outcome === "spawn_failed") return { success: false };
@@ -199,6 +259,12 @@ beforeEach(() => {
   state.segmentedOutcomes = [];
   state.offerDeferredFrames = true;
   state.nativeHdr = false;
+  state.extractions = [];
+  state.calibrations = [];
+  state.tables = [];
+  state.folderAtNextStage = [];
+  state.logs = [];
+  state.stages = [];
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "true");
   vi.stubEnv("HF_VIDEO_FRAME_WINDOW", "true");
   vi.stubEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "");
@@ -221,10 +287,17 @@ function render(config: Partial<Parameters<typeof createRenderJob>[0]> = {}): Pr
     quality: "standard",
     hdrMode: "auto",
     producerConfig: resolveConfig({ useDrawElement: true, browserGpuMode: "software" }),
-    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    logger: {
+      info: (message: string) => void state.logs.push(message),
+      warn() {},
+      error() {},
+      debug() {},
+    },
     ...config,
   });
-  return executeRenderJob(job, root, join(root, `output.${config.format ?? "mp4"}`));
+  return executeRenderJob(job, root, join(root, `output.${config.format ?? "mp4"}`), (j) => {
+    if (j.currentStage && state.stages.at(-1) !== j.currentStage) state.stages.push(j.currentStage);
+  });
 }
 
 it("a segmented render with the flag on defers the long video and windows its frames", async () => {
@@ -293,4 +366,39 @@ it("a drawElement retry stays on the segmented route and keeps windowing", async
   await expect(render()).rejects.toThrow(REACHED);
   expect(state.events).toEqual(["segmented", "segmented"]);
   expect(state.segmentedWindow).toEqual([true, true]);
+});
+
+it("calibration on the windowed route injects real frames for its samples and removes them afterwards", async () => {
+  await expect(render()).rejects.toThrow(REACHED);
+  const calibration = state.extractions.find((e) => e.outputRoot.endsWith("calibration"));
+  expect(calibration?.frames).toEqual(selectCaptureCalibrationFrames(1200));
+  expect(state.calibrations).toEqual([
+    { folderExisted: true, frameIndex: 600, frameOnDisk: true, extractionsBefore: 1 },
+  ]);
+  expect(state.folderAtNextStage).toEqual([false]);
+});
+
+it("extracts the calibration frames before the first timed sample", async () => {
+  await expect(render()).rejects.toThrow(REACHED);
+  // The scripted calibration is the first thing that would be timed; by then the extraction is done.
+  expect(state.calibrations.map((c) => c.extractionsBefore)).toEqual([1]);
+});
+
+it("with the flag off, calibration extracts nothing", async () => {
+  vi.stubEnv("HF_VIDEO_FRAME_WINDOW", "false");
+  await expect(render()).rejects.toThrow(REACHED);
+  expect(state.extractions).toEqual([]);
+  expect(state.calibrations).toHaveLength(1);
+});
+
+it("the late full extraction is logged and moves the job's progress", async () => {
+  state.segmentedOutcomes = ["spawn_failed"];
+  await expect(render()).rejects.toThrow(REACHED);
+  expect(state.logs).toEqual(
+    expect.arrayContaining([
+      "[Render] Extracting the frames of the videos a window would have held back",
+      "[Render] Extracted the deferred video frames",
+    ]),
+  );
+  expect(state.stages).toContain("Extracting video frames");
 });

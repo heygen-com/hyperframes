@@ -142,6 +142,38 @@ describe("createSegmentVideoFrames", () => {
     expect(served).toContain(join(folder, "clip", "frame_00032.jpg"));
   });
 
+  it("forFrames extracts just the given frames ahead of time and release removes them", async () => {
+    const { dir, served, extractor, segmentVideoFrames, page } = setup();
+    const frames = await segmentVideoFrames.forFrames([0, 40, 74], "calibration");
+
+    const folder = join(dir, "segment-frames", "calibration");
+    expect(extractor.calls[0]!.outputRoot).toBe(folder);
+    expect(extractor.calls[0]!.frames).toEqual([0, 40, 74]);
+    expect(readdirSync(join(folder, "clip")).sort()).toEqual([
+      "frame_00001.jpg",
+      "frame_00041.jpg",
+      "frame_00075.jpg",
+    ]);
+
+    await frames.injector()!(page, 40 / 30);
+    expect(served).toContain(join(folder, "clip", "frame_00041.jpg"));
+
+    frames.release();
+    expect(existsSync(folder)).toBe(false);
+    expect(() => frames.release()).not.toThrow();
+  });
+
+  it("forFrames leaves no folder behind when its extraction fails", async () => {
+    const { dir, segmentVideoFrames } = setup({
+      extractFrames: async (input) => {
+        mkdirSync(join(input.outputRoot, "clip"), { recursive: true });
+        throw new Error("aborted");
+      },
+    });
+    await expect(segmentVideoFrames.forFrames([0], "calibration")).rejects.toThrow("aborted");
+    expect(existsSync(join(dir, "segment-frames", "calibration"))).toBe(false);
+  });
+
   it("release removes the folder and a second release does nothing", async () => {
     const { dir, workerFrames } = setup();
     await workerFrames.prepare(slice(2, 60, 75));

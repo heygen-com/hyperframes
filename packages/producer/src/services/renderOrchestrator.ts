@@ -143,6 +143,7 @@ import {
   describeWorkerPhases,
   forgetWorkerPhases,
   type MemorySampler,
+  reportExtractProgress,
   updateJobStatus,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
@@ -205,6 +206,7 @@ import {
   buildHeapAdvisoryWarning,
   resolveRenderWorkerCount,
   runCaptureCalibration,
+  selectCaptureCalibrationFrames,
 } from "./render/captureCost.js";
 import {
   computeCompositionObservabilityHash,
@@ -230,7 +232,10 @@ import {
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
-import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import {
+  resolveVideoExtractionPolicy,
+  runExtractVideosStage,
+} from "./render/stages/extractVideosStage.js";
 import { rendersSdrOnly } from "./render/hdrMode.js";
 import {
   planVideoLayerPassthrough,
@@ -3818,8 +3823,7 @@ async function executeRenderPipeline(input: {
     // can occupy all HTTP connections during native-video drift recovery.
     // The byte ceiling bounds the Node LRU; Chrome receives short URLs so
     // its resource cache does not retain the corresponding inline strings.
-    // True while some video's frames are still to be read per segment. Capture calibration, which
-    // runs before the plan and sizes workers and the too-slow check, draws those videos blank.
+    // True while some video's frames are still to be read per segment.
     let videoFrameWindow =
       windowVideoFrames &&
       (extractionResult?.extracted.some((video) => video.deferredRange) ?? false);
@@ -3843,10 +3847,25 @@ async function executeRenderPipeline(input: {
     const extractDeferredVideoFrames = async (): Promise<void> => {
       videoFrameWindow = false;
       updateCaptureObservability({ videoFrameWindow: "off" });
-      await extractAllDeferredFrames(extractionResult?.extracted ?? [], {
-        fps: job.config.fps,
-        cfg,
-        signal: executionSignal,
+      const extracted = extractionResult?.extracted ?? [];
+      const videoCount = extracted.filter((video) => video.deferredRange).length;
+      const startedAt = Date.now();
+      log.info("[Render] Extracting the frames of the videos a window would have held back", {
+        videoCount,
+      });
+      await observeRenderStage(observability, "video_extract_deferred", { videoCount }, () =>
+        extractAllDeferredFrames(extracted, {
+          fps: job.config.fps,
+          cfg,
+          signal: executionSignal,
+          maxTransientRetries: resolveVideoExtractionPolicy().maxTransientRetries,
+          onProgress: (done, total) => reportExtractProgress(job, done, total, onProgress),
+        }),
+      );
+      assertNotAborted();
+      log.info("[Render] Extracted the deferred video frames", {
+        videoCount,
+        elapsedMs: Date.now() - startedAt,
       });
     };
 
@@ -4158,33 +4177,48 @@ async function executeRenderPipeline(input: {
       updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress, {
         code: "start_browsers",
       });
-      const outcome = await observeRenderStage(
-        observability,
-        "capture_calibration",
-        captureStageObservationData({
-          forceScreenshot: captureForceScreenshot,
-          // Override the default `capturing` — calibration writes probe
-          // frames only, not `job.framesRendered`, so heartbeats reporting
-          // `framesCompleted: 0` misread as broken. Field signal
-          // ts=1784019503.
-          stagePhase: "calibrating",
-        }),
-        () =>
-          runCaptureCalibration({
-            cfg: calibrationCaptureConfig(cfg),
-            fileServer: activeFileServer,
-            workDir,
-            log,
-            job,
-            totalFrames,
+      // Calibration samples fixed frames, so the windowed videos it shows are extracted for just
+      // those here, outside its timing, and removed when it ends however it ends.
+      const calibrationFrames = videoFrameWindow
+        ? await buildSegmentVideoFrames().forFrames(
+            selectCaptureCalibrationFrames(totalFrames),
+            "calibration",
+          )
+        : undefined;
+      let outcome: Awaited<ReturnType<typeof runCaptureCalibration>>;
+      try {
+        outcome = await observeRenderStage(
+          observability,
+          "capture_calibration",
+          captureStageObservationData({
             forceScreenshot: captureForceScreenshot,
-            probeSession,
-            buildCaptureOptions: buildPrepCaptureOptions,
-            createRenderVideoFrameInjector,
-            assertNotAborted,
+            // Override the default `capturing` — calibration writes probe
+            // frames only, not `job.framesRendered`, so heartbeats reporting
+            // `framesCompleted: 0` misread as broken. Field signal
+            // ts=1784019503.
+            stagePhase: "calibrating",
           }),
-        { heartbeatMessage: "browser calibrating (frames not started)" },
-      );
+          () =>
+            runCaptureCalibration({
+              cfg: calibrationCaptureConfig(cfg),
+              fileServer: activeFileServer,
+              workDir,
+              log,
+              job,
+              totalFrames,
+              forceScreenshot: captureForceScreenshot,
+              probeSession,
+              buildCaptureOptions: buildPrepCaptureOptions,
+              createRenderVideoFrameInjector: calibrationFrames
+                ? calibrationFrames.injector
+                : createRenderVideoFrameInjector,
+              assertNotAborted,
+            }),
+          { heartbeatMessage: "browser calibrating (frames not started)" },
+        );
+      } finally {
+        calibrationFrames?.release();
+      }
       captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;

@@ -1,3 +1,4 @@
+import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   createFrameLookupTable,
@@ -5,6 +6,7 @@ import {
   type ExtractedFrames,
   extractVideoFramesRange,
   type FrameRange,
+  runVideoExtractionWithRetry,
   type ShownBox,
   type VideoElement,
 } from "@hyperframes/engine";
@@ -108,19 +110,39 @@ export async function extractAllDeferredFrames(
     cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
     signal?: AbortSignal;
     sourceOf?: (video: ExtractedFrames) => string;
+    /** Retries after a transient failure, as the engine's full extraction does. */
+    maxTransientRetries?: number;
+    /** Frames extracted so far of all those to extract, after each video. */
+    onProgress?: (framesDone: number, framesTotal: number) => void;
   },
 ): Promise<void> {
+  const framesTotal = extracted.reduce(
+    (sum, video) => sum + (video.deferredRange ? video.totalFrames : 0),
+    0,
+  );
+  let framesDone = 0;
   for (const video of extracted) {
     const range = video.deferredRange;
     if (!range) continue;
-    const filled = await extractVideoFramesRange(
-      input.sourceOf?.(video) ?? video.srcPath,
-      video.videoId,
-      range.startTime,
-      range.durationSeconds,
-      { fps: input.fps, outputDir: dirname(video.outputDir), format: range.format },
-      input.signal,
-      input.cfg,
+    const { result: filled } = await runVideoExtractionWithRetry(
+      () =>
+        extractVideoFramesRange(
+          input.sourceOf?.(video) ?? video.srcPath,
+          video.videoId,
+          range.startTime,
+          range.durationSeconds,
+          { fps: input.fps, outputDir: dirname(video.outputDir), format: range.format },
+          input.signal,
+          input.cfg,
+        ),
+      {
+        signal: input.signal,
+        maxTransientRetries: input.maxTransientRetries,
+        onRetry: () => {
+          rmSync(video.outputDir, { recursive: true, force: true });
+          mkdirSync(video.outputDir, { recursive: true });
+        },
+      },
     );
     if (filled.framePaths.size < video.totalFrames) {
       throw new Error(
@@ -130,5 +152,7 @@ export async function extractAllDeferredFrames(
     }
     video.framePaths = filled.framePaths;
     delete video.deferredRange;
+    framesDone += video.totalFrames;
+    input.onProgress?.(framesDone, framesTotal);
   }
 }
