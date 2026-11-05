@@ -754,7 +754,8 @@ export async function retryOnStall<T>(
 const LOCK_ATTEMPTS = 5;
 const LOCK_FIRST_WAIT_MS = 250;
 
-/** Windows refuses to rename or unlink a file a scanner has open, for a moment. A real permission error is retried too, then thrown. */
+/** Windows refuses to rename or unlink a file a scanner has open, for a moment.
+ * A real permission error is retried too, then thrown. */
 function isLockedFileError(err: unknown): boolean {
   if (process.platform !== "win32") return false;
   const said = `${(err as NodeJS.ErrnoException | undefined)?.code ?? ""} ${normalizeErrorMessage(err)}`;
