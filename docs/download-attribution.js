@@ -118,18 +118,22 @@
       return;
     }
     var original = link.getAttribute("href");
-    // A tag the link already names keeps its own value.
+    // A tag the link already names keeps its own value. Only the source's own names come back from storage, so a value
+    // kept there can never add any other parameter (ph_id belongs to the consent check below).
     new URLSearchParams(landing).forEach(function (value, name) {
-      if (!url.searchParams.has(name)) url.searchParams.set(name, value);
+      var known = CAMPAIGN.indexOf(name) !== -1 || name === "ref" || (name === "ad_click" && AD_CLICKS.indexOf(value) !== -1);
+      if (known && !url.searchParams.has(name)) url.searchParams.set(name, value);
     });
     var id = posthogLoaded() && !optedOut() && posthogId();
     if (id) url.searchParams.set("ph_id", id);
     if (url.toString() === new URL(link.href).toString()) return;
-    // Mintlify's <Card> opens its own href prop from React, never the link's current href, so the click is followed
-    // here: a new tab for a middle click, Cmd/Ctrl-click or a target="_blank" link, else this tab. Shift (new window)
-    // and Alt (save link) are left to the browser with the href set below.
+    // Mintlify's <Card> (its anchor carries data-client-link) opens its own href prop from React, never the link's current
+    // href, so its click is followed here: a new tab for a middle click, Cmd/Ctrl-click or a target="_blank" link, else
+    // this tab. Every other link keeps the browser's own follow of the href set below, so Mintlify's click handlers
+    // (the navbar CTA's docs.navitem.cta_click) still run. Shift (new window) and Alt (save link) stay the browser's.
+    var card = link.hasAttribute("data-client-link");
     var newTab = event.button === 1 || event.metaKey || event.ctrlKey || link.target === "_blank";
-    if ((event.button === 0 || event.button === 1) && !event.shiftKey && !event.altKey) {
+    if (card && (event.button === 0 || event.button === 1) && !event.shiftKey && !event.altKey) {
       event.preventDefault();
       event.stopPropagation();
       if (newTab) window.open(url.toString(), "_blank", /noreferrer/.test(link.rel) ? "noopener,noreferrer" : "noopener");
