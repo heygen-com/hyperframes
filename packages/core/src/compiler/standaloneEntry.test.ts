@@ -2,22 +2,59 @@ import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "./standaloneEntry";
 
+const ROOT = `<div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3"><p id="label">Hello</p></div>`;
+const SCENE_SCRIPT = `<script>window.__timelines = window.__timelines || {}; const tl = gsap.timeline({ paused: true }); tl.to("#label", { opacity: 1, duration: 3 }, 0); window.__timelines["scene"] = tl;</script>`;
+const SCENE_STYLE = `<style>#root { position: absolute; inset: 0; background: #123456; }</style>`;
+
 describe("isTemplateEntry", () => {
   it.each([
-    "<template></template>",
-    " \n<!-- Scene author notes -->\n<template id='scene'></template>",
-    "<!-- a --><!-- <template> is inert --><TEMPLATE></TEMPLATE>",
-    "<!--><template></template>",
-  ])("recognizes a template entry past leading comments: %s", (html) => {
+    `<template>${ROOT}</template>`,
+    ` \n<!-- Scene author notes -->\n<template id='scene'>${ROOT}</template>`,
+    `<!-- a --><!-- <template> is inert --><TEMPLATE>${ROOT}</TEMPLATE>`,
+    `<!--><template>${ROOT}</template>`,
+  ])("recognizes a template-first fragment entry: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(true);
+  });
+
+  it("recognizes the full-document shape whose composition root lives in the body template", () => {
+    const html = `<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      ${SCENE_STYLE}
+      ${ROOT}
+      ${SCENE_SCRIPT}
+    </template>
+  </body>
+</html>`;
     expect(isTemplateEntry(html)).toBe(true);
   });
 
   it.each([
     "<template-card></template-card>",
-    "<!doctype html><html><body><template></template></body></html>",
-    "<div></div><template></template>",
-    "<!-- <template></template> -->",
+    `<template-card>${ROOT}</template-card>`,
+    `<!doctype html><html><body><template></template></body></html>`,
+    `<div></div><template></template>`,
+    `<!-- <template>${ROOT}</template> -->`,
+    `<!doctype html><html><body>${ROOT}</body></html>`,
   ])("does not mistake other entries for a template scene: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it("keeps a full document with a live composition root outside the template a plain entry", () => {
+    const html = `<!doctype html>
+<html>
+  <body>
+    <div id="live" data-composition-id="live" data-width="640" data-height="360" data-duration="3"></div>
+    <template>${ROOT}</template>
+  </body>
+</html>`;
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it("keeps a template-first fragment with a live composition root beside it a plain entry", () => {
+    const html = `<template>${ROOT}</template><div data-composition-id="live"></div>`;
     expect(isTemplateEntry(html)).toBe(false);
   });
 });
