@@ -1,3 +1,9 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 import { audioFailureDiagnostics } from "@hyperframes/engine";
 /**
  * Activity A of the distributed render pipeline.
@@ -47,6 +53,8 @@ import {
   type EngineConfig,
   type VideoFrameFormat,
   getEncoderPreset,
+  type ProresProfile,
+  keyframeIntervalToGopSize,
   normalizeVp9CpuUsed,
   resolveConfig,
   type AudioProcessingFailure,
@@ -74,6 +82,7 @@ import {
   assertVideoExtractionSucceeded,
   runExtractVideosStage,
 } from "../render/stages/extractVideosStage.js";
+import { readPlanReferenceBackground } from "../render/planReferenceBackground.js";
 import { runProbeStage } from "../render/stages/probeStage.js";
 import {
   type ChunkSliceJson,
@@ -155,6 +164,14 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
   crf?: number;
   /** Target video bitrate (e.g. `"10M"`); mutually exclusive with `crf`. */
   bitrate?: string;
+  /** Longest gap between keyframes, in seconds (mp4). Chunk joins add keyframes, so this is a maximum. */
+  keyframeIntervalSeconds?: number;
+  /** ProRes profile for `format: "mov"`; the 422 profiles have no alpha. Defaults to `4444`. */
+  proresProfile?: ProresProfile;
+  /** Peak bitrate cap (mp4), per chunk. */
+  maxBitrate?: string;
+  /** Rate-cap buffer; defaults to twice `maxBitrate`. */
+  bufferSize?: string;
   /**
    * Source-video frame extraction format. Defaults to `"auto"`, matching the
    * in-process renderer: alpha/alpha-capable sources extract as PNG, other
@@ -292,7 +309,7 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
-export interface LocalExecutionPlan {
+export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   executionPlanDir: string;
   executionPlanHash: string;
   chunkCount: number;
@@ -353,7 +370,7 @@ export function logPlanStage(log: ProducerLogger, stage: string, startedAt: numb
  * @deprecated Use `planV2()` or `planV2WithPublisher()` for new integrations.
  * The v1 result remains supported for existing transports.
  */
-export interface PlanResult {
+export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   planDir: string;
   planProtocol: Readonly<PlanProtocolV1Descriptor>;
   planHash: string;
@@ -950,6 +967,12 @@ function buildLockedRenderConfig(input: {
     preset,
     crf: config.crf,
     bitrate: config.bitrate,
+    maxBitrate: config.maxBitrate,
+    bufferSize: config.bufferSize,
+    keyframeIntervalFrames:
+      config.keyframeIntervalSeconds === undefined
+        ? undefined
+        : keyframeIntervalToGopSize({ num: config.fps, den: 1 }, config.keyframeIntervalSeconds),
     ...locksVp9CpuUsed,
     // GOP === chunkSize so every chunk's first frame is an IDR keyframe and
     // ffmpeg concat-copy round-trips losslessly.
@@ -957,6 +980,10 @@ function buildLockedRenderConfig(input: {
     closedGop: true,
     forceKeyframes: "n=0",
     pixelFormat,
+    // Omitted for the default so existing 4444 plans keep their planHash.
+    ...(config.proresProfile && config.proresProfile !== "4444"
+      ? { proresProfile: config.proresProfile }
+      : {}),
     chunkSize: input.effectiveChunkSize,
     chunkCount: input.chunkCount,
     runtimeEnv: input.runtimeEnv,
@@ -1004,7 +1031,11 @@ function resolveEncoderTriple(config: DistributedRenderConfig): EncoderTriple {
         `libvpx-vp9, and png-sequence has no encoder.`,
     );
   }
-  return resolveNonMp4EncoderTriple(config.format, config.quality ?? "standard");
+  return resolveNonMp4EncoderTriple(
+    config.format,
+    config.quality ?? "standard",
+    config.proresProfile,
+  );
 }
 
 function resolveMp4EncoderTriple(codec: DistributedRenderConfig["codec"]): EncoderTriple {
@@ -1029,9 +1060,11 @@ function resolveMp4EncoderTriple(codec: DistributedRenderConfig["codec"]): Encod
 function resolveNonMp4EncoderTriple(
   format: Exclude<DistributedFormat, "mp4">,
   quality: "draft" | "standard" | "high",
+  proresProfile?: ProresProfile,
 ): EncoderTriple {
   if (format === "mov") {
-    return { encoder: "prores-software", pixelFormat: "yuva444p10le", preset: "4444" };
+    const { pixelFormat, preset } = getEncoderPreset(quality, "mov", undefined, proresProfile);
+    return { encoder: "prores-software", pixelFormat, preset };
   }
   if (format === "webm") {
     // Defer to `getEncoderPreset` for the libvpx-vp9 preset string so the
@@ -1269,7 +1302,6 @@ async function compilePlanComposition(
     urlByAbsentLocalPath,
     projectDir,
     workDir,
-    htmlPath,
     entryFile,
     job,
     cfg,
@@ -1314,10 +1346,11 @@ async function compilePlanComposition(
   }
 
   // ── Probe ──
-  // Browser probe runs only when needed. For statically-resolvable durations
-  // this is a near-zero pass.
   stageStarted = Date.now();
   const probeResult = await runProbeStage({
+    recordReferenceBackground: createReferenceBackgroundRecorder((result) =>
+      Object.assign(job, result),
+    ),
     projectDir,
     workDir,
     job,
@@ -1335,6 +1368,21 @@ async function compilePlanComposition(
     subTimelineWaitMemo: {},
   });
   logPlanStage(log, "probe", stageStarted);
+  if (!probeResult.probeSession) {
+    stageStarted = Date.now();
+    Object.assign(
+      job,
+      await readPlanReferenceBackground({
+        projectDir,
+        workDir,
+        cfg,
+        log,
+        options: { width, height, fps: job.config.fps, variables: job.config.variables },
+      }),
+    );
+    assertNotAborted();
+    logPlanStage(log, "reference_background", stageStarted);
+  }
   compiled = probeResult.compiled;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
@@ -1683,6 +1731,7 @@ export async function buildLocalExecutionPlan(
   // the planDir to compute planHash from the actual bytes the chunk worker
   // will read.
   const compositionJson: CompositionMetadataJson = {
+    ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
     durationSeconds: job.duration ?? 0,
     width,
     height,
@@ -1763,6 +1812,7 @@ export async function buildLocalExecutionPlan(
   });
 
   return {
+    ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
     executionPlanDir: planDir,
     executionPlanHash: planHash,
     chunkCount,
@@ -1823,6 +1873,7 @@ export async function plan(
 ): Promise<PlanResult> {
   const executionPlan = await buildLocalExecutionPlan(projectDir, config, planDir, options);
   return {
+    ...referenceBackgroundResult(executionPlan[REFERENCE_BACKGROUND_FIELD]),
     planDir: executionPlan.executionPlanDir,
     planProtocol: PLAN_PROTOCOL_V1,
     planHash: executionPlan.executionPlanHash,

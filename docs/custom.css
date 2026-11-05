@@ -503,9 +503,15 @@ samp {
     color: var(--hf-heading);
   }
 
+  /* Mintlify marks the current tab with aria-current, except the Docs dropdown, which gets .text-primary instead */
+  #navbar .nav-tabs-item[aria-current],
   #navbar .nav-tabs-item.text-primary {
     background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
     color: var(--hf-heading) !important;
+  }
+
+  #navbar .nav-tabs-item:focus:not(:focus-visible) {
+    outline: none;
   }
 
   #navbar .nav-tabs-item > .absolute.bottom-0 {
@@ -583,11 +589,20 @@ samp {
   background: color-mix(in srgb, var(--hf-text) 46%, transparent);
 }
 
-/* Preserve a useful search field on smaller desktop widths. */
-@media (min-width: 1024px) and (max-width: 1199px) {
+/*
+ * Ask Assistant already sits in the ⌘K search window and in the "Ask a question" bar at the foot of every
+ * page, so the desktop bar drops its own copy (⌘I still opens it; phones keep theirs). #assistant-entry is
+ * Mintlify's markup, not a setting: re-check after Mintlify updates.
+ */
+@media (min-width: 1024px) {
   #navbar #assistant-entry {
     display: none;
   }
+}
+
+/* Top-bar Docs menu: titles in the heading colour so they stand apart from their grey one-line descriptions. */
+.nav-dropdown-item .font-medium {
+  color: var(--hf-heading);
 }
 
 /* Every structural hairline (header bottom, content rules, footer) is the palette's line,
@@ -1330,7 +1345,7 @@ div.h-px.bg-gray-100 {
 /* ── UX-pass tweaks (Ular): brand the Playground CTA, align the logo ── */
 @media (min-width: 1024px) {
   /* Line the logo up with the sidebar text (was flush at the navbar padding, 16px further left). */
-  #navbar a[href*="/introduction"] {
+  #navbar a:has(> img.nav-logo) {
     margin-left: 16px;
   }
 
@@ -1404,12 +1419,6 @@ h2 { clear: both; }
   background: var(--hf-glass) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-}
-
-@media (min-width: 1024px) {
-  #navbar .nav-tabs-item.text-primary {
-    background: var(--hf-chip);
-  }
 }
 
 /* Headlines: hyperframes.dev's heavy, tight TT Norms. */
@@ -1825,3 +1834,16 @@ pre.shiki {
 .hf-remix-credit, .hf-remix-help { color: var(--hf-text-secondary); }
 .hf-remix-credit a { color: inherit; }
 .hf-remix-btn { background: var(--hf-heading); color: var(--hf-background); }
+
+/* Catalog item pages: the title, the standfirst and the Docs tab are written into the page itself
+   (scripts/generate-catalog-pages.ts), because Mintlify renders snippet components in the browser only and
+   search engines read the server HTML. CatalogDetail adds the player, tabs and tools around them. */
+.hf-ve-static-head { margin: 24px 0 28px; } /* the component's own my-4 (16px) + its header's 8px */
+.hf-ve-static-head h1 { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; color: var(--hf-text); }
+.hf-ve-static-head p { margin: 12px 0 0; font-size: 18px; line-height: 1.5; color: var(--hf-text-secondary); max-width: 70ch; }
+html.dark .hf-ve-static-head h1 { color: #f5f3f1; }
+html.dark .hf-ve-static-head p { color: #b8b6b4; }
+@media (max-width: 640px) { .hf-ve-static-head h1 { font-size: 32px; } }
+/* The Docs tab's text sits after the component and shows only while that tab is open, as the tab's own slot did. */
+[data-static-slot] { display: none; }
+body:has(.hf-ve-slots[data-tab="docs"]) [data-static-slot="docs"] { display: block; }

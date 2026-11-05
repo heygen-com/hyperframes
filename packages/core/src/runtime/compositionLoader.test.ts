@@ -1071,6 +1071,25 @@ describe("loadCompositions external hosts", () => {
       });
     });
 
+    it("binds the scene's variable text before its scripts run", async () => {
+      const host = appendExternalHost("https://example.com/card.html", "card-1");
+      host.setAttribute("data-variable-values", '{"title":"Pro"}');
+      const compositionHtml =
+        `<html data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Default"}]'>` +
+        `<body><div data-composition-id="card-1"><h1 id="t" data-var-text="title">Default</h1></div>` +
+        `<script>var t = document.getElementById("t"); t.setAttribute("data-seen", t.textContent);</scr` +
+        `ipt></body></html>`;
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(compositionHtml, { status: 200 }),
+      );
+
+      await loadFixture();
+
+      await vi.waitFor(() =>
+        expect(host.querySelector("#t")?.getAttribute("data-seen")).toBe("Pro"),
+      );
+    });
+
     it("does not redefine a CSS variable already authored on the host", async () => {
       const style = document.createElement("style");
       style.textContent = ":root { --accent: #4287f5; }";

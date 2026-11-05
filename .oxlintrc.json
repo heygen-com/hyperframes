@@ -15,6 +15,7 @@
     "registry/blocks/**/lib/*.iife.js",
     "registry/blocks/{glass-shard-title,code-slice-hero,cuboid-carousel,frost-sequence-camera-orbit,orbit-card}/**/*.{js,mjs}",
     "registry/blocks/frost-sequence-camera-orbit/source/**",
+    "registry/examples/path-traced-3d/assets/vendor/*.min.js",
     "chrome/",
     "packages/cli/src/media-use/lib/svg-sanitize.mjs"
   ],
@@ -84,6 +85,32 @@
             "object": "self",
             "property": "fetch",
             "message": "Use studioApiFetch (utils/studioApiFetch.ts): it keeps Studio's requests off the preview media's sockets."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/cli/src/**/*.ts"],
+      "excludeFiles": [
+        "**/*.test.ts",
+        "packages/cli/src/utils/defineCommand.ts",
+        "packages/cli/src/ui/prompts.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "citty",
+                "importNames": ["defineCommand"],
+                "message": "Define commands with defineCommand from packages/cli/src/utils/defineCommand.ts so the shared guards and the agent-mode contract test cover them."
+              },
+              {
+                "name": "@clack/prompts",
+                "message": "Import prompts and spinners from packages/cli/src/ui/prompts.ts: it refuses to prompt when nobody can answer."
+              }
+            ]
           }
         ]
       }

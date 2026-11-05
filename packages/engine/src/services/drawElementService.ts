@@ -86,9 +86,7 @@ export function resolveDrawElementCaptureMode(
  * captureDrawElementFrame can hide them from paint records and drawImage
  * their live content underneath the drawElementImage output.
  *
- * WebGL contexts additionally get `preserveDrawingBuffer: true` forced —
- * without it the drawing buffer is cleared after each compositor present and
- * drawImage(glCanvas) reads blank.
+ * Register forcePreservedDrawingBuffer first: this wrapper only records.
  *
  * Must be registered via page.evaluateOnNewDocument BEFORE navigation.
  */
@@ -107,11 +105,10 @@ export function instrumentAcceleratedCanvases(): void {
     type: string,
     attrs?: Record<string, unknown>,
   ) {
-    const isGl = type === "webgl" || type === "webgl2" || type === "experimental-webgl";
-    const isAccel = isGl || type === "webgpu";
-    const finalAttrs = isGl ? { ...attrs, preserveDrawingBuffer: true } : attrs;
+    const isAccel =
+      type === "webgl" || type === "webgl2" || type === "experimental-webgl" || type === "webgpu";
     // oxlint-disable-next-line no-explicit-any
-    const ctx = (orig as any).call(this, type, finalAttrs);
+    const ctx = (orig as any).call(this, type, attrs);
     if (ctx && isAccel) {
       const list = w.__hf_accel_canvases ?? [];
       if (!list.includes(this)) list.push(this);
@@ -128,6 +125,24 @@ export function instrumentAcceleratedCanvases(): void {
       w.__hf_canvas_2d = list2d;
     }
     return ctx;
+  };
+}
+
+/**
+ * WebGL contexts keep their drawing buffer after a frame is presented, so drawImage(glCanvas) reads the frame
+ * instead of blank. Must be registered via page.evaluateOnNewDocument BEFORE navigation.
+ */
+export function forcePreservedDrawingBuffer(): void {
+  const orig = HTMLCanvasElement.prototype.getContext;
+  // oxlint-disable-next-line no-explicit-any
+  (HTMLCanvasElement.prototype as any).getContext = function (
+    this: HTMLCanvasElement,
+    type: string,
+    attrs?: Record<string, unknown>,
+  ) {
+    const isGl = type === "webgl" || type === "webgl2" || type === "experimental-webgl";
+    // oxlint-disable-next-line no-explicit-any
+    return (orig as any).call(this, type, isGl ? { ...attrs, preserveDrawingBuffer: true } : attrs);
   };
 }
 
@@ -987,7 +1002,13 @@ export async function produceDrawElementFrameBatch(
   width: number,
   height: number,
   quality = 80,
-): Promise<{ encodeResults: Array<Promise<Buffer>>; failedAt: number | null; error?: string }> {
+): Promise<{
+  encodeResults: Array<Promise<Buffer>>;
+  failedAt: number | null;
+  error?: string;
+  /** Background urls whose decode timed out during this batch. */
+  lateBackgrounds: string[];
+}> {
   const state = workerEncodeStates.get(page);
   if (!state) {
     throw new Error(
@@ -1055,7 +1076,8 @@ export async function produceDrawElementFrameBatch(
         __hf3d?: { update: () => void };
         __hf?: { seek?: (t: number) => void };
         __hfWaitForSeekCompletion?: () => Promise<void>;
-        __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+        __hfDecodeDynamicCssBackgroundImages?: () => Promise<string[] | void>;
+        __hf_css_background_late?: string[];
         __hfDeInvalidate?: () => boolean;
         __HF_ROOT_PROPS__?: boolean;
         __HF_ROOT_BASE_OPACITY__?: number;
@@ -1091,7 +1113,8 @@ export async function produceDrawElementFrameBatch(
         try {
           if (aw.__hf && typeof aw.__hf.seek === "function") aw.__hf.seek(t);
           await aw.__hfWaitForSeekCompletion?.();
-          await aw.__hfDecodeDynamicCssBackgroundImages?.();
+          const late = await aw.__hfDecodeDynamicCssBackgroundImages?.();
+          if (late?.length) (aw.__hf_css_background_late ??= []).push(...late);
           aw.__hf3d?.update();
           const accel = (aw.__hf_accel_canvases ?? []).filter((c) => root.contains(c));
           for (const c of accel) {
@@ -1218,5 +1241,9 @@ export async function produceDrawElementFrameBatch(
     }
   }
 
-  return { encodeResults, failedAt: outcome.failedAt, error: outcome.error };
+  const lateBackgrounds = await page.evaluate(() => {
+    const w = window as Window & { __hf_css_background_late?: string[] };
+    return w.__hf_css_background_late?.splice(0) ?? [];
+  });
+  return { encodeResults, failedAt: outcome.failedAt, error: outcome.error, lateBackgrounds };
 }

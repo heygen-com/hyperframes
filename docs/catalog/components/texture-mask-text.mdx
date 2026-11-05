@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Texture Mask Text</h1>
+  <p>CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/texture-mask-text.json"
   compositionId="texture-mask-text"
   compositionSrc="compositions/components/texture-mask-text/texture-mask-text.html"
   title="Texture Mask Text"
-  description="CSS luminance masks that cut holes through letterforms - 66 pre-built texture masks from ambientCG PBR color maps"
   variables={[]}
   meta={{"category":"Texture","badge":"Stable","codeLines":379}}
   attribution={{"path":"registry/components/texture-mask-text","tags":["text","text-effect","effect","texture","mask"]}}
@@ -414,7 +418,9 @@ That writes `compositions/components/texture-mask-text/texture-mask-text.html`, 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -895,6 +901,4 @@ Tagged `text` `text-effect` `effect` `texture` `mask`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

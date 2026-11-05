@@ -1,4 +1,5 @@
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { parseGsapScript } from "@hyperframes/parsers/gsap-parser";
 import { GSAP_BASE_URL_META, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
@@ -12,7 +13,12 @@ import {
 
 type IframeWindow = Window & {
   __timelines?: Record<string, { kill?: () => void; pause?: () => void }>;
-  __player?: { getTime?: () => number; seek?: (t: number) => void };
+  __player?: {
+    getTime?: () => number;
+    seek?: (t: number) => void;
+    isPlaying?: () => boolean;
+    play?: () => void;
+  };
   __hfForceTimelineRebind?: () => void;
   __hfSuppressSceneMutations?: <T>(fn: () => T) => T;
   __hfStudioManualEditsApply?: () => void;
@@ -252,9 +258,12 @@ export interface SoftReloadOptions {
  * no-op if the timeline already reports being at that time internally.
  */
 function finalizeSoftReload(win: IframeWindow, currentTime: number): void {
+  // A seek pauses the player, so an edit made while playing resumes it once the timeline is rebuilt.
+  const wasPlaying = win.__player?.isPlaying?.() === true;
   win.__player?.seek?.(currentTime);
   win.__hfForceTimelineRebind?.();
   win.__hfStudioManualEditsApply?.();
+  if (wasPlaying) win.__player?.play?.();
 }
 
 /**
@@ -287,6 +296,40 @@ export function applySoftReloadFinalization(
     return true;
   } catch {
     return false;
+  }
+}
+
+const animatedBy = (doc: Document, scriptText: string): Set<Element> => {
+  const animated = new Set<Element>();
+  for (const { targetSelector } of parseGsapScript(scriptText).animations) {
+    try {
+      for (const element of doc.querySelectorAll(targetSelector)) animated.add(element);
+    } catch {
+      // A selector this document cannot parse animates nothing in it.
+    }
+  }
+  return animated;
+};
+
+/** Authored style back on the elements the restored script stops animating, before a reload lands. */
+export function repaintDroppedTweenStyle(
+  win: IframeWindow,
+  doc: Document,
+  authored: Document,
+  targetKeys: string[],
+  restoredScript: string | null,
+): void {
+  const live = findGsapScriptElements(doc)
+    .map((script) => script.textContent ?? "")
+    .join("");
+  if (live === (restoredScript ?? "")) return;
+  const kept = restoredScript ? animatedBy(doc, restoredScript) : new Set<Element>();
+  for (const [element, tweened] of collectResetTargets(win, doc, targetKeys)) {
+    if (kept.has(element)) continue;
+    const source = findAuthoredElement(authored, element);
+    const style =
+      source instanceof HTMLElement || source instanceof SVGElement ? source.style : null;
+    restoreAuthoredStyle((element as HTMLElement).style, style, tweened);
   }
 }
 

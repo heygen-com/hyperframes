@@ -69,20 +69,28 @@ function writeProject(name: string, reveal: string): string {
 async function snapshotAt(dir: string, time: string) {
   const output = join(dir, "out");
   const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const said: string[] = [];
+  const keep = (...parts: unknown[]) => void said.push(parts.map(String).join(" "));
+  vi.spyOn(console, "error").mockImplementation(keep);
+  vi.spyOn(console, "warn").mockImplementation(keep);
   try {
-    await snapshotCommand.run?.({
-      args: {
-        dir,
-        at: time,
-        end: false,
-        json: true,
-        output,
-        describe: "false",
-        "browser-gpu": false,
-      },
-    } as never);
+    try {
+      await snapshotCommand.run?.({
+        args: {
+          dir,
+          at: time,
+          end: false,
+          json: true,
+          output,
+          describe: "false",
+          "browser-gpu": false,
+        },
+      } as never);
+    } catch (error) {
+      throw new Error(`snapshot failed: ${[...said, ...log.mock.calls.flat()].join(" | ")}`, {
+        cause: error,
+      });
+    }
     const envelope = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
     return { envelope, output };
   } finally {

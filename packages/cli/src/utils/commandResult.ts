@@ -12,17 +12,23 @@ let pendingResult: CommandResult = SUCCESS_RESULT;
 let rootExitRequester: ((exitCode: number) => void) | undefined;
 let rootExitCodeSanitizer: (() => void) | undefined;
 
+export const USAGE_EXIT_CODE = 2;
+
 export class CliUsageError extends Error {
   readonly result: CommandResult;
+  readonly hint?: string;
+  readonly code: string;
 
   constructor(
     message = "Invalid command usage",
-    options: { exitCode?: number; presented?: boolean } = {},
+    options: { exitCode?: number; presented?: boolean; hint?: string; code?: string } = {},
   ) {
     super(message);
     this.name = "CliUsageError";
+    this.hint = options.hint;
+    this.code = options.code ?? "usage_error";
     this.result = {
-      exitCode: options.exitCode ?? 1,
+      exitCode: options.exitCode ?? USAGE_EXIT_CODE,
       kind: "usage_error",
       presented: options.presented,
     };
@@ -61,7 +67,7 @@ export function failCommand(exitCode = 1, cause?: unknown): never {
   throw new CliRuntimeError("Command failed", { exitCode, presented: true, cause });
 }
 
-export function failUsage(exitCode = 1): never {
+export function failUsage(exitCode = USAGE_EXIT_CODE): never {
   throw new CliUsageError("Invalid command usage", { exitCode, presented: true });
 }
 
@@ -112,6 +118,25 @@ export async function outputWritten(): Promise<void> {
   const written = (stream: NodeJS.WriteStream) =>
     new Promise<void>((resolve) => stream.write("", () => resolve()));
   await Promise.all([written(process.stdout), written(process.stderr)]);
+}
+
+let drainsToExit = false;
+const DRAIN_GRACE_MS = 8_000;
+
+export function drainToExit(): void {
+  drainsToExit = true;
+}
+
+export interface ProcessEnd {
+  exit(exitCode: number): void;
+  setExitCode(exitCode: number): void;
+  later: typeof setTimeout;
+}
+
+export function endProcess(exitCode: number, host: ProcessEnd): void {
+  if (!drainsToExit) return host.exit(exitCode);
+  host.setExitCode(exitCode);
+  host.later(() => host.exit(exitCode), DRAIN_GRACE_MS).unref();
 }
 
 /** Ask cli.ts to finalize telemetry/output and then terminate the process. */

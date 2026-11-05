@@ -1,47 +1,27 @@
-import { execFile, type ChildProcess } from "node:child_process";
+import { execFile, type ChildProcess, type ExecFileException } from "node:child_process";
 import { promises as dns } from "node:dns";
 import { readFile } from "node:fs/promises";
-import { isIP } from "node:net";
+import { isIP, type Socket } from "node:net";
 import { request as httpRequest, type IncomingMessage, type ClientRequest } from "node:http";
-import { request as httpsRequest } from "node:https";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { connect as tlsConnect } from "node:tls";
+import { isBlockedNetworkHost } from "@hyperframes/engine/network-policy";
+import {
+  captureUpstreamProxy,
+  connectAuthority,
+  openUpstreamTunnel,
+  type UpstreamProxy,
+} from "./upstreamProxy.js";
 
 const DNS_TIMEOUT_MS = 10_000;
 const CARES_TIMEOUT_MS = 5_000;
 
-function ipv4Number(address: string): number {
-  return address.split(".").reduce((value, octet) => value * 256 + Number(octet), 0);
-}
-
-// Conservatively exclude special-use networks, including all of 192.0/16.
-const NON_PUBLIC_IPV4: ReadonlyArray<readonly [string, number]> = [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 16],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 3],
-];
-const NON_PUBLIC_RANGES = NON_PUBLIC_IPV4.map(([network, prefix]) => ({
-  start: ipv4Number(network),
-  end: ipv4Number(network) + 2 ** (32 - prefix),
-}));
-
-/** Conservative IPv4-only policy: special-use addresses fail closed. */
+/** IPv4-only (IPv6 fails closed), on the engine's special-use list so capture and downloads agree. */
 export function isPublicIPv4(address: string): boolean {
-  if (isIP(address) !== 4) return false;
-  const value = ipv4Number(address);
-  return !NON_PUBLIC_RANGES.some(({ start, end }) => value >= start && value < end);
+  return isIP(address) === 4 && !isBlockedNetworkHost(address);
 }
 
-/** Validate every A answer, then return a numeric peer that callers must dial directly. */
-export async function resolvePublicAddress(hostname: string): Promise<string> {
+export function assertPublicHostname(hostname: string): string {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   if (isIP(host) === 4) {
     if (!isPublicIPv4(host)) throw new Error("Capture requires a public IPv4 address");
@@ -55,6 +35,13 @@ export async function resolvePublicAddress(hostname: string): Promise<string> {
   ) {
     throw new Error("Capture requires a public hostname");
   }
+  return host;
+}
+
+/** Validate every A answer, then return a numeric peer that callers must dial directly. */
+export async function resolvePublicAddress(hostname: string): Promise<string> {
+  const host = assertPublicHostname(hostname);
+  if (isIP(host) === 4) return host;
   const answers = await resolveIPv4(host);
   const first = answers[0];
   if (!first || !answers.every(isPublicIPv4)) {
@@ -125,6 +112,13 @@ const SYSTEM_LOOKUP = `require("node:dns").lookup(process.argv[1], { all: true, 
 
 const liveLookups = new Set<ChildProcess>();
 
+function helperEnded(error: ExecFileException | null): string {
+  if (!error) return "the lookup helper printed no answer";
+  return error.signal
+    ? `the lookup helper was ended by ${error.signal}`
+    : `the lookup helper exited with code ${error.code}`;
+}
+
 export function systemLookupInKillableChild(host: string, timeoutMs: number): Promise<string[]> {
   if (!process.listeners("exit").includes(killLiveLookups)) process.on("exit", killLiveLookups);
   const answers = new Promise<string[]>((resolve, reject) => {
@@ -139,7 +133,7 @@ export function systemLookupInKillableChild(host: string, timeoutMs: number): Pr
       },
       (error, stdout, stderr) => {
         if (error?.killed) reject(new Error("Capture DNS timed out"));
-        else if (!stdout) reject(new Error(`Capture DNS failed: ${stderr || error?.message}`));
+        else if (!stdout) reject(new Error(`Capture DNS failed: ${stderr || helperEnded(error)}`));
         else {
           try {
             resolve(JSON.parse(stdout) as string[]);
@@ -161,7 +155,51 @@ function killLiveLookups(): void {
   for (const child of liveLookups) child.kill("SIGKILL");
 }
 
-/** Pinned asset transport; redirects are returned for caller validation. */
+type Route = { options: RequestOptions; tunnel?: Socket };
+
+async function pinnedRoute(target: URL, signal: AbortSignal): Promise<Route> {
+  const address = await new Promise<string>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    resolvePublicAddress(target.hostname)
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", onAbort));
+  });
+  signal.throwIfAborted();
+  return {
+    options: {
+      hostname: address,
+      port: target.port || undefined,
+      agent: false,
+      servername: target.hostname,
+      rejectUnauthorized: true,
+    },
+  };
+}
+
+async function upstreamRoute(
+  target: URL,
+  proxy: UpstreamProxy,
+  headers: Headers,
+  signal: AbortSignal,
+): Promise<Route> {
+  assertPublicHostname(target.hostname);
+  if (target.protocol === "http:") {
+    if (proxy.authorization) headers.set("proxy-authorization", proxy.authorization);
+    const path = `${target.origin}${target.pathname}${target.search}`;
+    return { options: { hostname: proxy.host, port: proxy.port, agent: false, path } };
+  }
+  const tunnel = await openUpstreamTunnel(proxy, connectAuthority(target), { signal });
+  return {
+    tunnel,
+    options: {
+      createConnection: () =>
+        tlsConnect({ socket: tunnel, servername: target.hostname, rejectUnauthorized: true }),
+    },
+  };
+}
+
+/** Pinned asset transport, or the opt-in upstream proxy; redirects are returned for caller validation. */
 export async function publicRequest(url: string | URL, init: RequestInit = {}): Promise<Response> {
   const target = new URL(url);
   if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) {
@@ -173,14 +211,6 @@ export async function publicRequest(url: string | URL, init: RequestInit = {}): 
   }
   // Video callers budget the entire body transfer; a default must not shorten it.
   const signal = init.signal ?? AbortSignal.timeout(30_000);
-  signal.throwIfAborted();
-  const address = await new Promise<string>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
-    signal.addEventListener("abort", onAbort, { once: true });
-    resolvePublicAddress(target.hostname)
-      .then(resolve, reject)
-      .finally(() => signal.removeEventListener("abort", onAbort));
-  });
   signal.throwIfAborted();
   const headers = new Headers(init.headers);
   for (const name of [
@@ -194,19 +224,19 @@ export async function publicRequest(url: string | URL, init: RequestInit = {}): 
     headers.delete(name);
   headers.set("host", target.host);
   headers.set("accept-encoding", "identity");
+  const proxy = captureUpstreamProxy();
+  const { options, tunnel } = proxy
+    ? await upstreamRoute(target, proxy, headers, signal)
+    : await pinnedRoute(target, signal);
   return new Promise<Response>((resolve, reject) => {
     const request = target.protocol === "https:" ? httpsRequest : httpRequest;
     const req = request(
       {
         protocol: target.protocol,
-        hostname: address,
-        port: target.port || undefined,
         path: `${target.pathname}${target.search}`,
+        ...options,
         method,
         headers: Object.fromEntries(headers),
-        agent: false,
-        servername: target.hostname,
-        rejectUnauthorized: true,
         signal,
       },
       (incoming) => {
@@ -218,7 +248,10 @@ export async function publicRequest(url: string | URL, init: RequestInit = {}): 
         }
       },
     );
-    req.once("error", reject);
+    req.once("error", (error) => {
+      tunnel?.destroy();
+      reject(error);
+    });
     req.end();
   });
 }

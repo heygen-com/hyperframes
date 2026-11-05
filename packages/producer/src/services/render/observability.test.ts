@@ -186,6 +186,94 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
+  it("puts where the stage was waiting in its stall message", async () => {
+    vi.useFakeTimers();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log: makeLog(),
+      renderJobId: "render-stall-detail",
+    });
+    const stage = observeRenderStage(
+      recorder,
+      "capture_disk",
+      undefined,
+      () => new Promise<void>(() => {}),
+      {
+        stall: {
+          progress: () => 0,
+          noProgressMs: 10_000,
+          firstProgressMs: 10_000,
+          detail: () => "Last phase per worker: worker 1 session_init.",
+        },
+      },
+    );
+    const caught = stage.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(((await caught) as Error).message).toBe(
+      "[Render] capture_disk stalled: no progress for 10000ms (stuck at 0). Last phase per worker: worker 1 session_init.",
+    );
+    vi.useRealTimers();
+  });
+
+  describe("the stall watchdog across a system sleep", () => {
+    const watch = () => {
+      const recorder = new RenderObservabilityRecorder({
+        pipelineStartMs: Date.now(),
+        log: makeLog(),
+        renderJobId: "render-stall-sleep",
+      });
+      const outcome: { error?: unknown } = {};
+      observeRenderStage(recorder, "capture_disk", undefined, () => new Promise<void>(() => {}), {
+        stall: { progress: () => 0, noProgressMs: 10_000, firstProgressMs: 10_000 },
+      }).catch((error: unknown) => {
+        outcome.error = error;
+      });
+      return outcome;
+    };
+
+    it("does not read a ten-hour sleep as no progress", async () => {
+      vi.useFakeTimers();
+      const outcome = watch();
+      await vi.advanceTimersByTimeAsync(3_000);
+      vi.setSystemTime(Date.now() + 10 * 3_600_000);
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(outcome.error).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(outcome.error).toBeInstanceOf(Error);
+      vi.useRealTimers();
+    });
+
+    it("still stalls when the process runs on time and no progress lands", async () => {
+      vi.useFakeTimers();
+      const outcome = watch();
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect((outcome.error as Error).message).toContain("no progress for 10000ms");
+      vi.useRealTimers();
+    });
+  });
+
+  it("tells the stall rule each time a capture attempt opens", async () => {
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log: makeLog(),
+      renderJobId: "render-attempt-opened",
+    });
+    const attemptOpened = vi.fn();
+    await observeRenderStage(
+      recorder,
+      "capture_disk",
+      undefined,
+      async (openAttempt) => {
+        openAttempt();
+        openAttempt();
+      },
+      {
+        stall: { progress: () => 0, noProgressMs: 10_000, firstProgressMs: 10_000, attemptOpened },
+      },
+    );
+    expect(attemptOpened).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps emitting heartbeats every 120s once the initial ramp is exhausted", async () => {
     vi.useFakeTimers();
     const log = makeLog();

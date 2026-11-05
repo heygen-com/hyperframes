@@ -2,8 +2,7 @@
 /**
  * probeStage — browser probe + recompile + media reconciliation.
  *
- * Runs only when `needsBrowser` is true (root duration unknown OR there are
- * unresolved nested compositions). Owns the `FileServerHandle` and the
+ * Runs when media discovery needs a browser. Owns the `FileServerHandle` and the
  * `CaptureSession` it creates and returns them so the sequencer can both
  * reuse them downstream (the capture stage reuses the probe session) and
  * clean them up in its `finally` block.
@@ -28,11 +27,13 @@
  *     prefix.
  */
 
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, join } from "node:path";
 import { parseHTML } from "linkedom";
 import {
   type CaptureOptions,
   type CaptureSession,
+  type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
   closeCaptureSession,
@@ -40,6 +41,7 @@ import {
   createCaptureSession,
   deriveBeginFrameProbeTimeTicks,
   getCompositionDuration,
+  getCompositionLengthSource,
   initializeSession,
   isTransientBrowserError,
   probeBeginFrameLiveness,
@@ -54,6 +56,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
 } from "@hyperframes/core";
+import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
 import type { BrowserMediaElement, CompiledComposition } from "../../htmlCompiler.js";
 import {
@@ -85,6 +88,7 @@ import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../capture
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
   /**
@@ -128,6 +132,8 @@ export interface ProbeStageResult {
   lastBrowserConsole: string[];
   /** Composition duration (post-probe). Guaranteed > 0 — the stage throws on <= 0. */
   duration: number;
+  /** Which input set `duration`; null when the runtime did not say. */
+  lengthSource: ReportedLengthSource | null;
   totalFrames: number;
   /** Wall-clock ms for the entire probe phase (near-zero when `needsBrowser` was false). */
   browserProbeMs: number;
@@ -169,16 +175,27 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+function variableHasValue(
+  element: Element,
+  variableId: string,
+  variables: Record<string, unknown> | undefined,
+): boolean {
+  if (variables && Object.hasOwn(variables, variableId)) return true;
+  for (let scope = element.parentElement; scope; scope = scope.parentElement) {
+    if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
+    if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
+  }
+  return Object.hasOwn(readDeclaredDefaults(element.ownerDocument.documentElement), variableId);
+}
+
 /**
- * Variable-bound image/audio/video sources are resolved by the browser runtime, not
- * the static compiler. Probe them whenever the current render overrides the
- * referenced variable so media extraction follows the resolved row value.
+ * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
+ * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
 ): boolean {
-  if (!variables || Object.keys(variables).length === 0) return false;
   const { document } = parseHTML(html);
   return Array.from(
     document.querySelectorAll(
@@ -186,7 +203,7 @@ export function hasVariableBoundMedia(
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && Object.hasOwn(variables, variableId));
+    return Boolean(variableId && variableHasValue(element, variableId, variables));
   });
 }
 
@@ -322,6 +339,21 @@ export function probeRequiresBrowser(args: {
   );
 }
 
+export type ReportedLengthSource =
+  | { from: Exclude<CompositionLengthSource["from"], "media"> }
+  | { from: "media"; tag: string; trimmed: boolean; srcHash: string };
+
+/** The length source with a media clip's src reduced to a hash of its file name, so no path leaves the render. */
+export function reportedLengthSource(
+  source: CompositionLengthSource | null,
+): ReportedLengthSource | null {
+  if (!source) return null;
+  if (source.from !== "media") return { from: source.from };
+  const name = basename(source.src.split(/[?#]/, 1)[0] ?? "");
+  const srcHash = createHash("sha256").update(name).digest("hex").slice(0, 12);
+  return { from: "media", tag: source.tag, trimmed: source.trimmed, srcHash };
+}
+
 export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageResult> {
   const {
     projectDir,
@@ -346,6 +378,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
 
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
+  let lengthSource: ReportedLengthSource | null =
+    input.composition.duration > 0 ? { from: "declared" } : null;
   let beginFrameStalled = false;
   let lastBrowserConsole: string[] = [];
 
@@ -357,14 +391,16 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   );
   const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
-  const needsBrowser = probeRequiresBrowser({
-    durationSeconds: composition.duration,
-    unresolvedCompositionCount: compiled.unresolvedCompositions.length,
-    hasAutoStart,
-    hasScriptedAudio,
-    hasVariableMedia,
-    hasInsertedMedia,
-  });
+  const needsBrowser =
+    cfg.videoLayerPassthrough ||
+    probeRequiresBrowser({
+      durationSeconds: composition.duration,
+      unresolvedCompositionCount: compiled.unresolvedCompositions.length,
+      hasAutoStart,
+      hasScriptedAudio,
+      hasVariableMedia,
+      hasInsertedMedia,
+    });
 
   try {
     if (needsBrowser) {
@@ -397,6 +433,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       const motionBlur = job.config.motionBlur;
       const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
       const captureOpts: CaptureOptions = {
+        recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,
         fps: job.config.fps,
@@ -540,10 +577,12 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (composition.duration <= 0) {
         log.info("Discovering composition duration...");
         const discoveredDuration = await getCompositionDuration(session);
+        lengthSource = reportedLengthSource(await getCompositionLengthSource(session));
         assertNotAborted();
         log.info("Probed composition duration from browser", {
           discoveredDuration,
           staticDuration: compiled.staticDuration,
+          lengthSource,
         });
         composition.duration = discoveredDuration;
       } else {
@@ -880,6 +919,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     probeSession,
     lastBrowserConsole,
     duration,
+    lengthSource,
     totalFrames,
     browserProbeMs,
     beginFrameStalled,

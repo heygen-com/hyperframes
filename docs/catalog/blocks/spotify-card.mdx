@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Spotify Now Playing</h1>
+  <p>Animated Spotify now-playing card with album art and progress bar</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/spotify-card.json"
   compositionId="spotify-card"
   compositionSrc="compositions/spotify-card.html"
   title="Spotify Now Playing"
-  description="Animated Spotify now-playing card with album art and progress bar"
   variables={[]}
   meta={{"duration":5,"width":1080,"height":1920,"category":"Social Overlays","badge":"Stable","codeLines":299}}
   attribution={{"path":"registry/blocks/spotify-card","tags":["social","overlay","spotify"]}}
@@ -334,7 +338,9 @@ That writes one file: `compositions/spotify-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -365,6 +371,4 @@ Tagged `social` `overlay` `spotify`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

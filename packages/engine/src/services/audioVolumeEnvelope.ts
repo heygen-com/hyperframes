@@ -16,7 +16,7 @@
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { renameWithRetry } from "../utils/renameWithRetry.js";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { dirname, join } from "path";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { normaliseEnvelope } from "@hyperframes/core/media-volume-envelope";

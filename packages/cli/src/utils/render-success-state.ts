@@ -25,6 +25,7 @@
 import { sanitizeSuccessfulExitCode } from "./commandResult.js";
 
 let renderSucceeded = false;
+let commandDelivered = false;
 
 /**
  * Called by the render command after the producer's `executeRenderJob` (or
@@ -44,9 +45,20 @@ export function isRenderSucceeded(): boolean {
   return renderSucceeded;
 }
 
+/** Called by the root CLI once any command's result is out with exit 0. */
+export function markCommandDelivered(): void {
+  commandDelivered = true;
+}
+
+/** True once the run has delivered its result, so a late teardown error must not change the exit code. */
+export function isRunDelivered(): boolean {
+  return renderSucceeded || commandDelivered;
+}
+
 /** Test-only reset. Not exported from the package. */
 export function _resetRenderSuccessForTests(): void {
   renderSucceeded = false;
+  commandDelivered = false;
 }
 
 type PostRenderErrorSink = (message: string) => void;

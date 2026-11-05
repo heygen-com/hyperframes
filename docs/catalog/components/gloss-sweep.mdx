@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Gloss Sweep</h1>
+  <p>A card lands with a restrained slam, catches one diagonal specular gloss, and holds perfectly still.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/gloss-sweep.json"
   compositionId="gloss-sweep"
   compositionSrc="compositions/components/gloss-sweep.html"
   title="Gloss Sweep"
-  description="A card lands with a restrained slam, catches one diagonal specular gloss, and holds perfectly still."
   variables={[{"id":"text","type":"string","role":"content","label":"Label","description":"Text displayed on the card.","default":"Pro"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color treatment for the card.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"sweep_angle","type":"number","role":"style","label":"Sweep angle","description":"Angle of the specular gloss in degrees.","default":25,"min":-60,"max":60,"step":1,"unit":"deg"}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":213}}
   attribution={{"path":"registry/components/gloss-sweep","tags":["motion-primitive","celebration","gloss","card","badge","payoff"]}}
@@ -248,7 +252,9 @@ That writes one file: `compositions/components/gloss-sweep.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -289,6 +295,4 @@ Tagged `motion-primitive` `celebration` `gloss` `card` `badge` `payoff`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

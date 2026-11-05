@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Drag and Drop Cursor</h1>
+  <p>A cursor grabs a task card, lifts and tilts it into its motion, carries it in lockstep to an empty column, drops it with a small settle, and the list closes the gap behind it.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-drag-drop.json"
   compositionId="cursor-drag-drop"
   compositionSrc="compositions/components/cursor-drag-drop.html"
   title="Drag and Drop Cursor"
-  description="A cursor grabs a task card, lifts and tilts it into its motion, carries it in lockstep to an empty column, drops it with a small settle, and the list closes the gap behind it."
   variables={[{"id":"card_label","type":"string","role":"content","label":"Dragged card","default":"Fix checkout validation"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"},{"id":"tone","type":"enum","role":"style","label":"Board tone","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":464}}
   attribution={{"path":"registry/components/cursor-drag-drop","tags":["cursor","motion-primitive","drag","drop","kanban","product-demo"]}}
@@ -499,7 +503,9 @@ That writes one file: `compositions/components/cursor-drag-drop.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -540,6 +546,4 @@ Tagged `cursor` `motion-primitive` `drag` `drop` `kanban` `product-demo`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

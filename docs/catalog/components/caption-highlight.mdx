@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Highlight</h1>
+  <p>Red background sweep behind each active word, TikTok-style</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-highlight.json"
   compositionId="caption-highlight"
   compositionSrc="compositions/components/caption-highlight.html"
   title="Highlight"
-  description="Red background sweep behind each active word, TikTok-style"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":261}}
   attribution={{"path":"registry/components/caption-highlight","tags":["captions","caption-style","highlight","social","tiktok"]}}
@@ -296,7 +300,9 @@ That writes one file: `compositions/components/caption-highlight.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -315,6 +321,4 @@ Tagged `captions` `caption-style` `highlight` `social` `tiktok`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

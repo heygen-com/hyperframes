@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Matrix Decode</h1>
+  <p>Random scramble resolves left-to-right into the target text.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/matrix-decode.json"
   compositionId="matrix-decode"
   compositionSrc="compositions/components/matrix-decode.html"
   title="Matrix Decode"
-  description="Random scramble resolves left-to-right into the target text."
   variables={[{"id":"text","type":"string","role":"content","label":"Target text","description":"Word the scramble resolves into. One scrambling cell per character, up to 32.","default":"HYPERFRAMES"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Colour family of the cells and their glow.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"size","type":"number","role":"style","label":"Size","description":"Type size of the cells in pixels. Cell width follows it.","default":64,"min":24,"max":160,"step":4,"unit":"px"},{"id":"glow","type":"enum","role":"style","label":"Glow","description":"Strength of the halo behind the cells, from none to a heavy bloom.","default":"standard","options":[{"value":"none","label":"None"},{"value":"standard","label":"Standard"},{"value":"strong","label":"Strong"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":128}}
   attribution={{"path":"registry/components/matrix-decode","tags":["motion-primitive","typography"]}}
@@ -163,7 +167,9 @@ That writes one file: `compositions/components/matrix-decode.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -206,6 +212,4 @@ Tagged `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

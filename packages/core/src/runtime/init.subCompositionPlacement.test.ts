@@ -1,5 +1,6 @@
 import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { initSandboxRuntimeModular } from "./init";
 import type { RuntimeTimelineLike } from "./types";
 import { STUDIO_MANUAL_EDIT_GESTURE_ATTR } from "../editing/draftMarkers";
@@ -409,16 +410,16 @@ describe("runtime sub-composition placement", () => {
   it("shifts a split scene's videos by each half's in-point and cuts them to that half", () => {
     loadSplitScene();
     window.__player?.renderSeek(4.5);
-    expect(sourceTimeOf("scene", "v2")).toBe(5.5);
+    expect(sourceTimeOf("scene", "v2")).toBe(mediaElementTime(5.5));
     // The second half's v2 lands at 4-8 but is cut until that half starts at 5.
     expect(sourceTimeOf("scene-split", "v2")).toBe(-1);
 
     window.__player?.renderSeek(5);
-    expect(sourceTimeOf("scene-split", "v2")).toBe(6);
+    expect(sourceTimeOf("scene-split", "v2")).toBe(mediaElementTime(6));
     window.__player?.renderSeek(8.5);
-    expect(sourceTimeOf("scene-split", "v3")).toBe(2.5);
+    expect(sourceTimeOf("scene-split", "v3")).toBe(mediaElementTime(2.5));
     window.__player?.renderSeek(10);
-    expect(sourceTimeOf("scene-split-split", "v3")).toBe(4);
+    expect(sourceTimeOf("scene-split-split", "v3")).toBe(mediaElementTime(4));
   });
 
   it("lets a scene's video play past a shorter root animation when the root authors no length", () => {
@@ -435,7 +436,7 @@ describe("runtime sub-composition placement", () => {
     initSandboxRuntimeModular();
 
     const at = (t: number) => (window.__player?.renderSeek(t), video("long").currentTime);
-    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8]);
+    expect([at(1), at(5), at(8)]).toEqual([1, 5, 8].map(mediaElementTime));
   });
 
   it("keeps a scene trimmed to 3 s driving its 6 s file past the trim, as before in-points", () => {
@@ -445,7 +446,7 @@ describe("runtime sub-composition placement", () => {
         `<div data-composition-id="scene" data-duration="6"><video id="body" data-start="0"></video></div></div>`,
     );
     window.__player?.renderSeek(6);
-    expect(video("body").currentTime).toBe(4);
+    expect(video("body").currentTime).toBe(mediaElementTime(4));
   });
 
   it("cuts a split half that has no id at its own end, not its file's", () => {
@@ -456,9 +457,9 @@ describe("runtime sub-composition placement", () => {
         `<video id="late" data-start="8" data-duration="4"></video></div></div>`,
     );
     window.__player?.renderSeek(8.5);
-    expect(video("late").currentTime).toBe(0.5);
+    expect(video("late").currentTime).toBe(mediaElementTime(0.5));
     window.__player?.renderSeek(10);
-    expect(video("late").currentTime).toBe(0.5);
+    expect(video("late").currentTime).toBe(mediaElementTime(0.5));
   });
 
   it("keeps a video in a composition nested inside the half silent until the half starts", () => {
@@ -469,7 +470,7 @@ describe("runtime sub-composition placement", () => {
     window.__player?.renderSeek(1);
     expect(video("deep").currentTime).toBe(-1);
     window.__player?.renderSeek(6);
-    expect(video("deep").currentTime).toBe(6);
+    expect(video("deep").currentTime).toBe(mediaElementTime(6));
   });
 
   it("loops a straddling clip over its whole file, not from the cut", () => {
@@ -478,7 +479,7 @@ describe("runtime sub-composition placement", () => {
       4,
     );
     const at = (t: number) => (window.__player?.renderSeek(t), video("loop").currentTime);
-    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5]);
+    expect([at(5), at(6), at(7.5)]).toEqual([3, 0, 1.5].map(mediaElementTime));
   });
 
   it("follows a straddling clip's speed ramp from the clip's own start", () => {
@@ -499,7 +500,7 @@ describe("runtime sub-composition placement", () => {
     );
     window.__player?.renderSeek(7);
     expect(video("ramp").currentTime).toBeCloseTo(
-      sourceTimeAt(readElementRateSpec(video("ramp")), 5),
+      mediaElementTime(sourceTimeAt(readElementRateSpec(video("ramp")), 5)),
       6,
     );
   });

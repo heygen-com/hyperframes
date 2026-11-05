@@ -97,6 +97,8 @@ describe("encodeWhileCapturing", () => {
     expect(canEncodeWhileCapturing(input, 4, 8)).toBe(true);
     expect(canEncodeWhileCapturing(input, 4, 4)).toBe(false);
     expect(canEncodeWhileCapturing(input, 1, 8)).toBe(false);
+    const gpu = { ...input, job: { ...input.job, config: { ...input.job.config, useGpu: true } } };
+    expect(canEncodeWhileCapturing(gpu, 4, 8)).toBe(true);
     expect(
       canEncodeWhileCapturing({ ...input, lockGopForChunkConcat: true, gopSize: FRAMES }, 4, 8),
     ).toBe(true);

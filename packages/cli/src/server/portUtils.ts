@@ -413,6 +413,12 @@ export async function killActiveServers(
   return { killed, unverified };
 }
 
+/** Stops `server` once every open connection is closed too; an open Studio tab holds its event stream for its life. */
+export function closeServer(server: import("@hono/node-server").ServerType): Promise<void> {
+  if ("closeAllConnections" in server) server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
 // ── Smart port selection ───────────────────────────────────────────────────
 
 export type FindPortResult =

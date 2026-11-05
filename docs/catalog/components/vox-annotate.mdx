@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Vox Annotate</h1>
+  <p>The Vox-style annotate gesture: a keyword in a held sentence gets a hand-drawn marker while a thin connector draws up to a mono callout label, all as one choreographed beat on the cue.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/vox-annotate.json"
   compositionId="vox-annotate"
   compositionSrc="compositions/components/vox-annotate.html"
   title="Vox Annotate"
-  description="The Vox-style annotate gesture: a keyword in a held sentence gets a hand-drawn marker while a thin connector draws up to a mono callout label, all as one choreographed beat on the cue."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Full line of display text.","default":"Ship the story, not the spec"},{"id":"keyword","type":"string","role":"content","label":"Keyword","description":"First case-insensitive substring match in text receives the marker and annotation. Empty or unmatched draws nothing.","default":"story"},{"id":"note","type":"string","role":"content","label":"Note","description":"Mono callout label at the end of the connector. Empty draws the marker only.","default":"the annotate beat"},{"id":"style","type":"enum","role":"style","label":"Marker style","description":"Shape of the hand-drawn marker stroke.","default":"highlight","options":[{"value":"highlight","label":"Highlight"},{"value":"circle","label":"Circle"},{"value":"underline","label":"Underline"},{"value":"scribble","label":"Scribble"}]},{"id":"draw_at","type":"number","role":"timing","label":"Draw at","description":"Second (from mount start) the annotate gesture starts. Clamped so the gesture completes before any exit.","default":0.9,"min":0,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Annotation ink color from the contract token map.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the lockup holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":477}}
   attribution={{"path":"registry/components/vox-annotate","tags":["motion-primitive","typography","annotation","marker","deterministic"]}}
@@ -512,7 +516,9 @@ That writes one file: `compositions/components/vox-annotate.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -557,6 +563,4 @@ Tagged `motion-primitive` `typography` `annotation` `marker` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

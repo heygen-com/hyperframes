@@ -1,5 +1,6 @@
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { c } from "./colors.js";
+import { recordFailure } from "../utils/jsonError.js";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -130,6 +131,7 @@ export function label(name: string, value: string): string {
 }
 
 export function errorBox(title: string, hint?: string, suggestion?: string): void {
+  recordFailure(title, hint ?? suggestion);
   console.error(`\n${c.error("\u2717")}  ${c.bold(title)}`);
   if (hint) {
     // Indent EVERY hint line, not just the first \u2014 a multi-line hint (e.g. the

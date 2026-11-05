@@ -1,8 +1,8 @@
 /**
  * Capture motion blur, in preview and render. Root attributes: data-motion-blur="on"|"off",
  * -shutter (0–720°, default 240), -samples (2–64; unset: at least 32, more for a long smear),
- * -events="on" (run timeline callbacks at sub-frame samples). PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that
- * could not blur) turns all off.
+ * -events="on" (callbacks run in the scan, and in pose reads when they move a mover).
+ * PAGE_MOTION_BLUR_OFF_GLOBAL (engine blur, or a preview that could not blur) turns all off.
  *
  * Per frame: read movers' poses across the shutter (seeks, no paint), capture the root and crop
  * the movers, hide them and capture the background, then redraw each along its path.
@@ -36,9 +36,9 @@ import {
 import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
-import { discoverMovers } from "./discover";
+import { landThenUndoDom, scanMovers } from "./discover";
 import { createFilterTier } from "./filterTier";
-import { readMoverFrames } from "./frames";
+import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import {
   type CaptureMotionBlurHost,
@@ -65,6 +65,9 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
+const SVG_DRAWN_BY_REFERENCE = ["defs", "clipPath", "mask", "pattern", "marker", "symbol"];
+const IN_SVG_RESOURCE = SVG_DRAWN_BY_REFERENCE.flatMap((tag) => [tag, `${tag} *`]).join(", ");
+const NESTED_CANVAS_KEEPS_ITS_PLACE = `:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`;
 
 interface Job {
   seq: number;
@@ -93,8 +96,8 @@ const LOG_EVERY = 25;
 function readConfig(root: HTMLElement): Config | null {
   const settings = readMotionBlurSettings((name) => root.getAttribute(name));
   if (!settings.enabled) return null;
-  const { shutterDeg, samples, events, tier } = settings;
-  return { shutterDeg, samples, events, tier };
+  const { shutterDeg, phaseDeg, samples, events, tier } = settings;
+  return { shutterDeg, phaseDeg, samples, events, tier };
 }
 
 /** Must run before composition scripts: see `installAcceleratedCanvasTracker`. */
@@ -168,8 +171,10 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     `[${HIDE_ATTR}] { opacity: 0 !important; }`,
     // The root stays visible: a rotated or scaled mover under a hidden root is captured at the origin, untransformed.
     `[${ONLY_ATTR}] { background: none !important; border-color: transparent !important; box-shadow: none !important; outline-color: transparent !important; }`,
-    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *) { visibility: hidden !important; }`,
+    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *, ${IN_SVG_RESOURCE}) { visibility: hidden !important; }`,
     `[${ONLY_ATTR}] [${MOVER_ATTR}] { visibility: visible !important; }`,
+    `[${ONLY_ATTR}] :is(${SVG_DRAWN_BY_REFERENCE.join(", ")}) { visibility: visible !important; }`,
+    NESTED_CANVAS_KEEPS_ITS_PLACE,
   ].join("\n");
 
   let movers: HTMLElement[] = [];
@@ -198,7 +203,14 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   let rendering = false;
 
   function moveRootThenResync(move: () => void): void {
+    const scrolled = [root, ...root.querySelectorAll<HTMLElement>("*")]
+      .filter((el) => el.scrollLeft !== 0 || el.scrollTop !== 0)
+      .map((el) => ({ el, left: el.scrollLeft, top: el.scrollTop }));
     (host.ignoreMutations ?? ((write: () => void) => write()))(move);
+    for (const { el, left, top } of scrolled) {
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    }
     host.seek(host.now(), true);
   }
 
@@ -238,20 +250,33 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   }
 
   const seek = (t: number): void => host.seek(t, !config.events);
+  let readEvents = false;
+  const readSeek = (t: number): void => host.seek(t, !readEvents);
 
   function discover(restoreTo: number): void {
     scannedTimeline = host.timeline();
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
     const s0 = performance.now();
-    const found = discoverMovers({
-      scene: root,
-      durationSeconds: duration,
-      fps: host.fps,
-      seek,
-      onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
-    });
-    seek(restoreTo);
+    const landing = config.events ? landThenUndoDom(seek, document) : null;
+    let found: ReturnType<typeof scanMovers>;
+    try {
+      found = scanMovers({
+        scene: root,
+        durationSeconds: duration,
+        fps: host.fps,
+        seek: host.seek,
+        events: config.events,
+        onStep: (i, steps) => {
+          landing?.flush();
+          defects.sample(i, steps, (i / steps) * duration);
+        },
+      });
+      (landing?.land ?? seek)(restoreTo);
+    } finally {
+      landing?.stop();
+    }
+    readEvents = found.readEvents;
     scanDefect = defects.result();
     faceNow = defects.facesNow;
     movers = found.movers;
@@ -263,18 +288,25 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
 
   function frames(t: number, reads: number): { els: HTMLElement[]; frames: MoverFrame[] } {
     if (!reader) return { els: [], frames: [] };
-    return readMoverFrames({
-      movers,
-      reader,
-      seek,
-      t,
-      reads,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
-      taps: config.samples,
-      pads,
-      frameW: width,
-      frameH: height,
-    });
+    const landing = readEvents ? landThenUndoDom(readSeek, document) : null;
+    try {
+      return readMoverFrames({
+        movers,
+        reader,
+        seek: readSeek,
+        restore: landing?.land ?? host.holdFrame?.(),
+        t,
+        reads,
+        ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
+        taps: config.samples,
+        pads,
+        frameW: width,
+        scene: root,
+        frameH: height,
+      });
+    } finally {
+      landing?.stop();
+    }
   }
 
   const capture = (): void => {
@@ -550,6 +582,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       moverNames: movers.map(describe),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames: timings.length,
       meanMs: Math.round(mean * 10) / 10,
       failures,
@@ -690,6 +723,7 @@ function offReport(config: Config, why: CaptureDefect | null): Report {
     moverNames: [],
     scanMs: 0,
     shutterDeg: config.shutterDeg,
+    phaseDeg: config.phaseDeg,
     frames: 0,
     meanMs: 0,
     failures: 0,

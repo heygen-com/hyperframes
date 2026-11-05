@@ -13,6 +13,7 @@ import type {
 } from "@hyperframes/aws-lambda/sdk";
 import type { CanvasResolution, DistributedFps } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
+import type { DeliveryFlagValues } from "../../utils/deliveryFlags.js";
 import {
   reportVariableIssues,
   resolveVariablesArg,
@@ -27,7 +28,7 @@ async function loadSDK(): Promise<typeof import("@hyperframes/aws-lambda/sdk")> 
   return import("@hyperframes/aws-lambda/sdk");
 }
 
-export interface RenderArgs {
+export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
@@ -255,6 +256,10 @@ export function buildLambdaRenderConfig(
     chunkSize: args.chunkSize,
     maxParallelChunks: args.maxParallelChunks,
     targetChunkFrames: args.targetChunkFrames,
+    keyframeIntervalSeconds: args.keyframeIntervalSeconds,
+    proresProfile: args.proresProfile,
+    maxBitrate: args.maxBitrate,
+    bufferSize: args.bufferSize,
     workerConcurrency,
     runtimeCap: "lambda",
     variables,

@@ -6,9 +6,9 @@
  */
 
 import { swallow } from "../diagnostics";
-import { discoverMovers } from "./discover";
+import { landThenUndoDom, scanMovers } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { readMoverFrames } from "./frames";
+import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 
@@ -105,6 +105,8 @@ export function createFilterTier(
   const width = Number(root.getAttribute("data-width")) || root.offsetWidth;
   const height = Number(root.getAttribute("data-height")) || root.offsetHeight;
   const seek = (t: number): void => host.seek(t, !config.events);
+  let readEvents = false;
+  const readSeek = (t: number): void => host.seek(t, !readEvents);
   let defs: SVGSVGElement | null = null;
   let movers: HTMLElement[] = [];
   let pads = new Map<HTMLElement, number>();
@@ -121,13 +123,22 @@ export function createFilterTier(
   function discover(restoreTo: number): void {
     scanned = host.timeline();
     const s0 = performance.now();
-    const found = discoverMovers({
-      scene: root,
-      durationSeconds: host.durationSeconds(),
-      fps: host.fps,
-      seek,
-    });
-    seek(restoreTo);
+    const landing = config.events ? landThenUndoDom(seek, document) : null;
+    let found: ReturnType<typeof scanMovers>;
+    try {
+      found = scanMovers({
+        scene: root,
+        durationSeconds: host.durationSeconds(),
+        fps: host.fps,
+        seek: host.seek,
+        events: config.events,
+        onStep: landing?.flush,
+      });
+      (landing?.land ?? seek)(restoreTo);
+    } finally {
+      landing?.stop();
+    }
+    readEvents = found.readEvents;
     movers = found.movers;
     pads = found.pads;
     reader = createPoseReader(root, found.dynamic);
@@ -175,17 +186,25 @@ export function createFilterTier(
   function plansAt(t: number, engineMode: boolean): Array<[HTMLElement, FilterPlan]> {
     if (!reader || host.timeline() !== scanned) discover(t);
     if (!reader) return [];
-    const read = readMoverFrames({
-      movers,
-      reader,
-      seek,
-      t,
-      reads: engineMode ? RENDER_READS : PREVIEW_READS,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
-      taps: COPIES,
-      frameW: width,
-      frameH: height,
-    });
+    const landing = readEvents ? landThenUndoDom(readSeek, document) : null;
+    let read: ReturnType<typeof readMoverFrames>;
+    try {
+      read = readMoverFrames({
+        movers,
+        reader,
+        seek: readSeek,
+        restore: landing?.land ?? host.holdFrame?.(),
+        t,
+        reads: engineMode ? RENDER_READS : PREVIEW_READS,
+        ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
+        taps: COPIES,
+        frameW: width,
+        scene: root,
+        frameH: height,
+      });
+    } finally {
+      landing?.stop();
+    }
     const plans: Array<[HTMLElement, FilterPlan]> = [];
     read.els.forEach((el, i) => {
       const frame = read.frames[i];
@@ -223,6 +242,7 @@ export function createFilterTier(
       moverNames: movers.map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}`),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames,
       meanMs: frames ? Math.round((totalMs / frames) * 10) / 10 : 0,
       failures: 0,

@@ -1,3 +1,4 @@
+import { envProxyEnabled } from "@hyperframes/core/env-proxy";
 import { basename, dirname, join, posix, relative, resolve } from "node:path";
 import {
   closeSync,
@@ -11,7 +12,8 @@ import {
 } from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
-import ignore, { type Ignore } from "ignore";
+import type { Ignore } from "ignore";
+import { projectIgnore } from "@hyperframes/lint";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
@@ -23,12 +25,6 @@ import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
-const HYPERFRAMES_IGNORE_FILE = ".hyperframesignore";
-// Unanchored (no leading/mid slash) so it matches a dot-prefixed name at any
-// depth, same as the segments it replaces below — but as a matcher pattern
-// instead of a hard skip, a project's own `.hyperframesignore` negation can
-// still override it.
-const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/", ".*"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
@@ -189,7 +185,9 @@ export async function resolvePublishCredential(
     const expired =
       credential.type === "oauth" && isTokenExpired(credential.expires_at, new Date());
     if (expired && !credential.refresh_token) throw new Error(LOGIN_EXPIRED);
-    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential);
+    return await refreshIfNeeded(expired ? { ...credential, refreshable: true } : credential, {
+      envFallback: checked === undefined,
+    });
   } catch (error) {
     if (isAuthError(error) && (error.code === "REFRESH_FAILED" || error.code === "LOGIN_EXPIRED")) {
       throw new Error(LOGIN_EXPIRED);
@@ -235,11 +233,7 @@ function proxySupportHint(): string {
   const proxyConfigured = ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"].some((key) =>
     Boolean(process.env[key]?.trim()),
   );
-  const proxyEnabled =
-    process.env["NODE_USE_ENV_PROXY"] === "1" ||
-    process.execArgv.includes("--use-env-proxy") ||
-    process.env["NODE_OPTIONS"]?.split(/\s+/u).includes("--use-env-proxy") === true;
-  if (!proxyConfigured || proxyEnabled) return "";
+  if (!proxyConfigured || envProxyEnabled()) return "";
   return (
     ". Proxy variables are set but ignored by Node fetch; if this network requires them, retry with " +
     "NODE_USE_ENV_PROXY=1 (Node 22.21+)"
@@ -302,19 +296,10 @@ export function uploadTimeoutMs(byteLength: number): number {
 
 // Absolute, non-negotiable exclusions only — anything a `.hyperframesignore`
 // negation rule should be able to override (including dot-prefixed paths;
-// see DEFAULT_PROJECT_IGNORE) must go through the ignore matcher instead of
+// see projectIgnore) must go through the ignore matcher instead of
 // short-circuiting here.
 function shouldIgnoreSegment(segment: string): boolean {
   return IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
-}
-
-function createProjectIgnore(rootDir: string): Ignore {
-  const matcher = ignore().add(DEFAULT_PROJECT_IGNORE);
-  const ignorePath = join(rootDir, HYPERFRAMES_IGNORE_FILE);
-  if (existsSync(ignorePath)) {
-    matcher.add(readFileSync(ignorePath, "utf-8"));
-  }
-  return matcher;
 }
 
 function collectProjectFiles(
@@ -637,7 +622,7 @@ export function stagePublishFiles(
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(absProjectDir, absProjectDir, filePaths, createProjectIgnore(absProjectDir));
+  collectProjectFiles(absProjectDir, absProjectDir, filePaths, projectIgnore(absProjectDir));
   if (!filePaths.includes("index.html")) {
     throw new Error(
       "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",

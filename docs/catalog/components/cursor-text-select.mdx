@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Text Select Cursor</h1>
+  <p>An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-text-select.json"
   compositionId="cursor-text-select"
   compositionSrc="compositions/components/cursor-text-select.html"
   title="Text Select Cursor"
-  description="An arrow turns into an I-beam over a document, drags a selection across a phrase character by character, raises a format toolbar, turns back into an arrow and clicks Bold."
   variables={[{"id":"title","type":"string","role":"content","label":"Heading","default":"Spring release notes"},{"id":"text","type":"string","role":"content","label":"Paragraph","default":"Our spring release ships on Thursday. Teams can now share a live review link, collect time-stamped comments, and approve the final cut without leaving the editor. Early customers cut their review rounds in half."},{"id":"phrase","type":"string","role":"content","label":"Phrase to select","default":"approve the final cut"},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":440}}
   attribution={{"path":"registry/components/cursor-text-select","tags":["cursor","motion-primitive","text","selection","editor","toolbar"]}}
@@ -475,7 +479,9 @@ That writes one file: `compositions/components/cursor-text-select.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -517,6 +523,4 @@ Tagged `cursor` `motion-primitive` `text` `selection` `editor` `toolbar`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

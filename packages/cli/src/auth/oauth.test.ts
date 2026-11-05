@@ -1,7 +1,11 @@
+import { oauthIdentity } from "./config.js";
 import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
+import { openBrowser } from "./browser.js";
+import { ACCOUNT_REQUEST_TIMEOUT_MS } from "./client.js";
 import { isAuthError } from "./errors.js";
+import { startLoopback } from "./loopback.js";
 import {
   parseTokenResponse,
   persistFreshOAuth,
@@ -12,7 +16,7 @@ import {
   startAuthorizationCodeFlow,
   startDeviceAuthorizationFlow,
 } from "./oauth.js";
-import { readStore, writeStore } from "./store.js";
+import { readStore, writeStore as writeUnboundStore, type Credentials } from "./store.js";
 
 // Mock the interactive bits so startAuthorizationCodeFlow runs headless.
 vi.mock("./loopback.js", () => ({
@@ -22,6 +26,7 @@ vi.mock("./loopback.js", () => ({
       redirectUri: "http://127.0.0.1:12345/oauth/callback",
     }),
     redirectUri: "http://127.0.0.1:12345/oauth/callback",
+    timeoutLabel: "60 minutes",
     close: vi.fn(async () => {}),
   })),
 }));
@@ -66,6 +71,13 @@ function queuedFetch(
 async function loginWithTokens(body: Record<string, unknown>) {
   await startAuthorizationCodeFlow({ fetchImpl: tokenFetch(body) });
   return (await readStore()).credentials;
+}
+
+async function writeStore(credentials: Credentials): Promise<void> {
+  await writeUnboundStore({
+    ...credentials,
+    ...(credentials.oauth ? { oauth: { ...oauthIdentity(), ...credentials.oauth } } : {}),
+  });
 }
 
 describe("auth/oauth", () => {
@@ -170,6 +182,26 @@ describe("auth/oauth", () => {
   });
 
   describe("refreshTokens", () => {
+    it.each([undefined, "foreign-client"])(
+      "does not send a refresh token with client binding %s",
+      async (client_id) => {
+        await writeUnboundStore({
+          oauth: {
+            access_token: "at",
+            refresh_token: "rt",
+            client_id,
+            token_endpoint: oauthIdentity().token_endpoint,
+          },
+        });
+        const fetchImpl = vi.fn<typeof fetch>();
+        await expect(refreshTokens("rt", { fetchImpl })).rejects.toMatchObject({
+          code: "LOGIN_EXPIRED",
+        });
+        expect(fetchImpl).not.toHaveBeenCalled();
+        expect((await readStore()).credentials.oauth?.refresh_token).toBe("rt");
+      },
+    );
+
     it("posts grant_type=refresh_token and persists the response", async () => {
       process.env["HEYGEN_API_URL"] = "https://api.test.example";
       await writeStore({ oauth: { access_token: "old_at", refresh_token: "old_rt" } });
@@ -196,7 +228,29 @@ describe("auth/oauth", () => {
 
       // Should have persisted.
       const { credentials } = await readStore();
-      expect(credentials.oauth?.access_token).toBe("new_at");
+      expect(credentials.oauth).toMatchObject({ ...oauthIdentity(), access_token: "new_at" });
+    });
+
+    it("gives up on a refresh the token endpoint never answers, so a caller is not held forever", async () => {
+      process.env["HEYGEN_API_URL"] = "https://api.test.example";
+      await writeStore({ oauth: { access_token: "old_at", refresh_token: "stall_rt" } });
+      const deadline = new AbortController();
+      const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+      let called!: () => void;
+      const fetched = new Promise<void>((r) => (called = r));
+      const fetchImpl = ((_url: string, init?: RequestInit) => {
+        called();
+        if (!init?.signal) return Promise.resolve(new Response("", { status: 500 }));
+        return new Promise<Response>((_, reject) =>
+          init.signal?.addEventListener("abort", () => reject(new Error("refresh timed out"))),
+        );
+      }) as unknown as typeof fetch;
+      const refresh = refreshTokens("stall_rt", { fetchImpl });
+      await fetched;
+      deadline.abort();
+      await expect(refresh).rejects.toThrow();
+      expect(timeout).toHaveBeenCalledWith(ACCOUNT_REQUEST_TIMEOUT_MS);
+      timeout.mockRestore();
     });
 
     it("preserves the prior refresh_token when the server omits it (no rotation)", async () => {
@@ -264,6 +318,7 @@ describe("auth/oauth", () => {
         path,
         JSON.stringify({
           oauth: {
+            ...oauthIdentity(),
             access_token: "old_at",
             refresh_token: "keep_me_rt",
             id_token: "future_id_token_value",
@@ -281,6 +336,7 @@ describe("auth/oauth", () => {
     });
 
     it("throws REFRESH_FAILED on 400/401", async () => {
+      await writeStore({ oauth: { access_token: "at", refresh_token: "bad_rt" } });
       const fetchImpl = (async () =>
         new Response("invalid_grant", {
           status: 400,
@@ -291,6 +347,7 @@ describe("auth/oauth", () => {
     });
 
     it("throws API_ERROR on 5xx", async () => {
+      await writeStore({ oauth: { access_token: "at", refresh_token: "rt" } });
       const fetchImpl = (async () =>
         new Response("upstream", { status: 503 })) as unknown as typeof fetch;
       await expect(refreshTokens("rt", { fetchImpl })).rejects.toSatisfy((err) => {
@@ -300,6 +357,20 @@ describe("auth/oauth", () => {
   });
 
   describe("revokeTokens", () => {
+    it("does not revoke another client's stored grant", async () => {
+      await writeUnboundStore({
+        oauth: {
+          access_token: "foreign-at",
+          refresh_token: "foreign-rt",
+          client_id: "another-client",
+          token_endpoint: oauthIdentity().token_endpoint,
+        },
+      });
+      const fetchImpl = vi.fn<typeof fetch>();
+      await revokeTokens("foreign-rt", { fetchImpl });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
     it("never throws on network failure (best-effort)", async () => {
       const fetchImpl = (async () => {
         throw new Error("connection refused");
@@ -348,6 +419,7 @@ describe("auth/oauth", () => {
 
   describe("error scrubbing", () => {
     it("refreshTokens does not leak token-shaped secrets from the error body", async () => {
+      await writeStore({ oauth: { access_token: "at", refresh_token: "rt_leak_secret" } });
       const fetchImpl = (async () =>
         new Response(
           '{"error":"invalid_grant","echoed":"refresh_token=rt_leak_secret&code_verifier=cv_leak"}',
@@ -362,6 +434,37 @@ describe("auth/oauth", () => {
         expect(msg).not.toContain("cv_leak");
         expect(msg).toContain("<redacted>");
       }
+    });
+  });
+
+  describe("startAuthorizationCodeFlow listener", () => {
+    const loopbackStub = (timeoutLabel: string) => ({
+      result: new Promise<never>(() => {}),
+      redirectUri: "http://127.0.0.1:12345/oauth/callback",
+      timeoutLabel,
+      close: vi.fn(async () => {}),
+    });
+
+    it("closes the listener when the browser step throws", async () => {
+      const loopback = loopbackStub("60 minutes");
+      vi.mocked(startLoopback).mockResolvedValueOnce(loopback);
+      vi.mocked(openBrowser).mockRejectedValueOnce(new Error("no browser"));
+
+      await expect(startAuthorizationCodeFlow()).rejects.toThrow("no browser");
+
+      expect(loopback.close).toHaveBeenCalled();
+    });
+
+    it("states the listener's own limit while waiting", async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.mocked(startLoopback).mockResolvedValueOnce({
+        ...loopbackStub("7 minutes"),
+        result: Promise.reject(new Error("stop here")),
+      });
+
+      await expect(startAuthorizationCodeFlow()).rejects.toThrow("stop here");
+
+      expect(log).toHaveBeenCalledWith(expect.stringContaining("up to 7 minutes"));
     });
   });
 

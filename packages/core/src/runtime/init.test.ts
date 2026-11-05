@@ -1,5 +1,6 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { readFileSync } from "node:fs";
 import { initSandboxRuntimeModular, installFlatGsapTransforms } from "./init";
 import {
@@ -8,6 +9,7 @@ import {
   SKIPPED_CLIP,
 } from "./timedClipHide";
 import { applyAuthoredTiming, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import { runtimeProtocolMetadata } from "./protocol";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -261,6 +263,7 @@ describe("initSandboxRuntimeModular", () => {
     delete window.__playerReady;
     delete window.__renderReady;
     delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
+    delete window.__HF_REPLAY_SKIPPED_FRAMES;
     delete window.__hfTimelinesBuilding;
     delete (window as { THREE?: unknown }).THREE;
     delete (window as { __hfAutoNoopRegistered?: boolean }).__hfAutoNoopRegistered;
@@ -604,6 +607,25 @@ describe("initSandboxRuntimeModular", () => {
         // Past the line's span: its tween at 3 s draws for the first time while the line is hidden.
         window.__player?.seek(6);
         expect([beforeTheTween, looked()]).toEqual([0, 1]);
+      } finally {
+        query.mockRestore();
+      }
+    });
+
+    it("leaves hidden clips alone on every jump when the page has no timeline", () => {
+      document.body.innerHTML =
+        `<div data-composition-id="main" data-root="true" data-start="0" data-duration="10" data-width="1920" data-height="1080">` +
+        `<video id="first" src="a.mp4" data-start="0" data-duration="2" data-track-index="0"></video>` +
+        `<video id="second" src="a.mp4" data-start="2" data-duration="8" data-track-index="0"></video>` +
+        `</div>`;
+      window.__timelines = {};
+      initSandboxRuntimeModular();
+      const query = vi.spyOn(document, "querySelectorAll");
+      const looked = () =>
+        query.mock.calls.filter(([selector]) => selector === "[data-hf-clip-hidden]").length;
+      try {
+        for (const t of [0.5, 1, 1.5, 3, 6]) window.__player?.seek(t);
+        expect(looked()).toBe(0);
       } finally {
         query.mockRestore();
       }
@@ -1198,6 +1220,36 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  it("gives a still the value playback shows when its capture page asks to replay skipped frames", () => {
+    const zoomFilm = () => {
+      const params = { z: 1 };
+      const timeline = gsap.timeline({ paused: true });
+      timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
+      timeline.set(params, { z: 1.04 }, 0.8);
+      timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
+      return { params, timeline };
+    };
+    const played = zoomFilm();
+    for (let frame = 0; frame <= 56; frame++) played.timeline.totalTime(frame / 60, true);
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-root", "true");
+    root.setAttribute("data-start", "0");
+    root.setAttribute("data-duration", "3");
+    root.setAttribute("data-fps", "60");
+    root.setAttribute("data-width", "640");
+    root.setAttribute("data-height", "360");
+    document.body.appendChild(root);
+    const still = zoomFilm();
+    window.__timelines = { main: still.timeline as unknown as RuntimeTimelineLike };
+    window.__HF_REPLAY_SKIPPED_FRAMES = true;
+
+    initSandboxRuntimeModular();
+    window.__player?.renderSeek(56 / 60);
+
+    expect(still.params.z).toBeCloseTo(played.params.z, 9);
+  });
+
   it("activates a nested outro on frame 584 when its authored start rounds just above it", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1431,6 +1483,45 @@ describe("initSandboxRuntimeModular", () => {
     });
   });
 
+  describe("a preview seek lands on the composition's own frame grid", () => {
+    // Frame 7 on a 30 fps grid would be 7/30: earlier than frame 7 at 25 and 29.97 fps.
+    const rates = [
+      { dataFps: "25", fps: 25 },
+      { dataFps: "30000/1001", fps: 30_000 / 1_001 },
+    ];
+
+    function previewTimeline(dataFps: string): RuntimeTimelineLike {
+      document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-start="0" data-duration="20" data-fps="${dataFps}" data-width="1920" data-height="1080"></div>`;
+      const timeline = createMockTimeline(20);
+      window.__timelines = { main: timeline };
+      initSandboxRuntimeModular();
+      return timeline;
+    }
+
+    it.each(rates)("player.seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.__player?.seek(7 / fps);
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+
+    it.each(rates)("a parent frame seek to frame 7 at $dataFps fps", ({ dataFps, fps }) => {
+      const timeline = previewTimeline(dataFps);
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          source: window.parent,
+          data: {
+            source: "hf-parent",
+            type: "control",
+            action: "seek",
+            frame: 7,
+            ...runtimeProtocolMetadata(fps),
+          },
+        }),
+      );
+      expect(timeline.time()).toBeCloseTo(7 / fps, 9);
+    });
+  });
+
   it("uses live child timeline duration when a composition host has no authored duration", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -1589,7 +1680,7 @@ describe("initSandboxRuntimeModular", () => {
       window.__player?.renderSeek(5);
 
       expect(video.style.visibility).toBe("visible");
-      expect(video.currentTime).toBe(2.5);
+      expect(video.currentTime).toBe(mediaElementTime(2.5));
       expect(video.paused).toBe(true);
       expect(video.play).not.toHaveBeenCalled();
     });
@@ -1889,6 +1980,22 @@ describe("initSandboxRuntimeModular", () => {
 
       expect(timeline.duration()).toBe(10);
       expect(window.__hf?.animationEnd?.()).toBe(4);
+    });
+
+    it("reports a clip's window with its start reference resolved", () => {
+      mountRoot("20");
+      const intro = document.createElement("div");
+      intro.id = "intro";
+      intro.setAttribute("data-start", "0");
+      intro.setAttribute("data-duration", "3");
+      const next = document.createElement("div");
+      next.setAttribute("data-start", "intro + 1");
+      next.setAttribute("data-duration", "4");
+      document.querySelector("[data-root]")!.append(intro, next);
+      window.__timelines = { main: createPaddableMockTimeline(4) };
+      initSandboxRuntimeModular();
+
+      expect(window.__hf?.clipWindow?.(next)).toEqual({ start: 4, end: 8 });
     });
 
     it("keeps the animation end when a longer declared length pads the timeline again", () => {
@@ -2418,7 +2525,7 @@ describe("initSandboxRuntimeModular", () => {
     player?.seek(29);
 
     expect(video.paused).toBe(true);
-    expect(video.currentTime).toBe(9);
+    expect(video.currentTime).toBe(mediaElementTime(9));
   });
 
   // Regression (#1838): a video authoring its OWN data-start (the normal case
@@ -2468,7 +2575,7 @@ describe("initSandboxRuntimeModular", () => {
     // must be 5s into its own local playback, not 25s (root time).
     player?.seek(25);
 
-    expect(video.currentTime).toBe(5);
+    expect(video.currentTime).toBe(mediaElementTime(5));
   });
 
   it("keeps a scene-local video visible inside a later template-mounted host", () => {
@@ -3916,6 +4023,16 @@ describe("initSandboxRuntimeModular", () => {
     expect(startedAt[0]).toBeGreaterThanOrEqual(1 - 0.02);
   });
 
+  it("primes a clip that starts later inside the tap on iOS, so a late start is not refused", () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148",
+    );
+    const { sfx } = mountLateSfx();
+    window.__player?.play();
+    expect(sfx.play).toHaveBeenCalledTimes(1);
+    expect(sfx.pause).toHaveBeenCalledTimes(1);
+  });
+
   const setRate = (playbackRate: number) =>
     window.dispatchEvent(
       new MessageEvent("message", {
@@ -4421,6 +4538,91 @@ describe("initSandboxRuntimeModular", () => {
     await Promise.resolve();
 
     expect(window.__renderReady).toBe(true);
+  });
+
+  // GH #5603: a rejected hold must fail render, snapshot and check rather than let them capture a
+  // scene that was never built.
+  describe("a rejected window.__hf.buildReady promise", () => {
+    const mountRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(10) };
+    };
+    const flush = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+
+    afterEach(() => {
+      delete window.__hfStartupError;
+    });
+
+    it("records a startup error naming the key and the reason", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        mesh: Promise.resolve(),
+        scene: Promise.reject(new Error("build failed: bad baked data")),
+      };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__hfStartupError).toContain('window.__hf.buildReady["scene"] rejected');
+      expect(window.__hfStartupError).toContain("Error: build failed: bad baked data");
+      expect(window.__hfStartupError).not.toContain('"mesh"');
+    });
+
+    it("holds render-ready until the rejection, then releases it with the error set", async () => {
+      mountRoot();
+      let rejectBuild: (reason: unknown) => void = () => {};
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        scene: new Promise<void>((_, reject) => {
+          rejectBuild = reject;
+        }),
+      };
+
+      initSandboxRuntimeModular();
+      expect(window.__renderReady).toBe(false);
+      expect(window.__hfStartupError).toBeUndefined();
+
+      rejectBuild("no WebGPU adapter");
+      await flush();
+
+      // The error lands in the same tick as render-ready, so no readiness poll sees one without the other.
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toContain('["scene"] rejected: no WebGPU adapter');
+    });
+
+    it("leaves no startup error when every hold resolves", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.resolve() };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toBeUndefined();
+    });
+
+    it("does not fail the next composition loaded after teardown", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.reject(new Error("first build failed")) };
+      initSandboxRuntimeModular();
+      await flush();
+      expect(window.__hfStartupError).toContain("first build failed");
+
+      window.__hfRuntimeTeardown?.();
+
+      expect(window.__hfStartupError).toBeUndefined();
+    });
   });
 
   it("clears a stale buildReady entry on teardown so the next init isn't blocked by it", async () => {
@@ -5653,6 +5855,23 @@ describe("initSandboxRuntimeModular", () => {
       expect(card.style.height).toBe("100%");
     });
 
+    it("leaves a still-loading image at its own size instead of filling the frame", () => {
+      const root = makeRoot();
+      const logo = document.createElement("img");
+      logo.setAttribute("data-start", "0");
+      logo.setAttribute("data-duration", "5");
+      logo.style.width = "340px";
+      root.appendChild(logo);
+      // Before its file loads, a width-only <img> measures 0px tall.
+      modelBrowserLayout(logo, { width: "340px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(logo.style.height).toBe("");
+      expect(logo.style.width).toBe("340px");
+    });
+
     it("puts back an author's display:none !important after measuring the clip", () => {
       const root = makeRoot();
       const card = document.createElement("div");
@@ -5837,6 +6056,82 @@ describe("initSandboxRuntimeModular", () => {
   // returns a node that outputs silence per the Web Audio spec rather than
   // throwing, so the composition played through with visuals animating and no
   // sound, and nothing was logged.
+  describe("bare audio in WebKit", () => {
+    useMockAudioContext();
+
+    const SAFARI =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+    const startRouted = async (userAgent?: string, duration = 10) => {
+      if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+      const audio = mountAudio("/assets/track.mp3");
+      Object.defineProperty(audio, "duration", { value: duration });
+      const capture = vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue({ el: audio } as never);
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(
+        {} as AudioBuffer,
+      );
+      const schedule = vi
+        .spyOn(WebAudioTransport.prototype, "schedulePlayback")
+        .mockResolvedValue({} as never);
+      const release = vi.spyOn(WebAudioTransport.prototype, "releaseRouted");
+      await startPlayback();
+      return { audio, schedule, release, capture };
+    };
+
+    it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
+      const { audio, schedule, release } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands a 10 minute source to a decoded buffer", async () => {
+      const { audio, release } = await startRouted(SAFARI, 600);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("leaves an hour-long source on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, 3600);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("gives a clip that has not loaded its source's verdict", async () => {
+      vi.spyOn(WebAudioTransport.prototype, "isDecodedOrDecoding").mockReturnValue(true);
+      const { audio, release } = await startRouted(SAFARI, Number.NaN);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("keeps a clip that has not loaded, of a source nobody decodes, on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, Number.NaN);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("returns a handed-over track to its element when the speed changes, to hold its pitch", async () => {
+      const { audio, schedule, release, capture } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      vi.spyOn(WebAudioTransport.prototype, "hasHandedOverSources").mockReturnValue(true);
+      schedule.mockClear();
+      capture.mockClear();
+
+      setRate(1.5);
+
+      await vi.waitFor(() => expect(capture).toHaveBeenCalled());
+      expect(schedule).not.toHaveBeenCalled();
+    });
+
+    it("leaves the element on its route elsewhere", async () => {
+      const { schedule, release } = await startRouted();
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+  });
+
   describe("cross-origin audio without a CORS opt-in", () => {
     useMockAudioContext();
 

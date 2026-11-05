@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>3D Transitions</h1>
+  <p>Showcase of 3D perspective flip and rotate transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/transitions-3d.json"
   compositionId="transitions-3d"
   compositionSrc="compositions/transitions-3d.html"
   title="3D Transitions"
-  description="Showcase of 3D perspective flip and rotate transitions"
   variables={[]}
   meta={{"duration":11,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":297}}
   attribution={{"path":"registry/blocks/transitions-3d","tags":["transition","showcase"]}}
@@ -332,7 +336,9 @@ That writes one file: `compositions/transitions-3d.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -363,6 +369,4 @@ Tagged `transition` `showcase`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Squiggle Marks</h1>
+  <p>Hand-drawn squiggle underline, double-pass strikethrough, and bracket marks that draw on</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/hw-underline.json"
   compositionId="hw-underline"
   compositionSrc="compositions/components/hw-underline.html"
   title="Squiggle Marks"
-  description="Hand-drawn squiggle underline, double-pass strikethrough, and bracket marks that draw on"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":257}}
   attribution={{"path":"registry/components/hw-underline","tags":["handwritten","annotation","text-treatment"]}}
@@ -292,7 +296,9 @@ That writes `compositions/components/hw-underline.html`, plus 1 supporting file 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -311,6 +317,4 @@ Tagged `handwritten` `annotation` `text-treatment`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

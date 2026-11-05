@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Apple Money Count</h1>
+  <p>Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/apple-money-count.json"
   compositionId="apple-money-count"
   compositionSrc="compositions/apple-money-count.html"
   title="Apple Money Count"
-  description="Apple-style finance counter that counts from $0 to $10,000, flashes green, and bursts money icons with sound."
   variables={[]}
   meta={{"duration":5,"width":1920,"height":1080,"category":"Showcases","badge":"Stable","codeLines":320}}
   attribution={{"author":"Stronkter","authorUrl":"https://x.com/Stronkter","path":"registry/blocks/apple-money-count","tags":["showcase","finance","kinetic","youtube","sfx"]}}
@@ -355,7 +359,9 @@ That writes `compositions/apple-money-count.html`, plus 1 supporting file under 
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -396,6 +402,4 @@ Created by [Stronkter](https://x.com/Stronkter).
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

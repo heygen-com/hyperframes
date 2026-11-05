@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "./htmlCompiler.js";
@@ -167,11 +167,12 @@ describe("compileForRender media-type ownership", () => {
       const subCompositions: string[] = [];
       for (let index = 0; index < 8; index += 1) {
         const name = `probe-${index}.html`;
+        copyFileSync(join(projectDir, "extensionless-video"), join(projectDir, `video-${index}`));
         writeFileSync(
           join(projectDir, name),
           `<!doctype html><html><body>
             <div data-composition-id="sub-${index}" data-width="32" data-height="32" data-duration="1">
-              <video id="video-${index}" src="extensionless-video" data-start="0"></video>
+              <video id="video-${index}" src="video-${index}" data-start="0"></video>
             </div>
           </body></html>`,
         );

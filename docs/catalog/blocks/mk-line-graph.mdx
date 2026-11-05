@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Minimal Line Graph</h1>
+  <p>One or two SVG series draw on with dots popping and value labels riding the draw front; dim baseline axis, x-labels, color-dot legend</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-line-graph.json"
   compositionId="mk-line-graph"
   compositionSrc="compositions/mk-line-graph.html"
   title="Minimal Line Graph"
-  description="One or two SVG series draw on with dots popping and value labels riding the draw front; dim baseline axis, x-labels, color-dot legend"
   variables={[]}
   meta={{"duration":7,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":292}}
   attribution={{"path":"registry/blocks/mk-line-graph","tags":["data-viz","chart","graph","minimal"]}}
@@ -327,7 +331,9 @@ That writes one file: `compositions/mk-line-graph.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -358,6 +364,4 @@ Tagged `data-viz` `chart` `graph` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

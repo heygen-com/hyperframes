@@ -68,7 +68,6 @@ export const CatalogDetail = ({
   compositionSrc,
   variables = [],
   title,
-  description,
   meta = {},
   about,
   attribution,
@@ -585,10 +584,6 @@ export const CatalogDetail = ({
     color 100ms ease;
 }
 
-.hf-ve-head-title { margin: 8px 0 28px; }
-.hf-ve-head-title h1 { margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; color: var(--ve-fg); }
-.hf-ve-head-title p { margin: 12px 0 0; font-size: 18px; line-height: 1.5; color: var(--ve-muted); max-width: 70ch; }
-@media (max-width: 640px) { .hf-ve-head-title h1 { font-size: 32px; } }
 /* Item page anatomy: bar, stage beside Tune, tabs, tab body. */
 .hf-ve-bar {
   display: flex;
@@ -2084,13 +2079,6 @@ export const CatalogDetail = ({
   return (
     <div className="hf-ve my-4">
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
-
-      <div className="not-prose">
-        <header className="hf-ve-head-title">
-          <h1>{title}</h1>
-          {description && <p>{description}</p>}
-        </header>
-      </div>
 
       {installSlot && (
         <div className="hf-ve-install">

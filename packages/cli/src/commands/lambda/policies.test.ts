@@ -85,6 +85,12 @@ describe("policies — validatePolicy", () => {
     expect(result.granted).toEqual(allRequiredActions());
   });
 
+  it("reads a policy saved with a UTF-8 BOM", () => {
+    const path = join(workdir, "bom-policy.json");
+    writeFileSync(path, `\uFEFF${JSON.stringify({ Version: "2012-10-17", Statement: [] })}`);
+    expect(validatePolicy(path).granted).toEqual([]);
+  });
+
   it("reports specific missing actions", () => {
     const path = writePolicy({
       Version: "2012-10-17",

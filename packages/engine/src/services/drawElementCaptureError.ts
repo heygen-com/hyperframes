@@ -14,6 +14,23 @@ export class DrawElementCaptureError extends Error {
   }
 }
 
+function markRejectionHandled(promise: Promise<unknown>): void {
+  promise.catch(() => {});
+}
+
+export function asDrawElementCaptureFailure(
+  frameIndex: number,
+  encodeResult: Promise<Buffer>,
+): Promise<Buffer> {
+  const wrapped = encodeResult.catch((cause: unknown) => {
+    if (isDrawElementCaptureError(cause)) throw cause;
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    throw new DrawElementCaptureError(frameIndex, reason, cause);
+  });
+  markRejectionHandled(wrapped);
+  return wrapped;
+}
+
 /** Structural matching survives engine/producer copies and worker error wrappers. */
 export function isDrawElementCaptureError(error: unknown): boolean {
   let current = error;

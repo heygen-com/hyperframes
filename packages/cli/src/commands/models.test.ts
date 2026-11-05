@@ -103,7 +103,7 @@ describe("models install parakeet --json", () => {
     expect(await install()).toEqual({
       exitCode: 1,
       threw: true,
-      out: { ok: false, error: "tokens.txt did not match" },
+      out: { ok: false, error: expect.objectContaining({ message: "tokens.txt did not match" }) },
     });
   });
 
@@ -112,7 +112,10 @@ describe("models install parakeet --json", () => {
     expect(await install()).toEqual({
       exitCode: 1,
       threw: true,
-      out: { ok: false, error: "Parakeet needs glibc 2.32 or newer" },
+      out: {
+        ok: false,
+        error: expect.objectContaining({ message: "Parakeet needs glibc 2.32 or newer" }),
+      },
     });
     expect(sherpa.installSherpaRuntime).not.toHaveBeenCalled();
     expect(sherpa.ensureParakeetModel).not.toHaveBeenCalled();
@@ -123,7 +126,10 @@ describe("models install parakeet --json", () => {
     const { exitCode, threw, out } = await install();
     expect(exitCode).toBe(130);
     expect(threw).toBe(false);
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
+    expect(out).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringMatching(/cancelled/) }),
+    });
   });
 
   it("stops with exit 130 when cancelled mid-download", async () => {
@@ -134,7 +140,10 @@ describe("models install parakeet --json", () => {
     const { exitCode, threw, out } = await install();
     expect(exitCode).toBe(130);
     expect(threw).toBe(false);
-    expect(out).toMatchObject({ ok: false, error: expect.stringMatching(/cancelled/) });
+    expect(out).toMatchObject({
+      ok: false,
+      error: expect.objectContaining({ message: expect.stringMatching(/cancelled/) }),
+    });
     expect(sherpa.installSherpaRuntime).toHaveBeenCalledWith({ signal: cancel.signal });
   });
 });

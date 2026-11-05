@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Native Notification Pop</h1>
+  <p>One system-faithful notification banner (iOS or macOS) drops in over any scene on an accurate interruptible spring: fast arrival, soft overshoot, settled mass, backdrop blur, app dot, title, one body line. Holds; tucks away only via exit.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/native-notification-pop.json"
   compositionId="native-notification-pop"
   compositionSrc="compositions/components/native-notification-pop.html"
   title="Native Notification Pop"
-  description="One system-faithful notification banner (iOS or macOS) drops in over any scene on an accurate interruptible spring: fast arrival, soft overshoot, settled mass, backdrop blur, app dot, title, one body line. Holds; tucks away only via exit."
   variables={[{"id":"title","type":"string","role":"content","label":"Title","description":"The notification title line.","default":"Render complete"},{"id":"body","type":"string","role":"content","label":"Body","description":"One body line. Long lines truncate with an ellipsis.","default":"launch-cut.mp4 is ready to preview"},{"id":"app_label","type":"string","role":"content","label":"App label","description":"Small-caps app name row beside the app dot.","default":"HyperFrames"},{"id":"os","type":"enum","role":"style","label":"OS","description":"Banner geometry and placement: wide centered iOS or compact top-right macOS.","default":"ios","options":[{"value":"ios","label":"iOS"},{"value":"macos","label":"macOS"}]},{"id":"at","type":"number","role":"timing","label":"Drop start","description":"Seconds after mount start when the banner drops in.","default":0.3,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"App dot color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"None holds the banner; up tucks it back off the top; fade fades it in place.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":456}}
   attribution={{"path":"registry/components/native-notification-pop","tags":["motion-primitive","product-demo","overlay","notification","spring"]}}
@@ -491,7 +495,9 @@ That writes one file: `compositions/components/native-notification-pop.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -536,6 +542,4 @@ Tagged `motion-primitive` `product-demo` `overlay` `notification` `spring`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

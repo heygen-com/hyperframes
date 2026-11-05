@@ -117,6 +117,7 @@ export class ThumbnailScheduler {
   private nextSequence = 1;
   private scrolling = false;
   private previewReloading = false;
+  private playbackActive = false;
   private pageHidden = false;
   private cacheBytes = 0;
   private waveformCacheBytes = 0;
@@ -231,6 +232,12 @@ export class ThumbnailScheduler {
     }
   }
 
+  setPlaybackActive(active: boolean): void {
+    if (this.playbackActive === active) return;
+    this.playbackActive = active;
+    if (!active) this.pump();
+  }
+
   setPageHidden(hidden: boolean): void {
     if (this.pageHidden === hidden) return;
     this.pageHidden = hidden;
@@ -295,12 +302,22 @@ export class ThumbnailScheduler {
       });
 
     for (const entry of queued) {
-      if (this.scrolling && entry.request.rich) continue;
-      if (this.previewReloading && entry.request.kind === "composition") continue;
+      if (this.isHeld(entry)) continue;
       const bucket = concurrencyBucket(entry.request.kind);
       if (this.activeByBucket[bucket] >= this.bucketLimit(bucket)) continue;
       this.start(entry, bucket);
     }
+  }
+
+  private isHeld(entry: ThumbnailEntry): boolean {
+    const { kind, rich } = entry.request;
+    if (this.scrolling && rich) return true;
+    if (this.previewReloading && kind === "composition") return true;
+    return (
+      this.playbackActive &&
+      kind === "video" &&
+      this.entryPriority(entry) < PRIORITY_SCORE.interaction
+    );
   }
 
   private start(entry: ThumbnailEntry, bucket: "video" | "composition" | "general"): void {
@@ -476,10 +493,9 @@ export class ThumbnailScheduler {
       const timeout = setTimeout(() => {
         if (settled) return;
         settled = true;
-        controller.abort();
-        reject(
-          new Error(`Thumbnail load timed out after ${this.budgets.thumbnailLoadTimeoutMs}ms`),
-        );
+        const message = `Thumbnail load timed out after ${this.budgets.thumbnailLoadTimeoutMs}ms`;
+        controller.abort(new DOMException(message, "TimeoutError"));
+        reject(new Error(message));
       }, this.budgets.thumbnailLoadTimeoutMs);
 
       load.then(

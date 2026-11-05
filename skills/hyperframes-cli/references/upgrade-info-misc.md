@@ -101,11 +101,11 @@ Renders the project with 5 preset configurations — `30fps draft 2w`, `30fps st
 
 ```bash
 npx hyperframes telemetry status      # show telemetry state
-npx hyperframes telemetry disable     # disable anonymous usage telemetry
+npx hyperframes telemetry disable     # disable usage telemetry
 npx hyperframes telemetry enable      # re-enable telemetry
 ```
 
-Telemetry is anonymous usage counters only. Disable globally with `HYPERFRAMES_NO_TELEMETRY=1` if env-var control is preferred over the subcommand.
+Telemetry is usage counters only. It is anonymous until the user signs in to HeyGen; after `auth login` it is linked to their HeyGen account (email and username), so don't tell a signed-in user it is anonymous. Disable globally with `HYPERFRAMES_NO_TELEMETRY=1` if env-var control is preferred over the subcommand.
 
 Events include two fingerprint properties used to distinguish managed-sandbox runs from real laptops — no PII, no env-var **values**, only existence checks:
 

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Count-Up Stat Card</h1>
+  <p>Big-numeral statistic with count-up, label, thin progress track filling to value/max, and caption; light and dark schemes</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/mk-progress-stat.json"
   compositionId="mk-progress-stat"
   compositionSrc="compositions/mk-progress-stat.html"
   title="Count-Up Stat Card"
-  description="Big-numeral statistic with count-up, label, thin progress track filling to value/max, and caption; light and dark schemes"
   variables={[]}
   meta={{"duration":7,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":185}}
   attribution={{"path":"registry/blocks/mk-progress-stat","tags":["data-viz","stat","minimal"]}}
@@ -220,7 +224,9 @@ That writes one file: `compositions/mk-progress-stat.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -251,6 +257,4 @@ Tagged `data-viz` `stat` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

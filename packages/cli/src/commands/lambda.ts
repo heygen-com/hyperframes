@@ -1,4 +1,4 @@
-import { failCommand } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 /**
  * `hyperframes lambda` — top-level dispatcher for AWS Lambda subcommands.
  *
@@ -9,13 +9,14 @@ import { failCommand } from "../utils/commandResult.js";
  * lives in `@hyperframes/aws-lambda/sdk`.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { DistributedFormat } from "@hyperframes/aws-lambda/sdk";
 import { type CanvasResolution, DISTRIBUTED_FPS, isDistributedFps } from "@hyperframes/core";
 import { parseOutputResolutionFlag } from "../utils/parseOutputResolution.js";
 import type { Example } from "./_examples.js";
 import type { VideoArch } from "./lambda/videoImage.js";
 import { c } from "../ui/colors.js";
+import { deliveryFlagArgs, parseDeliveryFlags } from "../utils/deliveryFlags.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
 
@@ -153,6 +154,7 @@ export default defineCommand({
     format: { type: "string", description: "mp4 | mov | png-sequence | webm (default: mp4)" },
     codec: { type: "string", description: "h264 | h265 (mp4 only)" },
     quality: { type: "string", description: "draft | standard | high" },
+    ...deliveryFlagArgs,
     "chunk-size": {
       type: "string",
       description:
@@ -287,14 +289,14 @@ export default defineCommand({
           console.error(
             `[lambda sites] unknown verb "${String(args.target)}". Only "create" is supported.`,
           );
-          failCommand();
+          failUsage();
         }
         const projectDir = args.extra as string | undefined;
         if (!projectDir) {
           console.error(
             "[lambda sites create] usage: hyperframes lambda sites create <projectDir>",
           );
-          failCommand();
+          failUsage();
         }
         const { runSitesCreate } = await import("./lambda/sites.js");
         await runSitesCreate({
@@ -311,20 +313,20 @@ export default defineCommand({
           console.error(
             "[lambda render] usage: hyperframes lambda render <projectDir> --width <px> --height <px>",
           );
-          failCommand();
+          failUsage();
         }
         const width = parsePositiveInt(args.width, "--width");
         const height = parsePositiveInt(args.height, "--height");
         if (width === undefined || height === undefined) {
           console.error("[lambda render] --width and --height are required.");
-          failCommand();
+          failUsage();
         }
         const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
-          failCommand();
+          failUsage();
         }
         const { runRender } = await import("./lambda/render.js");
         const renderResolution = parseOutputResolution(args["output-resolution"]);
@@ -340,6 +342,7 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
+          ...parseDeliveryFlags(args),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
           targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
@@ -360,27 +363,27 @@ export default defineCommand({
           console.error(
             "[lambda render-batch] usage: hyperframes lambda render-batch <projectDir> --batch <path.jsonl> --width <px> --height <px>",
           );
-          failCommand();
+          failUsage();
         }
         const batch = args.batch as string | undefined;
         if (!batch) {
           console.error(
             "[lambda render-batch] --batch <path.jsonl> is required. Each line is a JSON object with at least { outputKey: '...' }.",
           );
-          failCommand();
+          failUsage();
         }
         const width = parsePositiveInt(args.width, "--width");
         const height = parsePositiveInt(args.height, "--height");
         if (width === undefined || height === undefined) {
           console.error("[lambda render-batch] --width and --height are required.");
-          failCommand();
+          failUsage();
         }
         const fpsRaw = parseIntFlag(args.fps) ?? defaultCloudFps(projectDir);
         if (!isDistributedFps(fpsRaw)) {
           console.error(
             `[lambda render-batch] --fps must be one of ${DISTRIBUTED_FPS.join(", ")}; got ${fpsRaw}.`,
           );
-          failCommand();
+          failUsage();
         }
         const { runRenderBatch } = await import("./lambda/render-batch.js");
         const batchResolution = parseOutputResolution(args["output-resolution"]);
@@ -397,6 +400,7 @@ export default defineCommand({
           format: parseFormat(args.format),
           codec: parseCodec(args.codec),
           quality: parseQuality(args.quality),
+          ...parseDeliveryFlags(args),
           chunkSize: parsePositiveInt(args["chunk-size"], "--chunk-size"),
           maxParallelChunks: parsePositiveInt(args["max-parallel-chunks"], "--max-parallel-chunks"),
           targetChunkFrames: parsePositiveInt(args["target-chunk-frames"], "--target-chunk-frames"),
@@ -413,7 +417,7 @@ export default defineCommand({
           console.error(
             "[lambda progress] usage: hyperframes lambda progress <renderId | executionArn>",
           );
-          failCommand();
+          failUsage();
         }
         const { runProgress } = await import("./lambda/progress.js");
         await runProgress({ target, stackName, json: Boolean(args.json) });
@@ -430,7 +434,7 @@ export default defineCommand({
           console.error(
             `[lambda policies] usage: hyperframes lambda policies <role|user|validate> [args]`,
           );
-          failCommand();
+          failUsage();
         }
         const { runPolicies } = await import("./lambda/policies.js");
         await runPolicies({
@@ -442,7 +446,7 @@ export default defineCommand({
       }
       default:
         console.error(`${c.error("Unknown subcommand:")} ${subcommand}\n${HELP}`);
-        failCommand();
+        failUsage();
     }
   },
 });
@@ -462,7 +466,7 @@ function parsePositiveInt(raw: unknown, flagName: string): number | undefined {
   const n = parseIntFlag(raw);
   if (n === undefined) return undefined;
   if (!Number.isInteger(n) || n < 1) {
-    throw new Error(`[lambda] ${flagName} must be a positive integer; got ${n}`);
+    throw new CliUsageError(`[lambda] ${flagName} must be a positive integer; got ${n}`);
   }
   return n;
 }
@@ -482,7 +486,7 @@ function parseEnum<T extends string>(
   if (raw === undefined || raw === null || raw === "") return defaultValue;
   const s = String(raw);
   if ((allowed as readonly string[]).includes(s)) return s as T;
-  throw new Error(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
+  throw new CliUsageError(`${errorPrefix} must be ${allowed.join("|")}; got ${s}`);
 }
 
 const FORMATS = [

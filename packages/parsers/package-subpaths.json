@@ -122,6 +122,12 @@
       "types": "./dist/mediaAlpha.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./media-streams": {
+      "source": "./src/mediaStreams.ts",
+      "runtime": "./dist/mediaStreams.js",
+      "types": "./dist/mediaStreams.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./asset-resolution": {
       "source": "./src/assetResolution.ts",
       "runtime": "./dist/assetResolution.js",

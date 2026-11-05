@@ -243,6 +243,10 @@ function readVideoMetadata(
       record.videoStreamLeadSeconds === undefined
         ? 0
         : readFiniteNumber(record.videoStreamLeadSeconds, `${field}.videoStreamLeadSeconds`),
+    mediaTimeOffsetSeconds:
+      record.mediaTimeOffsetSeconds === undefined
+        ? 0
+        : readFiniteNumber(record.mediaTimeOffsetSeconds, `${field}.mediaTimeOffsetSeconds`),
     width: readPositiveInteger(record.width, `${field}.width`),
     height: readPositiveInteger(record.height, `${field}.height`),
     fps: readFiniteNumber(record.fps, `${field}.fps`),

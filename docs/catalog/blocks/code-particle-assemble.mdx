@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Particle Assemble</h1>
+  <p>Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-particle-assemble.json"
   compositionId="code-particle-assemble"
   compositionSrc="compositions/code-particle-assemble.html"
   title="Code Particle Assemble"
-  description="Thousands of GPU points scatter through space and fly to the exact glyph pixels of the code, resolving into readable syntax-highlighted text — a particle system, not a token tween."
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":482}}
   attribution={{"path":"registry/blocks/code-particle-assemble","tags":["code","code-animation","particles","gpu","webgl","developer"]}}
@@ -517,7 +521,9 @@ That writes one file: `compositions/code-particle-assemble.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -548,6 +554,4 @@ Tagged `code` `code-animation` `particles` `gpu` `webgl` `developer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

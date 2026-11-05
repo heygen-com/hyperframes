@@ -2,6 +2,7 @@
 import { watch } from "node:fs";
 import { dirname, join } from "node:path";
 import { COMPOSITION, PLAYHEAD } from "./grid.mjs";
+import { hashOf, traceBench } from "./trace.mjs";
 import { centre, dist, percentile, quadDistance } from "./geometry.mjs";
 import {
   VIEWPORT,
@@ -109,7 +110,10 @@ export function watchVersions(dir, files) {
   const versions = [readFiles(dir, files)];
   const record = () => {
     const now = readFiles(dir, files);
-    if (!sameFiles(now, versions.at(-1))) versions.push(now);
+    if (!sameFiles(now, versions.at(-1))) {
+      versions.push(now);
+      traceBench("version", { n: versions.length - 1, hash: hashOf(JSON.stringify(now)) });
+    }
   };
   const watchers = [...new Set(files.map((f) => dirname(join(dir, f))))].map((d) =>
     watch(d, record),

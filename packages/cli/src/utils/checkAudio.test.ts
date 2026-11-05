@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { AudioElement } from "@hyperframes/engine";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { inspectAudio } from "./checkAudio.js";
+import { inspectAudio, type AudioCheckDependencies } from "./checkAudio.js";
 import type { ProjectMedia } from "./projectMedia.js";
 
 const RATE = 48_000;
@@ -175,5 +175,27 @@ describe.skipIf(!ffmpeg)("inspectAudio", () => {
     expect(await codes(media([clip("late.wav", { mediaStart: 2, end: 2 })]))).toEqual([]);
     // Played at double speed, 2 s of film reach 4 s into the file, past the silent start.
     expect(await codes(media([clip("late.wav", { end: 2, playbackRate: 2 })]))).toEqual([]);
+  });
+});
+
+describe("inspectAudio on a project of many clips trimmed from few files", () => {
+  it("probes each file once, however many clips are cut from it", async () => {
+    const probes = { accepts: 0, audio: 0, silence: 0 };
+    const dependencies: AudioCheckDependencies = {
+      renderAccepts: async () => (probes.accepts++, true),
+      probeAudio: async () => (
+        probes.audio++,
+        { durationSeconds: 60, audioStream: 0, sampleRate: RATE, channels: 1 } as never
+      ),
+      videoHasAudio: async () => true,
+      isSilent: async () => (probes.silence++, false),
+    };
+    writeFileSync(join(dir, "one.wav"), "x");
+    writeFileSync(join(dir, "two.wav"), "x");
+    const clips = Array.from({ length: 300 }, (_, i) =>
+      clip(i % 2 ? "one.wav" : "two.wav", { id: `c${i}`, mediaStart: i % 50, end: 1.5 }),
+    );
+    await inspectAudio(dir, "index.html", media(clips), dependencies);
+    expect(probes).toEqual({ accepts: 2, audio: 2, silence: 300 });
   });
 });

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTagCI } from "./ffprobe.js";
@@ -96,8 +97,27 @@ export function resolveOwnVersionFrom(startDir: string): string {
     dir = parent;
   }
 
+  // An app that bundles the engine into its own dist has no package of ours above the bundle; the
+  // @hyperframes/engine installed beside it is the one it was built from.
+  const installed = installedEngineVersion(startDir);
+  if (installed) return installed;
+
   reportUnresolved(`no package.json matching ${OWN_PACKAGE_NAME} within ${MAX_WALK_DEPTH} levels`);
   return UNRESOLVED_VERSION;
+}
+
+function installedEngineVersion(fromDir: string): string | undefined {
+  try {
+    const path = createRequire(join(fromDir, "index.js")).resolve(
+      "@hyperframes/engine/package.json",
+    );
+    const pkg = JSON.parse(readFileSync(path, "utf8")) as { name?: unknown; version?: unknown };
+    if (pkg.name === "@hyperframes/engine" && typeof pkg.version === "string" && pkg.version)
+      return pkg.version;
+  } catch {
+    // Not installed beside us: the caller reports it.
+  }
+  return undefined;
 }
 
 /**

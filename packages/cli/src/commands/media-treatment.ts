@@ -24,18 +24,19 @@ import {
   parseSourceDocument as parseMutableSource,
 } from "@hyperframes/studio-server/source-mutation";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { lintHyperframeHtml } from "@hyperframes/lint";
 import { parseHTML } from "linkedom";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { failCommand } from "../utils/commandResult.js";
-import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 import { readOptionalString } from "../utils/pathArgs.js";
 import { projectCompositionFiles } from "../utils/mountedCompositions.js";
+import { readJsonFileText, readJsonFlag } from "../utils/jsonFlag.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { analyzeMediaTreatment } from "./media-treatment-analysis.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 export function getMediaTreatmentCapabilityOverview() {
   const capabilities = getHfColorGradingCapabilities();
@@ -87,6 +88,16 @@ export function getMediaTreatmentCapabilityOverview() {
       full: "Use --all only for tooling or exhaustive inspection.",
     },
   };
+}
+
+const FAMILY_PAYLOAD_KEY: Record<string, string> = { correction: "adjust", presets: "preset" };
+
+function familyIdFor(name: string): string | undefined {
+  const wanted = name.toLowerCase();
+  return getMediaTreatmentCapabilityOverview().families.find(
+    ({ id, label }) =>
+      id === wanted || label.toLowerCase() === wanted || FAMILY_PAYLOAD_KEY[id] === wanted,
+  )?.id;
 }
 
 export function getMediaTreatmentCapabilityDetail(id: string): unknown {
@@ -305,6 +316,8 @@ export function getMediaTreatmentCapabilityDetail(id: string): unknown {
 
   const detail = Object.hasOwn(details, id) ? Reflect.get(details, id) : undefined;
   if (detail) return detail;
+  const family = familyIdFor(id);
+  if (family && family !== id) return getMediaTreatmentCapabilityDetail(family);
   const families = [...Object.keys(details), ...capabilities.effectFamilies.map((f) => f.id)];
   throw new Error(
     `Unknown media-treatment capability: ${id}. Available areas: ${families.join(", ")}.`,
@@ -447,6 +460,18 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
   return [];
 }
 
+function describeMediaInDocument(document: Document): string {
+  const media = queryIncludingTemplates(document, "video, img, canvas");
+  if (media.length === 0) return "The file has no <video>, <img> or <canvas> yet.";
+  const shown = media.slice(0, 5).map((element) => {
+    const tag = element.tagName.toLowerCase();
+    const id = element.getAttribute("id");
+    return id ? `${tag}#${id}` : `${tag}[src="${element.getAttribute("src") ?? ""}"]`;
+  });
+  const more = media.length > shown.length ? ` and ${media.length - shown.length} more` : "";
+  return `Media in the file: ${shown.join(", ")}${more}.`;
+}
+
 type MediaTarget = { element: Element; selectorIndex: number; tag: GradingSourceTag };
 
 function selectMediaElements(
@@ -460,7 +485,9 @@ function selectMediaElements(
   } catch {
     throw new Error(`Invalid selector: ${selector}`);
   }
-  if (matches.length === 0) throw new Error(`Selector did not match: ${selector}`);
+  if (matches.length === 0) {
+    throw new Error(`Selector did not match: ${selector}. ${describeMediaInDocument(document)}`);
+  }
   if (selectorIndex !== undefined && !matches[selectorIndex]) {
     throw new Error(`--selector-index ${selectorIndex} is outside ${matches.length} matches`);
   }
@@ -527,7 +554,7 @@ function parseSelectorIndex(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) {
-    throw new Error("--selector-index must be a non-negative integer");
+    throw new CliUsageError("--selector-index must be a non-negative integer");
   }
   return value;
 }
@@ -561,6 +588,7 @@ export function resolveMediaTreatmentSource(
 }
 
 function parseGrading(
+  projectDir: string,
   raw: string | undefined,
   apply: boolean,
   clear: boolean,
@@ -568,20 +596,18 @@ function parseGrading(
 ): unknown {
   if (clear) {
     if (raw !== undefined || apply) {
-      throw new Error("Use either --apply with --grading or --clear, not both");
+      throw new CliUsageError("Use either --apply with --grading or --clear, not both");
     }
     return undefined;
   }
   if (!apply && !dryRun) {
-    if (raw !== undefined) throw new Error("--grading requires --apply or --dry-run");
-    throw new Error("Use --apply with --grading <json> or --clear");
+    if (raw !== undefined) throw new CliUsageError("--grading requires --apply or --dry-run");
+    throw new CliUsageError("Use --apply with --grading <json> or --clear");
   }
-  if (raw === undefined) throw new Error("--apply requires --grading <json>");
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`Could not parse --grading JSON: ${normalizeErrorMessage(error)}`);
-  }
+  if (raw === undefined) throw new CliUsageError("--apply requires --grading <json>");
+  return readJsonFlag("--grading", raw, {
+    readFile: (path) => readJsonFileText(resolve(projectDir, path)),
+  });
 }
 
 function mutationVerb(action: "apply" | "clear", changed: boolean, dryRun: boolean): string {
@@ -616,9 +642,10 @@ function runCapabilityQuery(args: MediaTreatmentCommandArgs): void {
     args.apply,
     args.analyze,
   ].some(Boolean);
-  if (hasMutationOption) throw new Error("--capabilities cannot be combined with mutation options");
+  if (hasMutationOption)
+    throw new CliUsageError("--capabilities cannot be combined with mutation options");
   if (args.all === true && capability)
-    throw new Error("Use either --all or --capability, not both");
+    throw new CliUsageError("Use either --all or --capability, not both");
 
   let capabilities: unknown = getMediaTreatmentCapabilityOverview();
   if (args.all === true) capabilities = getHfColorGradingCapabilities();
@@ -650,7 +677,7 @@ function resolveMutationFile(args: MediaTreatmentCommandArgs, selector: string |
     (selector ? fileDeclaringSelector(project.dir, selector) : "index.html");
   const filePath = resolve(project.dir, fileArg);
   if (!isPathInside(filePath, project.dir) || !filePath.toLowerCase().endsWith(".html")) {
-    throw new Error("--file must be an HTML file inside the project");
+    throw new CliUsageError("--file must be an HTML file inside the project");
   }
   if (!existsSync(filePath)) throw new Error(`Composition file not found: ${fileArg}`);
   return { project, filePath };
@@ -659,14 +686,14 @@ function resolveMutationFile(args: MediaTreatmentCommandArgs, selector: string |
 function analyzeTarget(args: MediaTreatmentCommandArgs) {
   const selector = readOptionalString(args.selector);
   const { project, filePath } = resolveMutationFile(args, selector);
-  if (!selector) throw new Error("--selector is required");
+  if (!selector) throw new CliUsageError("--selector is required");
   if (
     readOptionalString(args.grading) ||
     args.clear === true ||
     args.apply === true ||
     args["dry-run"] === true
   ) {
-    throw new Error("--analyze cannot be combined with mutation options");
+    throw new CliUsageError("--analyze cannot be combined with mutation options");
   }
   const selectorIndex = parseSelectorIndex(readOptionalString(args["selector-index"]));
   const { element, tag } = selectMediaElement(
@@ -692,7 +719,7 @@ function analyzeTarget(args: MediaTreatmentCommandArgs) {
 async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const selector = readOptionalString(args.selector);
   const { project, filePath } = resolveMutationFile(args, selector);
-  if (!selector) throw new Error("--selector is required");
+  if (!selector) throw new CliUsageError("--selector is required");
   const clear = args.clear === true;
   const apply = args.apply === true;
   const dryRun = args["dry-run"] === true;
@@ -700,7 +727,7 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const result = applyMediaTreatmentToHtml(readFileSync(filePath, "utf8"), {
     selector,
     selectorIndex,
-    grading: parseGrading(readOptionalString(args.grading), apply, clear, dryRun),
+    grading: parseGrading(project.dir, readOptionalString(args.grading), apply, clear, dryRun),
     clear,
   });
   const lintResult = await lintHyperframeHtml(result.html);
@@ -772,9 +799,14 @@ async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
 }
 
 function printFailure(error: unknown, json: boolean): void {
-  const message = normalizeErrorMessage(error);
-  if (json) console.log(JSON.stringify(withMeta({ ok: false, error: message })));
-  else console.error(`${c.error("✗")} ${message}`);
+  const message = failureMessage(error);
+  const usage = error instanceof CliUsageError;
+  if (json) {
+    console.log(
+      JSON.stringify(withMeta(jsonFailure(usage ? error.code : "runtime_error", message))),
+    );
+  } else console.error(`${c.error("✗")} ${message}`);
+  if (usage) failUsage();
   failCommand(1, error);
 }
 
@@ -811,7 +843,10 @@ export const mediaTreatmentCommand = defineCommand({
       type: "string",
       description: "Zero-based match index to patch only one of several matches",
     },
-    grading: { type: "string", description: "Canonical color-grading JSON patch" },
+    grading: {
+      type: "string",
+      description: "Canonical color-grading JSON patch, a path to a JSON file, or - for stdin",
+    },
     apply: {
       type: "boolean",
       description: "Apply the validated grading patch (explicit agent form)",

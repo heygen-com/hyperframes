@@ -17,7 +17,10 @@ import {
   unlinkSync,
 } from "fs";
 import { createHash, randomUUID } from "crypto";
-import { BlockList, isIP } from "node:net";
+import dns from "node:dns";
+import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
+import { type LookupFunction } from "node:net";
+import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -200,60 +203,6 @@ function isRetryableNetworkCause(error: unknown): boolean {
     code.startsWith("UND_ERR_") ||
     /fetch failed|network|socket|connection reset|terminated/i.test(message)
   );
-}
-
-const NON_PUBLIC_IPV4_ADDRESSES = new BlockList();
-for (const [network, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-] as const) {
-  NON_PUBLIC_IPV4_ADDRESSES.addSubnet(network, prefix, "ipv4");
-}
-const NON_PUBLIC_IPV6_ADDRESSES = new BlockList();
-for (const [network, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["::ffff:0:0", 96],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["fec0::", 10],
-  ["ff00::", 8],
-  ["2001:db8::", 32],
-] as const) {
-  NON_PUBLIC_IPV6_ADDRESSES.addSubnet(network, prefix, "ipv6");
-}
-
-/** Literal-host policy shared by rendering and capture; DNS resolution remains trusted. */
-export function isBlockedNetworkHost(hostname: string): boolean {
-  const h = hostname
-    .toLowerCase()
-    .replace(/\.$/, "")
-    .replace(/^\[|\]$/g, "");
-  if (
-    h === "localhost" ||
-    h.endsWith(".localhost") ||
-    h.endsWith(".local") ||
-    h.endsWith(".internal")
-  )
-    return true;
-  const addressType = isIP(h);
-  if (addressType === 0) return false;
-  return addressType === 4
-    ? NON_PUBLIC_IPV4_ADDRESSES.check(h, "ipv4")
-    : NON_PUBLIC_IPV6_ADDRESSES.check(h, "ipv6");
 }
 
 /**
@@ -467,6 +416,57 @@ async function acquireCachePathLock(
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 5;
 
+const NON_PUBLIC_ADDRESS_CODE = "HF_NON_PUBLIC_ADDRESS";
+
+/** Resolves a host and refuses to connect when any answer is a non-public address. */
+const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
+    if (error) return callback(error, "", 0);
+    if (
+      answers.length === 0 ||
+      answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))
+    ) {
+      const refused = Object.assign(new Error("host resolves to a non-public address"), {
+        code: NON_PUBLIC_ADDRESS_CODE,
+      });
+      return callback(refused, "", 0);
+    }
+    if (options.all) return callback(null, answers as never);
+    return callback(null, answers[0]!.address, answers[0]!.family);
+  });
+};
+
+type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
+
+let undiciTransport: Promise<DownloadFetch> | undefined;
+const fetchPublic: DownloadFetch = async (url, init) => {
+  // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
+  if (fetchGoesThroughEnvProxy()) return fetch(url, init);
+  undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
+    const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
+    return (target, options) =>
+      undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+  });
+  return (await undiciTransport)(url, init);
+};
+
+let downloadFetch: DownloadFetch = fetchPublic;
+
+/** Test seam: replaces the transport every download goes through; no argument restores it. */
+export function _setDownloadFetchForTests(replacement?: DownloadFetch): void {
+  downloadFetch = replacement ?? fetchPublic;
+}
+
+function refusedNonPublicAddress(error: unknown): boolean {
+  for (let depth = 0; error && depth < 4; depth += 1) {
+    if (typeof error === "object" && "code" in error && error.code === NON_PUBLIC_ADDRESS_CODE) {
+      return true;
+    }
+    error = typeof error === "object" && "cause" in error ? error.cause : undefined;
+  }
+  return false;
+}
+
 function assertAllowedDownloadUrl(url: string, redirect: boolean): void {
   try {
     assertPublicHttpsUrl(url);
@@ -517,10 +517,19 @@ async function fetchWithValidatedRedirects(
     // lgtm[js/file-access-to-http] — every redirect hop is fetched manually
     // only after the HTTPS/private-host guard above; automatic redirect
     // following is disabled so an allowed host cannot bounce into IMDS.
-    const response = await fetch(currentUrl, {
+    const response = await downloadFetch(currentUrl, {
       signal: controller.signal,
       redirect: "manual",
       headers: { "accept-encoding": "identity" },
+    }).catch((error: unknown) => {
+      if (!refusedNonPublicAddress(error)) throw error;
+      throw new UrlDownloadError(
+        "http_rejected",
+        false,
+        redirects > 0
+          ? "Download redirect target is not permitted"
+          : "Download URL is not permitted",
+      );
     });
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: currentUrl };
 

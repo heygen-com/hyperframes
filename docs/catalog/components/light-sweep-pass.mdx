@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Light Sweep Pass</h1>
+  <p>A traveling key light re-shades a slotted scene: a soft diagonal gradient band crosses the frame once while every per-element highlight and shadow shifts in lockstep (all driven by one --light-x property), then the light settles into a resting key. Quiet, expensive-feeling; the scene itself never moves. Callers fill the named scene slot; a token hero-and-cards default renders when it is left empty.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/light-sweep-pass.json"
   compositionId="light-sweep-pass"
   compositionSrc="compositions/components/light-sweep-pass.html"
   title="Light Sweep Pass"
-  description="A traveling key light re-shades a slotted scene: a soft diagonal gradient band crosses the frame once while every per-element highlight and shadow shifts in lockstep (all driven by one --light-x property), then the light settles into a resting key. Quiet, expensive-feeling; the scene itself never moves. Callers fill the named scene slot; a token hero-and-cards default renders when it is left empty."
   variables={[{"id":"angle","type":"number","role":"style","label":"Angle","description":"Band and highlight gradient angle in degrees.","default":115,"min":60,"max":160,"step":1,"unit":"deg"},{"id":"sweep_at","type":"number","role":"timing","label":"Sweep start","description":"Seconds after mount start when the band starts crossing.","default":0.9,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"strength","type":"enum","role":"style","label":"Strength","description":"Band opacity and highlight bloom multiplier.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Tint inside the band and the highlight blooms.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the settled key.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":477}}
   attribution={{"path":"registry/components/light-sweep-pass","tags":["motion-primitive","overlay","light","sweep","slots","deterministic"]}}
@@ -512,7 +516,9 @@ That writes one file: `compositions/components/light-sweep-pass.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -555,6 +561,4 @@ Tagged `motion-primitive` `overlay` `light` `sweep` `slots` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

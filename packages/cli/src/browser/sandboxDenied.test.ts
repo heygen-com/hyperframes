@@ -37,7 +37,8 @@ describe("a browser launch a sandbox refuses", () => {
   });
 });
 
-const fakeBrowser = () => ({ process: () => new EventEmitter() }) as unknown as Browser;
+const fakeBrowser = () =>
+  ({ process: () => new EventEmitter(), close: async () => {} }) as unknown as Browser;
 
 function recordingPuppeteer(failures: (string | Error)[]) {
   const launches: LaunchOptions[] = [];

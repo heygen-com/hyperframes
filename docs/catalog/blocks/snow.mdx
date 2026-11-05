@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Snow</h1>
+  <p>Seek-safe falling-snow overlay: sparse or dense flakes drift down with size, speed and opacity correlated per flake for depth, radial-masked so the frame center stays clear</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/snow.json"
   compositionId="snow"
   compositionSrc="compositions/snow.html"
   title="Snow"
-  description="Seek-safe falling-snow overlay: sparse or dense flakes drift down with size, speed and opacity correlated per flake for depth, radial-masked so the frame center stays clear"
   variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Flake count across the frame.","default":"sparse","options":[{"value":"sparse","label":"Sparse"},{"value":"dense","label":"Dense"}]},{"id":"speed","type":"enum","role":"style","label":"Fall speed","description":"How fast flakes fall and sway.","default":"calm","options":[{"value":"calm","label":"Calm"},{"value":"gust","label":"Gust"}]}]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":204}}
   attribution={{"path":"registry/blocks/snow","tags":["snow","snowfall","winter","weather","overlay","ambient","particles","media-treatment-overlay","loopable"]}}
@@ -239,7 +243,9 @@ That writes one file: `compositions/snow.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -291,6 +297,4 @@ Tagged `snow` `snowfall` `winter` `weather` `overlay` `ambient` `particles` `med
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

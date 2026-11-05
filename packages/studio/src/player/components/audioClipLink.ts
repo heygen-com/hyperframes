@@ -34,10 +34,9 @@ export function sharesLinkGroup(
   return isLinked(a) && a.link === b.link && sameCompositionScope(a, b);
 }
 
-export function audioPillFlags(
-  audio: Pick<TimelineElement, "hidden" | "audioGroupHidden">,
-  _elements?: readonly unknown[],
-): { muted: boolean } {
+export function audioPillFlags(audio: Pick<TimelineElement, "hidden" | "audioGroupHidden">): {
+  muted: boolean;
+} {
   return { muted: audio.hidden === true || audio.audioGroupHidden === true };
 }
 

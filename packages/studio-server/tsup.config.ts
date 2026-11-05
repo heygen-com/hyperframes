@@ -16,6 +16,7 @@ export default defineConfig({
     "helpers/safePath": "src/helpers/safePath.ts",
     "helpers/hfIdPersist": "src/helpers/hfIdPersist.ts",
     "helpers/encoderOptions": "src/helpers/encoderOptions.ts",
+    "helpers/mediaRange": "src/helpers/mediaRange.ts",
     "history/index": "src/history/index.ts",
   },
   format: ["esm"],

@@ -7,6 +7,7 @@ import { decodeAuthoredAttribute } from "@hyperframes/parsers";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { requestedProjectPath } from "./requestSubPath.js";
+import { probeAudioTrack } from "./mediaMetadata.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -454,12 +455,23 @@ export function updateAudioVolume(html: string, id: string, volume: number): str
  * -61.8 LUFS: output-side `-t 4` reported -33.8 LUFS, input-side reports -61.8,
  * the same as physically cutting the file first.
  */
-export function loudnessMeasureArgs(file: string, tag: MeasuredWindow): string[] {
+export function loudnessMeasureArgs(file: string, tag: MeasuredWindow, stream: number): string[] {
   const args = ["-hide_banner", "-nostats"];
   if (tag.mediaStart > 0) args.push("-ss", String(tag.mediaStart));
   const sourceSpan = tag.duration === null ? null : tag.duration * (tag.playbackRate ?? 1);
   if (sourceSpan !== null && sourceSpan > 0) args.push("-t", String(sourceSpan));
-  args.push("-i", file, "-map", "0:a:0", "-vn", "-af", "ebur128=peak=true", "-f", "null", "-");
+  args.push(
+    "-i",
+    file,
+    "-map",
+    `0:a:${stream}`,
+    "-vn",
+    "-af",
+    "ebur128=peak=true",
+    "-f",
+    "null",
+    "-",
+  );
   return args;
 }
 
@@ -471,7 +483,9 @@ export async function measureAudio(
   file: string,
   tag: MeasuredWindow,
 ): Promise<LoudnessMeasurement> {
-  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag), {
+  const track = await probeAudioTrack(file);
+  if (!track) throw new Error("no audio stream to measure");
+  const result = await execFileAsync(ffmpegPath, loudnessMeasureArgs(file, tag, track.stream), {
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     timeout: FFMPEG_TIMEOUT_MS,
@@ -526,10 +540,14 @@ export function absoluteLoudnessPlan(
     ["gain-ceiling", MAX_AUDIO_GAIN_DB],
     ["true-peak", peakRoomDb],
   ];
-  const [limitedBy, appliedGainDb] = limits.reduce((lowest, candidate) =>
+  const [limitedBy, limitedGainDb] = limits.reduce((lowest, candidate) =>
     candidate[1] < lowest[1] - 1e-9 ? candidate : lowest,
   );
   const previousGainDb = track.volume > 0 ? gainDb(track.volume) : 0;
+  const limitCannotCutAWantedBoost = wantedGainDb > previousGainDb;
+  const appliedGainDb = limitCannotCutAWantedBoost
+    ? Math.max(limitedGainDb, previousGainDb)
+    : limitedGainDb;
   return {
     targetId: track.id,
     targetLufs,
@@ -542,4 +560,11 @@ export function absoluteLoudnessPlan(
     projectedTruePeakDbfs: track.truePeakDbfs + appliedGainDb,
     limitedBy,
   };
+}
+
+export type AbsoluteOutcome = "matched" | "held" | "change";
+
+export function absoluteOutcome(plan: AbsoluteLoudnessPlan, tolerance: number): AbsoluteOutcome {
+  if (Math.abs(plan.changeDb) > tolerance) return "change";
+  return Math.abs(plan.projectedLufs - plan.targetLufs) <= tolerance ? "matched" : "held";
 }

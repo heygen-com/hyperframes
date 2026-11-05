@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>State Chip Rail</h1>
+  <p>A rail of mono status chips advances a seek-safe data-state snap machine on a cue schedule: active chip ink on surface, done chips dim, pending chips hollow, optional badges pop beside one state.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/state-chip-rail.json"
   compositionId="state-chip-rail"
   compositionSrc="compositions/components/state-chip-rail.html"
   title="State Chip Rail"
-  description="A rail of mono status chips advances a seek-safe data-state snap machine on a cue schedule: active chip ink on surface, done chips dim, pending chips hollow, optional badges pop beside one state."
   variables={[{"id":"states","type":"string","role":"content","label":"States","description":"Comma-separated chip labels in machine order (2 to 8 states).","default":"Queued,Reading,Drafting,Done"},{"id":"times","type":"string","role":"timing","label":"Times","description":"Comma-separated activation times in seconds, one per advance (state 1 onward). Blank entries use the default even rhythm.","default":""},{"id":"badge_state","type":"number","role":"content","label":"Badge state","description":"Index of the state the badges pop beside.","default":1,"min":0,"max":7,"step":1},{"id":"badges","type":"string","role":"content","label":"Badges","description":"Comma-separated badge labels shown beside the badge state. Empty disables.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the active chip.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"How the rail leaves the frame. Default none: the hold ends the film.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":363}}
   attribution={{"path":"registry/components/state-chip-rail","tags":["motion-primitive","product-demo","state-machine","status","chips","rail"]}}
@@ -398,7 +402,9 @@ That writes one file: `compositions/components/state-chip-rail.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -442,6 +448,4 @@ Tagged `motion-primitive` `product-demo` `state-machine` `status` `chips` `rail`
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

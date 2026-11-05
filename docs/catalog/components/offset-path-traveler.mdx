@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Offset Path Traveler</h1>
+  <p>A slotted traveler follows an authored path with tangent rotation, curved entry, and curved exit.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/offset-path-traveler.json"
   compositionId="offset-path-traveler"
   compositionSrc="compositions/components/offset-path-traveler.html"
   title="Offset Path Traveler"
-  description="A slotted traveler follows an authored path with tangent rotation, curved entry, and curved exit."
   variables={[{"id":"path","type":"string","role":"content","label":"Path","description":"SVG path data authored in a 1000 by 500 route viewBox.","default":"M -90 390 C 150 490 190 70 430 185 C 650 300 720 105 850 145 C 970 180 1030 85 1090 35"},{"id":"traveler_label","type":"string","role":"content","label":"Traveler label","description":"Text displayed inside the default traveler chip.","default":"Live preview"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the traveler and route.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":287}}
   attribution={{"path":"registry/components/offset-path-traveler","tags":["motion-primitive","product-demo","path","traveler","auto-rotate"]}}
@@ -322,7 +326,9 @@ That writes one file: `compositions/components/offset-path-traveler.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -363,6 +369,4 @@ Tagged `motion-primitive` `product-demo` `path` `traveler` `auto-rotate`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

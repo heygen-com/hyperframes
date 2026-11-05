@@ -10,6 +10,8 @@ import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
 import { getSystemMeta } from "./system.js";
 import { canaryEventProperties } from "./canary.js";
+import { signedInHeygenUsername } from "./signedInUser.js";
+import { heygenUserId } from "../auth/telemetryIdentity.js";
 import { enqueue, type EventProperties } from "./transport.js";
 import { telemetryRuntimeOverride } from "./policy.js";
 
@@ -74,6 +76,7 @@ export function trackEvent(
   if (!shouldTrack()) return;
 
   const sys = getSystemMeta();
+  const heygenUsername = signedInHeygenUsername();
   enqueue(
     event,
     {
@@ -130,8 +133,9 @@ export function trackEvent(
       ...canaryEventProperties(),
       agent_env_hints: sys.agent_env_hints ?? undefined,
       client: sys.client ?? undefined,
+      heygen_username: heygenUsername,
     },
-    distinctId,
+    distinctId ?? (heygenUsername ? heygenUserId(heygenUsername) : undefined),
   );
 }
 
@@ -155,10 +159,12 @@ export function showTelemetryNotice(): boolean {
   // --json (the guard in cli.ts filters by command only), so a stdout banner
   // would corrupt the JSON envelope of the very first `check --json` etc.
   diag.notice();
-  diag.notice(`  ${c.dim("Hyperframes collects anonymous usage data to improve the tool.")}`);
+  diag.notice(
+    `  ${c.dim("Hyperframes collects usage data to improve the tool, anonymous until you sign in.")}`,
+  );
   diag.notice(`  ${c.dim("File paths and composition content are never collected.")}`);
   diag.notice(
-    `  ${c.dim("If you sign in to HeyGen, your account (email, or username) is linked to your usage.")}`,
+    `  ${c.dim("If you sign in to HeyGen, your account (email and username) is linked to your usage.")}`,
   );
   diag.notice();
   diag.notice(`  ${c.dim("Disable anytime:")} ${c.accent("hyperframes telemetry disable")}`);

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Gesture Tap</h1>
+  <p>A contact circle taps a mobile pill button, releases it into a new labeled accent state, and lifts away.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/gesture-tap.json"
   compositionId="gesture-tap"
   compositionSrc="compositions/components/gesture-tap.html"
   title="Gesture Tap"
-  description="A contact circle taps a mobile pill button, releases it into a new labeled accent state, and lifts away."
   variables={[{"id":"tap_label","type":"string","role":"content","label":"Tap label","description":"Button label shown before the tap response.","default":"Follow"},{"id":"response_label","type":"string","role":"content","label":"Response label","description":"Button label shown when the tap releases.","default":"Following"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used for the completed button state and response pulse.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":404}}
   attribution={{"path":"registry/components/gesture-tap","tags":["motion-primitive","gesture","tap","interaction","ui-props"]}}
@@ -439,7 +443,9 @@ That writes one file: `compositions/components/gesture-tap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -480,6 +486,4 @@ Tagged `motion-primitive` `gesture` `tap` `interaction` `ui-props`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

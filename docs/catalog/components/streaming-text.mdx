@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Streaming Text</h1>
+  <p>Words arrive the way an AI answer streams - in uneven bursts on a measured token rhythm, each word landing grey and inking to full colour - rather than the even tick of a typewriter</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/streaming-text.json"
   compositionId="streaming-text"
   compositionSrc="compositions/components/streaming-text.html"
   title="Streaming Text"
-  description="Words arrive the way an AI answer streams - in uneven bursts on a measured token rhythm, each word landing grey and inking to full colour - rather than the even tick of a typewriter"
   variables={[{"id":"size","type":"number","role":"style","label":"Size","description":"Type size of the streamed words.","default":27,"min":18,"max":64,"step":1,"unit":"px"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Ink pair: dark words on a light ground, or light words on a dark ground.","default":"dark-on-light","options":[{"value":"dark-on-light","label":"Dark on light"},{"value":"light-on-dark","label":"Light on dark"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":255}}
   attribution={{"author":"Miao Yang","path":"registry/components/streaming-text","tags":["video-primitive","text-effect","ai","chat"]}}
@@ -290,7 +294,9 @@ That writes one file: `compositions/components/streaming-text.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -333,6 +339,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

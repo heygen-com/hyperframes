@@ -23,6 +23,7 @@ export interface AudioTarget {
   placement: Placement | null;
   /** The part of the file to analyze, in file seconds; the whole file when absent. */
   window?: { from: number; seconds: number };
+  clip?: { from: number; seconds: number };
 }
 
 export type FilmQuery =
@@ -86,6 +87,10 @@ function targetOf(projectDir: string, row: TimelineRow, query: FilmQuery): Audio
     window: {
       from: fileTime(placement, from),
       seconds: round((to - from) * placement.playbackRate),
+    },
+    clip: {
+      from: placement.mediaStart,
+      seconds: round((placement.end - placement.start) * placement.playbackRate),
     },
   };
 }

@@ -1,3 +1,4 @@
+import "./utils/hideChildConsoles.js";
 import { checkForUpdate } from "./utils/updateCheck.js";
 import { refreshSkillsCache } from "./utils/skillsUpdateCheck.js";
 

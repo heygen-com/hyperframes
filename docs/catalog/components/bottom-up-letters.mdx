@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Bottom Up Letters</h1>
+  <p>Splits text into letters and reveals each glyph from below with deterministic staggered timing</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/bottom-up-letters.json"
   compositionId="bottom-up-letters"
   compositionSrc="compositions/components/bottom-up-letters.html"
   title="Bottom Up Letters"
-  description="Splits text into letters and reveals each glyph from below with deterministic staggered timing"
   variables={[{"id":"unit","type":"enum","role":"content","label":"Split unit","description":"What each animated span holds. Letter staggers glyph by glyph, word keeps whole words intact.","default":"letter","options":[{"value":"letter","label":"Letter"},{"value":"word","label":"Word"}]},{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Where each span starts. Up starts below the baseline and rises, down starts above and drops.","default":"up","options":[{"value":"up","label":"Up"},{"value":"down","label":"Down"}]},{"id":"travel","type":"enum","role":"motion","label":"Travel","description":"How far each span starts from its resting position, from 0.45em to 1.5em.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":105}}
   attribution={{"path":"registry/components/bottom-up-letters","tags":["motion-primitive","text","letters","reveal"]}}
@@ -140,7 +144,9 @@ That writes one file: `compositions/components/bottom-up-letters.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -182,6 +188,4 @@ Tagged `motion-primitive` `text` `letters` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -11,11 +11,13 @@ export interface CaptureMotionBlurHost {
   now: () => number;
   /** Seek the timeline and adapters (not media) for a pose read. */
   seek: (t: number, suppressEvents: boolean) => void;
+  holdFrame?: () => (t: number) => void;
   ignoreMutations?: (write: () => void) => void;
 }
 
 export interface Config {
   shutterDeg: number;
+  phaseDeg: number | null;
   samples: number | null;
   events: boolean;
   tier: "auto" | "capture" | "filter";
@@ -32,6 +34,7 @@ export interface Report {
   moverNames: string[];
   scanMs: number;
   shutterDeg: number;
+  phaseDeg: number | null;
   frames: number;
   meanMs: number;
   failures: number;

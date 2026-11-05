@@ -101,6 +101,7 @@ const browserManagerState = vi.hoisted(() => ({
 
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
+    ...(await import("../../../engine/src/services/referenceBackground.js")),
     createConsoleLogger: vi.fn((level: string) => {
       producerState.loggerLevels.push(level);
       return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -534,6 +535,51 @@ describe("renderLocal browser GPU config", () => {
     expect(cpuSamplerState.samplers.map((s) => s.stopped)).toEqual([true, true]);
   });
 
+  it.each([
+    { kind: "solid", rgb: [10, 46, 138] },
+    { kind: "none" },
+    { kind: "unsupported_non_solid" },
+    { kind: "unknown" },
+  ])("returns the same $kind background object as the remote receipt", async (background) => {
+    producerState.executeImpl = async (job) => {
+      job.reference_background = background;
+    };
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+    expect(result?.reference_background).toEqual(background);
+  });
+
+  it("warns that the whole mix was lowered, and the render still completes", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (job: { audioLoweredDb?: number }) => {
+      job.audioLoweredDb = 7.3;
+    };
+
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[audio_lowered] Audio lowered 7.3"));
+    expect(result?.outcome).toBe("completed");
+    expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
+    warn.mockRestore();
+  });
+
   it("cleans orphaned browser trees before starting a local render", async () => {
     orphanCleanupState.killed = 1;
 
@@ -846,6 +892,7 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.resolveConfigCalls).toContainEqual({
       browserGpuMode: "auto",
       forceScreenshot: false,
+      beginFrameFirstFrameDeadlineMs: 20_000,
     });
     expect(producerState.createdJobs[0]?.producerConfig).toMatchObject({
       browserGpuMode: "auto",
@@ -888,6 +935,9 @@ describe("renderLocal browser GPU config", () => {
 
     expect(producerState.resolveConfigCalls).toContainEqual({ browserGpuMode: "auto" });
     expect(producerState.resolveConfigCalls[0]).not.toHaveProperty("forceScreenshot");
+    expect(producerState.resolveConfigCalls[0]).not.toHaveProperty(
+      "beginFrameFirstFrameDeadlineMs",
+    );
   });
 
   it("passes an explicit hardware override for default local browser GPU", async () => {
@@ -2160,12 +2210,17 @@ describe("render command explicit composition", () => {
     const preparationBlocked = new Promise<void>((resolve) => {
       releasePreparation = resolve;
     });
+    let markWrapperExited!: () => void;
+    const wrapperExited = new Promise<void>((resolve) => {
+      markWrapperExited = resolve;
+    });
     orphanCleanupState.parentPid = (pid) => (pid === process.pid ? wrapper.pid! : null);
     orphanCleanupState.identity = (pid) => (pid === wrapper.pid ? "wrapper-birth-token" : null);
     browserManagerState.onEnsure = async (signal) => {
       const exited = new Promise<void>((resolve) => wrapper.once("exit", () => resolve()));
       wrapper.kill("SIGTERM");
       await exited;
+      markWrapperExited();
       await new Promise<void>((resolve, reject) => {
         const onAbort = () => reject(signal?.reason);
         signal?.addEventListener("abort", onAbort, { once: true });
@@ -2190,11 +2245,14 @@ describe("render command explicit composition", () => {
       await expect(
         Promise.race([
           command,
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () => reject(new Error("Setup cancellation timed out")),
-              process.platform === "linux" ? 1_000 : 3_000,
-            ),
+          wrapperExited.then(
+            () =>
+              new Promise<never>((_resolve, reject) =>
+                setTimeout(
+                  () => reject(new Error("Setup cancellation timed out")),
+                  process.platform === "linux" ? 1_000 : 3_000,
+                ),
+              ),
           ),
         ]),
       ).rejects.toThrow("render_cancelled_parent_exited");

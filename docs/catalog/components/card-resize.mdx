@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Card Resize</h1>
+  <p>A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/card-resize.json"
   compositionId="card-resize"
   compositionSrc="compositions/components/card-resize.html"
   title="Card Resize"
-  description="A transitions.dev-inspired card resize primitive that expands a compact card into a detail panel"
   variables={[{"id":"surface","type":"enum","role":"style","label":"Surface","description":"Card colour scheme: paper is the original white card, ink is a dark card for dark frames.","default":"paper","options":[{"value":"paper","label":"Paper"},{"value":"ink","label":"Ink"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Treatment of the media thumbnail: a plain plate, a hatched surface, or an image plate with a horizon-and-disc glyph.","default":"ocean","options":[{"value":"ocean","label":"Ocean"},{"value":"forest","label":"Forest"},{"value":"ember","label":"Ember"}]},{"id":"elevation","type":"enum","role":"style","label":"Elevation","description":"How far the card lifts off the frame, from a contact shadow to a deep drop.","default":"raised","options":[{"value":"flat","label":"Flat"},{"value":"raised","label":"Raised"},{"value":"floating","label":"Floating"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":176}}
   attribution={{"path":"registry/components/card-resize","tags":["video-primitive","transition-primitive","transitions-dev-port","card","layout"]}}
@@ -211,7 +215,9 @@ That writes one file: `compositions/components/card-resize.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -253,6 +259,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `card` `l
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

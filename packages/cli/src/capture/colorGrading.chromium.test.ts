@@ -76,32 +76,41 @@ async function renderPixel(page: Page, grading: HfColorGrading): Promise<number[
   }, grading);
 }
 
+function gradingProbeScript(): string {
+  const bundle = buildSync({
+    entryPoints: [resolve("../core/src/runtime/colorGrading.ts")],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    globalName: "__gradingProbe",
+    write: false,
+  });
+  const script = bundle.outputFiles[0]?.text;
+  if (!script) throw new Error("missing grading runtime");
+  return script;
+}
+
+function launchSwiftShader(): Promise<Browser> {
+  return puppeteer.launch({
+    headless: true,
+    executablePath,
+    args: [
+      "--no-sandbox",
+      "--enable-unsafe-swiftshader",
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+    ],
+  });
+}
+
 describe.skipIf(!runsChromium)("color grading curves in Chromium", () => {
   let browser: Browser;
   let page: Page;
   const browserErrors: string[] = [];
 
   beforeAll(async () => {
-    const bundle = buildSync({
-      entryPoints: [resolve("../core/src/runtime/colorGrading.ts")],
-      bundle: true,
-      platform: "browser",
-      format: "iife",
-      globalName: "__gradingProbe",
-      write: false,
-    });
-    const script = bundle.outputFiles[0]?.text;
-    if (!script) throw new Error("missing grading runtime");
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath,
-      args: [
-        "--no-sandbox",
-        "--enable-unsafe-swiftshader",
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-      ],
-    });
+    const script = gradingProbeScript();
+    browser = await launchSwiftShader();
     page = await browser.newPage();
     page.on("pageerror", (error) => browserErrors.push(String(error)));
     await page.setViewport({ width: 64, height: 32 });
@@ -184,6 +193,85 @@ describe.skipIf(!runsChromium)("color grading curves in Chromium", () => {
       },
     });
     expect(actual).toEqual([128, 0, 0, 255]);
+    expect(browserErrors).toEqual([]);
+  });
+});
+
+describe.skipIf(!runsChromium)("a grade group in Chromium", () => {
+  const MEMBERS = 50;
+  let browser: Browser;
+  let page: Page;
+  const browserErrors: string[] = [];
+
+  // The centre pixel of every member's grading canvas, in member order.
+  const memberPixels = (): Promise<number[][]> =>
+    page.evaluate((count) => {
+      const output = document.createElement("canvas");
+      const context = output.getContext("2d", { willReadFrequently: true });
+      if (!context) throw new Error("missing output context");
+      return Array.from({ length: count }, (_, i) => {
+        const canvas = document.getElementById(`__hf_color_grading_m${i}`);
+        if (!(canvas instanceof HTMLCanvasElement)) throw new Error(`member ${i} is not graded`);
+        output.width = canvas.width;
+        output.height = canvas.height;
+        context.drawImage(canvas, 0, 0);
+        const centre = context.getImageData(canvas.width >> 1, canvas.height >> 1, 1, 1).data;
+        return [...centre];
+      });
+    }, MEMBERS);
+
+  beforeAll(async () => {
+    const script = gradingProbeScript();
+    browser = await launchSwiftShader();
+    page = await browser.newPage();
+    page.on("pageerror", (error) => browserErrors.push(String(error)));
+    await page.setViewport({ width: 400, height: 200 });
+    const members = Array.from(
+      { length: MEMBERS },
+      (_, i) => `<img id="m${i}" data-color-group="lane" style="width:40px;height:40px">`,
+    ).join("");
+    await page.setContent(
+      `<body style="margin:0"><hf-color-group id="lane" data-color-grading='{"adjust":{"exposure":1}}'></hf-color-group>` +
+        `<div style="display:flex;flex-wrap:wrap;width:400px">${members}</div></body>`,
+    );
+    await page.evaluate("self.__name = self.__name || ((fn) => fn);");
+    await page.addScriptTag({ content: script });
+    await page.evaluate(async () => {
+      const source = document.createElement("canvas");
+      source.width = source.height = 8;
+      const context = source.getContext("2d");
+      if (!context) throw new Error("missing source context");
+      context.fillStyle = "rgb(96,96,96)";
+      context.fillRect(0, 0, 8, 8);
+      const src = source.toDataURL();
+      await Promise.all(
+        Array.from(document.querySelectorAll("img"), (img) => {
+          img.src = src;
+          return img.decode();
+        }),
+      );
+      window.__gradingTestRuntime = window.__gradingProbe.createColorGradingRuntime();
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    await browser?.close();
+  });
+
+  it("repaints every member when the group's grading is edited once", async () => {
+    const before = await memberPixels();
+    expect(before).toHaveLength(MEMBERS);
+    for (const [red] of before) expect(red).toBeGreaterThan(150);
+
+    await page.evaluate(async () => {
+      document
+        .getElementById("lane")
+        ?.setAttribute("data-color-grading", '{"adjust":{"exposure":-1}}');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const after = await memberPixels();
+    for (const [red] of after) expect(red).toBeLessThan(70);
     expect(browserErrors).toEqual([]);
   });
 });

@@ -40,6 +40,14 @@ describe("detectFormat", () => {
     expect(detectFormat(path)).toBe("vtt");
   });
 
+  it("detects a JSON transcript saved with a UTF-8 BOM", () => {
+    const path = tmpFile(
+      "bom.json",
+      `\uFEFF${JSON.stringify({ transcription: [{ offsets: { from: 0, to: 1000 }, text: " Hi", tokens: [{ text: " Hi", offsets: { from: 0, to: 1000 }, p: 0.9 }] }] })}`,
+    );
+    expect(detectFormat(path)).toBe("whisper-cpp");
+  });
+
   it("detects whisper-cpp JSON", () => {
     const path = tmpFile(
       "transcript.json",

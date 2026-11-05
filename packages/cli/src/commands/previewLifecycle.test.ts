@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -993,6 +1001,44 @@ describe("background preview lifecycle", () => {
     expect(scan.mock.calls.length).toBeLessThan(5);
   });
 
+  it("keeps its records under LOCALAPPDATA on Windows, not a Unix-style ~/.local/state", () => {
+    const localAppData = tempDir("hf-localappdata-");
+    vi.stubEnv("XDG_STATE_HOME", "");
+    vi.stubEnv("LOCALAPPDATA", localAppData);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      if (platform) Object.defineProperty(process, "platform", platform);
+    });
+
+    expect(previewSessionPath(projectDir).startsWith(localAppData)).toBe(true);
+  });
+
+  it("starts the preview when the log's folder refuses it, and names the path", async () => {
+    const blocker = join(tempDir("hf-preview-state-"), "not-a-folder");
+    writeFileSync(blocker, "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    let stdio: unknown;
+
+    await expect(
+      startBackgroundPreview(projectDir, 3002, {
+        scan: async () => [],
+        spawn: (_command, _args, options) => {
+          stdio = options.stdio;
+          return { pid: 4321, unref: vi.fn() };
+        },
+        sleep: async () => {},
+        kill: vi.fn(),
+        stateHome: blocker,
+      }),
+    ).rejects.toThrow(/did not become ready/i);
+
+    expect(stdio).toEqual(["ignore", expect.any(Number), expect.any(Number)]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(blocker));
+  });
+
   it("reaps a detached child that never becomes reachable without recording ownership", async () => {
     const stateHome = tempDir("hf-preview-state-");
     const kill = vi.fn();
@@ -1442,5 +1488,22 @@ describe("background preview lifecycle", () => {
     expect(stopped).toBe(true);
     expect(kill).toHaveBeenCalledWith(4321);
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+});
+
+describe("where a preview's session is kept", () => {
+  it("is under HYPERFRAMES_CACHE_DIR when it is set, not the state folder", () => {
+    const cache = tempDir("hf-preview-cache-");
+    const state = tempDir("hf-preview-state-");
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.stubEnv("XDG_STATE_HOME", state);
+    vi.stubEnv("LOCALAPPDATA", state);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    writePreviewSession({ pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" });
+    expect(previewSessionPath(projectDir).startsWith(cache)).toBe(true);
+    expect(existsSync(previewSessionPath(projectDir))).toBe(true);
+    expect(readdirSync(state)).toEqual([]);
   });
 });

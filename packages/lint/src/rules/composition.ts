@@ -1924,6 +1924,28 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
       },
     ];
   },
+
+  // subcomposition_linked_style_names_root_id
+  // The compiler flattens a sub-composition root into its host and rewrites inline <style>
+  // selectors to match; a linked stylesheet is not rewritten, so `#root-id` in it matches nothing.
+  ({ styles, rootTag, options }) => {
+    if (!options.isSubComposition || !rootTag) return [];
+    const rootId = readAttr(rootTag.raw, "id");
+    if (!rootId) return [];
+    const escaped = rootId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const names = new RegExp(`#${escaped}(?![\\w-])`);
+    return styles
+      .filter((style) => style.index === -1 && names.test(stripCssComments(style.content)))
+      .map((style) => ({
+        code: "subcomposition_linked_style_names_root_id",
+        severity: "warning" as const,
+        message:
+          `The linked stylesheet "${style.rootRelativePath ?? style.file}" has a rule on #${rootId}, the id of this sub-composition's root. ` +
+          "The root is merged into its host when the composition is compiled, so that selector matches nothing (the same rule in an inline <style> is rewritten and works).",
+        fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
+        snippet: truncateSnippet(style.content.slice(0, 120)),
+      }));
+  },
 ];
 
 const CLIP_MEDIA_TAGS = new Set<string>(["img", "video", "audio"]);

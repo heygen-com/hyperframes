@@ -27,7 +27,7 @@ import {
 } from "./timelineGroupEditing";
 import { groupMoveFloor, resolveGroupMovers } from "./timelineMultiDragPreview";
 import type { DraggedClipState, ResizingClipState } from "./timelineClipDragTypes";
-import { STUDIO_PREVIEW_FPS } from "../lib/time";
+import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { heldAudioShiftRange, heldPartnerVideoBounds } from "./audioClipLink";
 
 /** Snap-target builder closure supplied by the hook (closes over refs + store). */
@@ -306,12 +306,11 @@ export function guideIfSaved(
   return off * pps < 1 ? target : null;
 }
 
-/** One frame: the last visible frame of a clip sits just before its end time. */
-const TRIM_END_FRAME_LEAD_S = 1 / STUDIO_PREVIEW_FPS;
-
 /** The composition time whose frame a trim shows: the edge being dragged. */
 export function trimPreviewTime(edge: "start" | "end", start: number, duration: number): number {
-  return edge === "start" ? start : Math.max(start, start + duration - TRIM_END_FRAME_LEAD_S);
+  // One frame back: the last visible frame of a clip sits just before its end time.
+  const frame = 1 / useLinkedClipPreferences.getState().compositionFps;
+  return edge === "start" ? start : Math.max(start, start + duration - frame);
 }
 
 export interface ResizePreviewContext {

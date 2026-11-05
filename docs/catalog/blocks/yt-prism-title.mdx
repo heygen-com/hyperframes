@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Chromatic Fringe Title</h1>
+  <p>Display title on a transparent root: blur-focus entrance, red/blue fringe that settles then breathes, perspective bow, slow scale drift</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/yt-prism-title.json"
   compositionId="yt-prism-title"
   compositionSrc="compositions/yt-prism-title.html"
   title="Chromatic Fringe Title"
-  description="Display title on a transparent root: blur-focus entrance, red/blue fringe that settles then breathes, perspective bow, slow scale drift"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":204}}
   attribution={{"path":"registry/blocks/yt-prism-title","tags":["typography","title-card","creator"]}}
@@ -239,7 +243,9 @@ That writes one file: `compositions/yt-prism-title.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -270,6 +276,4 @@ Tagged `typography` `title-card` `creator`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

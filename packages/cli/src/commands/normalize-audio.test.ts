@@ -73,14 +73,14 @@ describe("loudnessMeasureArgs", () => {
     // bounding: ffmpeg keeps feeding the graph and ebur128 integrates audio the
     // clip never plays. Measured on a fixture whose played window is -61.8 LUFS,
     // output-side `-t` reported -33.8.
-    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 2, duration: 4 });
+    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 2, duration: 4 }, 0);
     expect(args.indexOf("-ss")).toBeLessThan(args.indexOf("-i"));
     expect(args.indexOf("-t")).toBeLessThan(args.indexOf("-i"));
     expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "2", "-t", "4"]);
   });
 
   it("leaves an untrimmed clip unbounded", () => {
-    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 0, duration: null });
+    const args = loudnessMeasureArgs("clip.wav", { mediaStart: 0, duration: null }, 0);
     expect(args).not.toContain("-ss");
     expect(args).not.toContain("-t");
   });

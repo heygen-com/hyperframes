@@ -23,6 +23,40 @@ describe("preview state messages", () => {
   });
 });
 
+describe("preview state messages while a scrub posts them", () => {
+  it("re-reads the preview for missing compositions at most every 500 ms", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const enrich = vi.fn();
+      const handle = createPreviewMessageHandler({
+        iframeRef: { current: null },
+        processTimelineMessageRef: { current: vi.fn() },
+        enrichMissingCompositionsRef: { current: enrich },
+        lastTimelineMessageRef: { current: 0 },
+        getAdapter: () => null,
+        syncTimelineElements: vi.fn(),
+      });
+      const state = () =>
+        handle(
+          new MessageEvent("message", {
+            data: { source: "hf-preview", type: "state", isPlaying: false },
+          }),
+        );
+      state();
+      vi.advanceTimersByTime(100);
+      state();
+      state();
+      expect(enrich).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(500);
+      state();
+      expect(enrich).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("preview quality messages", () => {
   function routeMessage(data: unknown, frame?: { postMessage: (message: unknown) => void }) {
     const iframe = frame ? ({ contentWindow: frame } as unknown as HTMLIFrameElement) : null;
@@ -61,6 +95,11 @@ describe("preview quality messages", () => {
       choppy: true,
       fps: 18,
       worstFrameMs: 90,
+      skippedShare: 0.1,
+      waitingShare: 0.4,
+      frozenShare: 0.2,
+      gapP50Ms: 17,
+      gapP95Ms: 66,
       mode: "play",
     };
     routeMessage({ source: "hf-preview", type: "preview-health", health });
@@ -88,6 +127,46 @@ describe("preview quality messages", () => {
       facts: { ...facts, sceneCount: "2" },
     });
     expect(usePlayerStore.getState().previewFacts).toBeNull();
+  });
+
+  it("keeps each failed media load the preview reports, and ignores other diagnostics", () => {
+    const details = {
+      asset: "assets/x.mp3",
+      elementId: "music",
+      kind: "audio",
+      stage: "decode",
+      code: null,
+      bytes: 8,
+      extension: "mp3",
+    };
+    routeMessage({
+      source: "hf-preview",
+      type: "diagnostic",
+      code: "runtime_media_load_failed",
+      details,
+    });
+    expect(usePlayerStore.getState().mediaLoadFailure).toEqual({
+      elementId: "music",
+      kind: "audio",
+      stage: "decode",
+      code: null,
+      bytes: 8,
+      extension: "mp3",
+    });
+    const kept = usePlayerStore.getState().mediaLoadFailure;
+    routeMessage({
+      source: "hf-preview",
+      type: "diagnostic",
+      code: "runtime_web_audio_bypass",
+      details,
+    });
+    routeMessage({
+      source: "hf-preview",
+      type: "diagnostic",
+      code: "runtime_media_load_failed",
+      details: { ...details, stage: "?" },
+    });
+    expect(usePlayerStore.getState().mediaLoadFailure).toBe(kept);
   });
 
   it("sends the chosen quality to a preview that has just loaded", () => {

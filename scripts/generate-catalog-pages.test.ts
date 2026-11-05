@@ -25,6 +25,7 @@ import { prepareSrcForElement } from "../packages/player/src/shader-options.ts";
 import {
   groupForItem,
   mdxStringAttribute,
+  mdxText,
   sectionEntry,
   stageProps,
   variableBootstrap,
@@ -208,6 +209,20 @@ describe("explorer producer", () => {
   });
 });
 
+describe("mdxText", () => {
+  it("escapes what would open markup or an expression, and every inline markdown marker", () => {
+    assert.equal(mdxText("@_blue_sweater_."), "@&#95;blue&#95;sweater&#95;.");
+    assert.equal(
+      mdxText("a & <b>{x}</b> *bold* `code` [l](u) ~s~ \\"),
+      "a &amp; &lt;b>&#123;x&#125;&lt;/b> &#42;bold&#42; &#96;code&#96; &#91;l&#93;(u) &#126;s&#126; &#92;",
+    );
+  });
+
+  it("leaves plain text alone", () => {
+    assert.equal(mdxText("Animated bar chart, 3 series"), "Animated bar chart, 3 series");
+  });
+});
+
 describe("mdxStringAttribute", () => {
   it("emits a plain double-quoted string, not an expression", () => {
     assert.equal(
@@ -302,52 +317,6 @@ describe("stageProps recorded-clip guard", () => {
   it("offers the recorded fallback only when the manifest has a clip", () => {
     assert.ok(stageProps("block", frost).includes("  webgpu"));
     assert.deepEqual(stageProps("block", { ...frost, preview: undefined }), []);
-  });
-});
-
-describe("tile reveal", () => {
-  const source = readFileSync(join(here, "..", "docs", "snippets", "catalog-gallery.jsx"), "utf-8");
-  const fn = source.slice(
-    source.indexOf("const revealWhenPainted"),
-    source.indexOf("// END revealWhenPainted"),
-  );
-  const frames: Array<() => void> = [];
-  const revealWhenPainted = runInNewContext(`${fn} revealWhenPainted`, {
-    requestAnimationFrame: (cb: () => void) => frames.push(cb),
-  }) as (player: unknown, reveal: () => void) => void;
-  const player = (assetsReady: boolean) => {
-    const target = new EventTarget();
-    return Object.assign(target, { assetsReady });
-  };
-
-  it("keeps the poster until assetsready plus one frame, not at runtime ready", () => {
-    frames.length = 0;
-    const p = player(false);
-    let revealed = 0;
-    revealWhenPainted(p, () => revealed++);
-    p.dispatchEvent(new Event("ready"));
-    assert.equal(revealed + frames.length, 0);
-    p.dispatchEvent(new Event("assetsready"));
-    assert.equal(revealed, 0);
-    frames.forEach((f) => f());
-    assert.equal(revealed, 1);
-  });
-
-  it("reveals after one frame when the assets were already settled", () => {
-    frames.length = 0;
-    let revealed = 0;
-    revealWhenPainted(player(true), () => revealed++);
-    frames.forEach((f) => f());
-    assert.equal(revealed, 1);
-  });
-
-  it("wires the reveal into the ready handler and not a bare data-ready flip", () => {
-    const handler = source.slice(
-      source.indexOf("addEventListener('ready'"),
-      source.indexOf("player.setAttribute('srcdoc'"),
-    );
-    assert.match(handler, /revealWhenPainted\(/);
-    assert.doesNotMatch(handler.split("revealWhenPainted")[0] ?? "", /dataset\.ready = 'true'/);
   });
 });
 

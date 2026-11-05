@@ -1,6 +1,10 @@
 import postcss from "postcss";
 import type { SourceLocation } from "../sourceCoordinates";
-import { FONT_ALIAS_KEYS, resolveAliasDisplayName } from "@hyperframes/parsers/composition";
+import {
+  FONT_ALIAS_KEYS,
+  parseFontShorthand,
+  resolveAliasDisplayName,
+} from "@hyperframes/parsers/composition";
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { isRegistrySourceFile, isRegistryInstalledFile } from "./composition";
 
@@ -47,7 +51,7 @@ function isFontFaceDeclaration(decl: postcss.Declaration): boolean {
   return false;
 }
 
-function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
+export function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
   const families = new Set<string>();
   for (const style of styles) {
     parseFontCss(style.content)?.walkDecls(/^font-family$/i, (decl) => {
@@ -57,6 +61,13 @@ function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string
     });
   }
   return families;
+}
+
+function declaredFontFamilies(
+  styles: Array<{ content: string }>,
+  options: { projectFontFamilies?: string[] },
+): Set<string> {
+  return new Set([...extractFontFaceFamilies(styles), ...(options.projectFontFamilies ?? [])]);
 }
 
 // Function tokens and unresolved var() references are not literal family names.
@@ -100,14 +111,22 @@ function resolveUsedFontNames(
   });
 }
 
+function usedFamilyList(decl: postcss.Declaration): string {
+  if (isFontFaceDeclaration(decl)) return "";
+  if (decl.prop.toLowerCase() !== "font") return decl.value;
+  const shorthand = parseFontShorthand(decl.value);
+  return shorthand.certain ? shorthand.families : "";
+}
+
+const FONT_FAMILY_PROPS = /^font(?:-family)?$/i;
+
 function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   const used: string[] = [];
   const seen = new Set<string>();
   const properties = collectFontCustomProperties(styles);
   for (const style of styles) {
-    parseFontCss(style.content)?.walkDecls(/^font-family$/i, (decl) => {
-      if (isFontFaceDeclaration(decl)) return;
-      for (const name of resolveUsedFontNames(decl.value, properties)) {
+    parseFontCss(style.content)?.walkDecls(FONT_FAMILY_PROPS, (decl) => {
+      for (const name of resolveUsedFontNames(usedFamilyList(decl), properties)) {
         if (!GENERIC_FAMILIES.has(name) && !seen.has(name)) {
           seen.add(name);
           used.push(name);
@@ -160,7 +179,7 @@ function extractGoogleFontFamiliesFromUrl(rawUrl: string): string[] {
   return families;
 }
 
-function collectGoogleFontFamilies(
+export function collectGoogleFontFamilies(
   source: string,
   styles: Array<{ content: string }>,
 ): Set<string> {
@@ -195,7 +214,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // so there is nothing for the author to act on.
   ({ styles, options }) => {
     if (!options.distributed) return [];
-    const declared = extractFontFaceFamilies(styles);
+    const declared = declaredFontFamilies(styles, options);
     const used = extractUsedFontFamilies(styles);
     const aliased = collectAliasedFonts(used, declared);
     if (aliased.length === 0) return [];
@@ -215,7 +234,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ styles, source, rawSource, options, locate }) => {
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
-    const declared = extractFontFaceFamilies(styles);
+    const declared = declaredFontFamilies(styles, options);
     const used = extractUsedFontFamilies(styles);
     const googleFonts = collectGoogleFontFamilies(source, styles);
 
@@ -237,11 +256,40 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         "Text will fall back to a generic font, producing incorrect typography in the video.",
       fixHint:
         "Add @font-face { font-family: '...'; src: url('capture/assets/fonts/...woff2'); } " +
-        "for each font family, pointing to the captured .woff2 files. For an OS-bundled " +
-        "system font (e.g. Hiragino Sans, Microsoft YaHei) that has no downloadable file, " +
-        "use src: local('Exact Font Name') instead. The declaration alone satisfies this " +
-        "check without needing a font file.",
+        "for each font family, pointing to the captured .woff2 files, or switch to a Google Fonts " +
+        "family. An OS font such as PingFang SC or Hiragino Sans renders locally from the " +
+        "installed copy, but a cloud render has no copy and refuses it.",
     });
+    return findings;
+  },
+
+  ({ styles, rawSource, options, locate }) => {
+    if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
+    const findings: HyperframeLintFinding[] = [];
+    for (const style of styles) {
+      parseFontCss(style.content)?.walkAtRules(/^font-face$/i, (rule) => {
+        let family: string | null = null;
+        let sources = "";
+        rule.walkDecls((decl) => {
+          const prop = decl.prop.toLowerCase();
+          if (prop === "font-family") family = normalizeUsedFontName(decl.value);
+          else if (prop === "src") sources += ` ${decl.value}`;
+        });
+        if (!family || !/\blocal\s*\(/i.test(sources) || /\burl\s*\(/i.test(sources)) return;
+        findings.push({
+          ...locate(style, rule.source?.start?.offset),
+          code: "font_face_local_only",
+          severity: "warning",
+          message:
+            `@font-face '${family}' only names a font installed on this machine (src: local()). ` +
+            "A local render uses the installed copy; a cloud render or another machine has none and " +
+            "falls back to a different font.",
+          fixHint:
+            "Add a url() source to the font file (.woff2) inside the project, or use a Google Fonts " +
+            "family, so every render draws the same glyphs.",
+        });
+      });
+    }
     return findings;
   },
 ];
@@ -256,10 +304,9 @@ function uniqueFontLocation(
   const properties = collectFontCustomProperties(styles);
   for (const style of styles) {
     try {
-      postcss.parse(style.content).walkDecls(/^font-family$/i, (decl) => {
-        if (isFontFaceDeclaration(decl)) return;
-        if (!resolveUsedFontNames(decl.value, properties).some((name) => families.includes(name)))
-          return;
+      postcss.parse(style.content).walkDecls(FONT_FAMILY_PROPS, (decl) => {
+        const named = resolveUsedFontNames(usedFamilyList(decl), properties);
+        if (!named.some((name) => families.includes(name))) return;
         locations.push(locate(style, decl.source?.start?.offset));
       });
     } catch {

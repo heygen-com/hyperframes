@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Scramble Reveal</h1>
+  <p>A deterministic hacker-style text reveal that cycles fixed glyph rows and locks the target string from left to right.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/scramble-reveal.json"
   compositionId="scramble-reveal"
   compositionSrc="compositions/components/scramble-reveal.html"
   title="Scramble Reveal"
-  description="A deterministic hacker-style text reveal that cycles fixed glyph rows and locks the target string from left to right."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Target string that resolves from deterministic wrong glyphs.","default":"HYPERFRAMES"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the text, prefix, and optional terminal frame.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"style","type":"enum","role":"style","label":"Style","description":"Terminal frame or clean text-only presentation.","default":"terminal","options":[{"value":"terminal","label":"Terminal"},{"value":"clean","label":"Clean"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the locked string holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":289}}
   attribution={{"path":"registry/components/scramble-reveal","tags":["motion-primitive","text-effects","scramble","reveal","deterministic"]}}
@@ -324,7 +328,9 @@ That writes one file: `compositions/components/scramble-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -366,6 +372,4 @@ Tagged `motion-primitive` `text-effects` `scramble` `reveal` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

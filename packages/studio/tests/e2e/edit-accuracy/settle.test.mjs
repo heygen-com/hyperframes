@@ -53,6 +53,13 @@ describe("settling on the shown preview", () => {
     expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
   });
 
+  it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
+    const changing = (on) => ({ frames: () => [], evaluate: async () => on });
+    expect(await swapPending({ page: changing(true), keys })).toBe(true);
+    expect(await swapPending({ page: changing(false), keys })).toBe(false);
+    expect(await swapPending({ page: changing(true) }), "a case without keyframes").toBe(false);
+  });
+
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
     expect(await swapPending({ page: swapping })).toBe(false);
     expect(await swapPending({ page: swapping, keys: undefined, selector: "#other" })).toBe(false);

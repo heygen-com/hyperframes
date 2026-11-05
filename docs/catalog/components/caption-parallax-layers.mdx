@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Parallax Layers</h1>
+  <p>Behind-subject 3D text layering with vertical stretch effect</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-parallax-layers.json"
   compositionId="caption-parallax-layers"
   compositionSrc="compositions/components/caption-parallax-layers.html"
   title="Parallax Layers"
-  description="Behind-subject 3D text layering with vertical stretch effect"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":355}}
   attribution={{"path":"registry/components/caption-parallax-layers","tags":["captions","caption-style","parallax","3d","depth"]}}
@@ -390,7 +394,9 @@ That writes one file: `compositions/components/caption-parallax-layers.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -409,6 +415,4 @@ Tagged `captions` `caption-style` `parallax` `3d` `depth`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -6,7 +6,7 @@
  * component-import time, Phase 3).
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import {
   createFigmaClient,
   FigmaClientError,

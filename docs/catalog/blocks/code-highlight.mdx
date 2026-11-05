@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Highlight Sweep</h1>
+  <p>A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-highlight.json"
   compositionId="code-highlight"
   compositionSrc="compositions/code-highlight.html"
   title="Code Highlight Sweep"
-  description="A highlight band sweeps across a target line while the surrounding context dims — draws the eye to one line."
   variables={[]}
   meta={{"duration":5,"width":1920,"height":1080,"category":"Code Animations","badge":"Stable","codeLines":745}}
   attribution={{"path":"registry/blocks/code-highlight","tags":["code","code-animation","highlight","developer"]}}
@@ -780,7 +784,9 @@ That writes one file: `compositions/code-highlight.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -811,6 +817,4 @@ Tagged `code` `code-animation` `highlight` `developer`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

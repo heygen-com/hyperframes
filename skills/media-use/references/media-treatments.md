@@ -138,7 +138,7 @@ drops frames. Do not impose or claim a universal hard cap from one machine.
    one labeled sheet and read that one image:
 
    ```bash
-   hyperframes snapshot <project> --frames 3 --no-end --describe false \
+   hyperframes snapshot <project> --frames 3 --no-end \
      --output snapshots/treatment-before
    ```
 

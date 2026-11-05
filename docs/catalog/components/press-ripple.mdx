@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Press Ripple</h1>
+  <p>A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with two small click rings while the label swaps to a check, then exits off-stage while the confirmed state holds.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/press-ripple.json"
   compositionId="press-ripple"
   compositionSrc="compositions/components/press-ripple.html"
   title="Press Ripple"
-  description="A cursor decel-arrives from off-stage, lands slightly off-center on a caller-positioned target, compresses with it in lockstep, releases with two small click rings while the label swaps to a check, then exits off-stage while the confirmed state holds."
   variables={[{"id":"label","type":"string","role":"content","label":"Label","description":"Text inside the default pill target.","default":"Get started"},{"id":"done_label","type":"string","role":"content","label":"Done label","description":"Text beside the check once the default pill is pressed.","default":"Saved"},{"id":"target_x","type":"number","role":"layout","label":"Target X","description":"Zone center, percent of host width.","default":50,"min":8,"max":92,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","description":"Zone center, percent of host height.","default":50,"min":8,"max":92,"step":1,"unit":"%"},{"id":"press_at","type":"number","role":"timing","label":"Press at","description":"Seconds from mount start when the press begins.","default":0.9,"min":0.9,"max":10,"step":0.1,"unit":"s"},{"id":"cursor","type":"enum","role":"style","label":"Cursor","description":"Pointer tone.","default":"light","options":[{"value":"light","label":"Light"},{"value":"dark","label":"Dark"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Contract color for the click rings and the confirmation check.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"style","label":"Exit","description":"How the frame leaves. None holds the pressed state.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Fade up"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":434}}
   attribution={{"path":"registry/components/press-ripple","tags":["cursor","motion-primitive","product-demo","press","ripple","payoff"]}}
@@ -469,7 +473,9 @@ That writes one file: `compositions/components/press-ripple.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -515,6 +521,4 @@ Tagged `cursor` `motion-primitive` `product-demo` `press` `ripple` `payoff`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

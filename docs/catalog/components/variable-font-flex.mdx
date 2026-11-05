@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Variable Font Flex</h1>
+  <p>A word lands while its variable-font weight and width axes flex from hairline-condensed to black-wide with per-character stagger; font-size eases inversely so the letterforms gain mass while the box holds.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/variable-font-flex.json"
   compositionId="variable-font-flex"
   compositionSrc="compositions/components/variable-font-flex.html"
   title="Variable Font Flex"
-  description="A word lands while its variable-font weight and width axes flex from hairline-condensed to black-wide with per-character stagger; font-size eases inversely so the letterforms gain mass while the box holds."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"The word whose variable-font axes flex.","default":"FLEX"},{"id":"axis","type":"enum","role":"style","label":"Axis","description":"Which variable-font axes animate: weight, width, or both.","default":"both","options":[{"value":"weight","label":"Weight"},{"value":"width","label":"Width"},{"value":"both","label":"Both"}]},{"id":"stagger","type":"number","role":"timing","label":"Stagger","description":"Seconds between per-character flex starts, clamped 0 to 0.25.","default":0.06},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Word color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the carved word holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":304}}
   attribution={{"path":"registry/components/variable-font-flex","tags":["motion-primitive","experiment","type","variable-font","deterministic"]}}
@@ -339,7 +343,9 @@ That writes one file: `compositions/components/variable-font-flex.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -382,6 +388,4 @@ Tagged `motion-primitive` `experiment` `type` `variable-font` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

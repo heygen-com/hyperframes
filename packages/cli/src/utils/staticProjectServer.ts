@@ -1,6 +1,7 @@
 import { createServer, request as httpRequest, type Server, type ServerResponse } from "node:http";
 import { Duplex } from "node:stream";
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
@@ -8,7 +9,7 @@ import {
   type PreviewProxyBox,
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
-import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
+import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -26,6 +27,7 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
+import { listenOnBrowserSafePort } from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
@@ -117,6 +119,15 @@ export function inProcessAnswer(url: string) {
   return inProcessAnswers.get(new URL(url).origin);
 }
 
+function serveUntaggedPng(filePath: string, res: ServerResponse): boolean {
+  if (getMimeType(filePath) !== "image/png") return false;
+  const untagged = stripSdrPngColourTags(readFileSync(filePath));
+  if (!untagged) return false;
+  res.writeHead(200, { "Content-Type": "image/png", "Content-Length": String(untagged.length) });
+  res.end(untagged);
+  return true;
+}
+
 /**
  * Serve a file with HTTP Range support. Chromium needs byte-range seekability
  * to determine the duration of formats that carry it in a trailing/implicit
@@ -148,7 +159,11 @@ function serveFileWithRange(
   if (match) {
     const hasStart = match[1] !== "";
     start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-    end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+    end = !hasStart
+      ? last
+      : match[2] !== ""
+        ? Math.min(Number(match[2]), last)
+        : openRangeEnd(start, last, contentType);
 
     if (start > end || start > last) {
       res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
@@ -217,6 +232,7 @@ async function serveProxyRequest(
   rangeHeader: string | undefined,
   res: ServerResponse,
   signal: AbortSignal,
+  limitSeconds?: number,
 ): Promise<void> {
   const contentType = getMimeType(filePath);
   if (!autoProxy || !contentType.startsWith("video/")) {
@@ -244,7 +260,10 @@ async function serveProxyRequest(
       return;
     }
     recordProxyRequest();
-    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, { signal });
+    const proxyPath = await resolveProxy(projectDir, filePath, variant, box, {
+      signal,
+      limitSeconds,
+    });
     // The await above can span a whole transcode; the client may be gone.
     if (res.writableEnded || res.destroyed) return;
     serveFileWithRange(proxyPath, rangeHeader, res, PROXY_VARIANT_CONFIG[variant].contentType);
@@ -263,6 +282,7 @@ export async function serveStaticProjectHtml(
   // Explicit CLI --proxy/--no-proxy value. Undefined preserves the project's
   // committed hyperframes.json setting.
   autoProxyOverride?: boolean,
+  proxyLimits: ReadonlyMap<string, number> = new Map(),
 ): Promise<StaticProjectServer> {
   const roots = [projectDir, ...assetRoots];
   // Codec-map injection lives here (not per-caller) so all seven callers of
@@ -321,9 +341,11 @@ export async function serveStaticProjectHtml(
             req.headers.range,
             res,
             copies.signal,
+            proxyLimits.get(filePath),
           );
         } else {
-          serveFileWithRange(filePath, req.headers.range, res);
+          if (!serveUntaggedPng(filePath, res))
+            serveFileWithRange(filePath, req.headers.range, res);
         }
         return;
       }
@@ -332,21 +354,15 @@ export async function serveStaticProjectHtml(
     res.end();
   });
 
-  const port = await new Promise<number>((resolvePort, rejectPort) => {
-    server.on("error", rejectPort);
-    // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
-    // which an IDE's port auto-forward surfaces as a transient "preview". The
-    // snapshot browser is co-located (url below is already 127.0.0.1).
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      const resolvedPort = typeof addr === "object" && addr ? addr.port : 0;
-      if (!resolvedPort) rejectPort(new Error(bindErrorMessage));
-      else resolvePort(resolvedPort);
+  // Bind loopback only (SECURITY F-001): a bare listen(0) binds 0.0.0.0/::,
+  // which an IDE's port auto-forward surfaces as a transient "preview". The
+  // snapshot browser is co-located (url below is already 127.0.0.1).
+  const port = await listenOnBrowserSafePort(server, "127.0.0.1")
+    .then((bound) => bound || Promise.reject(new Error(bindErrorMessage)))
+    .catch((error: unknown) => {
+      if (REFUSED_LISTEN.has((error as NodeJS.ErrnoException).code ?? "")) return 0;
+      throw error;
     });
-  }).catch((error: unknown) => {
-    if (REFUSED_LISTEN.has((error as NodeJS.ErrnoException).code ?? "")) return 0;
-    throw error;
-  });
 
   if (port === 0) {
     server.removeAllListeners("error");

@@ -3,6 +3,10 @@ export const COLOR_GRADING_COLOR_SPACE = "rec709";
 export const COLOR_GRADING_MAX_CURVE_POINTS = 16;
 export const COLOR_GRADING_MAX_SECONDARIES = 4;
 export const COLOR_GRADING_SOURCE_TAGS = ["video", "img", "canvas"] as const;
+/** A lane's grade: an inert element whose `data-color-grading` its members inherit. */
+export const COLOR_GROUP_TAG = "hf-color-group";
+/** On a member: the id of the `<hf-color-group>` it is graded through. */
+export const COLOR_GROUP_ATTR = "data-color-group";
 export const COLOR_GRADING_ADVANCED_LIMITS = {
   hueDegrees: { min: 0, max: 360, inclusiveMax: false },
   unit: { min: 0, max: 1 },

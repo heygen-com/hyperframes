@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Push In</h1>
+  <p>A centered headline gains focus through one slow, continuous camera push and a gentle fade out.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/push-in.json"
   compositionId="push-in"
   compositionSrc="compositions/components/push-in.html"
   title="Push In"
-  description="A centered headline gains focus through one slow, continuous camera push and a gentle fade out."
   variables={[{"id":"text","type":"string","role":"content","label":"Headline","description":"Text centered in the camera frame.","default":"Focus"},{"id":"intensity","type":"enum","role":"motion","label":"Push intensity","description":"Final camera scale reached by the push.","default":"standard","options":[{"value":"subtle","label":"Subtle"},{"value":"standard","label":"Standard"},{"value":"bold","label":"Bold"}]}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":178}}
   attribution={{"path":"registry/components/push-in","tags":["motion-primitive","camera","push-in","focus","emphasize","holdable"]}}
@@ -213,7 +217,9 @@ That writes one file: `compositions/components/push-in.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -253,6 +259,4 @@ Tagged `motion-primitive` `camera` `push-in` `focus` `emphasize` `holdable`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

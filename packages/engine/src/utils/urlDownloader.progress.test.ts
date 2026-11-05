@@ -2,7 +2,10 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { downloadToTemp } from "./urlDownloader.js";
+import { _setDownloadFetchForTests, downloadToTemp } from "./urlDownloader.js";
+
+const stubFetch = (replacement: unknown): void =>
+  _setDownloadFetchForTests(replacement as Parameters<typeof _setDownloadFetchForTests>[0]);
 
 const dirs: string[] = [];
 
@@ -12,7 +15,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
+  _setDownloadFetchForTests();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -77,7 +80,7 @@ const fetchCalls = (fetchMock: { mock: { calls: unknown[] } }, count: number) =>
 /** Starts a download whose every attempt gets a fresh `response()`, once the first fetch is made. */
 async function startDownload(response: () => Response) {
   const fetchMock = vi.fn(async () => response());
-  vi.stubGlobal("fetch", fetchMock);
+  stubFetch(fetchMock);
   const outcome: { path?: string; error?: unknown } = {};
   void downloadToTemp("https://cdn.example/media.mp4", tempDir()).then(
     (path) => (outcome.path = path),

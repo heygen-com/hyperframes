@@ -196,6 +196,7 @@
   --timeline-accent-hover: var(--color-on-hover);
   --timeline-accent-button-bg: var(--color-on);
   --timeline-danger: color-mix(in oklab, var(--color-danger) 70%, transparent);
+  --timeline-danger-fill: color-mix(in oklab, var(--color-danger) 10%, transparent);
   --timeline-info-bg: rgba(59, 130, 246, 0.12);
   --timeline-info-border: rgba(59, 130, 246, 0.4);
   --timeline-dialog-bg: var(--color-raised);

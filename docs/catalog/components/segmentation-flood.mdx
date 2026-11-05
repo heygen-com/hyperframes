@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Segmentation Flood</h1>
+  <p>Machine-vision read of a slotted subject: translucent accent segmentation masks flood on in quantized scanline steps, each region gets a thin bracket and mono label chip, a deterministic 2-frame HUD flicker rides the pass, then the labeled read settles clean.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/segmentation-flood.json"
   compositionId="segmentation-flood"
   compositionSrc="compositions/components/segmentation-flood.html"
   title="Segmentation Flood"
-  description="Machine-vision read of a slotted subject: translucent accent segmentation masks flood on in quantized scanline steps, each region gets a thin bracket and mono label chip, a deterministic 2-frame HUD flicker rides the pass, then the labeled read settles clean."
   variables={[{"id":"regions","type":"string","role":"content","label":"Regions","description":"Comma-separated region labels; 2 to 4 are used, one translucent mask + bracket + mono chip each.","default":"Figure, Signal, Ground"},{"id":"flood_at","type":"number","role":"timing","label":"Flood at","description":"Seconds from mount start when the segmentation pass begins. Clamped so the pass and any exit stay inside the clip.","default":0.8},{"id":"flicker","type":"enum","role":"style","label":"Flicker","description":"Deterministic 2-frame HUD luminance toggle riding the flood pass.","default":"on","options":[{"value":"on","label":"On"},{"value":"off","label":"Off"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Mask, bracket, and chip color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the labeled read holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":517}}
   attribution={{"path":"registry/components/segmentation-flood","tags":["motion-primitive","product-demo","ai","hud","canvas","deterministic","experiment"]}}
@@ -552,7 +556,9 @@ That writes one file: `compositions/components/segmentation-flood.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -595,6 +601,4 @@ Tagged `motion-primitive` `product-demo` `ai` `hud` `canvas` `deterministic` `ex
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

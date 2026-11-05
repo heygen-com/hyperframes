@@ -35,7 +35,7 @@ describe("open-in-desktop routes", () => {
     const body = await (
       await server(false, { installed: () => false }).app.request("/api/open-in-desktop")
     ).json();
-    const downloadUrl = desktopDownloadUrl();
+    const downloadUrl = desktopDownloadUrl(process.platform, "browser-editor");
     expect(body).toEqual({
       available: downloadUrl !== null,
       handoff: false,
@@ -69,7 +69,7 @@ describe("open-in-desktop routes", () => {
           "/api/open-in-desktop",
         )
       ).json();
-    const downloadUrl = "https://hyperframes.dev/studio/download?os=windows";
+    const downloadUrl = "https://hyperframes.studio/studio/download?os=windows&src=browser-editor";
     expect(await get(false)).toEqual({
       available: true,
       handoff: false,
@@ -91,7 +91,7 @@ describe("open-in-desktop routes", () => {
     expect(await get(false)).toEqual({
       available: true,
       handoff: false,
-      downloadUrl: desktopDownloadUrl("darwin"),
+      downloadUrl: "https://hyperframes.studio/studio/download?src=browser-editor",
       os: "darwin",
       installed: false,
     });

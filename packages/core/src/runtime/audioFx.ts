@@ -112,6 +112,8 @@ export interface ElementFxHandle {
    * stuck value, which for a fade-out is silence for the rest of the session.
    */
   reanchor(timing: AutomationTiming): void;
+  /** Re-aim every booked envelope at `timing` without clearing effect state: the same pass, re-measured. */
+  retime(timing: AutomationTiming): void;
   /**
    * Re-aim every booked envelope at a new playback rate.
    *
@@ -343,15 +345,21 @@ export function attachElementFxChain(
     });
   }
 
+  const retime = (next: AutomationTiming): void => {
+    if (disposed) return;
+    const at = timingNow();
+    if (at) cancelParamLane(automated, at.scheduledAt);
+    frame = { ...next };
+    scheduleFor(readChain(el).chain, frame);
+  };
+
   return {
     reanchor: (next: AutomationTiming) => {
       if (disposed) return;
-      const at = timingNow();
-      if (at) cancelParamLane(automated, at.scheduledAt);
-      frame = { ...next };
       handle?.reset();
-      scheduleFor(readChain(el).chain, frame);
+      retime(next);
     },
+    retime,
     setRate: (rate: number) => {
       const at = timingNow();
       if (disposed || !at || !Number.isFinite(rate) || rate <= 0 || rate === at.rate) return;

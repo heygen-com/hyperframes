@@ -121,6 +121,7 @@ export interface CaptureStageInput {
   interleaveFrames?: boolean;
   /** Each capture attempt opens one, so a stalled attempt is retried by the ladders below. */
   openAttempt?: OpenStallAttempt;
+  verifyFirstSession?: (session: CaptureSession) => Promise<void>;
 }
 
 export interface CaptureStageResult {
@@ -385,6 +386,7 @@ export async function runCaptureStage(input: CaptureStageInput): Promise<Capture
       dedupPerfs,
       pageErrorLines: workerPageErrors,
       openAttempt: input.openAttempt,
+      verifyFirstSession: input.verifyFirstSession,
       onProgress: (progress) => {
         if (progress.latestWorkerPhase) {
           if (progress.capturedFrames === 0) reportWorkerStartup(job, progress, onProgress);

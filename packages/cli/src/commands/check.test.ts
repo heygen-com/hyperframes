@@ -1,8 +1,10 @@
+import type { CheckProgress } from "../utils/checkProgress.js";
 import { runCommand } from "citty";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 
 const trackCheckReport = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -12,6 +14,8 @@ vi.mock("../telemetry/events.js", () => ({
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
+import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
+import { readConfig } from "../telemetry/config.js";
 import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
@@ -48,7 +52,11 @@ import {
   type MotionSpecResolution,
 } from "../utils/checkPipeline.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
-import { consumeCommandResult, registerRootExitRequester } from "../utils/commandResult.js";
+import {
+  CliUsageError,
+  consumeCommandResult,
+  registerRootExitRequester,
+} from "../utils/commandResult.js";
 import { ambiguousIssue } from "../utils/motionAudit.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import type {
@@ -492,6 +500,24 @@ describe("skip contrast in motion", () => {
   });
 });
 
+it("waits for the composition as long as snapshot and render do unless --timeout says otherwise", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+  await runCommand(command, { rawArgs: ["--json", "--timeout", "20s"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].timeout).toBe(DEFAULT_CONFIG.playerReadyTimeout);
+  expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
+});
+
 it("parses the caption-zone grammar and enables the frame gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -654,7 +680,9 @@ it("prints a dash-prefixed --frame-check value's parse failure exactly once, not
     withMeta: (value) => value,
   });
 
-  await runViaCli(command, { rawArgs: ["--frame-check=--json"] });
+  await expect(runViaCli(command, { rawArgs: ["--frame-check=--json"] })).rejects.toBeInstanceOf(
+    CliUsageError,
+  );
 
   expect(runPipeline).not.toHaveBeenCalled();
   const matching = errorLog.mock.calls.filter(
@@ -743,12 +771,12 @@ it("fails the check on an audio error and reports it in its own section", async 
   expect(report.ok).toBe(false);
 });
 
-it("still checks audio when lint errors skip the browser pass", async () => {
+it("still checks audio when a lint error skips the browser pass", async () => {
   const { report, browser } = await runScenario(
     fakeDriver(),
     {},
     {
-      lint: lintWith("error", "missing_timeline_registry", "No timeline"),
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
       inspectAudio: vi.fn(async () => [
         {
           code: "audio_none",
@@ -841,16 +869,20 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
     withMeta: (value) => ({ ...value, _meta: { version: "test" } }),
   });
 
-  await runCommand(command, {
-    rawArgs: ["--json", "--caption-zone", "x0=0;y0=.8;x1=1;y1=1.2"],
-  });
+  await expect(
+    runCommand(command, {
+      rawArgs: ["--json", "--caption-zone", "x0=0;y0=.8;x1=1;y1=1.2"],
+    }),
+  ).rejects.toMatchObject({ result: { exitCode: 2, kind: "usage_error" } });
 
   expect(runPipeline).not.toHaveBeenCalled();
-  expect(consumeCommandResult().exitCode).toBe(1);
   expect(log).toHaveBeenCalledTimes(1);
   expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toEqual({
     ok: false,
-    error: expect.stringContaining("Invalid --caption-zone"),
+    error: expect.objectContaining({
+      code: "usage_error",
+      message: expect.stringContaining("Invalid --caption-zone"),
+    }),
     _meta: { version: "test" },
   });
 });
@@ -1537,7 +1569,7 @@ describe("check pipeline", () => {
     });
   });
 
-  it("short-circuits on lint errors without launching a browser, and flags the skipped sections", async () => {
+  it("short-circuits on a lint error that leaves nothing to load, and flags the skipped sections", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1557,6 +1589,97 @@ describe("check pipeline", () => {
     expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
+  it("runs the browser checks past a lint error that still loads, and fails on the lint error", async () => {
+    const failingContrast = vi.fn(async (time: number) => ({
+      entries: time === 0.5 ? [contrastEntry()] : [],
+      pngBase64: PNG_BASE64,
+    }));
+    const lint = lintWith("error", "missing_timeline_registry", "No timeline registered.");
+    const { report, browser } = await runScenario(
+      fakeDriver({ collectContrast: failingContrast }),
+      {},
+      { lint },
+    );
+
+    expect(browser).toHaveBeenCalled();
+    expect(report.browserSkipped).toBe(false);
+    expect(report.lint.errorCount).toBe(1);
+    expect(report.contrast.errorCount).toBeGreaterThan(0);
+    expect(report.ok).toBe(false);
+    expect(checkExitCode(report)).toBe(1);
+  });
+
+  it("says in plain words that a lint error left no composition to load", async () => {
+    const lint = lintWith(
+      "error",
+      "root_missing_composition_id",
+      "Root needs data-composition-id.",
+    );
+    const { report } = await runScenario(fakeDriver(), {}, { lint });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runViaCli(command, { rawArgs: [] });
+
+    const said = log.mock.calls.map((call) => String(call[0])).join("\n");
+    expect(said).toContain("the lint error above leaves no composition to load");
+    expect(said).not.toContain("Browser session never ran");
+  });
+
+  describe("remembers the newest check for hyperframes feedback", () => {
+    const run = (runPipeline: () => Promise<CheckReport>) =>
+      runViaCli(
+        createCheckCommand({
+          resolveProject: () => PROJECT,
+          runPipeline: vi.fn(runPipeline),
+          prepareMedia: vi.fn(async () => []),
+          withMeta: (value) => value,
+        }),
+        { rawArgs: [] },
+      );
+
+    it("keeps the error codes of a failed check", async () => {
+      const lint = lintWith(
+        "error",
+        "root_missing_composition_id",
+        "Root needs data-composition-id.",
+      );
+      const { report } = await runScenario(fakeDriver(), {}, { lint });
+      await run(async () => report);
+
+      expect(readConfig().lastCheck).toMatchObject({
+        exitCode: 1,
+        codes: { root_missing_composition_id: 1 },
+      });
+    });
+
+    it("records a check that threw as a failure, not the check before it", async () => {
+      await run(async () => (await runScenario(fakeDriver(), {}, {})).report);
+      await run(async () => {
+        throw new Error("browser died");
+      });
+
+      expect(readConfig().lastCheck).toMatchObject({ exitCode: 1, codes: { runtime_error: 1 } });
+    });
+
+    it("leaves a check that never finished as unfinished, with when it started", async () => {
+      const { report } = await runScenario(fakeDriver(), {}, {});
+      await run(async () => report);
+      let finish!: (value: CheckReport) => void;
+      const running = run(() => new Promise<CheckReport>((resolve) => (finish = resolve)));
+      await vi.waitFor(() => expect(readConfig().lastCheck?.exitCode).toBeUndefined());
+
+      expect(readConfig().lastCheck?.at).toMatch(/^\d{4}-\d\d-\d\dT/);
+      finish(report);
+      await running;
+    });
+  });
+
   it("marks browserSkipped true when the linter itself crashes", async () => {
     const { deps } = dependencies(fakeDriver());
     deps.lintProject = vi.fn(async () => {
@@ -1571,7 +1694,10 @@ describe("check pipeline", () => {
 
   it.each([
     { lint: cleanLint(), handed: true },
-    { lint: lintWith("error", "lint_error", "Lint error."), handed: false },
+    {
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
+      handed: false,
+    },
   ])(
     "closes the browser started during lint unless the browser pass took it",
     async ({ lint, handed }) => {
@@ -2198,6 +2324,40 @@ describe("check pipeline", () => {
     }
   });
 
+  it("slow analysis calls that each finish keep the check alive past 120 s", async () => {
+    vi.useFakeTimers();
+    try {
+      let analysing = false;
+      const slowWhenAnalysing = async () => {
+        if (analysing) await new Promise((resolve) => setTimeout(resolve, 100_000));
+      };
+      const hasNoTimelineDeclaration = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return false;
+      });
+      const getCanvas = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return { width: 1920, height: 1080 };
+      });
+      const driver = fakeDriver({ hasNoTimelineDeclaration, getCanvas });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        deadline!.start();
+        const report: CheckProgress = (phase) => {
+          if (phase === "analyze") analysing = true;
+        };
+        return runAuditGrid(driver, options, motion, undefined, deadline!.enter, report);
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(2_000_000);
+      const codes = (await pending).runtime.findings.map((finding) => finding.code);
+      expect(codes).not.toContain("check_runtime_failure");
+      expect(hasNoTimelineDeclaration).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a long overlap pass that keeps reporting progress finishes instead of hitting a wall clock", async () => {
     vi.useFakeTimers();
     try {
@@ -2248,8 +2408,46 @@ describe("check pipeline", () => {
         (finding) => finding.code === "check_runtime_failure",
       );
       expect(failure?.message).toMatch(/^Check did not finish within its deadline/);
-      expect(failure?.message).toContain("while running the overlap pass.");
+      expect(failure?.message).toContain(
+        "while running the overlap pass (overlap probes from 0s).",
+      );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a check given a long --timeout is not ended as idle after 120 s of waiting for its page", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted!: AbortSignal;
+      const driver = fakeDriver({
+        collectOverlapGrid: vi.fn(
+          () =>
+            new Promise<never>((_, reject) =>
+              aborted.addEventListener("abort", () => reject(aborted.reason)),
+            ),
+        ),
+      });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        aborted = deadline!.signal;
+        deadline!.start();
+        return runAuditGrid(driver, options, motion, undefined, deadline!.enter);
+      };
+      const pending = runCheckPipeline(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, timeout: 400_000 },
+        deps,
+      );
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(aborted.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(110_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toContain("no progress for 410 s");
     } finally {
       vi.useRealTimers();
     }
@@ -2680,6 +2878,7 @@ describe("check pipeline", () => {
                 blockSelector: "#title",
                 sourceFile: "compositions/stat.html",
                 text: "Every team gets one shared calendar now",
+                blockText: "Every team gets one shared calendar now",
                 opacity: 1,
                 fontPx: 96,
                 rect: { left: 160, top: 380, width: 1600, height: 220 },
@@ -2721,6 +2920,20 @@ describe("check pipeline", () => {
       expect(checkExitCode(strict.report)).toBe(0);
     });
 
+    it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {
+      const driver = craftDriver();
+      await runScenario(driver);
+      const painted = new Set(
+        vi
+          .mocked(driver.seekGeometry)
+          .mock.calls.flatMap(([time, seek]) => (seek?.draws ? [time] : [])),
+      );
+      const sampled = vi.mocked(driver.collectCraftFrame!).mock.calls.map(([time]) => time);
+
+      expect(sampled.length).toBeGreaterThan(0);
+      expect(sampled.every((time) => painted.has(time))).toBe(true);
+    });
+
     it("re-measures a short line between dense samples before judging it", async () => {
       const driver = craftDriver();
       const { report } = await runScenario(driver);
@@ -2729,6 +2942,24 @@ describe("check pipeline", () => {
       expect(line?.seconds).toBeCloseTo(0.7, 1);
       const sampled = vi.mocked(driver.collectCraftFrame!).mock.calls.map(([time]) => time);
       expect(sampled.some((time) => Math.round(time * 1000) % 125 !== 0)).toBe(true);
+    });
+
+    it("thins the craft grid when frames are slow, so the pass stays near its budget and still reaches the end", async () => {
+      let clock = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => clock);
+      const driver = craftDriver({
+        getDuration: vi.fn(async () => 60),
+        collectCraftFrame: vi.fn(async (time: number) => {
+          clock += 1000;
+          return craftFrame(time);
+        }),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.craft.samples).toBeGreaterThan(20);
+      expect(report.craft.samples).toBeLessThan(120);
+      expect(report.craft.step).toBeGreaterThan(0.5);
+      expect(report.craft.step).toBeLessThanOrEqual(1.5);
     });
 
     it("samples a long film at 8 fps, finer than the overlap pass's capped grid", async () => {
@@ -3398,7 +3629,7 @@ describe("check report telemetry", () => {
       noMotion(),
     );
 
-    expect(result.timings).toEqual({ launchSettleMs: 0, seekLoopMs: 20, contrastMs: 5 });
+    expect(result.timings).toMatchObject({ launchSettleMs: 0, seekLoopMs: 20, contrastMs: 5 });
   });
 });
 
@@ -3650,5 +3881,13 @@ describe("check stopped by a signal", () => {
       "Check stopped before finishing (SIGTERM).",
     );
     expect(order).toEqual(["print {", "exit 143"]);
+  });
+});
+
+describe("check --lint-verbose", () => {
+  it("is a known flag, as render, preview and publish spell it, and a made-up one still is not", () => {
+    const check = createCheckCommand() as never;
+    expect(() => assertKnownFlags(check, ["--lint-verbose", "--json"], "check")).not.toThrow();
+    expect(() => assertKnownFlags(check, ["--lint-loud"], "check")).toThrow("Unknown flag");
   });
 });

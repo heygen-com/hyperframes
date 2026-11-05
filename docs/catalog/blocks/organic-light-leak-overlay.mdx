@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Organic Light Leak Overlay</h1>
+  <p>Finite CSS light-leak overlay for memory beats and motivated transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/organic-light-leak-overlay.json"
   compositionId="organic-light-leak-overlay"
   compositionSrc="compositions/organic-light-leak-overlay.html"
   title="Organic Light Leak Overlay"
-  description="Finite CSS light-leak overlay for memory beats and motivated transitions"
   variables={[]}
   meta={{"duration":4,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":125}}
   attribution={{"path":"registry/blocks/organic-light-leak-overlay","tags":["light-leak","film","memory","transition","overlay","media-treatment-overlay"]}}
@@ -160,7 +164,9 @@ That writes one file: `compositions/organic-light-leak-overlay.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -191,6 +197,4 @@ Tagged `light-leak` `film` `memory` `transition` `overlay` `media-treatment-over
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

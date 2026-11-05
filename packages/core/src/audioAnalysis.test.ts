@@ -172,12 +172,19 @@ describe("classify", () => {
   const gaps = noise(7);
   const syllables: number[] = [];
   for (let at = 0.1; at < 10; at += 0.12 + 0.25 * Math.abs(gaps())) syllables.push(at);
-  /** Noise in irregular syllable-length bursts over a quiet room tone. */
-  const speechLike = (t: number, random: () => number) => {
-    const into = syllables.map((at) => t - at).find((d) => d >= 0 && d < 0.15);
-    const voiced = into === undefined ? 0 : 0.5 * Math.sin((Math.PI * into) / 0.15);
-    return (voiced + 0.02) * random();
+  const syllableAt = (t: number) => syllables.findIndex((at) => t - at >= 0 && t - at < 0.15);
+  const burst = (t: number) => {
+    const n = syllableAt(t);
+    return n < 0 ? 0 : 0.5 * Math.sin((Math.PI * (t - syllables[n]!)) / 0.15);
   };
+  /** A voice whose pitch moves from syllable to syllable, with breath noise, in irregular bursts over room tone. */
+  const speechLike = (t: number, random: () => number) => {
+    const hz = 110 + 13 * (syllableAt(t) % 7);
+    const fold = Math.sin(2 * Math.PI * hz * t) + 0.5 * Math.sin(4 * Math.PI * hz * t);
+    return burst(t) * (fold + 0.3 * random()) + 0.02 * random();
+  };
+  /** The same envelope as noise: what a hit with a reverb tail looks like to the envelope alone. */
+  const unpitched = (t: number, random: () => number) => (burst(t) + 0.02) * random();
 
   it("calls a short sound an effect", () => {
     expect(classify(signal(1, impact(0.1, 0.01))).value).toBe("sfx");
@@ -198,12 +205,43 @@ describe("classify", () => {
     expect(classify(signal(3, speechLike)).value).toBe("voice");
   });
 
+  it("still calls speech voice when the stereo channels have opposite polarity", () => {
+    const speech = signal(3, speechLike);
+    const expected = classify(speech);
+    speech.channels.push(Float32Array.from(speech.channels[0]!, (sample) => -sample));
+    expect(classify(speech)).toEqual(expected);
+  });
+
+  it("does not call speech-shaped noise voice: without a voice-range pitch it is an effect or a bed", () => {
+    const short = classify(signal(3, unpitched));
+    expect(short.value).toBe("sfx");
+    expect(short.features.voiced).toBe(0);
+    expect(classify(signal(10, unpitched)).value).not.toBe("voice");
+  });
+
+  it("calls even-paced speech without a beat voice, and a held pitched pad still music", () => {
+    /** Voice that never stops: the syllables only swell a carried pitch, as a presenter or TTS reads. */
+    const steady = (t: number, random: () => number) => {
+      const hz = 110 + 13 * (Math.max(0, syllableAt(t)) % 7);
+      const phrase = (t + 0.4 * Math.sin(t)) % 2.9 < 2.3 ? 1 : 0.03;
+      return phrase * (0.25 + 0.6 * burst(t)) * (Math.sin(2 * Math.PI * hz * t) + 0.1 * random());
+    };
+    const pad = (t: number, random: () => number) =>
+      0.3 * (Math.sin(2 * Math.PI * 220 * t) + 0.5 * Math.sin(2 * Math.PI * 330 * t)) +
+      0.01 * random();
+    const speech = classify(signal(10, steady));
+    expect(speech.features.syllables).toBeLessThan(0.35);
+    expect(speech.value).toBe("voice");
+    expect(classify(signal(10, pad)).value).toBe("music");
+  });
+
   it("reports what the guess was made from", () => {
     expect(Object.keys(classify(signal(3, speechLike)).features)).toEqual([
       "duration",
       "regularity",
       "syllables",
       "sustain",
+      "voiced",
     ]);
   });
 });

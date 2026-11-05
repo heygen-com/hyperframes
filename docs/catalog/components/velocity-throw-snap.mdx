@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Velocity Throw Snap</h1>
+  <p>A five-shot rail whips past on a fast decaying curve, then overshoots and snaps the selected hero shot exactly to center.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/velocity-throw-snap.json"
   compositionId="velocity-throw-snap"
   compositionSrc="compositions/components/velocity-throw-snap.html"
   title="Velocity Throw Snap"
-  description="A five-shot rail whips past on a fast decaying curve, then overshoots and snaps the selected hero shot exactly to center."
   variables={[{"id":"hero_index","type":"number","role":"content","label":"Hero index","description":"Zero-based index of the shot centered at the settle.","default":2,"min":0,"max":4,"step":1},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used by the hero shot.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"card_label_prefix","type":"string","role":"content","label":"Card label prefix","description":"Text placed before each shot number.","default":"Shot"}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":484}}
   attribution={{"path":"registry/components/velocity-throw-snap","tags":["motion-primitive","feature-tour","rail","velocity","throw","snap","physics"]}}
@@ -519,7 +523,9 @@ That writes one file: `compositions/components/velocity-throw-snap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -560,6 +566,4 @@ Tagged `motion-primitive` `feature-tour` `rail` `velocity` `throw` `snap` `physi
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -612,3 +612,19 @@ describe("detectSandboxRuntime — kernel-string path", () => {
     expect(detectSandboxRuntime()).not.toBe("gvisor");
   });
 });
+
+describe("isAgentDriven", () => {
+  it.each([
+    [{ CLAUDECODE: "1" }, true],
+    [{ CODEX_THREAD_ID: "t" }, true],
+    [{ CURSOR_AGENT: "1", TERM_PROGRAM: "cursor" }, true],
+    [{ TERM_PROGRAM: "cursor" }, false],
+    [{ TERM_PROGRAM: "windsurf" }, false],
+    [{ REPL_ID: "r" }, false],
+    [{ REPLIT_USER: "u" }, false],
+    [{}, false],
+  ])("%j -> %s", async (env, expected) => {
+    const { isAgentDriven } = await import("./agent_runtime.js");
+    expect(isAgentDriven(env)).toBe(expected);
+  });
+});

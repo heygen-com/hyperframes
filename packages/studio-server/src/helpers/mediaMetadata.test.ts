@@ -93,7 +93,30 @@ describe("probeMediaMetadata", () => {
       }),
       stderr: "",
     }));
-    expect(withAudio).toMatchObject({ kind: "video", hasAudio: true });
+    expect(withAudio).toMatchObject({ kind: "video", hasAudio: true, audioStream: 0 });
+
+    // A phone's spatial track names no codec ffmpeg can decode; the AAC track after it is the one to play.
+    const phone = await probeMediaMetadata("/tmp/phone.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [
+          { codec_type: "video", codec_name: "hevc" },
+          { codec_type: "audio" },
+          { codec_type: "audio", codec_name: "aac" },
+        ],
+      }),
+      stderr: "",
+    }));
+    expect(phone).toMatchObject({ kind: "video", hasAudio: true, audioStream: 1 });
+    const spatialOnly = await probeMediaMetadata("/tmp/spatial.mov", () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        streams: [{ codec_type: "video", codec_name: "hevc" }, { codec_type: "audio" }],
+      }),
+      stderr: "",
+    }));
+    expect(spatialOnly).toMatchObject({ kind: "video", hasAudio: false });
+    expect(spatialOnly).not.toHaveProperty("audioStream");
 
     const silent = await probeMediaMetadata("/tmp/silent.mp4", () => ({
       status: 0,

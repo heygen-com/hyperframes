@@ -3,7 +3,7 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { measuredInMotion, readContrastMotion } from "./contrastMotion.js";
-import { collectSeekClock } from "./checkBrowser.js";
+import { collectSeekClock, createPageDriver } from "./checkBrowser.js";
 
 const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
 
@@ -116,6 +116,24 @@ describe.runIf(executablePath)("collectSeekClock in Chromium", () => {
     expect(rest.map(({ id }) => id)).toEqual(first.map(({ id }) => id));
     expect(first.map(({ id }) => id)).not.toContain(late?.id);
     expect(second.map(({ time }) => time)).toEqual([0, 2, 1, 4, 4, 0.2, 0, 2000, 0, 3000, 3000, 0]);
+    await page.close();
+  });
+
+  it("skips a seek's WebGL draws unless the caller asks to paint them", async () => {
+    page = await browser.newPage();
+    await page.setContent(`<script>
+      window.draws = 0;
+      window.WebGLRenderingContext = function () {};
+      window.WebGLRenderingContext.prototype.drawArrays = () => { window.draws += 1; };
+      window.__hf = { seek: () => new window.WebGLRenderingContext().drawArrays() };
+    </script>`);
+    const driver = createPageDriver(page);
+    const drawn = () => page.evaluate(() => Reflect.get(window, "draws"));
+
+    await driver.seekGeometry(1);
+    expect(await drawn()).toBe(0);
+    await driver.seekGeometry(2, { draws: true });
+    expect(await drawn()).toBe(1);
     await page.close();
   });
 

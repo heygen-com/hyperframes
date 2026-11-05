@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Aurora Drift</h1>
+  <p>Three soft accent-derived aurora fields drift in an exact ambient loop over a deep base and faint vignette.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/aurora-drift.json"
   compositionId="aurora-drift"
   compositionSrc="compositions/components/aurora-drift.html"
   title="Aurora Drift"
-  description="Three soft accent-derived aurora fields drift in an exact ambient loop over a deep base and faint vignette."
   variables={[{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used to derive the aurora hues.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"mood","type":"enum","role":"style","label":"Mood","description":"Base luminance and aurora field strength.","default":"deep","options":[{"value":"deep","label":"Deep"},{"value":"bright","label":"Bright"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":235}}
   attribution={{"path":"registry/components/aurora-drift","tags":["motion-primitive","background","aurora","gradient","ambient","loopable"]}}
@@ -270,7 +274,9 @@ That writes one file: `compositions/components/aurora-drift.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -310,6 +316,4 @@ Tagged `motion-primitive` `background` `aurora` `gradient` `ambient` `loopable`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

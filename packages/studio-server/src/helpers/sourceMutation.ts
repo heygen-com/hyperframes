@@ -12,7 +12,12 @@ import {
   mintHfId,
   walkCompositionDescendants,
 } from "@hyperframes/parsers/hf-ids";
-import { readClipTiming, writeClipTiming } from "@hyperframes/core/composition-contract";
+import {
+  readClipTiming,
+  SPLIT_BOUNDARY_EPSILON_S,
+  writeClipTiming,
+  type ReferenceExpression,
+} from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
 
@@ -41,7 +46,44 @@ export function parseSourceDocument(raw: string): {
   return { document, wrappedFragment: !hasDocumentShell };
 }
 
+/** Drops the rules that style `id` alone (every selector in the list names it), in each style sheet of the page. */
+function dropCssRulesForId(document: Document, id: string): void {
+  const idToken = `#${id}`;
+  const namesId = (selector: string) => {
+    let found = false;
+    selectorParser((selectors) => {
+      selectors.walkIds((node) => {
+        // an id inside :not() excludes the element, so the rule styles the others
+        let up = node.parent;
+        while (up && !(up.type === "pseudo" && up.value === ":not")) up = up.parent as typeof up;
+        if (node.value === id && !up) found = true;
+      });
+    }).processSync(selector);
+    return found;
+  };
+  for (const styleEl of document.querySelectorAll("style")) {
+    const css = styleEl.textContent ?? "";
+    if (!css.includes(idToken)) continue;
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(css);
+    } catch {
+      continue;
+    }
+    let dropped = false;
+    root.walkRules((rule) => {
+      if (rule.selectors.length > 0 && rule.selectors.every(namesId)) {
+        rule.remove();
+        dropped = true;
+      }
+    });
+    if (dropped) styleEl.textContent = root.toString();
+  }
+}
+
+// A clone's rules replace whatever an earlier piece of that id left behind, so repeated cuts keep one set per id.
 function duplicateCssRulesForId(document: Document, originalId: string, newId: string): void {
+  dropCssRulesForId(document, newId);
   const idToken = `#${originalId}`;
   const transform = selectorParser((selectors) => {
     selectors.walkIds((node) => {
@@ -157,7 +199,9 @@ export function removeElementsFromHtml(
   for (const target of targets) {
     const element = findTargetElement(document, target);
     if (!element) continue;
+    const id = element.getAttribute("id");
     removeElementWithGsapCascade(document, element);
+    if (id && !document.getElementById(id)) dropCssRulesForId(document, id);
     removed = true;
   }
   if (!removed) return source;
@@ -373,11 +417,26 @@ export function probeElementInSource(source: string, target: SourceMutationTarge
   return probeElementsInSource(source, [target])[0] ?? false;
 }
 
+/** Why a split changed nothing: the cut route says it, so a report names the cause and not just "rejected". */
+export type SplitRefusal =
+  | "target-not-found"
+  | "reference-without-range"
+  | "no-duration"
+  | "outside-clip";
+
 export interface SplitElementResult {
   html: string;
   matched: boolean;
   newId: string | null;
+  refusal?: SplitRefusal;
 }
+
+const refused = (html: string, refusal: SplitRefusal): SplitElementResult => ({
+  html,
+  matched: false,
+  newId: null,
+  refusal,
+});
 
 function resolveElementTiming(el: Element): {
   start: number;
@@ -387,14 +446,16 @@ function resolveElementTiming(el: Element): {
   return { start: timing.start ?? 0, duration: timing.duration ?? 0 };
 }
 
+const roundMs = (seconds: number) => Math.round(seconds * 1000) / 1000;
+
 function setElementDuration(
   el: Element,
-  start: number,
+  start: number | ReferenceExpression,
   duration: number,
   trackIndex?: number,
 ): void {
   writeClipTiming(el, {
-    start: Math.round(start * 1000) / 1000,
+    start: typeof start === "number" ? Math.round(start * 1000) / 1000 : start,
     duration: Math.round(duration * 1000) / 1000,
     ...(trackIndex != null ? { trackIndex } : {}),
   });
@@ -430,7 +491,7 @@ export function splitElementInHtml(
 ): SplitElementResult {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const el = findTargetElement(document, target);
-  if (!el || !isHTMLElement(el)) return { html: source, matched: false, newId: null };
+  if (!el || !isHTMLElement(el)) return refused(source, "target-not-found");
 
   // An untimed wrapper whose row is its timed media's own window is a view of that
   // media: cut the media and leave the wrappers untimed. A GSAP scene keeps its own window.
@@ -447,6 +508,14 @@ export function splitElementInHtml(
 
   const timing = resolveElementTiming(timed);
   let { start, duration } = timing;
+  // A start that names another clip ("intro", "intro - 0.5") resolves to where that clip ends, which only the
+  // client's resolved range knows; reading it as 0 cut the wrong span, or rewrote the clip to start at 0.
+  const reference = readClipTiming(timed).startExpression;
+  const startsAfter = reference?.kind === "reference" ? reference : null;
+  if (startsAfter) {
+    if (!fallbackTiming) return refused(source, "reference-without-range");
+    start = fallbackTiming.start;
+  }
   // GSAP-animated elements carry their timing in the script, not in data-* attrs,
   // so the source has no authored duration. Fall back to the store's (GSAP-derived)
   // range — the runtime windows visibility off data-start/data-duration regardless
@@ -455,8 +524,12 @@ export function splitElementInHtml(
     start = fallbackTiming.start;
     duration = fallbackTiming.duration;
   }
-  if (duration <= 0 || splitTime <= start || splitTime >= start + duration) {
-    return { html: source, matched: false, newId: null };
+  if (duration <= 0) return refused(source, "no-duration");
+  if (
+    splitTime < start + SPLIT_BOUNDARY_EPSILON_S ||
+    splitTime > start + duration - SPLIT_BOUNDARY_EPSILON_S
+  ) {
+    return refused(source, "outside-clip");
   }
 
   newId = nextUniqueId(document, newId);
@@ -465,7 +538,7 @@ export function splitElementInHtml(
   const secondDuration = duration - firstDuration;
 
   const clone = el.cloneNode(true);
-  if (!isHTMLElement(clone)) return { html: source, matched: false, newId: null };
+  if (!isHTMLElement(clone)) return refused(source, "target-not-found");
   clone.setAttribute("id", newId);
   dedupeClonedCompositionId(document, clone);
   clone.removeAttribute("data-hf-id");
@@ -478,7 +551,14 @@ export function splitElementInHtml(
     duplicateCssRulesForId(document, timedMedia.id, mediaId);
     clonedTimed.setAttribute("id", mediaId);
   }
-  setElementDuration(clonedTimed, splitTime, secondDuration, fallbackTiming?.track);
+  setElementDuration(
+    clonedTimed,
+    startsAfter
+      ? { ...startsAfter, offset: roundMs(startsAfter.offset + firstDuration) }
+      : splitTime,
+    secondDuration,
+    fallbackTiming?.track,
+  );
 
   // Keep the "clip" class — the runtime uses it to control visibility
   // based on data-start/data-duration timing.
@@ -519,7 +599,7 @@ export function splitElementInHtml(
 
   // Trim the original element's duration. A GSAP element had no data-start; stamp
   // it so the runtime windows the first half (visibility selects on [data-start]).
-  setElementDuration(timed, start, firstDuration, fallbackTiming?.track);
+  setElementDuration(timed, startsAfter ?? start, firstDuration, fallbackTiming?.track);
 
   // Insert clone after original
   if (el.nextSibling) {

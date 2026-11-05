@@ -15,37 +15,58 @@ const contentHash = (text: string): string => createHash("sha1").update(text).di
  * watches the project: an id write during a session reaches Studio as an outside edit and reloads it.
  * A file whose content hash matches the last run's (kept in `.hyperframes`) is not parsed again. */
 export function stampProjectHfIds(projectDir: string): void {
+  const pass = stampPass(projectDir);
+  while (!pass.next().done);
+}
+
+/** stampProjectHfIds for a host whose event loop must keep answering: it yields to the loop after each file. */
+export async function stampProjectHfIdsAsync(projectDir: string): Promise<void> {
+  const pass = stampPass(projectDir);
+  while (!pass.next().done) await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+function* stampPass(projectDir: string): Generator<void> {
   const recordPath = join(projectDir, STAMP_RECORD);
-  let last: Record<string, string> = {};
-  try {
-    last = JSON.parse(readFileSync(recordPath, "utf-8"));
-  } catch {
-    // first run, or an unreadable record: parse everything
-  }
+  const last = readStampRecord(recordPath);
   const next: Record<string, string> = {};
   for (const file of walkDir(projectDir)) {
     if (!file.endsWith(".html") || isInHiddenOrVendorDir(file)) continue;
-    const absPath = join(projectDir, file);
-    let html: string;
-    try {
-      html = readFileSync(absPath, "utf-8");
-    } catch {
-      continue; // unreadable now; the preview route stamps it when it is served
-    }
-    let hash = contentHash(html);
-    if (last[file] !== hash && isCompositionSource(html)) {
-      const stamped = stampFileHfIds(absPath);
-      if (stamped === null) continue;
-      hash = contentHash(stamped);
-    }
-    next[file] = hash;
+    const hash = hashAfterStamp(join(projectDir, file), last[file]);
+    if (hash !== null) next[file] = hash;
+    yield;
   }
+  writeStampRecord(projectDir, recordPath, next);
+}
+
+function readStampRecord(recordPath: string): Record<string, string> {
+  try {
+    return JSON.parse(readFileSync(recordPath, "utf-8"));
+  } catch {
+    return {}; // first run, or an unreadable record: parse everything
+  }
+}
+
+function writeStampRecord(projectDir: string, recordPath: string, next: Record<string, string>) {
   try {
     mkdirWithinProject(projectDir, dirname(recordPath));
     writeFileSync(recordPath, JSON.stringify(next));
   } catch {
     // read-only project: the next start parses again
   }
+}
+
+/** The hash to record for a file after its stamp, or null when it is unreadable now and the preview route stamps it. */
+function hashAfterStamp(absPath: string, recorded: string | undefined): string | null {
+  let html: string;
+  try {
+    html = readFileSync(absPath, "utf-8");
+  } catch {
+    return null;
+  }
+  const hash = contentHash(html);
+  if (recorded === hash || !isCompositionSource(html)) return hash;
+  const stamped = stampFileHfIds(absPath);
+  return stamped === null ? null : contentHash(stamped);
 }
 
 function openNoFollow(filePath: string, flags: number): number | null {

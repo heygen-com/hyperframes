@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Code Snippet - Dark Modern</h1>
+  <p>VS Code workbench with per-character typing animation in the Dark Modern theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/code-snippet-dark-modern.json"
   compositionId="code-snippet-dark-modern"
   compositionSrc="compositions/code-snippet-dark-modern.html"
   title="Code Snippet - Dark Modern"
-  description="VS Code workbench with per-character typing animation in the Dark Modern theme. Full editor chrome with activity bar, sidebar, tabs, terminal, and status bar."
   variables={[]}
   meta={{"duration":11,"width":1920,"height":1080,"category":"Code Snippets","badge":"Stable","codeLines":1087}}
   attribution={{"path":"registry/blocks/code-snippet-dark-modern","tags":["code","developer","showcase","vscode"]}}
@@ -1122,7 +1126,9 @@ That writes `compositions/code-snippet-dark-modern.html`, plus 1 supporting file
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -1153,6 +1159,4 @@ Tagged `code` `developer` `showcase` `vscode`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

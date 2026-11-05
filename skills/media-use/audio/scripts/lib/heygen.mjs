@@ -3,10 +3,12 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
-// $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY → a nearby .env → ~/.heygen/
-// credentials (oauth → Bearer, else api_key → X-Api-Key; $HEYGEN_CONFIG_DIR
-// overrides the dir). $HEYGEN_API_BASE moves every request to that host, as it
-// does for the heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
+// the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
+// $HYPERFRAMES_API_KEY (or a nearby .env) → the API key saved in
+// ~/.hyperframes/credentials. An expired login gives way to an env key but
+// never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
+// $HEYGEN_API_BASE moves every request to that host, as it does for the
+// heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -40,12 +42,10 @@ function heygenOwnBase() {
   }
 }
 
-// A host gateway: the host named its own API base and the key that base accepts. It pays for every call, so it wins
-// over any other credential the environment carries.
+// A host gateway: the host pointed the API base away from HeyGen and set the key that base accepts. It pays for every
+// call, so it wins over any other credential the environment carries.
 const hostGatewayKey = () =>
-  process.env.HEYGEN_API_BASE?.trim() && process.env.HEYGEN_API_KEY
-    ? process.env.HEYGEN_API_KEY
-    : null;
+  !heygenOwnBase() && process.env.HEYGEN_API_KEY ? process.env.HEYGEN_API_KEY : null;
 export const HEYGEN_CLI_SOURCE_HEADERS = { "X-HeyGen-Source": "cli" };
 // Tool-attribution sent on EVERY media-use HeyGen call regardless of auth type, so
 // the backend can isolate media-use consumption from other free TTS / avatar video.
@@ -104,7 +104,7 @@ export function heygenCredential() {
 }
 
 // heygenCredential's answer, or { unreadable: { file, code } } when the credentials path exists but cannot be read
-// (a folder, a locked ~/.heygen), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
+// (a folder, a locked ~/.hyperframes), so heygenAuthHeaders can say to fix that path: logging in again would fail there too.
 // Read without checking first, so the file cannot change between a check and the read.
 function resolveCredential() {
   const gatewayKey = hostGatewayKey();
@@ -114,9 +114,16 @@ function resolveCredential() {
   const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
-  if (envKey) return { headers: { "X-Api-Key": envKey } };
+  const stored = storedCredential();
+  // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
+  if (stored?.headers && "Authorization" in stored.headers) return stored;
+  return envKey ? { headers: { "X-Api-Key": envKey } } : stored;
+}
 
-  const file = join(process.env.HEYGEN_CONFIG_DIR || join(homedir(), ".heygen"), "credentials");
+// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true } | { unreadable } | null.
+function storedCredential() {
+  const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
+  const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
   let raw;
   try {
     raw = readFileSync(file, "utf8").trim();
@@ -136,9 +143,18 @@ function resolveCredential() {
   }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
+    const expectedClient = process.env.HYPERFRAMES_OAUTH_CLIENT_ID || "Zg3LF4FCLoeJoGs2YqMtZ17g";
+    const expectedTokenEndpoint =
+      process.env.HYPERFRAMES_OAUTH_TOKEN_URL || "https://api2.heygen.com/v1/oauth/token";
+    if (
+      !expectedClient ||
+      oauth.client_id !== expectedClient ||
+      oauth.token_endpoint !== expectedTokenEndpoint
+    )
+      return { expired: true };
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();
     if (!expired) return { headers: { Authorization: `Bearer ${oauth.access_token}` } };
-    if (!cred.api_key) return { expired: true };
+    return { expired: true };
   }
   if (cred.api_key) return { headers: { "X-Api-Key": cred.api_key } };
   return null;
@@ -176,7 +192,7 @@ export function heygenAuthHeaders() {
       "HeyGen OAuth token expired — run `npx hyperframes auth refresh` (or `npx hyperframes auth login`)",
     );
   throw new Error(
-    "no HeyGen credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.heygen/credentials)",
+    "no HyperFrames credentials — set $HEYGEN_API_KEY, or run `npx hyperframes auth login` (writes ~/.hyperframes/credentials)",
   );
 }
 
@@ -198,8 +214,33 @@ export async function heygenJSON(path, { method = "GET", headers = {}, body } = 
   return text ? JSON.parse(text) : {};
 }
 
-// HeyGen's own words for a failed call: its {"error":{"message"}}, else the raw body, else the error's message.
+function errorCode(body) {
+  try {
+    const parsed = JSON.parse(body);
+    return parsed?.error?.code ?? parsed?.code ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// One line the agent relays as written when the HyperFrames plan can't pay: no plan, out of credits, or a
+// sign-in the plan doesn't cover yet. Null for every other failure.
+export function billingRefusal(e) {
+  const code = e?.body ? errorCode(e.body) : null;
+  if (code === "hf_subscription_required")
+    return "This needs a HyperFrames plan. Run `npx hyperframes billing subscribe --skill media-use`: it opens the page and waits.";
+  if (code === "hf_usage_exhausted")
+    return "Out of HyperFrames credits. Run `npx hyperframes billing add-credits --skill media-use`: it opens the page and waits.";
+  if (code === "api_key_required")
+    return "This HeyGen feature isn't available with this sign-in yet. Nothing was charged. Use a HeyGen API key, or wait for HyperFrames billing in the CLI.";
+  return null;
+}
+
+// HeyGen's own words for a failed call: a billing refusal line first, then its {"error":{"message"}}, else the
+// raw body, else the error's message.
 export function heygenMessage(e) {
+  const refusal = billingRefusal(e);
+  if (refusal) return refusal;
   if (!e?.body) return e?.message ? String(e.message) : String(e);
   try {
     return JSON.parse(e.body).error?.message ?? e.body;

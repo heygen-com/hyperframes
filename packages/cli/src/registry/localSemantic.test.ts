@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   cachedLocalVectorRevision,
   fetchLocalVectors,
+  hasLocalVectors,
   isMediaVectorRow,
   mediaSemanticRanking,
   vectorPairAgrees,
@@ -198,6 +199,39 @@ describe("fetchLocalVectors", () => {
         artifactBasename: "media-vectors",
       }),
     ).toBe(false);
+  });
+});
+
+describe("where the catalog vectors are read", () => {
+  it("is the cache folder's catalog when HYPERFRAMES_CACHE_DIR is set", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    try {
+      mkdirSync(join(cache, "catalog"));
+      writeFileSync(join(cache, "catalog", "local-vectors.json"), "{}");
+      writeFileSync(join(cache, "catalog", "local-vectors.bin"), "");
+      expect(hasLocalVectors()).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cache, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("an empty HYPERFRAMES_CATALOG_ARTIFACT_DIR", () => {
+  it("counts as unset, as media search reads it", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.stubEnv("HYPERFRAMES_CATALOG_ARTIFACT_DIR", "");
+    try {
+      mkdirSync(join(cache, "catalog"));
+      writeFileSync(join(cache, "catalog", "local-vectors.json"), "{}");
+      writeFileSync(join(cache, "catalog", "local-vectors.bin"), "");
+      expect(hasLocalVectors()).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cache, { recursive: true, force: true });
+    }
   });
 });
 

@@ -2,6 +2,8 @@ import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "@hyperframes/parse
 import { statSync } from "node:fs";
 import { realpath } from "./safePath.js";
 import { sep } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import {
   cleanAssetUrl,
@@ -157,6 +159,8 @@ export const PROXY_VARIANT_CONFIG: Record<
   vp8: { extension: ".webm", contentType: "video/webm" },
 };
 
+export const PROXY_STILL_EXTENSION = ".jpg";
+
 export function isProxyVariant(value: string): value is ProxyVariant {
   return Object.hasOwn(PROXY_VARIANT_CONFIG, value);
 }
@@ -203,12 +207,14 @@ function codecFactsFor(
   codecName: string,
   hasAlpha: boolean,
   source?: PreviewSourceFacts,
+  toneMapsToSdr = false,
 ): AssetCodecFacts {
   const hostile = hostileCodecEntry(codecName);
   return {
     codecName,
-    browserHostile: hostile !== undefined,
-    representativeMime: hostile?.representativeMime ?? null,
+    browserHostile: hostile !== undefined || toneMapsToSdr,
+    // An HDR clip is never 'playable' for preview, whatever its codec: it takes the SDR copy the export uses.
+    representativeMime: toneMapsToSdr ? null : (hostile?.representativeMime ?? null),
     hasAlpha,
     ...(source && { source }),
   };
@@ -226,7 +232,25 @@ async function probeCodecFacts(
   if (metadata.kind !== "video") return null;
   const codecName = metadata.color.codecName;
   if (!codecName) return null;
-  return codecFactsFor(codecName, metadata.hasAlpha === true, metadata.source);
+  const hasAlpha = metadata.hasAlpha === true;
+  const toneMaps = !hasAlpha && (await toneMapsHdr(metadata.color.hdrTransfer));
+  return codecFactsFor(codecName, hasAlpha, metadata.source, toneMaps);
+}
+
+let warnedNoHdrFilters = false;
+
+/** An HDR video previews through the same tone-mapped copy the SDR export uses, so the two match. */
+async function toneMapsHdr(hdrTransfer: string | null): Promise<boolean> {
+  if (hdrTransfer !== "pq" && hdrTransfer !== "hlg") return false;
+  const ffmpegPath = findFfBinary("ffmpeg");
+  if (ffmpegPath && (await ffmpegHasHdrFilters(ffmpegPath))) return true;
+  if (!warnedNoHdrFilters) {
+    warnedNoHdrFilters = true;
+    console.warn(
+      `[hyperframes] A video in this project is HDR, but this ffmpeg has no zscale/tonemap (libzimg), so the preview plays it as the browser shows it and will not match an SDR export. Install an ffmpeg with libzimg.`,
+    );
+  }
+  return false;
 }
 
 interface CachedAssetProbe {

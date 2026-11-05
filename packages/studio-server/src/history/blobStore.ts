@@ -1,9 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, createReadStream, createWriteStream, renameSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { constants, createReadStream, createWriteStream } from "node:fs";
+import { copyFile, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
+import {
+  isWindowsHold,
+  renameWithRetry,
+  renameWithRetryAsync,
+} from "@hyperframes/core/rename-retry";
+import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
@@ -47,17 +53,55 @@ async function cloneOrStream(from: string, to: string): Promise<void> {
   }
 }
 
-async function cloneOrCopy(from: string, to: string, beforeReplace?: () => void): Promise<void> {
+export type InPlaceOutcome = "restored" | "mismatch" | "failed";
+type InPlaceListener = (absPath: string, outcome: InPlaceOutcome) => void;
+const inPlaceListeners = new Set<InPlaceListener>();
+
+export function onRestoredInPlace(listener: InPlaceListener): () => void {
+  inPlaceListeners.add(listener);
+  return () => inPlaceListeners.delete(listener);
+}
+
+async function cloneOrCopy(
+  from: string,
+  to: string,
+  hash: string,
+  beforeReplace?: () => void,
+): Promise<void> {
   await mkdir(dirname(to), { recursive: true });
   const temp = atomicTempPath(to);
   try {
     await copyFile(from, temp, constants.COPYFILE_FICLONE);
+    await stopServingAndClose(to);
     beforeReplace?.();
-    renameSync(temp, to);
-  } catch (error) {
+    try {
+      renameWithRetry(temp, to);
+    } catch (error) {
+      if (!isWindowsHold(error)) throw error;
+      await writeInPlace(temp, to, hash);
+    }
+  } finally {
     await rm(temp, { force: true });
-    throw error;
   }
+}
+
+// Something outside the app still holds the file: write in place, sync, and fail on any mismatch with the blob.
+async function writeInPlace(temp: string, to: string, hash: string): Promise<void> {
+  let outcome: InPlaceOutcome = "failed";
+  try {
+    await copyFile(temp, to);
+    const handle = await open(to, "r+");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    outcome = (await hashFile(to)) === hash ? "restored" : "mismatch";
+  } finally {
+    for (const listener of inPlaceListeners) listener(to, outcome);
+  }
+  if (outcome === "mismatch")
+    throw new Error("The file was written in place, but it does not match the copy history kept.");
 }
 
 const listDir = (path: string) =>
@@ -117,7 +161,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       }
       await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
       const size = (await stat(temp)).size;
-      await rename(temp, blobPath(dir, hash));
+      await renameWithRetryAsync(temp, blobPath(dir, hash));
       sizes.set(hash, size);
       total += size;
       return hash;
@@ -126,7 +170,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     has: (hash) => sizes.has(hash) || asideSizes.has(hash),
     read: (hash) => readFile(pathOf(hash)),
     writeTo: async (hash, absPath, beforeReplace) =>
-      cloneOrCopy(pathOf(hash), absPath, beforeReplace),
+      cloneOrCopy(pathOf(hash), absPath, hash, beforeReplace),
     async release(held) {
       for (const [hash, path] of held) {
         holds.get(hash)?.delete(path);
@@ -144,7 +188,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await mkdir(dirname(to), { recursive: true });
       const moved =
         remove &&
-        (await rename(absPath, to).then(
+        (await renameWithRetryAsync(absPath, to).then(
           () => true,
           () => false,
         ));
@@ -154,7 +198,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
           await rm(temp, { force: true });
           throw error;
         });
-        await rename(temp, to);
+        await renameWithRetryAsync(temp, to);
       }
       asideSizes.set(hash, (await stat(to)).size);
       holds.set(hash, new Set([path]));

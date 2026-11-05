@@ -1,12 +1,13 @@
-import { failCommand, failUsage } from "../../utils/commandResult.js";
-import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal.js";
+import { failCommand, failUsage, requestCliExit } from "../../utils/commandResult.js";
+import { envFlagEnabled, isCI } from "../../utils/attendedTerminal.js";
+import { isAgentDriven } from "../../telemetry/agent_runtime.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
  * Default: OAuth 2.0 + PKCE via a loopback callback. The CLI opens
  * the user's browser, captures the authorization code on an
  * ephemeral 127.0.0.1 port, exchanges it for tokens, and persists
- * them to `~/.heygen/credentials`.
+ * them to `~/.hyperframes/credentials`.
  *
  * `--api-key`: opts into the legacy long-lived API-key path.
  *
@@ -23,7 +24,7 @@ import { envFlagEnabled, isAttendedTerminal } from "../../utils/attendedTerminal
  *     the transient-blip rationale.
  */
 
-import { defineCommand } from "citty";
+import { defineCommand } from "../../utils/defineCommand.js";
 import { stdin as input } from "node:process";
 import {
   AuthClient,
@@ -47,6 +48,7 @@ import {
   type StoredUserInfo,
   type UserInfo,
 } from "../../auth/index.js";
+import { telemetryIdentity } from "../../auth/telemetryIdentity.js";
 import { c } from "../../ui/colors.js";
 
 const STDIN_TIMEOUT_MS = 30_000;
@@ -68,7 +70,8 @@ export default defineCommand({
     },
     device: {
       type: "boolean",
-      description: "Use an attended device code (for SSH/headless terminals; never for CI).",
+      description:
+        "Use a device code approved in any browser (for SSH, headless or agent-run terminals; never for CI).",
     },
   },
   // fallow-ignore-next-line complexity
@@ -113,15 +116,19 @@ function isRemoteOrHeadless(): boolean {
     process.env["BROWSER"] === "none" ||
     process.env["HF_NO_BROWSER"] === "1" ||
     remoteEnvironment ||
-    process.stdout.isTTY !== true,
+    (process.stdout.isTTY !== true && !agentShellOnThisMachine()),
   );
 }
 
-function assertAttendedDeviceFlow(): void {
-  if (!isAttendedTerminal()) {
+function agentShellOnThisMachine(): boolean {
+  return !isCI() && isAgentDriven();
+}
+
+function assertDeviceFlowAllowed(): void {
+  if (isCI()) {
     console.error(
       c.error(
-        "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",
+        "`--device` needs a person to approve it and is disabled in CI. Use an API key or workload credential for automation.",
       ),
     );
     failUsage();
@@ -129,7 +136,7 @@ function assertAttendedDeviceFlow(): void {
 }
 
 async function runDeviceLogin(): Promise<void> {
-  assertAttendedDeviceFlow();
+  assertDeviceFlowAllowed();
   assertOAuthConfiguredOrExit();
   const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
     await import("../../telemetry/index.js");
@@ -178,14 +185,14 @@ async function runDeviceLogin(): Promise<void> {
     failCommand();
   }
 
-  const id = identityKey(user);
-  if (id) identifyUser(id);
-  trackAuthLoginCompleted("device", id);
+  const who = telemetryIdentity(user);
+  if (who) identifyUser(who.distinctId, who.traits);
+  trackAuthLoginCompleted("device", who?.distinctId);
   const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
 
-// The tokens this login just issued, never a resolved credential: an env credential would outrank them.
+// The tokens this login just issued, never a resolved credential: an env credential can outrank them.
 function issuedCredential(tokens: { access_token: string; refresh_token?: string }) {
   return {
     type: "oauth" as const,
@@ -215,6 +222,12 @@ async function runOAuthLogin(): Promise<void> {
   const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
   trackAuthLoginStarted("oauth");
 
+  const recordCancel = (): void => {
+    trackAuthLoginFailed("oauth", "aborted");
+    requestCliExit(130);
+  };
+  process.once("SIGINT", recordCancel);
+
   let tokens;
   try {
     ({ tokens } = await startAuthorizationCodeFlow());
@@ -224,9 +237,15 @@ async function runOAuthLogin(): Promise<void> {
     // the user never completes the browser step (closed the tab / walked away).
     // That is the dominant non-error dropout, so split it from real failures
     // (IdP misconfig, network) instead of lumping everything as flow_error.
-    trackAuthLoginFailed("oauth", /timed out/i.test(message) ? "flow_timeout" : "flow_error");
+    const timedOut = /timed out/i.test(message);
+    trackAuthLoginFailed("oauth", timedOut ? "flow_timeout" : "flow_error");
     console.error(c.error(`Sign-in failed: ${message}`));
+    if (timedOut) {
+      console.error("Run `hyperframes auth login` again.");
+    }
     failCommand();
+  } finally {
+    process.off("SIGINT", recordCancel);
   }
 
   await reportIdentity(issuedCredential(tokens));
@@ -250,9 +269,9 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
     // Attribute this install to the signed-in account (and stitch its prior
     // anonymous usage) before recording completion, so the completed event
     // carries the identity. Both no-op under the telemetry opt-out.
-    const id = identityKey(user);
-    if (id) identifyUser(id);
-    trackAuthLoginCompleted("oauth", id);
+    const who = telemetryIdentity(user);
+    if (who) identifyUser(who.distinctId, who.traits);
+    trackAuthLoginCompleted("oauth", who?.distinctId);
     const identity = userDisplayName(toStoredUserInfo(user)) ?? "(unknown user)";
     console.log(c.success(`✓ Signed in as ${identity}.`));
   } catch (err) {
@@ -267,20 +286,6 @@ async function reportIdentity(credential: ReturnType<typeof issuedCredential>): 
       c.warn(`Signed in. Identity check failed (transient): ${(err as Error).message}`),
     );
   }
-}
-
-/**
- * The stable key we associate this install with in telemetry after sign-in.
- * `/v3/users/me` exposes no opaque user_id, so we key on the HeyGen account
- * EMAIL — the canonical account identifier and the reliable join key back to
- * billing — falling back to username only when the account exposes no email.
- * (Username is NOT a privacy win — HeyGen usernames are frequently email-shaped
- * — it is purely a fallback so an emailless account is still attributable.)
- * The privacy notice (showTelemetryNotice) and docs/packages/cli.mdx disclose
- * both, so keep them in sync with whatever this returns.
- */
-function identityKey(user: UserInfo): string | undefined {
-  return user.email ?? user.username;
 }
 
 /** Project the API `/v3/users/me` view onto the on-disk identity block. */
@@ -369,9 +374,9 @@ async function runApiKeyLogin(inlineKey: string): Promise<void> {
     await rollback(previous);
     failCommand();
   }
-  const id = identityKey(user);
-  if (id) identifyUser(id);
-  trackAuthLoginCompleted("api_key", id);
+  const who = telemetryIdentity(user);
+  if (who) identifyUser(who.distinctId, who.traits);
+  trackAuthLoginCompleted("api_key", who?.distinctId);
 }
 
 async function snapshotStore(): Promise<Credentials> {
@@ -468,7 +473,7 @@ async function readAllWithTimeout(
 }
 
 async function promptForKey(): Promise<string> {
-  const clack = await import("@clack/prompts");
+  const clack = await import("../../ui/prompts.js");
   const value = await clack.password({
     message: "Enter HeyGen API key",
     validate: (v) => {

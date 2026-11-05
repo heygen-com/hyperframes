@@ -17,19 +17,22 @@ MP4.
 - `/figma` — bring a Figma design, frame, logo or brand into a video.
 - `/slideshow` — a presentation or pitch deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
+- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project and check it against the original frame by frame (HyperFrames Pro).
+- `/style-sampling` — make a new episode on your topic in one of five proven styles (HyperFrames Pro).
 
 **Changing how real footage or images look or reveal?** Load `/media-use` and read its `references/media-treatments.md` before editing, even when the request only says dark, flat, boring, retro, private, or “make the reveal cooler.” It governs how footage is treated, never whether media may be used. Use canonical media treatments and seek-safe motion; do not improvise equivalent CSS/SVG filters or overlays.
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `hyperframes-cli/references/init-and-scaffold.md` (Tailwind).
 
 > **Using a HyperFrames plugin?** Load skills from that installed bundle and follow
-> its `hyperframes/references/plugin-installation.md` execution rules. Update via
-> the plugin manager, not the standalone commands below.
+> its `hyperframes/references/plugin-installation.md` execution rules. The person updates
+> the plugin through its plugin manager; the standalone commands below do not apply.
 >
-> **Standalone skill missing or stale?** Run `npx hyperframes skills update <name>` to install/refresh
-> the specific skill you need, or bare `npx hyperframes skills update` to refresh the core set plus
-> everything already installed — neither pulls the full set. Restart the agent session so
-> newly installed skills load.
+> **Standalone skill missing or stale?** Installing and updating skills is the person's step:
+> tell them which skill is missing or stale, and do not run the install yourself. For the user:
+> `npx hyperframes skills update <name>` installs/refreshes that skill, and bare
+> `npx hyperframes skills update` refreshes the core set plus everything already installed —
+> neither pulls the full set. Newly installed skills load in a new agent session.
 
 ## Commands
 

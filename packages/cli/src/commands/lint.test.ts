@@ -88,3 +88,43 @@ describe("lint command exit handling", () => {
     expect(consumeCommandResult().exitCode).toBe(1);
   });
 });
+
+describe("lint --lint-verbose", () => {
+  beforeEach(() => {
+    consumeCommandResult();
+    lintProjectMock.mockResolvedValue({
+      results: [
+        {
+          result: {
+            findings: [
+              { severity: "warning", code: "warn" },
+              { severity: "info", code: "note" },
+            ],
+          },
+          file: "index.html",
+        },
+      ],
+      totalErrors: 0,
+      totalWarnings: 1,
+      totalInfos: 1,
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    consumeCommandResult();
+  });
+
+  const codes = async (args: Record<string, unknown>) => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await run({ json: true, ...args });
+    return (JSON.parse(String(log.mock.calls.at(-1)?.[0])).findings as { code: string }[]).map(
+      (f) => f.code,
+    );
+  };
+
+  it("shows info findings like --verbose, which render, preview and publish spell --lint-verbose", async () => {
+    expect(await codes({})).toEqual(["warn"]);
+    expect(await codes({ verbose: true })).toEqual(["warn", "note"]);
+    expect(await codes({ "lint-verbose": true })).toEqual(["warn", "note"]);
+  });
+});

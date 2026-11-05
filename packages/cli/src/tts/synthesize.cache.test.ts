@@ -14,7 +14,8 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...original, existsSync: vi.fn(original.existsSync) };
 });
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
-vi.mock("./python.js", () => ({
+vi.mock("./python.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./python.js")>()),
   findPython: () => "test-python",
   hasPythonPackage: () => true,
 }));
@@ -34,7 +35,7 @@ describe("synthesis script cache", () => {
     vi.clearAllMocks();
     paths.home = fs.mkdtempSync(join(tmpdir(), "hf-tts-cache-"));
     cacheDir = join(paths.home, ".cache", "hyperframes", "tts");
-    scriptPath = join(cacheDir, "synth-v3.py");
+    scriptPath = join(cacheDir, "synth-v4.py");
     outputPath = join(paths.home, "speech.wav");
     fs.mkdirSync(cacheDir, { recursive: true });
     vi.mocked(execFileSync).mockImplementation(() => {
@@ -51,6 +52,28 @@ describe("synthesis script cache", () => {
   afterEach(() => {
     expect(fs.readdirSync(cacheDir).filter((name) => name.startsWith(".hf-create-"))).toEqual([]);
     fs.rmSync(paths.home, { recursive: true, force: true });
+  });
+
+  it("runs the synthesis process in the environment the packages imported under", async () => {
+    vi.mocked(execFileSync).mockImplementation((_cmd, args, options) => {
+      const importing = String(args?.[0]) === "-c";
+      const env = (options as { env?: NodeJS.ProcessEnv }).env;
+      if (importing && env?.PYTHONPATH !== undefined) throw new Error("ModuleNotFoundError");
+      fs.writeFileSync(outputPath, "stub audio");
+      return JSON.stringify({
+        outputPath,
+        sampleRate: 24000,
+        durationSeconds: 1,
+        langApplied: true,
+      });
+    });
+    vi.stubEnv("PYTHONPATH", "/other/python/site-packages");
+    const { synthesize } = await import("./synthesize.js");
+    await synthesize("Hello", outputPath);
+
+    const options = vi.mocked(execFileSync).mock.calls.at(-1)?.[2];
+    expect(options?.env).not.toHaveProperty("PYTHONPATH");
+    vi.unstubAllEnvs();
   });
 
   it("turns off onnxruntime telemetry for the synthesis process", async () => {

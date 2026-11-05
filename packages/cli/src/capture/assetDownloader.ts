@@ -7,6 +7,7 @@
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
 import { publicRequest } from "./publicNetwork.js";
+import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";
 import { createHash } from "node:crypto";
@@ -674,6 +675,8 @@ const MAX_FETCH_REDIRECTS = 5;
  * or on network error.
  */
 export async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const local = fetchLocalPageUrl(url, init);
+  if (local) return local;
   let current = url;
   for (let hop = 0; hop <= MAX_FETCH_REDIRECTS; hop++) {
     if (isPrivateUrl(current)) return null;

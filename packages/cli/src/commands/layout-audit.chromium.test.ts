@@ -295,6 +295,20 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes).toContain("text_not_painted");
   });
 
+  it("does not call text occluded by a cover that a CSS mask paints through", async () => {
+    const cover = (style: string) =>
+      `<div style="position:absolute;inset:0;background:#123;${style}"></div>`;
+    const maskedAway = "mask-image:linear-gradient(transparent,transparent)";
+    const text = heading(300, "Seen through");
+    expect(await auditCodes(stage(text + cover("")))).toContain("text_occluded");
+    expect(await auditCodes(stage(text + cover(maskedAway)))).not.toContain("text_occluded");
+    const wrapped = `<div style="position:absolute;inset:0;${maskedAway}">${cover("")}</div>`;
+    expect(await auditCodes(stage(text + wrapped))).not.toContain("text_occluded");
+    const fade = "mask-image:linear-gradient(black,black)";
+    const sharedMask = `<div style="position:absolute;inset:0;${fade}">${text}${cover("")}</div>`;
+    expect(await auditCodes(stage(sharedMask))).toContain("text_occluded");
+  });
+
   it("reports text positioned outside the ancestor background", async () => {
     const codes = await auditCodes(
       gradientHeading('<span style="position:relative;top:150px">Gradient text</span>'),
@@ -336,6 +350,13 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     },
     { name: "partial cut", css: "height:60px", textStyle: "", error: true },
     {
+      name: "descenders cut at rest by a one-line mask",
+      css: "height:120px",
+      textStyle: "",
+      text: "gypsy",
+      error: true,
+    },
+    {
       name: "scaled partial cut",
       css: "height:60px;transform:scale(.5);transform-origin:top left",
       textStyle: "",
@@ -353,11 +374,11 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       textStyle: "",
       error: true,
     },
-  ])("handles $name", async ({ css, textStyle, error }) => {
+  ])("handles $name", async ({ css, textStyle, error, text = "HELLO" }) => {
     const codes = await auditCodes(`
         <div data-composition-id="main" data-width="1000" data-height="800" style="width:1000px;height:800px">
           <div style="position:absolute;left:100px;top:100px;width:400px;overflow:hidden;font:120px/1 Arial;${css}">
-            <div style="${textStyle}">HELLO</div>
+            <div style="${textStyle}">${text}</div>
           </div>
         </div>`);
     expect(codes.includes("text_box_overflow")).toBe(error);
@@ -406,6 +427,73 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes.includes("content_overlap")).toBe(overlap);
   });
 
+  it.each([
+    { name: "closed", open: "", overlap: false },
+    { name: "open", open: " open", overlap: true },
+  ])("judges text inside a $name details element by what it renders", async ({ open, overlap }) => {
+    const codes = await auditCodes(`
+      <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">
+        <button style="position:absolute;left:100px;top:100px;width:400px;height:100px;font:48px Arial">Continue</button>
+        <details${open} style="position:absolute;left:900px;top:600px"><summary>More</summary>
+          <p style="position:absolute;left:-780px;top:-480px;margin:0;font:48px Arial">Hidden words</p>
+        </details>
+      </div>`);
+    expect(codes.includes("content_overlap")).toBe(overlap);
+  });
+
+  it.each([
+    { name: "transparent", fill: "", css: "", covered: false },
+    {
+      name: "opaque",
+      fill: "ctx.fillStyle='#123';ctx.fillRect(0,0,1920,1080);",
+      css: "",
+      covered: true,
+    },
+    {
+      name: "glyph-only with an opaque CSS background",
+      fill: "",
+      css: "background:#112233;",
+      covered: true,
+    },
+  ])(
+    "judges a full-frame $name canvas over a caption by what it draws",
+    async ({ fill, css, covered }) => {
+      const codes = await auditCodes(`
+      <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">
+        <div style="position:absolute;inset:0;background:#0b0d12"></div>
+        <p style="position:absolute;left:100px;top:100px;margin:0;font:64px Arial;color:#fff">Caption</p>
+        <canvas id="c" width="1920" height="1080" style="position:absolute;inset:0;width:1920px;height:1080px;z-index:2;${css}"></canvas>
+        <script>const ctx=document.getElementById("c").getContext("2d");${fill}ctx.fillStyle="#fff";ctx.font="64px Arial";ctx.fillText("Drawn",900,900);</script>
+      </div>`);
+      expect(codes.includes("canvas_covered")).toBe(covered);
+    },
+  );
+
+  it.each([
+    {
+      name: "outline text (transparent fill, visible stroke)",
+      style: "color:transparent;-webkit-text-stroke:4px #fff",
+      flagged: false,
+    },
+    { name: "transparent text with no stroke", style: "color:transparent", flagged: true },
+    {
+      name: "transparent text with an invisible stroke",
+      style: "color:transparent;-webkit-text-stroke:4px transparent",
+      flagged: true,
+    },
+    {
+      name: "transparent text with a zero-width stroke",
+      style: "color:transparent;-webkit-text-stroke:0 #fff",
+      flagged: true,
+    },
+  ])("judges $name by what it paints", async ({ style, flagged }) => {
+    const codes = await auditCodes(`
+      <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px;background:#000">
+        <h1 style="position:absolute;left:120px;top:300px;margin:0;font:700 220px Arial;${style}">OUTLINE</h1>
+      </div>`);
+    expect(codes.includes("text_not_painted")).toBe(flagged);
+  });
+
   describe("craft sampling", () => {
     async function sample(body: string) {
       const page = await browser.newPage();
@@ -423,6 +511,36 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
         await page.close();
       }
     }
+
+    it("reads no style inside a clip the runtime hid, and still reads the text on screen", async () => {
+      const page = await browser.newPage();
+      try {
+        await page.setContent(
+          `<body style="margin:0">${stage(
+            `<div data-hf-clip-hidden style="visibility:hidden"><h2 id="off">Off screen</h2></div>` +
+              heading(300, "On screen"),
+          )}</body>`,
+        );
+        await page.addScriptTag({ content: signatureScript });
+        await page.addScriptTag({ content: script });
+        const { reads, texts } = await page.evaluate(() => {
+          const off = document.getElementById("off");
+          const read = window.getComputedStyle;
+          let reads = 0;
+          window.getComputedStyle = (element, pseudo) => {
+            if (element === off) reads += 1;
+            return read(element, pseudo);
+          };
+          const frame = window.__hyperframesCraftSample();
+          return { reads, texts: frame.parts.map((part) => part.text) };
+        });
+
+        expect(texts).toEqual(["On screen"]);
+        expect(reads).toBe(0);
+      } finally {
+        await page.close();
+      }
+    });
 
     it("reads a headline split into inline word spans as one reading block", async () => {
       const { frame } = await sample(

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Trust Strip</h1>
+  <p>A monochrome trust row of wide-tracked mono wordmarks that fade in with an opacity-only left-to-right stagger, then hold dead still.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/trust-strip.json"
   compositionId="trust-strip"
   compositionSrc="compositions/components/trust-strip.html"
   title="Trust Strip"
-  description="A monochrome trust row of wide-tracked mono wordmarks that fade in with an opacity-only left-to-right stagger, then hold dead still."
   variables={[{"id":"marks","type":"string","role":"content","label":"Marks","description":"Comma-separated wordmark texts (3 to 7 recommended).","default":"Northwind, Acme Corp, Globex, Initech, Umbra"},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Mark color: quiet muted or full-contrast ink.","default":"muted","options":[{"value":"muted","label":"Muted"},{"value":"ink","label":"Ink"}]},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated reveal starts in seconds from mount start. Empty uses the authored 0.15s stagger.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Faint palette tint mixed into the mark color.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"End-of-clip behavior. None holds to the last frame.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":226}}
   attribution={{"path":"registry/components/trust-strip","tags":["motion-primitive","proof","trust","logo-strip","wordmarks"]}}
@@ -261,7 +265,9 @@ That writes one file: `compositions/components/trust-strip.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -304,6 +310,4 @@ Tagged `motion-primitive` `proof` `trust` `logo-strip` `wordmarks`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

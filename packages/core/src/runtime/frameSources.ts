@@ -111,7 +111,7 @@ export function createFrameSourceAdapter(timing: {
       if (!owned.has(source)) {
         owned.add(source);
         // Readiness trackers settle rejected setup; capture must also receive that failure.
-        registerSeekCompletion(source.ready);
+        registerSeekCompletion(source.ready, "frame-source");
       }
       connected.push([element, source]);
     }
@@ -140,7 +140,7 @@ export function createFrameSourceAdapter(timing: {
         const localTime = Math.max(0, time - start);
         const sourceTime =
           readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), localTime);
-        registerSeekCompletion(source.seek(sourceTime));
+        registerSeekCompletion(source.seek(sourceTime), "frame-source");
       }
     },
     getReadyPromise: () => {

@@ -6,8 +6,9 @@
  * in charge.
  */
 
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { posix } from "node:path";
+import { isSafeVersion } from "./safeVersion.js";
 
 export type InstallerKind = "npm" | "bun" | "pnpm" | "brew" | "skip";
 
@@ -59,7 +60,9 @@ function isEphemeralExec(realEntry: string): boolean {
   return (
     normalized.includes("/_npx/") ||
     normalized.includes("/.npm/_npx/") ||
-    posix.basename(posix.dirname(normalized)).startsWith("bunx-")
+    posix.basename(posix.dirname(normalized)).startsWith("bunx-") ||
+    // bunx installs the package under its temp dir: `/tmp/bunx-<uid>-<spec>/node_modules/…`.
+    /\/bunx-[^/]+\/node_modules\//.test(normalized)
   );
 }
 
@@ -186,4 +189,97 @@ export function installInvocation(kind: InstallerKind, version: string): Install
     case "skip":
       return null;
   }
+}
+
+/**
+ * Where the running binary came from, as `doctor` and `update` report it. Unlike
+ * {@link detectInstaller}, which only answers "can a background install own this?",
+ * this names every layout, including the ones auto-update leaves alone.
+ */
+export type InstallChannel =
+  | "npm"
+  | "pnpm"
+  | "bun"
+  | "brew"
+  | "npx"
+  | "project"
+  | "workspace"
+  | "plugin"
+  | "unknown";
+
+export interface RunningInstall {
+  channel: InstallChannel;
+  /** The resolved entry script that is running, or null when it cannot be resolved. */
+  path: string | null;
+}
+
+const CHANNEL_LABELS: Record<InstallChannel, string> = {
+  npm: "npm global install",
+  pnpm: "pnpm global install",
+  bun: "bun global install",
+  brew: "Homebrew install",
+  npx: "npx / bunx (temporary cache)",
+  project: "project-local install (node_modules)",
+  workspace: "workspace link (monorepo dev)",
+  plugin: "agent plugin (version pinned by the plugin)",
+  unknown: "unrecognized install layout",
+};
+
+/** Human label for a channel, e.g. "npm global install". */
+export function installChannelLabel(channel: InstallChannel): string {
+  return CHANNEL_LABELS[channel];
+}
+
+/** Classify the running binary: global (per manager), project-local, npx, workspace link or plugin. */
+export function runningInstall(): RunningInstall {
+  const path = resolveEntry();
+  // plugin-cli.mjs runs a pinned `npx hyperframes@<version>` and marks the child with this.
+  if (process.env["HYPERFRAMES_PLUGIN_VERSION"]) return { channel: "plugin", path };
+  const installer = detectInstaller();
+  if (installer.kind !== "skip") return { channel: installer.kind, path };
+  if (!path) return { channel: "unknown", path };
+  if (isWorkspaceLink(path)) return { channel: "workspace", path };
+  if (isEphemeralExec(path)) return { channel: "npx", path };
+  if (normalizePath(path).includes("/node_modules/hyperframes/")) {
+    return { channel: "project", path };
+  }
+  return { channel: "unknown", path };
+}
+
+const PROJECT_LOCKFILES: [string, (spec: string) => string][] = [
+  ["bun.lock", (spec) => `bun add ${spec}`],
+  ["bun.lockb", (spec) => `bun add ${spec}`],
+  ["pnpm-lock.yaml", (spec) => `pnpm add ${spec}`],
+  ["yarn.lock", (spec) => `yarn add ${spec}`],
+];
+
+/**
+ * What moves a project-local CLI: its project's manager (named by the lockfile beside the
+ * project's `node_modules`, npm without one) adding `hyperframes@<version>`. Each of the four
+ * keeps the dependency in the section it is in. `upgrade --project` only rewrites script pins.
+ */
+function projectInstallCommand(path: string, version: string): string {
+  const normalized = normalizePath(path);
+  const root = normalized.slice(0, normalized.indexOf("/node_modules/"));
+  const spec = `hyperframes@${version}`;
+  const lockfile = PROJECT_LOCKFILES.find(([name]) => existsSync(posix.join(root, name)));
+  return lockfile ? lockfile[1](spec) : `npm install ${spec}`;
+}
+
+/**
+ * The command that moves this install to `latest`: the owning manager's for a global or
+ * project-local install, `npx hyperframes@latest` everywhere a manager command would not apply.
+ */
+export function updateCommandFor(install: RunningInstall, latest: string): string {
+  if (install.channel === "plugin") return "update the HyperFrames plugin in your agent";
+  if (install.channel === "brew") return "brew upgrade hyperframes";
+  if (install.channel === "project" && install.path && isSafeVersion(latest)) {
+    return projectInstallCommand(install.path, latest);
+  }
+  const kind = install.channel;
+  if (kind === "npm" || kind === "pnpm" || kind === "bun") {
+    const invocation = installInvocation(kind, latest);
+    if (invocation) return `${invocation.bin} ${invocation.args.join(" ")}`;
+  }
+  return "npx hyperframes@latest";
 }

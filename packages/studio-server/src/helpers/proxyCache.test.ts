@@ -54,6 +54,26 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(newest)).toBe(true);
   });
 
+  it("counts the cached still frames toward the budget and sweeps them with the copies", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const oldStill = proxy(cache, "old-still", ".jpg");
+    const copy = proxy(cache, "copy");
+    writeEntry(oldStill, 6, now - 3_000);
+    writeEntry(copy, 6, now - 1_000);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      maxBytes: 8,
+      maxIdleMs: 30 * 24 * 60 * 60 * 1000,
+      minSweepIntervalMs: 0,
+    });
+
+    expect(result.removed).toEqual([oldStill]);
+    expect(existsSync(oldStill)).toBe(false);
+    expect(existsSync(copy)).toBe(true);
+  });
+
   it("reports the same removals in a dry run and removes nothing", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

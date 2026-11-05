@@ -10,6 +10,7 @@ import {
 } from "./cssAnimation";
 
 const isBrowserCreatedCss = (animation: Animation): boolean =>
+  (typeof CSSAnimation !== "undefined" && animation instanceof CSSAnimation) ||
   isCssAnimation(animation) ||
   (typeof CSSTransition !== "undefined" && animation instanceof CSSTransition);
 
@@ -81,6 +82,15 @@ export function createWaapiAdapter(params?: {
     return animationTimeMs;
   };
 
+  const shouldAnchorAtCompositionOrigin = (animation: Animation, compositionTimeMs: number) =>
+    !didDiscover &&
+    compositionTimeMs === 0 &&
+    (animation.playState === "running" || animation.playState === "finished") &&
+    animation.playbackRate === 1 &&
+    !!document.timeline &&
+    animation.timeline === document.timeline &&
+    !isBrowserCreatedCss(animation);
+
   const ensureBaseline = (animation: Animation, compositionTimeMs: number) => {
     const existing = baselines.get(animation);
     if (existing) {
@@ -92,7 +102,7 @@ export function createWaapiAdapter(params?: {
       ? { target }
       : {
           compositionTimeMs,
-          animationTimeMs: isCssAnimation(animation)
+          animationTimeMs: shouldAnchorAtCompositionOrigin(animation, compositionTimeMs)
             ? 0
             : didDiscover
               ? normalizeInitialAnimationTimeMs(readAnimationTimeMs(animation), compositionTimeMs)
@@ -198,9 +208,9 @@ export function createWaapiAdapter(params?: {
   return {
     name: "waapi",
     discover: () => {
-      didDiscover = true;
       installAnimateHook();
       trackAnimations(snapshotAnimations(), lastSeekTimeMs);
+      didDiscover = true;
     },
     seek: (ctx) => {
       const timeMs = Math.max(0, (Number(ctx.time) || 0) * 1000);

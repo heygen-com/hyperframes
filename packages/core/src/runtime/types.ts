@@ -1,5 +1,8 @@
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeAnalyticsEvent } from "./analytics";
+import type { AudioFades } from "../audioFade";
+import type { RateSpec } from "../speedRamp";
+import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
 
 export type RuntimeJson =
   | string
@@ -23,6 +26,7 @@ type RuntimeBridgeControlActionBase =
   | "set-idle-heartbeat"
   | "set-display-scale"
   | "set-preview-quality"
+  | "set-copies-ahead"
   | "retry-preview-copies"
   | "request-preview-facts"
   | "set-root-duration"
@@ -45,6 +49,7 @@ type RuntimeBridgeControlMessageBase = {
   slow?: boolean;
   scale?: number;
   level?: number;
+  on?: boolean;
   playbackRate?: number;
   target?: HfColorGradingTarget | string | null;
   grading?: RuntimeJson;
@@ -59,6 +64,7 @@ export type RuntimeStateMessage = {
   currentTime: number;
   ended: boolean;
   isPlaying: boolean;
+  buffering: boolean;
   muted: boolean;
   playbackRate: number;
 };
@@ -273,6 +279,12 @@ export type RuntimePreviewHealthMessage = {
     choppy: boolean;
     fps: number;
     worstFrameMs: number;
+    skippedShare: number;
+    waitingShare: number;
+    frozenShare: number;
+    gapP50Ms: number;
+    gapP95Ms: number;
+    clockSource: "audio" | "webaudio" | "monotonic";
     mode: "play";
   } | null;
 };
@@ -456,3 +468,22 @@ type RuntimeBridgeControlAction =
 
 export type RuntimeBridgeControlMessage = RuntimeBridgeControlMessageBase &
   RuntimeDataControlFields;
+
+export type RuntimeMediaClip = {
+  el: HTMLVideoElement | HTMLAudioElement;
+  start: number;
+  /** The clip's own t=0 when a host's in-point cut its head; source time, lanes and fades run from it. */
+  origin?: number;
+  mediaStart: number;
+  duration: number;
+  end: number;
+  volume: number | null;
+  playbackRate: number;
+  /** The rate lane when the clip has one; otherwise `playbackRate`. */
+  rate?: RateSpec;
+  loop: boolean;
+  sourceDuration: number | null;
+  /** Probed from the GSAP timeline as the renderer does; when set they drive volume, not `data-volume`. */
+  volumeKeyframes?: VolumeKeyframe[];
+  fades?: AudioFades;
+};

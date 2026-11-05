@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { RUNNING_STALE_MS, registerRunningCli } from "./runningCli.js";
+import { RUNNING_STALE_MS, registerRunningCli, registeredAsRunning } from "./runningCli.js";
 
 let dir = "";
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -80,4 +80,12 @@ it("removes the files of processes that are gone or stopped beating, and keeps l
     listener(0);
     process.off("exit", listener);
   }
+});
+
+it("says when this process cannot be put on record, and never throws", () => {
+  dir = mkdtempSync(join(tmpdir(), "hf-running-"));
+  const notAFolder = join(dir, "file");
+  writeFileSync(notAFolder, "");
+  expect(registerRunningCli(join(notAFolder, "running"))).toBe(false);
+  expect(registeredAsRunning()).toBe(false);
 });

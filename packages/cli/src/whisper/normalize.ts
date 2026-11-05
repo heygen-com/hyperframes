@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readJsonFileText } from "../utils/jsonFlag.js";
 import { extname, join } from "node:path";
 import { parseExpressionAt, tokenizer } from "acorn";
 import { parseHTML } from "linkedom";
@@ -40,7 +41,7 @@ export function detectFormat(filePath: string): TranscriptFormat {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".srt") return "srt";
   if (ext === ".vtt") return "vtt";
-  if (ext === ".json") return detectJsonFormat(JSON.parse(readFileSync(filePath, "utf-8")));
+  if (ext === ".json") return detectJsonFormat(JSON.parse(readJsonFileText(filePath)));
   throw new Error(`Unsupported transcript file extension: ${ext}. Use .json, .srt, or .vtt`);
 }
 
@@ -510,7 +511,7 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
  */
 export function loadTranscript(filePath: string): { words: Word[]; format: TranscriptFormat } {
   const ext = extname(filePath).toLowerCase();
-  const content = readFileSync(filePath, "utf-8");
+  const content = readJsonFileText(filePath);
 
   if (ext === ".srt") {
     const words = parseSrt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));

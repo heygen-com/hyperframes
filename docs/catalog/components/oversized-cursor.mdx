@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Oversized Cursor</h1>
+  <p>The look-here pointer for a video: the macOS arrow at 3.5x its normal size lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/oversized-cursor.json"
   compositionId="oversized-cursor"
   compositionSrc="compositions/components/oversized-cursor.html"
   title="Oversized Cursor"
-  description="The look-here pointer for a video: the macOS arrow at 3.5x its normal size lands its tip on one control, clicks it on, settles just below it so the result stays in view, then exits off-screen"
   variables={[{"id":"cursor_variant","type":"enum","role":"style","label":"Cursor fill","default":"light","options":[{"value":"light","label":"Light (white body)"},{"value":"dark","label":"Dark (near-black body)"}]},{"id":"target_x","type":"number","role":"layout","label":"Target X","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"target_y","type":"number","role":"layout","label":"Target Y","default":55,"min":15,"max":85,"step":1,"unit":"%"},{"id":"click_label","type":"string","role":"content","label":"Click label","default":"Generate"},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional whole-stage departure. Default none: the ignited target stays until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":388}}
   attribution={{"path":"registry/components/oversized-cursor","tags":["cursor","motion-primitive","actor","pointer","interaction"]}}
@@ -423,7 +427,9 @@ That writes one file: `compositions/components/oversized-cursor.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -466,6 +472,4 @@ Tagged `cursor` `motion-primitive` `actor` `pointer` `interaction`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Grade Split Reveal</h1>
+  <p>The same picture twice, one flat and one finished, with a hard edge sweeping between them. It stops in the middle long enough to compare, then commits and the graded look takes the frame. Both looks are real HyperFrames color grading run through the WebGL shader, so the preview and the render match.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/grade-split-reveal.json"
   compositionId="grade-split-reveal"
   compositionSrc="compositions/components/grade-split-reveal.html"
   title="Grade Split Reveal"
-  description="The same picture twice, one flat and one finished, with a hard edge sweeping between them. It stops in the middle long enough to compare, then commits and the graded look takes the frame. Both looks are real HyperFrames color grading run through the WebGL shader, so the preview and the render match."
   variables={[{"id":"look","type":"enum","role":"style","label":"Look","description":"Grade carried by the upper copy, and the label printed over it. All three are real grading blocks handed to the shader, not CSS filters.","default":"warm-cinematic","options":[{"value":"warm-cinematic","label":"Warm Cinematic"},{"value":"cool-teal","label":"Cool Teal"},{"value":"bleach-bypass","label":"Bleach Bypass"}]},{"id":"split","type":"number","role":"motion","label":"Split point","description":"How far across the plate the edge stops to hold the comparison, before it commits and takes the rest.","default":62,"min":25,"max":85,"step":1,"unit":"%"},{"id":"edge","type":"enum","role":"style","label":"Edge","description":"The divider line riding the wipe. Hidden drops it entirely so the grade arrives with no seam.","default":"hairline","options":[{"value":"hairline","label":"Hairline"},{"value":"bold","label":"Bold"},{"value":"hidden","label":"Hidden"}]},{"id":"labels","type":"enum","role":"style","label":"Labels","description":"Show or hide the two captions naming each half of the plate.","default":"on","options":[{"value":"on","label":"Show"},{"value":"off","label":"Hide"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":446}}
   attribution={{"path":"registry/components/grade-split-reveal","tags":["color-grading","media","compare","reveal","motion-primitive","grade"]}}
@@ -481,7 +485,9 @@ That writes one file: `compositions/components/grade-split-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -523,6 +529,4 @@ Tagged `color-grading` `media` `compare` `reveal` `motion-primitive` `grade`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

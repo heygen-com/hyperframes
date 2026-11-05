@@ -130,8 +130,8 @@ describe("ENCODER_PRESETS", () => {
     expect(ENCODER_PRESETS.draft.codec).toBe("h264");
   });
 
-  it("high uses slow preset with low CRF for better quality", () => {
-    expect(ENCODER_PRESETS.high.preset).toBe("slow");
+  it("high uses the fast preset with low CRF for better quality", () => {
+    expect(ENCODER_PRESETS.high.preset).toBe("fast");
     expect(ENCODER_PRESETS.high.quality).toBeLessThan(ENCODER_PRESETS.standard.quality);
     expect(ENCODER_PRESETS.high.codec).toBe("h264");
   });
@@ -901,6 +901,32 @@ describe("getEncoderPreset", () => {
     expect(preset.pixelFormat).toBe("yuva444p10le");
   });
 
+  it.each([
+    ["4444", "4444", "yuva444p10le"],
+    ["hq", "3", "yuv422p10le"],
+    ["422", "2", "yuv422p10le"],
+    ["lt", "1", "yuv422p10le"],
+    ["proxy", "0", "yuv422p10le"],
+  ] as const)("maps ProRes profile %s to -profile:v %s and %s", (name, profile, pixelFormat) => {
+    const preset = getEncoderPreset("standard", "mov", undefined, name);
+    expect(preset).toMatchObject({ codec: "prores", preset: profile, pixelFormat });
+    const args = buildEncoderArgs(
+      {
+        fps: { num: 30, den: 1 },
+        width: 1920,
+        height: 1080,
+        codec: "prores",
+        preset: preset.preset,
+        quality: 23,
+        pixelFormat,
+      },
+      ["-framerate", "30", "-i", "frames/%04d.png"],
+      "out.mov",
+    );
+    expect(args[args.indexOf("-profile:v") + 1]).toBe(profile);
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe(pixelFormat);
+  });
+
   it("uses prores 4444 for all mov quality levels", () => {
     for (const q of ["draft", "standard", "high"] as const) {
       const preset = getEncoderPreset(q, "mov");
@@ -1035,6 +1061,18 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p1");
   });
 
+  it("gives an NVENC build that lists only legacy presets a legacy preset, not p4", () => {
+    const legacy = new Set(["default", "slow", "medium", "fast", "hp", "hq"]);
+    const args = buildEncoderArgs(
+      { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
+      inputArgs,
+      "out.mp4",
+      "nvenc",
+      legacy,
+    );
+    expect(presetArg(args)).toBe("medium");
+  });
+
   it("translates the standard medium preset to NVENC p4", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "medium", quality: 18, useGpu: true },
@@ -1045,7 +1083,7 @@ describe("buildEncoderArgs GPU preset mapping", () => {
     expect(presetArg(args)).toBe("p4");
   });
 
-  it("translates the high slow preset to NVENC p5", () => {
+  it("translates the slow preset to NVENC p5", () => {
     const args = buildEncoderArgs(
       { ...baseOptions, codec: "h264", preset: "slow", quality: 15, useGpu: true },
       inputArgs,

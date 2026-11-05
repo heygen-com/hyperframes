@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Marker Checklist Card</h1>
+  <p>A hand-lettered paper card: marker headline with an underline and a drawn ellipse around one word, then three checklist rows whose checks draw themselves on - typewriter labels, marker values. The paper-and-marker sibling of mk-specs-list's clean professional rows</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/marker-checklist-card.json"
   compositionId="marker-checklist-card"
   compositionSrc="compositions/components/marker-checklist-card.html"
   title="Marker Checklist Card"
-  description="A hand-lettered paper card: marker headline with an underline and a drawn ellipse around one word, then three checklist rows whose checks draw themselves on - typewriter labels, marker values. The paper-and-marker sibling of mk-specs-list's clean professional rows"
   variables={[{"id":"top","type":"string","role":"content","label":"Headline top","description":"First marker line.","default":"THE POWER"},{"id":"mid","type":"string","role":"content","label":"Headline middle","description":"Small connecting word under the underline.","default":"OF"},{"id":"circled","type":"string","role":"content","label":"Circled word","description":"The word the marker ellipse draws around.","default":"ONE"},{"id":"rest","type":"string","role":"content","label":"Headline rest","description":"The rest of the bottom line.","default":"FILE"},{"id":"l1","type":"string","role":"content","label":"Row 1 label","description":"Typewriter label of row 1.","default":"WRITE"},{"id":"v1","type":"string","role":"content","label":"Row 1 value","description":"Marker value of row 1.","default":"HTML"},{"id":"l2","type":"string","role":"content","label":"Row 2 label","description":"Typewriter label of row 2.","default":"RENDER"},{"id":"v2","type":"string","role":"content","label":"Row 2 value","description":"Marker value of row 2.","default":"IN 4K"},{"id":"l3","type":"string","role":"content","label":"Row 3 label","description":"Typewriter label of row 3.","default":"SHIP"},{"id":"v3","type":"string","role":"content","label":"Row 3 value","description":"Marker value of row 3.","default":"TODAY"}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":306}}
   attribution={{"author":"Miao Yang","path":"registry/components/marker-checklist-card","tags":["motion-primitive","handwritten","checklist","paper","marker"]}}
@@ -341,7 +345,9 @@ That writes `compositions/components/marker-checklist-card.html`, plus 2 support
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -391,6 +397,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

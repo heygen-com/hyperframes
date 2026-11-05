@@ -12,7 +12,12 @@ import {
   type SourceContext,
   type TimelineReport,
 } from "./engine";
-import { liveGenerationPage, type PageRunner } from "./pageQueries";
+import {
+  holdEveryScenePage,
+  liveGenerationPage,
+  releaseEveryScenePage,
+  type PageRunner,
+} from "./pageQueries";
 import { assertGeneration, validateInspectRequest, validateTimelineRequest } from "./requests";
 import {
   Sources,
@@ -74,6 +79,17 @@ export function prepareLiveInspection(
       throw new Error("stale_preview: the preview reloaded; query again");
     await view.assertCurrent();
   }
+  async function withEveryScene<R>(runner: PageRunner, query: () => Promise<R>): Promise<R> {
+    const holder = `inspection:${randomUUID()}`;
+    try {
+      const parked = await runner.run(holdEveryScenePage, holder);
+      if (parked.length)
+        throw new Error(`scenes_not_mounted: the preview could not mount ${parked.join(", ")}`);
+      return await query();
+    } finally {
+      await runner.run(releaseEveryScenePage, holder).catch(() => {});
+    }
+  }
   return {
     html: prepared,
     generation,
@@ -86,21 +102,23 @@ export function prepareLiveInspection(
       if (request.time != null) throw new Error("live_query_does_not_seek");
       assertGeneration(request.generation, generation);
       await current(runner);
-      return inspectComponents(runner, view, request, {
-        catalog,
-        reused: true,
-        start: performance.now(),
-      });
+      return withEveryScene(runner, () =>
+        inspectComponents(runner, view, request, {
+          catalog,
+          reused: true,
+          start: performance.now(),
+        }),
+      );
     },
     async timeline(runner, request) {
       validateTimelineRequest(request);
       assertGeneration(request.generation, generation);
       await current(runner);
-      return inspectTimeline(runner, view, request, true);
+      return withEveryScene(runner, () => inspectTimeline(runner, view, request, true));
     },
     async elementMap(runner) {
       await current(runner);
-      return inspectElementMap(runner, view);
+      return withEveryScene(runner, () => inspectElementMap(runner, view));
     },
   };
 }

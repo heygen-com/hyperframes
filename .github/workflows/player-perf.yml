@@ -21,24 +21,17 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 8
     outputs:
-      perf: ${{ steps.filter.outputs.perf }}
+      perf: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.perf }}
     steps:
       # Force git-based change detection instead of the pull_request REST API.
       # The API path can fail the perf workflow on transient listFiles timeouts.
-      # A history fetch now and then stalls until the job's limit; a second fetch gets through.
-      - id: checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        continue-on-error: true
-        with:
-          fetch-depth: 0
-      - if: steps.checkout.outcome != 'success'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        timeout-minutes: 1
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        timeout-minutes: 3
+      - name: Fetch the history the diffs read
+        timeout-minutes: 2
+        uses: ./.github/actions/fetch-history
       # HEAD is the PR merge ref; its first parent is the current base tip, unlike the payload's
       # base.sha, which goes stale and would count the base's newer commits as the PR's changes.
       - name: Find the pull request's current base
@@ -48,6 +41,9 @@ jobs:
           git rev-parse --verify -q HEAD^2 > /dev/null || { echo "::error::HEAD is not the pull request merge commit"; exit 1; }
           sha="$(git rev-parse --verify HEAD^1)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Find a release-only diff
+        id: release
+        uses: ./.github/actions/release-only-diff
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:

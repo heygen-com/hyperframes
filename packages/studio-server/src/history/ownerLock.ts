@@ -1,16 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  linkSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { uptime } from "node:os";
 import { join } from "node:path";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export class HistoryBusyError extends Error {
   constructor(
@@ -120,14 +113,15 @@ function claim(file: string): boolean {
   const draft = `${file}-${process.pid}-${randomUUID()}.tmp`;
   writeFileSync(draft, String(process.pid));
   try {
-    linkSync(draft, file);
-    recordStart(file);
-    return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code ?? "";
-    if (code === "EEXIST") return false;
-    if (!NO_HARD_LINKS.has(code)) throw error;
-    return createExclusively(file);
+    try {
+      linkSync(draft, file);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (code === "EEXIST") return false;
+      if (!NO_HARD_LINKS.has(code)) throw error;
+      return createExclusively(file);
+    }
+    return recordOwnership(file);
   } finally {
     rmSync(draft, { force: true });
   }
@@ -136,11 +130,20 @@ function claim(file: string): boolean {
 function createExclusively(file: string): boolean {
   try {
     writeFileSync(file, String(process.pid), { flag: "wx" });
-    recordStart(file);
-    return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     return false;
+  }
+  return recordOwnership(file);
+}
+
+function recordOwnership(file: string): true {
+  try {
+    recordStart(file);
+    return true;
+  } catch (error) {
+    releaseOwn(file);
+    throw error;
   }
 }
 
@@ -177,9 +180,7 @@ function evictDeadOwner(file: string): boolean {
 /** The owner's url sits beside owner.pid, so readers of owner.pid from older versions see no change. */
 function advertise(urlFile: string, url: string | undefined): void {
   if (!url) return rmSync(urlFile, { force: true });
-  const draft = `${urlFile}-${process.pid}-${randomUUID()}.tmp`;
-  writeFileSync(draft, JSON.stringify({ pid: process.pid, url }));
-  renameSync(draft, urlFile);
+  replaceFileAtomically(urlFile, JSON.stringify({ pid: process.pid, url }));
 }
 
 /** The url `pid` advertised, only while `pid` is alive and still holds `file`. */
@@ -227,7 +228,12 @@ export async function takeHistoryOwnership(
     if (next === "claimed") break;
     if (next === "wait") await new Promise((settle) => setTimeout(settle, 50));
   }
-  advertise(urlFile, url);
+  try {
+    advertise(urlFile, url);
+  } catch (error) {
+    releaseOwn(file);
+    throw error;
+  }
   let held = true;
   return () => {
     if (held && servedBy(file, urlFile, process.pid)) rmSync(urlFile, { force: true });

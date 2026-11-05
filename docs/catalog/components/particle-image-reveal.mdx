@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Particle Image Reveal</h1>
+  <p>A seeded deterministic particle field converges and settles while a slotted image reveals beneath it, the trail thinning until the image holds clean.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/particle-image-reveal.json"
   compositionId="particle-image-reveal"
   compositionSrc="compositions/components/particle-image-reveal.html"
   title="Particle Image Reveal"
-  description="A seeded deterministic particle field converges and settles while a slotted image reveals beneath it, the trail thinning until the image holds clean."
   variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Particle count for the converging field.","default":"med","options":[{"value":"low","label":"Low"},{"value":"med","label":"Medium"},{"value":"high","label":"High"}]},{"id":"direction","type":"enum","role":"timing","label":"Direction","description":"ltr sweeps the reveal left to right; center opens an iris from the middle outward.","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"center","label":"Center out"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Particle and monogram color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the revealed image holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":392}}
   attribution={{"path":"registry/components/particle-image-reveal","tags":["motion-primitive","intros-reveals","particles","reveal","canvas","deterministic"]}}
@@ -427,7 +431,9 @@ That writes one file: `compositions/components/particle-image-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -469,6 +475,4 @@ Tagged `motion-primitive` `intros-reveals` `particles` `reveal` `canvas` `determ
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

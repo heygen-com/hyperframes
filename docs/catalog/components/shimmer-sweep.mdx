@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Shimmer Sweep</h1>
+  <p>Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/shimmer-sweep.json"
   compositionId="shimmer-sweep"
   compositionSrc="compositions/components/shimmer-sweep.html"
   title="Shimmer Sweep"
-  description="Animated light sweep across text or elements using a CSS gradient mask — ideal for AI accents and premium reveals"
   variables={[]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":66}}
   attribution={{"path":"registry/components/shimmer-sweep","tags":["text","shimmer","highlight","effect"]}}
@@ -101,7 +105,9 @@ That writes one file: `compositions/components/shimmer-sweep.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -121,6 +127,4 @@ Tagged `text` `shimmer` `highlight` `effect`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

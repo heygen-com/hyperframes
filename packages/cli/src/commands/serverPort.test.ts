@@ -24,9 +24,9 @@ describe.each(commands)("%s --port", (_name, run) => {
   it.each(["0", "65536", "3003oops", "22.5"])(
     "rejects invalid value %j before resolving a project",
     async (value) => {
-      await run(["--port", value, "--no-open"]);
-
-      expect(consumeCommandResult()).toMatchObject({ exitCode: 1 });
+      await expect(run(["--port", value, "--no-open"])).rejects.toMatchObject({
+        result: { exitCode: 2, kind: "usage_error" },
+      });
       expect(clack.log.error).toHaveBeenCalledWith("--port must be an integer between 1 and 65535");
     },
   );

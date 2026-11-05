@@ -656,7 +656,7 @@ describe("attachElementFxChain", () => {
       }
     });
 
-    it("clears a limiter's state when a persistent chain is re-anchored for a new pass", async () => {
+    it("clears a limiter's state for a new pass, not when the same pass is re-timed", async () => {
       const messages: unknown[] = [];
       class RecordingWorkletStub extends WorkletNodeStub {
         override port = { postMessage: (...sent: unknown[]) => void messages.push(...sent) };
@@ -679,6 +679,7 @@ describe("attachElementFxChain", () => {
           timing,
         );
         await settle();
+        fx?.retime({ scheduledAt: 1, elapsed: 0.9, rate: 1.03 });
         expect(messages).not.toContainEqual({ __hfReset: true });
         fx?.reanchor(timing);
         expect(messages).toContainEqual({ __hfReset: true });

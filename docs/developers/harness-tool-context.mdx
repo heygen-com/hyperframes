@@ -93,6 +93,18 @@ the same as in a terminal.
 | `findingFrames` | Saves one plain, unannotated full frame for each distinct `frameTime` of the error and warning findings in `layout` and `contrast` that have a bbox (not `motion` or `craft`), and adds two fields to each of those findings: `frameTime`, the middle sample of the longest held run in its `times` (the same gap rule as `heldMs`), and `frame`, the absolute path of that PNG, shared by every finding at that time. The `bbox` is measured at the finding's `time`, so an element that moves can sit elsewhere on the frame. Only finite, nonnegative sample times are eligible; a finding with no eligible time gets no frame. At most 60 distinct times are captured, errors first. The frames go in the run's snapshot folder but are not listed in `snapshots`, not recorded in project history and not reported as `events`. |
 | `inspect` | Only with `findingFrames` on; alone it does nothing. While each frame is on screen, runs the [component inspector](https://github.com/heygen-com/hyperframes/tree/main/packages/inspector) on every finding framed at that time and adds its report, unchanged, as the finding's `inspect` field: `results` (the element, how many GSAP animations target it), and `snippets`, each with its source `id` (`file:start-end`), `kind` (`html opening tag`, `matched CSS candidate`, `animation creation` and so on) and the exact source `code`. The target is the finding's `data-hf-id` when it has one, else its `selector`, without descendants, under the inspector's default 12,000-byte budget. A selector that matches multiple elements is treated as an inspection failure, so unrelated source snippets are not attached. A finding whose inspection fails gets `inspect: { "error": "<message>" }` instead; the check itself never fails because of it. Inspection counts toward the `frames` phase of the check deadline. A timeout or stop ends capture without attaching frame or inspection fields. Only GSAP animations are seen, not CSS animations, Web Animations or canvas drawing. |
 
+## Inspecting a live preview
+
+The `@hyperframes/inspector/live` API reads components, timelines and element maps
+across every composition, including scenes parked away from the preview playhead.
+Each query temporarily mounts those scenes without seeking and releases its own
+hold when it finishes or fails. Concurrent queries keep their scenes mounted until
+each finishes; Studio's selection hold remains independent. The preview then
+restores the scene window for the current playhead. If scenes remain parked after
+mounting, the query reports `scenes_not_mounted` with their names instead of
+reporting their elements as missing. Mounting runs the scenes' scripts through the
+preview's normal scene lifecycle.
+
 ## Hooks that run code
 
 Running your own command before or after a CLI command is not a `HF_TOOL_CONTEXT` capability and

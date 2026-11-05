@@ -1,3 +1,4 @@
+import "./utils/hideChildConsoles.js";
 import { constants, setPriority } from "node:os";
 import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
@@ -19,10 +20,14 @@ const disposeSignalHandlers = installRenderSetupSignalHandlers(
   process.env.HYPERFRAMES_RENDER_DETACHED !== "1",
 );
 
+const SANDBOX_REFUSED_PRIORITY = new Set(["EPERM", "EACCES"]);
+
 function lowerPriority(): void {
   try {
     setPriority(constants.priority.PRIORITY_LOW);
   } catch (error) {
+    if (SANDBOX_REFUSED_PRIORITY.has((error as { info?: { code?: string } }).info?.code ?? ""))
+      return;
     process.stderr.write(`Lint runs at normal priority: ${(error as Error).message}\n`);
   }
 }

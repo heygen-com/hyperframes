@@ -1,5 +1,4 @@
-import type { RuntimeDeterministicAdapter, RuntimeTimelineLike } from "./types";
-import type { RuntimeMediaClip } from "./media";
+import type { RuntimeDeterministicAdapter, RuntimeMediaClip, RuntimeTimelineLike } from "./types";
 import type { TransportClock } from "./clock";
 
 export type RuntimeState = {

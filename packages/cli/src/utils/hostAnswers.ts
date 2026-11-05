@@ -1,12 +1,7 @@
 import { promises as dns } from "node:dns";
+import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 
 const PROBE_TIMEOUT_MS = 1000;
-
-function fetchGoesThroughEnvProxy(): boolean {
-  if (!(process.env["HTTPS_PROXY"] ?? process.env["https_proxy"])?.trim()) return false;
-  const flags = [...process.execArgv, ...(process.env["NODE_OPTIONS"]?.split(/\s+/u) ?? [])];
-  return process.env["NODE_USE_ENV_PROXY"] === "1" || flags.includes("--use-env-proxy");
-}
 
 /**
  * Whether DNS answers for `host` via c-ares, one short try per nameserver. The system lookup

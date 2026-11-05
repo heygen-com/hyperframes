@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Dissolve Transitions</h1>
+  <p>Showcase of dissolve and fade transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/transitions-dissolve.json"
   compositionId="transitions-dissolve"
   compositionSrc="compositions/transitions-dissolve.html"
   title="Dissolve Transitions"
-  description="Showcase of dissolve and fade transitions"
   variables={[]}
   meta={{"duration":24,"width":1920,"height":1080,"category":"CSS Transitions","badge":"Stable","codeLines":391}}
   attribution={{"path":"registry/blocks/transitions-dissolve","tags":["transition","showcase","crossfade"]}}
@@ -426,7 +430,9 @@ That writes one file: `compositions/transitions-dissolve.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -457,6 +463,4 @@ Tagged `transition` `showcase` `crossfade`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

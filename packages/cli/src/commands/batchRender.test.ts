@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import type { ReferenceBackground } from "@hyperframes/producer";
 import {
   BatchRenderInputError,
   parseBatchRows,
@@ -85,6 +86,27 @@ describe("resolveOutputTemplate", () => {
 });
 
 describe("prepareBatchRender", () => {
+  it.each(["utf8", "utf16le"] as const)("reads a %s batch file with a BOM", (encoding) => {
+    const batchPath = join(tmpDir, "rows.json");
+    writeFileSync(batchPath, '\uFEFF[{"name":"Café","title":"Hello\\uFEFFworld"}]', encoding);
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: join(tmpDir, "renders", "{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+
+    expect(prepared.rows).toEqual([
+      {
+        index: 0,
+        variables: { name: "Café", title: "Hello\uFEFFworld" },
+        outputPath: resolve(tmpDir, "renders", "Café.mp4"),
+      },
+    ]);
+  });
+
   it("resolves output paths and the manifest path", () => {
     const batchPath = writeJson("rows.json", '[{"name":"Alice"},{"name":"Bob"}]');
     const outDir = join(tmpDir, "renders");
@@ -243,6 +265,45 @@ describe("runBatchRender", () => {
       error: null,
     });
     expect(readFileSync(prepared.manifestPath, "utf8")).toContain('"status": "completed"');
+  });
+
+  it("copies each row's reference background into the manifest and leaves a failed row null", async () => {
+    const references: ReferenceBackground[] = [
+      { kind: "solid", rgb: [12, 34, 56] },
+      { kind: "none" },
+      { kind: "unsupported_non_solid" },
+      { kind: "unknown" },
+    ];
+    const prepared = prepareBatchRender({
+      batchPath: writeJson(
+        "rows.json",
+        JSON.stringify([...references.map((_, id) => ({ name: `row${id}` })), { name: "bad" }]),
+      ),
+      outputTemplate: join(tmpDir, "renders/{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+
+    const manifest = await runBatchRender({
+      prepared,
+      concurrency: 1,
+      failFast: false,
+      quiet: true,
+      json: false,
+      renderOne: async (row) => {
+        const reference = references[row.index];
+        if (!reference) throw new Error("render failed");
+        return { renderTimeMs: 10, reference_background: reference };
+      },
+    });
+
+    expect(manifest.rows.map((row) => row.reference_background)).toEqual([...references, null]);
+    const written = JSON.parse(readFileSync(prepared.manifestPath, "utf8")) as {
+      rows: Array<{ reference_background: unknown }>;
+    };
+    expect(written.rows.map((row) => row.reference_background)).toEqual([...references, null]);
   });
 
   it("emits exactly one final JSON document when json mode is enabled", async () => {

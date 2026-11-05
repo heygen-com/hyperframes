@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { mkdirWithinProject } from "../helpers/safePath.js";
@@ -84,12 +84,31 @@ export class HistoryIdError extends Error {
   }
 }
 
+function markUsed(historyDir: string): void {
+  const now = new Date();
+  try {
+    utimesSync(join(historyDir, "project.json"), now, now);
+  } catch {
+    return;
+  }
+}
+
 export function recordProject(
   historyDir: string,
   dir: string,
   folder: FolderIdentity & { dev: number },
 ): void {
   const record = { dir, ino: folder.ino, born: folder.birthtimeMs, dev: folder.dev };
+  const was = readRecord(historyDir);
+  if (
+    was?.dir === record.dir &&
+    was.ino === record.ino &&
+    was.born === record.born &&
+    was.dev === record.dev
+  ) {
+    markUsed(historyDir);
+    return;
+  }
   mkdirSync(historyDir, { recursive: true });
   replaceFileAtomically(join(historyDir, "project.json"), JSON.stringify(record), 0o644);
 }

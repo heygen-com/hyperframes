@@ -76,8 +76,8 @@ function formatLintCounts(
 }
 
 /** Full findings in verbose mode, a one-line summary otherwise. `pointer` (summary
- * mode) picks the hint: "cli" names --lint-verbose, "studio" also names the lint
- * command, since preview's stdout may be read by an agent. */
+ * mode) picks the hint: both name the lint command, "studio" also the Studio badge. --lint-verbose is
+ * not named: only render, preview and publish take it, and agents tried it on lint and check. */
 export type LintMessageMode =
   | { kind: "verbose"; options?: LintFormatOptions }
   | { kind: "summary"; pointer?: "cli" | "studio" };
@@ -91,7 +91,7 @@ export function formatLintStartupMessage(
   const hint =
     mode.pointer === "studio"
       ? "see the Lint badge in Studio, or run `hyperframes lint` for full output"
-      : "run with --lint-verbose for full output";
+      : "run `hyperframes lint` for full output";
   return [`  Lint: ${counts} — ${hint}.`];
 }
 

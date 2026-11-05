@@ -204,7 +204,7 @@
           var ws = pair[0];
           var we = pair[1];
           var nextStart =
-            gi + 1 < RAW_GROUPS.length ? TRANSCRIPT[RAW_GROUPS[gi + 1][0]].start : 8.0;
+            gi + 1 < RAW_GROUPS.length ? TRANSCRIPT[RAW_GROUPS[gi + 1][0]].start : Infinity;
           var end = Math.min(TRANSCRIPT[we].end + 0.24, nextStart - 0.04);
           return { wordStart: ws, wordEnd: we, start: TRANSCRIPT[ws].start, end: end };
         });

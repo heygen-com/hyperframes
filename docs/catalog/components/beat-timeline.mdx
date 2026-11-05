@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Beat Timeline</h1>
+  <p>A paused master-timeline orchestration spine that pins titled beat rows to evenly spaced named labels. Each row enters on its label, holds with the sequence, then exits with the group.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/beat-timeline.json"
   compositionId="beat-timeline"
   compositionSrc="compositions/components/beat-timeline.html"
   title="Beat Timeline"
-  description="A paused master-timeline orchestration spine that pins titled beat rows to evenly spaced named labels. Each row enters on its label, holds with the sequence, then exits with the group."
   variables={[{"id":"beatCount","type":"number","role":"content","label":"Beat count","description":"Number of beat rows in the sequence.","default":4,"min":2,"max":6,"step":1},{"id":"interval","type":"number","role":"layout","label":"Interval","description":"Base time between consecutive beat markers.","default":0.6,"min":0.2,"max":2,"step":0.05,"unit":"s"},{"id":"labels","type":"string","role":"content","label":"Labels","description":"Comma-separated beat titles, one per beat. Extra entries are ignored and missing entries fall back to Beat N.","default":"One,Two,Three,Four"}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":288}}
   attribution={{"path":"registry/components/beat-timeline","tags":["orchestration","transitions","sequencing","bridge","timeline"]}}
@@ -323,7 +327,9 @@ That writes one file: `compositions/components/beat-timeline.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -364,6 +370,4 @@ Tagged `orchestration` `transitions` `sequencing` `bridge` `timeline`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

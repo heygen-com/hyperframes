@@ -15,11 +15,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
+  _setDownloadFetchForTests,
   assertPublicHttpsUrl,
   downloadToTemp,
   fetchPublicHttpsText,
   UrlDownloadError,
 } from "./urlDownloader.js";
+
+const stubFetch = (replacement: unknown): void =>
+  _setDownloadFetchForTests(replacement as Parameters<typeof _setDownloadFetchForTests>[0]);
 
 const fsRaceControls = vi.hoisted(() => ({
   deleteBeforeLstatPath: undefined as string | undefined,
@@ -148,6 +152,7 @@ afterEach(() => {
   heldDeadlines.clear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  _setDownloadFetchForTests();
   fsRaceControls.deleteBeforeLstatPath = undefined;
   fsRaceControls.deleteInjectedWinnerBeforeLstatPath = undefined;
   fsRaceControls.injectRaceAtLinkPath = undefined;
@@ -280,7 +285,7 @@ describe("fetchPublicHttpsText", () => {
         headers: { location: "https://169.254.169.254/latest/meta-data/" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await expect(
       fetchPublicHttpsText("https://styles.example/fonts.css", { maxBytes: 1024 }),
@@ -299,7 +304,7 @@ describe("fetchPublicHttpsText", () => {
         cancelled = true;
       },
     });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body)));
+    stubFetch(vi.fn().mockResolvedValue(new Response(body)));
 
     await expect(
       fetchPublicHttpsText("https://styles.example/large.css", { maxBytes: 10 }),
@@ -321,7 +326,7 @@ describe("fetchPublicHttpsText", () => {
       });
       return new Response(body);
     });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await expect(
       fetchPublicHttpsText("https://styles.example/stalled.css", {
@@ -334,8 +339,7 @@ describe("fetchPublicHttpsText", () => {
 
 describe("downloadToTemp atomic publication and bounded retry", () => {
   it("does not race a real wall-clock deadline on a slow attempt", async () => {
-    vi.stubGlobal(
-      "fetch",
+    stubFetch(
       vi.fn().mockImplementation(
         (_url: string, init: RequestInit) =>
           new Promise<Response>((resolve, reject) => {
@@ -360,7 +364,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         }),
       )
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/redirect.mp4", dir, 1_000);
@@ -384,7 +388,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { location: "http://169.254.169.254/latest/meta-data/" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -404,7 +408,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { location: "https://[::ffff:169.254.169.254]/latest/meta-data/" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -421,7 +425,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(null, { status: 503, statusText: "Service Unavailable" }))
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const onTransientRetry = vi.fn();
 
@@ -448,7 +452,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(null, { status: 503, statusText: signedUrl }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     let message = "";
@@ -476,7 +480,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .mockResolvedValueOnce(
         new Response(complete, { headers: { "content-length": String(complete.length) } }),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const onTransientRetry = vi.fn();
 
@@ -503,7 +507,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .mockImplementation(() =>
         Promise.resolve(new Response("short", { headers: { "content-length": "12" } })),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -528,7 +532,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         }),
       )
       .mockResolvedValueOnce(new Response("complete", { headers: { "content-length": "8" } }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/unsolicited-range.mp4", dir, 1_000);
@@ -545,7 +549,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { "content-range": "bytes nonsense" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -567,7 +571,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { "content-range": "bytes 0-7/8", "content-length": "8" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp(
@@ -593,7 +597,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { "content-range": "bytes 0-7/8" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -614,7 +618,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         }),
       ),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -646,7 +650,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -667,7 +671,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(corrupt))
       .mockResolvedValueOnce(new Response(complete));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp(
@@ -685,7 +689,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
 
   it("rejects a malformed caller checksum before fetching", async () => {
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -710,7 +714,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       ),
     );
     const onTransientRetry = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -742,7 +746,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp(
@@ -769,7 +773,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/server-sha.mp4", dir, 1_000);
@@ -784,7 +788,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(bytes, { headers: { "content-md5": contentMd5 } }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/legacy-md5.mp4", dir, 1_000);
@@ -802,7 +806,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         }),
       ),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -820,7 +824,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         }),
       ),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -839,7 +843,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp(
@@ -859,7 +863,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response("  <!doctype html><html><body>denied</body></html>"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -876,7 +880,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
   it("rejects a BOM-prefixed remote error document without retrying", async () => {
     const payload = Buffer.from("\uFEFF  <!doctype html><html><body>denied</body></html>");
     const fetchMock = vi.fn().mockResolvedValue(new Response(payload));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -894,7 +898,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     writeFileSync(cachePath, "<!doctype html><html>expired</html>");
     const fontBytes = Buffer.from("wOF2valid-font-payload");
     const fetchMock = vi.fn().mockResolvedValue(new Response(fontBytes));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000);
 
@@ -910,7 +914,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { "content-type": "video/mp4" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -940,7 +944,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .mockResolvedValueOnce(
         new Response(mediaBytes, { headers: { "content-type": "text/html" } }),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp(
@@ -964,7 +968,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         headers: { "content-length": String(mediaBytes.length), etag },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const events: unknown[] = [];
     const signedUrl =
@@ -1004,7 +1008,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     "does not reject valid %s inputs via a duplicate format allowlist",
     async (kind, mediaBytes) => {
       const fetchMock = vi.fn().mockResolvedValue(new Response(mediaBytes));
-      vi.stubGlobal("fetch", fetchMock);
+      stubFetch(fetchMock);
       const dir = makeTempDir();
 
       const path = await downloadToTemp(`https://cdn.example/extensionless-${kind}`, dir, 1_000);
@@ -1020,7 +1024,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValue(new TypeError(`fetch failed while requesting ${signedUrl}`));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     let message = "";
@@ -1043,7 +1047,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .mockRejectedValue(
         Object.assign(new Error(`no space left writing ${signedUrl}`), { code: "ENOSPC" }),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
       kind: "filesystem",
@@ -1055,7 +1059,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const signedUrl = "https://cdn.example/private/clip.mp4?X-Amz-Signature=super-secret-signature";
     const hostile = Object.assign(new Error("boom"), { code: signedUrl });
     hostile.name = signedUrl;
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(hostile));
+    stubFetch(vi.fn().mockRejectedValue(hostile));
 
     await expect(downloadToTemp(signedUrl, makeTempDir(), 1_000)).rejects.toMatchObject({
       message: "Download failed while writing the local artifact",
@@ -1078,7 +1082,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         new Response(errorBody, { status: 503, statusText: "Service Unavailable" }),
       )
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/streaming-503.mp4", dir, 1_000);
@@ -1093,7 +1097,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(null, { status: 404, statusText: "Not Found" }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -1111,7 +1115,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValue(new Response(null, { status: 503, statusText: "Service Unavailable" }));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     await expect(
@@ -1137,7 +1141,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(resetBody))
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/reset-once.mp4", dir, 1_000);
@@ -1161,7 +1165,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(disconnectedBody))
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/undici-reset-once.mp4", dir, 1_000);
@@ -1188,7 +1192,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         return new Response(stalledBody);
       })
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const pending = downloadToTemp("https://cdn.example/stalled-body.mp4", dir, 1_000);
@@ -1215,7 +1219,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         return new Response(stalledBody);
       })
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const pending = downloadToTemp("https://cdn.example/unresponsive-body.mp4", dir, 1_000);
@@ -1243,7 +1247,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         return new Response(truncatedBody);
       })
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const pending = downloadToTemp("https://cdn.example/aborted-chunked-body.mp4", dir, 1_000);
@@ -1261,7 +1265,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(""))
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/empty-once.mp4", dir, 1_000);
@@ -1276,7 +1280,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
       .fn()
       .mockResolvedValueOnce(new Response(null))
       .mockResolvedValueOnce(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const path = await downloadToTemp("https://cdn.example/null-body-once.mp4", dir, 1_000);
@@ -1288,7 +1292,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
 
   it("removes a stale zero-byte final file before downloading", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const stalePath = join(dir, "download_eda0de5dc5a3.mp4");
     writeFileSync(stalePath, "");
@@ -1309,7 +1313,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     writeFileSync(cachePath, "vanishing-cache-entry");
     fsRaceControls.deleteBeforeLstatPath = cachePath;
     const fetchMock = vi.fn().mockResolvedValue(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000);
 
@@ -1321,7 +1325,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
 
   it("does not trust a nonempty symlink at the final cache path", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("downloaded"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const target = join(dir, "attacker-controlled.mp4");
     const cachePath = join(dir, "download_eda0de5dc5a3.mp4");
@@ -1338,7 +1342,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
 
   it("does not retry caller cancellation", async () => {
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const controller = new AbortController();
     controller.abort();
@@ -1360,7 +1364,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
           setTimeout(() => resolve(new Response("complete")), 10);
         }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const [first, second] = await Promise.all([
@@ -1380,7 +1384,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const lockPath = join(dir, `${cacheName}.hf-lock`);
     mkdirSync(lockPath);
     const fetchMock = vi.fn().mockResolvedValue(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const pending = downloadToTemp(url, dir, 1_000);
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -1403,7 +1407,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     const staleTime = new Date(Date.now() - 6 * 60_000);
     utimesSync(lockPath, staleTime, staleTime);
     const fetchMock = vi.fn().mockResolvedValue(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000);
 
@@ -1424,7 +1428,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     utimesSync(lockPath, staleTime, staleTime);
     fsRaceControls.replaceStaleLockAfterObservationPath = lockPath;
     const fetchMock = vi.fn().mockResolvedValue(new Response("complete"));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const pending = downloadToTemp(url, dir, 1_000);
     await new Promise((resolve) => setTimeout(resolve, 25));
@@ -1448,7 +1452,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     writeFileSync(cachePath, "cached");
     fsRaceControls.replaceLockOnReleasePath = lockPath;
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000);
 
@@ -1472,7 +1476,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
           setTimeout(() => resolve(new Response(body)), 10);
         }),
     );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const [first, second] = await Promise.all([
       downloadToTemp(url, dir, 1_000, firstController.signal),
@@ -1504,7 +1508,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
             setTimeout(() => resolve(new Response(secondBytes)), 5),
           ),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
     const url = "https://cdn.example/versioned.mp4";
 
@@ -1532,7 +1536,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     fsRaceControls.deleteBeforeReadPath = cachePath;
     const onTelemetry = vi.fn();
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("complete")));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onTelemetry });
 
@@ -1557,7 +1561,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     fsRaceControls.deleteInjectedWinnerBeforeLstatPath = cachePath;
     const onTelemetry = vi.fn();
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response("complete")));
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
 
     const path = await downloadToTemp(url, dir, 1_000, undefined, undefined, { onTelemetry });
 
@@ -1597,7 +1601,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
             setTimeout(() => resolve(new Response("complete")), 10);
           }),
       );
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const first = downloadToTemp(
@@ -1651,7 +1655,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
         });
         return new Response(body);
       });
-    vi.stubGlobal("fetch", fetchMock);
+    stubFetch(fetchMock);
     const dir = makeTempDir();
 
     const first = downloadToTemp(

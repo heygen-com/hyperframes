@@ -1,4 +1,4 @@
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { trackEvent, flushSync } from "../telemetry/client.js";
 import { SKILL_SLUG } from "../telemetry/skill.js";
 
@@ -23,7 +23,7 @@ export default defineCommand({
   meta: {
     name: "events",
     description:
-      "Emit an anonymous skill-usage telemetry event (skills report their own invocation/outcome). Honors DO_NOT_TRACK / telemetry opt-out.",
+      "Emit a skill-usage telemetry event (skills report their own invocation/outcome). Honors DO_NOT_TRACK / telemetry opt-out.",
   },
   args: {
     skill: {

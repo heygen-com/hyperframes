@@ -6,6 +6,11 @@ import { runCommand } from "citty";
 
 const prompts = vi.hoisted(() => ({ errors: [] as string[], typedName: "" }));
 
+// A person at a terminal: the prompts and spinners these tests drive are refused otherwise.
+vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
+  isUnattended: () => false,
+}));
 vi.mock("@clack/prompts", () => ({
   intro: () => undefined,
   cancel: () => undefined,

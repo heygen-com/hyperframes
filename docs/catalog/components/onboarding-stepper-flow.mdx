@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Onboarding Stepper Flow</h1>
+  <p>A composed onboarding flow with milestone rail, active step card, and next-action button</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/onboarding-stepper-flow.json"
   compositionId="onboarding-stepper-flow"
   compositionSrc="compositions/components/onboarding-stepper-flow.html"
   title="Onboarding Stepper Flow"
-  description="A composed onboarding flow with milestone rail, active step card, and next-action button"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":92}}
   attribution={{"path":"registry/components/onboarding-stepper-flow","tags":["ui-flow","onboarding","stepper"]}}
@@ -127,7 +131,9 @@ That writes one file: `compositions/components/onboarding-stepper-flow.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -147,6 +153,4 @@ Tagged `ui-flow` `onboarding` `stepper`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -30,8 +30,8 @@ GCS bucket  ←→  Cloud Run service (plan / renderChunk / assemble)
                 Cloud Workflows  (Plan → parallel RenderChunk → Assemble)
 ```
 
-- **Plan** downloads the project tarball and publishes either a legacy v1
-  planDir tarball or a v2 manifest plus content-addressed artifacts.
+- **Plan** downloads the project tarball and publishes a Plan v2 manifest plus
+  content-addressed artifacts.
 - **RenderChunk** runs in a parallel `for` loop in the workflow, fanned out
   up to the plan's chunk count. Each invocation renders one chunk and uploads
   it.
@@ -43,11 +43,11 @@ The workflow accumulates each step's small result body and returns
 `{ Plan, Chunks, Assemble }` so `getRenderProgress` can read frame totals and
 per-step durations on success.
 
-### Plan transport selection
+### Plan transport
 
-Plan v2 is the default for new renders. When `planProtocol` is omitted,
-`renderToCloudRun` sends an explicit `PlanProtocol: "v2"` so the SDK and
-the deployed workflow agree:
+Plan v2 is the only supported distributed plan transport.
+`renderToCloudRun` sends `PlanProtocol: "v2"` without requiring a protocol
+option:
 
 ```ts
 await renderToCloudRun({
@@ -56,22 +56,17 @@ await renderToCloudRun({
 ```
 
 V2 uses separate manifest and content-addressed artifact locators throughout
-the workflow. Unknown protocols and integrity failures fail closed; a render
-never mixes v1 and v2 artifacts.
-
-The monolithic v1 transport remains available as deprecated compatibility by
-passing `planProtocol: "v1"` explicitly.
+the workflow. Unknown protocols and integrity failures fail closed.
 
 #### Upgrade order
 
 Redeploy the Cloud Run image and Cloud Workflows definition from the same new
 package version before upgrading an application that calls
 `renderToCloudRun`. Pause new renders and drain active workflow executions
-during the infrastructure update. Older workflows can default omission to v1
-or lack the v2 branch, while the new SDK sends explicit v2. If infrastructure
-cannot be redeployed first, keep the previous SDK version or pass
-`planProtocol: "v1"` explicitly until the Terraform/workflow redeploy is
-complete.
+during the infrastructure update. Older workflows may lack the Plan v2-only
+request and locator contract. If infrastructure cannot be redeployed first,
+keep the application on its previous package version until the workflow
+redeploy is complete.
 
 ## Chrome runtime
 

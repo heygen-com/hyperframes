@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,10 +102,17 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.timedOut).toBe(false);
+      expect(result.supported).toBe(false);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {
@@ -711,6 +719,21 @@ describe("resolveBrowserGpuMode", () => {
     expect(managedLaunch).toHaveBeenCalledOnce();
     expect(launch).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("does not keep a probe its own caller cancelled as the answer for the process", async () => {
+    setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    const cancelled = {
+      launch: async () => {
+        throw new DOMException("This operation was aborted", "AbortError");
+      },
+      close: vi.fn(),
+    };
+    const first = resolveBrowserGpuMode("auto", { probeLifecycle: cancelled });
+    const second = resolveBrowserGpuMode("auto");
+    await expect(second).resolves.toBe("hardware");
+    await first;
+    await expect(resolveBrowserGpuMode("auto")).resolves.toBe("hardware");
   });
 
   it("passes 'software' through unchanged without probing", async () => {
@@ -1531,6 +1554,21 @@ describe("forceReleaseBrowser", () => {
 
     expect(killFn).toHaveBeenCalledWith("SIGKILL");
     expect(disconnectFn).toHaveBeenCalled();
+  });
+
+  it("absorbs the CDP pipes' late ECONNRESET so the killed browser cannot crash the process", () => {
+    const pipe = new EventEmitter();
+    const puppeteerListener = () => {};
+    pipe.on("error", puppeteerListener);
+    const mockBrowser = {
+      process: () => ({ kill: vi.fn(() => true), killed: false, stdio: [null, null, null, pipe] }),
+      // Puppeteer's own pipe listeners go away on disconnect; the pipe still errors afterwards.
+      disconnect: () => pipe.off("error", puppeteerListener),
+    } as any;
+
+    forceReleaseBrowser(mockBrowser);
+
+    expect(() => pipe.emit("error", new Error("read ECONNRESET"))).not.toThrow();
   });
 
   it("tolerates an already-killed process", () => {

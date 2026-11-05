@@ -385,7 +385,13 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
 
     // ── MUTATION phase: extractHtml modifies the live DOM (converts images to data URLs) ──
     progress("extract", "Extracting HTML & CSS...");
-    extracted = await extractHtml(page1, { settleTime: 1000 });
+    extracted = await extractHtml(page1, {
+      settleTime: 1000,
+      onWarning: (message) => {
+        warnings.push(message);
+        progress("warn", message);
+      },
+    });
     state.extracted = extracted;
 
     // Strip framework scripts from the extracted body — keep visual library scripts

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Weight Shift</h1>
+  <p>Elegant font-weight transition between caption lines</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-weight-shift.json"
   compositionId="caption-weight-shift"
   compositionSrc="compositions/components/caption-weight-shift.html"
   title="Weight Shift"
-  description="Elegant font-weight transition between caption lines"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":397}}
   attribution={{"path":"registry/components/caption-weight-shift","tags":["captions","caption-style","minimal","typography"]}}
@@ -432,7 +436,9 @@ That writes one file: `compositions/components/caption-weight-shift.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -451,6 +457,4 @@ Tagged `captions` `caption-style` `minimal` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

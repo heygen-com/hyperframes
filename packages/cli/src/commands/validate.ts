@@ -5,7 +5,7 @@ import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.j
 // window drifting as the file is edited, hence the file-level suppression.
 // fallow-ignore-file code-duplication
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -25,6 +25,7 @@ import {
   seekCompositionTimeline,
   waitForRuntimeReady,
 } from "../capture/captureCompositionFrame.js";
+import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -50,7 +51,9 @@ interface ContrastEntry {
 const CONTRAST_SAMPLES = 5;
 const SEEK_SETTLE_MS = 150;
 const PREFERRED_SEEK_TARGET_WAIT_MS = 500;
-const MEDIA_EXTENSIONS = /\.(aac|flac|m4a|mov|mp3|mp4|oga|ogg|wav|webm)$/i;
+// Media files a proxy swap can abandon mid-fetch; an aborted non-image request for one is not a load failure.
+const MEDIA_EXTENSIONS =
+  /\.(3gp|aac|aif|aiff|avi|flac|flv|m2ts|m4a|m4v|mkv|mov|mp3|mp4|mpeg|mpg|mts|mxf|oga|ogg|ogv|opus|wav|weba|webm|wma|wmv)$/i;
 // Turn Puppeteer's opaque "Navigation timeout of Nms exceeded" into an
 // actionable message: the usual cause is a slow blocking CDN <script>. Returns a
 // replacement Error for a navigation timeout, or null for any other error.
@@ -73,6 +76,7 @@ export function shouldIgnoreRequestFailure(
   if (errorText === "net::ERR_ABORTED" && isOptionalCaptionOverridesRequest(url)) return true;
   if (errorText !== "net::ERR_ABORTED") return false;
   if (resourceType === "media") return true;
+  if (resourceType === "image") return false;
   try {
     return MEDIA_EXTENSIONS.test(new URL(url).pathname);
   } catch {
@@ -614,7 +618,10 @@ function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
-        withMeta({ ok: false, error: message, errors: [], warnings: [] }, { deprecated: true }),
+        withMeta(
+          { ...jsonFailure("runtime_error", message), errors: [], warnings: [] },
+          { deprecated: true },
+        ),
         null,
         2,
       ),
@@ -668,7 +675,7 @@ Examples:
       setCommandExitCode(exitCode);
       return;
     } catch (err: unknown) {
-      const message = normalizeErrorMessage(err);
+      const message = failureMessage(err);
       emitFailureReport(message, asJson);
       failCommand();
     }

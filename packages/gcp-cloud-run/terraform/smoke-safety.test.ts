@@ -7,13 +7,11 @@ const smoke = readFileSync(smokePath, "utf-8");
 const dockerfile = readFileSync(join(import.meta.dir, "../Dockerfile"), "utf-8");
 
 describe("GCP smoke ownership and protocol safety", () => {
-  it("defaults to v2 and retains explicit v1/v2 protocol arguments", () => {
-    expect(smoke).toContain('PROTOCOLS="${PROTOCOLS:-v2}"');
-    expect(smoke).toContain("--protocols)");
+  it("runs only the Plan v2 protocol", () => {
+    expect(smoke).toContain('PROTOCOL="v2"');
+    expect(smoke).not.toContain("--protocols)");
     expect(smoke).toContain("PlanProtocol: $protocol");
-    expect(smoke).toContain("decodedFramesEqual");
-    expect(smoke).toContain("decodedAudioEqual");
-    expect(smoke).toContain("normalizedMetadataEqual");
+    expect(smoke).not.toContain("PlanProtocol: v1");
     expect(smoke).toContain('.CaptureMode == "beginframe"');
     expect(smoke).toContain("expected every chunk to use beginframe");
   });

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Rubber Band Bumper</h1>
+  <p>An outgoing panel pulls against increasing resistance, holds at tension, then snaps past an edge with overshoot as the incoming panel settles behind it.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/rubber-band-bumper.json"
   compositionId="rubber-band-bumper"
   compositionSrc="compositions/components/rubber-band-bumper.html"
   title="Rubber Band Bumper"
-  description="An outgoing panel pulls against increasing resistance, holds at tension, then snaps past an edge with overshoot as the incoming panel settles behind it."
   variables={[{"id":"direction","type":"enum","role":"content","label":"Direction","description":"Edge the outgoing panel releases through.","default":"up","options":[{"value":"up","label":"Up"},{"value":"left","label":"Left"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color applied to the tension bands and incoming panel.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":331}}
   attribution={{"path":"registry/components/rubber-band-bumper","tags":["motion-primitive","transition","rubber-band","resistance","overshoot"]}}
@@ -366,7 +370,9 @@ That writes one file: `compositions/components/rubber-band-bumper.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -406,6 +412,4 @@ Tagged `motion-primitive` `transition` `rubber-band` `resistance` `overshoot`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

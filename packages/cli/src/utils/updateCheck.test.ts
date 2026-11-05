@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isSafeVersion, printDeprecationNotice, withMeta } from "./updateCheck.js";
 
@@ -32,9 +35,15 @@ async function noticeWith(opts: {
   latestVersion?: string;
   isTTY?: boolean;
   env?: Record<string, string | undefined>;
+  unattended?: boolean;
+  pendingVersion?: string;
 }): Promise<string> {
   vi.resetModules();
   vi.doMock("./env.js", () => ({ isDevMode: () => false }));
+  vi.doMock("./attendedTerminal.js", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("./attendedTerminal.js")>()),
+    isUnattended: () => opts.unattended ?? false,
+  }));
   vi.doMock("./installerDetection.js", () => ({
     detectInstaller: () => ({
       kind: opts.installerCommand ? "npm" : "skip",
@@ -43,7 +52,14 @@ async function noticeWith(opts: {
     }),
   }));
   vi.doMock("../telemetry/config.js", () => ({
-    readConfig: () => ({ latestVersion: opts.latestVersion ?? "9.9.9" }),
+    readConfig: () => ({
+      latestVersion: opts.latestVersion ?? "9.9.9",
+      pendingUpdate: opts.pendingVersion && {
+        version: opts.pendingVersion,
+        command: "npm install -g hyperframes",
+        startedAt: new Date().toISOString(),
+      },
+    }),
     writeConfig: () => {},
   }));
 
@@ -83,6 +99,7 @@ async function noticeWith(opts: {
 describe("printUpdateNotice — install-method-aware command", () => {
   afterEach(() => {
     vi.doUnmock("./env.js");
+    vi.doUnmock("./attendedTerminal.js");
     vi.doUnmock("./installerDetection.js");
     vi.doUnmock("../telemetry/config.js");
     vi.resetModules();
@@ -102,6 +119,19 @@ describe("printUpdateNotice — install-method-aware command", () => {
 
   it("is suppressed on a non-TTY stderr", async () => {
     const out = await noticeWith({ installerCommand: "brew upgrade hyperframes", isTTY: false });
+    expect(out).toBe("");
+  });
+
+  it("is suppressed when the run is unattended", async () => {
+    const out = await noticeWith({ installerCommand: "npm i -g hyperframes", unattended: true });
+    expect(out).toBe("");
+  });
+
+  it("does not tell the user to install a version a background install is already installing", async () => {
+    const out = await noticeWith({
+      installerCommand: "npm i -g hyperframes",
+      pendingVersion: "9.9.9",
+    });
     expect(out).toBe("");
   });
 
@@ -373,19 +403,29 @@ describe("checkForUpdate — registry boundary guard", () => {
 });
 
 describe("updateCheckDue / cachedUpdateCheck — what the parent reads without fetching", () => {
+  // The directory that holds the daily notice claims: a fresh one per load().
+  let stateDir = "";
+
   afterEach(() => {
     vi.doUnmock("../telemetry/config.js");
     vi.doUnmock("./env.js");
+    vi.doUnmock("../version.js");
+    vi.doUnmock("./installerDetection.js");
     vi.resetModules();
     vi.unstubAllEnvs();
+    vi.useRealTimers();
   });
 
   async function load(config: Record<string, unknown>) {
     vi.resetModules();
     vi.stubEnv("CI", "");
     vi.stubEnv("HYPERFRAMES_NO_UPDATE_CHECK", "");
+    vi.stubEnv("HYPERFRAMES_PLUGIN_VERSION", "");
+    vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "");
+    stateDir = mkdtempSync(join(tmpdir(), "hf-update-notice-"));
     vi.doMock("./env.js", () => ({ isDevMode: () => false }));
     vi.doMock("../telemetry/config.js", () => ({
+      CONFIG_PATH: join(stateDir, "config.json"),
       readConfig: () => ({ ...config }),
       readConfigFresh: () => ({ ...config }),
       writeConfig: () => {},
@@ -408,6 +448,280 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
   ])("with %s, a check is due: %s", async (_, config, due) => {
     const mod = await load(config);
     expect(mod.updateCheckDue()).toBe(due);
+  });
+
+  // A release reaches agents within hours: the cache answers for 2 h, not a day.
+  it("re-asks the registry once the cache is 3 hours old", async () => {
+    const mod = await load({ lastUpdateCheck: hoursAgo(3), latestVersion: "9.9.9" });
+    expect(mod.updateCheckDue()).toBe(true);
+  });
+
+  it("says in _meta when the cached latest was checked", async () => {
+    const checkedAt = hoursAgo(1);
+    const mod = await load({ lastUpdateCheck: checkedAt, latestVersion: "999.0.0" });
+    expect(mod.getUpdateMeta()).toMatchObject({ latestVersion: "999.0.0", checkedAt });
+  });
+
+  describe("_meta.skillsOutdated, from the cached background skills check", () => {
+    const skillsCache = (over: Record<string, unknown> = {}) => ({
+      lastSkillsCheck: hoursAgo(1),
+      skillsCheckedVersion: "0.9.6",
+      skillsOutdatedCount: 3,
+      skillsMissingCount: 0,
+      ...over,
+    });
+    const loadAt096 = (config: Record<string, unknown>) => {
+      vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
+      return load(config);
+    };
+
+    it("reports the count without a network call", async () => {
+      const fetchSpy = vi.fn();
+      vi.stubGlobal("fetch", fetchSpy);
+      try {
+        const mod = await loadAt096(skillsCache());
+        expect(mod.withMeta({ ok: true })._meta.skillsOutdated).toBe(3);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("still reports a count taken 23 hours ago", async () => {
+      const mod = await loadAt096(skillsCache({ lastSkillsCheck: hoursAgo(23) }));
+      expect(mod.getUpdateMeta().skillsOutdated).toBe(3);
+    });
+
+    it("reports zero when the check found everything current", async () => {
+      const mod = await loadAt096(skillsCache({ skillsOutdatedCount: 0 }));
+      expect(mod.getUpdateMeta().skillsOutdated).toBe(0);
+    });
+
+    it.each([
+      ["no skills check is cached", {}],
+      [
+        "the check ran under another CLI version (another release tag)",
+        skillsCache({ skillsCheckedVersion: "0.9.5" }),
+      ],
+      ["the cached count is not a count", skillsCache({ skillsOutdatedCount: "3" })],
+      // Nothing refreshes the count once HYPERFRAMES_NO_UPDATE_CHECK (or CI/dev) stops the checks.
+      ["the check is over a day old", skillsCache({ lastSkillsCheck: hoursAgo(25) })],
+    ])("is absent when %s", async (_, config) => {
+      const mod = await loadAt096(config);
+      expect("skillsOutdated" in mod.getUpdateMeta()).toBe(false);
+    });
+
+    it("is absent when HYPERFRAMES_SKIP_SKILLS hands the skills to something else", async () => {
+      const mod = await loadAt096(skillsCache());
+      vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+      expect("skillsOutdated" in mod.getUpdateMeta()).toBe(false);
+    });
+
+    it("reports missing core skills as skillsMissing, beside skillsOutdated", async () => {
+      const mod = await loadAt096(skillsCache({ skillsMissingCount: 2 }));
+      expect(mod.getUpdateMeta()).toMatchObject({ skillsOutdated: 3, skillsMissing: 2 });
+    });
+
+    it.each([
+      [
+        "the check is over a day old",
+        skillsCache({ skillsMissingCount: 2, lastSkillsCheck: hoursAgo(25) }),
+      ],
+      [
+        "the check ran under another CLI version",
+        skillsCache({ skillsMissingCount: 2, skillsCheckedVersion: "0.9.5" }),
+      ],
+      ["the cached count is not a count", skillsCache({ skillsMissingCount: -1 })],
+    ])("leaves skillsMissing out when %s", async (_, config) => {
+      const mod = await loadAt096(config);
+      expect("skillsMissing" in mod.getUpdateMeta()).toBe(false);
+    });
+
+    it("leaves skillsMissing out under HYPERFRAMES_SKIP_SKILLS", async () => {
+      const mod = await loadAt096(skillsCache({ skillsMissingCount: 2 }));
+      vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+      expect("skillsMissing" in mod.getUpdateMeta()).toBe(false);
+    });
+  });
+
+  // The agent relays this sentence to the person, who decides whether to update; no skill text
+  // tells the agent to run an update itself.
+  describe("_meta.updateNotice, for the agent to pass on to the person", () => {
+    const behind = (over: Record<string, unknown> = {}) => ({
+      lastUpdateCheck: hoursAgo(1),
+      latestVersion: "0.9.8",
+      lastSkillsCheck: hoursAgo(1),
+      skillsCheckedVersion: "0.9.6",
+      skillsOutdatedCount: 3,
+      skillsMissingCount: 0,
+      ...over,
+    });
+    const loadNotice = (
+      config: Record<string, unknown>,
+      channel = "npm",
+      path = "/test/lib/node_modules/hyperframes/dist/cli.js",
+    ) => {
+      vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
+      vi.doMock("./installerDetection.js", async (importOriginal) => ({
+        ...(await importOriginal<typeof import("./installerDetection.js")>()),
+        runningInstall: () => ({ channel, path }),
+      }));
+      return load(config);
+    };
+
+    it("names the newer CLI, the skills behind, and the one command that updates both", async () => {
+      const mod = await loadNotice(behind());
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6), and 3 installed HyperFrames skills are out of date. To update both, run: hyperframes update",
+      );
+    });
+
+    it("counts missing core skills in the skills half", async () => {
+      const mod = await loadNotice(behind({ skillsOutdatedCount: 1, skillsMissingCount: 2 }));
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toContain(
+        "1 installed HyperFrames skill is out of date and 2 core skills are missing.",
+      );
+    });
+
+    it("speaks of the skills alone when the CLI is current", async () => {
+      const mod = await loadNotice(behind({ latestVersion: "0.9.6" }));
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
+        "For the user: 3 installed HyperFrames skills are out of date (this run is HyperFrames CLI 0.9.6). To update them, run: hyperframes update",
+      );
+    });
+
+    it("leaves out the skills half when no skill is behind", async () => {
+      const mod = await loadNotice(behind({ skillsOutdatedCount: 0 }));
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toBe(
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npm install -g hyperframes@0.9.8",
+      );
+    });
+
+    it("leaves out the skills half under HYPERFRAMES_SKIP_SKILLS", async () => {
+      const mod = await loadNotice(behind());
+      vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "1");
+      const notice = mod.withMeta({ ok: true })._meta.updateNotice;
+      expect(notice).toBe(
+        "For the user: HyperFrames CLI 0.9.8 is available (this run is 0.9.6). To update, run: npm install -g hyperframes@0.9.8",
+      );
+    });
+
+    // Each command moves the install that is running: a global CLI's own `update` (npx would run a
+    // project's copy or a fresh one), a project's manager for a project-local CLI.
+    const PROJECT = "/test/video/node_modules/hyperframes/dist/cli.js";
+    it.each([
+      [
+        "npm",
+        undefined,
+        "hyperframes update",
+        "npm install -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      [
+        "pnpm",
+        undefined,
+        "hyperframes update",
+        "pnpm add -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      [
+        "bun",
+        undefined,
+        "hyperframes update",
+        "bun add -g hyperframes@0.9.8",
+        "hyperframes update",
+      ],
+      ["brew", undefined, "hyperframes update", "brew upgrade hyperframes", "hyperframes update"],
+      [
+        "project",
+        PROJECT,
+        "npm install hyperframes@0.9.8, then npx hyperframes update",
+        "npm install hyperframes@0.9.8",
+        "npx hyperframes update",
+      ],
+      [
+        "npx",
+        undefined,
+        "npx hyperframes@latest update",
+        "npx hyperframes@latest update",
+        "npx hyperframes update",
+      ],
+      [
+        "unknown",
+        undefined,
+        "npx hyperframes update",
+        "npx hyperframes update",
+        "npx hyperframes update",
+      ],
+    ])(
+      "%s: names a command that moves this install",
+      async (channel, path, both, cliOnly, skillsOnly) => {
+        const cases: [Record<string, unknown>, string][] = [
+          [behind(), both],
+          [behind({ skillsOutdatedCount: 0 }), cliOnly],
+          [behind({ latestVersion: "0.9.6" }), skillsOnly],
+        ];
+        for (const [config, command] of cases) {
+          const mod = await loadNotice(config, channel, path);
+          expect(mod.withMeta({ ok: true })._meta.updateNotice).toMatch(
+            new RegExp(`run: ${command.replaceAll(".", "\\.")}$`),
+          );
+        }
+      },
+    );
+
+    it.each([
+      ["the update check is off", { HYPERFRAMES_NO_UPDATE_CHECK: "1" }],
+      ["CI runs it", { CI: "1" }],
+      ["an agent plugin pins the CLI", { HYPERFRAMES_PLUGIN_VERSION: "0.9.6" }],
+    ])("is absent when %s", async (_, env) => {
+      const mod = await loadNotice(behind());
+      for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v);
+      expect("updateNotice" in mod.withMeta({ ok: true })._meta).toBe(false);
+    });
+
+    it("is absent when nothing is behind", async () => {
+      const mod = await loadNotice(behind({ latestVersion: "0.9.6", skillsOutdatedCount: 0 }));
+      expect("updateNotice" in mod.withMeta({ ok: true })._meta).toBe(false);
+    });
+
+    it("is absent when the caller opts out (`update` names its own command)", async () => {
+      const mod = await loadNotice(behind());
+      expect("updateNotice" in mod.withMeta({ ok: true }, { updateNotice: false })._meta).toBe(
+        false,
+      );
+    });
+
+    it("shows once a day per project; the numeric fields stay on every result", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-03T08:00:00Z"));
+      const at = (h: number) =>
+        new Date(Date.parse("2026-11-03T08:00:00Z") - h * 3_600_000).toISOString();
+      const mod = await loadNotice(behind({ lastUpdateCheck: at(1), lastSkillsCheck: at(1) }));
+
+      const first = mod.withMeta({ ok: true })._meta;
+      expect(first.updateNotice).toEqual(expect.any(String));
+      const again = mod.withMeta({ ok: true })._meta;
+      expect("updateNotice" in again).toBe(false);
+      expect(again).toMatchObject({
+        updateAvailable: true,
+        latestVersion: "0.9.8",
+        skillsOutdated: 3,
+      });
+      expect(again.checkedAt).toEqual(expect.any(String));
+
+      vi.setSystemTime(new Date("2026-11-04T08:30:00Z"));
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toEqual(expect.any(String));
+    });
+
+    it("keeps its own daily claim, apart from the stderr skills nudge", async () => {
+      const mod = await loadNotice(behind());
+      writeFileSync(
+        join(stateDir, "skills-notice.json"),
+        JSON.stringify({ [resolve(process.cwd())]: Date.now() }),
+      );
+      expect(mod.withMeta({ ok: true })._meta.updateNotice).toEqual(expect.any(String));
+    });
   });
 
   it("is never due under CI", async () => {
@@ -443,7 +757,22 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     },
   );
 
-  it.each(["0.0.1", "999.0.0", "999.0.0-beta.1+build.5"])(
+  // The cache predates this install (an upgrade happened since), so however recent, it is
+  // stale: the next background check asks the registry (launchBackgroundChecks' 1 h
+  // failure backoff still bounds how often).
+  it("treats a cached latest older than the running CLI as unknown, and as due for a recheck now", async () => {
+    vi.doMock("../version.js", () => ({ VERSION: "0.9.6", PRODUCER_VERSION: "0.9.6" }));
+    const mod = await load({ lastUpdateCheck: hoursAgo(1), latestVersion: "0.9.5" });
+    expect(mod.updateCheckDue()).toBe(true);
+    expect(mod.getUpdateMeta()).toEqual({
+      version: "0.9.6",
+      latestVersion: undefined,
+      updateAvailable: false,
+    });
+    expect(mod.cachedUpdateCheck().latest).toBe("0.9.6");
+  });
+
+  it.each(["999.0.0", "999.0.0-beta.1+build.5"])(
     "preserves safe cached version %s and the update-check result in metadata",
     async (latestVersion) => {
       const mod = await load({ latestVersion });

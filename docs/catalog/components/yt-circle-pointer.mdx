@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Pointer Circle + Countdown</h1>
+  <p>Draw-on annotation ellipse around a target plus a countdown chip that pulses each tick</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/yt-circle-pointer.json"
   compositionId="yt-circle-pointer"
   compositionSrc="compositions/components/yt-circle-pointer.html"
   title="Pointer Circle + Countdown"
-  description="Draw-on annotation ellipse around a target plus a countdown chip that pulses each tick"
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":168}}
   attribution={{"path":"registry/components/yt-circle-pointer","tags":["annotation","countdown","overlay"]}}
@@ -203,7 +207,9 @@ That writes one file: `compositions/components/yt-circle-pointer.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -222,6 +228,4 @@ Tagged `annotation` `countdown` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

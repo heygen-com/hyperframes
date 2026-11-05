@@ -136,6 +136,16 @@ describe("layoutAudit helpers", () => {
     });
   });
 
+  it("keeps canvas_covered an error only when the canvas is covered for most of the film", () => {
+    const covered = (times: number[], samples: number) =>
+      collapseStaticLayoutIssues(
+        times.map((time) => ({ ...issue("canvas_covered", "error"), time })),
+        samples,
+      )[0]?.severity;
+    expect(covered([1, 2, 3, 4, 5], 8)).toBe("error");
+    expect(covered([7, 8], 8)).toBe("info");
+  });
+
   it("formats issues with timestamp, selector, container, and fix hint", () => {
     const formatted = formatLayoutIssue({
       ...issue("text_box_overflow", "error"),
@@ -273,6 +283,38 @@ describe("persistence-tiered severity (#U10)", () => {
 
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0]).toMatchObject({ severity: "error", occurrences: 2 });
+  });
+
+  it("keeps a text_occluded at error when the word lives one sample and is hidden at it", () => {
+    const grid = [0.167, 0.5, 0.833, 1.167];
+    const word = (time: number, lifetime: { start: number; end: number }) => ({
+      ...issue("text_occluded", "error"),
+      time,
+      lifetime,
+    });
+
+    const collapsed = collapseStaticLayoutIssues(
+      [word(0.167, { start: 0, end: 0.4 }), word(0.5, { start: 0.4, end: 0.8 })].map((entry) => ({
+        ...entry,
+        selector: `#w${entry.time}`,
+      })),
+      grid.length,
+      grid,
+    );
+
+    expect(collapsed.map((entry) => entry.severity)).toEqual(["error", "error"]);
+  });
+
+  it("still demotes a text_occluded seen at one of several samples its clip spans", () => {
+    const grid = [0.1, 0.3, 0.5, 0.7];
+
+    const collapsed = collapseStaticLayoutIssues(
+      [{ ...issue("text_occluded", "error"), time: 0.3, lifetime: { start: 0, end: 1 } }],
+      grid.length,
+      grid,
+    );
+
+    expect(collapsed[0]).toMatchObject({ severity: "info", occurrences: 1 });
   });
 
   it("keeps a text_occluded over changing text at error, not demoted per sample", () => {

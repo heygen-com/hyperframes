@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeErrorMessage } from "./errorMessage.js";
+import { atStep, normalizeErrorMessage } from "./errorMessage.js";
 
 describe("normalizeErrorMessage", () => {
   it("returns the message of an Error instance", () => {
@@ -83,5 +83,21 @@ describe("normalizeErrorMessage", () => {
   it("stringifies non-object primitives", () => {
     expect(normalizeErrorMessage(42)).toBe("42");
     expect(normalizeErrorMessage(false)).toBe("false");
+  });
+});
+
+describe("atStep", () => {
+  it("adds the step to a failure's message once, and keeps the error", async () => {
+    const failure = new TypeError(
+      "Runtime.callFunctionOn timed out. Increase the 'protocolTimeout' setting in launch/connect calls for a higher timeout if needed.",
+    );
+    const run = () => Promise.reject(failure);
+    await expect(atStep("seeking to 2s", run)).rejects.toBe(failure);
+    await expect(atStep("seeking to 2s", run)).rejects.toBe(failure);
+    expect(failure.message).toBe("Runtime.callFunctionOn timed out. (while seeking to 2s)");
+  });
+
+  it("returns the step's value untouched", async () => {
+    await expect(atStep("seeking", async () => 7)).resolves.toBe(7);
   });
 });

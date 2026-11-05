@@ -1,5 +1,6 @@
 import { AFTER_FONTS_CLAIM, DEFERRED_FILE, typeAfterFonts } from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
+import { applyTextBindings } from "./applyVariableBindings";
 
 /** Past the 3 s a font-display:block face holds text back, far under the engine's 45 s player-ready wait. */
 export const FONT_WAIT_TIMEOUT_MS = 5000;
@@ -123,14 +124,15 @@ function afterQueuedModules(): Promise<unknown> {
 }
 
 /**
- * Once fonts are ready, runs each script in its own place in parser order (classic, then module and
- * deferred), calls `afterRun`, then the load listeners the scripts added after those events passed.
+ * Once fonts are ready and variable text is bound, runs each script in its own place in parser order (classic,
+ * then module and deferred), calls `afterRun`, then the load listeners the scripts added after those events passed.
  */
 export async function runScriptsAfterFonts(
   scripts: readonly Element[],
   afterRun?: () => void,
 ): Promise<void> {
   await waitForFonts();
+  applyTextBindings(document);
   const isLate = (el: Element) => typeAfterFonts(el) === "module" || el.matches(DEFERRED_FILE);
   const held: HeldListener[] = [];
   const release = [document, window].map((target) => holdPassedLoadEvents(target, held));

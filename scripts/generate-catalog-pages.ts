@@ -58,6 +58,22 @@ export function mdxStringAttribute(name: string, value: string): string {
   return `${name}="${escaped}"`;
 }
 
+/**
+ * Text as the plain child of an HTML element in MDX, escaped through character
+ * references like mdxStringAttribute: `<`, `{` and `}` would otherwise open
+ * markup or an expression, and `&` goes first so its own references survive.
+ * MDX still reads that text as inline markdown, so `\`, backtick, `*`, `_`, `[`,
+ * `]` and `~` become references too: "@_blue_sweater_" stays literal, not italic.
+ */
+export function mdxText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/\{/g, "&#123;")
+    .replace(/\}/g, "&#125;")
+    .replace(/[\\`*_[\]~]/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
 function payloadPath(kind: ItemKind, name: string): string {
   return join(payloadRoot, typeDir(kind), `${name}.json`);
 }
@@ -1050,7 +1066,6 @@ function detailOpening(
     `  compositionId="${manifest.name}"`,
     `  compositionSrc="${target}"`,
     `  title=${JSON.stringify(manifest.title)}`,
-    `  description=${JSON.stringify(manifest.description)}`,
     `  variables={${JSON.stringify(variables)}}`,
     `  meta={${JSON.stringify(meta)}}`,
     `  attribution={${JSON.stringify(detailAttribution(kind, manifest))}}`,
@@ -1077,8 +1092,10 @@ function generateItemMdx(
   const file = primarySource(kind, manifest);
 
   // `mode: frame` gives the page the full content width the stage and the Tune
-  // panel need side by side. Mintlify still renders `title` as the H1 and
-  // `description` as the standfirst, so neither is repeated in the body.
+  // panel need side by side. A frame page shows no title of its own, and Mintlify
+  // renders snippet components (CatalogDetail) in the browser only, so the H1, the
+  // standfirst and the Docs tab's text are written into the page here: that is the
+  // HTML search engines read. A `<header>` element is dropped by Mintlify; a div keeps it.
   const lines: string[] = [
     "---",
     `title: ${yamlString(manifest.title)}`,
@@ -1088,6 +1105,11 @@ function generateItemMdx(
     "",
     'import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";',
     'import { InstallCommand } from "/snippets/install-command.jsx";',
+    "",
+    '<div className="hf-ve-static-head not-prose">',
+    `  <h1>${mdxText(manifest.title)}</h1>`,
+    `  <p>${mdxText(manifest.description)}</p>`,
+    "</div>",
     "",
     ...detailOpening(kind, manifest, primaryTarget, live, Boolean(file)),
   ];
@@ -1116,7 +1138,10 @@ function generateItemMdx(
     "",
     "</CatalogSlot>",
     "",
-    '<CatalogSlot slot="docs">',
+    "</CatalogDetail>",
+    "",
+    // The Docs tab: shown while that tab is open (docs/custom.css), and in the server HTML always.
+    '<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">',
     "",
   );
 
@@ -1156,7 +1181,7 @@ function generateItemMdx(
   // Generated tail: provenance, then the required `## Related topics` so the
   // page ends with it per docs/AGENTS.md. The marker delimits what is generated.
   lines.push(FOOTER_MARKER, "", ...footerSection(manifest, tags, source), ...RELATED_TOPICS);
-  lines.push("</CatalogSlot>", "", "</CatalogDetail>", "");
+  lines.push("</div>", "");
 
   return lines.join("\n");
 }

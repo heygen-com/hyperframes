@@ -46,7 +46,7 @@ export interface PrepareAnimatedGifInputsResult {
   preparedGifs: PreparedAnimatedGif[];
 }
 
-function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
+export function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
   const queryIdx = src.indexOf("?");
   const hashIdx = src.indexOf("#");
   if (queryIdx < 0 && hashIdx < 0) return { basePath: src, suffix: "" };
@@ -54,7 +54,7 @@ function splitUrlSuffix(src: string): { basePath: string; suffix: string } {
   return { basePath: src.slice(0, cutIdx), suffix: src.slice(cutIdx) };
 }
 
-function normalizeRelPath(path: string): string {
+export function normalizeRelPath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\/+/, "");
 }
 
@@ -76,7 +76,7 @@ function readLoopOverride(el: Element): boolean | null {
   return null;
 }
 
-function resolveGifSourcePath(
+export function resolveLocalImageSourcePath(
   src: string,
   options: Pick<PrepareAnimatedGifInputsOptions, "projectDir" | "downloadDir" | "sourceAssets">,
 ): string | null {
@@ -380,7 +380,7 @@ export async function prepareAnimatedGifInputs(
     const img = images[i]!;
     const src = (img.getAttribute("src") || "").trim();
     if (!hasGifExtension(src)) continue;
-    const sourcePath = resolveGifSourcePath(src, options);
+    const sourcePath = resolveLocalImageSourcePath(src, options);
     if (!sourcePath) continue;
 
     const bytes = readFileSync(sourcePath);

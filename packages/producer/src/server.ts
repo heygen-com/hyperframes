@@ -29,7 +29,11 @@ import crypto from "node:crypto";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
-import { fetchPublicHttpsText } from "@hyperframes/engine";
+import {
+  fetchPublicHttpsText,
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+} from "@hyperframes/engine";
 import {
   RenderCancelledError,
   createRenderJob,
@@ -51,6 +55,9 @@ import {
 } from "@hyperframes/core";
 import { parseEncoderOptions } from "@hyperframes/studio-server/encoder-options";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
+import { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
+
+export { extractSafeRenderErrorCode };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -91,8 +98,12 @@ interface RenderInput {
   maxRenderMs?: number;
   crf?: number;
   videoBitrate?: string;
+  keyframeIntervalSeconds?: number;
+  maxBitrate?: string;
+  bufferSize?: string;
   useGpu: boolean;
   debug: boolean;
+  forceScreenshot?: true;
   strictness: RenderConfig["strictness"];
   entryFile?: string;
   /**
@@ -125,27 +136,6 @@ interface PreparedRenderInput {
 
 const DEFAULT_SERVER_FPS = { num: 30, den: 1 } as const;
 const SSE_KEEPALIVE_MS = 30_000;
-const SAFE_RENDER_ERROR_CODES = new Set<string>([
-  "ASSET_MEDIA_TYPE_MISMATCH",
-  "NOT_MEDIA_PAYLOAD",
-  "INVALID_VIDEO_METADATA",
-  "VIDEO_SOURCE_UNRENDERABLE",
-  "VIDEO_EXTRACTION_FAILED",
-  "ENCODER_INTERRUPTED",
-  "RENDER_TOO_SLOW",
-  "RENDER_STAGE_STALLED",
-]);
-
-/**
- * Preserve only bounded producer error codes across JSON/SSE. Never derive a
- * code from the message: it may contain local paths or signed source URLs.
- */
-export function extractSafeRenderErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-  const code = error.code;
-  return typeof code === "string" && SAFE_RENDER_ERROR_CODES.has(code) ? code : undefined;
-}
-
 export interface SafeRenderErrorMetadata {
   errorCode: string;
   errorOwner?: "system" | "user";
@@ -231,6 +221,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
   const maxRenderMs = typeof body.maxRenderMs === "number" ? body.maxRenderMs : undefined;
   const useGpu = body.gpu === true;
   const debug = body.debug === true;
+  const forceScreenshot = body.forceScreenshot === true ? true : undefined;
   // Preserve the pre-structured-warning HTTP contract for callers that do
   // not yet send this field. Strict readiness is an explicit opt-in via
   // `bestEffort: false`; omission must keep producing degraded output with
@@ -243,7 +234,8 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     parseServerOutputDynamicRange(body.outputDynamicRange) ??
     fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const encoder = parseEncoderOptions(body, format ?? "mp4");
-  const { crf, videoBitrate, videoFrameFormat } = encoder.ok ? encoder.options : {};
+  const { crf, videoBitrate, videoFrameFormat, keyframeIntervalSeconds, maxBitrate, bufferSize } =
+    encoder.ok ? encoder.options : {};
 
   const { variables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
@@ -256,8 +248,12 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     maxRenderMs,
     crf,
     videoBitrate,
+    keyframeIntervalSeconds,
+    maxBitrate,
+    bufferSize,
     useGpu,
     debug,
+    forceScreenshot,
     strictness,
     entryFile,
     format,
@@ -310,6 +306,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
   const request = createRenderRequest({
     projectDir: input.projectDir,
     outputPath,
+    engineOverrides: input.forceScreenshot ? { forceScreenshot: true } : undefined,
     options: {
       fps: input.fps,
       quality: input.quality,
@@ -318,6 +315,9 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       maxRenderMs: input.maxRenderMs,
       crf: input.crf,
       videoBitrate: input.videoBitrate,
+      keyframeIntervalSeconds: input.keyframeIntervalSeconds,
+      maxBitrate: input.maxBitrate,
+      bufferSize: input.bufferSize,
       useGpu: input.useGpu,
       debug: input.debug,
       strictness: input.strictness,
@@ -794,6 +794,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         outputUrl,
         fileSize,
         durationMs,
+        ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
         videoDurationSeconds: job.duration ?? null,
         outcome: job.outcome ?? "completed",
         warnings: job.warnings,
@@ -889,6 +890,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             outputToken,
             outputUrl,
             fileSize,
+            ...referenceBackgroundResult(job[REFERENCE_BACKGROUND_FIELD]),
             videoDurationSeconds: job.duration ?? null,
             outcome: job.outcome ?? "completed",
             warnings: job.warnings,

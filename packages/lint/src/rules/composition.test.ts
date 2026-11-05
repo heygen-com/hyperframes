@@ -3050,3 +3050,51 @@ ${body}
     });
   });
 });
+
+describe("subcomposition_linked_style_names_root_id", () => {
+  const root = `<div id="a" data-composition-id="a" data-width="320" data-height="180"><div class="box"></div></div>`;
+  const codes = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+    (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+      ({ code }) => code,
+    );
+
+  it("warns when a linked stylesheet has a rule on the root id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    const found = await codes(html, [{ href: "a.css", content: "#a .box { color: red; }" }]);
+    expect(found).toContain("subcomposition_linked_style_names_root_id");
+  });
+
+  it("the hinted fixes leave no finding: the rule moved into the template, or a child selected", async () => {
+    const lint = async (html: string, externalStyles?: Array<{ href: string; content: string }>) =>
+      (await lintHyperframeHtml(html, { isSubComposition: true, externalStyles })).findings.map(
+        ({ code }) => code,
+      );
+    const hinted = [
+      await lint(
+        `<template id="a-template">${root}<style>#a .box { color: red; }</style></template>`,
+      ),
+      await lint(
+        `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`,
+        [{ href: "a.css", content: ".box { color: red; }" }],
+      ),
+    ];
+    for (const found of hinted) {
+      expect(found).not.toContain("subcomposition_linked_style_names_root_id");
+      expect(found).not.toContain("subcomposition_root_styled_by_class");
+    }
+  });
+
+  it("is quiet when the linked stylesheet uses classes, another id, or only a longer id", async () => {
+    const html = `<template id="a-template"><link rel="stylesheet" href="a.css">${root}</template>`;
+    for (const content of [
+      ".box { color: red; }",
+      "#b .box { color: red; }",
+      "#ab { color: red; }",
+      "/* #a */ .box { color: red; }",
+    ]) {
+      expect(await codes(html, [{ href: "a.css", content }])).not.toContain(
+        "subcomposition_linked_style_names_root_id",
+      );
+    }
+  });
+});

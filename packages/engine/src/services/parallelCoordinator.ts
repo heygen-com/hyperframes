@@ -8,7 +8,7 @@
 import { cpus, freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
 import { copyFile, readFile } from "fs/promises";
-import { renameWithRetryAsync } from "../utils/renameWithRetry.js";
+import { renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 import { join } from "path";
 import { getHeapStatistics } from "v8";
 
@@ -31,7 +31,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { getSystemTotalMb } from "./systemMemory.js";
+import { getCgroupCpuLimit, getSystemTotalMb } from "./systemMemory.js";
 import {
   CaptureFailure,
   classifyCaptureFailure,
@@ -116,6 +116,7 @@ export interface ParallelWorkerPhaseDiagnostic {
   browserVersion: string;
   canvasDrawElement: boolean | "unknown";
   gpuBackend: string;
+  readStep?: () => string | undefined;
 }
 
 export interface WorkerSizingConfig extends Partial<
@@ -130,6 +131,8 @@ export interface WorkerSizingConfig extends Partial<
    * than a plain DOM screenshot. Explicit --workers requests ignore this hint.
    */
   captureCostMultiplier?: number;
+  /** macOS, hardware GPU, screenshot frames written to disk (not streamed through this process). */
+  appleGpuDiskCapture?: boolean;
 }
 
 type WorkerBrowserPoolDecision = {
@@ -145,11 +148,18 @@ const MEMORY_PER_WORKER_MB = 1536;
 // Parent-process V8 heap the coordinator itself needs regardless of worker
 // count (compile artifacts, puppeteer sessions, encoder state).
 const HEAP_RESERVED_MB = 1024;
-// Parent-process V8 heap consumed per worker (protocol buffers + in-flight
-// frame buffers). Derived from the field OOM: 6 workers exhausted a ~4GB
-// default heap ⇒ >~500MB/worker + base. Caps auto sizing; an explicit
-// `--workers N` is still the operator's call.
-const HEAP_PER_WORKER_MB = 640;
+// Parent heap per worker, by --trace-gc in a 10 GB container (10-28): 21 MB on a short film, 228 MB on a 1080×1920
+// video-heavy one (427 → 1,110 MB from 1 to 4 workers). 320 keeps 1.4× over that; `--workers N` still overrides.
+const HEAP_PER_WORKER_MB = 320;
+// The desktop app keeps the old figure: its 4,192 MB heap is where 5 workers ran out (#5149). A packaged app runs the
+// CLI on its own plain Node, so it is known by the client tag it sets on every CLI call, or by Electron itself.
+const DESKTOP_HEAP_PER_WORKER_MB = 640;
+const inDesktopApp = () =>
+  Boolean(process.versions.electron) || /^desktop\//.test(process.env.HYPERFRAMES_CLIENT ?? "");
+// Apple-GPU disk capture measured ~15-25 MB parent heap per worker; 14 cores kept gaining to 8.
+const APPLE_DISK_HEAP_PER_WORKER_MB = 128;
+const APPLE_DISK_CORES_PER_WORKER = 1.75;
+const APPLE_DISK_MAX_WORKERS = 8;
 const MIN_WORKERS = 1;
 const MAX_WORKER_DIAGNOSTIC_LINES = 8;
 // Hard ceiling on explicit `--workers N` requests. Above this, the cost of
@@ -320,11 +330,24 @@ export function computeWorkerSizing(
   // is immediately reclaimable.
   const totalMemoryMb = getSystemTotalMb();
   const heapLimitMb = Math.round(getHeapStatistics().heap_size_limit / (1024 * 1024));
+  const appleDisk = config?.appleGpuDiskCapture === true;
   const heapBasedWorkers = Math.max(
     1,
-    Math.floor((heapLimitMb - HEAP_RESERVED_MB) / HEAP_PER_WORKER_MB),
+    Math.floor(
+      (heapLimitMb - HEAP_RESERVED_MB) /
+        (appleDisk
+          ? APPLE_DISK_HEAP_PER_WORKER_MB
+          : inDesktopApp()
+            ? DESKTOP_HEAP_PER_WORKER_MB
+            : HEAP_PER_WORKER_MB),
+    ),
   );
-  const cpuBasedWorkers = Math.max(1, cpuCount - 2);
+  // A CPU quota (docker --cpus) bounds workers at its whole CPUs: at 3.5, 3 beat 2 and 4 (johnny, 10-28).
+  const cpuQuota = getCgroupCpuLimit();
+  const cpuBasedWorkers = Math.max(
+    1,
+    cpuQuota === null ? cpuCount - 2 : Math.min(cpuCount - 2, Math.floor(cpuQuota)),
+  );
   const memoryBasedWorkers = Math.max(1, Math.floor((totalMemoryMb * 0.5) / MEMORY_PER_WORKER_MB));
   const frameBasedWorkers = Math.floor(totalFrames / MIN_FRAMES_PER_WORKER);
   const captureCostMultiplier = Math.max(1, config?.captureCostMultiplier ?? 1);
@@ -361,9 +384,15 @@ export function computeWorkerSizing(
     if (concurrency !== "auto") {
       return Math.max(MIN_WORKERS, Math.min(ABSOLUTE_MAX_WORKERS, Math.floor(concurrency)));
     }
-    return defaultSafeMaxWorkers();
+    return appleDisk
+      ? Math.max(defaultSafeMaxWorkers(), APPLE_DISK_MAX_WORKERS)
+      : defaultSafeMaxWorkers();
   })();
-  const effectiveCoresPerWorker = config?.coresPerWorker ?? DEFAULT_CONFIG.coresPerWorker;
+  const configuredCoresPerWorker = config?.coresPerWorker ?? DEFAULT_CONFIG.coresPerWorker;
+  const effectiveCoresPerWorker =
+    appleDisk && configuredCoresPerWorker === DEFAULT_CONFIG.coresPerWorker
+      ? APPLE_DISK_CORES_PER_WORKER
+      : configuredCoresPerWorker;
   const effectiveMinParallelFrames = config?.minParallelFrames ?? DEFAULT_CONFIG.minParallelFrames;
   const effectiveLargeRenderThreshold =
     config?.largeRenderThreshold ?? DEFAULT_CONFIG.largeRenderThreshold;
@@ -572,6 +601,7 @@ async function captureFrameRange(
   phaseTimeoutMs: number,
   diagnosticFor: (phase: ParallelWorkerPhase, frameIndex?: number) => ParallelWorkerPhaseDiagnostic,
   onWorkerPhase: ((diagnostic: ParallelWorkerPhaseDiagnostic) => void) | undefined,
+  onWorkerOperation?: (diagnostic: ParallelWorkerPhaseDiagnostic) => void,
 ): Promise<number> {
   let framesCaptured = 0;
   const outputOffset = task.outputFrameOffset ?? 0;
@@ -581,13 +611,15 @@ async function captureFrameRange(
     frameIndex: number,
     operation: () => Promise<T>,
   ): Promise<T> => {
-    const diagnostic = diagnosticFor(phase, frameIndex);
+    const diagnostic = { ...diagnosticFor(phase, frameIndex), readStep: () => session.captureStep };
     if (framesCaptured === 0) onWorkerPhase?.(diagnostic);
+    onWorkerOperation?.(diagnostic);
     return withParallelWorkerDeadline(operation(), diagnostic, phaseTimeoutMs, signal);
   };
   const awaitEncode = (frameIndex: number, encodeResult: Promise<Buffer>): Promise<Buffer> => {
     const diagnostic = diagnosticFor("frame_encode", frameIndex);
     if (framesCaptured === 0) onWorkerPhase?.(diagnostic);
+    onWorkerOperation?.(diagnostic);
     return withParallelWorkerDeadline(encodeResult, diagnostic, phaseTimeoutMs, signal);
   };
   // Depth-2 pipelined drawElement produce (HF_DE_PARALLEL_STREAM spike): frame
@@ -847,6 +879,8 @@ async function executeWorkerTask(
   parallel?: boolean,
   onFailure?: (failure: CaptureFailure) => void,
   onWorkerPhase?: (diagnostic: ParallelWorkerPhaseDiagnostic) => void,
+  onWorkerOperation?: (diagnostic: ParallelWorkerPhaseDiagnostic) => void,
+  gate?: FirstSessionGate,
 ): Promise<WorkerResult> {
   const startTime = Date.now();
   let framesCaptured = 0;
@@ -915,6 +949,7 @@ async function executeWorkerTask(
         await assertSwiftShader(activeSession.page, readWebGlVendorInfoFromCanvas);
       }
       await initializeSession(activeSession);
+      if (gate) await (task.workerId === 0 ? gate.verify(activeSession) : gate.wait());
     });
     canvasDrawElement = activeSession.captureMode === "drawelement";
     gpuBackend = activeSession.gpuRenderer ?? "unknown";
@@ -932,6 +967,7 @@ async function executeWorkerTask(
       phaseTimeoutMs,
       diagnosticFor,
       onWorkerPhase,
+      onWorkerOperation,
     );
 
     await verifyDiskDrawElementSamples(activeSession, task, Boolean(onFrameBuffer));
@@ -948,6 +984,7 @@ async function executeWorkerTask(
       pageErrorLines: pageErrorLinesOf(activeSession),
     };
   } catch (error) {
+    if (task.workerId === 0) gate?.fail(error);
     const diagnostics = session ? selectWorkerDiagnostics(session.browserConsoleBuffer) : [];
     const workerDiagnostic: CaptureWorkerDiagnostic = {
       workerId: task.workerId,
@@ -1021,6 +1058,36 @@ export interface ParallelCaptureHooks {
    * frame (the ordered writer) with the original error, not a stall.
    */
   onWorkerFailure?: (failure: CaptureFailure) => void;
+  onWorkerOperation?: (diagnostic: ParallelWorkerPhaseDiagnostic) => void;
+  /** Worker 0 runs this on its initialised session; the other workers wait for it. A rejection fails the pool. */
+  verifyFirstSession?: (session: CaptureSession) => Promise<void>;
+}
+
+interface FirstSessionGate {
+  verify: (session: CaptureSession) => Promise<void>;
+  wait: () => Promise<void>;
+  fail: (error: unknown) => void;
+}
+
+function createFirstSessionGate(
+  verify: (session: CaptureSession) => Promise<void>,
+): FirstSessionGate {
+  let fail!: (error: unknown) => void;
+  let pass!: () => void;
+  const settled = new Promise<void>((resolve, reject) => {
+    pass = resolve;
+    fail = reject;
+  });
+  settled.catch(() => {});
+  return {
+    verify: (session) =>
+      verify(session).then(pass, (error: unknown) => {
+        fail(error);
+        throw error;
+      }),
+    wait: () => settled,
+    fail,
+  };
 }
 
 function pageErrorLinesOf(session: CaptureSession): string[] {
@@ -1138,6 +1205,7 @@ export async function executeParallelCapture(
     hooks,
   });
   const onFailure = failureHandler.onFailure;
+  const gate = hooks?.verifyFirstSession && createFirstSessionGate(hooks.verifyFirstSession);
   const results = await Promise.all(
     tasks.map((task) =>
       executeWorkerTask(
@@ -1152,6 +1220,8 @@ export async function executeParallelCapture(
         parallel,
         onFailure,
         onWorkerPhase,
+        hooks?.onWorkerOperation,
+        gate,
       ),
     ),
   );

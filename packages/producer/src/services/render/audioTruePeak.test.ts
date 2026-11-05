@@ -74,6 +74,22 @@ describe.skipIf(!hasFfmpeg)("measureTruePeakDbfs in segments", () => {
     60_000,
   );
 
+  it.each([
+    ["ends on a segment cut", CUT - BURST.length],
+    ["starts where the last segment's scan starts", 2 * CUT - BLOCK],
+  ])(
+    "reads an AAC peak that %s exactly as one whole-file pass",
+    async (_, at) => {
+      const wav = monoWav(`aac-burst-${at}`, at);
+      const aac = wav.replace(/\.wav$/, ".m4a");
+      execFileSync(getFfmpegBinary(), ["-nostdin", "-v", "error", "-i", wav, "-c:a", "aac", aac]);
+      const [whole, segmented] = await bothWays(aac);
+      expect(whole).toBeGreaterThan(-10);
+      expect(segmented).toBe(whole);
+    },
+    60_000,
+  );
+
   it("reads silence as -inf", async () => {
     expect(await bothWays(monoWav("silence"))).toEqual([
       Number.NEGATIVE_INFINITY,

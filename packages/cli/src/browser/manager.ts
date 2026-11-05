@@ -24,6 +24,7 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -39,8 +40,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+const CACHE_ROOT_DIR = hyperframesCacheDir();
+const CACHE_DIR = hyperframesCacheDir("chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -229,6 +230,8 @@ export interface BrowserResult {
 export interface EnsureBrowserOptions {
   onProgress?: (downloadedBytes: number, totalBytes: number) => void;
   downloadStallMs?: number;
+  // Stalled-download attempts; default 3 on a terminal, 1 elsewhere (see ensureBrowser).
+  downloadAttempts?: number;
   downloadBaseUrl?: string;
   // Re-download the managed build even when cached; only its version dir is replaced.
   force?: boolean;
@@ -542,15 +545,52 @@ async function ensureLinuxArmBrowser(options?: EnsureBrowserOptions): Promise<Br
  * With `preferManagedChrome`: env var -> OUR pinned cache -> auto-download
  * (puppeteer-cache preference and system Chrome are both skipped).
  */
+const BROWSER_WAIT_NOTICE_MS = 15_000;
+
+/** Runs `task`, saying so every 15 s while it is still going, so a first-use download is never silent. */
+export async function withBrowserWaitNotice<T>(
+  task: Promise<T>,
+  notify: (message: string) => void = console.warn,
+  everyMs = BROWSER_WAIT_NOTICE_MS,
+): Promise<T> {
+  const timer = setInterval(
+    () =>
+      notify(
+        "[hyperframes] Still getting Chrome ready; the first use downloads it. " +
+          "Set HYPERFRAMES_BROWSER_PATH to use an installed Chrome instead.",
+      ),
+    everyMs,
+  );
+  timer.unref();
+  try {
+    return await task;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 export async function ensureBrowser(options?: EnsureBrowserOptions): Promise<BrowserResult> {
-  if (options?.signal) return ensureBrowserInOwnedProcess(options);
-  return ensureBrowserInCurrentProcess(options);
+  // Tools that time out at 120 s lose to three stalled attempts (~4 min); one stall then a clear error wins.
+  const resolved = {
+    ...options,
+    downloadAttempts: options?.downloadAttempts ?? (process.stdout.isTTY ? DOWNLOAD_ATTEMPTS : 1),
+  };
+  const task = resolved.signal
+    ? ensureBrowserInOwnedProcess(resolved)
+    : ensureBrowserInCurrentProcess(resolved);
+  return resolved.onProgress ? task : withBrowserWaitNotice(task);
 }
 
 // fallow-ignore-next-line complexity
 async function ensureBrowserInCurrentProcess(
   options?: EnsureBrowserOptions,
 ): Promise<BrowserResult> {
+  const configured = browserPathFromEnv();
+  if (configured && !existsSync(configured.path)) {
+    throw new Error(
+      `${configured.name} is set to ${configured.path}, which does not exist. Fix the path or unset it.`,
+    );
+  }
   const fromEnv = findFromEnv();
   if (fromEnv) return fromEnv;
 
@@ -600,6 +640,7 @@ async function ensureBrowserInOwnedProcess(options: EnsureBrowserOptions): Promi
       {
         force: options.force,
         preferManagedChrome: options.preferManagedChrome,
+        downloadAttempts: options.downloadAttempts,
       },
       {
         signal,
@@ -668,28 +709,23 @@ export async function installWithCorruptArchiveRecovery<T>(
  * chrome-headless-shell download is broken. Sibling failure mode: #2078
  * (SIGTRAP at launch), same remediation, different trigger.
  */
-function browserPathHintForPlatform(): string {
-  if (process.platform === "darwin") {
-    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  }
-  if (process.platform === "win32") {
-    return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-  }
-  return "/usr/bin/google-chrome";
-}
-
 function wrapDownloadFailureWithBrowserPathHint(
   cause: unknown,
   unzipLog: readonly string[],
 ): Error {
   const original = normalizeErrorMessage(cause);
   const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
-  const example = browserPathHintForPlatform();
+  const installed = findSystemBrowser()?.executablePath;
+  const pointAt = installed
+    ? `Point hyperframes at the Chrome already installed here instead:\n\n` +
+      `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
+      `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
+    : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
+      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
-    `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
-    `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
-    `Then re-run your command. Any Chrome build works for the screenshot ` +
+    pointAt +
+    `Any Chrome build works for the screenshot ` +
     `capture path; install a real chrome-headless-shell later if you need the ` +
     `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
     `Docker image which ships a compatible headless-shell.`;
@@ -699,14 +735,46 @@ function wrapDownloadFailureWithBrowserPathHint(
 const DOWNLOAD_STALL_MS = 60_000;
 const DOWNLOAD_ATTEMPTS = 3;
 
-async function retryOnStall<T>(run: () => Promise<T>, clear: () => void): Promise<T> {
+export async function retryOnStall<T>(
+  run: () => Promise<T>,
+  clear: () => void,
+  attempts = DOWNLOAD_ATTEMPTS,
+): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await run();
     } catch (err) {
-      if (!(err instanceof BrowserDownloadStalledError) || attempt >= DOWNLOAD_ATTEMPTS) throw err;
-      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${DOWNLOAD_ATTEMPTS - 1}).`);
+      if (!(err instanceof BrowserDownloadStalledError) || attempt >= attempts) throw err;
+      console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${attempts - 1}).`);
       clear();
+    }
+  }
+}
+
+const LOCK_ATTEMPTS = 5;
+const LOCK_FIRST_WAIT_MS = 250;
+
+/** Windows refuses to rename or unlink a file a scanner has open, for a moment.
+ * A real permission error is retried too, then thrown. */
+function isLockedFileError(err: unknown): boolean {
+  if (process.platform !== "win32") return false;
+  const said = `${(err as NodeJS.ErrnoException | undefined)?.code ?? ""} ${normalizeErrorMessage(err)}`;
+  return /\b(EBUSY|EPERM|EACCES)\b/.test(said);
+}
+
+export async function retryWhileLocked<T>(
+  run: () => Promise<T> | T,
+  onRetry: () => void = () => {},
+  attempts = LOCK_ATTEMPTS,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (!isLockedFileError(err) || attempt >= attempts) throw err;
+      await wait(LOCK_FIRST_WAIT_MS * 2 ** (attempt - 1));
+      onRetry();
     }
   }
 }
@@ -790,24 +858,33 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
 
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
-  const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
+  const clearStaging = () =>
+    rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
   const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
 
   try {
-    const staged = await retryOnStall(
+    const staged = await retryWhileLocked(
       () =>
-        installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
-          console.warn(
-            `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
-          ),
+        retryOnStall(
+          () =>
+            installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
+              console.warn(
+                `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+              ),
+            ),
+          clearStaging,
+          options?.downloadAttempts,
         ),
       clearStaging,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
     unzipLog.lines = [];
-    return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
+    const executablePath = await retryWhileLocked(() =>
+      moveStagedInstallIntoCache(stagingDir, staged),
+    );
+    return { executablePath, source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog.lines);
   } finally {
@@ -861,7 +938,7 @@ function moveStagedInstallIntoCache(
     if (replaced) renameSync(aside, target);
     throw err;
   }
-  if (replaced) rmSync(aside, { recursive: true, force: true });
+  if (replaced) removeLeftover(aside);
   return join(target, relative(staged.path, staged.executablePath));
 }
 
@@ -872,7 +949,7 @@ const REPLACED_PREFIX = ".chrome-replaced-";
 const isInstallLeftover = (name: string) =>
   name.startsWith(STAGING_PREFIX) || name.startsWith(REPLACED_PREFIX);
 
-function removeInstallLeftovers(): boolean {
+function removeInstallLeftovers(tolerateLocked = true): boolean {
   let names: string[];
   try {
     names = readdirSync(CACHE_ROOT_DIR);
@@ -881,9 +958,17 @@ function removeInstallLeftovers(): boolean {
     throw err;
   }
   const leftovers = names.filter(isInstallLeftover);
-  for (const name of leftovers)
-    rmSync(join(CACHE_ROOT_DIR, name), { recursive: true, force: true });
+  for (const name of leftovers) removeLeftover(join(CACHE_ROOT_DIR, name), tolerateLocked);
   return leftovers.length > 0;
+}
+
+// A running Chrome keeps its debug.log open and Windows refuses to unlink it; the next sweep retries.
+function removeLeftover(path: string, tolerateLocked = true): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch (err) {
+    if (!tolerateLocked || (!isErrno(err, "EBUSY") && !isErrno(err, "EPERM"))) throw err;
+  }
 }
 
 export async function sweepKilledInstalls(): Promise<void> {
@@ -894,7 +979,7 @@ export async function sweepKilledInstalls(): Promise<void> {
 
 // Deletes the managed Chrome cache and interrupted-install leftovers; true when any of them existed.
 export function clearBrowser(): boolean {
-  const removedLeftovers = removeInstallLeftovers();
+  const removedLeftovers = removeInstallLeftovers(false);
   if (!existsSync(CACHE_DIR)) return removedLeftovers;
   rmSync(CACHE_DIR, { recursive: true, force: true });
   return true;

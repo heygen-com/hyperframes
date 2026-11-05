@@ -1066,6 +1066,22 @@ describe("openProjectHistory", () => {
     });
   });
 
+  it("keeps the project record's file when opening a folder it already records, and counts the open as a use", async () => {
+    const { history, projectDir, historyRoot } = await project({ "index.html": "v1" });
+    await history.close();
+    const record = join(historyRoot, history.projectId, "project.json");
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    utimesSync(record, old, old);
+    const before = statSync(record);
+
+    const again = await open(projectDir, historyRoot);
+    await again.close();
+
+    const after = statSync(record);
+    expect(after.ino).toBe(before.ino);
+    expect(after.mtimeMs).toBeGreaterThan(before.mtimeMs + 29 * 24 * 60 * 60 * 1000);
+  });
+
   describe("a history 0.8.78 wrote", () => {
     const fixture = join(import.meta.dirname, "__fixtures__", "history-0.8.78");
     const fixtureId = readFileSync(join(fixture, "history-id"), "utf-8").trim();
@@ -1357,18 +1373,17 @@ describe("openProjectHistory", () => {
       write(path, text);
       utimesSync(join(projectDir, path), at / 1000, at / 1000);
     };
-    const turn = (id: string, lastWriteAt: number) => ({
-      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs: 400 },
+    const turn = (id: string, lastWriteAt: number, idleMs = 400) => ({
+      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
     });
 
     // b.html comes first in time though not by name: taken in order, both are the window's.
-    const first = Date.now();
-    await pause(300);
     write("b.html", "b2");
-    await pause(300);
+    const first = statSync(join(projectDir, "b.html")).ctimeMs - 9_990;
+    await pause(20);
     write("a.html", "a2"); // past the limit from the window's last write, so it counts only after b.html
     const lastWrite = statSync(join(projectDir, "a.html")).ctimeMs;
-    const reopened = await open(projectDir, historyRoot, turn("turn-1", first));
+    const reopened = await open(projectDir, historyRoot, turn("turn-1", first, 10_000));
     const [kept] = reopened.list();
     expect(kept?.files.map((file) => file.path)).toEqual(["a.html", "b.html"]);
     expect(Math.abs(kept!.endedAt - lastWrite), "ends at its last write").toBeLessThan(2);

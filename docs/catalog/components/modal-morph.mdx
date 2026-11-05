@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Modal Morph</h1>
+  <p>A small card expands into a full panel, shared-element style: both layouts measured once at mount, the container morphs by transform only (never width/height tweens) while keyed children counter-scale and re-flow onto their own measured targets as pure functions of time.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/modal-morph.json"
   compositionId="modal-morph"
   compositionSrc="compositions/components/modal-morph.html"
   title="Modal Morph"
-  description="A small card expands into a full panel, shared-element style: both layouts measured once at mount, the container morphs by transform only (never width/height tweens) while keyed children counter-scale and re-flow onto their own measured targets as pure functions of time."
   variables={[{"id":"from_scale","type":"number","role":"style","label":"From scale","description":"Multiplies the authored card footprint, clamped 0.5 to 1.5.","default":1},{"id":"expand_at","type":"number","role":"timing","label":"Expand at","description":"Seconds after mount when the card grows into the panel.","default":1.2},{"id":"register","type":"enum","role":"timing","label":"Register","description":"Morph feel. Snappy is faster with a settle capped at 1.02 of the target rect.","default":"calm","options":[{"value":"calm","label":"Calm"},{"value":"snappy","label":"Snappy"}]},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the settled panel holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":522}}
   attribution={{"path":"registry/components/modal-morph","tags":["motion-primitive","structure","flip","shared-element","modal","deterministic","experiment"]}}
@@ -557,7 +561,9 @@ That writes one file: `compositions/components/modal-morph.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -600,6 +606,4 @@ Tagged `motion-primitive` `structure` `flip` `shared-element` `modal` `determini
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

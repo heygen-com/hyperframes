@@ -297,6 +297,53 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  it("keeps exit 0 when a late rejection follows a command that already delivered", async () => {
+    // check and snapshot close Chrome after printing; on Windows that teardown can reject.
+    const trackCommandResult = vi.fn();
+    const priorListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    try {
+      mockInitCommand(() => {});
+      mockTelemetry({ trackCommandResult });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+      expect(process.exitCode).toBe(0);
+
+      process.emit("unhandledRejection", new Error("late browser teardown"), Promise.resolve());
+
+      expect(process.exitCode).toBe(0);
+      expect(trackCommandResult).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true, exitCode: 0 }),
+      );
+    } finally {
+      process.removeAllListeners("unhandledRejection");
+      for (const listener of priorListeners) process.on("unhandledRejection", listener);
+    }
+  });
+
+  it("exits 0 when a late uncaught exception follows a command that already delivered", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const priorListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    try {
+      mockInitCommand(() => {});
+      mockTelemetry({ trackCommandResult: vi.fn() });
+
+      process.argv = ["node", "cli.ts", "init", "--json"];
+      await import("./cli.js");
+      exitSpy.mockClear();
+
+      process.emit("uncaughtException", new Error("late child teardown"));
+
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of priorListeners) process.on("uncaughtException", listener);
+      exitSpy.mockRestore();
+    }
+  });
+
   it("still exits non-zero when a command throws and no render ever validated", async () => {
     // The guard on the sanitizer above: it must key off a validated artifact,
     // not merely off the command having finished. Without this, every caught
@@ -319,7 +366,7 @@ describe("CLI lifecycle", () => {
     }
   });
 
-  it("still scores an EPIPE before the artifact is validated as a failure", async () => {
+  it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     try {
@@ -329,7 +376,8 @@ describe("CLI lifecycle", () => {
       process.argv = ["node", "cli.ts", "init", "--json"];
       await import("./cli.js");
 
-      expect(exitSpy).toHaveBeenCalledWith(0);
+      // `hyperframes render … | head -1` on a refused render exited 0 (CLI 0.9.11)
+      expect(exitSpy).toHaveBeenCalledWith(1);
       expect(trackCommandResult).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     } finally {
       exitSpy.mockRestore();

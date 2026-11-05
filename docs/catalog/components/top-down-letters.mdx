@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Top-Down Letters</h1>
+  <p>Letters descend from above in a pronounced staircase with zero blur.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/top-down-letters.json"
   compositionId="top-down-letters"
   compositionSrc="compositions/components/top-down-letters.html"
   title="Top-Down Letters"
-  description="Letters descend from above in a pronounced staircase with zero blur."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Word that cascades in. Every character becomes one letter span, in source order.","default":"CASCADE"},{"id":"distance","type":"enum","role":"motion","label":"Distance","description":"Multiplies the drop the timeline drives, so the letters cover a shorter or longer run in the same time.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Letter colour: ink for light frames, paper for dark ones, accent rides --brand.","default":"ink","options":[{"value":"ink","label":"Ink"},{"value":"paper","label":"Paper"},{"value":"accent","label":"Accent"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":112}}
   attribution={{"path":"registry/components/top-down-letters","tags":["video-primitive","motion-primitive","typography"]}}
@@ -147,7 +151,9 @@ That writes one file: `compositions/components/top-down-letters.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -189,6 +195,4 @@ Tagged `video-primitive` `motion-primitive` `typography`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

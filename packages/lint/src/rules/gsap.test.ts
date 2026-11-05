@@ -1240,6 +1240,62 @@ describe("GSAP rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  describe("a set that fires inside a running tween on the same property", () => {
+    const lint = (body: string) =>
+      lintHyperframeHtml(`
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <h1 id="w" class="clip" data-start="0" data-duration="5" data-track-index="0">IM</h1>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    ${body}
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`);
+    const overlap = (result: Awaited<ReturnType<typeof lint>>) =>
+      result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+
+    it("reports a hide that lands in a pop-in's last frames, naming the element and both times", async () => {
+      const result = await lint(`
+    tl.fromTo("#w", { opacity: 0 }, { opacity: 1, duration: 0.16, ease: "expo.out" }, 0.54);
+    tl.set("#w", { opacity: 0 }, 0.69);`);
+      expect(overlap(result)).toMatchObject({
+        severity: "warning",
+        selector: "#w",
+        message: expect.stringMatching(/set on "#w" for opacity fires at 0\.69s.*0\.54s to 0\.70s/),
+        fixHint: expect.stringContaining("move the set to 0.70s or later"),
+      });
+    });
+
+    it.each([
+      [
+        "after the tween ends",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.7);`,
+      ],
+      [
+        "on the tween's first frame",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.54);`,
+      ],
+      [
+        "on another property",
+        `tl.to("#w", { scale: 1.2, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "on another element",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#x", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "with two sets and no tween",
+        `tl.set("#w", { opacity: 1 }, 0.5); tl.set("#w", { opacity: 0 }, 0.5);`,
+      ],
+    ])("does not report a set %s", async (_label, body) => {
+      expect(overlap(await lint(body))).toBeUndefined();
+    });
+  });
+
   it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", async () => {
     // Regression: a non-DOM-targeting tween like `tl.to({ _: 0 }, …)` (used to
     // anchor timeline duration) was matched by the regex but skipped by the
@@ -3719,6 +3775,61 @@ describe("SVG draw-on rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "svg_measure_before_path_d");
     expect(finding).toBeUndefined();
+  });
+
+  describe("gsap_fullscreen_overlay_starts_visible — a scene child hidden through a scoped query", () => {
+    const scene = (hide: string) => `
+<html><body>
+  <div data-composition-id="scene" data-width="1920" data-height="1080">
+    <div class="ov" style="position:absolute;inset:0;background:#fff"></div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const root = document.querySelector('[data-composition-id="scene"]');
+    ${hide}
+    const tl = gsap.timeline({ paused: true });
+    tl.to(".ov", { opacity: 1, duration: 0.5 }, 1).to(".ov", { opacity: 0, duration: 0.5 }, 3);
+    window.__timelines["scene"] = tl;
+  </script>
+</body></html>`;
+    const flagged = async (html: string) =>
+      (await lintHyperframeHtml(html)).findings.some(
+        (f) => f.code === "gsap_fullscreen_overlay_starts_visible",
+      );
+
+    it("accepts gsap.set on a querySelector call with a literal selector", async () => {
+      expect(await flagged(scene('gsap.set(root.querySelector(".ov"), { opacity: 0 });'))).toBe(
+        false,
+      );
+    });
+
+    it("accepts gsap.set on a variable bound to a querySelector call", async () => {
+      expect(
+        await flagged(scene('const ov = root.querySelector(".ov"); gsap.set(ov, { opacity: 0 });')),
+      ).toBe(false);
+    });
+
+    it("accepts a descendant selector inside the query", async () => {
+      expect(
+        await flagged(
+          scene(
+            'gsap.set(document.querySelector("[data-composition-id=scene] .ov"), { opacity: 0 });',
+          ),
+        ),
+      ).toBe(false);
+    });
+
+    it("accepts a querySelector variable written without semicolons", async () => {
+      expect(
+        await flagged(
+          scene('const ov = root.querySelector(".ov")\n    gsap.set(ov, { opacity: 0 })'),
+        ),
+      ).toBe(false);
+    });
+
+    it("still flags an overlay nothing hides at zero", async () => {
+      expect(await flagged(scene(""))).toBe(true);
+    });
   });
 
   describe("gsap_fullscreen_overlay_starts_visible — the from() shape is not a defect", () => {

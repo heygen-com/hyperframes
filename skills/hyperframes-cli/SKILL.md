@@ -3,17 +3,21 @@ name: hyperframes-cli
 description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
+
+**Usage beacon:** run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # HyperFrames CLI
 
 Run `npx hyperframes <command>` unless the project gives a wrapper; then use the wrapper. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
 
+A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is out. Pass it to the person once per conversation, in your own words, at a natural pause; updating is theirs to decide.
+
 ## Commands by job
 
 | Job | Commands |
 | --- | --- |
-| Start | `init <dir>` (blank; `--example <name>` only when asked), `capture <url>` |
+| Start | `init <dir> --skip-skills` (blank; `--example <name>` only when asked), `capture <url>` |
 | Read a project | `info`, `compositions`, `timeline --json`, `docs <topic>` |
 | Check it | `lint` while writing; `check --json` as the gate (lint, runtime, layout, contrast) |
 | Look at it | `snapshot` (`--at <t,…>`, `--range START,END`, `--composition <id>`, `--zoom`, `--angle`, `--against <video>`), `keyframes`, `compare`, `audio` |
@@ -22,7 +26,7 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 | Media and sound | `media-treatment`, `grade-compare`, `remove-background`, `tts`, `transcribe`, `beats`, `normalize-audio` (`/media-use`) |
 | Show and ship | `preview`, `present` (`/slideshow`), `render`, `publish`, `cloud`, `lambda`, `cloudrun` |
 | Desktop app | `open`, `catch-up` |
-| Upkeep | `doctor`, `browser`, `upgrade`, `skills`, `usage`, `clean`, `feedback` |
+| Upkeep | `doctor`, `browser`, `upgrade`, `usage`, `clean`, `feedback` |
 
 `validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is telemetry for skills' own scripts. Don't run them.
 
@@ -32,7 +36,7 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 2. `npx hyperframes check --json` and fix every error. While a lint error remains the layout and contrast audits don't run; "0 samples" means nothing was checked. Contrast failures carry a `suggestedColor`. A finding at a single sample (an entrance in flight) is info; a 3 s+ video with no visible change fails `sweep_static`.
 3. `npx hyperframes snapshot` and read the PNGs (under `.hyperframes/artifacts/snapshots/`): that is how you see the video. With sub-compositions, snapshot a midpoint of every scene; tiny unstyled content or a missing hero is a mount defect (`../hyperframes/references/format.md`).
 4. `npx hyperframes preview --background`, check the URL answers 200, give the person the project URL and wait, unless they asked for the file or for no stops. Passing checks alone is not a reason to render.
-5. When it is time to render (step 4): `npx hyperframes render --quality looks --output out.mp4` (`draft` while iterating, `delivery` for the final). Confirm the file is non-empty and its `ffprobe` duration matches the root `data-duration`, then look at decoded frames.
+5. Time to render (step 4): `npx hyperframes render --quality looks -o out.mp4` (`draft` while iterating, `delivery` for the final; paid plan: `cloud render --fps <data-fps> --quality high -o out.mp4`). Confirm the file is non-empty and its `ffprobe` duration matches the root `data-duration`, then look at decoded frames.
 
 "This element" or the current selection: `npx hyperframes preview --context --json --context-fields selection`; `no-selection` means ask them to click it.
 
@@ -57,9 +61,9 @@ Every write is kept and can be undone. At the start of a turn, `npx hyperframes 
 
 | Need | Command |
 | --- | --- |
-| Local | `render --quality looks --output out.mp4` (`draft`, `delivery`) |
-| Reproducible container | `render --docker --strict --output out.mp4` |
-| Batch from variables | `render --batch rows.json --output "renders/{name}.mp4"` |
+| Local | `render --quality looks -o out.mp4` (`draft`, `delivery`) |
+| Reproducible container | `render --docker --strict -o out.mp4` |
+| Batch from variables | `render --batch rows.json -o "renders/{name}.mp4"` |
 | Hosted, no local Chrome or FFmpeg | `cloud render` (`references/cloud.md`) |
 | Your own AWS or GCP | `lambda render`, `cloudrun render` (`references/lambda.md`, `references/cloudrun.md`) |
 

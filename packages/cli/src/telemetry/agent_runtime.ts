@@ -42,6 +42,8 @@ interface VendorRule {
   name: Exclude<AgentRuntime, null>;
   /** Check returns true when the named agent is driving the CLI. */
   check: (env: NodeJS.ProcessEnv) => boolean;
+  /** Narrower than `check` when `check` also matches a person in that editor's terminal or host. */
+  agentOnly?: (env: NodeJS.ProcessEnv) => boolean;
 }
 
 // Ordering matters: the FIRST rule that matches wins. Put more specific rules
@@ -93,6 +95,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "cursor",
     check: (env) => Boolean(env["CURSOR_AGENT"]) || env["TERM_PROGRAM"] === "cursor",
+    agentOnly: (env) => Boolean(env["CURSOR_AGENT"]),
   },
   // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
   // Attested across many independent detectors (nx
@@ -105,6 +108,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "windsurf",
     check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
+    agentOnly: () => false,
   },
   // GitHub Copilot Coding Agent — runs inside GitHub Actions and the
   // workflow injects an additional marker to distinguish from generic CI.
@@ -123,6 +127,7 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "replit",
     check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
+    agentOnly: () => false,
   },
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
@@ -251,6 +256,12 @@ export function detectAgentRuntime(): AgentRuntime {
     if (rule.check(process.env)) return rule.name;
   }
   return null;
+}
+
+/** An agent is running this shell, not a person typing in an editor's terminal or a hosted workspace. */
+export function isAgentDriven(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (isGeminiManagedAgent()) return true;
+  return VENDOR_RULES.some((rule) => (rule.agentOnly ?? rule.check)(env));
 }
 
 /** Observed harness marker, not proof of a vendor, benchmark, or human user. */

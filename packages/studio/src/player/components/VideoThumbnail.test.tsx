@@ -452,3 +452,62 @@ describe("VideoThumbnail during a zoom", () => {
     );
   });
 });
+
+describe("VideoThumbnail during a trim", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    vi.mocked(decodeVideoThumbnail).mockResolvedValue({
+      value: { kind: "filmstrip", urls: ["blob:a", "blob:b"], aspect: 16 / 9 },
+      weight: 256,
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const trimmed = (duration: number, sourceStart: number) => (
+    <VideoThumbnail
+      videoSrc="/api/projects/p/preview/assets/clip.mp4"
+      label=""
+      labelColor="#fff"
+      projectId="p"
+      sessionEpoch={1}
+      duration={duration}
+      sourceStart={sourceStart}
+      sourceRangeDuration={duration}
+    />
+  );
+
+  it("keeps its strip through every move of a trim and decodes the new range once at rest", async () => {
+    Object.defineProperty(host, "clientWidth", { configurable: true, value: 440 });
+    Object.defineProperty(host, "clientHeight", { configurable: true, value: 40 });
+    const root = harness.mount(host);
+    await act(async () => {
+      root.render(trimmed(10, 0));
+      await Promise.resolve();
+    });
+    vi.mocked(decodeVideoThumbnail).mockClear();
+    for (const [duration, start] of [
+      [9.5, 0.5],
+      [9, 1],
+      [8.5, 1.5],
+    ] as const) {
+      await act(async () => {
+        markTimelineMotion();
+        root.render(trimmed(duration, start));
+        await Promise.resolve();
+      });
+    }
+    expect(decodeVideoThumbnail).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+      await Promise.resolve();
+    });
+    const ranges = vi
+      .mocked(decodeVideoThumbnail)
+      .mock.calls.map(([r]) => [r.sourceStart, r.sourceRangeDuration]);
+    expect(new Set(ranges.map((r) => r.join()))).toEqual(new Set(["1.5,8.5"]));
+  });
+});

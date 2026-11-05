@@ -111,6 +111,8 @@ export interface EncodeStageInput {
   preset: ReturnType<typeof getEncoderPreset>;
   effectiveQuality: number;
   effectiveBitrate: string | undefined;
+  maxBitrate?: string;
+  bufferSize?: string;
   /** Producer config — enables the chunked-concat encoder when on. */
   enableChunkedEncode: boolean;
   chunkedEncodeSize: number;
@@ -276,6 +278,8 @@ function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConf
     preset: preset.preset,
     quality: input.effectiveQuality,
     bitrate: input.effectiveBitrate,
+    maxBitrate: input.maxBitrate,
+    bufferSize: input.bufferSize,
     pixelFormat: preset.pixelFormat,
     vp9CpuUsed: engineCfg.vp9CpuUsed,
     useGpu: job.config.useGpu,
@@ -289,8 +293,8 @@ function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConf
 }
 
 /**
- * Software libx264 from JPEG only: the streaming encoder then runs the disk encoder's
- * arguments (same bytes). Needs a core the capture workers leave free.
+ * h264 from JPEG only, software or GPU: the streaming encoder then runs the disk encoder's
+ * arguments. Needs a core the capture workers leave free.
  */
 export function canEncodeWhileCapturing(
   input: EncodeStageInput,
@@ -305,7 +309,6 @@ export function canEncodeWhileCapturing(
     !input.enableChunkedEncode &&
     input.preset.codec === "h264" &&
     !input.preset.hdr &&
-    input.job.config.useGpu !== true &&
     input.captureImageFormat === "jpeg"
   );
 }

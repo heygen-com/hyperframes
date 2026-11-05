@@ -338,22 +338,25 @@ export function createControls(
   document.addEventListener("touchmove", onTouchMove, { passive: true });
   document.addEventListener("touchend", onTouchEnd);
 
-  const startHideTimer = () => {
+  const canHide = () =>
+    isPlaying && !scrubbing && !volumeScrubbing && !controls.querySelector(":focus-visible");
+
+  const reveal = () => {
+    controls.classList.remove("hfp-hidden");
     if (hideTimeout) clearTimeout(hideTimeout);
     hideTimeout = setTimeout(() => {
-      if (isPlaying) controls.classList.add("hfp-hidden");
+      if (canHide()) controls.classList.add("hfp-hidden");
     }, 3000);
   };
 
   const host = parent instanceof ShadowRoot ? (parent.host as HTMLElement) : parent;
-  const onHostMouseMove = () => {
-    controls.classList.remove("hfp-hidden");
-    startHideTimer();
-  };
+  const onHostActivity = () => reveal();
   const onHostMouseLeave = () => {
-    if (isPlaying) controls.classList.add("hfp-hidden");
+    if (canHide()) controls.classList.add("hfp-hidden");
   };
-  host.addEventListener("mousemove", onHostMouseMove);
+  host.addEventListener("mousemove", onHostActivity);
+  host.addEventListener("keydown", onHostActivity);
+  host.addEventListener("focusin", onHostActivity);
   host.addEventListener("mouseleave", onHostMouseLeave);
 
   return {
@@ -365,11 +368,14 @@ export function createControls(
       time.textContent = `${formatTime(clampedCurrent)} / ${formatTime(duration)}`;
     },
     updatePlaying(playing: boolean) {
+      const changed = playing !== isPlaying;
       isPlaying = playing;
       playBtn.classList.toggle("hfp-playing", playing);
       playBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
-      if (playing) startHideTimer();
-      else controls.classList.remove("hfp-hidden");
+      if (!playing) {
+        if (hideTimeout) clearTimeout(hideTimeout);
+        controls.classList.remove("hfp-hidden");
+      } else if (changed) reveal();
     },
     updateSpeed(speed: number) {
       const idx = presets.indexOf(speed);
@@ -408,7 +414,9 @@ export function createControls(
       document.removeEventListener("touchmove", onVolumeTouchMove);
       document.removeEventListener("touchend", onVolumeTouchEnd);
       document.removeEventListener("click", onDocClick);
-      host.removeEventListener("mousemove", onHostMouseMove);
+      host.removeEventListener("mousemove", onHostActivity);
+      host.removeEventListener("keydown", onHostActivity);
+      host.removeEventListener("focusin", onHostActivity);
       host.removeEventListener("mouseleave", onHostMouseLeave);
       if (hideTimeout) clearTimeout(hideTimeout);
       controls.remove();

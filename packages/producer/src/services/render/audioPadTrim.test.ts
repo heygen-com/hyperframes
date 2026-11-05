@@ -15,7 +15,7 @@
 
 import { describe, expect, it, mock, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -601,6 +601,135 @@ describe("constrainAacTruePeak from a PCM source", () => {
       });
       expect(result.success).toBe(true);
       expect(result.loweredDb).toBeGreaterThan(pcmPeakDbfs);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("padOrTrimAudioToVideoFrameCount from a PCM source", () => {
+  // A second AAC generation reads hotter than the first: the fake peaks model that measured case.
+  function pcmHarness(dir: string, peaks: { fromPcm: number[]; fromAac: number }) {
+    const inputs: string[] = [];
+    const sourcePath = join(dir, "audio-source.wav");
+    const input: PadTrimAudioInput = {
+      videoPath: join(dir, "video.mp4"),
+      audioPath: join(dir, "audio.m4a"),
+      outputPath: join(dir, "audio.duration-normalized.m4a"),
+      sourcePath,
+      probeVideoFrameInfo: async () => ({ frameCount: 120, fpsNum: 30, fpsDen: 1 }),
+      probeAudioInfo: async () => ({ durationSeconds: 4.021 }),
+      probeAudioTruePeakDbfs: async (path) =>
+        path === sourcePath
+          ? -3
+          : inputs.at(-1) === sourcePath
+            ? peaks.fromPcm[inputs.length - 1]!
+            : peaks.fromAac,
+      encodeAac: async (from, output) => {
+        inputs.push(from);
+        writeFileSync(output, "aac");
+        return { success: true };
+      },
+    };
+    return { input, inputs, sourcePath };
+  }
+
+  it("trims a compliant mix from its PCM, so a second AAC generation cannot push it over and cut it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-trim-pcm-"));
+    try {
+      const { input, inputs, sourcePath } = pcmHarness(dir, { fromPcm: [-1.8], fromAac: 0.2 });
+
+      const result = await padOrTrimAudioToVideoFrameCount(input);
+
+      expect(result.success, result.error).toBe(true);
+      expect(result.operation).toBe("trim");
+      expect(inputs).toEqual([sourcePath]);
+      expect(result).not.toHaveProperty("audioLoweredDb");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("re-encodes a peak correction from the PCM, not from the normalized AAC", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-trim-pcm-cut-"));
+    try {
+      const { input, inputs, sourcePath } = pcmHarness(dir, { fromPcm: [0.5, -1.6], fromAac: 3 });
+
+      const result = await padOrTrimAudioToVideoFrameCount(input);
+
+      expect(result.success, result.error).toBe(true);
+      expect(inputs).toEqual([sourcePath, sourcePath]);
+      expect(result.audioLoweredDb).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("constrainAacTruePeak keeps its PCM source matching the delivered AAC", () => {
+  function peakHarness(dir: string, rewrite: { success: boolean }) {
+    const audioPath = join(dir, "audio.m4a");
+    const sourcePath = join(dir, "audio-source.wav");
+    writeFileSync(audioPath, "aac");
+    writeFileSync(sourcePath, "pcm");
+    const rewrites: string[] = [];
+    let corrected = false;
+    const run = (firstPeak: number) =>
+      constrainAacTruePeak({
+        audioPath,
+        sourcePath,
+        targetDurationSeconds: 4,
+        probeTruePeakDbfs: async (path) =>
+          path === sourcePath ? -3 : path === audioPath && !corrected ? firstPeak : -1.6,
+        encodeAac: async (_from, output) => {
+          corrected = true;
+          writeFileSync(output, "corrected aac");
+          return { success: true };
+        },
+        rewriteSource: async (_from, output, filter) => {
+          rewrites.push(filter);
+          if (rewrite.success) writeFileSync(output, "cut pcm");
+          return rewrite;
+        },
+      });
+    return { run, rewrites, sourcePath };
+  }
+
+  it("applies the cut to the PCM too, so encoding it again reproduces the delivered AAC", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cut-source-"));
+    try {
+      const { run, rewrites, sourcePath } = peakHarness(dir, { success: true });
+
+      const result = await run(0.5);
+
+      expect(result).toEqual({ success: true, loweredDb: 2 });
+      expect(rewrites).toEqual(["volume=-2.000dB"]);
+      expect(readFileSync(sourcePath, "utf-8")).toBe("cut pcm");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the PCM alone when no cut is needed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cut-source-none-"));
+    try {
+      const { run, rewrites, sourcePath } = peakHarness(dir, { success: true });
+
+      expect(await run(-1.8)).toEqual({ success: true });
+      expect(rewrites).toEqual([]);
+      expect(readFileSync(sourcePath, "utf-8")).toBe("pcm");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("removes a PCM it could not cut rather than leave one louder than the delivered AAC", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cut-source-fail-"));
+    try {
+      const { run, sourcePath } = peakHarness(dir, { success: false });
+
+      expect(await run(0.5)).toEqual({ success: true, loweredDb: 2, sourceStale: true });
+      expect(existsSync(sourcePath)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -192,6 +192,12 @@ Source: `packages/lint/src/rules/composition.ts`.
 
 **Fix:** Set the sub-composition's `data-duration` to fill the host window, or cover the gap with another clip.
 
+### `subcomposition_linked_style_names_root_id`
+
+**Warning.** A stylesheet linked from a sub-composition has a rule on `#<root id>`, the id of the sub-composition's root. When the composition is compiled the root is merged into its host, so that selector matches nothing. The same rule in an inline `<style>` is rewritten and works.
+
+**Fix:** Move the rule into a `<style>` inside the `<template>`, or select a child element of the root in the linked file instead of the root itself.
+
 ### `subcomposition_root_styled_by_class`
 
 **Error.** A sub-composition's root element is styled through class selectors, but at render every rule is scoped to `[data-composition-id=...]`, so the class-keyed styles stop applying.
@@ -526,6 +532,12 @@ Or keep the element `visibility: hidden` until its draw tween starts.
 
 Source: `packages/lint/src/rules/media.ts`.
 
+### `audio_attribute_unreadable`
+
+**Error.** A `data-automation` or `data-fx-chain` is not one the render can parse: not JSON, no `"version": 1`, no `lanes` / `nodes` array, a lane without `target` or `points`, or a node without `type`. The audio mix fails on it, locally and in the cloud.
+
+**Fix:** Write it as `{"version": 1, "lanes": [...]}` (automation) or `{"version": 1, "nodes": [...]}` (effect chain), or remove the attribute.
+
 ### `audio_carve_ungrouped_sources`
 
 **Warning.** A voiceover carve names its member clips directly instead of carving an `<hf-audio-group>`, so the list silently rots when clips change.
@@ -588,9 +600,10 @@ Source: `packages/lint/src/rules/media.ts`.
 
 ### `color_grading_non_media`
 
-**Error.** `data-color-grading` is set on an element other than `<video>`, `<img>` or `<canvas>`, such as a
-wrapper or an element with a CSS background. The shader runtime only grades real `<video>`, `<img>` and
-`<canvas>` elements, so the attribute has no effect.
+**Error.** `data-color-grading` is set on an element other than `<video>`, `<img>`, `<canvas>` or
+`<hf-color-group>`, such as a wrapper or an element with a CSS background. The shader runtime only grades
+real `<video>`, `<img>` and `<canvas>` elements, plus the members of a
+[grade group](/reference/color-grading#grade-a-whole-lane), so the attribute has no effect.
 
 **Fix:** Move the attribute to the `<video>`, `<img>` or `<canvas>` element itself.
 
@@ -764,7 +777,13 @@ Source: `packages/lint/src/rules/fonts.ts`.
 
 **Fix:** Declare each family with `@font-face` pointing at the captured `.woff2` files, or bundle the font under `capture/assets/fonts/`.
 
-The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional.
+The declaration may use a quoted or unquoted family name. If `font-family` is the last descriptor in the block, its final semicolon is optional. Families named in a `font` shorthand (`font: 500 16px/1 "PingFang SC", sans-serif`) count the same as `font-family`.
+
+### `font_face_local_only`
+
+**Warning.** An `@font-face` names only `local()` sources. A local render draws the font installed on this machine; a cloud render, or another machine without it, falls back to a different font.
+
+**Fix:** Add a `url()` source pointing at a `.woff2` file inside the project, or use a Google Fonts family.
 
 ### `system_font_will_alias`
 
@@ -809,6 +828,7 @@ Source: `packages/lint/src/rules/slideshow.ts`.
 **Error.** A slideshow island contains invalid JSON or a structure that does not match the manifest schema.
 
 **Fix:** Make the `<script type="application/hyperframes-slideshow+json">` block valid JSON matching the SlideshowManifest schema.
+If supplied, `startTime` and `endTime` must be finite JSON numbers. Quoted numbers such as `"0"`, `null`, and overflowing values such as `1e400` are invalid.
 
 ### `slideshow_unresolved_ref`
 
@@ -899,6 +919,12 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 **Error.** A CSS `mask-image` or `-webkit-mask-image` declaration references files that are not in the project, so the texture mask fails to load. In valid CSS, comments and text inside other declarations, such as `content` strings, are ignored.
 
 **Fix:** Add the missing mask file(s) to the project, or update the `mask-image` URL.
+
+### `missing_stylesheet_asset`
+
+**Warning.** A `url()` in a linked local stylesheet does not resolve beside that stylesheet. Browsers resolve `url()` from the stylesheet's own folder, so the font or image 404s and the render falls back silently. When the file exists in a parent folder, the fix hint names the working path.
+
+**Fix:** Change the `url()` to be relative to the stylesheet (for example `../assets/fonts/x.ttf` from `styles/main.css`), or add the file.
 
 ### `inaccessible_media_url`
 

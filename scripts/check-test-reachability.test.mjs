@@ -278,3 +278,26 @@ test("report CLI prints diagnostics without applying the gate verdict", (t) => {
   assert.equal(orphan.status, 0, orphan.stderr);
   assert.match(orphan.stdout, /orphan.test.mjs/);
 });
+
+test("inline vitest projects are reachable through the union of their selections", () => {
+  const tree = fixture("bun run --filter '*' test", '"**"');
+  delete tree["scripts/parity.test.mjs"];
+  tree["packages/a/package.json"] = JSON.stringify({
+    name: "@scope/a",
+    scripts: { test: "vitest run" },
+  });
+  tree["packages/a/src/a.test.ts"] = "";
+  tree["packages/a/src/b.browser.test.ts"] = "";
+  const project = (name, include, exclude) =>
+    `{ extends: true, test: { name: "${name}", include: ["${include}"], exclude: ${exclude} } }`;
+  tree["packages/a/vitest.config.ts"] = `export default { test: { projects: [
+    ${project("unit", "src/**/*.test.ts", '["src/**/*.browser.test.ts"]')},
+    ${project("browser", "src/**/*.browser.test.ts", "[]")},
+  ] } }`;
+  assert.deepEqual(check(tree), {});
+  tree["packages/a/vitest.config.ts"] = tree["packages/a/vitest.config.ts"].replace(
+    '"src/**/*.browser.test.ts"], exclude: []',
+    '"src/**/*.other.test.ts"], exclude: []',
+  );
+  assert.match(check(tree)["packages/a/src/b.browser.test.ts"][0], /no CI runner/);
+});

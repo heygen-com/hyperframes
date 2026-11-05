@@ -296,3 +296,17 @@ test("thesvgSearch rejects a manifest redirect to a private host", async (t) => 
   assert.equal(await thesvgSearch("vercel logo"), null);
   assert.equal(seen.length, 1);
 });
+
+test("thesvgSearch returns the wordmark when asked, and a miss when the brand has none", async (t) => {
+  resetThesvgManifest();
+  t.mock.method(globalThis, "fetch", async () => json(ICONS));
+  const slack = await thesvgSearch("Slack logo", { variant: "wordmark" });
+  assert.match(slack.url, /\/icons\/slack\/wordmark\.svg$/);
+  assert.equal(slack.metadata.provenance.variant, "wordmark");
+  assert.equal(await thesvgSearch("Next.js logo", { variant: "wordmark" }), null);
+});
+
+test("a named variant never falls through to an avatar or favicon", async () => {
+  assert.equal(await githubAvatarSearch("Slack logo", { variant: "wordmark" }), null);
+  assert.equal(await faviconSearch("Slack logo", { variant: "wordmark" }), null);
+});

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Whip Pan Cut</h1>
+  <p>A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/whip-pan-cut.json"
   compositionId="whip-pan-cut"
   compositionSrc="compositions/components/whip-pan-cut.html"
   title="Whip Pan Cut"
-  description="A full-frame whip pan: scene A whips off laterally with capped directional motion blur while scene B enters in the same direction at matched velocity, on a speed-ramp profile with a decelerating catch. Both scenes ride one strip, so seam velocity is exact by construction. Callers fill the named before/after slot panels; token-styled defaults render when a slot is left empty."
   variables={[{"id":"direction","type":"enum","role":"motion","label":"Direction","description":"Shared travel direction for the outgoing and incoming scenes.","default":"left","options":[{"value":"left","label":"Left"},{"value":"right","label":"Right"}]},{"id":"whip_at","type":"number","role":"timing","label":"Whip start","description":"Seconds after mount start when the whip begins.","default":0.25,"min":0,"max":8,"step":0.05,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Seam hairline and default after art tint.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure of the landed scene. Default none: it rests until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":487}}
   attribution={{"path":"registry/components/whip-pan-cut","tags":["transition","whip-pan","motion-blur","velocity-match","speed-ramp","bridge","slots"]}}
@@ -522,7 +526,9 @@ That writes one file: `compositions/components/whip-pan-cut.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -564,6 +570,4 @@ Tagged `transition` `whip-pan` `motion-blur` `velocity-match` `speed-ramp` `brid
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

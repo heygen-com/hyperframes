@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lower Third — Accent Underline</h1>
+  <p>Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lt-accent-underline.json"
   compositionId="lt-accent-underline"
   compositionSrc="compositions/lt-accent-underline.html"
   title="Lower Third — Accent Underline"
-  description="Cardless lower third for footage overlay: name rises, an accent rule draws left-to-right, role fades in; text-shadowed for legibility"
   variables={[]}
   meta={{"duration":4.8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":106}}
   attribution={{"path":"registry/blocks/lt-accent-underline","tags":["lower-third","overlay","podcast","interview","minimal"]}}
@@ -141,7 +145,9 @@ That writes one file: `compositions/lt-accent-underline.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -172,6 +178,4 @@ Tagged `lower-third` `overlay` `podcast` `interview` `minimal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

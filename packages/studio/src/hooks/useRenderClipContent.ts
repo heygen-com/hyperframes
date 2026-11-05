@@ -68,7 +68,6 @@ function renderAudioClip(
   sessionEpoch: number,
   labelColor: string,
   context: TimelineClipRenderContext,
-  elements: readonly TimelineElement[],
   labelInset?: number,
 ): ReactNode {
   const audioUrl = resolveMediaPreviewUrl(
@@ -96,7 +95,7 @@ function renderAudioClip(
     sessionEpoch,
     priority: context.priority,
     labelInset,
-    ...audioPillFlags(el, elements),
+    ...audioPillFlags(el),
   });
   return createElement(
     ClipPeakMarks,
@@ -136,7 +135,6 @@ export function useRenderClipContent({
   const effectiveMode = effectiveThumbnailMode(thumbnailMode);
   const sessionEpoch = usePlayerStore((s) => s.timelineSessionEpoch);
   const thumbnailRevisions = usePlayerStore((s) => s.thumbnailRevisions);
-  const elements = usePlayerStore((s) => s.elements);
   return useCallback(
     // Pre-existing clip-content dispatcher; reduced by extracting renderAudioClip.
     // fallow-ignore-next-line complexity
@@ -151,7 +149,7 @@ export function useRenderClipContent({
       // Thumbnail generation disabled (perf) -> plain clip bars. Audio still shows
       // its waveform (cheap, not a frame thumbnail). Toggle: timeline toolbar.
       const waveform = (labelInset?: number) =>
-        renderAudioClip(el, pid, sessionEpoch, style.label, context, elements, labelInset);
+        renderAudioClip(el, pid, sessionEpoch, style.label, context, labelInset);
       if (effectiveMode === "hidden") {
         return rendersWaveform(el) ? waveform() : withSoundStrip(el, null, waveform);
       }
@@ -190,7 +188,7 @@ export function useRenderClipContent({
       // activePreviewUrl thumbnail branch; audio rows need waveform data, not a
       // captured frame from the currently drilled composition preview.
       if (rendersWaveform(el)) {
-        return renderAudioClip(el, pid, sessionEpoch, style.label, context, elements);
+        return renderAudioClip(el, pid, sessionEpoch, style.label, context);
       }
 
       if (el.text) return createElement(TextClipContent, { text: el.text });
@@ -282,7 +280,6 @@ export function useRenderClipContent({
       effectiveMode,
       sessionEpoch,
       thumbnailRevisions,
-      elements,
     ],
   );
 }

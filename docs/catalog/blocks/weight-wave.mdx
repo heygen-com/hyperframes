@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Weight Wave</h1>
+  <p>A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/weight-wave.json"
   compositionId="weight-wave"
   compositionSrc="compositions/weight-wave.html"
   title="Weight Wave"
-  description="A crest of thickness travels along a headline: each character swells from light to black and leans forward as the wave passes, driven by the wght and slnt variable-font axes rather than by transforms."
   variables={[{"id":"text","type":"string","label":"Headline","default":"PRESSURE MOVES THROUGH TYPE","maxLength":64},{"id":"color","type":"color","label":"Text color","default":"#f5f5f7"},{"id":"background","type":"color","label":"Background","default":"#0b0b0d"},{"id":"weightFrom","type":"number","label":"Weight (rest)","default":400,"min":300,"max":1000,"step":10},{"id":"weightTo","type":"number","label":"Weight (crest)","default":1000,"min":300,"max":1000,"step":10},{"id":"crestWidth","type":"number","label":"Crest width","default":4,"min":1,"max":24,"step":0.5,"unit":"chars"},{"id":"sweepSpeed","type":"number","label":"Sweep speed","default":0.5,"min":0.05,"max":3,"step":0.05,"unit":"passes/s"},{"id":"slant","type":"number","label":"Slant at crest","default":-12,"min":-15,"max":0,"step":0.5,"unit":"deg"},{"id":"direction","type":"enum","label":"Direction","default":"ltr","options":[{"value":"ltr","label":"Left to right"},{"value":"rtl","label":"Right to left"}]}]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":299}}
   attribution={{"path":"registry/blocks/weight-wave","tags":["typography","kinetic-type","title","variable-font","text"]}}
@@ -334,7 +338,9 @@ That writes `compositions/weight-wave.html`, plus 2 supporting files under `comp
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -393,6 +399,4 @@ Tagged `typography` `kinetic-type` `title` `variable-font` `text`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Micro Transitions</h1>
+  <p>A transitions.dev-inspired pack of badge, dropdown, modal, tabs, tooltip, and success-check micro transitions</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/micro-transitions.json"
   compositionId="micro-transitions"
   compositionSrc="compositions/components/micro-transitions.html"
   title="Micro Transitions"
-  description="A transitions.dev-inspired pack of badge, dropdown, modal, tabs, tooltip, and success-check micro transitions"
   variables={[{"id":"badge","type":"string","role":"content","label":"Badge","description":"Count inside the notification badge on the bell.","default":"3"},{"id":"tooltip","type":"string","role":"content","label":"Tooltip","description":"Wording inside the small dark tooltip.","default":"Copied"},{"id":"tone","type":"enum","role":"style","label":"Badge tone","description":"Colour of the notification badge chip.","default":"red","options":[{"value":"red","label":"Red"},{"value":"amber","label":"Amber"},{"value":"violet","label":"Violet"}]},{"id":"travel","type":"enum","role":"motion","label":"Travel","description":"Scales how far every panel starts from its resting place before it settles.","default":"standard","options":[{"value":"close","label":"Close"},{"value":"standard","label":"Standard"},{"value":"far","label":"Far"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":264}}
   attribution={{"path":"registry/components/micro-transitions","tags":["transition-primitive","motion-primitive","transitions-dev-port","ui","transition","microinteraction"]}}
@@ -299,7 +303,9 @@ That writes one file: `compositions/components/micro-transitions.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -342,6 +348,4 @@ Tagged `transition-primitive` `motion-primitive` `transitions-dev-port` `ui` `tr
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

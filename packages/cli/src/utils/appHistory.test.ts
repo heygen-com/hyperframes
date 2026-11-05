@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -19,6 +20,7 @@ import {
   markSeen,
   readAppTurns,
   readSeen,
+  seenPath,
   unseenTurns,
 } from "./appHistory.js";
 import { readRecord, writeRecord } from "./projectRecords.js";
@@ -63,6 +65,21 @@ beforeEach(() => {
 });
 
 describe("app history", () => {
+  it("keeps the seen record under LOCALAPPDATA on Windows", () => {
+    const localAppData = mkdtempSync(join(tmpdir(), "hf-localappdata-"));
+    vi.stubEnv("LOCALAPPDATA", localAppData);
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    try {
+      const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+      handedOverAt(dir, "2026-10-01T00:00:00Z");
+      expect(seenPath(dir).startsWith(join(localAppData, "hyperframes", "catch-up"))).toBe(true);
+      expect(readSeen(dir).at).toBe(Date.parse("2026-10-01T00:00:00Z"));
+    } finally {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    }
+  });
+
   it("reads the turns, skipping lines that are not one", () => {
     const dir = project([
       turn("2026-01-01T10:00:00Z", "bigger title"),
@@ -216,5 +233,16 @@ describe("addCatchUpNote", () => {
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("# My notes\n");
     expect(readFileSync(outside, "utf8")).toBe(older);
     addCatchUpNote(mkdtempSync(join(tmpdir(), "hf-note-")));
+  });
+});
+
+describe("app history under HYPERFRAMES_CACHE_DIR", () => {
+  it("keeps the seen record in the cache folder when it is set", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+    handedOverAt(dir, "2026-10-01T00:00:00Z");
+    expect(seenPath(dir).startsWith(join(cache, "catch-up"))).toBe(true);
+    expect(existsSync(seenPath(dir))).toBe(true);
   });
 });

@@ -12,7 +12,7 @@ Open a pull request that adds a row to the table below. Keep entries short:
 - **Contact** — a GitHub handle or contact person who can answer questions about your usage.
 - **How HyperFrames is used** — one sentence on the use case (e.g., "Personalized video at scale," "Agent-authored marketing assets," "Slides-to-video pipeline").
 
-If you'd rather not be listed publicly, that's fine — drop a note in [our Discord](https://discord.gg/EbK98HBPdk) instead. We always like hearing about how the project is being used.
+If you'd rather not be listed publicly, that's fine — drop a note in [our Discord](https://discord.gg/fzbdWyjphr) instead. We always like hearing about how the project is being used.
 
 ## Production
 
@@ -28,3 +28,5 @@ If you'd rather not be listed publicly, that's fine — drop a note in [our Disc
 | [Mini Course Generator](https://minicoursegenerator.com) | [@eren-commits](https://github.com/eren-commits)   | Uses HyperFrames for AI-composed videos in its course creation workflow.                                                      |
 | [PandaStudio](https://www.writepanda.ai)                 | [@kamskans](https://github.com/kamskans)           | Renders motion graphics, animated captions, and overlays for MP4 exports in its desktop video editor.                         |
 | [Skyflo](https://skyflo.ai)                              | [@KaranJagtiani](https://github.com/KaranJagtiani) | Renders Skyflo's product launch films, authored end to end by AI agents from script to soundtrack selection.                  |
+| [OpenAI](https://openai.com)                             | [Brent Schooley](https://x.com/chefbrent)          | Edits OpenAI developer videos in the cloud with HyperFrames, driven by an agent review-and-revise loop.                       |
+| [Nate Herk](https://www.youtube.com/@nateherk)           | [@nateherkai](https://github.com/nateherkai)       | Edits YouTube videos, reels, and Shorts with Claude Code or Codex through the HyperFrames-based Herk Edit Kit.                |

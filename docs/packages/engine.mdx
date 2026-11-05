@@ -95,6 +95,10 @@ Paths passed to `encodeFramesChunkedConcat()` and `concatVideoFiles()` may be
 relative or absolute. Relative paths resolve from the calling process's working
 directory.
 
+`muxVideoWithAudio()` recognizes output filename extensions regardless of case.
+WebM output, including `.WEBM` and `.WeBm`, converts audio to Opus while copying
+the video stream.
+
 These are rendering internals. Their result and error conventions differ by
 operation: browser and capture orchestration throws, FFmpeg wrappers generally
 return result objects, and teardown helpers avoid masking the original failure.

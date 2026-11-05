@@ -64,6 +64,22 @@ describe("parseSlideshowManifest", () => {
     expect(() => parseSlideshowManifest(html)).toThrow();
   });
 
+  it.each(['"0"', "null", "true", "{}", "[]", "1e400"])(
+    "rejects nonnumeric or nonfinite slide bounds %s in main-line and branch slides",
+    (value) => {
+      for (const field of ["startTime", "endTime"]) {
+        const slide = `{"sceneId":"a","${field}":${value}}`;
+        for (const manifest of [
+          `{"slides":[${slide}]}`,
+          `{"slides":[],"slideSequences":[{"id":"deep","label":"Deep","slides":[${slide}]}]}`,
+        ]) {
+          const html = `<script type="application/hyperframes-slideshow+json">${manifest}</script>`;
+          expect(() => parseSlideshowManifest(html)).toThrow("not a valid SlideshowManifest");
+        }
+      }
+    },
+  );
+
   it.each([
     null,
     42,

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lower Third — Color Block</h1>
+  <p>High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lt-color-block.json"
   compositionId="lt-color-block"
   compositionSrc="compositions/lt-color-block.html"
   title="Lower Third — Color Block"
-  description="High-energy lower third: bold accent-color block slides in with overshoot, condensed name + mono role"
   variables={[]}
   meta={{"duration":4.8,"width":1920,"height":1080,"category":"Lower Thirds","badge":"Stable","codeLines":100}}
   attribution={{"path":"registry/blocks/lt-color-block","tags":["lower-third","overlay","podcast","interview","bold"]}}
@@ -135,7 +139,9 @@ That writes one file: `compositions/lt-color-block.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -166,6 +172,4 @@ Tagged `lower-third` `overlay` `podcast` `interview` `bold`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

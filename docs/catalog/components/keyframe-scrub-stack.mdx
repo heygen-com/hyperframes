@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Keyframe Scrub Stack</h1>
+  <p>A keyframe-sequenced stack of cards with offset timing and easing presets.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/keyframe-scrub-stack.json"
   compositionId="keyframe-scrub-stack"
   compositionSrc="compositions/components/keyframe-scrub-stack.html"
   title="Keyframe Scrub Stack"
-  description="A keyframe-sequenced stack of cards with offset timing and easing presets."
   variables={[]}
   meta={{"category":"Effects","badge":"Stable","codeLines":84}}
   attribution={{"path":"registry/components/keyframe-scrub-stack","tags":["advanced-motion","anime-inspired","hyperframes-native"]}}
@@ -119,7 +123,9 @@ That writes one file: `compositions/components/keyframe-scrub-stack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -139,6 +145,4 @@ Tagged `advanced-motion` `anime-inspired` `hyperframes-native`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

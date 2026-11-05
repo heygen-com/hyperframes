@@ -181,7 +181,8 @@ output, validation, and automation.
 ### Batch renders
 
 Put one variable object per row in a JSON array, then use placeholders from the
-row to name each output:
+row to name each output. Batch files can use UTF-8, with or without a byte order
+mark (BOM), or UTF-16LE with a BOM.
 
 ```json rows.json
 [

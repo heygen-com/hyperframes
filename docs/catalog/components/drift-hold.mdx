@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Drift Hold</h1>
+  <p>A centered content card stays subtly alive through loop-exact rotation, scale breathing, and a slow light sweep.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/drift-hold.json"
   compositionId="drift-hold"
   compositionSrc="compositions/components/drift-hold.html"
   title="Drift Hold"
-  description="A centered content card stays subtly alive through loop-exact rotation, scale breathing, and a slow light sweep."
   variables={[{"id":"text","type":"string","role":"content","label":"Text","description":"Text displayed in the default centered card.","default":"Always alive"},{"id":"intensity","type":"enum","role":"motion","label":"Intensity","description":"Amplitude of the ambient rotation, breathing, and light sweep.","default":"standard","options":[{"value":"whisper","label":"Whisper"},{"value":"standard","label":"Standard"}]}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":192}}
   attribution={{"path":"registry/components/drift-hold","tags":["motion-primitive","camera","ambient","drift","hold","loopable"]}}
@@ -227,7 +231,9 @@ That writes one file: `compositions/components/drift-hold.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -267,6 +273,4 @@ Tagged `motion-primitive` `camera` `ambient` `drift` `hold` `loopable`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -238,6 +238,28 @@ function findDocumentTag(html: string, tag: DocumentTag): number {
   return -1;
 }
 
+export function mapStartTagsAndStyles(
+  html: string,
+  map: { tag: (tag: string) => string; style: (css: string) => string },
+): string {
+  const lowered = lowerAscii(html);
+  let out = "";
+  let cursor = 0;
+  for (const open of markupStarts(lowered)) {
+    if (open < cursor || !/[a-z]/.test(lowered.charAt(open + 1))) continue;
+    const end = findTagEnd(lowered, open + 1);
+    if (end === -1) break;
+    out += html.slice(cursor, open) + map.tag(html.slice(open, end + 1));
+    cursor = end + 1;
+    if (!isTagAt(lowered, open, "<style")) continue;
+    const close = findRawTextClose(lowered, "style", cursor);
+    if (close === -1) continue;
+    out += map.style(html.slice(cursor, close));
+    cursor = close;
+  }
+  return out + html.slice(cursor);
+}
+
 export function findStartTags(html: string, name: string): number[] {
   const lowered = lowerAscii(html);
   const token = `<${lowerAscii(name)}`;

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Week in Merges</h1>
+  <p>Each author's avatar bounces across their row at a speed set by how many pull requests they merged</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/week-in-merges.json"
   compositionId="week-in-merges"
   compositionSrc="compositions/week-in-merges.html"
   title="Week in Merges"
-  description="Each author's avatar bounces across their row at a speed set by how many pull requests they merged"
   variables={[{"id":"eyebrow","type":"string","label":"Eyebrow","default":"ACME / WEEK IN MERGES"},{"id":"title","type":"string","label":"Title","default":"Pull requests merged this week"},{"id":"period","type":"string","label":"Period","default":"1 September - 7 September 2026 · America/Los_Angeles"},{"id":"total","type":"string","label":"Total","default":"12 PRs"},{"id":"footer","type":"string","label":"Footer","default":"Speed proportional to merges · By PR author"},{"id":"source","type":"string","label":"Source line","default":"Example org · 1 repo · Bots · 0"},{"id":"rows","type":"string","label":"Rows (JSON array of name, merges, avatar)","default":"[{\"name\":\"Ada\",\"merges\":12,\"avatar\":\"\"},{\"name\":\"Bao\",\"merges\":7,\"avatar\":\"\"},{\"name\":\"Cam\",\"merges\":4,\"avatar\":\"\"},{\"name\":\"Dee\",\"merges\":2,\"avatar\":\"\"},{\"name\":\"Eli\",\"merges\":1,\"avatar\":\"\"}]"},{"id":"rows_max","type":"number","label":"Maximum rows","default":12,"min":1,"max":12,"step":1,"description":"Authors drawn, highest merge count first."},{"id":"overflow","type":"string","label":"Overflow line","default":"","description":"Line for everyone past the cap. Empty writes it from the rows left out."}]}
   meta={{"duration":16,"width":1080,"height":1350,"category":"Data","badge":"Stable","codeLines":469}}
   attribution={{"path":"registry/blocks/week-in-merges","tags":["data","chart","ranking","leaderboard"]}}
@@ -504,7 +508,9 @@ That writes one file: `compositions/week-in-merges.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -577,6 +583,4 @@ Tagged `data` `chart` `ranking` `leaderboard`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

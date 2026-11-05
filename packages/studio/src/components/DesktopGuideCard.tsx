@@ -168,7 +168,7 @@ function DownloadStep({ progress, onDownload }: CardProps) {
   if (!progress.downloaded && !installed)
     return (
       <Step n={1} state={NOW} title={`Download HyperFrames for ${where}`}>
-        <p className={NOTE}>Free. Opens hyperframes.dev in a new tab.</p>
+        <p className={NOTE}>Free. Opens hyperframes.studio in a new tab.</p>
         <Button
           variant="primary"
           className="mt-2"

@@ -18,6 +18,10 @@ Bold kinetic typography promo.
 
 Animated data chart in print editorial style.
 
+## path-traced-3d
+
+Three.js scene with a fast raster preview and an opt-in path-traced export.
+
 ## play-mode
 
 Playful elastic animations.

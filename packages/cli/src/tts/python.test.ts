@@ -15,7 +15,13 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFileSync: execFileSyncMock };
 });
 
-const { findPython, describeRejectedPythonOverride } = await import("./python.js");
+const {
+  findPython,
+  describeRejectedPythonOverride,
+  hasPythonPackage,
+  hasPythonModules,
+  workingPythonEnv,
+} = await import("./python.js");
 
 describe("findPython / describeRejectedPythonOverride", () => {
   beforeEach(() => {
@@ -74,5 +80,60 @@ describe("findPython / describeRejectedPythonOverride", () => {
     execFileSyncMock.mockReturnValue("Python 3.11.0");
     expect(findPython()).toBe("/opt/venv/bin/python");
     expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PYTHONPATH when probing for Python packages", () => {
+  const PYTHON = "/opt/venv/bin/python";
+
+  // The import works only for the environment `works` accepts, like a real interpreter would.
+  function importsWhen(works: (env: NodeJS.ProcessEnv) => boolean) {
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockImplementation((_cmd: string, args: string[], options: any) => {
+      if (args[0] === "-c" && !works(options.env)) throw new Error("ModuleNotFoundError");
+      return "Python 3.11.0";
+    });
+  }
+
+  beforeEach(() => {
+    process.env.HYPERFRAMES_PYTHON = PYTHON;
+  });
+
+  afterEach(() => {
+    delete process.env.PYTHONPATH;
+    delete process.env.HYPERFRAMES_PYTHON;
+  });
+
+  it("keeps a PYTHONPATH the user set on purpose when the package needs it", () => {
+    process.env.PYTHONPATH = "/deliberate/site-packages";
+    importsWhen((env) => env.PYTHONPATH === "/deliberate/site-packages");
+
+    expect(hasPythonPackage(PYTHON, "kokoro_onnx")).toBe(true);
+    expect(hasPythonModules(["kokoro_onnx"])).toBe(true);
+    expect(workingPythonEnv(PYTHON, ["kokoro_onnx"], { A: "1" })).toMatchObject({
+      PYTHONPATH: "/deliberate/site-packages",
+      A: "1",
+    });
+  });
+
+  it("drops a foreign PYTHONPATH that stops the package from importing", () => {
+    process.env.PYTHONPATH = "/other/python/site-packages";
+    importsWhen((env) => env.PYTHONPATH === undefined);
+
+    expect(hasPythonPackage(PYTHON, "kokoro_onnx")).toBe(true);
+    expect(hasPythonModules(["kokoro_onnx"])).toBe(true);
+    const env = workingPythonEnv(PYTHON, ["kokoro_onnx"], { ORT_DISABLE_TELEMETRY: "1" });
+    expect(env).not.toHaveProperty("PYTHONPATH");
+    expect(env).toMatchObject({ PATH: process.env.PATH, ORT_DISABLE_TELEMETRY: "1" });
+  });
+
+  it("tries the inherited environment first and reports a package neither finds", () => {
+    process.env.PYTHONPATH = "/other/python/site-packages";
+    importsWhen(() => false);
+
+    expect(hasPythonPackage(PYTHON, "kokoro_onnx")).toBe(false);
+    expect(workingPythonEnv(PYTHON, ["kokoro_onnx"])).toBeNull();
+    const [first] = execFileSyncMock.mock.calls.filter(([, args]) => args[0] === "-c");
+    expect(first?.[2].env.PYTHONPATH).toBe("/other/python/site-packages");
   });
 });

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Handwritten Title</h1>
+  <p>Handwritten display text with a scalar-driven word-by-word highlight sweep and a seeded squiggle underline sized to the text; boils</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/hw-title.json"
   compositionId="hw-title"
   compositionSrc="compositions/hw-title.html"
   title="Handwritten Title"
-  description="Handwritten display text with a scalar-driven word-by-word highlight sweep and a seeded squiggle underline sized to the text; boils"
   variables={[]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Typography & Text","badge":"Stable","codeLines":257}}
   attribution={{"path":"registry/blocks/hw-title","tags":["handwritten","typography","title-card","overlay"]}}
@@ -292,7 +296,9 @@ That writes `compositions/hw-title.html`, plus 1 supporting file under `assets/f
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -323,6 +329,4 @@ Tagged `handwritten` `typography` `title-card` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

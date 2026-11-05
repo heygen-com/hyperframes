@@ -29,7 +29,7 @@ describe("openBrowser", () => {
         "--remote-debugging-port=9222",
         "http://localhost:3002",
       ],
-      { detached: true, stdio: "ignore" },
+      { detached: true, stdio: "ignore", windowsHide: false },
     );
     expect(unref).toHaveBeenCalledOnce();
   });

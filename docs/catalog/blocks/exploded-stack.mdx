@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Exploded Stack</h1>
+  <p>Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/exploded-stack.json"
   compositionId="exploded-stack"
   compositionSrc="compositions/exploded-stack.html"
   title="Exploded Stack"
-  description="Isometric layer plates explode apart with a label beside each layer, hold, then collapse back into one stack. Built for architecture and system diagrams."
   variables={[{"id":"title","type":"string","role":"content","label":"Title","default":"How a request moves","maxLength":32},{"id":"layer_1","type":"string","role":"content","label":"Top layer","default":"Interface","maxLength":22},{"id":"layer_2","type":"string","role":"content","label":"Layer 2","default":"API gateway","maxLength":22},{"id":"layer_3","type":"string","role":"content","label":"Layer 3","default":"Services","maxLength":22},{"id":"layer_4","type":"string","role":"content","label":"Bottom layer","default":"Data","maxLength":22},{"id":"accent","type":"color","role":"style","label":"Accent","default":"#0a84ff"},{"id":"background","type":"color","role":"style","label":"Backdrop","default":"#f4f4f5"}]}
   meta={{"duration":5,"width":1920,"height":1080,"category":"3D objects","badge":"Stable","codeLines":409}}
   attribution={{"path":"registry/blocks/exploded-stack","tags":["3d-object","three-js","webgl","isometric","exploded-view","layers","diagram","architecture"]}}
@@ -444,7 +448,9 @@ That writes one file: `compositions/exploded-stack.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -475,6 +481,4 @@ Tagged `3d-object` `three-js` `webgl` `isometric` `exploded-view` `layers` `diag
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

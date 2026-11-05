@@ -1,4 +1,4 @@
-import { setCommandExitCode } from "../../utils/commandResult.js";
+import { CliUsageError, failUsage, setCommandExitCode } from "../../utils/commandResult.js";
 /**
  * `hyperframes lambda policies role|user|validate` — IAM bootstrap.
  *
@@ -21,9 +21,9 @@ import { setCommandExitCode } from "../../utils/commandResult.js";
  * checked-in policy still covers the CLI's needs with `policies validate`.
  */
 
-import { readFileSync } from "node:fs";
+import { readJsonFileText } from "../../utils/jsonFlag.js";
 import { c } from "../../ui/colors.js";
-import { normalizeErrorMessage } from "../../utils/errorMessage.js";
+import { failureMessage, jsonFailure } from "../../utils/jsonError.js";
 
 export type PoliciesVerb = "role" | "user" | "validate";
 
@@ -264,19 +264,18 @@ export async function runPolicies(args: PoliciesArgs): Promise<void> {
         const msg =
           "[lambda policies validate] usage: hyperframes lambda policies validate <policy.json>";
         if (args.json) {
-          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-          setCommandExitCode(1);
-          return;
+          console.log(JSON.stringify(jsonFailure("usage_error", msg), null, 2));
+          failUsage();
         }
-        throw new Error(msg);
+        throw new CliUsageError(msg);
       }
       let result: ValidateResult;
       try {
         result = validatePolicy(args.inputPath);
       } catch (err) {
-        const msg = normalizeErrorMessage(err);
+        const msg = failureMessage(err);
         if (args.json) {
-          console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
+          console.log(JSON.stringify(jsonFailure("runtime_error", msg), null, 2));
           setCommandExitCode(1);
           return;
         }
@@ -335,7 +334,7 @@ export interface ValidateResult {
  *     not by our matcher. We end-anchor only.
  */
 export function validatePolicy(policyPath: string): ValidateResult {
-  const raw = readFileSync(policyPath, "utf-8");
+  const raw = readJsonFileText(policyPath);
   const parsed = JSON.parse(raw) as { Statement?: unknown };
   const statements: Array<{
     Effect?: string;

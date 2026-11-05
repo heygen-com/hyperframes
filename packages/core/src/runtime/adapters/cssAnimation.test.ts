@@ -280,11 +280,11 @@ describe("authored CSS animation clocks", () => {
     live = [late];
     css.seek({ time: 4 });
     waapi.seek({ time: 4 });
-    expect(late.currentTime).toBe(0);
+    expect(late.currentTime).toBe(750);
     expect(light.style.animationDelay).toBe("");
     css.seek({ time: 4.5 });
     waapi.seek({ time: 4.5 });
-    expect(late.currentTime).toBe(500);
+    expect(late.currentTime).toBe(1250);
     expect(original.pause).toHaveBeenCalledTimes(1);
     waapi.revert?.();
   });

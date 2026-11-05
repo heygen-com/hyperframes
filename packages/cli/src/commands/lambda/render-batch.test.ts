@@ -168,6 +168,12 @@ describe("buildLambdaBatchRenderConfig — aspect-agnostic wire threading", () =
     expect(config.outputResolutionAspectAgnostic).toBeUndefined();
   });
 
+  it("sends the delivery options to every batch entry", () => {
+    expect(
+      buildLambdaBatchRenderConfig({ ...baseArgs, keyframeIntervalSeconds: 2, maxBitrate: "8M" }),
+    ).toMatchObject({ keyframeIntervalSeconds: 2, maxBitrate: "8M" });
+  });
+
   it("hands the deploy's reserved concurrency to the planner", () => {
     expect(buildLambdaBatchRenderConfig(baseArgs, 64).workerConcurrency).toBe(64);
   });

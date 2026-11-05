@@ -11,6 +11,7 @@
 import {
   type Browser,
   type CDPSession,
+  type HTTPRequest,
   type Page,
   type Protocol,
   type Viewport,
@@ -25,12 +26,16 @@ import {
   quantizeTimeToFrame,
   fpsToNumber,
   resolveAuthoredTimingWindow,
+  AUTHORED_SOURCE_BEGIN,
+  AUTHORED_SOURCE_END,
+  RUNTIME_BOOTSTRAP_ATTR,
   SCENE_CALLBACK_ERROR_PREFIX,
   type RawAuthoredTiming,
 } from "@hyperframes/core";
 
+import { readReferenceBackground } from "./referenceBackground.js";
 import { holdRenderFrameVideos } from "./renderFrameVideoHold.js";
-import { DrawElementCaptureError } from "./drawElementCaptureError.js";
+import { asDrawElementCaptureFailure, DrawElementCaptureError } from "./drawElementCaptureError.js";
 import { encodePng } from "../utils/alphaBlit.js";
 import {
   DEFAULT_SAMPLES_PER_FRAME,
@@ -67,6 +72,7 @@ import {
 } from "./browserManager.js";
 import {
   beginFrameCapture,
+  forgetBeginFrameCapture,
   ensureRenderFrameSiblings,
   getCdpSession,
   pageContentExceedsCaptureHeight,
@@ -81,6 +87,7 @@ import {
   injectDrawElementCanvas,
   captureDrawElementFrame,
   resolveDrawElementCaptureMode,
+  forcePreservedDrawingBuffer,
   instrumentAcceleratedCanvases,
   initDrawElementWorkerEncode,
   cleanupDrawElementWorkerEncode,
@@ -118,6 +125,7 @@ import {
   type ChromePids,
 } from "./chromeMemorySampler.js";
 import { sampleProcessRss } from "../utils/processRss.js";
+import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -214,6 +222,8 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
+  /** Closed origin and error of each of `scriptLoadFailures`, same order. */
+  scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -447,15 +457,25 @@ export function getDrawElementVerificationDetails(
   return undefined;
 }
 
-/** Wait for inline CSS background images introduced by the latest seek. */
-export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+/** Longest the capture waits for one inline background image to decode; it is then left out. */
+export const BACKGROUND_DECODE_TIMEOUT_MS = 15_000;
+
+/**
+ * Wait for inline CSS background images introduced by the latest seek.
+ * Resolves with the urls that did not settle in time: they are captured as they stand and not waited on again.
+ */
+export async function decodeDynamicCssBackgroundImages(page: Page): Promise<string[]> {
+  return page.evaluate(async (timeoutMs: number) => {
     const root = globalThis as typeof globalThis & {
       __hf_css_background_decoded?: Set<string>;
-      __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+      __hf_css_background_timed_out?: Set<string>;
+      __hf_css_background_timeout_ms?: number;
+      __hfDecodeDynamicCssBackgroundImages?: () => Promise<string[]>;
     };
     const decode = (root.__hfDecodeDynamicCssBackgroundImages ??= async () => {
+      const limitMs = root.__hf_css_background_timeout_ms ?? 0;
       const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
+      const timedOut = (root.__hf_css_background_timed_out ??= new Set<string>());
       const urls: string[] = [];
       const parseBackgroundUrls = (value: string): string[] => {
         const found: string[] = [];
@@ -509,26 +529,42 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void
         if (!backgroundImage || backgroundImage === "none") continue;
 
         for (const url of parseBackgroundUrls(backgroundImage)) {
-          if (!decoded.has(url)) urls.push(url);
+          if (!decoded.has(url) && !timedOut.has(url)) urls.push(url);
         }
       }
 
+      const late: string[] = [];
       await Promise.all(
         [...new Set(urls)].map(async (url) => {
           const image = new Image();
           image.src = url;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const expired = new Promise<"late">((resolve) => {
+            timer = setTimeout(() => resolve("late"), limitMs);
+          });
           try {
-            await image.decode();
-            decoded.add(url);
+            const outcome = await Promise.race([
+              image.decode().then(() => "ready" as const),
+              expired,
+            ]);
+            if (outcome === "ready") decoded.add(url);
+            else {
+              timedOut.add(url);
+              late.push(url);
+            }
           } catch {
             // Keep existing capture behavior for missing assets; request diagnostics report them.
+          } finally {
+            clearTimeout(timer);
           }
         }),
       );
+      return late;
     });
 
-    await decode();
-  });
+    root.__hf_css_background_timeout_ms = timeoutMs;
+    return decode();
+  }, BACKGROUND_DECODE_TIMEOUT_MS);
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -625,14 +661,6 @@ export function sanitizeDiagnosticUrl(input: string): string {
   if (!input) return "(empty)";
   if (input.startsWith("data:")) return "data:<redacted>";
   if (input.startsWith("blob:")) return "blob:<redacted>";
-  if (input.startsWith("/")) {
-    try {
-      const url = new URL(input, "http://hyperframes.local");
-      return url.pathname;
-    } catch {
-      return input;
-    }
-  }
 
   try {
     const url = new URL(input);
@@ -642,7 +670,12 @@ export function sanitizeDiagnosticUrl(input: string): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return input;
+    // A relative reference keeps its path only, and raw input never comes back.
+    try {
+      return new URL(input, "http://hyperframes.local").pathname;
+    } catch {
+      return input.split(/[?#]/, 1)[0] ?? "";
+    }
   }
 }
 
@@ -959,6 +992,7 @@ async function initDrawElementOrTransparentBackground(
   page: Page,
   logInitPhase: (phase: string) => void,
 ): Promise<void> {
+  await session.options.recordReferenceBackground?.(() => readReferenceBackground(page));
   const supersampling = (session.options.deviceScaleFactor ?? 1) !== 1;
   // forceScreenshot is an explicit routing decision made upstream (render-mode
   // compat hints like raw requestAnimationFrame, alpha formats, low-memory) —
@@ -1260,7 +1294,11 @@ async function initDrawElementOrTransparentBackground(
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
   } else if (capturesAlpha(session.options)) {
-    await initTransparentBackground(session.page);
+    const hideElementIds = session.options.hiddenElementIds ?? [];
+    await initTransparentBackground(session.page, {
+      clearCompositionRoot: hideElementIds.length > 0,
+      hideElementIds,
+    });
   }
 }
 
@@ -1304,6 +1342,7 @@ async function cssEffectRiskFrames(
       fps,
       totalFrames,
       totalFrames * MAX_RISK_FRAME_FRACTION,
+      { onProgress: session.options.onEffectScanProgress },
     );
     return live && withFramesAfterCallback(live, scan.callbackFrom, fps, totalFrames);
   } catch (error) {
@@ -1343,7 +1382,7 @@ async function finalizeDrawElementInit(
   const { transparent, forceDE } = opts;
   // Install the page-local decoder before batch drawElement capture begins;
   // the batch loop re-runs it after every in-page seek.
-  await decodeDynamicCssBackgroundImages(page);
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
   // Self-verification ground truth: must run pre-injection — after the canvas
   // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
   // not the live DOM (see the Lim 6 boundary-screenshot note).
@@ -1636,6 +1675,7 @@ async function constructCaptureSession(
   // composites their live content via drawImage instead (see
   // instrumentAcceleratedCanvases). Must be registered before navigation.
   if (useDrawElement) {
+    await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
     await page.evaluateOnNewDocument(instrumentAcceleratedCanvases);
   }
   // The opacity → autoAlpha tween rewrite was RETIRED with the requestPaint
@@ -1849,13 +1889,17 @@ export interface HfDiagnostic {
 }
 
 // fallow-ignore-next-line complexity
-export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
+export function buildZeroDurationDiagnostic(diag: HfDiagnostic, timeoutMs?: number): string {
   const hints: string[] = [];
   if (diag.pendingBuildReadyKeys.length > 0) {
     hints.push(
       `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
         "The runtime holds render-ready until every registered buildReady promise settles. " +
-        "Find where the composition registers that key and confirm it actually resolves.",
+        "Find where the composition registers that key and confirm it actually resolves. " +
+        "During a render, Date and performance.now stay at 0 and requestAnimationFrame " +
+        "callbacks wait until the first frame, so setup that awaits an animation frame or " +
+        "the clock never finishes. Await the library's own readiness promise instead (for " +
+        "Three.js, renderer.compileAsync).",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
@@ -1867,7 +1911,7 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   if (!diag.hasPlayer) {
     hints.push("window.__player was never set: the HyperFrames runtime did not initialize.");
   }
-  if (!diag.hasTimeline) {
+  if (diag.renderReady && !diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
         "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
@@ -1885,8 +1929,12 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   if (diag.hasSeek && diag.duration === 0 && diag.renderReady) {
     hints.push("The runtime finished initializing but reported zero duration. This is permanent.");
   }
+  const within = timeoutMs === undefined ? "" : ` within ${timeoutMs}ms`;
+  const headline = diag.renderReady
+    ? "Composition has zero duration."
+    : `Composition setup did not finish${within}.`;
   return (
-    `[FrameCapture] Composition has zero duration.\n` +
+    `[FrameCapture] ${headline}\n` +
     `  Runtime ready: ${diag.renderReady}, __player: ${diag.hasPlayer}, ` +
     `__hf.seek: ${diag.hasSeek}, GSAP timeline: ${diag.hasTimeline}, ` +
     `data-duration: ${diag.declaredDuration > 0 ? diag.declaredDuration + "s" : "not set"}\n` +
@@ -1955,7 +2003,7 @@ export async function pollHfReady(
 
   const diag = await evaluateHfDiagnostic(page);
   if (diag.hasSeek && diag.duration === 0) {
-    throw new Error(buildZeroDurationDiagnostic(diag));
+    throw new Error(buildZeroDurationDiagnostic(diag, timeoutMs));
   }
   throw new Error(
     `[FrameCapture] window.__hf not ready after ${timeoutMs}ms. ` +
@@ -2062,6 +2110,83 @@ export interface IsolatedComposition {
   elementId: string | null;
 }
 
+// Runs in the page. False once every script is read and none can register an id still waited on;
+// an unreadable, module or importing script, a computed key, or a page still loading answers true.
+export async function authorScriptsMayRegisterTimelines(
+  runtimeAttr: string,
+  authoredBegin: string,
+  authoredEnd: string,
+  skipIds: readonly string[] = [],
+): Promise<boolean> {
+  if (document.readyState !== "complete") return true;
+  const memo = globalThis as {
+    __hfAuthorScan?: { opaque: boolean; mentions: boolean; ids: string[] };
+  };
+  memo.__hfAuthorScan ??= await (async () => {
+    const scripts = [
+      ...Array.from(document.querySelectorAll("script")),
+      ...Array.from(document.querySelectorAll("template")).flatMap((t) =>
+        Array.from(t.content.querySelectorAll("script")),
+      ),
+    ].filter((script) => !script.hasAttribute(runtimeAttr));
+    const scan = { opaque: false, mentions: false, ids: [] as string[] };
+    // Code that imports another file may register through it, which is not read here.
+    const mayImport = (code: string) => /\bimport\s*\(|^\s*import\s*[\w{*"']/m.test(code);
+    const read = (code: string) => {
+      if (mayImport(code)) scan.opaque = true;
+      if (!code.includes("__timelines")) return;
+      scan.mentions = true;
+      const literalKey = /__timelines\s*(?:\[\s*(["'])((?:(?!\1).)+)\1\s*\]|\.([A-Za-z_$][\w$]*))/g;
+      const rest = code
+        .replace(/__timelines\s*=\s*(?:window\.__timelines\s*\|\|\s*)?\{\s*\}/g, "")
+        .replace(literalKey, (_m, _q, bracketId, dotId) => {
+          scan.ids.push(bracketId ?? dotId);
+          return "";
+        });
+      if (rest.includes("__timelines")) scan.opaque = true;
+    };
+    for (const script of scripts) {
+      if (script.type === "module") return { ...scan, opaque: true };
+      if (!script.src) {
+        const text = script.textContent ?? "";
+        read(
+          text.includes(authoredBegin)
+            ? text
+                .split(authoredBegin)
+                .slice(1)
+                .map((region) => region.split(authoredEnd)[0])
+                .join("\n")
+            : text,
+        );
+        continue;
+      }
+      const url = new URL(script.src, location.href);
+      if (url.origin !== location.origin) return { ...scan, opaque: true };
+      try {
+        read(await (await fetch(url)).text());
+      } catch {
+        return { ...scan, opaque: true };
+      }
+    }
+    return scan;
+  })();
+  const { opaque, mentions, ids } = memo.__hfAuthorScan;
+  if (opaque) return true;
+  if (!mentions) return false;
+  const timelines = (window as { __timelines?: Record<string, unknown> }).__timelines ?? {};
+  return Array.from(document.querySelectorAll("[data-composition-id]")).some((host) => {
+    const id = host.getAttribute("data-composition-id");
+    const authoredId = host.getAttribute("data-hf-original-composition-id") ?? id;
+    return (
+      id &&
+      !host.hasAttribute("data-no-timeline") &&
+      !timelines[id] &&
+      !skipIds.includes(id) &&
+      ids.includes(authoredId ?? id)
+    );
+  });
+}
+
 export interface SubTimelinePollOptions {
   intervalMs?: number;
   // Fail-fast: a script resource that failed to load can never register its timeline,
@@ -2117,13 +2242,23 @@ export async function pollSubCompositionTimelines(
   // A page error is given its grace from when it first appeared, not from when the poll began.
   let errorSeenAt: number | undefined;
   for (;;) {
-    ready = Boolean(await page.evaluate(expression));
-    if (ready || shouldStop?.()) break;
-    const now = Date.now();
-    if (now >= deadline) break;
     const failures = getScriptLoadFailures?.() ?? [];
     const errors = getPageErrors?.() ?? [];
     const failed = failures.length > 0 ? failures : errors;
+    // A failed script keeps the wait, so the failure is still named; only a quiet page is ready early.
+    ready =
+      Boolean(await page.evaluate(expression)) ||
+      (failed.length === 0 &&
+        !(await page.evaluate(
+          authorScriptsMayRegisterTimelines,
+          RUNTIME_BOOTSTRAP_ATTR,
+          AUTHORED_SOURCE_BEGIN,
+          AUTHORED_SOURCE_END,
+          knownUnregisteredIds,
+        )));
+    if (ready || shouldStop?.()) break;
+    const now = Date.now();
+    if (now >= deadline) break;
     const graceMs = failures.length > 0 ? scriptFailureGraceMs : scriptErrorGraceMs;
     if (failed.length > 0) errorSeenAt ??= now;
     const sinceFailure = failures.length > 0 ? now - start : now - (errorSeenAt ?? now);
@@ -2194,7 +2329,7 @@ export async function pollVideosReady(
             if (ve.readyState >= 2) return true;
             if (ve.error) return true;
             if (ve.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return true;
-            return false;
+            return !ve.getAttribute("src") && !ve.querySelector("source");
           })
         );
       }, skipIds),
@@ -2315,6 +2450,7 @@ export async function collectMediaReadinessWarnings(
     for (const media of document.querySelectorAll("video")) {
       const mediaElement = media as HTMLMediaElement;
       if (skipped.has(mediaElement.id)) continue;
+      if (!mediaElement.getAttribute("src") && !mediaElement.querySelector("source")) continue;
       const src = mediaElement.currentSrc || mediaElement.getAttribute("src") || "(no src)";
       const failed =
         Boolean(mediaElement.error) ||
@@ -2364,6 +2500,29 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
   }
 }
 
+/** Report background urls that timed out decoding; the shown url drops credentials and query. */
+export function recordBackgroundDecodeTimeouts(
+  session: CaptureSession,
+  urls: readonly string[] | undefined,
+): void {
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  if (!urls?.length) return;
+  const sources = [...new Set(urls.map(sanitizeDiagnosticUrl))].sort();
+  for (const source of sources) {
+    appendBrowserDiagnostic(
+      session,
+      `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${source}`,
+    );
+  }
+  recordCaptureWarnings(session, [
+    {
+      code: "media_readiness_timeout",
+      message: `image media did not finish decoding within ${BACKGROUND_DECODE_TIMEOUT_MS}ms`,
+      details: { mediaType: "image", sources, timeoutMs: BACKGROUND_DECODE_TIMEOUT_MS },
+    },
+  ]);
+}
+
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   const outcome = session.subTimelineWaitOutcome;
   if (outcome === "ready" || !outcome) return;
@@ -2371,6 +2530,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
     session.pageErrors.length > 0 && session.scriptLoadFailures.length === 0;
   const scriptFailure = isScriptFailure(session);
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
+  const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   const isolated = session.isolatedCompositions ?? [];
@@ -2399,7 +2559,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
+          ? `A sub-composition timeline script failed to load (${sources.join(", ")})` +
+            scriptLoadCauseSuffix(loadCauses)
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2412,6 +2573,10 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       },
     },
   ]);
+  if (scriptFailure) {
+    const failed = session.warnings.filter((w) => w.code === "sub_timeline_script_failure");
+    session.options?.onSubTimelineScriptFailure?.(failed);
+  }
 }
 
 /**
@@ -2600,10 +2765,72 @@ function recordPageError(session: CaptureSession, error: string | null): void {
 // (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
 // the same URL duplicate it further — dedupe so the fail-fast warning names
 // each failed URL once.
-function recordScriptLoadFailure(session: CaptureSession, url: string): void {
+function recordScriptLoadFailure(
+  session: CaptureSession,
+  url: string,
+  cause: ScriptLoadCause,
+): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
+    (session.scriptLoadCauses ??= []).push(cause);
   }
+}
+
+type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
+export interface ScriptLoadCause {
+  origin: ScriptLoadOrigin;
+  /** `net::ERR_*`, `http-<status>` or `unknown`. */
+  code: string;
+}
+
+const CDN_HOSTS = /^(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)$/;
+
+/** Where a failed script came from and why, never its URL, host or path. */
+export function classifyScriptLoadCause(
+  url: string,
+  serverUrl: string,
+  failure: string | number,
+): ScriptLoadCause {
+  let origin: ScriptLoadOrigin = "unknown";
+  if (url.startsWith(`${serverUrl}/`)) origin = "local";
+  else if (/^https?:\/\//.test(url)) {
+    origin = CDN_HOSTS.test(new URL(url).hostname) ? "cdn" : "remote";
+  }
+  const code =
+    typeof failure === "number"
+      ? `http-${failure}`
+      : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
+        ? failure
+        : "unknown";
+  return { origin, code };
+}
+
+function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
+  const shown = causes.slice(0, 4).map((c) => `${c.origin}/${c.code}`);
+  return shown.length === 0 ? "" : ` [script_load: ${shown.join(", ")}]`;
+}
+
+const CANCELLED_BY_THE_PAGE_NOT_REFUSED = "net::ERR_ABORTED";
+
+export function recordFailedRequest(
+  session: CaptureSession,
+  request: Pick<HTTPRequest, "resourceType" | "url" | "method" | "failure">,
+): void {
+  const resourceType = request.resourceType();
+  const url = request.url();
+  const failureText = request.failure()?.errorText ?? "unknown";
+  if (resourceType === "script" && failureText !== CANCELLED_BY_THE_PAGE_NOT_REFUSED) {
+    recordScriptLoadFailure(
+      session,
+      url,
+      classifyScriptLoadCause(url, session.serverUrl, failureText),
+    );
+  }
+  if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
+  appendBrowserDiagnostic(
+    session,
+    formatRequestFailureDiagnostic({ method: request.method(), resourceType, url, failureText }),
+  );
 }
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -2703,7 +2930,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
-    if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
+    if (scriptFailure)
+      recordScriptLoadFailure(session, scriptFailure, { origin: "unknown", code: "unknown" });
     recordConsoleScriptError(session, classifyConsoleScriptError(type, text));
   });
 
@@ -2717,24 +2945,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     appendBrowserDiagnostic(session, text);
   });
 
-  page.on("requestfailed", (request) => {
-    const resourceType = request.resourceType();
-    const url = request.url();
-    const failureText = request.failure()?.errorText ?? "unknown";
-    if (resourceType === "script") {
-      recordScriptLoadFailure(session, request.url());
-    }
-    if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
-    appendBrowserDiagnostic(
-      session,
-      formatRequestFailureDiagnostic({
-        method: request.method(),
-        resourceType,
-        url,
-        failureText,
-      }),
-    );
-  });
+  page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
   page.on("response", (response) => {
@@ -2747,7 +2958,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       return;
     }
 
-    if (isScript) recordScriptLoadFailure(session, responseUrl);
+    if (isScript) {
+      recordScriptLoadFailure(
+        session,
+        responseUrl,
+        classifyScriptLoadCause(responseUrl, serverUrl, status),
+      );
+    }
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({
@@ -3192,7 +3409,8 @@ async function prepareFrameForCapture(
   const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
 
   session.captureStep = "decoding CSS background images";
-  await decodeDynamicCssBackgroundImages(page);
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
 
   const seekMs = Date.now() - seekStart;
 
@@ -3322,6 +3540,7 @@ export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
 export async function computeStaticFrameSet(
   page: Page,
   fps: number,
+  ignoredVideoIds: readonly string[] = [],
 ): Promise<{
   totalFrames: number;
   staticFrameSet: Set<number>;
@@ -3335,131 +3554,121 @@ export async function computeStaticFrameSet(
   eligible: boolean;
   reason: string;
 }> {
-  const result = await page.evaluate((spatialProps: readonly string[]) => {
-    type AnyTween = {
-      startTime(): number;
-      duration(): number;
-      totalDuration?(): number;
-      getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
-      vars?: Record<string, unknown>;
-    };
-    // Passed in from SPATIAL_TWEEN_PROPERTIES rather than declared here, so the list
-    // stays the one this module's own tests exercise (the matching code itself must
-    // stay inline — this closure is serialized and runs in the page realm).
-    const SPATIAL_PROPS = new Set(spatialProps);
-    function isSpatial(vars: Record<string, unknown> | undefined): boolean {
-      if (!vars) return false;
-      for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
-      return false;
-    }
-    const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
-    let tweenCount = 0;
-    // totalDuration() (NOT duration()): a repeat/yoyo tween animates past one iteration;
-    // a repeating timeline is marked opaque over its whole span (conservative).
-    // A GSAP tl.call() is a zero-duration tween whose vars wire the callback as
-    // onComplete (and onReverseComplete, fired on backward crossing — GSAP has
-    // no separate "undo" callback, so both directions invoke the SAME forward
-    // side effect). A one-shot DOM mutation driven this way (e.g. a counter's
-    // textContent) is not seek-idempotent: crossing it during the static-dedup
-    // verifier's own arm-time seeking permanently mutates the page, and that
-    // corruption can leak into a LATER, unrelated static run's real capture
-    // (the verifier's mismatch check only catches drift within the run being
-    // checked, not contamination from a run checked afterward). No reliable
-    // way to tell a DOM-mutating call() from a harmless one (analytics ping,
-    // class toggle with no visual effect) without executing it, so disqualify
-    // the whole comp on ANY call() rather than risk shipping wrong pixels.
-    let hasTimelineCall = false;
-    function walk(tl: AnyTween, offset: number): void {
-      if (typeof tl.getChildren !== "function") return;
-      // A timeline with an onUpdate callback can drive motion without any
-      // visible tween (e.g. setting x/y from Math.random inside onUpdate).
-      // Mark its entire span as animated so those frames are never deduped.
-      if (typeof tl.vars?.onUpdate === "function") {
-        const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
-        // onUpdate can move anything (e.g. x/y from Math.random) — conservatively spatial.
-        if (total > 0) intervals.push({ start: offset, end: offset + total, spatial: true });
+  const result = await page.evaluate(
+    (spatialProps: readonly string[], ignored: string[]) => {
+      type AnyTween = {
+        startTime(): number;
+        duration(): number;
+        totalDuration?(): number;
+        getChildren?(nested: boolean, tweens: boolean, timelines: boolean): AnyTween[];
+        vars?: Record<string, unknown>;
+      };
+      // Passed in from SPATIAL_TWEEN_PROPERTIES rather than declared here, so the list
+      // stays the one this module's own tests exercise (the matching code itself must
+      // stay inline — this closure is serialized and runs in the page realm).
+      const SPATIAL_PROPS = new Set(spatialProps);
+      function isSpatial(vars: Record<string, unknown> | undefined): boolean {
+        if (!vars) return false;
+        for (const key of Object.keys(vars)) if (SPATIAL_PROPS.has(key)) return true;
+        return false;
       }
-      for (const child of tl.getChildren(false, true, true)) {
-        const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
-        const single = typeof child.duration === "function" ? child.duration() : 0;
-        const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
-        if (typeof child.getChildren === "function") {
-          if (total > single + 1e-6) {
-            // A repeating nested timeline's own children are walked for their real
-            // vars below; this span is a conservative (spatial) placeholder for the
-            // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
-            intervals.push({ start, end: start + total, spatial: true });
-            // Still descend for hasTimelineCall even though the repeating
-            // span is already opaque (its frames are excluded from dedup
-            // regardless): a call() inside it is a review-flagged detection
-            // gap otherwise — the arm-time verifier can still forward-seek
-            // through this span while checking a LATER static run, firing
-            // the call() and corrupting the page (review).
-            walk(child, start);
+      const intervals: Array<{ start: number; end: number; spatial: boolean }> = [];
+      let tweenCount = 0;
+      // totalDuration(), not duration(): repeat/yoyo tweens animate past one iteration.
+      // Any tl.call() disqualifies the comp: its DOM side effects are not seek-idempotent.
+      let hasTimelineCall = false;
+      function walk(tl: AnyTween, offset: number): void {
+        if (typeof tl.getChildren !== "function") return;
+        // A timeline with an onUpdate callback can drive motion without any
+        // visible tween (e.g. setting x/y from Math.random inside onUpdate).
+        // Mark its entire span as animated so those frames are never deduped.
+        if (typeof tl.vars?.onUpdate === "function") {
+          const total = typeof tl.totalDuration === "function" ? tl.totalDuration() : 0;
+          // onUpdate can move anything (e.g. x/y from Math.random) — conservatively spatial.
+          if (total > 0) intervals.push({ start: offset, end: offset + total, spatial: true });
+        }
+        for (const child of tl.getChildren(false, true, true)) {
+          const start = offset + (typeof child.startTime === "function" ? child.startTime() : 0);
+          const single = typeof child.duration === "function" ? child.duration() : 0;
+          const total = typeof child.totalDuration === "function" ? child.totalDuration() : single;
+          if (typeof child.getChildren === "function") {
+            if (total > single + 1e-6) {
+              // A repeating nested timeline's own children are walked for their real
+              // vars below; this span is a conservative (spatial) placeholder for the
+              // repeat/yoyo overrun, which a per-child walk doesn't otherwise cover.
+              intervals.push({ start, end: start + total, spatial: true });
+              // Still descend: a call() inside the repeating span would otherwise go undetected.
+              walk(child, start);
+            } else {
+              walk(child, start);
+            }
           } else {
-            walk(child, start);
-          }
-        } else {
-          tweenCount++;
-          intervals.push({ start, end: start + total, spatial: isSpatial(child.vars) });
-          if (
-            total <= 1e-6 &&
-            (typeof child.vars?.onComplete === "function" ||
-              typeof child.vars?.onReverseComplete === "function")
-          ) {
-            hasTimelineCall = true;
+            tweenCount++;
+            intervals.push({ start, end: start + total, spatial: isSpatial(child.vars) });
+            if (
+              total <= 1e-6 &&
+              (typeof child.vars?.onComplete === "function" ||
+                typeof child.vars?.onReverseComplete === "function")
+            ) {
+              hasTimelineCall = true;
+            }
           }
         }
       }
-    }
-    const w = window as unknown as {
-      __timelines?: Record<string, AnyTween>;
-      __hf?: { duration?: number };
-      __hfHasFrameSources?: () => boolean;
-    };
-    for (const tl of Object.values(w.__timelines || {})) {
-      if (tl && typeof tl.getChildren === "function") walk(tl, 0);
-    }
-    const hasVideo = !!document.querySelector("video");
-    const hasCanvas = !!document.querySelector("canvas");
-    const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
-    const hasIframe = !!document.querySelector("iframe");
-    // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
-    // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
-    // unprotected and could be deduped into the previous scene. Disqualify the comp.
-    const hasUnresolvableClipStart = Array.from(document.querySelectorAll("[data-start]")).some(
-      (el) => {
-        const v = (el as HTMLElement).dataset.start;
-        return v != null && v.trim() !== "" && !Number.isFinite(parseFloat(v));
-      },
-    );
-    // Non-GSAP animation (CSS @keyframes / transitions / WAAPI) surfaces via
-    // getAnimations(); any running/paused one can change content without a tween.
-    let hasNonGsapAnim = false;
-    try {
-      const docAnims = (document as unknown as { getAnimations?: () => Animation[] }).getAnimations;
-      if (typeof docAnims === "function") {
-        hasNonGsapAnim = docAnims.call(document).some((a) => {
-          const t = a as Animation & { playState?: string };
-          return t.playState === "running" || t.playState === "paused";
-        });
+      const w = window as unknown as {
+        __timelines?: Record<string, AnyTween>;
+        __hf?: { duration?: number };
+        __hfHasFrameSources?: () => boolean;
+      };
+      for (const tl of Object.values(w.__timelines || {})) {
+        if (tl && typeof tl.getChildren === "function") walk(tl, 0);
       }
-    } catch {
-      hasNonGsapAnim = true;
-    }
-    return {
-      intervals,
-      tweenCount,
-      duration: w.__hf?.duration ?? 0,
-      hasVideo,
-      hasCanvas,
-      hasFrameSources,
-      hasIframe,
-      hasNonGsapAnim,
-      hasUnresolvableClipStart,
-      hasTimelineCall,
-    };
-  }, SPATIAL_TWEEN_PROPERTIES);
+      const hasVideo = Array.from(document.querySelectorAll("video")).some(
+        (v) => !ignored.includes(v.id),
+      );
+      const hasCanvas = !!document.querySelector("canvas");
+      const hasFrameSources = w.__hfHasFrameSources?.() ?? false;
+      const hasIframe = !!document.querySelector("iframe");
+      // A non-numeric data-start (reference expression like "intro+0.5") can't be turned
+      // into a clip-cut boundary by computeClipBoundaryFrames' parseFloat, so the cut goes
+      // unprotected and could be deduped into the previous scene. Disqualify the comp.
+      const hasUnresolvableClipStart = Array.from(document.querySelectorAll("[data-start]")).some(
+        (el) => {
+          const v = (el as HTMLElement).dataset.start;
+          return v != null && v.trim() !== "" && !Number.isFinite(parseFloat(v));
+        },
+      );
+      // Non-GSAP animation (CSS @keyframes / transitions / WAAPI) surfaces via
+      // getAnimations(); any running/paused one can change content without a tween.
+      let hasNonGsapAnim = false;
+      try {
+        const docAnims = (document as unknown as { getAnimations?: () => Animation[] })
+          .getAnimations;
+        if (typeof docAnims === "function") {
+          hasNonGsapAnim = docAnims.call(document).some((a) => {
+            const t = a as Animation & { playState?: string };
+            return t.playState === "running" || t.playState === "paused";
+          });
+        }
+      } catch {
+        hasNonGsapAnim = true;
+      }
+      return {
+        intervals,
+        tweenCount,
+        duration: w.__hf?.duration ?? 0,
+        hasVideo,
+        hasCanvas,
+        hasFrameSources,
+        hasIframe,
+        hasNonGsapAnim,
+        hasUnresolvableClipStart,
+        hasTimelineCall,
+      };
+    },
+    SPATIAL_TWEEN_PROPERTIES,
+    [...ignoredVideoIds],
+  );
 
   const {
     intervals,
@@ -3555,12 +3764,13 @@ export async function computeStaticFrameSet(
 // sampleCount, so that knob's effect on density stays monotonic (see below).
 const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 
-// Verification uses full-page screenshots, whose cost scales with canvas size
-// and page complexity rather than frame count. Bound wall time as well as the
-// capture count so a long composition cannot spend minutes proving an
-// optimization before the real render starts. Exhaustion fails closed: dedup is
-// disabled and normal capture proceeds.
+// Wall budget for verification: 15 s is the floor; above it the budget is 1.5x
+// planned shots x the first shot's seek+capture time, capped at 300 s (nothing
+// was gained past 600 s on a 4K job). Exhaustion fails closed: dedup is
+// disabled for the unverified runs and normal capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
+const STATIC_VERIFY_HEADROOM = 1.5;
+const STATIC_VERIFY_CEILING_MS = 300_000;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
 const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
@@ -3805,7 +4015,6 @@ export async function verifyStaticFramesSafe(
   const now = dependencies.now ?? Date.now;
   const capture = dependencies.capture ?? pageScreenshotCapture;
   const startedAt = now();
-  const deadline = startedAt + STATIC_VERIFY_MAX_MS;
   const verifiedFrames = new Set<number>();
   const stats: StaticVerificationStats = {
     plannedRuns: plan.runs.length,
@@ -3849,14 +4058,26 @@ export async function verifyStaticFramesSafe(
     plan.effectiveSampleFloor * STATIC_VERIFY_SAMPLE_CAP_MULTIPLIER,
     Math.ceil(plan.predictedFrames / STATIC_VERIFY_REFERENCE_STRIDE) * 3 + plan.runs.length,
   );
+  let firstShotMs = 0;
   const seekCapture = async (
     frameIdx: number,
   ): Promise<Buffer | "time_budget" | "count_budget"> => {
-    if (now() >= deadline) return "time_budget";
+    const spent = now() - startedAt;
+    const budget = Math.max(
+      STATIC_VERIFY_MAX_MS,
+      Math.min(
+        STATIC_VERIFY_CEILING_MS,
+        STATIC_VERIFY_HEADROOM * plan.plannedScreenshots * firstShotMs,
+      ),
+    );
+    if (spent >= budget) return "time_budget";
     if (stats.screenshots >= hardCap) return "count_budget";
+    const shotStart = now();
     await seekToFrame(frameIdx);
     stats.screenshots++;
-    return capture(page, session.options);
+    const buf = await capture(page, session.options);
+    if (stats.screenshots === 1) firstShotMs = now() - shotStart;
+    return buf;
   };
   // Verify profitable runs in deterministic savings order. A run is added to the armed
   // set only after its anchor and every planner-selected comparison match. Budget exits
@@ -3921,7 +4142,11 @@ async function armStaticDedup(
     session.options.motionBlur.samplesPerFrame === undefined &&
     !session.motionBlurNonSpatialFrames
   ) {
-    sharedStaticFrameStats = await computeStaticFrameSet(page, fpsToNumber(session.options.fps));
+    sharedStaticFrameStats = await computeStaticFrameSet(
+      page,
+      fpsToNumber(session.options.fps),
+      session.options.hiddenElementIds,
+    );
     session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
@@ -3973,7 +4198,9 @@ async function armStaticDedup(
     return;
   }
   const fps = fpsToNumber(session.options.fps);
-  const stats = sharedStaticFrameStats ?? (await computeStaticFrameSet(page, fps));
+  const stats =
+    sharedStaticFrameStats ??
+    (await computeStaticFrameSet(page, fps, session.options.hiddenElementIds));
   if (!stats.eligible || stats.staticFrameSet.size === 0) {
     session.staticDedupSkipReason = "ineligible";
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
@@ -4390,6 +4617,7 @@ async function captureFrameSurface(
         interval: session.beginFrameIntervalMs,
         noDisplayUpdates: false,
       });
+      forgetBeginFrameCapture(page);
       session.beginFrameSeekPresented = true;
     }
     const result = await beginFrameCapture(
@@ -4915,13 +5143,14 @@ export async function captureFrameToBufferPipelined(
     // syncToPaintEvent = true); see initDrawElementOrTransparentBackground. The
     // BeginFrame branch present in the synchronous captureFrameCore is therefore
     // unreachable here and intentionally omitted.
-    const { encodeResult } = await produceDrawElementFrame(
+    const produced = await produceDrawElementFrame(
       page,
       options.width,
       options.height,
       options.quality ?? 80,
       true,
     );
+    const encodeResult = asDrawElementCaptureFailure(frameIndex, produced.encodeResult);
 
     const captureTimeMs = Date.now() - startTime;
 
@@ -5037,13 +5266,14 @@ export async function captureFramesBatchPipelined(
   const quantized = times.map((t) => quantizeTimeToFrame(t, fps));
 
   session.captureStep = "capturing the frame";
-  const { encodeResults, failedAt, error } = await produceDrawElementFrameBatch(
+  const { encodeResults, failedAt, error, lateBackgrounds } = await produceDrawElementFrameBatch(
     page,
     quantized,
     options.width,
     options.height,
     options.quality ?? 80,
   );
+  recordBackgroundDecodeTimeouts(session, lateBackgrounds);
 
   // A later batch failure abandons this prefix. Its asynchronous encodes can
   // still reject while session cleanup shuts the worker down.
@@ -5066,7 +5296,10 @@ export async function captureFramesBatchPipelined(
     const frameIndex = frameIndices[i];
     const encodeResult = encodeResults[i];
     if (frameIndex === undefined || !encodeResult) break;
-    results.push({ frameIndex, encodeResult });
+    results.push({
+      frameIndex,
+      encodeResult: asDrawElementCaptureFailure(frameIndex, encodeResult),
+    });
   }
 
   if (failedAt !== null) {
@@ -5281,6 +5514,16 @@ export async function getCompositionDuration(session: CaptureSession): Promise<n
   });
 }
 
+export type { CompositionLengthSource };
+
+/** Which input set the composition's length, as the runtime published it; null when it did not. */
+export async function getCompositionLengthSource(
+  session: CaptureSession,
+): Promise<CompositionLengthSource | null> {
+  if (!session.isInitialized) throw new Error("[FrameCapture] Session not initialized");
+  return session.page.evaluate(() => window.__hf?.lengthSource ?? null);
+}
+
 /**
  * Ungated-release safety net, part 1: capture K screenshot ground-truth frames
  * BEFORE the drawElement canvas is injected (the only window where a page
@@ -5482,6 +5725,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     avgSeekMs: Math.round(session.capturePerf.seekMs / frames),
     avgBeforeCaptureMs: Math.round(session.capturePerf.beforeCaptureMs / frames),
     avgScreenshotMs: Math.round(session.capturePerf.screenshotMs / frames),
+    captureBeyondViewport: session.options.captureBeyondViewport,
     p50TotalMs: medianOf(session.capturePerf.frameMs),
     p95TotalMs: percentileOf(session.capturePerf.frameMs, 0.95),
     p99TotalMs: percentileOf(session.capturePerf.frameMs, 0.99),

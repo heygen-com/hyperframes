@@ -1,5 +1,7 @@
 import { useRef, useState, useCallback, useMemo, useEffect } from "react";
+import { matchesKey } from "./studioShortcuts";
 import { useMountEffect } from "../../hooks/useMountEffect";
+import { markTimelineMotion } from "./timelineMotion";
 import {
   applyTimelineAutoScrollStep,
   resolveTimelineAutoScrollLoopAction,
@@ -31,7 +33,7 @@ import type {
 } from "./timelineClipDragTypes";
 import { getTimelineElementIndexes } from "../lib/timelineElementIndexes";
 import { dropMisalignedTrimPartners, linkedGestureKeys } from "./audioClipLink";
-import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
+import { isLinkedSelectionOn, useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import { useTimelineClipCapabilities } from "./timelineReadOnly";
 import { timelineClipFocusId } from "./timelineNavigationIdentity";
 import {
@@ -184,7 +186,10 @@ export function useTimelineClipDrag({
   // The ruler's line spacing at the current zoom; 0 with the magnet off, like the targets.
   const snapGridStep = useCallback(() => {
     if (!snapContextRef.current.enabled) return 0;
-    const frameRate = rulerFrameRate(usePlayerStore.getState().timeDisplayMode);
+    const frameRate = rulerFrameRate(
+      usePlayerStore.getState().timeDisplayMode,
+      useLinkedClipPreferences.getState().compositionFps,
+    );
     return getTimelineGridStep(durationRef.current, ppsRef.current, frameRate);
   }, [durationRef, ppsRef]);
 
@@ -198,6 +203,7 @@ export function useTimelineClipDrag({
   const [resizingClip, setResizingClipState] = useState<ResizingClipState | null>(null);
   const resizingClipRef = useRef<ResizingClipState | null>(null);
   const publishResizingClip = useCallback((next: ResizingClipState | null) => {
+    if (next) markTimelineMotion();
     resizingClipRef.current = next;
     setResizingClipState(next);
   }, []);
@@ -541,7 +547,7 @@ export function useTimelineClipDrag({
         return;
       }
       if (resizingClipRef.current) return;
-      if (event.key !== " " || event.repeat) return;
+      if (!matchesKey(event, "pickupClip") || event.repeat) return;
       if (viewport) pickup(event, viewport);
     };
     window.addEventListener("keydown", handleKeyDown, true);

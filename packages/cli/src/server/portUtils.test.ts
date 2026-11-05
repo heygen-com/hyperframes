@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
-import { createServer as createHttpServer, type Server as HttpServer } from "node:http";
+import { createServer as createHttpServer, get, type Server as HttpServer } from "node:http";
 import {
   PORT_PROBE_HOSTS,
   activeServerOnPort,
+  closeServer,
   detectHyperframesServer,
   findPortAndServe,
   testPortOnAllHosts,
@@ -304,5 +305,27 @@ describe("detectHyperframesServer", () => {
     );
 
     expect(result).toEqual({ type: "match" });
+  });
+});
+
+describe("closeServer", () => {
+  it("closes while a client holds an event stream open", async () => {
+    const server = createHttpServer((_req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(": open\n\n");
+    });
+    const port = await new Promise<number>((resolve) =>
+      server.listen(0, "127.0.0.1", () =>
+        resolve((server.address() as import("node:net").AddressInfo).port),
+      ),
+    );
+    await new Promise<void>((resolve) =>
+      get(`http://127.0.0.1:${port}/`, (res) => {
+        res.on("error", () => {});
+        resolve();
+      }).on("error", () => {}),
+    );
+    await closeServer(server);
+    expect(server.listening).toBe(false);
   });
 });

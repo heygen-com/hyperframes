@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mediaElementTime } from "./mediaClock";
 import { initSandboxRuntimeModular } from "./init";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 
@@ -94,8 +95,8 @@ describe.each([
     seeks.length = 0;
     player.play();
     step(3);
-    expect(seeks).toEqual([atFive]);
-    expect(video.currentTime).toBeCloseTo(atFive + 0.3 * rate, 5);
+    expect(seeks).toEqual([mediaElementTime(atFive)]);
+    expect(video.currentTime).toBeCloseTo(mediaElementTime(atFive + 0.3 * rate), 5);
   });
 
   it("lands at its source time in one seek when seeked while playing", () => {
@@ -106,8 +107,8 @@ describe.each([
     player.seek(5.5, { keepPlaying: true });
     step(3);
     expect(player.isPlaying()).toBe(true);
-    expect(seeks).toEqual([atFiveAndAHalf]);
-    expect(video.currentTime).toBeCloseTo(atFiveAndAHalf + 0.3 * rate, 5);
+    expect(seeks).toEqual([mediaElementTime(atFiveAndAHalf)]);
+    expect(video.currentTime).toBeCloseTo(mediaElementTime(atFiveAndAHalf + 0.3 * rate), 5);
   });
 });
 
@@ -118,7 +119,7 @@ it("does not seek a paused video already at its source time when play is pressed
   player.play();
   step(3);
   expect(seeks).toEqual([]);
-  expect(video.currentTime).toBeCloseTo(5.3, 5);
+  expect(video.currentTime).toBeCloseTo(mediaElementTime(5.3), 5);
 });
 
 it("keeps a clip's own rate when the transport rate is set while playing", () => {
@@ -159,7 +160,7 @@ describe("pause placement", () => {
     seeks.length = 0;
     player.pause();
     step(3);
-    expect(seeks).toEqual([0.3]);
+    expect(seeks).toEqual([mediaElementTime(0.3)]);
   });
 });
 

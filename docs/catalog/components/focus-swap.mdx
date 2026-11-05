@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Focus Swap</h1>
+  <p>Moves attention between two side-by-side cards as one recedes with scale, blur, and dimming while the other advances to full focus.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/focus-swap.json"
   compositionId="focus-swap"
   compositionSrc="compositions/components/focus-swap.html"
   title="Focus Swap"
-  description="Moves attention between two side-by-side cards as one recedes with scale, blur, and dimming while the other advances to full focus."
   variables={[{"id":"focus","type":"enum","role":"motion","label":"Final focus","description":"Card that ends sharp, full-size, and fully opaque.","default":"b","options":[{"value":"a","label":"Card A"},{"value":"b","label":"Card B"}]},{"id":"blurPx","type":"number","role":"style","label":"Unfocused blur","description":"Blur applied to the card outside the viewer focus.","default":6,"min":0,"max":20,"step":1,"unit":"px"},{"id":"dim","type":"number","role":"style","label":"Unfocused opacity","description":"Opacity of the card outside the viewer focus.","default":0.5,"min":0,"max":1,"step":0.05}]}
   meta={{"category":"Product Demo","badge":"Stable","codeLines":281}}
   attribution={{"path":"registry/components/focus-swap","tags":["effect","ui-props","focus","blur","attention","demonstrate"]}}
@@ -316,7 +320,9 @@ That writes one file: `compositions/components/focus-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -357,6 +363,4 @@ Tagged `effect` `ui-props` `focus` `blur` `attention` `demonstrate`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

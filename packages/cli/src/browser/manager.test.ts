@@ -739,6 +739,43 @@ describe("findBrowser — cache resolution", () => {
     }
   });
 
+  it.each(["EBUSY", "EPERM"])(
+    "does not fail a run when Windows holds a leftover's debug.log (%s)",
+    async (code) => {
+      const home = useRealCacheHome();
+      const root = join(home, ".cache", "hyperframes");
+      const held = join(root, ".chrome-replaced-dead");
+      vi.doMock("node:fs", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("node:fs")>();
+        return {
+          ...actual,
+          rmSync: (path: string, options?: Parameters<typeof actual.rmSync>[1]) => {
+            if (!String(path).includes(".chrome-replaced-")) return actual.rmSync(path, options);
+            throw Object.assign(
+              new Error(`${code}: operation not permitted, unlink '${path}/debug.log'`),
+              { code },
+            );
+          },
+        };
+      });
+      installPuppeteerBrowsersMock({
+        installImpl: async ({ cacheDir, buildId }) =>
+          writeStagedInstall(cacheDir, buildId, "fresh"),
+      });
+      try {
+        const { ensureBrowser, sweepKilledInstalls, clearBrowser } = await import("./manager.js");
+        mkdirSync(held, { recursive: true });
+        await expect(sweepKilledInstalls()).resolves.toBeUndefined();
+        await expect(ensureBrowser({ force: true })).resolves.toMatchObject({ source: "download" });
+        await ensureBrowser({ force: true });
+        expect(existsSync(held)).toBe(true);
+        expect(() => clearBrowser()).toThrow(code);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("serializes concurrent force downloads so they never install at the same time", async () => {
     const downloadedBinary = join(HF_CACHE, "chrome-headless-shell", "force-downloaded");
     const paths = installFsMocks({
@@ -845,6 +882,7 @@ describe("findBrowser — cache resolution", () => {
   });
 
   it("withInstallLock does not let a second caller run concurrently with a slow-but-alive holder", async () => {
+    vi.useFakeTimers();
     const paths = installFsMocks({ existing: new Set([CACHE_ROOT]) });
 
     const { withInstallLock } = await import("./manager.js");
@@ -860,9 +898,10 @@ describe("findBrowser — cache resolution", () => {
     };
 
     const first = withInstallLock(() => trackConcurrency("first", 120), TEST_LOCK_TIMINGS);
-    await new Promise((resolve) => setTimeout(resolve, 5)); // let `first` acquire the lock
+    await vi.advanceTimersByTimeAsync(5); // let `first` acquire the lock
     const second = withInstallLock(() => trackConcurrency("second", 10), TEST_LOCK_TIMINGS);
 
+    await vi.advanceTimersByTimeAsync(400);
     await expect(Promise.all([first, second])).resolves.toEqual(["first", "second"]);
     expect(maxConcurrent).toBe(1);
     expect(paths.has(HF_LOCK)).toBe(false);
@@ -1216,6 +1255,139 @@ describe("findBrowser — cache resolution", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
+  it("ensureBrowser fails fast naming a configured browser path that does not exist", async () => {
+    installFsMocks({ existing: new Set(["/usr/bin/chromium"]) });
+    installPuppeteerBrowsersMock();
+    process.env["HYPERFRAMES_BROWSER_PATH"] = "/opt/typo/chrome";
+
+    const { ensureBrowser } = await import("./manager.js");
+
+    await expect(ensureBrowser()).rejects.toThrow(
+      "HYPERFRAMES_BROWSER_PATH is set to /opt/typo/chrome, which does not exist",
+    );
+  });
+
+  it("retryOnStall gives up after one 75 s stall when attempts is 1, and retries to ~195 s when 3", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { retryOnStall } = await import("./manager.js");
+      const { BrowserDownloadStalledError } = await import("./installInChild.js");
+      const stalled = () =>
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new BrowserDownloadStalledError("stalled")), 75_000),
+        );
+      const once = vi.fn(stalled);
+      const first = expect(retryOnStall(once, () => {}, 1)).rejects.toThrow("stalled");
+      await vi.advanceTimersByTimeAsync(75_000);
+      await first;
+      expect(once).toHaveBeenCalledTimes(1);
+
+      const thrice = vi.fn(stalled);
+      const all = expect(retryOnStall(thrice, () => {}, 3)).rejects.toThrow("stalled");
+      await vi.advanceTimersByTimeAsync(3 * 75_000);
+      await all;
+      expect(thrice).toHaveBeenCalledTimes(3);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  describe("retryWhileLocked", () => {
+    const lock = (code: string) =>
+      Object.assign(new Error(`${code}: operation not permitted, rename 'a' -> 'b'`), { code });
+    const quickly = async (): Promise<void> => {};
+    const onWindows = async (run: () => Promise<void>) => {
+      const real = Object.getOwnPropertyDescriptor(process, "platform");
+      Object.defineProperty(process, "platform", { value: "win32" });
+      try {
+        await run();
+      } finally {
+        if (real) Object.defineProperty(process, "platform", real);
+      }
+    };
+
+    // fails without the fix: a file a virus scanner held for a moment failed the whole install with EPERM.
+    it.each(["EBUSY", "EPERM", "EACCES"])(
+      "on Windows, goes on after a %s that clears, waiting longer each time",
+      async (code) => {
+        await onWindows(async () => {
+          const { retryWhileLocked } = await import("./manager.js");
+          const waits: number[] = [];
+          const run = vi
+            .fn<() => Promise<string>>()
+            .mockRejectedValueOnce(lock(code))
+            .mockRejectedValueOnce(lock(code))
+            .mockResolvedValue("moved");
+          const cleared = vi.fn();
+          await expect(
+            retryWhileLocked(run, cleared, 5, async (ms) => void waits.push(ms)),
+          ).resolves.toBe("moved");
+          expect(run).toHaveBeenCalledTimes(3);
+          expect(cleared).toHaveBeenCalledTimes(2);
+          expect(waits).toEqual([250, 500]);
+        });
+      },
+    );
+
+    it("on Windows, gives the lock's error after the last attempt", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi.fn<() => Promise<string>>().mockRejectedValue(lock("EPERM"));
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).rejects.toThrow("EPERM");
+        expect(run).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    it("on Windows, reads the lock from the message when a child process carried it without a code", async () => {
+      await onWindows(async () => {
+        const { retryWhileLocked } = await import("./manager.js");
+        const run = vi
+          .fn<() => Promise<string>>()
+          .mockRejectedValueOnce(new Error("EBUSY: resource busy or locked, unlink 'x'"))
+          .mockResolvedValue("ok");
+        await expect(retryWhileLocked(run, undefined, 3, quickly)).resolves.toBe("ok");
+      });
+    });
+
+    it("does not retry any other error, or a lock error off Windows", async () => {
+      const { retryWhileLocked } = await import("./manager.js");
+      const missing = vi.fn(async () => {
+        throw lock("ENOENT");
+      });
+      await expect(retryWhileLocked(missing, undefined, 3, quickly)).rejects.toThrow();
+      expect(missing).toHaveBeenCalledTimes(1);
+      const here = vi.fn(async () => {
+        throw lock("EPERM");
+      });
+      await expect(retryWhileLocked(here, undefined, 3, quickly)).rejects.toThrow();
+      expect(here).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("withBrowserWaitNotice speaks every 15 s while the task runs and stops when it ends", async () => {
+    vi.useFakeTimers();
+    try {
+      const notify = vi.fn();
+      let finish = () => {};
+      const task = new Promise<string>((resolve) => (finish = () => resolve("done")));
+      const { withBrowserWaitNotice } = await import("./manager.js");
+      const result = withBrowserWaitNotice(task, notify, 15_000);
+      await vi.advanceTimersByTimeAsync(14_000);
+      expect(notify).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(notify).toHaveBeenCalledTimes(3);
+      expect(notify.mock.calls[0]?.[0]).toContain("HYPERFRAMES_BROWSER_PATH");
+      finish();
+      await expect(result).resolves.toBe("done");
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(notify).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("prefers HYPERFRAMES_BROWSER_PATH over PRODUCER_HEADLESS_SHELL_PATH when both are set", async () => {
     // Tiebreak matches `render.ts` — the CLI-native name canonicalizes; the
     // engine name is a compatibility alias. If both are set the caller almost
@@ -1386,70 +1558,74 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
   // suite guards (chrome-headless-shell has no linux-arm64 build; see `isLinuxArm`
   // at the top of `downloadBrowser`). Use linux/x64 to exercise the linux branch
   // of `browserPathHintForPlatform`.
+  const failInstall = (rawMsg: string) => {
+    const originalError = new Error(rawMsg);
+    installPuppeteerBrowsersMock({
+      installedInHfCache: [],
+      installImpl: async () => {
+        throw originalError;
+      },
+    });
+    return originalError;
+  };
+  const setPlatform = (platform: string, arch: string) => {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+    Object.defineProperty(process, "arch", { value: arch, configurable: true });
+  };
+  const caughtFrom = async (options?: { preferManagedChrome?: boolean }) => {
+    const { ensureBrowser } = await import("./manager.js");
+    try {
+      await ensureBrowser(options);
+    } catch (err) {
+      return err as Error;
+    }
+    throw new Error("ensureBrowser resolved");
+  };
+
   it.each([
     {
       label: "darwin/arm64",
       platform: "darwin",
       arch: "arm64",
-      expectedPathHint: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      installed: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     },
-    {
-      label: "win32/x64",
-      platform: "win32",
-      arch: "x64",
-      expectedPathHint: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    },
-    {
-      label: "linux/x64",
-      platform: "linux",
-      arch: "x64",
-      expectedPathHint: "/usr/bin/google-chrome",
-    },
+    { label: "linux/x64", platform: "linux", arch: "x64", installed: "/usr/bin/google-chrome" },
   ])(
-    "rethrows a non-corrupt install failure with an HYPERFRAMES_BROWSER_PATH hint and preserves the original via cause ($label)",
-    async ({ platform, arch, expectedPathHint }) => {
-      Object.defineProperty(process, "platform", {
-        value: platform,
-        configurable: true,
-      });
-      Object.defineProperty(process, "arch", {
-        value: arch,
-        configurable: true,
-      });
+    "names the Chrome that is installed in the HYPERFRAMES_BROWSER_PATH hint and keeps the original as cause ($label)",
+    async ({ platform, arch, installed }) => {
+      setPlatform(platform, arch);
+      installFsMocks({ existing: new Set([CACHE_ROOT, installed]) });
+      const rawMsg = "All providers failed for chrome-headless-shell 152.0.7928.2";
+      const originalError = failInstall(rawMsg);
 
-      // No cache, no system Chrome — forces the download-of-last-resort path
-      // that ends in @puppeteer/browsers install().
+      const caught = await caughtFrom({ preferManagedChrome: true });
+
+      expect(caught.message).toContain(`export HYPERFRAMES_BROWSER_PATH="${installed}"`);
+      expect(caught.message).toContain(rawMsg);
+      expect(caught.cause).toBe(originalError);
+    },
+  );
+
+  it.each([
+    { label: "darwin/arm64", platform: "darwin", arch: "arm64" },
+    { label: "win32/x64", platform: "win32", arch: "x64" },
+    { label: "linux/x64", platform: "linux", arch: "x64" },
+  ])(
+    "offers no path to export when no Chrome is installed, so a dead override is never suggested ($label)",
+    async ({ platform, arch }) => {
+      setPlatform(platform, arch);
       installFsMocks({ existing: new Set([CACHE_ROOT]) });
       const rawMsg = "All providers failed for chrome-headless-shell 152.0.7928.2";
-      const originalError = new Error(rawMsg);
-      installPuppeteerBrowsersMock({
-        installedInHfCache: [],
-        installImpl: async () => {
-          throw originalError;
-        },
-      });
+      const originalError = failInstall(rawMsg);
 
-      const { ensureBrowser } = await import("./manager.js");
+      const caught = await caughtFrom();
 
-      let caught: unknown;
-      try {
-        await ensureBrowser();
-      } catch (err) {
-        caught = err;
-      }
-
-      expect(caught).toBeInstanceOf(Error);
-      const msg = (caught as Error).message;
-      // Names the escape-hatch env var by name (that's the entire point).
-      expect(msg).toContain("HYPERFRAMES_BROWSER_PATH");
-      // Includes the platform-specific example path from
-      // `browserPathHintForPlatform`.
-      expect(msg).toContain(expectedPathHint);
-      // Keeps the original provider-failure text so the user can still
-      // diagnose the underlying cause from the surfaced message.
-      expect(msg).toContain(rawMsg);
-      // Structured `cause` chain intact for tooling that walks it.
-      expect((caught as Error).cause).toBe(originalError);
+      expect(caught.message).toContain(rawMsg);
+      expect(caught.message).toContain("HYPERFRAMES_BROWSER_PATH");
+      expect(caught.message).toContain("No Chrome or Chromium was found on this machine");
+      expect(caught.message).not.toContain('export HYPERFRAMES_BROWSER_PATH="');
+      expect(caught.message).not.toContain("set HYPERFRAMES_BROWSER_PATH=");
+      expect(caught.cause).toBe(originalError);
     },
   );
 });

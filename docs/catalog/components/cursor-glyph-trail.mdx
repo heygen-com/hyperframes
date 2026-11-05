@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Cursor Glyph Trail</h1>
+  <p>A tutorial cursor path: on a settings screen the arrow clicks through three steps, leaving a dotted trail spaced evenly by distance and a numbered marker at each click; each step's trail fades as the next move begins.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/cursor-glyph-trail.json"
   compositionId="cursor-glyph-trail"
   compositionSrc="compositions/components/cursor-glyph-trail.html"
   title="Cursor Glyph Trail"
-  description="A tutorial cursor path: on a settings screen the arrow clicks through three steps, leaving a dotted trail spaced evenly by distance and a numbered marker at each click; each step's trail fades as the next move begins."
   variables={[{"id":"glyphs","type":"string","role":"content","label":"Glyphs (deprecated)","description":"Deprecated and ignored: the trail draws evenly spaced dots.","default":""},{"id":"density","type":"enum","role":"style","label":"Density","description":"Spacing between trail dots.","default":"med","options":[{"value":"low","label":"Low"},{"value":"med","label":"Medium"},{"value":"high","label":"High"}]},{"id":"path","type":"enum","role":"style","label":"Path","description":"How each move bends: sweep is a gentle curve, arc a deeper one, zigzag a straight line.","default":"sweep","options":[{"value":"sweep","label":"Sweep"},{"value":"arc","label":"Arc"},{"value":"zigzag","label":"Zigzag"}]},{"id":"fade","type":"number","role":"timing","label":"Fade","description":"Seconds a step trail takes to fade once the next move begins, clamped 0.3 to 1.5.","default":0.5},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Trail and step marker color: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the finished screen holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Cursors","badge":"Stable","codeLines":651}}
   attribution={{"path":"registry/components/cursor-glyph-trail","tags":["cursor","motion-primitive","demonstrate","trail","tutorial","steps","deterministic"]}}
@@ -686,7 +690,9 @@ That writes one file: `compositions/components/cursor-glyph-trail.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -730,6 +736,4 @@ Tagged `cursor` `motion-primitive` `demonstrate` `trail` `tutorial` `steps` `det
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

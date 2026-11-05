@@ -26,7 +26,12 @@ const CGROUP_V1_MEMORY_LIMIT_PATH = "/sys/fs/cgroup/memory/memory.limit_in_bytes
 // Kernel no-limit sentinel is page-rounded 2^63-1 (~9223372036854771712); >= 2^60 is implausible as a real limit.
 const CGROUP_V1_NO_LIMIT_CUTOFF_BYTES = 2n ** 60n;
 
+const CGROUP_V2_CPU_MAX_PATH = "/sys/fs/cgroup/cpu.max";
+const CGROUP_V1_CPU_QUOTA_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us";
+const CGROUP_V1_CPU_PERIOD_PATH = "/sys/fs/cgroup/cpu/cpu.cfs_period_us";
+
 let _cachedCgroupLimitMb: number | null | undefined;
+let _cachedCgroupCpus: number | null | undefined;
 let _warnedCgroupReadFailure = false;
 
 /** Parse cgroup v2/v1 memory limits from sysfs file contents into MiB. */
@@ -75,10 +80,46 @@ function parsePositiveByteLimitMb(content: string, noLimitCutoffBytes?: bigint):
   return Number(bytes / BYTES_PER_MIB_BIGINT);
 }
 
+/** The CPUs a cgroup quota allows (v2 `cpu.max`, else v1 quota over period), or null when it sets none. */
+export function parseCgroupCpus(
+  v2Content: string | null,
+  v1Quota: string | null,
+  v1Period: string | null,
+): number | null {
+  if (v2Content !== null) {
+    const [quota, period] = v2Content.trim().split(/\s+/);
+    return quotaCpus(quota, period);
+  }
+  return quotaCpus(v1Quota?.trim(), v1Period?.trim());
+}
+
+function quotaCpus(quota: string | undefined, period: string | undefined): number | null {
+  if (!quota || !period || !/^\d+$/.test(quota) || !/^\d+$/.test(period)) return null;
+  const [q, p] = [Number(quota), Number(period)];
+  return q > 0 && p > 0 ? q / p : null;
+}
+
 /** Test-only: reset the cached cgroup memory probe. */
 export function _resetCgroupLimitCacheForTests(): void {
   _cachedCgroupLimitMb = undefined;
+  _cachedCgroupCpus = undefined;
   _warnedCgroupReadFailure = false;
+}
+
+/** The CPUs this process's cgroup may use (docker `--cpus`), or null off Linux or without a quota. */
+export function getCgroupCpuLimit(): number | null {
+  if (_cachedCgroupCpus !== undefined) return _cachedCgroupCpus;
+  if (process.platform !== "linux") return (_cachedCgroupCpus = null);
+  const v2 = readCgroupFile(CGROUP_V2_CPU_MAX_PATH);
+  _cachedCgroupCpus =
+    v2 !== null
+      ? parseCgroupCpus(v2, null, null)
+      : parseCgroupCpus(
+          null,
+          readCgroupFile(CGROUP_V1_CPU_QUOTA_PATH),
+          readCgroupFile(CGROUP_V1_CPU_PERIOD_PATH),
+        );
+  return _cachedCgroupCpus;
 }
 
 /**

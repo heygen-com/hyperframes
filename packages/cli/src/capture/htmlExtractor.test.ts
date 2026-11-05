@@ -209,6 +209,57 @@ describe("extractHtml", () => {
   });
 });
 
+it("stops inlining images when a CDN never answers and says how many kept their URLs", async () => {
+  const img = (n: number) => ({
+    src: `https://cdn.example/${n}.png`,
+    naturalWidth: 100,
+    naturalHeight: 100,
+    setAttribute: () => {},
+    removeAttribute: () => {},
+  });
+  const sameOrigin = { ...img(4), src: "https://brand.example/4.png" };
+  const tiny = { ...img(5), naturalWidth: 4 };
+  const imgs = [img(1), sameOrigin, img(2), tiny, img(3)];
+  // A fetch that only ends when its abort signal fires, like a CDN that holds the socket open.
+  const hungFetch = (_url: string, init: { signal?: AbortSignal }) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    });
+  const context = {
+    Date,
+    URL,
+    AbortSignal,
+    fetch: hungFetch,
+    location: { origin: "https://brand.example" },
+    document: {
+      querySelectorAll: (selector: string) => (selector === "img" ? imgs : []),
+      createElement: () => ({
+        getContext: () => ({
+          drawImage: () => {
+            throw new Error("tainted canvas");
+          },
+        }),
+      }),
+    },
+  };
+  const page = {
+    evaluate: async (script: string) => {
+      if (script.includes("naturalWidth")) return runInNewContext(script, context);
+      if (script.includes('link[rel="stylesheet"][href]')) return [];
+      return { headHtml: "", bodyHtml: "", cssomRules: "", htmlAttrs: "", fullPageHeight: 0 };
+    },
+    url: () => "https://brand.example/",
+  } as unknown as Page;
+  const warnings: string[] = [];
+  await extractHtml(page, {
+    settleTime: 0,
+    inlineBudgetMs: 100,
+    onWarning: (message) => warnings.push(message),
+  });
+  // The one cut off mid-fetch and the two after it; never the same-origin or tiny ones it would not inline.
+  expect(warnings).toEqual(["3 image(s) kept their original URLs: inlining stopped after 100ms"]);
+}, 10_000);
+
 it("fetches Node stylesheets through validated redirects and refuses metadata redirects", async () => {
   const window = new Window({ url: "https://brand.example/" });
   window.document.head.innerHTML =

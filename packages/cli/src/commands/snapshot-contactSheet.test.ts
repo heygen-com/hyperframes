@@ -16,6 +16,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const errorsBesideProgress = () =>
+  vi
+    .mocked(console.error)
+    .mock.calls.filter(([line]) => !String(line).startsWith("[hyperframes] snapshot:"));
+
 const capture = vi.hoisted(() => ({
   evaluate: vi.fn(),
   screenshot: vi.fn(async () => Buffer.from("captured PNG")),
@@ -123,7 +128,7 @@ describe("snapshot contact sheet failures", () => {
         }),
       ).resolves.toBeDefined();
 
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       for (const [index, time] of ["0.5", "1"].entries()) {
         const frame = join(project, "snapshots", `frame-0${index}-at-${time}s.png`);
         expect(readFileSync(frame)).toEqual(Buffer.from("captured PNG"));
@@ -161,7 +166,7 @@ describe("snapshot contact sheet failures", () => {
     );
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining("contact-sheet.jpg"));
     expect(console.warn).not.toHaveBeenCalled();
-    expect(console.error).not.toHaveBeenCalled();
+    expect(errorsBesideProgress()).toEqual([]);
   });
 
   it("builds the sheet from this run's frames, not another frame-*.png in the folder", async () => {
@@ -262,7 +267,7 @@ describe("snapshot contact sheet failures", () => {
         }
         expect(readdirSync(out).filter((name) => name.startsWith("pair-"))).toEqual([]);
         expect(pairSheet).toHaveBeenCalledOnce();
-        expect(console.error).toHaveBeenCalledOnce();
+        expect(errorsBesideProgress()).toHaveLength(1);
         expect(console.error).toHaveBeenCalledWith(
           expect.stringContaining("Reference pair sheets skipped: Windows App Control"),
         );
@@ -325,7 +330,7 @@ describe("snapshot contact sheet failures", () => {
           join(project, "snapshots", `frame-0${index}-at-${time}s.png`),
         ),
       );
-      expect(console.error).not.toHaveBeenCalled();
+      expect(errorsBesideProgress()).toEqual([]);
       expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("not recorded"));
     } finally {
       historyDeps.ownerWaitMs = previousWait;

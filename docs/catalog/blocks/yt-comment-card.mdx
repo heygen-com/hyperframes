@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Comment Cards</h1>
+  <p>Social comments typing on over footage: avatar pop, username and time, per-character typewriter, likes row; image avatars or initials chips</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/yt-comment-card.json"
   compositionId="yt-comment-card"
   compositionSrc="compositions/yt-comment-card.html"
   title="Comment Cards"
-  description="Social comments typing on over footage: avatar pop, username and time, per-character typewriter, likes row; image avatars or initials chips"
   variables={[]}
   meta={{"duration":8,"width":1920,"height":1080,"category":"Social Overlays","badge":"Stable","codeLines":318}}
   attribution={{"path":"registry/blocks/yt-comment-card","tags":["social","comments","creator","overlay"]}}
@@ -353,7 +357,9 @@ That writes one file: `compositions/yt-comment-card.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -384,6 +390,4 @@ Tagged `social` `comments` `creator` `overlay`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

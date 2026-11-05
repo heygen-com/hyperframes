@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Icon Swap</h1>
+  <p>A scale-and-blur icon swap primitive for toolbar and action state changes</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/icon-swap.json"
   compositionId="icon-swap"
   compositionSrc="compositions/components/icon-swap.html"
   title="Icon Swap"
-  description="A scale-and-blur icon swap primitive for toolbar and action state changes"
   variables={[{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Button fill and glyph colour. Accent rides --brand.","default":"dark","options":[{"value":"dark","label":"Dark"},{"value":"light","label":"Light"},{"value":"accent","label":"Accent"}]},{"id":"size","type":"enum","role":"layout","label":"Size","description":"Button box and glyph size, from a toolbar chip to a hero action.","default":"standard","options":[{"value":"small","label":"Small"},{"value":"standard","label":"Standard"},{"value":"large","label":"Large"}]},{"id":"shape","type":"enum","role":"style","label":"Shape","description":"Corner treatment of the button box.","default":"rounded","options":[{"value":"rounded","label":"Rounded"},{"value":"circle","label":"Circle"},{"value":"square","label":"Square"}]},{"id":"blur","type":"enum","role":"motion","label":"Blur","description":"Scales the blur radius the timeline drives through the swap, from a light haze to a full smear.","default":"standard","options":[{"value":"soft","label":"Soft"},{"value":"standard","label":"Standard"},{"value":"heavy","label":"Heavy"}]}]}
   meta={{"category":"Motion Primitives","badge":"Stable","codeLines":112}}
   attribution={{"path":"registry/components/icon-swap","tags":["video-primitive","transition-primitive","transitions-dev-port","icon","swap"]}}
@@ -147,7 +151,9 @@ That writes one file: `compositions/components/icon-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -190,6 +196,4 @@ Tagged `video-primitive` `transition-primitive` `transitions-dev-port` `icon` `s
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -1,5 +1,5 @@
-import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { failCommand, failUsage, setCommandExitCode } from "../utils/commandResult.js";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { fpsToFfmpegArg } from "@hyperframes/core";
 
@@ -59,15 +59,15 @@ export default defineCommand({
     json: { type: "boolean", description: "Output results as JSON", default: false },
   },
   async run({ args }) {
-    // ── Resolve project ──────────────────────────────────────────────────
-    const project = resolveProject(args.dir);
-
     // ── Parse runs ───────────────────────────────────────────────────────
     const runsPerConfig = parseInt(args.runs ?? "3", 10);
     if (isNaN(runsPerConfig) || runsPerConfig < 1 || runsPerConfig > 20) {
       errorBox("Invalid runs", `Got "${args.runs ?? "3"}". Must be between 1 and 20.`);
-      failCommand();
+      failUsage();
     }
+
+    // ── Resolve project ──────────────────────────────────────────────────
+    const project = resolveProject(args.dir);
 
     const jsonOutput = args.json ?? false;
 

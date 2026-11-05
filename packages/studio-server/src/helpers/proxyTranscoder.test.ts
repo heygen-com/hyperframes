@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
   cpSync,
@@ -6,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -66,6 +68,7 @@ type FakeProc = EventEmitter & {
   stderr: EventEmitter;
   stdout: EventEmitter;
   kill: (signal?: string) => void;
+  pid?: number;
 };
 
 function createFakeProc(): FakeProc {
@@ -73,6 +76,7 @@ function createFakeProc(): FakeProc {
   proc.stderr = new EventEmitter();
   proc.stdout = new EventEmitter();
   proc.kill = vi.fn((signal?: string) => void proc.emit("close", null, signal));
+  proc.pid = 4242;
   return proc;
 }
 
@@ -237,6 +241,54 @@ describe("resolveProxy on a long source", () => {
     expect(heard.at(-1)).toEqual({ doneSeconds: LONG_SECONDS, totalSeconds: LONG_SECONDS });
     expect(calls.at(-1)!.args).toEqual(expect.arrayContaining(["-f", "concat", "-c", "copy"]));
     expect(copiesIn(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+  });
+
+  it("copies only the first stretch when asked, as a copy of its own", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath, proxyWindowSeconds } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const window = await proxyWindowSeconds(sourcePath, 5);
+    expect(window).toBe(PIECE_SECONDS);
+    const windowed = getProxyCachePath(projectDir, sourcePath, "h264", undefined, window);
+    expect(windowed).not.toBe(getProxyCachePath(projectDir, sourcePath));
+
+    const result = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      limitSeconds: window,
+    });
+    await flush();
+    succeed(calls[0]!);
+
+    expect(await result).toBe(windowed);
+    expect(calls).toHaveLength(1);
+    expect(
+      calls[0]!.args.slice(calls[0]!.args.indexOf("-t"), calls[0]!.args.indexOf("-t") + 2),
+    ).toEqual(["-t", String(PIECE_SECONDS)]);
+  });
+
+  it("copies the whole source when the stretch saves less than a piece", async () => {
+    const { spawn } = createSpawnSpy();
+    const { proxyWindowSeconds } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const sourcePath = join(tmpProject(), "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    expect(await proxyWindowSeconds(sourcePath, LONG_SECONDS - 10)).toBeUndefined();
   });
 
   it("copies alpha pieces side by side, shares the cores out, and counts them together", async () => {
@@ -789,11 +841,11 @@ describe("resolveProxy", () => {
       ]);
 
       const proxyPath = await resolveProxy(projectDir, sourcePath);
-      // Reference: the render tone map's RGB, converted with BT.709. Mean luma is ~53 there;
-      // skipping the tone map gives ~60, a BT.601 conversion ~56.
+      // Reference: the render tone map's RGB, converted with BT.709. Skipping the tone map or
+      // converting with BT.601 each moves mean luma by several levels.
       const reference = meanLuma(
         sourcePath,
-        `${hdrToSdrToneMapFilter({ colorTransfer: "arib-std-b67" }, { colorTransfer: "arib-std-b67" })},format=gbrp,scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=yuv420p,`,
+        `${hdrToSdrToneMapFilter({ colorTransfer: "arib-std-b67" }, { colorTransfer: "arib-std-b67", keyframeTransfers: ["arib-std-b67"] })},format=gbrp,scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=yuv420p,`,
       );
       expect(Math.abs(meanLuma(proxyPath) - reference)).toBeLessThan(1);
     },
@@ -1116,6 +1168,26 @@ describe("resolveProxy", () => {
       await thumb;
     });
 
+    it("runs a background copy's encode at the lowest priority, until a viewer asks for it", async () => {
+      const setPriority = vi.spyOn(os, "setPriority").mockImplementation(() => {});
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["later", "viewed"]);
+
+      const later = resolveProxy(projectDir, clip.later!, "h264", undefined, { background: true });
+      await flush();
+      const lowered = setPriority.mock.calls.length;
+      succeed(calls[0]!);
+      await later;
+      const viewed = resolveProxy(projectDir, clip.viewed!, "h264", undefined, { priority: true });
+      await flush();
+      succeed(calls[1]!);
+      await viewed;
+
+      expect(lowered).toBe(1);
+      expect(setPriority).toHaveBeenCalledTimes(1);
+      setPriority.mockRestore();
+    });
+
     it("moves an already queued copy forward when the preview asks for it", async () => {
       const { calls, resolveProxy, projectDir } = await oneSlot();
       const clip = clips(projectDir, ["running", "first", "second"]);
@@ -1188,6 +1260,25 @@ describe("resolveProxy", () => {
       expect(clipOf(calls[1]!)).toBe("shared");
       succeed(calls[1]!);
       await expect(staying).resolves.toBeTruthy();
+    });
+
+    it("makes the copy asked for last first, and moves a copy to the front each time it is asked again", async () => {
+      const { calls, resolveProxy, projectDir } = await oneSlot();
+      const clip = clips(projectDir, ["running", "c", "d", "f"]);
+      const ask = (name: string) =>
+        resolveProxy(projectDir, clip[name]!, "h264", undefined, { priority: true });
+
+      const running = resolveProxy(projectDir, clip.running!);
+      await flush();
+      const asks = [ask("c"), ask("d"), ask("f"), ask("c")];
+      succeed(calls[0]!);
+      await running;
+      for (const next of ["c", "f", "d"]) {
+        await flush(12);
+        expect(clipOf(calls[calls.length - 1]!)).toBe(next);
+        succeed(calls[calls.length - 1]!);
+      }
+      await expect(Promise.all(asks)).resolves.toHaveLength(4);
     });
 
     it("makes the copy when the preview asks in the same moment the last thumbnail leaves", async () => {
@@ -1870,6 +1961,33 @@ describe("resolveProxy", () => {
 
     await expect(result).rejects.toBeInstanceOf(FfmpegUnavailableError);
   });
+});
+
+describe("resolveStill", () => {
+  const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
+
+  it.skipIf(!canStill)(
+    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=3"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+
+      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
+      expect(first.endsWith(".jpg")).toBe(true);
+      const bytes = readFileSync(first);
+      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
+      expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
+    },
+    60_000,
+  );
 });
 
 describe("sourceFolderKind", () => {

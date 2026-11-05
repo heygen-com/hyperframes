@@ -6,9 +6,12 @@ import { TIMELINE_SCROLL_SETTLE_MS } from "./useTimelineScrollViewport";
 // on a large unvirtualized timeline.
 export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>): number | null {
   const scrollingRef = useRef(false);
+  const settledRef = useRef(0);
   const subscribe = useCallback(
     (onChange: () => void) => {
       const el = scrollRef.current;
+      settledRef.current = el?.scrollLeft ?? 0;
+      onChange();
       let settle: ReturnType<typeof setTimeout> | undefined;
       const onScroll = () => {
         if (!scrollingRef.current) {
@@ -18,6 +21,7 @@ export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>
         clearTimeout(settle);
         settle = setTimeout(() => {
           scrollingRef.current = false;
+          settledRef.current = el?.scrollLeft ?? 0;
           onChange();
         }, TIMELINE_SCROLL_SETTLE_MS);
       };
@@ -32,7 +36,7 @@ export function useSettledScrollLeft(scrollRef: RefObject<HTMLDivElement | null>
   );
   return useSyncExternalStore(
     subscribe,
-    () => (scrollingRef.current ? null : (scrollRef.current?.scrollLeft ?? 0)),
+    () => (scrollingRef.current ? null : settledRef.current),
     () => null,
   );
 }

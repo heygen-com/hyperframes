@@ -229,6 +229,16 @@ const ROWS: [string, string, (m: Metrics) => number | boolean | null][] = [
   ["4", "cuts", (m) => m.cuts],
   ["4", "incoming second-frame gap median (ms)", (m) => m.secondFrameGapMedianMs],
   ["4", "incoming second-frame gap max (ms)", (m) => m.secondFrameGapMaxMs],
+  [
+    "4",
+    "incoming picture behind the playhead, first 0.5 s, median over cuts (ms)",
+    (m) => m.cutPictureLagMedianMs,
+  ],
+  [
+    "4",
+    "incoming picture behind the playhead, first 0.5 s, worst cut (ms)",
+    (m) => m.cutPictureLagMaxMs,
+  ],
   ["4", "playhead hold per cut median (ms)", (m) => m.playheadHoldMedianMs],
   ["4", "playhead hold per cut p90 (ms)", (m) => m.playheadHoldP90Ms],
   ["4", "cuts with a hold over 100 ms", (m) => m.holdsOver100],

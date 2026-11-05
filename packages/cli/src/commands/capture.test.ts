@@ -3,6 +3,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -10,7 +11,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CliRuntimeError, registerRootExitRequester } from "../utils/commandResult.js";
+import { pathToFileURL } from "node:url";
+import {
+  CliRuntimeError,
+  CliUsageError,
+  registerRootExitRequester,
+} from "../utils/commandResult.js";
 import { CAPTURE_PHASE_SCHEMA } from "../capture/types.js";
 
 const { captureWebsiteMock } = vi.hoisted(() => ({
@@ -163,7 +169,7 @@ describe("capture command — vision control", () => {
             json: true,
           },
         } as never),
-      ).rejects.toBeInstanceOf(CliRuntimeError);
+      ).rejects.toBeInstanceOf(CliUsageError);
 
       expect(captureWebsiteMock).not.toHaveBeenCalled();
     },
@@ -183,11 +189,53 @@ describe("capture command — vision control", () => {
             json: true,
           },
         } as never),
-      ).rejects.toBeInstanceOf(CliRuntimeError);
+      ).rejects.toBeInstanceOf(CliUsageError);
       expect(error).toHaveBeenCalledWith("--max-screenshots must be a positive integer.");
       expect(captureWebsiteMock).not.toHaveBeenCalled();
     },
   );
+
+  it("passes a local HTML file and its root into capture", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const site = mkdtempSync(join(tmpdir(), "hf-capture-local-cmd-"));
+    try {
+      mkdirSync(join(site, "pages"));
+      writeFileSync(join(site, "pages", "about.html"), "<h1>about</h1>");
+      await captureCommand.run!({
+        args: {
+          "local-file": join(site, "pages", "about.html"),
+          "local-root": site,
+          output: "/tmp/hf-local-cmd",
+          json: true,
+        },
+      } as never);
+      expect(captureWebsiteMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: pathToFileURL(realpathSync.native(join(site, "pages", "about.html"))).href,
+          localFile: join(site, "pages", "about.html"),
+          localRoot: site,
+        }),
+        undefined,
+      );
+    } finally {
+      rmSync(site, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [{ "local-file": "/definitely/missing/page.html" }, "Local file not found"],
+    [{ url: "https://example.com", "local-file": "/tmp" }, "either a URL or --local-file"],
+    [{ url: "https://example.com", "local-root": "/tmp" }, "--local-root requires --local-file"],
+  ])("refuses %o before capturing", async (target, message) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      captureCommand.run!({
+        args: { ...target, output: "/tmp/hf-local-refused", json: true },
+      } as never),
+    ).rejects.toThrow("url" in target ? CliUsageError : CliRuntimeError);
+    expect(error.mock.calls.flat().join("\n")).toContain(message);
+    expect(captureWebsiteMock).not.toHaveBeenCalled();
+  });
 
   it("passes a validated screenshot limit into capture", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -338,7 +386,10 @@ describe("capture command — vision control", () => {
       const payload = log.mock.calls.at(-1)?.[0];
       expect(typeof payload).toBe("string");
       if (typeof payload !== "string") throw new Error("Expected JSON failure payload");
-      expect(JSON.parse(payload)).toMatchObject({ ok: false, error: "required extraction failed" });
+      expect(JSON.parse(payload)).toMatchObject({
+        ok: false,
+        error: expect.objectContaining({ message: "required extraction failed" }),
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

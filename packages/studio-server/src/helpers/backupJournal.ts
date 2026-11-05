@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
 import { isProjectRootMissing, isSafePath, mkdirWithinProject } from "./safePath.js";
 
@@ -8,10 +9,6 @@ const DEFAULT_KEEP_PER_FILE = 10;
 export interface BackupJournalResult {
   backupPath: string | null;
   error?: string;
-}
-
-function backupKeyForPath(path: string): string {
-  return Buffer.from(path, "utf-8").toString("base64url");
 }
 
 function timestampPrefix(): string {
@@ -42,10 +39,14 @@ export function snapshotBeforeWrite(
     const backupDir = join(projectDir, ".hyperframes", "backup");
     mkdirWithinProject(projectDir, backupDir);
 
-    const backupKey = backupKeyForPath(relativePath);
+    const pathKey = Buffer.from(relativePath, "utf-8").toString("base64url");
+    const backupKey =
+      pathKey.length <= 200
+        ? pathKey
+        : `sha256~${createHash("sha256").update(relativePath).digest("hex")}`;
     const backupPath = nextBackupPath(backupDir, backupKey);
     writeFileSync(backupPath, content);
-    pruneBackups(backupDir, backupKey, options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
+    pruneBackups(backupDir, [pathKey, backupKey], options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
     return { backupPath };
   } catch (error) {
     if (isProjectRootMissing(error)) throw error;
@@ -79,12 +80,11 @@ function nextBackupPath(backupDir: string, backupKey: string): string {
   }
 }
 
-function pruneBackups(backupDir: string, backupKey: string, keepPerFile: number): void {
+function pruneBackups(backupDir: string, backupKeys: string[], keepPerFile: number): void {
   const keep = Math.max(1, Math.floor(keepPerFile));
-  const suffix = `-${backupKey}`;
-  const numberedSuffix = new RegExp(`-${backupKey}-\\d+$`);
+  const suffix = new RegExp(`-(?:${backupKeys.join("|")})(?:-\\d+)?$`);
   const matches = readdirSync(backupDir)
-    .filter((name) => name.endsWith(suffix) || numberedSuffix.test(name))
+    .filter((name) => suffix.test(name))
     .map((name) => join(backupDir, name))
     .sort((a, b) => {
       return b.localeCompare(a);

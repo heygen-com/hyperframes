@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type {
   AnalysisQuality,
   AudioCapability,
@@ -274,7 +274,12 @@ export default defineCommand({
     const targets = files.length
       ? await fileTargets(files, flags)
       : await clipTargets(flags, query);
-    const report = await analyzeTargets(targets, analyzeRequest(flags), Boolean(args.full));
+    const report = await analyzeTargets(
+      targets,
+      analyzeRequest(flags),
+      Boolean(args.full),
+      join(resolve(flags.dir ?? process.cwd()), ".hyperframes", "audio-kind"),
+    );
     console.log(args.json ? JSON.stringify(withMeta(report)) : formatReport(report));
   },
 });

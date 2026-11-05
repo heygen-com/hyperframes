@@ -12,6 +12,7 @@
 
 import { readdirSync, existsSync } from "node:fs";
 import { writeCaptureFileSync } from "./captureFile.js";
+import { captureSiteName } from "./localPage.js";
 import { join } from "node:path";
 import type { DesignTokens } from "./types.js";
 import type { AnimationCatalog } from "./animationCataloger.js";
@@ -67,7 +68,7 @@ function buildPrompt(
   hasLottie?: boolean,
   hasShaders?: boolean,
 ): string {
-  const title = tokens.title || new URL(url).hostname.replace(/^www\./, "");
+  const title = tokens.title || captureSiteName(url);
 
   const colorSummary = tokens.colors
     .slice(0, 10)

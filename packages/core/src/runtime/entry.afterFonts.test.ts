@@ -89,6 +89,30 @@ describe("runtime entry: composition scripts after web fonts", () => {
     expect(document.querySelectorAll(`script[type="${AFTER_FONTS_SCRIPT_TYPE}"]`)).toHaveLength(0);
   });
 
+  it("deferred scripts read bound variable text, not the authored text", async () => {
+    serveFonts(Promise.resolve(), []);
+    const win = window as { __hfVariables?: unknown };
+    document.documentElement.setAttribute(
+      "data-composition-variables",
+      '[{"id":"title","type":"string","label":"Title","default":"Hello"}]',
+    );
+    win.__hfVariables = { title: "World" };
+    document.body.innerHTML =
+      `<output id="log"></output>` +
+      `<div data-composition-id="main" data-root="true" data-start="0" data-width="1920" data-height="1080">` +
+      `<h1 id="t" data-var-text="title">Hello</h1></div>` +
+      `<script type="${AFTER_FONTS_SCRIPT_TYPE}">` +
+      `document.getElementById("log").textContent += document.getElementById("t").textContent;</script>`;
+    try {
+      await parseThenLoad();
+      await vi.waitFor(() => expect(window.__player).toBeDefined());
+      expect(log()).toBe("World");
+    } finally {
+      document.documentElement.removeAttribute("data-composition-variables");
+      delete win.__hfVariables;
+    }
+  });
+
   it.each([
     [
       "a preview gives the page a turn once a slice of scripts has run",

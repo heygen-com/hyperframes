@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Grain Overlay</h1>
+  <p>Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/grain-overlay.json"
   compositionId="grain-overlay"
   compositionSrc="compositions/components/grain-overlay.html"
   title="Grain Overlay"
-  description="Animated film grain texture overlay using CSS keyframes — adds warmth and analog character to any composition"
   variables={[]}
   meta={{"category":"Texture","badge":"Stable","codeLines":75}}
   attribution={{"path":"registry/components/grain-overlay","tags":["texture","grain","overlay","film"]}}
@@ -110,7 +114,9 @@ That writes one file: `compositions/components/grain-overlay.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -130,6 +136,4 @@ Tagged `texture` `grain` `overlay` `film`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

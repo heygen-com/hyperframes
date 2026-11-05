@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Page } from "puppeteer-core";
 import {
   MAX_RISK_FRAME_FRACTION,
@@ -102,6 +102,72 @@ const frames = (live: Set<number> | null) => [...(live ?? [])].sort((a, b) => a 
 const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i);
 
 describe("scanCssEffectLiveFrames", () => {
+  it("stops after one chunk when the whole scan would hold back the first frame too long", async () => {
+    const seeks: number[] = [];
+    const page = makePage(between(0, 0));
+    const evaluate = page.evaluate.bind(page);
+    page.evaluate = (async (...args: Parameters<Page["evaluate"]>) => {
+      seeks.push((args[1] as number[]).length);
+      return evaluate(...args);
+    }) as Page["evaluate"];
+    let clock = 0;
+    // 24 ms a frame, what a heavy page costs: 40,219 frames would take 16 minutes.
+    const now = () => (clock += 240 * 24);
+
+    expect(
+      await scanCssEffectLiveFrames(page, 60, 40_219, 40_219, { budgetMs: 60_000, now }),
+    ).toBeNull();
+    expect(seeks).toEqual([240]);
+  });
+
+  it("gives up when a chunk never answers, not when the protocol timeout fires", async () => {
+    vi.useFakeTimers();
+    try {
+      const page = { evaluate: () => new Promise<never>(() => {}) } as unknown as Page;
+      const scan = scanCssEffectLiveFrames(page, 30, 5_000, 5_000, {
+        budgetMs: 120_000,
+        now: () => Date.now(),
+      });
+      const outcome = { settled: false, live: undefined as Set<number> | null | undefined };
+      void scan.then((live) => Object.assign(outcome, { settled: true, live }));
+
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(outcome.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(outcome).toEqual({ settled: true, live: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports the frames scanned after each chunk", async () => {
+    const seen: Array<[number, number]> = [];
+
+    await scanCssEffectLiveFrames(makePage(between(0, 0)), 10, 500, 500, {
+      onProgress: (scanned, total) => seen.push([scanned, total]),
+    });
+    expect(seen).toEqual([
+      [240, 500],
+      [480, 500],
+      [500, 500],
+    ]);
+  });
+
+  it("scans to the end when the whole scan fits the budget", async () => {
+    let clock = 0;
+    const now = () => (clock += 240);
+
+    const live = await scanCssEffectLiveFrames(
+      makePage(between(2, 4)),
+      10,
+      1000,
+      1000,
+      60_000,
+      now,
+    );
+    expect(frames(live)).toEqual(range(20, 20));
+  });
+
   it("returns the frames where the effect element shows", async () => {
     const live = await scanCssEffectLiveFrames(makePage(between(2, 4)), 10, 100, 100);
     expect(frames(live)).toEqual(range(20, 20));

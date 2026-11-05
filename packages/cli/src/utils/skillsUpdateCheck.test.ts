@@ -1,5 +1,8 @@
 // Nudge-count coverage: the printed total is outdated plus missing, as cached by refreshSkillsCache.
 
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type FakeConfig = Record<string, unknown>;
@@ -9,6 +12,9 @@ let config: FakeConfig;
 let cachedRead: FakeConfig | null = null;
 
 vi.mock("../telemetry/config.js", () => ({
+  get CONFIG_PATH() {
+    return join(gate.stateDir, "config.json");
+  },
   readConfig: () => ({ ...(cachedRead ?? config) }),
   readConfigFresh: () => ({ ...config }),
   writeConfig: (next: FakeConfig) => {
@@ -16,7 +22,14 @@ vi.mock("../telemetry/config.js", () => ({
   },
 }));
 
-const gate = vi.hoisted(() => ({ disabled: false, noTty: false, answers: true }));
+const gate = vi.hoisted(() => ({
+  disabled: false,
+  noTty: false,
+  answers: true,
+  unattended: false,
+  stateDir: "",
+}));
+vi.mock("./attendedTerminal.js", () => ({ isUnattended: () => gate.unattended }));
 vi.mock("./updateCheck.js", () => ({
   updateCheckDisabled: () => gate.disabled,
   updateNoticesSuppressed: () => gate.disabled || gate.noTty,
@@ -37,6 +50,8 @@ describe("skillsUpdateCheck", () => {
     gate.disabled = false;
     gate.noTty = false;
     gate.answers = true;
+    gate.unattended = false;
+    gate.stateDir = mkdtempSync(join(tmpdir(), "hf-skills-notice-"));
     vi.stubEnv("HYPERFRAMES_SKIP_SKILLS", "");
   });
   afterEach(() => {
@@ -52,6 +67,44 @@ describe("skillsUpdateCheck", () => {
     expect(skillsCheckDue()).toBe(true);
     arrange();
     expect(skillsCheckDue()).toBe(false);
+  });
+
+  describe("cache freshness: 2 hours, and only for this CLI's release tag", () => {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+    it.each([
+      [
+        "an hour-old check by this CLI",
+        { lastSkillsCheck: hoursAgo(1), skillsCheckedVersion: "0.0.0-dev" },
+        false,
+      ],
+      [
+        "a 3-hour-old check",
+        { lastSkillsCheck: hoursAgo(3), skillsCheckedVersion: "0.0.0-dev" },
+        true,
+      ],
+      [
+        "a fresh check taken by another CLI version",
+        { lastSkillsCheck: hoursAgo(1), skillsCheckedVersion: "0.9.4" },
+        true,
+      ],
+      ["a fresh check that predates version stamping", { lastSkillsCheck: hoursAgo(1) }, true],
+    ])("with %s, a background check is due: %s", async (_, cache, due) => {
+      config = cache;
+      const { skillsCheckDue } = await import("./skillsUpdateCheck.js");
+      expect(skillsCheckDue()).toBe(due);
+    });
+
+    it("refreshSkillsCache stamps the CLI version whose tag it compared against", async () => {
+      mockCheckSkills.mockResolvedValue({
+        location: "/home/user/.claude/skills",
+        updateAvailable: true,
+        summary: { current: 1, outdated: 2, missing: 0, coreMissing: 0 },
+      });
+      const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+      await refreshSkillsCache();
+      expect(config).toMatchObject({ skillsCheckedVersion: "0.0.0-dev", skillsOutdatedCount: 2 });
+    });
   });
 
   it("a run without a TTY (an agent) still has its background check due", async () => {
@@ -99,7 +152,7 @@ describe("skillsUpdateCheck", () => {
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
     // `updateSkills` would actually reconcile.
-    expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true });
+    expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
   });
 
   it("does not persist anything when no install was located (nothing meaningful to cache)", async () => {
@@ -114,16 +167,18 @@ describe("skillsUpdateCheck", () => {
   });
 
   /** Drive printSkillsUpdateNotice from the given cache shape; returns what it wrote (if anything). */
-  async function noticeTextFor(cache: FakeConfig): Promise<string | null> {
+  async function noticeTextFor(cache: FakeConfig, project = "/projects/a"): Promise<string | null> {
     config = cache;
     const { printSkillsUpdateNotice } = await import("./skillsUpdateCheck.js");
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
-    printSkillsUpdateNotice();
+    printSkillsUpdateNotice(project);
+    const calls = [...writeSpy.mock.calls];
+    writeSpy.mockRestore();
 
-    if (writeSpy.mock.calls.length === 0) return null;
-    expect(writeSpy).toHaveBeenCalledTimes(1);
-    return String(writeSpy.mock.calls[0]?.[0]);
+    if (calls.length === 0) return null;
+    expect(calls).toHaveLength(1);
+    return String(calls[0]?.[0]);
   }
 
   it("suppresses a cached stale-skills notice in an attended plugin run", async () => {
@@ -136,6 +191,42 @@ describe("skillsUpdateCheck", () => {
     gate.noTty = true;
     const text = await noticeTextFor({ skillsOutdatedCount: 2, skillsMissingCount: 1 });
     expect(text).toContain("3 HyperFrames skills out of date or missing");
+    // The agent reads stderr too: the command is the person's to run (DeltaVerdict D5).
+    expect(text).toContain("For the user: npx hyperframes skills update");
+    expect(text).not.toMatch(/\bRun:/);
+  });
+
+  it("prints at most once a day per project", async () => {
+    const stale = { skillsOutdatedCount: 2, skillsMissingCount: 0 };
+    expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+    expect(await noticeTextFor(stale, "/projects/a")).toBeNull();
+    expect(await noticeTextFor(stale, "/projects/b")).toContain("2 HyperFrames skills");
+  });
+
+  // The cache now refreshes every 2 h; the printed nudge must not follow it.
+  it("still prints at most once a day per project when the cache refreshes 3 hours later", async () => {
+    vi.useFakeTimers({ now: new Date("2026-11-03T08:00:00Z"), toFake: ["Date"] });
+    try {
+      const stale = { skillsOutdatedCount: 2, skillsMissingCount: 0 };
+      expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+      vi.setSystemTime(new Date("2026-11-03T11:00:00Z"));
+      expect(await noticeTextFor(stale, "/projects/a")).toBeNull();
+      vi.setSystemTime(new Date("2026-11-04T08:00:01Z"));
+      expect(await noticeTextFor(stale, "/projects/a")).toContain("2 HyperFrames skills");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("unattended, says nothing about skills that are only outdated", async () => {
+    gate.unattended = true;
+    expect(await noticeTextFor({ skillsOutdatedCount: 3, skillsMissingCount: 0 })).toBeNull();
+  });
+
+  it("unattended, still names missing skills", async () => {
+    gate.unattended = true;
+    const text = await noticeTextFor({ skillsOutdatedCount: 3, skillsMissingCount: 1 });
+    expect(text).toContain("1 HyperFrames skill out of date or missing");
   });
 
   it("prints nothing when the update check is disabled (CI, dev, opt-out)", async () => {
@@ -159,7 +250,8 @@ describe("skillsUpdateCheck", () => {
   // verdict so the next command re-checks for real.
   describe("invalidateSkillsCache", () => {
     const PRE_INSTALL_CACHE = {
-      lastSkillsCheck: new Date().toISOString(), // fresh — inside the 24h TTL
+      lastSkillsCheck: new Date().toISOString(), // fresh — inside the 2h TTL
+      skillsCheckedVersion: "0.0.0-dev", // taken by this CLI (the version under test)
       skillsUpdateAvailable: true,
       skillsOutdatedCount: 12,
       skillsMissingCount: 8,
@@ -193,7 +285,7 @@ describe("skillsUpdateCheck", () => {
 
       expect(skillsCheckDue()).toBe(true);
       await refreshSkillsCache();
-      expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true });
+      expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
       expect(config).toMatchObject({ skillsUpdateAvailable: false, skillsOutdatedCount: 0 });
     });
 

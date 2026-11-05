@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Emoji Pop</h1>
+  <p>Emoji integration with stroked text and horizontal squeeze entrance</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/caption-emoji-pop.json"
   compositionId="caption-emoji-pop"
   compositionSrc="compositions/components/caption-emoji-pop.html"
   title="Emoji Pop"
-  description="Emoji integration with stroked text and horizontal squeeze entrance"
   variables={[]}
   meta={{"category":"Captions","badge":"Stable","codeLines":467}}
   attribution={{"path":"registry/components/caption-emoji-pop","tags":["captions","caption-style","emoji","social"]}}
@@ -502,7 +506,9 @@ That writes one file: `compositions/components/caption-emoji-pop.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -521,6 +527,4 @@ Tagged `captions` `caption-style` `emoji` `social`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

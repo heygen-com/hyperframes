@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Notes Typing</h1>
+  <p>The notes-app confession as a mountable scene: a bold title, then body lines typed character by character on the measured human keystroke rhythm, the caret riding every landed character and jumping down at each paragraph. For a bare prompt line use typed-prompt; for an even mechanical reveal use typewriter</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/notes-typing.json"
   compositionId="notes-typing"
   compositionSrc="compositions/components/notes-typing.html"
   title="Notes Typing"
-  description="The notes-app confession as a mountable scene: a bold title, then body lines typed character by character on the measured human keystroke rhythm, the caret riding every landed character and jumping down at each paragraph. For a bare prompt line use typed-prompt; for an even mechanical reveal use typewriter"
   variables={[{"id":"title","type":"string","role":"content","label":"Title","description":"Bold note title. A | breaks the line.","default":"Things nobody told me|about video."},{"id":"lines","type":"string","role":"content","label":"Lines","description":"Pipe-separated body lines, typed one after another.","default":"my videos sucked|my tools cost $$$|and re-edits never end."},{"id":"speed","type":"number","role":"timing","label":"Speed","description":"Typing speed multiplier. 1 is the measured human rhythm.","default":1,"min":0.5,"max":2,"step":0.1}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":347}}
   attribution={{"author":"Miao Yang","path":"registry/components/notes-typing","tags":["motion-primitive","notes","typing","mock-ui","vertical"]}}
@@ -382,7 +386,9 @@ That writes one file: `compositions/components/notes-typing.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -425,6 +431,4 @@ Created by Miao Yang.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

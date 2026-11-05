@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Beat Pulse Background</h1>
+  <p>An accent-derived backdrop pulses its glow intensity and saturation on a deterministic, supplied beat grid.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/beat-pulse-background.json"
   compositionId="beat-pulse-background"
   compositionSrc="compositions/components/beat-pulse-background.html"
   title="Beat Pulse Background"
-  description="An accent-derived backdrop pulses its glow intensity and saturation on a deterministic, supplied beat grid."
   variables={[{"id":"beats","type":"string","role":"timing","label":"Beats","description":"Comma-separated beat times in seconds. Invalid entries are ignored and numeric values are clamped to the composition duration.","default":"0.5,1.0,1.5,2.0,2.5,3.0,3.5"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Accent token family used by the pulsing glow.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"intensity","type":"enum","role":"style","label":"Intensity","description":"Strength of the glow and saturation pulse.","default":"subtle","options":[{"value":"subtle","label":"Subtle"},{"value":"club","label":"Club"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":208}}
   attribution={{"path":"registry/components/beat-pulse-background","tags":["motion-primitive","background","beat","pulse","rhythmic","reactive"]}}
@@ -243,7 +247,9 @@ That writes one file: `compositions/components/beat-pulse-background.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -284,6 +290,4 @@ Tagged `motion-primitive` `background` `beat` `pulse` `rhythmic` `reactive`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

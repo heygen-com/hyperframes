@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Kinetic Type Swap</h1>
+  <p>A held sentence keeps its fixed text in place while one widest-word masked slot rolls through alternatives and settles on the final option.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/kinetic-type-swap.json"
   compositionId="kinetic-type-swap"
   compositionSrc="compositions/components/kinetic-type-swap.html"
   title="Kinetic Type Swap"
-  description="A held sentence keeps its fixed text in place while one widest-word masked slot rolls through alternatives and settles on the final option."
   variables={[{"id":"prefix","type":"string","role":"content","label":"Prefix","description":"Fixed sentence text before the rolling word slot.","default":"Ship"},{"id":"options","type":"string","role":"content","label":"Options","description":"Comma-separated words shown in the rolling slot.","default":"faster,smarter,together"},{"id":"suffix","type":"string","role":"content","label":"Suffix","description":"Fixed sentence text after the rolling word slot.","default":""},{"id":"cues","type":"string","role":"timing","label":"Cues","description":"Comma-separated seconds (from mount start) for each word swap. Empty keeps the authored even spread.","default":""},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Color used by the rolling word slot.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the sentence holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Typography & Text","badge":"Stable","codeLines":373}}
   attribution={{"path":"registry/components/kinetic-type-swap","tags":["motion-primitive","text-effects","kinetic-type","word-swap","reveal"]}}
@@ -408,7 +412,9 @@ That writes one file: `compositions/components/kinetic-type-swap.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -452,6 +458,4 @@ Tagged `motion-primitive` `text-effects` `kinetic-type` `word-swap` `reveal`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

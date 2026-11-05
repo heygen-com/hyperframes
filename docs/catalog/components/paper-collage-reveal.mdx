@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Paper Collage Reveal</h1>
+  <p>A scrapbook patchwork of torn paper scraps, each with its own texture and tilt, flutters away in a staggered scatter to reveal the content underneath.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/paper-collage-reveal.json"
   compositionId="paper-collage-reveal"
   compositionSrc="compositions/components/paper-collage-reveal.html"
   title="Paper Collage Reveal"
-  description="A scrapbook patchwork of torn paper scraps, each with its own texture and tilt, flutters away in a staggered scatter to reveal the content underneath."
   variables={[{"id":"panels","type":"number","role":"content","label":"Panels","description":"How many torn paper scraps cover the frame.","default":6,"min":4,"max":8,"step":1},{"id":"tone","type":"enum","role":"style","label":"Paper tone","description":"Color per scrap. Mixed seeds a different tone per scrap for a real scrapbook mix.","default":"mixed","options":[{"value":"cream","label":"Cream"},{"value":"kraft","label":"Kraft"},{"value":"mixed","label":"Mixed"}]},{"id":"spread","type":"enum","role":"motion","label":"Spread","description":"Outward sends each scrap away from the frame center. Scatter sends every scrap the same general direction with seeded variance.","default":"outward","options":[{"value":"outward","label":"Outward"},{"value":"scatter","label":"Scatter"}]}]}
   meta={{"category":"Effects","badge":"Stable","codeLines":441}}
   attribution={{"path":"registry/components/paper-collage-reveal","tags":["collage","scrapbook","torn paper","reveal","transition","motion-primitive"]}}
@@ -476,7 +480,9 @@ That writes one file: `compositions/components/paper-collage-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -517,6 +523,4 @@ Tagged `collage` `scrapbook` `torn paper` `reveal` `transition` `motion-primitiv
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

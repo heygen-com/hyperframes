@@ -1,8 +1,9 @@
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
+import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
 // tts.mjs — multi-provider TTS for the media audio engine. The provider chain,
 // auto-detected from env, is the one documented in ../SKILL.md:
 //
-//   1. HeyGen (Starfish)  — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY / ~/.heygen.
+//   1. HeyGen (Starfish)  — $HEYGEN_API_KEY / $HYPERFRAMES_API_KEY / ~/.hyperframes.
 //        Direct v3 REST (NOT `hyperframes tts`, which in the published build is
 //        Kokoro-only and silently ignores a HeyGen key). Returns word_timestamps
 //        in the same call, so no separate transcribe pass.
@@ -310,6 +311,7 @@ export async function synthesizeHeygen({ text, voiceId, lang, speed, wavAbs }, d
   const fetchImpl = deps.fetch ?? fetch;
   const transcode = deps.transcodeToWav ?? transcodeToWav;
   try {
+    refuseUnderLimit(deps.projectDir ?? process.cwd(), "a HeyGen voice", "voice");
     const body = { text, voice_id: voiceId, speed };
     if (lang !== "en") body.language = lang;
     const payload = await requestJSON(`/voices/speech`, {

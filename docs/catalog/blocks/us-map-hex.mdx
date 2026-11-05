@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>US Hex Grid Map</h1>
+  <p>Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/us-map-hex.json"
   compositionId="us-map-hex"
   compositionSrc="compositions/us-map-hex.html"
   title="US Hex Grid Map"
-  description="Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label"
   variables={[]}
   meta={{"duration":10,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":559}}
   attribution={{"path":"registry/blocks/us-map-hex","tags":["data","map","geography","usa","hexgrid","tilegrid"]}}
@@ -594,7 +598,9 @@ That writes one file: `compositions/us-map-hex.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -625,6 +631,4 @@ Tagged `data` `map` `geography` `usa` `hexgrid` `tilegrid`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

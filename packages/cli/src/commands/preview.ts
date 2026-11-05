@@ -1,6 +1,6 @@
 import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
 // fallow-ignore-file code-duplication
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { spawn, type ChildProcessByStdio } from "node:child_process";
 import type { Readable } from "node:stream";
@@ -37,7 +37,7 @@ import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import * as clack from "@clack/prompts";
+import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { desktopHint, insideHostApp } from "../utils/desktopApp.js";
 import { isDevMode } from "../utils/env.js";
@@ -54,6 +54,7 @@ import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { formatLintStartupMessage } from "../utils/lintFormat.js";
 import {
   activeServerOnPort,
+  closeServer,
   findPortAndServe,
   scanActiveServers,
   killActiveServers,
@@ -1743,7 +1744,7 @@ export async function runEmbeddedMode(
         .catch(() => {})
         .finally(() => {
           watcher.close();
-          result.server.close(() => resolveRun());
+          void closeServer(result.server).then(resolveRun);
         });
     };
     // `on`, not `once`: a repeat Ctrl+C/SIGTERM while shutdown is running must

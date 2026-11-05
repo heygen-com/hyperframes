@@ -317,8 +317,12 @@ it("refuses a second press whose edit is undone once an edit was made after the 
     return run;
   };
   const press = () => hook().undo({ readFile, claimedAfter: atKey, serialize });
-  const presses = Promise.all([press(), press()]);
-  await vi.waitFor(() => expect(file()).toBe("B"));
+  const firstPress = press();
+  const secondPress = press();
+  // The first press must be over, not only its file written: the undo's closing sweep would take card.html
+  // into the undo, and the claim below would then hold nothing.
+  const first = await act(() => firstPress);
+  expect(file()).toBe("B");
   writeFileSync(join(dir, "card.html"), "Y");
   await act(() =>
     hook().recordEdit({
@@ -328,7 +332,7 @@ it("refuses a second press whose edit is undone once an edit was made after the 
   );
 
   open();
-  const [first, second] = await act(() => presses);
+  const second = await act(() => secondPress);
 
   expect(first).toMatchObject({ ok: true, label: "Undid: Moved Card" });
   expect(second).toMatchObject({ ok: false, reason: "content-mismatch" });

@@ -13,7 +13,7 @@ import {
 } from "./authoredTiming";
 import { swallow } from "./diagnostics";
 import { readTimelineDurationSeconds } from "./timelineDuration";
-import { readElementPlaybackRate, readElementPlaybackStart } from "./media";
+import { readElementPlaybackRate, readMediaStart } from "./playbackRate";
 import {
   parseStrictFiniteTimingNumber,
   resolveMediaElementDurationSeconds,
@@ -499,7 +499,7 @@ export function collectRuntimeTimelinePayload(params: {
       parentCompositionId: compositionContext.parentCompositionId,
       nodePath: null,
       compositionSrc: toAbsoluteAssetUrl(node.getAttribute("data-composition-src")),
-      playbackStart: readElementPlaybackStart(node),
+      playbackStart: readMediaStart(node),
       playbackRate: readElementPlaybackRate(node),
       assetUrl: resolveNodeAssetUrl(node),
       timelineRole: node.getAttribute("data-timeline-role"),
@@ -629,7 +629,7 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
-            playbackStart: readElementPlaybackStart(el),
+            playbackStart: readMediaStart(el),
             playbackRate: readElementPlaybackRate(el),
             assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
@@ -686,7 +686,7 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
-        playbackStart: readElementPlaybackStart(el),
+        playbackStart: readMediaStart(el),
         playbackRate: readElementPlaybackRate(el),
         assetUrl: null,
         timelineRole,

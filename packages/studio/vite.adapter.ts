@@ -24,6 +24,7 @@ import {
   openProjectHistory,
   historyCache,
 } from "@hyperframes/studio-server";
+import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import type { RegistryItem } from "@hyperframes/core/registry";
 import type { BundleOptions } from "@hyperframes/core/compiler";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
@@ -352,10 +353,7 @@ export function createViteAdapter(
             outputResolution: opts.outputResolution,
             ...(opts.composition ? { entryFile: opts.composition } : {}),
             ...(opts.variables ? { variables: opts.variables } : {}),
-            ...(opts.crf !== undefined ? { crf: opts.crf } : {}),
-            ...(opts.videoBitrate ? { videoBitrate: opts.videoBitrate } : {}),
-            ...(opts.videoFrameFormat ? { videoFrameFormat: opts.videoFrameFormat } : {}),
-            ...(opts.hdrMode ? { hdrMode: opts.hdrMode } : {}),
+            ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
           });

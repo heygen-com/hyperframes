@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, parse, resolve } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
 import { createRenderPlan } from "./plan.js";
 
@@ -35,6 +35,18 @@ describe("createRenderPlan", () => {
     expect(plan.batchConcurrency).toBe(1);
     expect(Object.isFrozen(plan)).toBe(true);
     expect(Object.isFrozen(plan.environment)).toBe(true);
+  });
+
+  it("reads variables from --variables-file and from a path given to --variables", async () => {
+    const { resolveVariablesArg } = await import("../../utils/variables.js");
+    const file = join(projectDir, "vars.json");
+    writeFileSync(file, '{"title":"Hello"}');
+    for (const args of [{ "variables-file": file }, { variables: file }]) {
+      const plan = createRenderPlan({ dir: projectDir, ...args });
+      expect(resolveVariablesArg(plan.variablesArg, plan.variablesFileArg)).toEqual({
+        title: "Hello",
+      });
+    }
   });
 
   // GIF's Netscape frame-delay field is stored in centiseconds, so fps above
@@ -166,7 +178,19 @@ describe("createRenderPlan", () => {
     );
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(flag);
     expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
-      "fixed alpha-preserving ProRes 4444",
+      "MOV rate is set by the ProRes profile",
+    );
+  });
+
+  it("takes --prores-profile on MOV only", () => {
+    expect(
+      createRenderPlan({ dir: projectDir, format: "mov", "prores-profile": "hq" }).proresProfile,
+    ).toBe("hq");
+    expect(() =>
+      createRenderPlan({ dir: projectDir, format: "mp4", "prores-profile": "hq" }),
+    ).toThrow(CliUsageError);
+    expect(vi.mocked(console.error).mock.calls.flat().join("\n")).toContain(
+      "ProRes profile applies to MOV",
     );
   });
 
@@ -184,8 +208,15 @@ describe("createRenderPlan", () => {
     expect(plan.format).toBe("hls");
     expect(plan.hlsSegmentSeconds).toBe(4);
     // No extension: outputPath is the directory the playlists are written into.
-    expect(plan.outputPath.startsWith(resolve("renders", plan.project.name))).toBe(true);
+    expect(plan.outputPath.startsWith(join(projectDir, "renders", plan.project.name))).toBe(true);
     expect(basename(plan.outputPath)).not.toContain(".");
+  });
+
+  it("writes the default output under the project's renders folder whatever the cwd is", () => {
+    vi.spyOn(process, "cwd").mockReturnValue(parse(projectDir).root);
+    const plan = createRenderPlan({ dir: projectDir });
+
+    expect(dirname(plan.outputPath)).toBe(join(projectDir, "renders"));
   });
 
   it("carries an explicit --hls-segment-seconds and rejects a fractional one", () => {
@@ -220,6 +251,43 @@ describe("createRenderPlan", () => {
     expect(
       createRenderPlan({ dir: projectDir, format: "webm", "video-bitrate": "10M" }).videoBitrate,
     ).toBe("10M");
+  });
+
+  it("carries the delivery options into the plan for MP4 and refuses them for other formats", () => {
+    const flags = { "keyframe-interval": "2", "max-bitrate": "8M", "buffer-size": "12M" };
+    expect(createRenderPlan({ dir: projectDir, format: "mp4", ...flags })).toMatchObject({
+      keyframeIntervalSeconds: 2,
+      maxBitrate: "8M",
+      bufferSize: "12M",
+    });
+    expect(createRenderPlan({ dir: projectDir }).maxBitrate).toBeUndefined();
+    for (const format of ["webm", "mov", "gif", "hls"]) {
+      expect(() => createRenderPlan({ dir: projectDir, format, ...flags })).toThrow(CliUsageError);
+    }
+  });
+
+  it("carries --start and --end into the plan, and refuses what a range cannot render", () => {
+    expect(createRenderPlan({ dir: projectDir, start: "2.5", end: "6" }).range).toEqual({
+      startSeconds: 2.5,
+      endSeconds: 6,
+    });
+    expect(createRenderPlan({ dir: projectDir, end: "4" }).range).toEqual({
+      startSeconds: 0,
+      endSeconds: 4,
+    });
+    expect(createRenderPlan({ dir: projectDir }).range).toBeUndefined();
+    const refused: Array<Record<string, string | boolean>> = [
+      { start: "-1" },
+      { start: "abc" },
+      { start: "5", end: "5" },
+      { start: "1", format: "webm" },
+      { start: "1", fps: "29.97" },
+      { start: "1", fps: "50" },
+      { start: "1", hdr: true },
+    ];
+    for (const flags of refused) {
+      expect(() => createRenderPlan({ dir: projectDir, ...flags })).toThrow(CliUsageError);
+    }
   });
 
   it("rejects batch and single-render variables before execution", () => {

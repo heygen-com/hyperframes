@@ -5,6 +5,9 @@ import { BrowserCleanupError, closeManagedBrowser } from "../browser/launch.js";
 import type { CheckBrowserResult } from "./checkTypes.js";
 
 const CHECK_IDLE_MS = 120_000;
+
+export const idleWindow = (timeoutMs: number): number =>
+  Math.max(CHECK_IDLE_MS, timeoutMs + 10_000);
 const SCRIPT_START = "[hyperframes:script:start] ";
 const SCRIPT_FINISH = "[hyperframes:script:finish] ";
 
@@ -14,6 +17,7 @@ const PHASE_LABELS = {
   load: "loading the page",
   settle: "waiting for the page to be ready",
   samples: "checking samples",
+  analysis: "analyzing the samples",
   overlap: "running the overlap pass",
   crops: "capturing finding crops",
   frames: "capturing finding frames",
@@ -34,13 +38,24 @@ export class CheckDeadlineError extends Error {
   }
 }
 
+export const COPY_BUDGET_MS = 120_000;
+
+export class CheckCopiesUnfinishedError extends Error {
+  constructor(budgetMs: number, unfinished: readonly string[]) {
+    super(
+      `Making browser-playable video copies took longer than ${budgetMs / 1000} s: ${unfinished.join(", ")}. ` +
+        "Finished pieces are kept. Run `hyperframes check --prepare-media` (no time limit) to finish them, then run check again.",
+    );
+  }
+}
+
 export class CheckStoppedError extends Error {
   constructor(signal: string) {
     super(`Check stopped before finishing (${signal}).`);
   }
 }
 
-/** Ends a check that makes no progress for CHECK_IDLE_MS; each phase entered or operation settled restarts it. */
+/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();
@@ -52,11 +67,11 @@ export class CheckDeadline {
   private readonly expiry: Promise<never>;
   private rejectExpiry!: (error: Error) => void;
   private phase: "waiting" | "started" | "closed" = "waiting";
-  private work: { phase: CheckPhase; since: number } | undefined;
+  private work: { phase: CheckPhase; since: number; detail?: string } | undefined;
   private readonly spent = new Map<CheckPhase, number>();
   private readonly partials: Array<() => Partial<CheckBrowserResult>> = [];
 
-  constructor() {
+  constructor(private readonly idleMs = CHECK_IDLE_MS) {
     this.expiry = new Promise((_, reject) => {
       this.rejectExpiry = reject;
     });
@@ -70,11 +85,11 @@ export class CheckDeadline {
     return Object.assign({}, ...this.partials.map((read) => read()));
   }
 
-  enter = (phase: CheckPhase): void => {
+  enter = (phase: CheckPhase, detail?: string): void => {
     if (this.expired) return;
     const now = Date.now();
     if (this.work) this.spend(this.work.phase, now - this.work.since);
-    this.work = { phase, since: now };
+    this.work = { phase, since: now, detail };
     this.spend(phase, 0);
     this.rearm();
   };
@@ -90,7 +105,7 @@ export class CheckDeadline {
       const seconds = ((phase === this.work?.phase ? ms + open : ms) / 1000).toFixed(1);
       return `${PHASE_LABELS[phase]} ${seconds}${BEFORE_DEADLINE.has(phase) ? " (before the deadline)" : ""}`;
     });
-    return ` (no progress for ${CHECK_IDLE_MS / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}. Seconds per phase: ${parts.join(", ")}.`;
+    return ` (no progress for ${this.idleMs / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
   }
 
   start = (): void => {
@@ -104,7 +119,7 @@ export class CheckDeadline {
     clearTimeout(this.timer);
     this.timer = setTimeout(
       () => this.expire(new CheckDeadlineError(this.scripts.at(-1), this.describe())),
-      CHECK_IDLE_MS,
+      this.idleMs,
     );
   }
 

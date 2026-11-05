@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>ASCII Render Pass</h1>
+  <p>A slotted scene renders as live ASCII: a canvas samples the source's luminance grid (rasterized once at mount) and draws glyphs from a density ramp charset; resolution steps coarse to fine as the piece resolves, then holds legible-fine.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/ascii-render-pass.json"
   compositionId="ascii-render-pass"
   compositionSrc="compositions/components/ascii-render-pass.html"
   title="ASCII Render Pass"
-  description="A slotted scene renders as live ASCII: a canvas samples the source's luminance grid (rasterized once at mount) and draws glyphs from a density ramp charset; resolution steps coarse to fine as the piece resolves, then holds legible-fine."
   variables={[{"id":"charset","type":"string","role":"style","label":"Charset","description":"Density ramp, dark to light. A leading space keeps dark cells empty.","default":" .:-=+*#%@"},{"id":"grid","type":"enum","role":"style","label":"Grid","description":"Final cell pitch the resolve lands on.","default":"med","options":[{"value":"coarse","label":"Coarse"},{"value":"med","label":"Medium"},{"value":"fine","label":"Fine"}]},{"id":"resolve_at","type":"number","role":"timing","label":"Resolve at","description":"Seconds from mount start when the coarse-to-fine resolve begins.","default":1.4,"min":0.6,"max":10,"step":0.1,"unit":"s"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Glyph ink: green rides --brand, blue rides --accent, violet rides --accent-2.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Optional departure. Default none: the fine render holds until the frame cuts.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Data","badge":"Stable","codeLines":485}}
   attribution={{"path":"registry/components/ascii-render-pass","tags":["motion-primitive","experiment","texture","ascii","quantize"]}}
@@ -520,7 +524,9 @@ That writes one file: `compositions/components/ascii-render-pass.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -563,6 +569,4 @@ Tagged `motion-primitive` `experiment` `texture` `ascii` `quantize`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -139,9 +139,27 @@ browser already supports the source or you are diagnosing the proxy itself.
 ## Choose quality and frame rate
 
 The default `looks` quality (CRF 16) is the right choice for most finished work.
-MOV is an alpha-preserving editing intermediate and always uses the fixed
-ProRes 4444 profile. `--crf` and `--video-bitrate` do not map to that profile
-and are rejected for MOV; choose MP4 or WebM when you need those controls.
+MOV is an editing intermediate. It uses ProRes 4444 with alpha unless
+`--prores-profile` picks a smaller 4:2:2 profile (`hq`, `422`, `lt` or `proxy`),
+which has no alpha: transparent areas render black. `--crf` and `--video-bitrate`
+do not map to ProRes and are rejected for MOV; choose MP4 or WebM when you need
+those controls.
+
+```bash
+npx hyperframes render --format mov --prores-profile hq --output edit.mov
+```
+
+For delivery to a player or platform, an MP4 render can also set how often a
+keyframe lands and how high the bitrate may peak. `--keyframe-interval 2` puts a
+keyframe at least every two seconds. `--max-bitrate 8M` caps the peak while the
+quality target still decides the rest, and `--buffer-size` (default twice the cap)
+sets the window the cap is measured over. Left out, the encode is unchanged.
+On Lambda the interval is a maximum, because joining chunks adds keyframes, and
+the cap holds per chunk, so a join can burst up to one buffer.
+
+```bash
+npx hyperframes render --keyframe-interval 2 --max-bitrate 8M --output delivery.mp4
+```
 
 ```bash
 # Faster review version

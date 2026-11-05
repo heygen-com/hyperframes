@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Starfield</h1>
+  <p>Seek-safe night-sky overlay: sparse or dense stars in three size tiers that twinkle and drift in two parallax layers, radial-masked to keep the frame center clear</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/starfield.json"
   compositionId="starfield"
   compositionSrc="compositions/starfield.html"
   title="Starfield"
-  description="Seek-safe night-sky overlay: sparse or dense stars in three size tiers that twinkle and drift in two parallax layers, radial-masked to keep the frame center clear"
   variables={[{"id":"density","type":"enum","role":"style","label":"Density","description":"Star count across the frame.","default":"sparse","options":[{"value":"sparse","label":"Sparse"},{"value":"dense","label":"Dense"}]},{"id":"tone","type":"enum","role":"style","label":"Tone","description":"Star color mix.","default":"warm","options":[{"value":"warm","label":"Warm (white + yellow)"},{"value":"cool","label":"Cool (white + blue)"},{"value":"white","label":"White only"}]},{"id":"speed","type":"enum","role":"style","label":"Twinkle speed","description":"How fast stars pulse.","default":"slow","options":[{"value":"slow","label":"Slow"},{"value":"fast","label":"Fast"}]}]}
   meta={{"duration":6,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":187}}
   attribution={{"path":"registry/blocks/starfield","tags":["starfield","night-sky","stars","twinkle","sky","weather","overlay","ambient","particles","media-treatment-overlay","loopable"]}}
@@ -222,7 +226,9 @@ That writes one file: `compositions/starfield.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -275,6 +281,4 @@ Tagged `starfield` `night-sky` `stars` `twinkle` `sky` `weather` `overlay` `ambi
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -2,6 +2,7 @@
 // `__timelines` composition uses, so play, seek, loop and `ended` share one code path.
 
 import type { DirectTimelineAdapter } from "./timeline-adapters.js";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 
 export function isVideoType(type: string | null): boolean {
   return type?.trim().toLowerCase().startsWith("video/") ?? false;
@@ -49,7 +50,7 @@ export function createVideoSource(callbacks: VideoSourceCallbacks): VideoSource 
     duration: () => video.duration,
     time: () => video.currentTime,
     seek: (timeInSeconds) => {
-      video.currentTime = timeInSeconds;
+      video.currentTime = mediaElementTime(timeInSeconds);
     },
     // A rejection that lands after destroy() belongs to a source that is gone.
     play: () =>

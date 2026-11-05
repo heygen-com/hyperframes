@@ -6,7 +6,15 @@
  * launch args, pooled browser acquisition/release.
  */
 
+import { explainChromeLaunchFailure } from "./chromeStartup.js";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import {
+  inAgentSandbox,
+  machServiceDenied,
+  oneProcessOverPipe,
+  pipeLaunchClosedOnMac,
+  sandboxDeniedRemediation,
+} from "./sandboxLaunch.js";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { execSync } from "child_process";
@@ -38,6 +46,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -48,7 +57,7 @@ export function setHostHandlesSigint(owned: boolean): void {
   hostHandlesSigint = owned;
 }
 
-export const sigintLaunchOptions = () => ({ handleSIGINT: !hostHandlesSigint });
+export const ownedLaunchOptions = () => ({ handleSIGINT: !hostHandlesSigint, pipe: true });
 
 interface WebGlProbeInfo {
   hasWebGL: boolean;
@@ -110,7 +119,7 @@ async function probeHardwareWebGlInfo(
   let probeBrowser: Browser | undefined;
   try {
     const launchOptions: LaunchOptions = {
-      ...sigintLaunchOptions(),
+      ...ownedLaunchOptions(),
       headless: true,
       args: withHyperframesBrowserMarker(options.args),
       defaultViewport: { width: 64, height: 64 },
@@ -263,7 +272,7 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
     findManagedHeadlessShell(ours) ??
@@ -550,6 +559,7 @@ export const _closeBrowserAfterFailedProbeForTests = closeBrowserAfterFailedProb
 interface GpuProbeOutcome {
   mode: "software" | "hardware";
   cause?: "no-gpu" | "probe-error";
+  aborted?: true;
   /** Under WSL, what we checked on its GPU path (see describeWslGpuAccess). */
   wslAccess?: string[];
   /** Under WSL, Chrome reached the GPU only without WSLg's WAYLAND_DISPLAY. */
@@ -648,7 +658,8 @@ async function probeWebGlMode(
     return resolved === "hardware" ? { mode: "hardware" } : { mode: "software", cause: "no-gpu" };
   } catch (err) {
     logResolvedBrowserGpuMode("software", label + formatProbeFailure(err));
-    return { mode: "software", cause: "probe-error" };
+    const aborted = err instanceof Error && err.name === "AbortError";
+    return { mode: "software", cause: "probe-error", ...(aborted && { aborted }) };
   }
 }
 
@@ -716,15 +727,25 @@ function wslAccess(options: GpuProbeOptions): Pick<GpuProbeOutcome, "wslAccess">
  * safe failure mode; misclassifying toward hardware would error on the real
  * render.
  */
+async function sharedGpuProbe(options: GpuProbeOptions): Promise<GpuProbeOutcome> {
+  const shared = (_autoBrowserGpuModeCache ??= probeAutoBrowserGpuMode(options));
+  const outcome = await shared;
+  if (!outcome.aborted) return outcome;
+  if (_autoBrowserGpuModeCache === shared) _autoBrowserGpuModeCache = undefined;
+  const own = await probeAutoBrowserGpuMode(options);
+  if (!own.aborted) _autoBrowserGpuModeCache ??= Promise.resolve(own);
+  return own;
+}
+
 export function resolveBrowserGpuMode(
   mode: EngineConfig["browserGpuMode"],
   options: GpuProbeOptions = {},
 ): Promise<"software" | "hardware"> {
   if (mode === "software") return Promise.resolve(mode);
 
-  _autoBrowserGpuModeCache ??= probeAutoBrowserGpuMode(options);
+  const probe = sharedGpuProbe(options);
   if (mode === "auto") {
-    return _autoBrowserGpuModeCache.then((probed) => {
+    return probe.then((probed) => {
       if (probed.mode === "software" && probed.wslAccess && !_wslSoftwareNoteLogged) {
         _wslSoftwareNoteLogged = true;
         console.error(buildWslSoftwareNote(probed));
@@ -733,7 +754,7 @@ export function resolveBrowserGpuMode(
     });
   }
 
-  return _autoBrowserGpuModeCache.then((probed) => {
+  return probe.then((probed) => {
     // Warn once per cache lifetime, not once per caller: `createCaptureSession`
     // resolves the mode for the probe browser AND every parallel worker, so
     // an un-deduplicated warning prints N+1 times and buries itself.
@@ -876,6 +897,19 @@ export async function acquireBrowser(
   return browserLeasePool.acquire(createBrowserLaunchFingerprint(chromeArgs, config), enablePool);
 }
 
+/** An agent's macOS seatbelt allows one launch shape only: Chrome in one process over a pipe. */
+async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): Promise<Browser> {
+  const sandboxed = inAgentSandbox();
+  try {
+    return await ppt.launch(sandboxed ? oneProcessOverPipe(options) : options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const refused = machServiceDenied(message) || pipeLaunchClosedOnMac(error);
+    if (process.platform !== "darwin" || sandboxed || !refused) throw error;
+    return ppt.launch(oneProcessOverPipe(options));
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
@@ -885,8 +919,8 @@ async function launchBrowser(
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
   const launch = (args: readonly string[]) =>
-    ppt.launch({
-      ...sigintLaunchOptions(),
+    launchInsideSandbox(ppt, {
+      ...ownedLaunchOptions(),
       headless: true,
       args: withHyperframesBrowserMarker(args),
       defaultViewport: null,
@@ -894,6 +928,16 @@ async function launchBrowser(
       env,
       timeout: fingerprint.browserTimeoutMs,
       protocolTimeout: fingerprint.protocolTimeoutMs,
+    }).catch(async (error: unknown) => {
+      const remediation =
+        process.platform === "darwin" &&
+        sandboxDeniedRemediation(error instanceof Error ? error.message : "");
+      if (remediation) throw new Error(remediation, { cause: error });
+      const defaults = await ppt.defaultArgs({
+        headless: true,
+        args: withHyperframesBrowserMarker(args),
+      });
+      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults);
     });
   const probe = (target: Browser, timeoutMs?: number) =>
     probeBeginFrameSupport(target, timeoutMs).catch((error) => ({
@@ -946,9 +990,14 @@ async function launchBrowser(
 function forceCloseBrowserProcess(browser: Browser): void {
   const proc = (
     browser as unknown as {
-      process?: () => { kill: (signal?: NodeJS.Signals) => boolean; killed?: boolean } | null;
+      process?: () => {
+        kill: (signal?: NodeJS.Signals) => boolean;
+        killed?: boolean;
+        stdio?: ReadonlyArray<NodeJS.EventEmitter | null | undefined>;
+      } | null;
     }
   ).process?.();
+  for (const stream of proc?.stdio ?? []) stream?.on("error", () => {});
   if (proc && !proc.killed) {
     try {
       proc.kill("SIGKILL");

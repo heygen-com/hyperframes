@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 
 type Player = HTMLElement & {
@@ -347,23 +348,23 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
 
   it("parks, stops on the last frame inside, wraps with loop and reports a clamp for a video", () => {
     const video = loadVideo({ "range-start": "2", "range-end": "3" });
-    expect(video.currentTime).toBe(2);
+    expect(video.currentTime).toBe(mediaElementTime(2));
     expect(ranEvents()).toEqual(["ready@2"]);
 
     player.play();
     setMedia(video, { currentTime: 3.01 });
     flushFrame();
     expect(ranEvents()).toEqual(["ready@2", "ended@2.983"]);
-    expect(video.currentTime).toBeCloseTo(MID_LAST_AT_3, 9);
+    expect(video.currentTime).toBeCloseTo(mediaElementTime(MID_LAST_AT_3), 9);
     expect(player.currentTime).toBeCloseTo(MID_LAST_AT_3, 9);
     expect(player.paused).toBe(true);
 
     player.loop = true;
     player.play();
-    expect(video.currentTime).toBe(2);
+    expect(video.currentTime).toBe(mediaElementTime(2));
     setMedia(video, { currentTime: 3.02 });
     flushFrame();
-    expect(video.currentTime).toBe(2);
+    expect(video.currentTime).toBe(mediaElementTime(2));
     expect(playSpy).toHaveBeenCalledTimes(3);
     expect(player.paused).toBe(false);
 
@@ -371,7 +372,7 @@ describe("HyperframesPlayer range playback: video and direct timelines", () => {
     player.rangeEnd = 2.5;
     setMedia(video, { currentTime: 2.7 });
     player.rangeStart = 2.1;
-    expect(video.currentTime).toBe(2.1);
+    expect(video.currentTime).toBe(mediaElementTime(2.1));
     expect(player.paused).toBe(false);
     expect(events.filter((e) => e.startsWith("play@"))).toHaveLength(plays);
 

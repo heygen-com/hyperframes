@@ -626,10 +626,14 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     }
     if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
     const findings: HyperframeLintFinding[] = [];
+    const registered = [source, ...(options.externalScripts ?? []).map((script) => script.content)];
     if (
-      !TIMELINE_REGISTRY_INIT_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_ASSIGN_PATTERN.test(source) &&
-      !TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(source)
+      !registered.some(
+        (text) =>
+          TIMELINE_REGISTRY_INIT_PATTERN.test(text) ||
+          TIMELINE_REGISTRY_ASSIGN_PATTERN.test(text) ||
+          TIMELINE_REGISTRY_OBJECT_LITERAL_PATTERN.test(text),
+      )
     ) {
       findings.push({
         code: "missing_timeline_registry",
@@ -839,9 +843,9 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   ({ scripts, locate }) => {
     const findings: HyperframeLintFinding[] = [];
     for (const script of scripts) {
-      const type = readDecodedAttr(script.raw, "type")?.trim().toLowerCase() ?? "";
-      if (readDecodedAttr(script.raw, "src") !== null || SCRIPT_SYNTAX_EXEMPT_TYPES.has(type))
-        continue;
+      const tag = `<script ${script.attrs}>`;
+      const type = readDecodedAttr(tag, "type")?.trim().toLowerCase() ?? "";
+      if (readDecodedAttr(tag, "src") !== null || SCRIPT_SYNTAX_EXEMPT_TYPES.has(type)) continue;
       const syntaxError = getInlineScriptSyntaxError(script.content);
       if (!syntaxError) continue;
       findings.push({

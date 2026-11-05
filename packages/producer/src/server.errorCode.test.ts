@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { extractSafeRenderErrorCode, extractSafeRenderErrorMetadata } from "./server.js";
-import { VideoExtractionStageError } from "./services/render/stages/extractVideosStage.js";
+import {
+  assertVideoExtractionSucceeded,
+  VideoExtractionStageError,
+} from "./services/render/stages/extractVideosStage.js";
+import type { ExtractionResult } from "@hyperframes/engine";
 import { AssetMediaTypeMismatchError } from "./services/assetMediaType.js";
 import { EncoderInterruptedError } from "./services/render/encoderInterruption.js";
 import { RenderStageStalledError } from "./services/render/observability.js";
@@ -16,6 +20,27 @@ describe("extractSafeRenderErrorCode", () => {
 
     expect(extractSafeRenderErrorCode(deterministic)).toBe("VIDEO_SOURCE_UNRENDERABLE");
     expect(extractSafeRenderErrorCode(exhausted)).toBe("VIDEO_EXTRACTION_FAILED");
+  });
+
+  it("says what ffmpeg said about an unrenderable source, and never its raw diagnostic", () => {
+    const result = {
+      success: false,
+      extracted: [],
+      totalFramesExtracted: 0,
+      errors: [
+        {
+          videoId: "v1",
+          kind: "ffmpeg_failed",
+          retryable: false,
+          error: "FFmpeg exited with code 1: /Users/someone/My Clip.mp4: Invalid data",
+          ffmpegReason: "<path>: Invalid data found when processing input",
+        },
+      ],
+    } as unknown as ExtractionResult;
+    expect(() => assertVideoExtractionSucceeded(result)).toThrow(
+      "Video extraction failed for 1 source(s) [VIDEO_SOURCE_UNRENDERABLE; ffmpeg_failed=1]: ffmpeg said: <path>: Invalid data found when processing input",
+    );
+    expect(() => assertVideoExtractionSucceeded(result)).not.toThrow("someone");
   });
 
   it("accepts the same bounded structural code across wrapped module boundaries", () => {

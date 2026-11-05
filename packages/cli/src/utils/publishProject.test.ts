@@ -738,6 +738,7 @@ beforeEach(() => {
   linkMocks.writeProjectLink.mockReset();
   vi.stubEnv("HYPERFRAMES_PUBLISHED_PROJECTS_API_URL", "");
   vi.stubEnv("HEYGEN_API_URL", "");
+  vi.stubEnv("HYPERFRAMES_ENV", "prod");
 });
 
 afterEach(() => {
@@ -750,6 +751,13 @@ const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
 describe("publishProjectArchive", () => {
+  it("takes the publish service from the environment under HYPERFRAMES_ENV=dev", () => {
+    vi.stubEnv("HYPERFRAMES_ENV", "dev");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.heygen.com");
+    vi.stubEnv("HEYGEN_API_URL", "https://api2.example.test");
+    expect(getPublishApiBaseUrl()).toBe("https://api2.example.test");
+  });
+
   it("uploads through the staged publish flow and returns the stable project URL", async () => {
     const dir = makeProjectDir();
     const fetchMock = stagedFetch(

@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   truncateSync,
   writeFileSync,
@@ -19,7 +20,16 @@ vi.mock("node:os", async (original) => ({
   homedir: () => home,
 }));
 vi.mock("../utils/download.js", () => ({
-  downloadFile: vi.fn(async (_url: string, dest: string) => writeFileSync(dest, "fresh")),
+  downloadFile: vi.fn(
+    async (_url: string, dest: string, options: { verify: (path: string) => Promise<void> }) => {
+      writeFileSync(`${dest}.part`, "fresh");
+      await options.verify(`${dest}.part`).catch((error: unknown) => {
+        rmSync(`${dest}.part`);
+        throw error;
+      });
+      renameSync(`${dest}.part`, dest);
+    },
+  ),
 }));
 vi.mock("./modelFile.js", async (original) => ({
   ...(await original<typeof import("./modelFile.js")>()),
@@ -40,6 +50,7 @@ it("downloads a pinned model again when the cached file has the wrong size", asy
   await expect(ensureModel("tiny")).resolves.toBe(tiny);
 
   expect(readFileSync(tiny, "utf8")).toBe("fresh");
+  expect(vi.mocked(downloadFile).mock.calls[0]![1]).toBe(tiny);
   expect(vi.mocked(downloadFile).mock.calls[0]![0]).toMatch(
     /huggingface\.co\/ggerganov\/whisper\.cpp\/resolve\/[0-9a-f]{40}\/ggml-tiny\.bin$/,
   );

@@ -35,6 +35,9 @@ vi.mock("node:child_process", async () => {
   };
 });
 vi.mock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: () => "ffmpeg" }));
+vi.mock("./mediaMetadata.js", () => ({
+  probeAudioTrack: async () => ({ stream: 0, channels: 1 }),
+}));
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
   return {

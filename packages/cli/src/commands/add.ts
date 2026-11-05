@@ -1,6 +1,7 @@
 import { failCommand } from "../utils/commandResult.js";
-import { defineCommand } from "citty";
+import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
+import { failCaught } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Add a block to the current project", "hyperframes add claude-code-window"],
@@ -42,6 +43,7 @@ import {
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
@@ -146,30 +148,83 @@ export function buildSnippet(
   return "";
 }
 
-/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
-export function tagAddJson(
-  tag: string,
-  results: RunAddResult[],
-  errors: Array<{ name: string; error: string }> = [],
-) {
+function installJson(results: RunAddResult[], errors: Array<{ name: string; error: string }>) {
   return {
     ok: errors.length === 0,
-    tag,
     installed: results.map((r) => r.name),
     warnings: results.flatMap((r) => r.warnings.map((w) => `${r.name}: ${w}`)),
     errors,
   };
 }
 
-/** `--vars` is JSON an agent or the catalog page produced; a malformed one is
- *  worth a clear error rather than a snippet that silently drops the values. */
+/** `add <tag> --json` output: successful installs and each item's warnings or failure. */
+export function tagAddJson(
+  tag: string,
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
+  return { ...installJson(results, errors), tag };
+}
+
+export function severalAddJson(
+  results: RunAddResult[],
+  errors: Array<{ name: string; error: string }> = [],
+) {
+  return installJson(results, errors);
+}
+
+interface InstallContext {
+  projectDir: string;
+  force: boolean | undefined;
+  vars: string | undefined;
+  json: boolean;
+}
+
+type InstallOutcome = { result: RunAddResult } | { name: string; error: string };
+
+async function installOne(name: string, context: InstallContext): Promise<InstallOutcome> {
+  try {
+    const result = await runAdd({
+      name,
+      projectDir: context.projectDir,
+      skipClipboard: true,
+      force: context.force,
+      vars: context.vars,
+    });
+    if (!context.json) {
+      for (const warning of result.warnings) console.log(`  ${c.warn("Warning:")} ${warning}`);
+      console.log(`  ${c.success("✓")} ${result.name}`);
+    }
+    return { result };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (!context.json) console.log(`  ${c.error("✗")} ${name} (skipped: ${reason})`);
+    return { name, error: reason };
+  }
+}
+
+async function installEach(names: readonly string[], context: InstallContext) {
+  const results: RunAddResult[] = [];
+  const errors: Array<{ name: string; error: string }> = [];
+  for (const name of names) {
+    const outcome = await installOne(name, context);
+    if ("result" in outcome) results.push(outcome.result);
+    else errors.push(outcome);
+  }
+  return { results, errors };
+}
+
+/** `--vars` is JSON, a file or `-`; a malformed one is an error, not a snippet that drops the values. */
 export function parseVariableValues(raw: string | undefined): Record<string, unknown> | null {
   if (raw === undefined) return null;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
+    parsed = readJsonFlag("--vars", raw);
+  } catch (error: unknown) {
+    throw new AddError(
+      `--vars must be a JSON object of variable values (${error instanceof Error ? error.message : String(error)})`,
+      "invalid-vars",
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new AddError("--vars must be a JSON object of variable values", "invalid-vars");
@@ -454,7 +509,8 @@ export default defineCommand({
       type: "positional",
       description:
         "Registry item name or tag. Single items install directly (e.g. shader-wipe). " +
-        "If the name matches a tag instead, all blocks with that tag are installed (e.g. html-in-canvas, captions).",
+        "If the name matches a tag instead, all blocks with that tag are installed (e.g. html-in-canvas, captions). " +
+        "Give several names to install each of them in one call.",
       required: true,
     },
     dir: {
@@ -478,7 +534,7 @@ export default defineCommand({
     vars: {
       type: "string",
       description:
-        "JSON of variable values to bake into the printed snippet, as copied from a catalog page",
+        "JSON of variable values to bake into the printed snippet, as copied from a catalog page; or a JSON file path, or - for stdin",
     },
     force: {
       type: "boolean",
@@ -496,7 +552,40 @@ export default defineCommand({
     const json = args.json === true;
     const skipClipboard = args.clipboard === false;
 
+    if (!existsSync(projectDir)) {
+      failCaught(
+        new Error(
+          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init <dir>\`.`,
+        ),
+        json,
+        c.error,
+      );
+    }
+
     const hasConfigBefore = existsSync(projectConfigPath(projectDir));
+
+    const names = Array.isArray(args._) && args._.length > 1 ? args._.map(String) : [args.name];
+    if (names.length > 1) {
+      if (!json) {
+        console.log("");
+        console.log(`${c.accent("◆")} Installing ${c.accent(String(names.length))} items`);
+      }
+      const { results, errors } = await installEach(names, {
+        projectDir,
+        force: args.force,
+        vars: args.vars,
+        json,
+      });
+      if (json) {
+        console.log(JSON.stringify(severalAddJson(results, errors)));
+      } else {
+        console.log("");
+        const summary = `Installed ${results.length}/${names.length} items`;
+        console.log(`${errors.length > 0 ? c.error("✗") : c.success("✓")} ${summary}`);
+      }
+      if (errors.length > 0) failCommand();
+      return;
+    }
 
     // Try single item first. If it fails, check if the name matches a tag.
     try {
@@ -552,10 +641,7 @@ export default defineCommand({
     } catch (singleErr) {
       // Not a single item — try as a tag for bulk install
       if (!(singleErr instanceof AddError) || singleErr.code !== "unknown-item") {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, c.error);
       }
 
       let config = loadProjectConfig(projectDir);
@@ -575,10 +661,7 @@ export default defineCommand({
       }
 
       if (items.length === 0) {
-        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
-        if (json) console.log(JSON.stringify({ ok: false, error: msg }));
-        else console.error(c.error(msg));
-        failCommand();
+        failCaught(singleErr, json, c.error);
       }
 
       if (!json) {
@@ -588,28 +671,10 @@ export default defineCommand({
         );
       }
 
-      const results: RunAddResult[] = [];
-      const errors: Array<{ name: string; error: string }> = [];
-      for (const item of items) {
-        try {
-          const result = await runAdd({
-            name: item.name,
-            projectDir,
-            skipClipboard: true,
-            force: args.force,
-            vars: args.vars,
-          });
-          results.push(result);
-          for (const warning of result.warnings) {
-            if (!json) console.log(`  ${c.warn("Warning:")} ${warning}`);
-          }
-          if (!json) console.log(`  ${c.success("✓")} ${result.name}`);
-        } catch (err) {
-          const reason = err instanceof Error ? err.message : String(err);
-          errors.push({ name: item.name, error: reason });
-          if (!json) console.log(`  ${c.error("✗")} ${item.name} (skipped: ${reason})`);
-        }
-      }
+      const { results, errors } = await installEach(
+        items.map((item) => item.name),
+        { projectDir, force: args.force, vars: args.vars, json },
+      );
 
       if (json) {
         console.log(JSON.stringify(tagAddJson(args.name, results, errors)));

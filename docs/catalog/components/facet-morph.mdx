@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Facet Morph</h1>
+  <p>A faceted low-poly mass of 36 triangles continuously reshapes between three authored silhouettes (blob, mark, badge) with per-facet flat shading that recomputes as the vertices move. Light reads from the upper left; lit facets lift toward a pale accent-tinted tone while turned-away facets fall toward near-black. One calm continuous morph, then a settled hold.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/facet-morph.json"
   compositionId="facet-morph"
   compositionSrc="compositions/components/facet-morph.html"
   title="Facet Morph"
-  description="A faceted low-poly mass of 36 triangles continuously reshapes between three authored silhouettes (blob, mark, badge) with per-facet flat shading that recomputes as the vertices move. Light reads from the upper left; lit facets lift toward a pale accent-tinted tone while turned-away facets fall toward near-black. One calm continuous morph, then a settled hold."
   variables={[{"id":"forms","type":"string","role":"content","label":"Forms","description":"Comma-separated silhouette sequence from blob, mark, badge.","default":"blob,mark,badge"},{"id":"hold_last","type":"boolean","role":"timing","label":"Hold last","description":"True settles dead still on the final silhouette; false keeps the mass slowly breathing through the hold.","default":true},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Tint of the lit facets.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]},{"id":"exit","type":"enum","role":"timing","label":"Exit","description":"Outgoing transition. None holds the settled mass.","default":"none","options":[{"value":"none","label":"None"},{"value":"fade","label":"Fade"},{"value":"up","label":"Up"}]}]}
   meta={{"category":"Motion Scenes","badge":"Stable","codeLines":551}}
   attribution={{"path":"registry/components/facet-morph","tags":["motion-primitive","intro","morph","low-poly","svg","deterministic"]}}
@@ -586,7 +590,9 @@ That writes one file: `compositions/components/facet-morph.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -628,6 +634,4 @@ Tagged `motion-primitive` `intro` `morph` `low-poly` `svg` `deterministic`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

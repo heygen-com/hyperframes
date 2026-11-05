@@ -167,3 +167,24 @@ describe("live DOM manifest hydration", () => {
     expect(findTimelineDomNodeForClip(doc, clip({ start: 9 }), 0)?.id).toBe("stable");
   });
 });
+
+describe("selector occurrence indexes while hydrating many clips", () => {
+  it("queries the document once for a class many clips share, not once per clip", () => {
+    const count = 200;
+    const spans = Array.from(
+      { length: count },
+      (_, i) =>
+        `<span class="clip w" data-start="${i}" data-duration="1" data-track-index="0"></span>`,
+    ).join("");
+    const doc = documentWith(spans);
+    const query = vi.spyOn(doc, "querySelectorAll");
+    const clips = Array.from({ length: count }, (_, i) => clip({ tagName: "span", start: i }));
+
+    const elements = buildTimelineElementsFromClips(clips, doc);
+
+    expect(elements).toHaveLength(count);
+    expect(query.mock.calls.filter(([selector]) => selector === ".w").length).toBeLessThanOrEqual(
+      1,
+    );
+  });
+});

@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Lottie Character Walk</h1>
+  <p>A jointed flat character walks in on planted feet, stops and points at a card; the body acting is a Lottie file and the stage is GSAP.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/blocks/lottie-character-walk.json"
   compositionId="lottie-character-walk"
   compositionSrc="compositions/lottie-character-walk/lottie-character-walk.html"
   title="Lottie Character Walk"
-  description="A jointed flat character walks in on planted feet, stops and points at a card; the body acting is a Lottie file and the stage is GSAP."
   variables={[{"id":"title","type":"string","label":"Card title","default":"Meet your guide","maxLength":28},{"id":"body","type":"string","label":"Card text","default":"Walks in on planted feet, then points the way.","maxLength":90}]}
   meta={{"duration":7.5,"width":1920,"height":1080,"category":"Blocks","badge":"Stable","codeLines":142}}
   attribution={{"path":"registry/blocks/lottie-character-walk","tags":["character","character-animation","mascot","walk-cycle","gesture","pointing","puppet","lottie","explainer"]}}
@@ -177,7 +181,9 @@ That writes `compositions/lottie-character-walk/lottie-character-walk.html`, plu
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Add it to your video
 
@@ -229,6 +235,4 @@ Tagged `character` `character-animation` `mascot` `walk-cycle` `gesture` `pointi
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

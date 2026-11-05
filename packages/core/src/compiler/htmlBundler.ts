@@ -17,6 +17,7 @@ import {
   planCompositionAssembly,
 } from "./compositionAssembly";
 import { SCENE_FONTS_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import { stripSdrPngColourTags } from "./pngColourTags";
 import {
   ensureExternalScriptTag,
   readExternalScriptAttributes,
@@ -52,7 +53,7 @@ import {
 } from "./htmlDocument";
 // rewriteSubCompPaths functions are used by inlineSubCompositions (shared module)
 import {
-  buildVariablesByCompScript,
+  emitVariablesByCompScript,
   dedupeFontFaceRules,
   hoistFontFaceRules,
   scopeCssToComposition,
@@ -71,6 +72,7 @@ import {
 } from "./inlineSubCompositions";
 import { isSafePath, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 
@@ -119,7 +121,7 @@ function safeReadFile(filePath: string): string | null {
   noteRead(filePath);
   if (!existsSync(filePath)) return null;
   try {
-    return readFileSync(filePath, "utf-8");
+    return readTextFile(filePath);
   } catch {
     return null;
   }
@@ -392,7 +394,8 @@ function createAssetInliner(
     // just to be discarded.
     const byteLength = safeStatSize(filePath);
     if (byteLength !== null && byteLength > MAX_INLINE_ASSET_BYTES) return { tooLarge: byteLength };
-    const content = safeReadFileBuffer(filePath);
+    const read = safeReadFileBuffer(filePath);
+    const content = read && mimeType === "image/png" ? (stripSdrPngColourTags(read) ?? read) : read;
     return {
       dataUrl: content === null ? null : `data:${mimeType};base64,${content.toString("base64")}`,
     };
@@ -1067,7 +1070,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
-  const entryHtml = readFileSync(indexPath, "utf-8");
+  const entryHtml = readTextFile(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
   // Every mount of a sub-composition asks again for each of its url()s; isSafePath realpaths the whole chain.
@@ -1102,7 +1105,11 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
   const compiled = await compileHtml(rawHtml, sourceDir, options?.probeMediaDuration);
 
   if (options?.staticGuard !== false && !mountedShell) {
-    const staticGuard = await validateHyperframeHtmlContract(compiled);
+    const entryRel = relative(projectDir, indexPath).replace(/\\/g, "/");
+    const staticGuard = await validateHyperframeHtmlContract(compiled, {
+      dir: projectDir,
+      ...(entryRel !== "index.html" && { compSrcPath: entryRel }),
+    });
     if (!staticGuard.isValid) {
       console.warn(
         `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
@@ -1393,11 +1400,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
 
   for (const css of compStyleChunks) pushRun(styleRuns, undefined, css);
   for (const chunk of compScriptChunks) pushRun(scriptRuns, undefined, chunk);
-  const variablesByCompScript = buildVariablesByCompScript(compVariablesByComp);
-  if (variablesByCompScript) {
-    if (scriptRuns[0] && !scriptRuns[0].scene) scriptRuns[0].chunks.unshift(variablesByCompScript);
-    else scriptRuns.unshift({ chunks: [variablesByCompScript] });
-  }
+  emitVariablesByCompScript(document, compVariablesByComp);
   for (const { scene, chunks } of styleRuns) {
     const join = scene ? joinCssHoistingImports : (css: string[]) => css.join("\n\n");
     for (const style of styleElementsFor(document, chunks, join)) {

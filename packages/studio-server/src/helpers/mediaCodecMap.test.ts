@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -32,6 +32,7 @@ function makeRunner(
         tags?: Record<string, string>;
         size?: [number, number];
         bitRate?: string;
+        colorTransfer?: string;
       }
   >,
 ): FfprobeRunner {
@@ -49,6 +50,8 @@ function makeRunner(
             width: normalized.size?.[0],
             height: normalized.size?.[1],
             bit_rate: normalized.bitRate,
+            color_transfer: normalized.colorTransfer,
+            color_primaries: normalized.colorTransfer ? "bt2020" : undefined,
           },
         ]
       : [];
@@ -556,5 +559,59 @@ describe("scanProjectMediaCodecMap", () => {
     expect(cache.size).toBe(512);
     expect(paths.slice(0, 8).some((path) => !cache.has(join(project, path)))).toBe(true);
     expect(cache.has(join(project, "clip-512.mp4"))).toBe(true);
+  });
+});
+
+describe("HDR video previews through the SDR tone-mapped copy", () => {
+  const hlgClip = { codecName: "h264", pixFmt: "yuv420p", colorTransfer: "arib-std-b67" };
+
+  async function probe(entry: Parameters<typeof makeRunner>[0][string], hasFilters: boolean) {
+    vi.resetModules();
+    vi.doMock("./hdrFilters.js", () => ({ ffmpegHasHdrFilters: async () => hasFilters }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({
+      findFfBinary: (name: string) => (name === "ffprobe" ? FAKE_FFPROBE_PATH : "/fake/ffmpeg"),
+    }));
+    process.env.HYPERFRAMES_FFPROBE_PATH = FAKE_FFPROBE_PATH;
+    const fresh = await import("./mediaCodecMap.js");
+    const filePath = join(mkdtempSync(join(tmpdir(), "hf-hdr-clip-")), "clip.mp4");
+    writeFileSync(filePath, "x");
+    return fresh.probeAssetCodec(
+      filePath,
+      makeRunner({ [filePath]: entry }),
+      fresh.createMediaCodecProbeCache(),
+    );
+  }
+
+  afterEach(() => {
+    vi.doUnmock("./hdrFilters.js");
+    vi.doUnmock("@hyperframes/parsers/ff-binaries");
+    vi.restoreAllMocks();
+  });
+
+  it("marks an HLG H.264 clip browser-hostile so it gets the same copy the export uses", async () => {
+    const facts = await probe(hlgClip, true);
+    expect(facts?.browserHostile).toBe(true);
+    expect(decideMediaProxyEligibility(facts)).toEqual({ eligible: true });
+  });
+
+  it("treats an HDR clip as not playable whatever its codec, so a browser that decodes HEVC still swaps it", async () => {
+    const facts = await probe({ ...hlgClip, codecName: "hevc" }, true);
+    expect(facts?.browserHostile).toBe(true);
+    expect(facts?.representativeMime).toBeNull();
+    const vp9 = await probe({ ...hlgClip, codecName: "vp9" }, true);
+    expect(vp9?.representativeMime).toBeNull();
+  });
+
+  it("leaves an SDR H.264 clip native", async () => {
+    const facts = await probe({ codecName: "h264", pixFmt: "yuv420p" }, true);
+    expect(facts?.browserHostile).toBe(false);
+  });
+
+  it("plays the clip natively and says why once when ffmpeg has no zscale/tonemap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const facts = await probe(hlgClip, false);
+    expect(facts?.browserHostile).toBe(false);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toContain("libzimg");
   });
 });

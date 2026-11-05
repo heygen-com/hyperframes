@@ -225,6 +225,8 @@ export interface CraftTextPart {
   blockSelector: string;
   sourceFile: string;
   text: string;
+  /** The reading block's rendered text, which keeps the author's spacing between its parts. */
+  blockText: string;
   opacity: number;
   fontPx: number;
   rect: { left: number; top: number; width: number; height: number };
@@ -237,6 +239,7 @@ export interface CraftFrame {
   /** A data-hold element is on screen: stillness here is deliberate. */
   held: boolean;
   painted: boolean;
+  coveredBy?: string;
   signature: string;
 }
 
@@ -261,8 +264,8 @@ export interface CheckAuditDriver {
   getCanvas(): Promise<Canvas>;
   findAmbiguousSelectors(selectors: string[]): Promise<AnchoredLayoutIssue[]>;
   seek(time: number, screenshotFollows?: boolean): Promise<void>;
-  /** Settle-free seek for the geometry-only dense content_overlap pass; only collectOverlap consumes it, and getBoundingClientRect is valid synchronously after setTime. */
-  seekGeometry(time: number): Promise<void>;
+  /** Settle-free seek for the dense passes; WebGL draws are skipped unless `draws` (a pass reading canvas pixels). */
+  seekGeometry(time: number, options?: { draws?: boolean }): Promise<void>;
   collectLayout(
     time: number,
     tolerance: number,
@@ -313,6 +316,9 @@ export interface CheckTimings {
   launchSettleMs: number;
   seekLoopMs: number;
   contrastMs: number;
+  gridMs: number;
+  craftMs: number;
+  overlapMs: number;
 }
 
 export interface CheckBrowserResult {
@@ -331,6 +337,7 @@ export interface CheckBrowserResult {
   craft: CraftResult;
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
+  renderReadyTimedOut: boolean;
   skipped: boolean;
 }
 

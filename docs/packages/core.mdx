@@ -135,6 +135,9 @@ and `<source>` elements. Eligible local candidates are inlined by default; with
 when the entry file is in a subdirectory. Width and density descriptors are
 preserved.
 
+Mounted scenes resolve their `srcset` candidates from the scene's own directory
+when the files exist there, with project-root paths as the fallback.
+
 Local stylesheet `@import` rules keep each occurrence's media condition and
 cascade position, even when several imports reference the same file. Circular
 imports stop at a stylesheet already being expanded.

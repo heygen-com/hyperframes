@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -110,6 +111,22 @@ describe("pruneGoneProjectHistories", () => {
     expect(await prunedIds(historyRoot, { ...elsewhere, now: pastKeepWindow() })).toEqual([
       gone.id,
     ]);
+  });
+
+  it("keeps a moved project's history when it was reopened inside the 14 days, even if it was last edited long ago", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const gone = await projectWithHistory(historyRoot);
+    await gone.history.close();
+    const old = new Date(Date.now() - 30 * DAY_MS);
+    for (const name of ["project.json", "log.jsonl"]) {
+      const file = join(historyRoot, gone.id, name);
+      if (existsSync(file)) utimesSync(file, old, old);
+    }
+    const reopened = await projectWithHistory(historyRoot, { projectDir: gone.projectDir });
+    await reopened.history.close();
+    rmSync(gone.projectDir, { recursive: true, force: true });
+
+    expect(await prunedIds(historyRoot, { tempDir: historyRoot })).toEqual([]);
   });
 
   it("prunes when a history opens a day after the last full prune", async () => {

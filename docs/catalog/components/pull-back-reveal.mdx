@@ -7,12 +7,16 @@ mode: "frame"
 import { CatalogDetail, CatalogSlot } from "/snippets/catalog-detail.jsx";
 import { InstallCommand } from "/snippets/install-command.jsx";
 
+<div className="hf-ve-static-head not-prose">
+  <h1>Pull Back Reveal</h1>
+  <p>A tight stat detail holds, then one decelerating camera pull-back reveals the headline and supporting cards that recontextualize it.</p>
+</div>
+
 <CatalogDetail
   previewSrc="/public/catalog/components/pull-back-reveal.json"
   compositionId="pull-back-reveal"
   compositionSrc="compositions/components/pull-back-reveal.html"
   title="Pull Back Reveal"
-  description="A tight stat detail holds, then one decelerating camera pull-back reveals the headline and supporting cards that recontextualize it."
   variables={[{"id":"detail_text","type":"string","role":"content","label":"Detail text","description":"Stat shown in the detail chip at the center of the reveal.","default":"+312%"},{"id":"headline","type":"string","role":"content","label":"Headline","description":"Headline revealed around the focused detail.","default":"Growth compounds"},{"id":"accent","type":"enum","role":"style","label":"Accent","description":"Highlight color used across the composed scene.","default":"green","options":[{"value":"green","label":"Green"},{"value":"blue","label":"Blue"},{"value":"violet","label":"Violet"}]}]}
   meta={{"category":"Camera","badge":"Stable","codeLines":336}}
   attribution={{"path":"registry/components/pull-back-reveal","tags":["motion-primitive","camera","pull-back","reveal","recontextualize"]}}
@@ -371,7 +375,9 @@ That writes one file: `compositions/components/pull-back-reveal.html`.
 
 </CatalogSlot>
 
-<CatalogSlot slot="docs">
+</CatalogDetail>
+
+<div data-static-slot="docs" className="prose prose-gray dark:prose-invert">
 
 ## Paste it into your composition
 
@@ -412,6 +418,4 @@ Tagged `motion-primitive` `camera` `pull-back` `reveal` `recontextualize`.
 - [Add assets and Catalog items in the browser editor](/studio/assets-and-blocks)
 - [Put blocks together into one video](/concepts/compositions)
 
-</CatalogSlot>
-
-</CatalogDetail>
+</div>

@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach } from "vitest";
 import { describe, it, expect, vi } from "vitest";
+import { rulerTickText } from "./timelineRulerGeometry";
 import {
   Timeline,
   formatTimelineTickLabel,
@@ -1365,5 +1366,16 @@ describe("resolveTimelineAssetDrop", () => {
         600,
       ),
     ).toEqual({ start: 1.18, track: 8 });
+  });
+});
+
+describe("rulerTickText", () => {
+  it("counts frames at the rate the ticks were laid out at", () => {
+    expect(rulerTickText(2, 25, 10, 1)).toBe(50);
+    expect(rulerTickText(2, 30_000 / 1_001, 10, 1)).toBe(60);
+  });
+
+  it("shows time when the ruler is not counting frames", () => {
+    expect(rulerTickText(2, undefined, 10, 1)).toBe("00:02");
   });
 });

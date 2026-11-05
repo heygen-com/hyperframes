@@ -1,4 +1,5 @@
 // fallow-ignore-file unused-file
+import "./utils/hideChildConsoles.js";
 import { injectDeterministicFontFaces } from "@hyperframes/producer";
 import { runFontLocalize, stampFontVersions } from "./fontLocalize.js";
 import { PRODUCER_VERSION, VERSION } from "./version.js";

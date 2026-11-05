@@ -88,6 +88,7 @@ export {
 // Composition isolation helpers
 export {
   buildVariablesByCompScript,
+  emitVariablesByCompScript,
   dedupeFontFaceRules,
   scopeCssToComposition,
   wrapScopedCompositionScript,

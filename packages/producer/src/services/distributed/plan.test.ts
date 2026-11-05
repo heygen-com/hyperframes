@@ -30,6 +30,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyConcreteGpuScreenshotClamp,
+  _setDownloadFetchForTests,
   buildChromeArgs,
   FFMPEG_PATH_ENV,
   getFfmpegBinary,
@@ -707,12 +708,11 @@ describe("plan() — golden planDir + planHash determinism", () => {
   <video id="hero" src="https://cdn.example/missing.mp4" data-start="0"></video>
 </div>`,
       );
-      const originalFetch = globalThis.fetch;
       let fetchCalls = 0;
-      globalThis.fetch = (async () => {
+      _setDownloadFetchForTests((async () => {
         fetchCalls += 1;
         return new Response(null, { status: 404, statusText: "Not Found" });
-      }) as typeof fetch;
+      }) as never);
 
       let caught: unknown;
       try {
@@ -724,7 +724,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       } catch (err) {
         caught = err;
       } finally {
-        globalThis.fetch = originalFetch;
+        _setDownloadFetchForTests();
       }
 
       expect(fetchCalls).toBeGreaterThan(0);
@@ -848,6 +848,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       expect(a.chunkCount).toBe(b.chunkCount);
       expect(a.totalFrames).toBe(b.totalFrames);
       expect(Object.keys(b)).toEqual([
+        "reference_background",
         "planDir",
         "planProtocol",
         "planHash",
@@ -1141,6 +1142,32 @@ describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
         });
       }
     }, 60_000);
+
+    it("locks each ProRes profile's preset and pixel format into a mov plan", async () => {
+      const project = audioProject("project-prores-profiles");
+      const config = { fps: 30, width: 320, height: 240, format: "mov" } as const;
+      const locked: Record<string, unknown> = {};
+      for (const proresProfile of [undefined, "4444", "hq", "422", "lt", "proxy"] as const) {
+        const dir = join(runRoot, `plan-prores-${proresProfile ?? "default"}`);
+        await buildLocalExecutionPlan(project, { ...config, proresProfile }, dir, {
+          deferAudio: true,
+        });
+        const {
+          preset,
+          pixelFormat,
+          proresProfile: lockedProfile,
+        } = JSON.parse(readFileSync(join(dir, "meta", "encoder.json"), "utf-8"));
+        locked[proresProfile ?? "default"] = { preset, pixelFormat, lockedProfile };
+      }
+      expect(locked).toEqual({
+        default: { preset: "4444", pixelFormat: "yuva444p10le" },
+        "4444": { preset: "4444", pixelFormat: "yuva444p10le" },
+        hq: { preset: "3", pixelFormat: "yuv422p10le", lockedProfile: "hq" },
+        "422": { preset: "2", pixelFormat: "yuv422p10le", lockedProfile: "422" },
+        lt: { preset: "1", pixelFormat: "yuv422p10le", lockedProfile: "lt" },
+        proxy: { preset: "0", pixelFormat: "yuv422p10le", lockedProfile: "proxy" },
+      });
+    }, 120_000);
 
     for (const slot of [
       { name: "starts on the timeline", start: 0, duration: 1 },
@@ -1596,4 +1623,74 @@ describe("plan() — webm format (distributed VP9)", () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
   });
+});
+
+describe("plan() — template sub-composition entry", () => {
+  const TIMEOUT_MS = 30_000;
+  const INDEX_HTML = `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="5">
+    <div id="sting" data-composition-id="sting" data-composition-src="compositions/sting.html" data-start="0" data-duration="3"></div>
+  </div>
+</body>
+</html>`;
+  const STING_TEMPLATE = `<template id="sting-template">
+  <div data-composition-id="sting" data-width="320" data-height="240" data-duration="3">
+    <p>sting</p>
+  </div>
+</template>`;
+
+  function writeMountedProject(name: string): string {
+    const dir = join(runRoot, name);
+    mkdirSync(join(dir, "compositions"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), INDEX_HTML, "utf-8");
+    writeFileSync(join(dir, "compositions", "sting.html"), STING_TEMPLATE, "utf-8");
+    return dir;
+  }
+
+  it(
+    "plans a template-wrapped sub-composition rendered alone with its own duration",
+    async () => {
+      const dir = writeMountedProject("template-entry-project");
+      const planDir = join(runRoot, "template-entry-plan");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        dir,
+        { fps: 30, width: 320, height: 240, format: "mp4", entryFile: "compositions/sting.html" },
+        planDir,
+      );
+      expect(result.totalFrames).toBe(90);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "rejects a template entry that index.html does not mount",
+    async () => {
+      const dir = writeMountedProject("template-entry-unmounted");
+      writeFileSync(join(dir, "compositions", "orphan.html"), STING_TEMPLATE, "utf-8");
+      const planDir = join(runRoot, "template-entry-unmounted-plan");
+      mkdirSync(planDir, { recursive: true });
+      let caught: unknown;
+      try {
+        await plan(
+          dir,
+          {
+            fps: 30,
+            width: 320,
+            height: 240,
+            format: "mp4",
+            entryFile: "compositions/orphan.html",
+          },
+          planDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as Error).message).toMatch(/not mounted from index\.html/);
+    },
+    TIMEOUT_MS,
+  );
 });

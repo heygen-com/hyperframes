@@ -1,0 +1,765 @@
+// New media on HeyGen for `media-use generate`: a still, a shot, a shot's mouth redone to a voice, a person speaking
+// from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
+// the project and recorded in the media ledger as generated.
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
+import { tmpdir } from "node:os";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import type {
+  CreateBackgroundRemovalRequest,
+  CreateLipsyncRequest,
+  CreateModelVideoRequest,
+  CreateSpeechV3Request,
+  CreateVideoV3RequestBody,
+  ImageCreateRequest,
+  MusicCreateRequest,
+} from "../cloud/_gen/types.js";
+import { findCuts, signatures } from "../measure/cuts.js";
+import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
+import { loadSharp } from "../utils/optionalPackages.js";
+import {
+  idempotencyKey,
+  keepVoice,
+  keptVoice,
+  publicVoices,
+  runJob,
+  senderScope,
+  type Job,
+  type JobRoute,
+  type Voice,
+} from "./v3.js";
+
+export type GenerateType = "image" | "video" | "lipsync" | "avatar" | "cutout" | "voice" | "music";
+export const GENERATE_TYPES: readonly GenerateType[] = [
+  "image",
+  "video",
+  "lipsync",
+  "avatar",
+  "cutout",
+  "voice",
+  "music",
+];
+
+export interface GenerateRequest {
+  type: GenerateType;
+  out: string;
+  prompt?: string;
+  /** image: pictures the result is edited from or styled after. video: the person or things to keep in the shot. */
+  references?: string[];
+  /** video: speech as a reference, which the model re-paces. lipsync and avatar: the exact voice, kept as it is. */
+  audio?: string;
+  /** lipsync: the shot whose mouth is redone. cutout: the shot whose background is removed. */
+  video?: string;
+  /** video: a clip whose camera and body motion the shot follows (the original's same stretch, up to 15 s). */
+  motion?: string;
+  /** video: skip the one-shot check of the motion clip (a guide a person has looked at). */
+  allowCuts?: boolean;
+  /** video: regions of the motion clip blanked before it is sent (its drawn text), so the shot does not copy them. */
+  masks?: Mask[];
+  /** video: the shot starts from this picture. */
+  firstFrame?: string;
+  /** avatar: the photo of the person who speaks. */
+  photo?: string;
+  /** avatar: the person's own HeyGen avatar look, instead of a photo. */
+  avatar?: string;
+  /** avatar and voice: what is said. */
+  script?: string;
+  voice?: string;
+  seconds?: number;
+  aspect?: string;
+  model?: string;
+  instrumental?: boolean;
+  bpm?: number;
+}
+
+/** A region of the motion clip in its pixels, and optionally the seconds of the clip it covers. */
+export interface Mask {
+  box: [number, number, number, number];
+  window?: [number, number];
+}
+
+type Size = { width: number; height: number };
+const RING_MOVED = 6;
+
+/** `x,y,w,h` or `x,y,w,h,a-b` (seconds of the motion clip). */
+export function parseMask(text: string): Mask {
+  const m =
+    /^\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*)?$/.exec(
+      text,
+    );
+  if (!m || Number(m[3]) <= 0 || Number(m[4]) <= 0)
+    throw new Fix(`--mask ${text} is not x,y,w,h[,a-b]`, "--mask 190,405,700,175,1.0-2.7");
+  const box: Mask["box"] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4])];
+  return m[5] ? { box, window: [Number(m[5]), Number(m[6])] } : { box };
+}
+
+/**
+ * A box's temporal median over about a second either side: moving text becomes the picture behind it. A stale box
+ * takes the colours of its own frame instead, shrunk until no letter survives.
+ */
+function maskFilters(masks: Mask[], fps: number, stale: Mask[]): string {
+  const radius = Math.min(127, Math.max(2, Math.round(fps)));
+  const steps = masks.map((mask, i) => {
+    const [x, y, w, h] = mask.box;
+    const when = mask.window ? `:enable='between(t,${mask.window[0]},${mask.window[1]})'` : "";
+    const [w2, h2] = [w - (w % 2), h - (h % 2)];
+    const fill = stale.includes(mask)
+      ? `scale=3:3:flags=area,scale=${w2}:${h2}:flags=bicubic`
+      : `tmedian=radius=${radius}`;
+    return `[v${i}]split[a${i}][b${i}];[b${i}]crop=${w2}:${h2}:${x}:${y},${fill}[m${i}];[a${i}][m${i}]overlay=${x}:${y}${when}[v${i + 1}]`;
+  });
+  return `[0:v]null[v0];${steps.join(";")}`;
+}
+
+/** The middle pixel change between two grey frames in a ring round a box. */
+export function ringChange(
+  a: Uint8Array,
+  b: Uint8Array,
+  width: number,
+  [x, y, w, h]: Mask["box"],
+): number {
+  const height = a.length / width;
+  const pad = Math.max(w, h) >> 1;
+  const changes: number[] = [];
+  for (let py = Math.max(0, y - pad); py < Math.min(height, y + h + pad); py += 4)
+    for (let px = Math.max(0, x - pad); px < Math.min(width, x + w + pad); px += 4) {
+      if (px >= x && px < x + w && py >= y && py < y + h) continue;
+      const i = py * width + px;
+      changes.push(Math.abs(a[i]! - b[i]!));
+    }
+  return changes.sort((m, n) => m - n)[changes.length >> 1] ?? 0;
+}
+
+/** Mean absolute pixel step inside a box and in a ring around it: the box holds more edges when inside > ring. */
+export function structureRatio(
+  gray: Uint8Array,
+  width: number,
+  box: [number, number, number, number],
+): { inside: number; ring: number } {
+  const height = gray.length / width;
+  const [x0, y0, x1, y1] = [box[0], box[1], box[0] + box[2], box[1] + box[3]];
+  const pad = Math.max(box[2], box[3]) >> 1;
+  const sum = [0, 0];
+  const n = [0, 0];
+  for (let y = Math.max(0, y0 - pad); y < Math.min(height - 1, y1 + pad); y++)
+    for (let x = Math.max(0, x0 - pad); x < Math.min(width - 1, x1 + pad); x++) {
+      const k = x >= x0 && x < x1 && y >= y0 && y < y1 ? 0 : 1;
+      const i = y * width + x;
+      sum[k]! += Math.abs(gray[i]! - gray[i + 1]!) + Math.abs(gray[i]! - gray[i + width]!);
+      n[k]!++;
+    }
+  return { inside: sum[0]! / (n[0] || 1), ring: sum[1]! / (n[1] || 1) };
+}
+
+interface Route extends JobRoute {
+  body: (r: GenerateRequest, media: Media) => Record<string, unknown>;
+  /** Where the finished job keeps the file's URL. */
+  urls: string[];
+  ledger: "image" | "video" | "voice" | "bgm";
+  ext: string[];
+}
+
+type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
+
+const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
+const VIDEO_RESOLUTION = "768p";
+/** HeyGen follows at most this many seconds of a guide clip; the rest is not sent. */
+export const GUIDE_MAX_S = 15;
+const MUSIC_LENGTHS = [30, 60, 120, 180];
+
+const need = <T>(value: T | undefined, flag: string, example: string): T => {
+  if (value === undefined || value === "")
+    throw new Fix(`${flag} is required for this type`, example);
+  return value;
+};
+
+const ROUTES: Record<GenerateType, Route> = {
+  image: {
+    path: "/v3/images",
+    start: (c, body, key, signal) =>
+      c.createImage({ body: body as ImageCreateRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getImage({ generation_id: id, signal }),
+    body: (r, media) => ({
+      model: r.model ?? DEFAULTS.image,
+      prompt: need(r.prompt, "--prompt", '--prompt "the same room, empty, no text"'),
+      num_images: 1,
+      ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
+      ...(r.references?.length
+        ? { reference_images: r.references.map((p) => media(p, "image")) }
+        : {}),
+    }),
+    urls: ["images.0.url", "image_url", "url"],
+    ledger: "image",
+    ext: [".png", ".jpg", ".jpeg", ".webp"],
+  },
+  video: {
+    path: "/v3/models/videos",
+    start: (c, body, key, signal) =>
+      c.createModelVideo({ body: body as CreateModelVideoRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getModelVideo({ video_id: id, signal }),
+    // fallow-ignore-next-line complexity
+    body: (r, media) => {
+      const spoken = !!r.audio || !!r.references?.length || !!r.motion;
+      if (spoken && r.firstFrame)
+        throw new Fix(
+          "--first-frame cannot be used with --reference, --audio or --motion",
+          "a speaking shot takes the person as --reference and the voice as --audio",
+        );
+      return {
+        model: r.model ?? DEFAULTS.video,
+        mode: spoken ? "reference_to_video" : r.firstFrame ? "image_to_video" : "text_to_video",
+        prompt: need(r.prompt, "--prompt", '--prompt "slow push in on the desk"'),
+        duration: Math.min(15, Math.max(5, Math.round(r.seconds ?? 5))),
+        // 1080p bills about twice 768p (2026-10-23, 5 s 9:16 jobs: text $0.10 vs $0.20, a reference picture $0.25
+        // vs $0.45, a 1 s guide clip $0.30 vs $0.55), so every shot stays at 768p whatever the source's size.
+        resolution: VIDEO_RESOLUTION,
+        ...(r.firstFrame ? { image: media(r.firstFrame, "image") } : {}),
+        ...(r.firstFrame ? {} : { aspect_ratio: r.aspect ?? "16:9" }),
+        ...(r.references?.length
+          ? { reference_images: r.references.map((p) => media(p, "image")) }
+          : {}),
+        ...(r.audio ? { reference_audio: [media(r.audio, "audio")] } : {}),
+        // One guide clip: HeyGen follows its camera and body motion, and takes the face from the references.
+        ...(r.motion ? { reference_videos: [media(r.motion, "video")] } : {}),
+      };
+    },
+    urls: ["video_url", "output.video_url", "url"],
+    ledger: "video",
+    ext: [".mp4", ".mov", ".webm"],
+  },
+  lipsync: {
+    path: "/v3/lipsyncs",
+    start: (c, body, key, signal) =>
+      c.createLipsyncV3({ body: body as CreateLipsyncRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getLipsyncV3({ lipsync_id: id, signal }),
+    body: (r, media) => ({
+      video: media(need(r.video, "--video", "--video work/s01.mp4"), "video"),
+      audio: media(need(r.audio, "--audio", "--audio work/s01.mp3"), "audio"),
+      mode: "speed",
+      enable_dynamic_duration: false,
+      fps_mode: "cfr",
+      keep_the_same_format: true,
+    }),
+    urls: ["video_url"],
+    ledger: "video",
+    ext: [".mp4"],
+  },
+  cutout: {
+    path: "/v3/background-removals",
+    start: (c, body, key, signal) =>
+      c.createBackgroundRemoval({
+        body: { ...(body as CreateBackgroundRemovalRequest), request_id: key },
+        signal,
+      }),
+    status: (c, id, signal) => c.getBackgroundRemoval({ job_id: id, signal }),
+    body: (r, media) => ({
+      video: media(need(r.video, "--video", "--video assets/presenter.mp4"), "video"),
+      layers: ["foreground"],
+    }),
+    urls: ["layers.foreground"],
+    ledger: "video",
+    ext: [".webm", ".mov"],
+  },
+  avatar: {
+    path: "/v3/videos",
+    start: (c, body, key, signal) =>
+      c.createVideo({ body: body as CreateVideoV3RequestBody, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getVideoV3({ video_id: id, signal }),
+    body: (r, media) => ({
+      ...(r.avatar
+        ? { type: "avatar", avatar_id: r.avatar }
+        : {
+            type: "image",
+            image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
+            ...(r.prompt ? { motion_prompt: r.prompt } : {}),
+          }),
+      ...(r.audio
+        ? { audio_asset_id: media(r.audio, "audio").asset_id }
+        : {
+            script: need(r.script, "--script", '--script "What they say"'),
+            voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
+          }),
+      ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
+      resolution: "1080p",
+      output_format: "mp4",
+    }),
+    urls: ["video_url"],
+    ledger: "video",
+    ext: [".mp4"],
+  },
+  voice: {
+    // Speech answers in the request and takes no Idempotency-Key, so there is no status to poll.
+    path: "/v3/voices/speech",
+    start: (c, body, _key, signal) =>
+      c.createSpeechV3({ body: body as CreateSpeechV3Request, signal }),
+    body: (r) => ({
+      text: need(r.script, "--script", '--script "What the voice says"'),
+      voice_id: need(r.voice, "--voice", "--voice <voice id or language>"),
+    }),
+    urls: ["audio_url"],
+    ledger: "voice",
+    ext: [".mp3", ".wav", ".m4a"],
+  },
+  music: {
+    path: "/v3/audio/music",
+    start: (c, body, key, signal) =>
+      c.createMusic({ body: body as MusicCreateRequest, idempotencyKey: key, signal }),
+    status: (c, id, signal) => c.getMusic({ music_id: id, signal }),
+    body: (r) => ({
+      model: r.model ?? DEFAULTS.music,
+      prompt: need(r.prompt, "--prompt", '--prompt "warm lo-fi beat, soft keys"'),
+      duration_seconds: MUSIC_LENGTHS.find((s) => s >= (r.seconds ?? 30)) ?? 180,
+      instrumental: r.instrumental ?? true,
+      ...(r.bpm ? { bpm: Math.round(r.bpm) } : {}),
+    }),
+    urls: ["audio_url"],
+    ledger: "bgm",
+    ext: [".mp3"],
+  },
+};
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The first URL at any of these dotted paths of a job. */
+export function urlOf(job: Job, paths: string[]): string | null {
+  for (const p of paths) {
+    let v: unknown = job;
+    for (const key of p.split("."))
+      v = Array.isArray(v) ? v[Number(key)] : isRecord(v) ? v[key] : undefined;
+    if (typeof v === "string" && /^https?:\/\//.test(v)) return v;
+  }
+  return null;
+}
+
+function needFile(path: string): void {
+  if (!existsSync(path))
+    throw new Fix(`no file at ${path}`, "pass a picture or sound from the project");
+}
+
+const FIT_2048 = "scale='min(2048,iw)':'min(2048,ih)':force_original_aspect_ratio=decrease";
+
+function picturesOf(route: Route, r: GenerateRequest): string[] {
+  const paths: string[] = [];
+  route.body(r, (path, kind) => {
+    if (kind === "image") paths.push(path);
+    return {};
+  });
+  return paths;
+}
+
+const sharpOrNone = () => loadSharp("media-use pictures").catch(() => null);
+
+/** Each picture upright and at most 2048 px, as a JPEG in `work`. sharp, not ffmpeg: a picture alone never needs it. */
+async function shrunk(paths: string[], work: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!paths.length) return out;
+  const sharp = await sharpOrNone();
+  for (const path of new Set(paths)) {
+    needFile(path);
+    const to = join(work, `picture-${out.size}.jpg`);
+    const viaFfmpeg = () =>
+      runFfmpeg(["-y", "-i", path, "-vf", FIT_2048, "-q:v", "3", "-frames:v", "1", to]);
+    if (!sharp) viaFfmpeg();
+    else
+      await sharp(path)
+        .rotate()
+        .resize(2048, 2048, { fit: "inside", withoutEnlargement: true })
+        .jpeg({ quality: 90 })
+        .toFile(to)
+        .catch(viaFfmpeg);
+    out.set(path, to);
+  }
+  return out;
+}
+
+/** A picture, sound or motion clip as the routes take it inline: pictures from `shrunk`, clips with masks filled. */
+function inline(work: string, pictures: Map<string, string>, masks: Mask[] = []): Media {
+  return (path, kind) => {
+    needFile(path);
+    const out =
+      kind === "image"
+        ? pictures.get(path)!
+        : join(
+            work,
+            `in-${Math.random().toString(36).slice(2)}.${{ audio: "mp3", video: "mp4" }[kind]}`,
+          );
+    if (kind === "audio")
+      runFfmpeg(["-y", "-i", path, "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", out]);
+    // A guide clip only needs its motion: 720 px on the long side, no sound, at most 15 s.
+    else if (kind === "video") {
+      const guide = masks.length ? fillMasks(path, masks, work) : path;
+      const scale = "scale='if(gt(iw,ih),min(720,iw),-2)':'if(gt(iw,ih),-2,min(720,ih))'";
+      runFfmpeg([
+        ...["-y", "-i", guide, "-t", "15", "-an", "-vf", scale],
+        ...["-c:v", "libx264", "-crf", "28", "-preset", "veryfast", "-pix_fmt", "yuv420p", out],
+      ]);
+    }
+    return {
+      type: "base64",
+      media_type: { image: "image/jpeg", audio: "audio/mpeg", video: "video/mp4" }[kind],
+      data: readFileSync(out).toString("base64"),
+    };
+  };
+}
+
+/** Files a route takes as asset ids, not inline. */
+function assetsOf(r: GenerateRequest): string[] {
+  if (r.type === "lipsync") return [r.video!, r.audio!];
+  if (r.type === "cutout") return [r.video!];
+  return r.type === "avatar" && r.audio ? [r.audio] : [];
+}
+
+/** Uploads them whole; the asset id of each path. */
+async function uploaded(paths: string[]): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
+  if (!paths.length) return ids;
+  const { createCloudClient } = await import("../cloud/index.js");
+  const { uploadAssetViaDirectUpload } = await import("../cloud/upload.js");
+  const { getMimeType } = await import("@hyperframes/studio-server");
+  const client = await createCloudClient();
+  for (const path of paths) {
+    const asset = await uploadAssetViaDirectUpload({
+      client,
+      bytes: new Uint8Array(readFileSync(path)),
+      filename: basename(path),
+      contentType: getMimeType(path),
+      idempotencyKey: randomUUID(),
+    });
+    ids.set(path, asset.asset_id);
+  }
+  return ids;
+}
+
+/**
+ * The seconds where a new shot starts in a video's first `seconds`, and the length read. A cut within a frame of
+ * either end leaves a stray frame, not a second shot, and does not count.
+ */
+function cutsInside(path: string, seconds?: number): { cuts: number[]; length: number } {
+  const info = probeVideo(path);
+  const clip = videoClip(info.path, 0, seconds, info);
+  const { frames } = signatures(clip.input, clip.filters);
+  const cuts = findCuts(frames)
+    .filter((c) => c.frame > 1 && c.frame < frames.length - 1)
+    .map((c) => round(c.frame / info.fps, 3));
+  return { cuts, length: round(frames.length / info.fps, 3) };
+}
+
+/** The masks whose box, in `clip`'s frames, holds more edges than the picture around it at some sampled time. */
+function structured(clip: string, guide: { width: number; height: number }, masks: Mask[]) {
+  const { width: w, height: h } = probeVideo(clip);
+  const gray = runFfmpeg(["-i", clip, "-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"]);
+  // The box as a fraction of the guide's frame, in the clip's pixels (its size and aspect may differ).
+  const [kx, ky] = [w / guide.width, h / guide.height];
+  return masks.flatMap((mask) => {
+    const [bx, by, bw, bh] = mask.box;
+    const box = [bx * kx, by * ky, bw * kx, bh * ky].map(Math.round) as Mask["box"];
+    let worst = 0;
+    for (let i = 0; (i + 1) * w * h <= gray.length; i++) {
+      if (mask.window && (i / 2 < mask.window[0] || i / 2 > mask.window[1])) continue;
+      const { inside, ring } = structureRatio(gray.subarray(i * w * h, (i + 1) * w * h), w, box);
+      if (inside > 6 && inside > 1.5 * ring) worst = Math.max(worst, inside / (ring || 1));
+    }
+    return worst ? [{ mask, worst }] : [];
+  });
+}
+
+/** The masks whose surroundings change, where the camera moves: a median over time would freeze old frames in them. */
+function staleMasks(path: string, { width, height }: Size, masks: Mask[]): Mask[] {
+  const gray = runFfmpeg([
+    ...["-t", String(GUIDE_MAX_S), "-i", path],
+    ...["-vf", "fps=2", "-pix_fmt", "gray", "-f", "rawvideo", "-"],
+  ]);
+  const frame = (i: number) => gray.subarray(i * width * height, (i + 1) * width * height);
+  const count = Math.floor(gray.length / (width * height));
+  return masks.filter(({ box, window }) => {
+    const seconds = Array.from({ length: Math.max(0, count - 1) }, (_, i) => i).filter(
+      (i) => !window || (i / 2 >= window[0] - 1 && i / 2 <= window[1] + 1),
+    );
+    return seconds.some((i) => ringChange(frame(i), frame(i + 1), width, box) >= RING_MOVED);
+  });
+}
+
+/** A copy of the guide with each mask's box filled: the temporal median, then the frame's colours where text stays put. */
+function fillMasks(path: string, masks: Mask[], work: string): string {
+  const info = probeVideo(path);
+  const stale = staleMasks(path, info, masks);
+  const encode = (from: string, name: string, filter: string[]) => {
+    const out = join(work, name);
+    runFfmpeg([
+      ...["-y", "-i", from, "-an"],
+      ...filter,
+      ...["-crf", "14", "-pix_fmt", "yuv420p", out],
+    ]);
+    return out;
+  };
+  const median = encode(path, "median.mp4", [
+    ...["-t", "15", "-filter_complex", maskFilters(masks, info.fps, stale)],
+    ...["-map", `[v${masks.length}]`],
+  ]);
+  const left = structured(median, info, masks).map((s) => s.mask);
+  if (!left.length) return median;
+  return encode(median, "filled.mp4", [
+    ...["-filter_complex", maskFilters(left, info.fps, left)],
+    ...["-map", `[v${left.length}]`],
+  ]);
+}
+
+/**
+ * HeyGen answers a 16:9 request at 1344x768 (1.75:1). The result is cropped, centred, to the requested ratio
+ * (1344x756) rather than stretched; returns a note on what was done, or nothing when it already fits.
+ */
+function fitAspect(out: string, aspect: string): string | undefined {
+  const [aw, ah] = aspect.split(":").map(Number);
+  if (!aw || !ah) return;
+  const { width, height } = probeVideo(out);
+  const want = aw / ah;
+  if (Math.abs(width / height - want) / want < 0.002) return;
+  const even = (n: number) => n - (n % 2);
+  const [w, h] =
+    width / height > want ? [even(height * want), height] : [width, even(width / want)];
+  const fitted = `${out}.fit${extname(out)}`;
+  runFfmpeg([
+    ...[
+      "-y",
+      "-i",
+      out,
+      "-vf",
+      `crop=${w}:${h}`,
+      "-c:v",
+      "libx264",
+      "-crf",
+      "12",
+      "-preset",
+      "slow",
+    ],
+    ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
+  ]);
+  renameSync(fitted, out);
+  return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
+}
+
+async function aspectOf(r: GenerateRequest, pictures: Map<string, string>): Promise<string> {
+  if (r.aspect || !r.firstFrame) return r.aspect ?? "16:9";
+  const sent = pictures.get(r.firstFrame)!;
+  const sharp = await sharpOrNone();
+  const { width, height } = sharp ? await sharp(sent).metadata() : probeVideo(sent);
+  return `${width}:${height}`;
+}
+
+const MIN_SHOT_S = 0.15;
+
+export function foldShort(cuts: number[], length: number): number[] {
+  const kept = [...cuts];
+  for (;;) {
+    const edges = [0, ...kept, length];
+    const short = edges.slice(1).findIndex((e, i) => e - edges[i]! < MIN_SHOT_S);
+    if (short < 0 || !kept.length) return kept;
+    kept.splice(short ? short - 1 : 0, 1);
+  }
+}
+
+const COUNT = ["", "one", "two", "three", "four", "five", "six"];
+
+/**
+ * Refuses a --motion clip holding more than one shot before anything is sent: HeyGen follows the guide's cut into
+ * a cut of its own, so each shot is its own generation.
+ */
+function checkGuide(r: Pick<GenerateRequest, "motion" | "allowCuts">): void {
+  if (!r.motion || r.allowCuts) return;
+  const found = cutsInside(r.motion, GUIDE_MAX_S);
+  const { length } = found;
+  const cuts = foldShort(found.cuts, length);
+  if (!cuts.length) return;
+  const s = (t: number) => t.toFixed(2);
+  const and = (items: string[]) => `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  const at =
+    cuts.length > 1 ? `cuts at ${and(cuts.map((t) => `${s(t)} s`))}` : `a cut at ${s(cuts[0]!)} s`;
+  const edges = [0, ...cuts, length];
+  const shots = edges.slice(1).map((e, i) => `${i ? s(edges[i]!) : "0"}–${s(e)} s`);
+  throw new Fix(
+    `--motion ${r.motion} has ${at}`,
+    `guide has ${at}: generate ${and(shots)} as ${COUNT[shots.length] ?? shots.length} shots, each with its own --motion clip, or pass --allow-cuts for a guide you have checked`,
+  );
+}
+
+/** What the real call would refuse, checked without sending anything: `--plan` prices only a request that would run.
+ *  The route's body runs with a stand-in for the media, so its required flags and conflicts are checked as sent. */
+const VOICE_ID = /^[0-9a-f]{32}$/i;
+
+export async function voiceFor(r: GenerateRequest): Promise<Voice | undefined> {
+  return r.type === "voice" || (r.type === "avatar" && !r.audio) ? pickVoice(r) : undefined;
+}
+
+export async function pickVoice(r: GenerateRequest): Promise<Voice> {
+  if (r.voice && VOICE_ID.test(r.voice)) return { voice_id: r.voice, name: r.voice };
+  if (!r.voice) {
+    const listed = (await publicVoices("English", 6))
+      .map((v) => `${v.voice_id} (${v.name}, ${v.gender ?? "?"})`)
+      .join("; ");
+    throw new Fix(
+      "--voice is missing",
+      `--voice <language>, e.g. --voice English, for HeyGen's first voice in it, or a voice id: ${listed}`,
+    );
+  }
+  const scope = await senderScope();
+  if (!scope)
+    throw new Fix(
+      "HeyGen did not say which account this sign-in is, so a voice picked now could differ on a re-run",
+      "run the same command again in a minute; pass --voice <voice id> to skip the pick",
+    );
+  const project = projectOf(dirname(resolve(r.out)));
+  const request = idempotencyKey("voice-pick", [
+    JSON.stringify({ ...r, out: resolve(r.out) }),
+    scope,
+  ]);
+  const kept = keptVoice(project, request);
+  if (kept) return kept;
+  const [voice] = await publicVoices(r.voice, 1);
+  if (!voice) throw new Fix(`HeyGen has no public voice for ${r.voice}`, "--voice <voice id>");
+  keepVoice(project, request, voice);
+  return voice;
+}
+
+export function checkRequest(r: GenerateRequest): void {
+  const route = ROUTES[r.type];
+  if (!route.ext.includes(extname(r.out).toLowerCase()))
+    throw new Fix(`--out ${r.out} does not fit a ${r.type}`, `--out assets/name${route.ext[0]}`);
+  if (r.masks?.length && !r.motion)
+    throw new Fix("--mask blanks regions of the --motion clip", "pass --motion with --mask");
+  route.body(r, (path) => {
+    needFile(path);
+    return { type: "base64", media_type: "", data: "" };
+  });
+  checkGuide(r);
+}
+
+export interface Generated {
+  out: string;
+  type: GenerateType;
+  job: string;
+  route: string;
+  ledger?: string;
+  /** video: seconds where HeyGen cut inside the returned shot; null when the file could not be read. */
+  cuts_inside?: number[] | null;
+  /** What was changed or looks wrong in the result: a crop to the requested aspect, text that may have come back. */
+  notes?: string[];
+}
+
+// fallow-ignore-next-line complexity
+export async function generate(
+  r: GenerateRequest,
+  onWait?: (status: string) => void,
+  credits?: number,
+): Promise<Generated> {
+  checkRequest(r);
+  const route = ROUTES[r.type];
+  const out = resolve(r.out);
+  makeOutputFolder(dirname(out));
+  const project = projectOf(dirname(out));
+  const work = mkdtempSync(join(tmpdir(), "hf-generate-"));
+  try {
+    const sources = assetsOf(r);
+    const ids = await uploaded(sources);
+    const pictures = await shrunk(picturesOf(route, r), work);
+    const local = inline(work, pictures, r.masks);
+    const body = route.body(r, (path, kind) =>
+      ids.has(path) ? { type: "asset_id", asset_id: ids.get(path) } : local(path, kind),
+    );
+    // An asset id is new on every upload; the files say whether this is the same job.
+    const sent = [...ids.values()].reduce((t, id) => t.replaceAll(id, ""), JSON.stringify(body));
+    const key = idempotencyKey(route.path, [...sources.map((p) => readFileSync(p)), sent]);
+    const job = await runJob(route, body, key, {
+      log: {
+        projectDir: project ?? process.cwd(),
+        what: `generate ${r.type} ${relative(project ?? ".", out)}`,
+      },
+      onWait: (j) => onWait?.(j.status),
+      timeoutMs: 30 * 60_000,
+      credits,
+    });
+    const url = urlOf(job, route.urls);
+    if (!url)
+      throw new Fix(
+        `HeyGen finished job ${job.id} without a file URL`,
+        "run the same command again; it re-reads the job",
+      );
+    const res = await fetch(url, { signal: AbortSignal.timeout(300_000) });
+    if (!res.ok)
+      throw new Fix(
+        `could not download the result (${res.status})`,
+        "run the same command again; it re-reads the job",
+      );
+    writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
+    let cuts: number[] | null | undefined;
+    if (r.type === "video")
+      try {
+        cuts = cutsInside(out).cuts;
+      } catch {
+        cuts = null;
+      }
+    const notes: string[] = [];
+    if (r.type === "video")
+      try {
+        const note = fitAspect(out, await aspectOf(r, pictures));
+        if (note) notes.push(note);
+      } catch (e) {
+        notes.push(`kept HeyGen's size, could not crop: ${e instanceof Error ? e.message : e}`);
+      }
+    if (r.masks?.length && r.motion)
+      try {
+        for (const { mask, worst } of structured(out, probeVideo(r.motion), r.masks))
+          notes.push(
+            `mask ${mask.box.join(",")} still shows structure in the result (${worst.toFixed(1)}x its surroundings): the text may have come back, regenerate without the guide`,
+          );
+      } catch {
+        notes.push("could not check the masked boxes of the result");
+      }
+    let ledger: string | undefined;
+    if (project) {
+      const { recordInPlace } = await import("../media-use/lib/manifest.mjs");
+      const { regenerateIndex } = await import("../media-use/lib/index-gen.mjs");
+      const describe = (p?: string) =>
+        p ? relative(project, resolve(p)).split("\\").join("/") : undefined;
+      ledger = recordInPlace(project, {
+        type: route.ledger,
+        path: relative(project, out).split("\\").join("/"),
+        source: "generated",
+        description: r.prompt ?? r.script ?? r.type,
+        provenance: {
+          provider: "heygen",
+          route: route.path,
+          model: body.model ?? null,
+          job: job.id,
+          prompt: r.prompt ?? null,
+          ...(r.references?.length ? { references: r.references.map(describe) } : {}),
+          ...(r.firstFrame ? { first_frame: describe(r.firstFrame) } : {}),
+          ...(r.photo ? { photo: describe(r.photo) } : {}),
+          ...(r.avatar ? { avatar: r.avatar } : {}),
+          ...(r.audio ? { audio: describe(r.audio) } : {}),
+          ...(r.video ? { video: describe(r.video) } : {}),
+          ...(r.motion ? { motion: describe(r.motion) } : {}),
+          ...(r.masks?.length
+            ? { motion_masks: r.masks.map((m) => [...m.box, ...(m.window ?? [])]) }
+            : {}),
+          ...(r.voice ? { voice: r.voice } : {}),
+          ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
+        },
+      }).id;
+      regenerateIndex(project);
+    }
+    return {
+      out,
+      type: r.type,
+      job: job.id,
+      route: route.path,
+      ...(ledger ? { ledger } : {}),
+      ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
+      ...(notes.length ? { notes } : {}),
+    };
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}

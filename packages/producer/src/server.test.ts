@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { _setDownloadFetchForTests } from "@hyperframes/engine";
 import { parseRenderOptions, prepareRenderBody } from "./server.js";
 
 describe("parseRenderOptions — variables", () => {
@@ -191,14 +192,13 @@ describe("prepareRenderBody — validation", () => {
 });
 
 describe("prepareRenderBody — previewUrl", () => {
-  const realFetch = globalThis.fetch;
   const stubFetch = (impl: () => Promise<Response>) => {
     const spy = mock(impl);
-    globalThis.fetch = spy as unknown as typeof fetch;
+    _setDownloadFetchForTests(spy as unknown as Parameters<typeof _setDownloadFetchForTests>[0]);
     return spy;
   };
   afterEach(() => {
-    globalThis.fetch = realFetch;
+    _setDownloadFetchForTests();
   });
 
   it.each([

@@ -13,6 +13,8 @@ const page1 = `<body style="margin:0">
   <video id="zoom" style="position:absolute;width:400px;height:225px;transform-origin:0 0"></video>
   <video id="late" style="position:absolute;top:500px;width:320px;height:180px;display:none"></video>
   <video id="graded" data-color-grading="warm" style="width:200px;height:100px"></video>
+  <hf-color-group id="lane" data-color-grading="warm"></hf-color-group>
+  <video id="lane-clip" data-color-group="lane" style="width:200px;height:100px"></video>
   <video id="natural" style="width:200px;height:100px;object-fit:none"></video>
   <script>
     window.__hf = { seek(t) {
@@ -39,7 +41,7 @@ describe.skipIf(!hasBrowser)("measureVideoShownBoxes in Chrome", () => {
 
   it("returns each video's largest box over the seeked times, in device pixels", async () => {
     const page = await open(page1, 2);
-    const ids = ["zoom", "late", "graded", "natural", "missing"];
+    const ids = ["zoom", "late", "graded", "lane-clip", "natural", "missing"];
     const boxes = await measureVideoShownBoxes(page, ids, [0, 0.25, 1]);
     expect(Object.fromEntries(boxes)).toEqual({
       zoom: { width: 1600, height: 900 },

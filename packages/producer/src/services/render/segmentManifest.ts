@@ -40,6 +40,9 @@ export interface SegmentPlanHashInput {
   preset: string;
   quality: number | undefined;
   bitrate: string | undefined;
+  maxBitrate: string | undefined;
+  bufferSize: string | undefined;
+  gopSize: number | undefined;
   pixelFormat: string | undefined;
   imageFormat: string;
   /** Hardware encoder or not: h264_nvenc and libx264 both report codec "h264" but produce different bytes. */
@@ -75,8 +78,10 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
     input.motionBlur,
     input.pageMotionBlur ?? "",
     input.captureQuality === undefined ? "" : String(input.captureQuality),
-  ].join(" ");
-  return createHash("sha256").update(ordered).digest("hex").slice(0, 16);
+  ];
+  const delivery = [input.maxBitrate, input.bufferSize, input.gopSize].map((v) => v ?? "");
+  if (delivery.some((v) => v !== "")) ordered.push(...delivery.map(String));
+  return createHash("sha256").update(ordered.join(" ")).digest("hex").slice(0, 16);
 }
 
 export function segmentDirFor(projectRendersDir: string, planHash: string): string {

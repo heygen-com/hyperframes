@@ -58,29 +58,29 @@ describe("formatTime", () => {
 });
 
 describe("frame helpers", () => {
-  it("converts seconds to frames at the Studio preview rate", () => {
-    expect(secondsToFrame(0)).toBe(0);
-    expect(secondsToFrame(1)).toBe(30);
-    expect(secondsToFrame(1.5)).toBe(45);
+  it("converts seconds to frames at 30 fps", () => {
+    expect(secondsToFrame(0, 30)).toBe(0);
+    expect(secondsToFrame(1, 30)).toBe(30);
+    expect(secondsToFrame(1.5, 30)).toBe(45);
   });
 
-  it("converts frames to seconds at the Studio preview rate", () => {
-    expect(frameToSeconds(0)).toBe(0);
-    expect(frameToSeconds(30)).toBe(1);
-    expect(frameToSeconds(45)).toBe(1.5);
+  it("converts frames to seconds at 30 fps", () => {
+    expect(frameToSeconds(0, 30)).toBe(0);
+    expect(frameToSeconds(30, 30)).toBe(1);
+    expect(frameToSeconds(45, 30)).toBe(1.5);
   });
 
   it("formats current and total frame display", () => {
-    expect(formatFrameTime(1, 5)).toBe("30f / 150f");
+    expect(formatFrameTime(1, 5, 30)).toBe("30f / 150f");
   });
 
   it("steps from a truncated runtime time by integer frame index", () => {
-    expect(stepFrameTime(0.0333333, 1)).toBe(2 / 30);
-    expect(stepFrameTime(0.0666666, 1)).toBe(3 / 30);
-    expect(stepFrameTime(0.0666666, -1)).toBe(1 / 30);
+    expect(stepFrameTime(0.0333333, 1, 30)).toBe(2 / 30);
+    expect(stepFrameTime(0.0666666, 1, 30)).toBe(3 / 30);
+    expect(stepFrameTime(0.0666666, -1, 30)).toBe(1 / 30);
   });
 
   it("clamps frame stepping at zero", () => {
-    expect(stepFrameTime(0, -1)).toBe(0);
+    expect(stepFrameTime(0, -1, 30)).toBe(0);
   });
 });
