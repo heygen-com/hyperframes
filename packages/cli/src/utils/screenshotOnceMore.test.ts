@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screenshotOnceMore } from "./snapshot.js";
+import { screenshotOnceMore } from "./screenshotOnceMore.js";
 
 const dropped = () =>
   new Error("Protocol error (Page.captureScreenshot): Unable to capture screenshot");
