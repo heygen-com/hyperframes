@@ -3543,12 +3543,21 @@ async function executeRenderPipeline(input: {
       });
     // A blur sample at a clip's edge shows a source frame the output frames do not, and a window
     // holds only the frames the output frames show (videoFrameInjector.ts, `heldVideoTime`).
+    const segmentedForWindow = segmentsCapture(compiled.hasShaderTransitions);
     const windowVideoFrames =
       job.config.motionBlur === undefined &&
-      shouldWindowVideoFrames({
-        env: process.env,
-        segmented: segmentsCapture(compiled.hasShaderTransitions),
+      shouldWindowVideoFrames({ env: process.env, segmented: segmentedForWindow });
+    if (!windowVideoFrames && shouldWindowVideoFrames({ env: process.env, segmented: true })) {
+      const reason =
+        job.config.motionBlur !== undefined
+          ? "motion blur"
+          : outputFormat !== "mp4" && outputFormat !== "mov"
+            ? `${outputFormat} output`
+            : "capture is not segmented";
+      log.info("[Render] HF_VIDEO_FRAME_WINDOW is set but this render extracts every frame", {
+        reason,
       });
+    }
     const extractResult = await observeRenderStage(
       observability,
       "video_extract",
@@ -3827,6 +3836,13 @@ async function executeRenderPipeline(input: {
     let videoFrameWindow =
       windowVideoFrames &&
       (extractionResult?.extracted.some((video) => video.deferredRange) ?? false);
+    if (windowVideoFrames) {
+      const extracted = extractionResult?.extracted ?? [];
+      log.info("[Render] Video frame window", {
+        windowed: extracted.filter((video) => video.deferredRange).length,
+        fullyExtracted: extracted.filter((video) => !video.deferredRange).length,
+      });
+    }
     const buildSegmentVideoFrames = () =>
       trackSegmentFramePeak(
         createSegmentVideoFrames({

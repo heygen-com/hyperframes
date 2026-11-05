@@ -402,3 +402,35 @@ it("the late full extraction is logged and moves the job's progress", async () =
   );
   expect(state.stages).toContain("Extracting video frames");
 });
+
+const WINDOW_LOGS = [
+  "[Render] HF_VIDEO_FRAME_WINDOW is set but this render extracts every frame",
+  "[Render] Video frame window",
+];
+
+it("a windowed render says how many videos it windowed and how many stayed fully extracted", async () => {
+  await expect(render()).rejects.toThrow(REACHED);
+  expect(state.logs).toContain("[Render] Video frame window");
+  expect(state.logs).not.toContain(WINDOW_LOGS[0]);
+});
+
+it.each([
+  ["a webm render", { format: "webm" as const }],
+  ["a motion-blur render", { motionBlur: { samplesPerFrame: 4 } }],
+])("%s with the flag on says it extracts every frame", async (_label, config) => {
+  await expect(render(config)).rejects.toThrow(REACHED);
+  expect(state.logs).toContain(WINDOW_LOGS[0]);
+  expect(state.logs).not.toContain(WINDOW_LOGS[1]);
+});
+
+it("a render that would not segment says so when the flag is on", async () => {
+  vi.stubEnv("HF_SEGMENTED_CAPTURE", "false");
+  await expect(render()).rejects.toThrow(REACHED);
+  expect(state.logs).toContain(WINDOW_LOGS[0]);
+});
+
+it("with the flag off, nothing about windowing is logged", async () => {
+  vi.stubEnv("HF_VIDEO_FRAME_WINDOW", "false");
+  await expect(render()).rejects.toThrow(REACHED);
+  expect(state.logs.filter((message) => WINDOW_LOGS.includes(message))).toEqual([]);
+});

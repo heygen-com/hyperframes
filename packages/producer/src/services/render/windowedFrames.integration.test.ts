@@ -1,8 +1,9 @@
 // Windowed source-video frames (HF_VIDEO_FRAME_WINDOW), rendered for real: each case renders twice
 // on the segmented route, once reading a segment's frames at a time and once extracting whole
 // videos, and the two outputs must match frame for frame. Needs Chrome + ffmpeg: integration lane.
-// Known gap: every render here takes the screenshot capture path, so the drawElement self-verify is
-// not exercised against windowed frames; no host this runs on can engage drawElement.
+// Known gap: this test pins `browserGpuMode: "software"`, so every render here takes the screenshot
+// path. Windowed drawElement parity, including self-verify through the on-demand hook, was measured
+// by hand on real footage and has no automated guard.
 //
 // HF_TEST_RETRY_BROWSER_STALL=1 renders once more after Chrome dies, for an overloaded local host.
 // Never set it in CI: a windowed render that needs the retry alone fails the case.
@@ -223,8 +224,9 @@ function ownedByThisProcess(dir: string): boolean {
 
 /**
  * This render's work dir, where the orchestrator puts it on this platform: named by the job on
- * Linux, and a shared `hf-render-` prefix in the system temp dir elsewhere, where the owner record's
- * pid tells it from a concurrent render's.
+ * Linux, and a shared `hf-render-` prefix in the system temp dir elsewhere. The owner record's pid
+ * rules out another process's render; renders in this process run serially and each snapshots the
+ * directory before it starts, which is what tells one of them from another.
  */
 function watchWorkDirs(output: string, jobId: string) {
   const prefix = resolveRenderWorkDirPrefix(output, jobId);
