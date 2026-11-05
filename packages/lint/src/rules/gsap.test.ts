@@ -3174,6 +3174,26 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("gsap_timeline_set_initial_hide: counts every selector of a comma list as hidden by authored CSS", async () => {
+    const html = `
+<html><head><style>#stroke-a, #stroke-b { opacity: 0; }</style></head><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg width="400" height="200"><path id="stroke-a" d="M0 0 L100 100" /><path id="stroke-b" d="M0 100 L100 0" /></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#stroke-a", { opacity: 0 }, 0);
+    tl.set("#stroke-b", { opacity: 0 }, 0);
+    tl.to(["#stroke-a", "#stroke-b"], { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(findings).toEqual([]);
+  });
+
   it("gsap_timeline_set_initial_hide: does NOT warn when the target is already hidden by authored CSS", async () => {
     // Defensive re-assertion: frame 0 is hidden by CSS anyway.
     const html = `

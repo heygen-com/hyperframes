@@ -1,3 +1,4 @@
+import postcss from "postcss";
 import { gsapCallOffset, containingCallOffset } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
@@ -1025,13 +1026,19 @@ function collectCssOpacityZeroSelectors(
   const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
 
   for (const style of styles) {
-    for (const [, selector, body] of style.content.matchAll(
-      /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-    )) {
-      if (body && opacityExactlyZero.test(body)) {
-        selectors.add((selector ?? "").trim());
-      }
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(style.content);
+    } catch {
+      continue; // css_parse_error reports this block.
     }
+    root.walkRules((rule) => {
+      if (!rule.nodes.some((node) => opacityExactlyZero.test(node.toString()))) return;
+      for (const selector of rule.selectors) {
+        const subject = /[#.][a-zA-Z0-9_-]+$/.exec(selector.trim());
+        if (subject) selectors.add(subject[0]);
+      }
+    });
   }
 
   for (const tag of tags) {
