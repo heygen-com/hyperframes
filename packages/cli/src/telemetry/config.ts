@@ -20,14 +20,9 @@ const configFile = () => hyperframesConfigDir("config.json");
 // Install-state file: ~/.hyperframes/install-state.json
 //
 // A separate FILE, but deliberately the same DIRECTORY as config.json, so
-// `rm -rf ~/.hyperframes` really is a full reset. It previously lived in
-// ~/.local/state/hyperframes/ specifically to survive that delete; review
-// rejected that ("if someone is deleting their hyperframes config it should
-// wipe all hyperframes state — I'm not sure we should try and persist state
-// elsewhere to get around this"), and the measurement agreed: the churn this
-// actually defends against is not users running `rm -rf`.
+// `rm -rf ~/.hyperframes` really is a full reset.
 //
-// The threat it does defend against is config.json itself. That file is hot
+// What it defends against is config.json itself. That file is hot
 // and wide — ~20 fields rewritten on every command and every render — and
 // readConfig recovers from ANY parse/permission/IO failure by minting a fresh
 // identity. Splitting these two facts into their own file decouples them from

@@ -51,7 +51,7 @@ export function optedOut() {
 
 // Read and write the shared config so media-use keeps one identity per install.
 function sharedConfigPath() {
-  return join(homedir(), ".hyperframes", "config.json");
+  return join(process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes"), "config.json");
 }
 
 function readSharedConfig() {
