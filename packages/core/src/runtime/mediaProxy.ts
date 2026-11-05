@@ -160,10 +160,40 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   const needed = shown && lowered ? scalePreviewProxyBox(shown, previewQuality) : shown;
   if (lowered && !needed) return;
   if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
-    return restoreOriginal(el);
+    return whenNotPlayingHere(
+      el,
+      () => boxedElements.get(el) === copy,
+      () => restoreOriginal(el),
+    );
   }
   if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
   requestBox(el, copy, lowered || !needed ? needed : growOnly(needed, copy.box));
+}
+
+/** A clip playing at the playhead: a swap of its source would empty it and make it wait. */
+function playingHere(el: HTMLMediaElement): boolean {
+  return !el.paused && !el.ended && isActiveAtPlayhead(el);
+}
+
+const SETTLE_POLL_MS = 250;
+
+/** Runs `apply` once `el` is not a clip playing at the playhead: now when it is not, else when it pauses, seeks, ends
+ * or leaves its window. Nothing runs when `wanted` has turned false by then. */
+function whenNotPlayingHere(el: HTMLMediaElement, wanted: () => boolean, apply: () => void): void {
+  if (!playingHere(el)) {
+    if (wanted()) apply();
+    return;
+  }
+  const events = ["pause", "seeking", "ended", "emptied"] as const;
+  let poll: ReturnType<typeof setInterval>;
+  const check = () => {
+    if (wanted() && playingHere(el)) return;
+    events.forEach((type) => el.removeEventListener(type, check));
+    clearInterval(poll);
+    if (wanted()) apply();
+  };
+  events.forEach((type) => el.addEventListener(type, check));
+  poll = setInterval(check, SETTLE_POLL_MS);
 }
 
 function dropUnneededCopy(el: HTMLMediaElement): void {
@@ -207,8 +237,15 @@ function requestBox(el: HTMLMediaElement, copy: BoxedCopy, box: PreviewProxyBox 
     () => isActiveAtPlayhead(el),
   ).then((served) => {
     if (wanted()) noteCopy(el, served ? "ready" : "failed", null, copy.light);
-    if (served && wanted()) loadProxy(el, href, copy.originalSrc, copy.variant, box, copy.light);
-    if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+    if (!served || !wanted()) {
+      if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+      return;
+    }
+    // The new size waits until this clip is not playing at the playhead, so a swap never makes it wait.
+    whenNotPlayingHere(el, wanted, () => {
+      loadProxy(el, href, copy.originalSrc, copy.variant, box, copy.light);
+      if (pendingUpgrades.get(el) === href) pendingUpgrades.delete(el);
+    });
   });
 }
 

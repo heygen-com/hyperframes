@@ -951,6 +951,52 @@ describe("a copy sized to how large the video shows", () => {
     expect(el.load).toHaveBeenCalledTimes(2);
   });
 
+  // fails without the fix: a clip playing at the playhead was emptied and reloaded to take the larger copy.
+  describe("a clip playing at the playhead", () => {
+    async function playingVideo() {
+      vi.doMock("./media", async (original) => ({
+        ...(await original<typeof import("./media")>()),
+        isActiveAtPlayhead: () => true,
+      }));
+      const made = await framedVideo(1080, 1920);
+      let playing = false;
+      Object.defineProperty(made.el, "paused", { configurable: true, get: () => !playing });
+      made.setProxyDisplayScale(0.5);
+      await settle();
+      expect(boxOf(made.el)).toBe("1218x2048");
+      playing = true;
+      return { ...made, stop: () => (playing = false) };
+    }
+    afterEach(() => vi.doUnmock("./media"));
+
+    it("keeps its copy when the video shows larger, and takes the larger one once it pauses", async () => {
+      const { el, setProxyDisplayScale, stop } = await playingVideo();
+      const loads = vi.mocked(el.load).mock.calls.length;
+      setProxyDisplayScale(1);
+      await settle();
+      expect(boxOf(el)).toBe("1218x2048");
+      expect(vi.mocked(el.load).mock.calls.length).toBe(loads);
+
+      stop();
+      el.dispatchEvent(new Event("pause"));
+      await settle();
+      expect(boxOf(el)).toBe("2436x4096");
+      expect(vi.mocked(el.load).mock.calls.length).toBe(loads + 1);
+    });
+
+    it("takes the larger copy when it seeks, and drops the wish when the copy it waited for is replaced", async () => {
+      const { el, setProxyDisplayScale, stop } = await playingVideo();
+      setProxyDisplayScale(1);
+      await settle();
+      expect(boxOf(el)).toBe("1218x2048");
+      el.src = "/elsewhere.mp4";
+      stop();
+      el.dispatchEvent(new Event("seeking"));
+      await settle();
+      expect(el.getAttribute("src")).toBe("/elsewhere.mp4");
+    });
+  });
+
   it("shows a still of its frame while a resized copy loads, then its own poster again", async () => {
     const { el, setProxyDisplayScale } = await framedVideo(1080, 1920);
     el.setAttribute("poster", "/cover.jpg");
