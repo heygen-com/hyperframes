@@ -190,7 +190,7 @@ describe("pullTemplate", () => {
     });
     const pulling = pullTemplate("sample", dir).catch(() => undefined);
     await unpacking;
-    const templates = join(dir, "templates");
+    const templates = join(dir, ".hyperframes", "template-pulls");
     const own = readdirSync(templates).find((name) => /^sample\.part-\d+-/.test(name))!;
     const copy = join(templates, `sample.part-${pid}-${suffix}`);
     cpSync(join(templates, own), copy, { recursive: true });
@@ -214,7 +214,7 @@ describe("pullTemplate", () => {
 
   it("leaves every sibling a pull did not mark: folders, files, symlinks and unmarked old parts", async () => {
     serve({});
-    const templates = join(dir, "templates");
+    const templates = join(dir, ".hyperframes", "template-pulls");
     const outside = await partLeftBy(deadPid(), "Ou7sid");
     const target = join(dir, "outside-target");
     cpSync(outside, target, { recursive: true });
@@ -248,13 +248,37 @@ describe("pullTemplate", () => {
     void pullTemplate("sample", dir);
     await unpacking;
     const parts = () =>
-      readdirSync(join(dir, "templates")).filter((name) => name.includes(".part-"));
+      readdirSync(join(dir, ".hyperframes", "template-pulls")).filter((name) =>
+        name.includes(".part-"),
+      );
     expect(parts()).toHaveLength(1);
     const stop = process.listeners("SIGINT").find((listener) => !before.has(listener));
     stop?.("SIGINT");
     expect(parts()).toEqual([]);
     expect(resent).toHaveBeenCalledWith(process.pid, "SIGINT");
     expect(process.listeners("SIGINT").filter((listener) => !before.has(listener))).toEqual([]);
+  });
+
+  // Feedback, Windows: Desktop's project history read the half-unpacked files beside templates/<slug>, and the final
+  // rename failed with EPERM while it held one. The unpack now happens where history never looks.
+  it("unpacks under .hyperframes, so templates/ holds nothing but finished templates", async () => {
+    serve({});
+    let stop!: ExecFileCallback;
+    const unpacking = new Promise<void>((started) => {
+      unpackGate.hold = (done) => {
+        stop = done;
+        started();
+      };
+    });
+    const pulling = pullTemplate("sample", dir).catch(() => undefined);
+    await unpacking;
+    const parts = (folder: string) =>
+      existsSync(folder) ? readdirSync(folder).filter((name) => name.includes(".part-")) : [];
+    expect(parts(join(dir, "templates"))).toEqual([]);
+    expect(parts(join(dir, ".hyperframes", "template-pulls"))).toHaveLength(1);
+    unpackGate.hold = null;
+    stop(new Error("stopped"), "", "");
+    await pulling;
   });
 
   it("names the unreachable host instead of a bare fetch failure when offline", async () => {
