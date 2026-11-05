@@ -467,11 +467,7 @@ function createDrainFrameGuard(args: {
   };
 }
 
-/**
- * Self-verification: at the K sample indices the session armed, compare the drawElement frame
- * against its pre-injection screenshot (session.deVerifyFrames). The streaming drain and the segmented
- * frame loop call it on every frame they encode; a breach throws DrawElementVerificationError.
- */
+/** At an armed sample index, a frame below the PSNR floor vs its pre-injection screenshot throws. */
 export async function verifyDrawElementSample(
   session: CaptureSession,
   idx: number,
@@ -1147,6 +1143,7 @@ export async function runCaptureStreamingStage(
             );
           } else {
             const stallTimeoutMs = resolveCaptureStallTimeoutMs();
+            const verifyMinDb = resolveDeVerifyMinDb();
             let lastProgressAt = Date.now();
             for (let i = resume.from; i < totalFrames; i++) {
               assertNotAborted();
@@ -1163,6 +1160,7 @@ export async function runCaptureStreamingStage(
                 { session, frameIndex: i, totalFrames, stallTimeoutMs: budget },
                 abortSignal,
               );
+              await verifyDrawElementSample(session, i, buffer, { log, verifyMinDb });
               await reorderBuffer.waitForFrame(i);
               ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
               reorderBuffer.advanceTo(i + 1);
