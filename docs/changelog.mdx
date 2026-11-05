@@ -22,6 +22,8 @@ Capture now retries a refused screenshot once before reporting it, and Studio's 
 
 ## Fixes
 
+- **Core:** A multi-worker render replays overlapping tweens behind the timeline stand-in ([b96d3c8bd](https://github.com/heygen-com/hyperframes/commit/b96d3c8bd6aefe412dda92d3b788fea0ee4fa3e6), [#7231](https://github.com/heygen-com/hyperframes/pull/7231)).
+- **Producer:** Export sizes an unsized phone video as it plays, not as stored ([659ef568d](https://github.com/heygen-com/hyperframes/commit/659ef568d71442a3e4f1b919cf03a547c79e7005), [#7228](https://github.com/heygen-com/hyperframes/pull/7228)).
 - **CLI:** Capture takes a refused screenshot once more before naming it ([ada71da92](https://github.com/heygen-com/hyperframes/commit/ada71da92d78c28494a0421b909e0772f837fa1d), [#7222](https://github.com/heygen-com/hyperframes/pull/7222)).
 - **Skills:** Reword the billing lines the Snyk audit reads as hiding cost ([7bebcb9fc](https://github.com/heygen-com/hyperframes/commit/7bebcb9fcbccc595d9bc7cb1b3ea44e5060e243e), [#7218](https://github.com/heygen-com/hyperframes/pull/7218)).
 - **Studio Server:** The cancel route replies once the adapter's stop has settled ([18513d46d](https://github.com/heygen-com/hyperframes/commit/18513d46d21e8c10155dc4fdae9103a74deb2efc), [#7221](https://github.com/heygen-com/hyperframes/pull/7221)).
