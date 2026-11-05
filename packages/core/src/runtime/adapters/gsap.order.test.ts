@@ -1,24 +1,33 @@
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
 import { seekGsapTimeline } from "./gsap";
+import { producerStandIn } from "./gsapStandIn.test-helpers";
 import type { RuntimeTimelineLike } from "../types";
 
 const FPS = 60;
 const FRAMES = 150;
 
 // A zoom punch still running when a cut sets the zoom and a slower move starts from wherever the zoom is.
-function overlappingZoom() {
+function overlappingZoom(standIn = false) {
   const params = { z: 1 };
   const timeline = gsap.timeline({ paused: true });
   timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
   timeline.set(params, { z: 1.04 }, 0.8);
   timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
-  return { params, timeline: timeline as unknown as RuntimeTimelineLike };
+  return {
+    params,
+    timeline: standIn ? producerStandIn(timeline) : (timeline as unknown as RuntimeTimelineLike),
+  };
 }
 
 /** The zoom at each frame a renderer captures, in order; a scene's clock starts at `hostStart`. */
-function capture(frames: number[], hostStart = 0, seekFirst?: number): Map<number, number> {
-  const { params, timeline } = overlappingZoom();
+function capture(
+  frames: number[],
+  hostStart = 0,
+  seekFirst?: number,
+  standIn = false,
+): Map<number, number> {
+  const { params, timeline } = overlappingZoom(standIn);
   const zoom = new Map<number, number>();
   if (seekFirst !== undefined) seekGsapTimeline(timeline, seekFirst, true, undefined, FPS);
   for (const frame of frames) {
@@ -37,6 +46,14 @@ describe("a render that captures frames out of order", () => {
   it("gives every frame the same value when 8 workers each capture every 8th frame", () => {
     for (let worker = 0; worker < 8; worker++) {
       for (const [frame, z] of capture(range(worker, FRAMES, 8))) {
+        expect([frame, z]).toEqual([frame, inOrder.get(frame)]);
+      }
+    }
+  });
+
+  it("gives every frame the same value when the producer hands out a stand-in for the timeline", () => {
+    for (let worker = 0; worker < 8; worker++) {
+      for (const [frame, z] of capture(range(worker, FRAMES, 8), 0, undefined, true)) {
         expect([frame, z]).toEqual([frame, inOrder.get(frame)]);
       }
     }
