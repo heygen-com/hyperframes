@@ -1027,7 +1027,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
     // Recorder output (WebM/Matroska written to a pipe) carries no duration header: read it off the packets.
     if (!(containerDuration > 0) && !(streamDuration > 0) && !isPng) {
-      containerDuration = (await scanPacketDuration(filePath)) ?? 0;
+      containerDuration = (await scanPacketDuration(filePath, fps)) ?? 0;
     }
     const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
     const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
@@ -1123,7 +1123,9 @@ export function readStoredFinalFrame(
 }
 
 /** The video stream's length from its packets (last end time), for a file whose headers state none. */
-async function scanPacketDuration(filePath: string): Promise<number | undefined> {
+const PACKET_TAIL_CHARS = 64 * 1024;
+
+async function scanPacketDuration(filePath: string, fps: number): Promise<number | undefined> {
   try {
     // The tail holds the last packets; the cap keeps a long film's scan from filling memory.
     const stdout = await runFfprobe(
@@ -1133,13 +1135,17 @@ async function scanPacketDuration(filePath: string): Promise<number | undefined>
         ...["-of", "csv=p=0"],
       ],
       undefined,
-      { retainTail: true, maxChars: 64 * 1024 },
+      { retainTail: true, maxChars: PACKET_TAIL_CHARS },
     );
-    const ends = stdout
-      .split("\n")
+    const lines = stdout.split("\n");
+    // A tail cut at the cap starts partway through a line, and its number would read as a huge time.
+    if (stdout.length >= PACKET_TAIL_CHARS) lines.shift();
+    // A packet with no stated duration (N/A) lasts one frame.
+    const frame = fps > 0 ? 1 / fps : 0;
+    const ends = lines
       .map((line) => line.trim().split(",").map(Number))
-      .filter(([pts, duration]) => Number.isFinite(pts) && Number.isFinite(duration))
-      .map(([pts, duration]) => pts! + duration!);
+      .filter(([pts]) => Number.isFinite(pts))
+      .map(([pts, duration]) => pts! + (Number.isFinite(duration) ? duration! : frame));
     return ends.length ? Math.max(...ends) : undefined;
   } catch {
     // expected: a file ffprobe cannot scan keeps its "no duration" verdict.
