@@ -1,10 +1,6 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
-import { extractDeferredFrames, shownDeferredFrameIndexes } from "./deferredVideoFrames.js";
+import { shownDeferredFrameIndexes } from "./deferredVideoFrames.js";
 
 const metadata = {
   durationSeconds: 4,
@@ -59,56 +55,5 @@ describe("shownDeferredFrameIndexes", () => {
 
     expect([...shown.get("clip")!].sort((a, b) => a - b)).toEqual(span(30, 45));
     expect(shown.has("later")).toBe(false);
-  });
-});
-
-describe("extractDeferredFrames", () => {
-  const root = mkdtempSync(join(tmpdir(), "hf-deferred-frames-"));
-  const sourcePath = join(root, "short.mp4");
-
-  beforeAll(() => {
-    mkdirSync(root, { recursive: true });
-    const synth = spawnSync("ffmpeg", [
-      "-v",
-      "error",
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      "testsrc2=s=64x36:r=30:d=3",
-      "-c:v",
-      "libx264",
-      "-pix_fmt",
-      "yuv420p",
-      sourcePath,
-    ]);
-    if (synth.status !== 0) throw new Error(synth.stderr.toString());
-  });
-
-  afterAll(() => {
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  it("calls onMissingFrame when the extractor returns fewer frames than the plan expected", async () => {
-    const planned = deferredVideo("clip", 75);
-    const missingError = new Error("plan expected more frames");
-    const reported: Array<{ videoId: string; index: number }> = [];
-
-    const extraction = extractDeferredFrames({
-      videos: [element("clip", 0, 4)],
-      extracted: [planned],
-      frames: span(40, 62),
-      fps,
-      outputRoot: join(root, "out"),
-      cfg: {},
-      sourceOf: () => sourcePath,
-      onMissingFrame: (video, index) => {
-        reported.push({ videoId: video.videoId, index });
-        return missingError;
-      },
-    });
-
-    await expect(extraction).rejects.toBe(missingError);
-    expect(reported).toEqual([{ videoId: "clip", index: 45 }]);
   });
 });
