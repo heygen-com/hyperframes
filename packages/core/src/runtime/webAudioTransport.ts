@@ -363,7 +363,7 @@ export class WebAudioTransport {
     return decoding;
   }
 
-  /** True once `el`'s source is decoded or decoding: its length was checked then, whether or not this element has loaded. */
+  /** True once the source of `el` is decoded or decoding. */
   isDecodedOrDecoding(el: HTMLMediaElement): boolean {
     const src = decodeKey(el);
     return !!src && (this._bufferCache.has(src) || this._decoding.has(src));
