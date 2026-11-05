@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { onPath, runsWithoutInstallPrompt } from "./appleStubs.js";
+import { runsWithoutInstallPrompt } from "./appleStubs.js";
 
 /** A Mac whose filesystem holds exactly `files`; `link` is where xcode-select's choice points, if it made one. */
 function mac(files: string[], { env = {}, link }: { env?: NodeJS.ProcessEnv; link?: string } = {}) {
@@ -49,12 +49,11 @@ describe("runsWithoutInstallPrompt", () => {
   });
 });
 
-describe("onPath", () => {
-  it("finds the first executable on PATH without running anything", () => {
-    const h = mac(["/opt/homebrew/bin/git", "/usr/bin/git"], {
-      env: { PATH: "/opt/homebrew/bin:/usr/bin" },
-    });
-    expect(onPath("git", h)).toBe("/opt/homebrew/bin/git");
-    expect(onPath("cmake", h)).toBeUndefined();
+describe("runsWithoutInstallPrompt with a bare name", () => {
+  it("runs the first executable on PATH, found without running anything", () => {
+    const env = { PATH: "/opt/homebrew/bin:/usr/bin" };
+    const brew = mac(["/opt/homebrew/bin/git", "/usr/bin/git"], { env });
+    expect(runsWithoutInstallPrompt("git", brew)).toBe(true);
+    expect(runsWithoutInstallPrompt("git", mac(["/usr/bin/git"], { env }))).toBe(false);
   });
 });
