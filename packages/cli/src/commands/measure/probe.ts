@@ -9,6 +9,7 @@ import {
   runFfmpeg,
   type VideoInfo,
 } from "../../measure/media.js";
+import { toneMapReferenceNits } from "@hyperframes/core";
 import { execFileSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
@@ -54,7 +55,7 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
         "install an ffmpeg built with libzimg, e.g. brew install ffmpeg",
       );
     filters.push(
-      "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv",
+      `zscale=t=linear:npl=${toneMapReferenceNits(info.transfer ? [info.transfer] : [])},format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`,
     );
   }
   makeOutputFolder(dirname(out));

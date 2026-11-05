@@ -704,7 +704,9 @@ async function buildVideoFilter(
   const { hdrTransfer } = metadata.color;
   const toneMap = (hdrTransfer === "pq" || hdrTransfer === "hlg") && !keepsAlpha;
   if (toneMap) await ensureHdrFilters(ffmpegPath);
-  const firstFrame = toneMap ? await probeFirstFrameColour(sourcePath) : {};
+  const firstFrame = toneMap
+    ? await probeFirstFrameColour(sourcePath, metadata.color.codecName)
+    : {};
   const evenScale = proxyScaleFilter(box);
   const pixelFormat = keepsAlpha ? "yuva420p" : "yuv420p";
   // The tone map ends in RGB; older ffmpeg (seen on 5.1) converts it with BT.601 unless the matrix is named.

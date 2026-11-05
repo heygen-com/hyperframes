@@ -280,7 +280,12 @@ export { bakeHfColorGradingCube, type BakeHfColorGradingCubeOptions } from "./co
 export {
   firstFrameColourArgs,
   hdrToSdrToneMapFilter,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  readsKeyframeTransfers,
+  toneMapReferenceNits,
   parseFirstFrameColour,
+  type ToneMapFrameColour,
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
