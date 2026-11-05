@@ -21,6 +21,7 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { trackRenderPreflightRejected } from "../../telemetry/events.js";
+import { renderMachineResult } from "../../ui/renderResult.js";
 import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "./plan.js";
 import type { RenderOptions, SingleRenderResult } from "../render.js";
 import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
@@ -145,7 +146,8 @@ async function executeHeldRender(
   reportSingleRenderNotes(plan, variables);
   const options = renderOptionsFromPlan(plan, browserPath, variables);
   const execute = plan.useDocker ? dependencies.renderDocker : dependencies.renderLocal;
-  await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  const result = await execute(plan.project.dir, plan.outputPath, options, cancellation);
+  renderMachineResult(result, plan.effectiveQuiet);
 }
 
 function reportSingleRenderNotes(plan: RenderPlan, variables: RenderOptions["variables"]): void {
