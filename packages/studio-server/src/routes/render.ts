@@ -58,6 +58,7 @@ function contentDispositionHeader(disposition: "inline" | "attachment", filename
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState>();
+  const CANCEL_SETTLE_MS = 45_000;
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -246,13 +247,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
   // Cancel an in-flight render. Marks the job cancelled immediately (so the
   // SSE stream terminates) and invokes the adapter's abort hook when present.
-  api.post("/render/:jobId/cancel", (c) => {
+  api.post("/render/:jobId/cancel", async (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
     if (!job) return c.json({ error: "not found" }, 404);
     if (job.status === "rendering") {
       job.status = "cancelled";
-      job.cancel?.();
+      let giveUp: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
+      try {
+        await Promise.race([job.cancel?.(), late]);
+      } finally {
+        clearTimeout(giveUp);
+      }
     }
     return c.json({ status: job.status });
   });

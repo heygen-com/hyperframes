@@ -25,7 +25,7 @@ export interface RenderJobState {
    * stop an in-flight render; adapters that can't abort may omit it (the
    * route still marks the job cancelled so the SSE stream terminates).
    */
-  cancel?: () => void;
+  cancel?: () => void | Promise<void>;
 }
 
 export interface MediaProcessingJobState {
