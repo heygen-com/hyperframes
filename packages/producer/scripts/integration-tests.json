@@ -40,6 +40,7 @@
   "src/services/render/renderCancel.integration.test.ts",
   "src/services/render/segmentedColorGrading.integration.test.ts",
   "src/services/render/variableMountMedia.integration.test.ts",
+  "src/services/render/windowedFrames.integration.test.ts",
   "src/services/render/wrappedMountTiming.integration.test.ts",
   "src/services/render/stages/compileStage.mediaType.test.ts",
   "src/services/render/stages/encodeWhileCapturing.test.ts",
