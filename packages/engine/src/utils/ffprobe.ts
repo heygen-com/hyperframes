@@ -225,6 +225,7 @@ export interface VideoMetadata {
   colorRange?: string;
   pixelFormat?: string;
   sampleAspectRatio?: number;
+  rotation?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -274,6 +275,7 @@ interface FFProbeStream {
   color_primaries?: string;
   color_space?: string;
   tags?: Record<string, string>;
+  side_data_list?: { rotation?: number }[];
   disposition?: { attached_pic?: number };
 }
 
@@ -855,6 +857,24 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
   return rounded > 0 ? rounded : 0.01;
 }
 
+function displayRotation(stream: FFProbeStream): { rotation?: number } {
+  const turn = Number(
+    stream.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ??
+      stream.tags?.rotate ??
+      0,
+  );
+  return Number.isFinite(turn) && turn % 360 !== 0 ? { rotation: turn } : {};
+}
+
+export function displaySize(
+  metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
+): { width: number; height: number } {
+  const width = Math.round(metadata.width * (metadata.sampleAspectRatio ?? 1));
+  return Math.abs(metadata.rotation ?? 0) % 180 === 90
+    ? { width: metadata.height, height: width }
+    : { width, height: metadata.height };
+}
+
 export function parseSampleAspectRatio(value: string | undefined): number | undefined {
   const [num, den] = (value ?? "").split(":").map(Number);
   if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
@@ -1052,6 +1072,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       colorRange: videoStream.color_range,
       pixelFormat,
       ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
+      ...displayRotation(videoStream),
       frames,
     };
   })();

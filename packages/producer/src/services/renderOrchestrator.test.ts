@@ -1327,6 +1327,19 @@ describe("collectVideoMetadataHints", () => {
       { id: "video2", width: 1080, height: 1920 },
     ]);
   });
+
+  it("sizes a phone's portrait clip as it plays, not as it is stored", () => {
+    const stored = { width: 1920, height: 1080, durationSeconds: 3 };
+    expect(
+      collectVideoMetadataHints([
+        { videoId: "portrait", metadata: { ...stored, rotation: -90 } },
+        { videoId: "upside-down", metadata: { ...stored, rotation: 180 } },
+      ]),
+    ).toEqual([
+      { id: "portrait", width: 1080, height: 1920 },
+      { id: "upside-down", width: 1920, height: 1080 },
+    ]);
+  });
 });
 
 describe("resolveRenderWorkerCount", () => {
