@@ -36,8 +36,7 @@ export interface AssembleStageInput {
   videoOnlyPath: string;
   /** Mixed audio path (only read when `hasAudio` is true). */
   audioOutputPath: string;
-  /** The PCM `audioOutputPath` encodes; a duration fix encodes it instead of the AAC. */
-  audioSourcePath?: string;
+  audioPcmPath?: string;
   /** Final on-disk output. A directory when `format` is `"hls"`. */
   outputPath: string;
   hasAudio: boolean;
@@ -118,7 +117,7 @@ async function assembleOutput(
     const normalizeResult = await padOrTrimAudioToVideoFrameCount({
       videoPath: videoOnlyPath,
       audioPath: audioOutputPath,
-      sourcePath: input.audioSourcePath,
+      sourcePath: input.audioPcmPath,
       outputPath: normalizedAudioPath,
       signal: abortSignal,
       timeoutMs: ffmpegProcessTimeout,

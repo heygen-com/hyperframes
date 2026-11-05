@@ -93,7 +93,7 @@ describe("runAssembleStage audio duration parity", () => {
   });
 
   it("normalizes from the PCM the audio stage kept, not from its AAC", async () => {
-    await runAssembleStage(makeInput({ audioSourcePath: "/tmp/audio-source.wav" }));
+    await runAssembleStage(makeInput({ audioPcmPath: "/tmp/audio-source.wav" }));
 
     expect(padOrTrimAudioMock).toHaveBeenCalledWith(
       expect.objectContaining({
