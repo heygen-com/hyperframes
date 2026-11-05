@@ -67,6 +67,7 @@
     "lint:registry-items": "node scripts/lint-registry-items.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.3.0",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
