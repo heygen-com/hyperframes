@@ -159,7 +159,6 @@ function spanOnParent(
   return [Number(parent._start) + from / Math.abs(speed), span / Math.abs(speed)];
 }
 
-/** The producer's GSAP stub hands out stand-ins; GSAP's tree holds the timelines behind them. */
 export function gsapTimelineOf(timeline: object): object {
   return (timeline as { __hfReal?: object }).__hfReal ?? timeline;
 }
