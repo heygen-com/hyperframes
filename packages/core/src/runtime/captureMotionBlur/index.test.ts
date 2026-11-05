@@ -2022,3 +2022,37 @@ describe("the movers-alone capture", () => {
     expect(selecting(defs, "visible")).toBe(true);
   });
 });
+
+describe("shutter phase on the root", () => {
+  /** The pose reads around a frame at 0.5 s: the scan's own steps are on the 1/30 grid, outside these. */
+  function readsAroundHalf(attrs: Record<string, string>): number[] {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", ...attrs });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, { engineMode: true });
+    return h.seek.mock.calls
+      .map(([t]) => Number(t))
+      .filter((t) => t > 0.47 && t < 0.53 && t !== 0.5);
+  }
+
+  it.each(["capture", "filter"])("opens the %s tier's shutter at the phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-phase": "0",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeGreaterThan(0.5);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 60, 8);
+  });
+
+  it.each(["capture", "filter"])("keeps the %s tier centred with no phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeCloseTo(0.5 - 1 / 120, 8);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 120, 8);
+  });
+});

@@ -38,7 +38,7 @@ import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
 import { scanMovers } from "./discover";
 import { createFilterTier } from "./filterTier";
-import { readMoverFrames } from "./frames";
+import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import {
   type CaptureMotionBlurHost,
@@ -96,8 +96,8 @@ const LOG_EVERY = 25;
 function readConfig(root: HTMLElement): Config | null {
   const settings = readMotionBlurSettings((name) => root.getAttribute(name));
   if (!settings.enabled) return null;
-  const { shutterDeg, samples, events, tier } = settings;
-  return { shutterDeg, samples, events, tier };
+  const { shutterDeg, phaseDeg, samples, events, tier } = settings;
+  return { shutterDeg, phaseDeg, samples, events, tier };
 }
 
 /** Must run before composition scripts: see `installAcceleratedCanvasTracker`. */
@@ -279,7 +279,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       restore: readEvents ? undefined : host.holdFrame?.(),
       t,
       reads,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
+      ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
       taps: config.samples,
       pads,
       frameW: width,
@@ -561,6 +561,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       moverNames: movers.map(describe),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames: timings.length,
       meanMs: Math.round(mean * 10) / 10,
       failures,
@@ -701,6 +702,7 @@ function offReport(config: Config, why: CaptureDefect | null): Report {
     moverNames: [],
     scanMs: 0,
     shutterDeg: config.shutterDeg,
+    phaseDeg: config.phaseDeg,
     frames: 0,
     meanMs: 0,
     failures: 0,
