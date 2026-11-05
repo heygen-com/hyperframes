@@ -13,7 +13,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const DESCRIPTION_MAX = 320;
 // Each budget carries +192 B for the usage beacon line (`beaconProblems`).
 export const CORE_SKILLS = {
-  hyperframes: 7360,
+  // +192 B for the work loop's `doctor` step: a missing FFmpeg surfaces before design, not at render.
+  hyperframes: 7552,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
   "hyperframes-cli": 7616,
   "hyperframes-registry": 5312,
