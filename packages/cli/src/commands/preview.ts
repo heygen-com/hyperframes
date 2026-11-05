@@ -627,7 +627,7 @@ async function printStartupLint(dir: string, verbose: boolean): Promise<void> {
   try {
     const lintResult = await runRenderSetupWorker<ProjectLintResult>(
       "lint",
-      { projectDir: dir },
+      { projectDir: dir, background: true },
       { maxBufferBytes: 8 * 1024 * 1024 },
     );
     if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) return;
