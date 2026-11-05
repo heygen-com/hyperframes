@@ -17,7 +17,7 @@ function isAmbientTween(tween: ContrastTweenState): boolean {
   return tween.infiniteAncestor || tween.repeat !== 0 || tween.duration >= AMBIENT_TWEEN_SECONDS;
 }
 
-/** True when a non-ambient tween on the text or an ancestor is running at the current seek, or the text is not fully opaque. */
+/** True when text, an ancestor or a layer under it is mid-tween (not ambient), or the text is not fully opaque. */
 export function measuredInMotion(sample: ContrastMotionSample): boolean {
   if (Math.round(sample.opacity * 1000) < 1000) return true;
   return sample.tweens.some((tween) => !isAmbientTween(tween) && tween.active);
@@ -58,8 +58,12 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
   function activeInRoot(animation: Animation, root: Animation): boolean {
     if (animation === root) return true;
     const parent = animation.parent;
-    if (!parent || animation.paused() || animation.timeScale() === 0) return false;
+    if (!parent || animation.timeScale() === 0) return false;
     const time = parent.time();
+    const seekedWithParent =
+      registered.has(animation) &&
+      Math.abs(animation.time() - (time - animation.startTime())) <= 1e-3;
+    if (animation.paused() && !seekedWithParent) return false;
     return (
       animation.startTime() <= time + 1e-6 &&
       time < animation.endTime() - 1e-6 &&
@@ -92,6 +96,17 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
     }
   }
 
+  function tweensUnder(text: Element): ContrastTweenState[] {
+    const box = text.getBoundingClientRect();
+    return [...byTarget].flatMap(([node, states]) => {
+      if (node.contains(text) || text.contains(node)) return [];
+      const other = node.getBoundingClientRect();
+      const across = Math.min(box.right, other.right) - Math.max(box.left, other.left);
+      const down = Math.min(box.bottom, other.bottom) - Math.max(box.top, other.top);
+      return across > 0 && down > 0 ? states : [];
+    });
+  }
+
   function sampleOf(element: unknown): ContrastMotionSample | null {
     if (!(element instanceof Element)) return null;
     const tweens: ContrastTweenState[] = [];
@@ -101,6 +116,7 @@ export function readContrastMotion(): (ContrastMotionSample | null)[] {
       const own = Number.parseFloat(getComputedStyle(node).opacity);
       if (Number.isFinite(own)) opacity *= own;
     }
+    tweens.push(...tweensUnder(element));
     return tweens.length > 0 ? { opacity, tweens } : null;
   }
 
