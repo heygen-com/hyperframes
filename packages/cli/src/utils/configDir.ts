@@ -8,7 +8,7 @@ export function hyperframesConfigDir(...parts: string[]): string {
   return join(process.env["HYPERFRAMES_CONFIG_DIR"] || homeConfigDir(), ...parts);
 }
 
-/** A settings file under HYPERFRAMES_CONFIG_DIR starts as a copy of ~/.hyperframes' own, so an opt-out moves with it. */
+/** A settings file under HYPERFRAMES_CONFIG_DIR starts as a copy of ~/.hyperframes' one, so an opt-out moves too. */
 export function seededConfigFile(name: string): string {
   const file = hyperframesConfigDir(name);
   const home = join(homeConfigDir(), name);
