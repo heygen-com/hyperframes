@@ -25,8 +25,7 @@ export const isClipVisibleAt = (
     compositionDuration > 0 &&
     end >= compositionDuration - TERMINAL_EPSILON_SECONDS);
 
-/** Whether a clip is on screen: the one rule render, snapshot and preview share. Its edges snap to frames as render's
- * seeks do, so an edge a hair off a frame (a start chained after a measured media length) counts as on it everywhere. */
+/** The one on-screen rule render, snapshot and preview share: edges a hair off a frame count as on it. */
 export const isClipOnScreenAt = (
   time: number,
   start: number,
