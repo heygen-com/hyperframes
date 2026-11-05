@@ -159,9 +159,15 @@ function spanOnParent(
   return [Number(parent._start) + from / Math.abs(speed), span / Math.abs(speed)];
 }
 
+/** The producer's GSAP stub hands out stand-ins; GSAP's tree holds the timelines behind them. */
+export function gsapTimelineOf(timeline: object): object {
+  return (timeline as { __hfReal?: object }).__hfReal ?? timeline;
+}
+
 function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWrite | null {
+  const owner = gsapTimelineOf(timeline);
   let span: [number, number] | null = [Number(tween._start), Number(tween.totalDuration?.() ?? 0)];
-  for (let parent = tween.parent; span && parent && parent !== timeline; parent = parent.parent) {
+  for (let parent = tween.parent; span && parent && parent !== owner; parent = parent.parent) {
     span = spanOnParent(span, parent);
   }
   return (
@@ -355,8 +361,9 @@ type GsapPlaced = {
 };
 
 function startOnOwner(child: GsapPlaced, owner: object): number | null {
+  const timeline = gsapTimelineOf(owner);
   let at = Number(child._start);
-  for (let parent = child.parent; parent && parent !== owner; parent = parent.parent) {
+  for (let parent = child.parent; parent && parent !== timeline; parent = parent.parent) {
     if (parent._repeat || !parent._ts) return null;
     at = Number(parent._start) + at / parent._ts;
   }
