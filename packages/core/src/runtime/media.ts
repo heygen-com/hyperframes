@@ -262,7 +262,6 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   forgetSteering(el);
   heldAhead.delete(el);
   forgetOutPoint(el);
-  videoStarts.delete(el);
 }
 
 /** Whether the clip is inside its window at the playhead right now: the sync tick keeps its time while it is. */
@@ -394,30 +393,14 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
   return last?.outPoint === outPoint ? last.at : outPoint;
 }
 
-// A muted video's clock is its audio track, which starts tens of ms after play(), so an upcoming
-// video starts that early, hidden, by the delay learned from earlier starts.
-let videoStartLatency: number | null = null;
-const videoStarts = new WeakMap<
-  HTMLMediaElement,
-  { offset: number; lead: number; at: number; weight: number }
->();
-let playheadWasRunning = false;
+// A muted video starts 0.04 to 0.4 s after play() and cannot be timed from the last start, so an upcoming
+// video is played from its pre-roll, hidden, and catches up on the playhead at a speed the eye never sees.
+const VIDEO_PREROLL_SECONDS = 1;
 
-/** Test-only seam. */
-export function resetVideoStartLatency(): void {
-  videoStartLatency = null;
-  playheadWasRunning = false;
-}
-
-/** A quarter second in: its lag plus how early it started, capped at 0.1 s. */
-function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: number, rate: number) {
-  const start = videoStarts.get(el);
-  if (!start || time < start.at) return;
-  videoStarts.delete(el);
-  const sample = ((offset - start.offset) / rate + start.lead) * start.weight;
-  const averaged = videoStartLatency === null ? sample : (videoStartLatency + sample) / 2;
-  videoStartLatency = Math.min(0.1, Math.max(0, averaged));
-}
+/** A render (export or frame-injected) paints video from its own frames, so a pre-roll would only seek it. */
+const isRenderDriven = (el: HTMLMediaElement): boolean =>
+  !!findInjectedRenderFrame(el) ||
+  ("__HF_EXPORT_RENDER_SEEK_CONFIG" in window && !!window.__HF_EXPORT_RENDER_SEEK_CONFIG);
 
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
@@ -474,9 +457,6 @@ export function syncRuntimeMedia(params: {
   getCompositionDuration: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
-  // A start at Play also waits on the playhead's start, so it counts half.
-  const startWeight = playheadWasRunning ? 1 : 0.5;
-  playheadWasRunning = params.playing && params.clockAdvancing !== false;
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
@@ -488,9 +468,8 @@ export function syncRuntimeMedia(params: {
     const cueAhead =
       el.tagName === "AUDIO"
         ? (params.cueAheadSeconds ?? 0)
-        : params.playing && videoStartLatency !== null
-          ? // Half a tick: it starts on the tick nearest its lead.
-            videoStartLatency * params.playbackRate + (params.cueAheadSeconds ?? 0) / 2
+        : params.playing && (el.paused || startedEarly.has(el)) && !isRenderDriven(el)
+          ? VIDEO_PREROLL_SECONDS * params.playbackRate
           : 0;
     const startsEarly =
       !inWindow &&
@@ -506,7 +485,11 @@ export function syncRuntimeMedia(params: {
       !inWindow &&
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
-    const relTime = mediaSourceTimeAt(clip, params.timeSeconds);
+    // A pre-rolled video's target runs up to its first frame from before it, where the clip's own time is clamped.
+    const relTime =
+      startsEarly && isNonLoopVideo
+        ? clip.mediaStart - dueIn * rateAt(clipRate, 0)
+        : mediaSourceTimeAt(clip, params.timeSeconds);
     const isHeldVideoTail =
       isTerminalVideo ||
       (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);
@@ -698,7 +681,7 @@ export function syncRuntimeMedia(params: {
         // A loop's playhead wraps before its element, so its offset jumps by a lap: steering owns loops.
         const ahead =
           !clip.loop &&
-          (offset < -VIDEO_LEAD_HOLD_SECONDS ||
+          ((offset < -VIDEO_LEAD_HOLD_SECONDS && !startedEarly.has(el)) ||
             atOutPoint ||
             currentElTime >= outPointHoldTime(el, outPoint, watched));
         if (!playing || (!ahead && offset >= -MEDIA_SYNC_TOLERANCE_SECONDS)) heldAhead.delete(el);
@@ -709,7 +692,6 @@ export function syncRuntimeMedia(params: {
       }
       const holdingAhead = heldAhead.has(el);
       const isPlayingMedia = !el.paused && playing;
-      if (isPlayingMedia) learnVideoStartLatency(el, params.timeSeconds, offset, baseRate);
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
@@ -738,7 +720,9 @@ export function syncRuntimeMedia(params: {
       }
       const forceSync = !isPlayingMedia && !holdingAhead && params.forceSync && drift > 0.02;
       const steered =
-        isPlayingMedia && !hardSync ? steerMedia(el, offset, baseRate, offsetStabilized) : null;
+        isPlayingMedia && !hardSync
+          ? steerMedia(el, offset, baseRate, offsetStabilized, undefined, startedEarly.has(el))
+          : null;
       const steerSeeks = steered?.seek === true;
       const dipped = steerSeeks && params.seekUnderDip?.(el, relTime) === true;
       try {
@@ -751,7 +735,14 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      if (hardSync || strictSync || forceSync || (steerSeeks && !dipped)) {
+      // A pre-rolled video is seeked to its pre-roll before it plays, once.
+      const prerollSeek =
+        startsEarly &&
+        isNonLoopVideo &&
+        el.paused &&
+        !playRequested.has(el) &&
+        drift > MEDIA_SYNC_TOLERANCE_SECONDS;
+      if (hardSync || strictSync || forceSync || prerollSeek || (steerSeeks && !dipped)) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
         // `<img id="__render_frame_<id>__">`. The sibling is created only
@@ -785,7 +776,6 @@ export function syncRuntimeMedia(params: {
         playRequested.delete(el);
         heldAhead.delete(el);
         forgetOutPoint(el);
-        videoStarts.delete(el);
       } else if (!playing) {
         holdSeekBarrierUntilVideoLands(el);
       }
@@ -812,14 +802,6 @@ export function syncRuntimeMedia(params: {
         // the element waiting for a callback that never came.
         markPlayRequested(el);
         markMediaRestarted(el);
-        // Offset read after any seek above; a loop could wrap a lap before the sample.
-        if (isNonLoopVideo)
-          videoStarts.set(el, {
-            weight: startWeight,
-            offset: relTime - (el.currentTime || 0),
-            lead: Math.max(0, clip.start - params.timeSeconds) / params.playbackRate,
-            at: Math.max(params.timeSeconds, clip.start) + 0.25 * params.playbackRate,
-          });
         void el.play().catch((err: unknown) => {
           // If play() rejects — e.g. autoplay blocked, element removed
           // mid-flight — drop the in-flight flag so a future sync tick can

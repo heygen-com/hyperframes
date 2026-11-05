@@ -15,6 +15,8 @@ const MEDIA_STEER_RELEASE_SECONDS = 0.01;
 const AUDIO_MAX_STEER = 0.1;
 const AUDIO_STEER_LIMIT_SECONDS = 0.1;
 const WEBKIT_AUDIO_START_LAG_SECONDS = 0.65;
+// A video nobody sees runs up to twice as fast (half as slow) to reach the playhead: the lag in seconds times this.
+const HIDDEN_GAIN = 5;
 
 /** Direction (+1 fast, -1 slow) an element is being steered in; absent when it plays at its authored rate. */
 const steering = new WeakMap<HTMLMediaElement, number>();
@@ -32,6 +34,7 @@ export function steerMedia(
   baseRate: number,
   settled: boolean,
   audioOnly = el.tagName === "AUDIO",
+  hidden = false,
 ): { rate: number; seek: boolean } {
   const lag = Math.abs(offset);
   if (audioOnly && isWebKit()) {
@@ -46,6 +49,13 @@ export function steerMedia(
     return { rate: baseRate, seek: true };
   }
   const direction = Math.sign(offset);
+  if (hidden && !audioOnly && lag > MEDIA_SYNC_TOLERANCE_SECONDS) {
+    steering.set(el, direction);
+    return {
+      rate: baseRate * (1 + direction * Math.min(direction > 0 ? 1 : 0.5, lag * HIDDEN_GAIN)),
+      seek: false,
+    };
+  }
   const current = steering.get(el);
   if (lag > MEDIA_SYNC_TOLERANCE_SECONDS) steering.set(el, direction);
   else if (current !== direction || lag <= MEDIA_STEER_RELEASE_SECONDS) {
