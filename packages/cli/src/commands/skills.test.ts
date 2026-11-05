@@ -2,8 +2,11 @@
 // `node:child_process` at the loader level and inspect the spawned
 // child's env.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 async function commandExitCode(): Promise<number> {
   const { consumeCommandResult } = await import("../utils/commandResult.js");
@@ -177,8 +180,13 @@ function skillFlagValues(args: ReadonlyArray<string>): string[] {
   return values;
 }
 
+// Any test that plays a Mac gets developer tools, unless it says otherwise, wherever it runs.
+const developerDir = mkdtempSync(join(tmpdir(), "hf-developer-"));
+mkdirSync(join(developerDir, "usr", "bin"), { recursive: true });
+
 describe("hyperframes skills", () => {
   beforeEach(async () => {
+    vi.stubEnv("DEVELOPER_DIR", developerDir);
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
@@ -197,6 +205,7 @@ describe("hyperframes skills", () => {
 
   afterEach(async () => {
     setPlatform(originalPlatform);
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     await resetCommandResult();
   });
@@ -452,7 +461,6 @@ describe("hyperframes skills", () => {
 
     const { default: skillsCmd } = await import("./skills.js");
     await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
-    vi.unstubAllEnvs();
 
     expect(state.execCalls.map((call) => call.command)).not.toContain("git");
     expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
@@ -622,6 +630,8 @@ describe("hyperframes skills", () => {
       expect(invalidateSkillsCache).toHaveBeenCalled();
     });
   });
+
+  afterAll(() => rmSync(developerDir, { recursive: true, force: true }));
 });
 
 // The router contract: `/hyperframes` picks a workflow, then runs
