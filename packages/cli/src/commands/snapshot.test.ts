@@ -322,6 +322,21 @@ describe("snapshot video overlays and the blurred frame", () => {
 });
 
 describe("resolveSnapshotVideoFrameTime", () => {
+  // fails without the fix: the element showed at 100 s on render's window, but no frame was pulled for its video.
+  it("pulls a frame for a video starting a hair past 100 s at exactly 100 s, as render does", () => {
+    expect(
+      resolveSnapshotVideoFrameTime({
+        globalTime: 100,
+        clipStart: 100.00002,
+        clipDuration: 10,
+        relativeTime: -0.00002,
+        sourceDuration: 10,
+        compositionDuration: 110,
+        fps: 30,
+      }),
+    ).toBe(0);
+  });
+
   it("holds a clip ending with the composition on its last decodable frame", () => {
     expect(
       resolveSnapshotVideoFrameTime({

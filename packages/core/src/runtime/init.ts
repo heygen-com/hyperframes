@@ -2941,7 +2941,6 @@ export function initSandboxRuntimeModular(): void {
         currentTime: time,
         compositionDuration,
         canonicalFps: state.canonicalFps,
-        exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
         timelineRegistry: window.__timelines ?? {},
         resolver: timingResolverFor(true),
       });
@@ -5091,7 +5090,6 @@ export function initSandboxRuntimeModular(): void {
       duration: (element) => resolveDurationForElement(element),
       compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
       canonicalFps: () => state.canonicalFps,
-      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
     }),
     createWaapiAdapter(),
     createCssAdapter({
