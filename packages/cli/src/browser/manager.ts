@@ -754,11 +754,7 @@ export async function retryOnStall<T>(
 const LOCK_ATTEMPTS = 5;
 const LOCK_FIRST_WAIT_MS = 250;
 
-/**
- * Windows refuses to rename or unlink a file another program has open, and a virus scanner opens
- * each file the unzip just wrote. That ends in `EBUSY` or `EPERM` for a moment; a run that retries
- * after a short wait goes through. Other platforms and other errors are not retried.
- */
+/** Windows refuses to rename or unlink a file a scanner has open, for a moment. Only that is retried. */
 export function isLockedFileError(err: unknown): boolean {
   if (process.platform !== "win32") return false;
   const said = `${(err as NodeJS.ErrnoException | undefined)?.code ?? ""} ${normalizeErrorMessage(err)}`;
