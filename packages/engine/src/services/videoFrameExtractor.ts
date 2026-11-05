@@ -38,6 +38,9 @@ import {
   type Fps,
   type FpsInput,
   firstFrameColourArgs,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
 } from "@hyperframes/core";
@@ -948,13 +951,20 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
-const firstFrameColourCache = new Map<
-  string,
-  MediaProbeCacheEntry<ReturnType<typeof parseFirstFrameColour>>
->();
+const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
 
 /** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
-function readFirstFrameColour(videoPath: string) {
+/** An HLG source's SPS transfers, so a PQ or SDR keyframe keeps it at 100 nits (core toneMapReferenceNits). */
+function withKeyframeTransfers(videoPath: string, codec: string, first: ToneMapFrameColour) {
+  return inExtractionSlot(() =>
+    runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)]),
+  ).then((result) => ({
+    ...first,
+    keyframeTransfers: result.success ? parseKeyframeTransfers(result.stderr) : [],
+  }));
+}
+
+function readFirstFrameColour(videoPath: string, codec: string) {
   const identity = mediaFileIdentity(videoPath);
   const cached = readMetadataCache(firstFrameColourCache, videoPath, identity);
   if (cached) return cached;
@@ -966,7 +976,10 @@ function readFirstFrameColour(videoPath: string) {
     if (!result.success && firstFrameColourCache.get(videoPath)?.promise === probe) {
       firstFrameColourCache.delete(videoPath);
     }
-    return parseFirstFrameColour(result.stderr);
+    const first = parseFirstFrameColour(result.stderr);
+    return first.colorTransfer === "arib-std-b67"
+      ? withKeyframeTransfers(videoPath, codec, first)
+      : first;
   });
   writeMetadataCache(firstFrameColourCache, videoPath, identity, probe);
   return probe;
@@ -1159,7 +1172,7 @@ interface VideoFilterChainInput {
   sampleAtOutputFps: boolean;
   keepsHdrForChrome: boolean;
   /** The first frame's colour tags; set exactly when HDR is tone-mapped to SDR. */
-  toneMapFrom?: Awaited<ReturnType<typeof readFirstFrameColour>>;
+  toneMapFrom?: ToneMapFrameColour;
   isHdr: boolean;
   sdrToHdrTransfer?: ExtractionOptions["sdrToHdrTransfer"];
   shownBox?: ExtractionOptions["shownBox"];
@@ -1371,7 +1384,9 @@ async function extractVideoFramesRangeUnredacted(
     );
   }
 
-  const frameColour = toneMappedToSdr ? await readFirstFrameColour(videoPath) : undefined;
+  const frameColour = toneMappedToSdr
+    ? await readFirstFrameColour(videoPath, metadata.videoCodec)
+    : undefined;
   const filtersFor = videoFilterChain({
     metadata,
     format,

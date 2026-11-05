@@ -72,6 +72,7 @@ export interface VideoInfo {
   /** The container's frame rate and the stream's average differ: frames are not evenly spaced. */
   vfr: boolean;
   hdr: boolean;
+  transfer?: string;
   codec: string;
 }
 
@@ -160,6 +161,7 @@ export function probeVideo(path: string): VideoInfo {
     avgFps: avg || fps,
     vfr: avg > 0 && Math.abs(avg - fps) / fps > 0.01,
     hdr: /smpte2084|arib-std-b67/.test(video.color_transfer ?? ""),
+    transfer: video.color_transfer,
     codec: video.codec_name ?? "",
   };
 }

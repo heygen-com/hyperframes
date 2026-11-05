@@ -71,6 +71,9 @@ import {
 import {
   firstFrameColourArgs,
   hdrToSdrToneMapFilter,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
   isClipVisibleAt,
   isInClipWindow,
   MEDIA_RENDER_ID_ATTR,
@@ -620,18 +623,23 @@ async function videoColour(ffmpegPath: string, videoPath: string) {
     metadata && isHdrColorSpace(metadata.colorSpace)
       ? hdrToSdrToneMapFilter(
           metadata.colorSpace ?? {},
-          parseFirstFrameColour(
-            (
-              await runFfmpegOnce(
-                ffmpegPath,
-                firstFrameColourArgs(videoPath),
-                FFMPEG_EXTRACT_TIMEOUT_MS,
-              )
-            ).stderr,
-          ),
+          await frameColour(ffmpegPath, videoPath, metadata.videoCodec),
         )
       : null;
   return { metadata, toneMap };
+}
+
+async function frameColour(
+  ffmpegPath: string,
+  videoPath: string,
+  codec: string,
+): Promise<ToneMapFrameColour> {
+  const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+  const first = parseFirstFrameColour((await read(firstFrameColourArgs(videoPath))).stderr);
+  if (first.colorTransfer !== "arib-std-b67") return first;
+  const keyframes = await read(keyframeTransferArgs(videoPath, codec));
+  const keyframeTransfers = keyframes.code === 0 ? parseKeyframeTransfers(keyframes.stderr) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function frameFilters(
