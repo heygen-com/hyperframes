@@ -2,6 +2,7 @@
 // The bytes of a review version: its checksum, and the signed PUT to storage.
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { reviewUploadOrigins } from "./host.mjs";
 
 /** The checksum the export route takes: the SHA-256 digest as padded base64, never hex.
  * @param {string} file @returns {Promise<string>} */
@@ -28,9 +29,22 @@ export async function putFile(
   onSent,
   { stallMs = 60_000, fetchImpl = fetch } = {},
 ) {
-  const target = new URL(upload.put_url);
+  let target;
+  try {
+    target = new URL(upload.put_url);
+  } catch {
+    return "refused";
+  }
   const loopback = target.protocol === "http:" && target.hostname === "127.0.0.1";
-  if (target.protocol !== "https:" && !loopback) return "refused";
+  if (
+    (target.protocol !== "https:" && !loopback) ||
+    target.username ||
+    target.password ||
+    target.hash ||
+    !reviewUploadOrigins().includes(target.origin)
+  ) {
+    return "refused";
+  }
   const stall = new AbortController();
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;

@@ -7,6 +7,7 @@ import {
   bindShareHost,
   reviewClient,
   signedInRequest,
+  reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   projectFingerprint,
   shareForReview,
   addVersion,
@@ -33,6 +34,8 @@ const [current, version] = await Promise.all([
 ```
 
 `access(refusedToken?)` returns `{ token, heygen, heygenApi, owner }` or null. It is read for every request. A refused bearer is passed back so the host can refresh it. `heygen` is the review API base. A host can inject its own `signedInRequest` to retain network tracing. `execFile` can likewise be injected to retain native process policy.
+
+Video uploads require exact storage origins from trusted host configuration. Set `reviewUploadOrigins` on the host or supply a comma-separated `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` environment variable. Configure the bucket-specific HTTPS origins used by the signer, including any customer-managed storage this host can use. Use URL origins without paths, trailing slashes, or wildcards. Local tests can explicitly allow an HTTP origin on `127.0.0.1`. An empty list refuses every video upload.
 
 Before first registration the host must obtain explicit audience consent and prepare a current MP4. `shareForReview` registers/enables the link; it does not imply playable media. Await `addVersion`, then check the server project/latest ready version before reporting success. `addFirstVersion` starts background work and is for long-lived hosts only. `open: () => boolean` on `addVersion` bounds the polling lifetime without discarding the saved operation. `filesForExport(projectPath, renderedFingerprint)` optionally supplies an already-synced matching snapshot. Omit it for ordinary video sharing.
 

@@ -23,11 +23,17 @@ import {
   ShareBusyError,
 } from "../src/index.mjs";
 
+const reviewUploadOrigins = [
+  "https://review-bucket.s3.us-east-1.amazonaws.com",
+  "https://customer-bucket.s3.us-west-2.amazonaws.com",
+];
+
 bindShareHost({
   normalize: realpathSync,
   channelSite: "https://hyperframes.dev",
   signinSites: ["https://hyperframes.dev"],
   projectFingerprint,
+  reviewUploadOrigins,
   latestExportFile: (dir) => ({
     path: join(dir, ".hyperframes", "video.mp4"),
     fingerprint: "rendered",
@@ -244,13 +250,56 @@ test("status recovery settles distinct video/version IDs without a new upload", 
   await refreshReviewExport(dir, api);
   assert.equal(reads, 1);
 });
+test("refuses an unconfigured review upload destination before sending the file", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "video.mp4");
+  await writeFile(file, "rendered video");
+  const fetchImpl = t.mock.fn(async () => new Response(null, { status: 200 }));
+  for (const put_url of [
+    "https://other-bucket.s3.us-east-1.amazonaws.com/video",
+    "https://review-bucket.s3.us-east-1.amazonaws.com.example.test/video",
+    `${reviewUploadOrigins[0]}:8443/video`,
+    "http://127.0.0.1:8090/video",
+    "not a URL",
+  ]) {
+    assert.equal(
+      await putFile({ put_url, headers: {} }, file, 14, () => {}, { fetchImpl }),
+      "refused",
+      put_url,
+    );
+  }
+  assert.equal(fetchImpl.mock.callCount(), 0);
+});
+
+test("streams a review video to a configured storage origin without following redirects", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "video.mp4");
+  const video = "rendered video";
+  await writeFile(file, video);
+  const put_url = `${reviewUploadOrigins[1]}/video?signature=example`;
+  const fetchImpl = t.mock.fn(async (url, request) => {
+    assert.equal(url.href, put_url);
+    assert.equal(request.redirect, "manual");
+    assert.equal(await new Response(request.body).text(), video);
+    return new Response(null, {
+      status: 307,
+      headers: { location: "https://other.example.test/video" },
+    });
+  });
+  assert.equal(
+    await putFile({ put_url, headers: {} }, file, video.length, () => {}, { fetchImpl }),
+    "refused",
+  );
+  assert.equal(fetchImpl.mock.callCount(), 1);
+});
+
 test("failed upload releases its input even when fetch does not cancel it", async (t) => {
   const dir = await folder(t);
   const file = join(dir, "video.mp4");
   await writeFile(file, Buffer.alloc(200_000));
   let reader;
   const result = await putFile(
-    { put_url: "https://storage.example/video", headers: {} },
+    { put_url: `${reviewUploadOrigins[0]}/video`, headers: {} },
     file,
     200_000,
     () => {},

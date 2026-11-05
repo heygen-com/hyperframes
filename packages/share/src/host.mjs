@@ -31,6 +31,9 @@ export const uploadWithProgress = (url, headers, archive, onSent) =>
 export const signedInRequest = (deps) => bound("signedInRequest")(deps);
 /** @type {ShareHost["latestExportFile"]} */
 export const latestExportFile = (dir) => bound("latestExportFile")(dir);
+export const reviewUploadOrigins = () =>
+  host.reviewUploadOrigins ??
+  (process.env.HYPERFRAMES_REVIEW_UPLOAD_ORIGINS ?? "").split(",").map((origin) => origin.trim());
 /** @type {ShareHost["projectFingerprint"]} */
 export const projectFingerprint = (dir) => bound("projectFingerprint")(dir);
 /** @type {ShareHost["ffBinary"]} */
