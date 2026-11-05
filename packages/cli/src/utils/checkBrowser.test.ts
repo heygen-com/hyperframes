@@ -1637,6 +1637,43 @@ describe("preResolveHostileMediaProxies", () => {
     }
   });
 
+  it("gives the copies only what is left of the check's --budget when that is under the copy budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const projectDir = mkProjectDir();
+      mocks.scanProjectMediaCodecMap.mockResolvedValue({
+        "/clip.mov": {
+          codecName: "hevc",
+          browserHostile: true,
+          representativeMime: null,
+          hasAlpha: false,
+        },
+      });
+      mocks.resolveProxy.mockImplementation(
+        () =>
+          new Promise<string>((_, reject) =>
+            mocks.proxySignal?.addEventListener("abort", () => reject(new Error("aborted"))),
+          ),
+      );
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const deadline = new CheckDeadline(undefined, { ms: 40_000, stopAt: Date.now() + 30_000 });
+
+      const pending = runBrowserCheck(
+        { ...PROJECT, dir: projectDir, indexPath: `${projectDir}/index.html` },
+        DEFAULT_CHECK_OPTIONS,
+        { kind: "none" },
+        runAuditGrid,
+        deadline,
+      );
+      const outcome = expect(pending).rejects.toThrow(/took longer than 30 s: clip\.mov/);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await outcome;
+      await deadline.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stops reporting a copy once it is done, so a finished one is not read as stuck", async () => {
     vi.useFakeTimers();
     try {
