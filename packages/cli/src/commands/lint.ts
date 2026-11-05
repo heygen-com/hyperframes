@@ -39,6 +39,11 @@ export default defineCommand({
       description: "Show info-level findings (hidden by default)",
       default: false,
     },
+    "lint-verbose": {
+      type: "boolean",
+      description: "Same as --verbose (render, preview and publish spell it --lint-verbose)",
+      default: false,
+    },
   },
   async run({ args }) {
     // Set process.exitCode + return instead of process.exit(): process.exit()
@@ -48,6 +53,7 @@ export default defineCommand({
     // first, then Node exits with the set code — the pattern the other commands
     // (publish/transcribe/upgrade/play/present) already use.
     try {
+      const verbose = Boolean(args.verbose || args["lint-verbose"]);
       const { project, entryFile } = resolveLintTarget(args.dir);
       const startedAt = Date.now();
       const lintResult = await lintProject(
@@ -70,7 +76,7 @@ export default defineCommand({
           errorCount: lintResult.totalErrors,
           warningCount: lintResult.totalWarnings,
           infoCount: lintResult.totalInfos,
-          findings: args.verbose ? allFindings : allFindings.filter((f) => f.severity !== "info"),
+          findings: verbose ? allFindings : allFindings.filter((f) => f.severity !== "info"),
           filesScanned: lintResult.results.length,
         };
         console.log(JSON.stringify(withMeta(combined), null, 2));
@@ -92,7 +98,7 @@ export default defineCommand({
       const lines = formatLintFindings(lintResult, {
         showElementId: true,
         showSummary: true,
-        verbose: args.verbose,
+        verbose,
       });
       for (const line of lines) console.log(line);
 
