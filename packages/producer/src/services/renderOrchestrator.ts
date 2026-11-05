@@ -57,9 +57,7 @@ import {
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
-import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
-import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -3244,40 +3242,11 @@ async function executeRenderPipeline(input: {
     });
 
     const entryFile = job.config.entryFile || "index.html";
-    let htmlPath = join(projectDir, entryFile);
+    const htmlPath = join(projectDir, entryFile);
     if (!existsSync(htmlPath)) {
       throw new Error(`Entry file not found: ${htmlPath}`);
     }
     assertNotAborted();
-
-    // If entryFile is a sub-composition (<template> wrapper), reuse the real
-    // index.html shell and isolate the matching host instead of fabricating
-    // a new standalone document.
-    const rawEntry = readTextFile(htmlPath);
-    if (entryFile !== "index.html" && isTemplateEntry(rawEntry)) {
-      const wrapperPath = join(workDir, "standalone-entry.html");
-      const projectIndexPath = join(projectDir, "index.html");
-      if (!existsSync(projectIndexPath)) {
-        throw new Error(
-          `Template entry file "${entryFile}" requires a project index.html to extract its render shell.`,
-        );
-      }
-      const standaloneHtml = extractStandaloneEntryFromIndex(
-        readTextFile(projectIndexPath),
-        entryFile,
-        rawEntry,
-      );
-      if (!standaloneHtml) {
-        throw new Error(
-          `Entry file "${entryFile}" is not mounted from index.html via data-composition-src, so it cannot be rendered independently.`,
-        );
-      }
-      writeFileSync(wrapperPath, standaloneHtml, "utf-8");
-      htmlPath = wrapperPath;
-      log.info("Extracted standalone entry from index.html host context", {
-        entryFile,
-      });
-    }
 
     // ── Stage 1: Compile ─────────────────────────────────────────────────
     const stage1Start = Date.now();
@@ -3289,7 +3258,6 @@ async function executeRenderPipeline(input: {
       runCompileStage({
         projectDir,
         workDir,
-        htmlPath,
         entryFile,
         job,
         cfg,

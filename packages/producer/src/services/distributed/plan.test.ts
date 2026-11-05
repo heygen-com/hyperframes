@@ -1624,3 +1624,73 @@ describe("plan() — webm format (distributed VP9)", () => {
     expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
   });
 });
+
+describe("plan() — template sub-composition entry", () => {
+  const TIMEOUT_MS = 30_000;
+  const INDEX_HTML = `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="5">
+    <div id="sting" data-composition-id="sting" data-composition-src="compositions/sting.html" data-start="0" data-duration="3"></div>
+  </div>
+</body>
+</html>`;
+  const STING_TEMPLATE = `<template id="sting-template">
+  <div data-composition-id="sting" data-width="320" data-height="240" data-duration="3">
+    <p>sting</p>
+  </div>
+</template>`;
+
+  function writeMountedProject(name: string): string {
+    const dir = join(runRoot, name);
+    mkdirSync(join(dir, "compositions"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), INDEX_HTML, "utf-8");
+    writeFileSync(join(dir, "compositions", "sting.html"), STING_TEMPLATE, "utf-8");
+    return dir;
+  }
+
+  it(
+    "plans a template-wrapped sub-composition rendered alone with its own duration",
+    async () => {
+      const dir = writeMountedProject("template-entry-project");
+      const planDir = join(runRoot, "template-entry-plan");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        dir,
+        { fps: 30, width: 320, height: 240, format: "mp4", entryFile: "compositions/sting.html" },
+        planDir,
+      );
+      expect(result.totalFrames).toBe(90);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "rejects a template entry that index.html does not mount",
+    async () => {
+      const dir = writeMountedProject("template-entry-unmounted");
+      writeFileSync(join(dir, "compositions", "orphan.html"), STING_TEMPLATE, "utf-8");
+      const planDir = join(runRoot, "template-entry-unmounted-plan");
+      mkdirSync(planDir, { recursive: true });
+      let caught: unknown;
+      try {
+        await plan(
+          dir,
+          {
+            fps: 30,
+            width: 320,
+            height: 240,
+            format: "mp4",
+            entryFile: "compositions/orphan.html",
+          },
+          planDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as Error).message).toMatch(/not mounted from index\.html/);
+    },
+    TIMEOUT_MS,
+  );
+});
