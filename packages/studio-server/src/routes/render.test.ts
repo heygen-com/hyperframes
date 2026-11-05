@@ -739,7 +739,7 @@ describe("POST /render/:jobId/cancel", () => {
     }
   });
 
-  // fails without the fix: the route answered as soon as it marked the job cancelled, before the adapter's stop was done.
+  // fails without the fix: the route answered before the adapter's stop was done.
   it("replies only once the adapter's stop has settled", async () => {
     const { adapter, rendersDir } = createAdapter(vi.fn());
     const baseStartRender = adapter.startRender.bind(adapter);
