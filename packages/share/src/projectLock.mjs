@@ -1,5 +1,5 @@
 // @ts-check
-import { link, open, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import fs, { open, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -58,6 +58,24 @@ async function reap(path) {
     await unlink(claim);
   }
 }
+/** @param {string} candidate @param {string} lock @param {Owner} owner */
+async function claim(candidate, lock, owner) {
+  try {
+    await fs.link(candidate, lock);
+  } catch (error) {
+    if (!["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EINVAL"].includes(String(errorCode(error))))
+      throw error;
+    const handle = await open(lock, "wx", 0o600);
+    let written = false;
+    try {
+      await handle.writeFile(JSON.stringify(owner));
+      written = true;
+    } finally {
+      await handle.close();
+      if (!written) await unlink(lock);
+    }
+  }
+}
 /** @template T @param {string} projectPath @param {"review" | "export"} lane @param {() => Promise<T>} run
  * @param {{ timeoutMs?: number, signal?: AbortSignal }} [options] @returns {Promise<T>} */
 export async function withProjectShareLock(
@@ -77,7 +95,7 @@ export async function withProjectShareLock(
   try {
     while (!held) {
       signal?.throwIfAborted();
-      held = await link(candidate, lock).then(
+      held = await claim(candidate, lock, owner).then(
         () => true,
         (error) => {
           if (errorCode(error) === "EEXIST") return false;

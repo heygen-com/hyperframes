@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -16,6 +16,9 @@ import {
   refreshReviewExport,
   putFile,
   projectFingerprint,
+  snapshotProject,
+  snapshotFiles,
+  snapshotFingerprint,
   withProjectShareLock,
   ShareBusyError,
 } from "../src/index.mjs";
@@ -93,7 +96,7 @@ test("corrupt identity fails instead of consuming a new share slot", async (t) =
   const api = client();
   await assert.rejects(
     shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" }),
-    SyntaxError,
+    /Restore this file from a backup.*Keep the file/,
   );
   assert.equal(api.calls(), 0);
 });
@@ -151,18 +154,21 @@ async function success(proc) {
   const [code] = await once(proc, "exit");
   assert.equal(code, 0, stderr);
 }
-test("independent processes serialize registration of the same folder", async (t) => {
-  const dir = await folder(t);
-  const script = `import {bindShareHost,shareForReview} from ${JSON.stringify(moduleUrl)};
+for (const fallback of [false, true])
+  test(`independent processes serialize registration (exclusive-create=${fallback})`, async (t) => {
+    const dir = await folder(t);
+    const script = `import fs from 'node:fs/promises';
+    if (${fallback}) fs.link = async () => { throw Object.assign(new Error('unsupported'), {code:'EPERM'}); };
+    import {bindShareHost,shareForReview} from ${JSON.stringify(moduleUrl)};
     import {realpathSync} from 'node:fs'; import {appendFile} from 'node:fs/promises';
     const dir=process.argv[1]; bindShareHost({normalize:realpathSync,channelSite:'https://hyperframes.dev',signinSites:['https://hyperframes.dev']});
     const client={ spaces:async()=>[{space_id:'s1',bound:true,can_create_review:true}], signedInEmail:async()=>null,
       register:async()=>{await appendFile(dir+'/registrations','registered\\n');await new Promise(r=>setTimeout(r,80));return {project_id:'p1'}},
       share:async()=>({project_id:'p1',review_url:'https://hyperframes.dev/r/t',access_mode:'public',default_role:'commenter',comments_enabled:true,revoked:false})};
     await shareForReview({projectPath:dir,title:'Video',client,audience:'public'});`;
-  await Promise.all([success(child(script, [dir])), success(child(script, [dir]))]);
-  assert.equal(await readFile(join(dir, "registrations"), "utf8"), "registered\n");
-});
+    await Promise.all([success(child(script, [dir])), success(child(script, [dir]))]);
+    assert.equal(await readFile(join(dir, "registrations"), "utf8"), "registered\n");
+  });
 test("a dead local owner can resume while a live or foreign owner is never stolen", async (t) => {
   const dir = await folder(t);
   const script = `import {withProjectShareLock} from ${JSON.stringify(moduleUrl)}; await withProjectShareLock(process.argv[1], 'review', async()=>{console.log('locked');await new Promise(()=>{});setInterval(()=>{},1000)});`;
@@ -273,3 +279,60 @@ test("linked media changes invalidate the rendered source and link cycles termin
   await writeFile(join(media, "clip.mp4"), "updated video bytes");
   assert.notEqual(await projectFingerprint(dir), before);
 });
+
+for (const code of ["EPERM", "ENOTSUP", "EXDEV", "EINVAL"]) {
+  test(`exclusive-create fallback serializes operations when hard links fail with ${code}`, async (t) => {
+    const dir = await folder(t);
+    t.mock.method(fs, "link", async () => {
+      throw Object.assign(new Error("unsupported"), { code });
+    });
+    let active = 0;
+    let completed = 0;
+    const run = () =>
+      withProjectShareLock(dir, "review", async () => {
+        assert.equal(++active, 1);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        active--;
+        completed++;
+      });
+    await Promise.all([run(), run(), run()]);
+    assert.equal(completed, 3);
+    await assert.rejects(readFile(join(dir, ".hyperframes/review.lock")), { code: "ENOENT" });
+  });
+}
+test("Desktop snapshots retain the original symlink-skipping fingerprint", async (t) => {
+  const dir = await folder(t);
+  const media = await folder(t);
+  await writeFile(join(dir, "index.html"), "<div>Film</div>");
+  const before = await snapshotProject(dir);
+  await writeFile(join(media, "clip.mp4"), "first video");
+  await symlink(media, join(dir, "footage"), "dir");
+  await symlink(join(media, "clip.mp4"), join(dir, "clip.mp4"), "file");
+  assert.deepEqual(await snapshotProject(dir), before);
+  assert.deepEqual(await snapshotProject(dir, { byContent: true }), before);
+  assert.equal(snapshotFingerprint(await snapshotProject(dir)), snapshotFingerprint(before));
+  assert.equal((await snapshotProject(dir, { followSymlinks: true })).size, 3);
+  assert.deepEqual(
+    await snapshotFiles(dir, ["clip.mp4", "footage"]),
+    new Map([
+      ["clip.mp4", undefined],
+      ["footage", undefined],
+    ]),
+  );
+});
+
+for (const name of ["review.json", "review-export.json", "review-switch.json"]) {
+  test(`corrupt ${name} retains its bytes and explains recovery`, async (t) => {
+    const { readJsonOr } = await import("../src/storage.mjs");
+    const dir = await folder(t);
+    const file = join(dir, name);
+    await writeFile(file, "");
+    await assert.rejects(readJsonOr(file, null), (error) => {
+      assert.ok(error.message.includes(name));
+      assert.match(error.message, /Restore this file from a backup/);
+      assert.ok(error.cause instanceof SyntaxError);
+      return true;
+    });
+    assert.equal(await readFile(file, "utf8"), "");
+  });
+}

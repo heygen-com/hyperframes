@@ -7,7 +7,7 @@ import {
   rename as renameFile,
   rm as remove,
 } from "node:fs/promises";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 
 /** @param {unknown} error */
@@ -75,7 +75,12 @@ export async function readJsonOr(path, fallback) {
   try {
     return JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") throw error;
+    if (errorCode(error) !== "ENOENT") {
+      throw new Error(
+        `Sharing state in .hyperframes/${basename(path)} could not be read. Restore this file from a backup, or contact support to reconnect the existing share. Keep the file; deleting it can lose recovery state or create a duplicate share.`,
+        { cause: error },
+      );
+    }
     return /** @type {Record<string, unknown> | Exclude<T, object>} */ (fallback);
   }
 }

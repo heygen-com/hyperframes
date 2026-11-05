@@ -40,15 +40,17 @@ async function snapshotKey(full, byContent) {
   }
 }
 
-/** @param {import("node:fs").Dirent} entry @param {string} full */
-const entryKind = async (entry, full) =>
-  entry.isSymbolicLink() ? fs.stat(full).catch(() => null) : entry;
+/** @param {import("node:fs").Dirent} entry @param {string} full @param {boolean} followSymlinks */
+async function entryKind(entry, full, followSymlinks) {
+  if (!entry.isSymbolicLink()) return entry;
+  return followSymlinks ? fs.stat(full).catch(() => null) : null;
+}
 
 // What a run is judged against: each file's mtime and size, except html, whose key ignores the data-hf-id stamps an
 // open or a save writes. Files the film cannot use are not part of the snapshot.
 /** @typedef {Map<string, unknown>} Snapshot */
-/** @param {string} dir @param {{ byContent?: boolean }} [options] @returns {Promise<Snapshot>} */
-export async function snapshotProject(dir, { byContent = false } = {}) {
+/** @param {string} dir @param {{ byContent?: boolean, followSymlinks?: boolean }} [options] @returns {Promise<Snapshot>} */
+export async function snapshotProject(dir, { byContent = false, followSymlinks = false } = {}) {
   /** @type {Snapshot} */
   const result = new Map();
   /** @param {string} current @param {Set<string>} ancestors */
@@ -66,7 +68,7 @@ export async function snapshotProject(dir, { byContent = false } = {}) {
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (isOutsideFilm(path.relative(dir, full))) continue;
-      const kind = await entryKind(entry, full);
+      const kind = await entryKind(entry, full, followSymlinks);
       if (kind?.isDirectory()) await walk(full, parents);
       else if (kind?.isFile()) {
         const key = await snapshotKey(full, byContent);
@@ -93,7 +95,7 @@ export async function snapshotFiles(dir, files) {
   const result = new Map();
   for (const file of files) {
     const full = path.join(dir, file);
-    const stat = await fs.stat(full).catch(() => null);
+    const stat = await fs.lstat(full).catch(() => null);
     if (stat?.isDirectory()) return null;
     const holds = stat?.isFile() && !isOutsideFilm(path.relative(dir, full));
     result.set(file, holds ? await snapshotKey(full, false) : undefined);
@@ -115,4 +117,4 @@ export function diffChangedFiles(before, after) {
 
 /** @param {string} projectPath */
 export const projectFingerprint = async (projectPath) =>
-  snapshotFingerprint(await snapshotProject(projectPath));
+  snapshotFingerprint(await snapshotProject(projectPath, { followSymlinks: true }));
