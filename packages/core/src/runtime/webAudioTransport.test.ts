@@ -1767,6 +1767,44 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("decode budget", () => {
+    const audio = (src: string, duration: number) =>
+      ({
+        tagName: "AUDIO",
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+        duration,
+      }) as unknown as HTMLMediaElement;
+    const transport = () => {
+      const t = new WebAudioTransport();
+      (t as unknown as { _ctx: unknown })._ctx = { sampleRate: 48000, decodeAudioData: vi.fn() };
+      return t;
+    };
+
+    it("takes a ten minute source and refuses a one hour one", () => {
+      const t = transport();
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 3600))).toBe(false);
+    });
+
+    it("counts a source that is decoding against the next one", async () => {
+      const t = transport();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      void t.decodeAudioElement(audio("a.mp4", 600));
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
+      expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it("leaves a clip that has not loaded to its source", () => {
+      expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+  });
+
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {
     function transportWithDecode(decodeImpl: () => Promise<AudioBuffer>) {
       const transport = new WebAudioTransport();
