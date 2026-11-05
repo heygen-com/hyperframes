@@ -300,6 +300,7 @@ export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
   var virtualNowMs = 0;
   var rafId = 1;
   var rafQueue = [];
+  var captureStarted = false;
   var OriginalDate = Date;
   var originalSetTimeout = window.setTimeout.bind(window);
   var originalClearTimeout = window.clearTimeout.bind(window);
@@ -358,10 +359,27 @@ ${seededRandomBlock}
     } catch {}
   }
 
+  function runPreCaptureFrame(entry) {
+    var index = rafQueue.indexOf(entry);
+    if (captureStarted || index < 0) return;
+    // Only pages with buildReady setup can deadlock on a frame. Everywhere else
+    // a frame-counting loop must keep seeing no frames before the first seek.
+    var buildReady = window.__hf && window.__hf.buildReady;
+    if (!buildReady || Object.keys(buildReady).length === 0) return;
+    rafQueue.splice(index, 1);
+    if (entry.cancelled) return;
+    try {
+      entry.callback(virtualNowMs);
+    } catch {}
+  }
+
   window.requestAnimationFrame = function(callback) {
     if (typeof callback !== "function") return 0;
     var entry = { id: rafId++, callback: callback, cancelled: false };
     rafQueue.push(entry);
+    if (!captureStarted) {
+      originalSetTimeout(function() { runPreCaptureFrame(entry); }, 16);
+    }
     return entry.id;
   };
   window.cancelAnimationFrame = function(id) {
@@ -382,6 +400,7 @@ ${seededRandomBlock}
     seekToTime: function(nextTimeMs) {
       var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
       virtualNowMs = safeTimeMs;
+      captureStarted = true;
       ${seekToTimeReseedCall}flushAnimationFrame();
       return virtualNowMs;
     },
