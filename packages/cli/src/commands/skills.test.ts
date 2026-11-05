@@ -445,6 +445,19 @@ describe("hyperframes skills", () => {
     expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
   });
 
+  it("bare `skills` on a Mac without the developer tools skips without running macOS's git stub", async () => {
+    setPlatform("darwin");
+    vi.stubEnv("PATH", "/usr/bin");
+    vi.stubEnv("DEVELOPER_DIR", "/nonexistent-developer-dir");
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+    vi.unstubAllEnvs();
+
+    expect(state.execCalls.map((call) => call.command)).not.toContain("git");
+    expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
+  });
+
   // The happy path must never emit the prerequisite-skip event — it's a
   // skip-only diagnostic, not a per-install signal.
   it("bare `skills` does not emit the skip event when prerequisites are present", async () => {
