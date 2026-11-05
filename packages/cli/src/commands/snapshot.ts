@@ -253,7 +253,6 @@ export function resolveSnapshotVideoFrameTime(input: {
   relativeTime: number;
   sourceDuration: number;
   compositionDuration: number;
-  /** The frame grid clip edges snap to, as the runtime's; 30 when the composition names none. */
   fps?: number;
 }): number | null {
   const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
@@ -910,7 +909,6 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
-/** The frame grid the runtime snaps clip edges to: the root's data-fps, else its 30. */
 function compositionFps(html: string): number {
   const root = parseHTML(html).document.querySelector("[data-composition-id]");
   const declared = parseFpsWithDefault(root?.getAttribute("data-fps") ?? undefined);
