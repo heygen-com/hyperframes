@@ -66,6 +66,31 @@ const COMPLETE_MAX_RETRIES = 5;
 const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
+/** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
+export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000 };
+
+/** S3's answer to a PUT it refused; a refusal below 500 is final (an expired signature stays expired). */
+class PutRefusedError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+async function putWithRetry(attempt: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+  for (let tried = 0; ; tried++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      const final = err instanceof PutRefusedError && err.status < 500;
+      if (final || signal?.aborted || tried >= putTimings.retries) throw err;
+      await sleep(putTimings.backoffMs * 2 ** tried);
+    }
+  }
+}
+
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -110,7 +135,22 @@ async function putBytesToPresignedUrl(
     "content-type": contentType,
     ...normalizeUploadHeaders(uploadHeaders),
   };
-  if (!(body instanceof Uint8Array)) return putFileToPresignedUrl(uploadUrl, headers, body, signal);
+  return putWithRetry(
+    () =>
+      body instanceof Uint8Array
+        ? putBytesOnce(fetchImpl, uploadUrl, headers, body, signal)
+        : putFileToPresignedUrl(uploadUrl, headers, body, signal),
+    signal,
+  );
+}
+
+async function putBytesOnce(
+  fetchImpl: typeof fetch,
+  uploadUrl: string,
+  headers: Record<string, string>,
+  body: Uint8Array,
+  signal?: AbortSignal,
+): Promise<void> {
   // `Uint8Array<ArrayBufferLike>` is a valid `BodyInit` at runtime but
   // not strictly assignable per lib.dom.d.ts — cast rather than copy,
   // since a 200MB buffer copy would be wasteful.
@@ -122,7 +162,8 @@ async function putBytesToPresignedUrl(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
+    throw new PutRefusedError(
+      res.status,
       `Direct upload PUT failed: ${res.status} ${res.statusText}${
         detail ? ` — ${detail.slice(0, 300)}` : ""
       }`,
@@ -146,13 +187,27 @@ async function putFileToPresignedUrl(
   const response = new Promise<IncomingMessage>((resolve, reject) => {
     req.once("response", resolve).once("error", reject);
   });
-  const sent = pipeline(createReadStream(file.path), req);
+  // No byte moving for stallMs (the socket's buffer is full and nothing drains it) ends the try.
+  let timer: NodeJS.Timeout | undefined;
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () =>
+        req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`)),
+      putTimings.stallMs,
+    );
+  };
+  const source = createReadStream(file.path).on("data", arm).on("end", arm);
+  arm();
+  const sent = pipeline(source, req);
   let res: IncomingMessage;
   try {
     res = await response;
   } catch (err) {
     await sent.catch(() => undefined);
     throw err;
+  } finally {
+    clearTimeout(timer);
   }
   const status = res.statusCode ?? 0;
   const ok = status >= 200 && status < 300;
@@ -163,7 +218,8 @@ async function putFileToPresignedUrl(
   let detail = "";
   for await (const chunk of res) detail += String(chunk);
   if (!ok) {
-    throw new Error(
+    throw new PutRefusedError(
+      status,
       `Direct upload PUT failed: ${status} ${res.statusMessage ?? ""}${
         detail ? ` — ${detail.slice(0, 300)}` : ""
       }`,
