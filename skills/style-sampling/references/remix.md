@@ -53,7 +53,7 @@ The person's message carries what it carries. Ask once, together, only what is s
 ## 7. Checks, stop 2, render
 
 - One heavy job at a time (renders, long ffmpeg, transcription): renders with `--workers 1`, ffmpeg with `-threads 2 -nostdin`. For a change, render only that window.
-- Before a render likely to run past 20 minutes (3D at full quality, a long cut), say roughly how long it takes; while it runs, report its progress from the log rather than only that it has not finished.
+- Before a render likely to run past 20 minutes (3D at full quality, a long cut), say roughly how long it takes; while it runs, report the elapsed time the log prints each minute. The cloud gives no frame count, so a 3D shot can sit at `rendering` for 20 minutes and still finish; don't kill it for that, and check a job you stopped waiting for with `npx hyperframes cloud get <id>`.
 - Run REMIX.md's checks. Report each of our numbers beside the series' own: cuts a minute, pause density, longest hold, loudness, sound effects on picture changes, the script fingerprint. Name every check that failed.
 - **Stop 2:** ask once on the draft: a contact sheet and `npx hyperframes preview --background --no-open` (add `--port <free port>` when 3002 is taken), with what is still a stand-in.
 - Then the one full render REMIX.md's delivery calls for. A render over 10 minutes starts detached and is watched through its log, because a render stops when the shell that started it exits: `bash -c 'set -m; HYPERFRAMES_RENDER_DETACHED=1 npx hyperframes render -o <out> < /dev/null > render.log 2>&1 &'`.
