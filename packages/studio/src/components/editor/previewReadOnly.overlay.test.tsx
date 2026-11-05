@@ -329,7 +329,7 @@ describe("DomEditOverlay with canvasInput host", () => {
     const off = fixture({ selection: null });
     fire(off.overlay, "pointerdown");
     fire(off.overlay, "pointerup");
-    expect(off.spies.onMarqueeSelect).toHaveBeenCalledWith([], false);
+    expect(off.spies.onMarqueeSelect).toHaveBeenCalledWith([], "replace");
     act(() => root.unmount());
     const { spies, overlay } = fixture({ ...HOST, selection: null });
     fire(overlay, "pointerdown");
