@@ -671,6 +671,27 @@ describe("GSAP rules", () => {
     expect(finding?.fixHint).toMatch(/xPercent/);
   });
 
+  it("warns for every selector of a comma list with a CSS scale transform, not only the last", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero"></div><div id="badge"></div>
+  </div>
+  <style>
+    #hero, #badge { transform: scale(0.8); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#hero", { scale: 1, duration: 0.5 }, 1.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(finding?.selector).toBe("#hero");
+  });
+
   it("warns when tl.to animates scale on an element with CSS scale transform", async () => {
     const html = `
 <html><body>
