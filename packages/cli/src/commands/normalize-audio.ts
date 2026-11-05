@@ -77,6 +77,8 @@ interface WriteOutcome {
   ok: true;
   wrote: boolean;
   withinTolerance: boolean;
+  heldByLimit: boolean;
+  reachedLufs: number;
   tolerance: number;
   filePath: string;
 }
@@ -198,7 +200,17 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
       updateAudioVolume(readFileSync(filePath, "utf8"), targetTag.id, plan.volume),
     );
   }
-  return { ok: true, wrote, withinTolerance, tolerance, filePath, ...plan };
+  const reachedLufs = heldByLimit ? plan.projectedLufs - plan.changeDb : plan.projectedLufs;
+  return {
+    ok: true,
+    wrote,
+    withinTolerance,
+    heldByLimit,
+    reachedLufs,
+    tolerance,
+    filePath,
+    ...plan,
+  };
 }
 
 function heldAtLimit(plan: ModePlan, tolerance: number): boolean {
@@ -218,9 +230,9 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
         `${c.bold(`#${result.targetId}`)} ${result.targetLufs.toFixed(1)} LUFS`,
     );
     if (result.limitedBy) {
-      const short = result.referenceLufs - result.projectedLufs;
       console.log(
-        `Reaches ${result.projectedLufs.toFixed(1)} LUFS, ${short.toFixed(1)} dB under the reference ` +
+        `${result.heldByLimit ? "Stays at" : "Reaches"} ${result.reachedLufs.toFixed(1)} LUFS, ` +
+          `${(result.referenceLufs - result.reachedLufs).toFixed(1)} dB under the reference ` +
           `(${LIMIT_TEXT[result.limitedBy]}).`,
       );
     }
@@ -229,7 +241,7 @@ function printMeasuredLine(result: NormalizeAudioResult): void {
   const limit = result.limitedBy ? ` (${LIMIT_TEXT[result.limitedBy]})` : "";
   console.log(
     `${c.bold(`#${result.targetId}`)} ${result.sourceLufs.toFixed(1)} LUFS → ` +
-      `${result.projectedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
+      `${result.reachedLufs.toFixed(1)} LUFS, target ${result.targetLufs.toFixed(1)}${limit}`,
   );
 }
 
@@ -242,7 +254,7 @@ function printHumanResult(result: NormalizeAudioResult): void {
     return;
   }
 
-  if (result.previousVolume > 0 && heldAtLimit(result, result.tolerance)) {
+  if (result.heldByLimit) {
     console.log(c.dim("Cannot get closer to the target; the gain is unchanged."));
     return;
   }
