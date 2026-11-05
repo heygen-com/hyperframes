@@ -255,7 +255,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       job.status = "cancelled";
       let giveUp: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
-      await Promise.race([job.cancel?.(), late]).finally(() => clearTimeout(giveUp));
+      try {
+        await Promise.race([job.cancel?.(), late]);
+      } finally {
+        clearTimeout(giveUp);
+      }
     }
     return c.json({ status: job.status });
   });
