@@ -1,10 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { ExtractedFrames, VideoElement } from "@hyperframes/engine";
-import { extractDeferredFrames } from "./deferredVideoFrames.js";
+import {
+  extractAllVideoFrames,
+  type ExtractedFrames,
+  type VideoElement,
+} from "@hyperframes/engine";
+import { extractAllDeferredFrames, extractDeferredFrames } from "./deferredVideoFrames.js";
 
 const metadata = {
   durationSeconds: 4,
@@ -31,6 +35,11 @@ const deferredVideo = (videoId: string, totalFrames: number): ExtractedFrames =>
   framePaths: new Map(),
   deferredRange: { startTime: 1.5, durationSeconds: totalFrames / 30, format: "jpg" },
 });
+
+const fullyExtracted = (videoId: string): ExtractedFrames => {
+  const { deferredRange: _deferred, ...rest } = deferredVideo(videoId, 90);
+  return rest;
+};
 
 const element = (id: string, start: number, end: number): VideoElement => ({
   id,
@@ -94,5 +103,49 @@ describe("extractDeferredFrames", () => {
 
     await expect(extraction).rejects.toBe(missingError);
     expect(reported).toEqual([{ videoId: "clip", index: 45 }]);
+  });
+  describe("extractAllDeferredFrames", () => {
+    const framesOf = (dir: string) =>
+      new Map(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name))] as const));
+
+    it("fills a deferred video in place with the frames a full extraction writes, byte for byte", async () => {
+      const outputDir = join(root, "all", "clip");
+      mkdirSync(outputDir, { recursive: true });
+      const video: ExtractedFrames = {
+        ...deferredVideo("clip", 90),
+        srcPath: sourcePath,
+        outputDir,
+        deferredRange: { startTime: 0, durationSeconds: 3, format: "jpg" },
+      };
+      const untouched = fullyExtracted("whole");
+      untouched.framePaths.set(0, "/kept/frame_00001.jpg");
+      const entries = [video, untouched];
+
+      const progress: Array<[number, number]> = [];
+      await extractAllDeferredFrames(entries, {
+        fps,
+        cfg: {},
+        onProgress: (done, total) => progress.push([done, total]),
+      });
+      expect(progress).toEqual([[90, 90]]);
+
+      expect(entries[0]).toBe(video);
+      expect(video.deferredRange).toBeUndefined();
+      expect(video.outputDir).toBe(outputDir);
+      expect(video.framePaths.size).toBe(90);
+      expect([...video.framePaths.values()].every((path) => existsSync(path))).toBe(true);
+      expect(untouched.framePaths.get(0)).toBe("/kept/frame_00001.jpg");
+
+      const reference = await extractAllVideoFrames(
+        [{ ...element("ref", 0, 3), src: sourcePath, mediaStart: 0 }],
+        root,
+        { fps, outputDir: join(root, "all-reference") },
+      );
+      const expected = framesOf(reference.extracted[0]!.outputDir);
+      const actual = framesOf(outputDir);
+      expect([...actual.keys()]).toEqual([...expected.keys()]);
+      for (const [name, bytes] of expected)
+        expect(actual.get(name)?.equals(bytes), name).toBe(true);
+    }, 60_000);
   });
 });

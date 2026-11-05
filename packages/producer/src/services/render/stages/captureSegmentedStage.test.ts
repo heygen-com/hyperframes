@@ -1339,6 +1339,52 @@ describe("runCaptureSegmentedStage with segmentVideoFrames", () => {
     expect(removed).toEqual([]);
   });
 
+  it("with keepSegments, a windowed render keeps its segment files", async () => {
+    const removed: string[] = [];
+    const input = fakeStageInput({ totalFrames: 4 });
+
+    const result = await runCaptureSegmentedStage({
+      ...input,
+      job: { ...input.job, config: { ...input.job.config, keepSegments: true } },
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-keep-segments"),
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        removeFile: (path: string) => removed.push(path),
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(removed).toEqual([]);
+  });
+
+  it("a segment file that will not delete is logged and does not fail the stage", async () => {
+    const attempted: string[] = [];
+    const warnings: string[] = [];
+    const segmentDir = join(fixtureRoot, "windowed-remove-throws");
+    const input = fakeStageInput({ totalFrames: 6 });
+
+    const result = await runCaptureSegmentedStage({
+      ...input,
+      log: { ...input.log, warn: (message: string) => void warnings.push(message) },
+      segmentFrames: 2,
+      segmentDir,
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        removeFile: (path: string) => {
+          attempted.push(path);
+          if (path === segmentOutputPath(segmentDir, 0)) throw new Error("EPERM");
+        },
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(attempted).toEqual([0, 1, 2].map((i) => segmentOutputPath(segmentDir, i)));
+    expect(warnings).toEqual(["[Render] could not remove a joined segment file"]);
+  });
+
   it("without segmentVideoFrames, segment files are kept", async () => {
     const removed: string[] = [];
 

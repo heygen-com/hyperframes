@@ -209,6 +209,8 @@ export interface RenderCaptureObservability {
   /** Segmented capture only (Phase 2): current segment and retries so far. */
   segmentIndex?: number;
   segmentRetries?: number;
+  videoFrameWindow?: "on" | "off";
+  videoFrameWindowPeakBytes?: number;
 }
 
 export interface RenderExtractionObservability {

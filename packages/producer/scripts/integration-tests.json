@@ -40,6 +40,7 @@
   "src/services/render/renderCancel.integration.test.ts",
   "src/services/render/segmentedColorGrading.integration.test.ts",
   "src/services/render/variableMountMedia.integration.test.ts",
+  "src/services/render/windowedFrames.integration.test.ts",
   "src/services/render/wrappedMountTiming.integration.test.ts",
   "src/services/render/stages/compileStage.mediaType.test.ts",
   "src/services/render/stages/encodeWhileCapturing.test.ts",
@@ -49,5 +50,6 @@
   "src/utils/streamDurationParity.test.ts",
   "src/services/distributed/referenceBackground.integration.test.ts",
   "src/services/render/planReferenceBackground.polling.test.ts",
-  "src/services/render/deferredVideoFrames.integration.test.ts"
+  "src/services/render/deferredVideoFrames.integration.test.ts",
+  "src/services/render/stages/extractVideosStage.integration.test.ts"
 ]

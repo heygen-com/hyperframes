@@ -386,10 +386,22 @@ async function openSegmentedSession(
   );
 }
 
-/** Once joined, the windowed route has no use for the segments; keeping them would hold the whole video twice. */
+/**
+ * Joined segments would hold the video twice, so the windowed route deletes them unless `--keep-segments`.
+ * A file that will not delete costs disk, not the finished render: log it and try the rest.
+ */
 function removeJoinedSegments(run: SegmentRun, segmentPaths: readonly string[]): void {
-  if (!run.input.segmentVideoFrames) return;
-  for (const path of segmentPaths) run.deps.removeFile(path);
+  if (!run.input.segmentVideoFrames || run.input.job.config.keepSegments === true) return;
+  for (const path of segmentPaths) {
+    try {
+      run.deps.removeFile(path);
+    } catch (err) {
+      run.input.log.warn("[Render] could not remove a joined segment file", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 
 /** Stream-copy the finished segments into the video-only file, or throw. */

@@ -28,6 +28,11 @@ export interface SegmentWorkerFrames {
 
 export interface SegmentVideoFrames {
   forWorker(): SegmentWorkerFrames;
+  /** Extracts the given output frames into `segment-frames/<name>/` ahead of time; `release()` is idempotent. */
+  forFrames(
+    frames: readonly number[],
+    name: string,
+  ): Promise<{ injector(): BeforeCaptureHook | null; release(): void }>;
 }
 
 type FrameExtractor = typeof extractDeferredFrames;
@@ -53,8 +58,8 @@ export function createSegmentVideoFrames(input: {
   const sourceOf = input.sourceOf ?? ((video: ExtractedFrames) => video.srcPath);
   const fullyExtracted = input.extracted.filter((video) => !video.deferredRange);
 
-  /** Extracts the given output frames into `dir` and returns an injector over them plus the fully extracted videos. */
-  const injectorFor = async (frames: number[], dir: string): Promise<BeforeCaptureHook | null> => {
+  /** Extracts the given output frames into `dir` and returns a lookup over them plus the fully extracted videos. */
+  const tableFor = async (frames: number[], dir: string) => {
     const sliced = await extractFrames({
       videos: input.videos,
       extracted: input.extracted,
@@ -70,13 +75,14 @@ export function createSegmentVideoFrames(input: {
             `it was expected to have ${video.totalFrames} frames.`,
         ),
     });
-    const table = createFrameLookupTable(
+    return createFrameLookupTable(
       input.videos,
       [...fullyExtracted, ...sliced],
       resolveRenderFpsConfig(input.fps).value,
     );
-    return createVideoFrameInjector(table, input.injectorOptions);
   };
+  const injectorFor = async (frames: number[], dir: string): Promise<BeforeCaptureHook | null> =>
+    createVideoFrameInjector(await tableFor(frames, dir), input.injectorOptions);
 
   /**
    * The drawElement self-verify runs the hook at session open and after every
@@ -106,6 +112,19 @@ export function createSegmentVideoFrames(input: {
     );
 
   return {
+    async forFrames(frames, name) {
+      const dir = join(input.rootDir, "segment-frames", name);
+      const release = () => rmSync(dir, { recursive: true, force: true });
+      try {
+        release();
+        mkdirSync(dir, { recursive: true });
+        const table = await tableFor([...frames], dir);
+        return { injector: () => createVideoFrameInjector(table, input.injectorOptions), release };
+      } catch (error) {
+        release();
+        throw error;
+      }
+    },
     forWorker() {
       let injector: BeforeCaptureHook | null = null;
       let folder: string | null = null;

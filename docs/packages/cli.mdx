@@ -1929,12 +1929,29 @@ mismatched encodes. The directory is deleted after a successful render unless
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
 
+By default every frame of every source video is extracted before capture
+starts. With `HF_VIDEO_FRAME_WINDOW=true`, each segment instead extracts only
+the source frames it shows and deletes them when it closes. Things to know
+before switching it on:
+
+- Segment files are deleted as soon as they are joined, unless `--keep-segments`
+  is set. A failure after the join therefore recaptures everything on `--resume`.
+- Only mp4 and mov renders that segment honour the flag. Motion blur, variable
+  frame rate sources and HDR-transformed sources stay fully extracted. The
+  render log says when the flag was declined and how many videos stayed fully
+  extracted.
+- Source-frame disk use is bounded by roughly workers x `HF_SEGMENT_FRAMES`
+  frames, and only for videos that can be windowed.
+- A windowed render skips the extraction cache, so a re-export gets no
+  warm-cache speedup.
+
 | Environment variable           | Default    | Effect                                                                                   |
 | ------------------------------ | ---------- | ------------------------------------------------------------------------------------------ |
 | `HF_SEGMENTED_CAPTURE`         | unset      | `true` segments any eligible render; `false` is the kill switch                          |
 | `HF_SEGMENTED_MIN_SECONDS`     | off        | Segment renders at least this long. Unset means duration never routes on its own          |
 | `HF_SEGMENT_FRAMES`            | `3000`     | Frames per segment (~100 s at 30 fps); minimum 30                                        |
 | `HF_SEGMENT_BROWSER_RECYCLE`   | `3`        | Restart the browser every N segments; `0` keeps one session for the whole render          |
+| `HF_VIDEO_FRAME_WINDOW`        | unset      | `true` extracts each segment's source frames when it starts and deletes them when it closes |
 
 #### Render the same composition with different content
 
