@@ -499,15 +499,18 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
-const DECODE_FIRST_MAX_SECONDS = 300;
+const DECODE_FIRST_MAX_SECONDS = 600;
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
-function decodesFirst(el: HTMLMediaElement): boolean {
+function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
+  const shortEnough = Number.isFinite(el.duration)
+    ? el.duration <= DECODE_FIRST_MAX_SECONDS
+    : webAudio.isDecodedOrDecoding(el);
   return (
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
-    el.duration <= DECODE_FIRST_MAX_SECONDS &&
+    shortEnough &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
   );
@@ -6140,7 +6143,7 @@ export function initSandboxRuntimeModular(): void {
           : Promise.resolve(null);
       void capture.then((scheduled) => {
         const replacedByNewerPass = gen !== webAudio.currentGeneration();
-        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl)) {
+        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl, webAudio)) {
           void webAudio.decodeAudioElement(rawEl).then(async (buffer) => {
             if (!buffer || !clock.isPlaying() || gen !== webAudio.currentGeneration()) return;
             const played = await webAudio.schedulePlayback(
