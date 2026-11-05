@@ -45,19 +45,34 @@ export function closestNames(input: string, candidates: Iterable<string>, limit 
     .map(({ name }) => name);
 }
 
-const COMMAND_SYNONYMS: Record<string, string> = {
-  search: "catalog",
-  find: "catalog",
-  browse: "catalog",
-  registry: "catalog",
-  list: "catalog",
-  install: "add",
+const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
+  search: { command: "catalog" },
+  find: { command: "catalog" },
+  browse: { command: "catalog" },
+  registry: { command: "catalog" },
+  list: { command: "catalog" },
+  install: { command: "add" },
+  captions: {
+    command: "transcribe",
+    then: "then read ../hyperframes/references/captions.md",
+  },
 };
 
-export function synonymMatch(input: string, candidates: Iterable<string>): string | undefined {
-  const target = COMMAND_SYNONYMS[input];
-  return target !== undefined && [...candidates].includes(target) ? target : undefined;
+export function commandRedirect(
+  input: string,
+  candidates: Iterable<string>,
+): { command: string; then?: string } | undefined {
+  const row = COMMAND_REDIRECTS[input];
+  return row !== undefined && [...candidates].includes(row.command) ? row : undefined;
 }
+
+export const redirectLine = (word: string): string => {
+  const row = COMMAND_REDIRECTS[word]!;
+  return `\`${word}\` is not a command: run \`${row.command}\`${row.then ? `, ${row.then}` : ""}.`;
+};
+export const REDIRECTS_WITH_NEXT_STEP = Object.keys(COMMAND_REDIRECTS).filter(
+  (word) => COMMAND_REDIRECTS[word]!.then,
+);
 
 export function fileHint(word: string, path: string[], names: string[]): string | undefined {
   if (path.length === 0 || names.length === 0 || !existsSync(word)) return undefined;
