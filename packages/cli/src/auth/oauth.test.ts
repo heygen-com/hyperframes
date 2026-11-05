@@ -230,6 +230,28 @@ describe("auth/oauth", () => {
       expect(credentials.oauth).toMatchObject({ ...oauthIdentity(), access_token: "new_at" });
     });
 
+    it("gives up on a refresh the token endpoint never answers, so a caller is not held forever", async () => {
+      process.env["HEYGEN_API_URL"] = "https://api.test.example";
+      await writeStore({ oauth: { access_token: "old_at", refresh_token: "stall_rt" } });
+      const deadline = new AbortController();
+      const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+      let called!: () => void;
+      const fetched = new Promise<void>((r) => (called = r));
+      const fetchImpl = ((_url: string, init?: RequestInit) => {
+        called();
+        if (!init?.signal) return Promise.resolve(new Response("", { status: 500 }));
+        return new Promise<Response>((_, reject) =>
+          init.signal?.addEventListener("abort", () => reject(new Error("refresh timed out"))),
+        );
+      }) as unknown as typeof fetch;
+      const refresh = refreshTokens("stall_rt", { fetchImpl });
+      await fetched;
+      deadline.abort();
+      await expect(refresh).rejects.toThrow();
+      expect(timeout).toHaveBeenCalledWith(20_000);
+      timeout.mockRestore();
+    });
+
     it("preserves the prior refresh_token when the server omits it (no rotation)", async () => {
       await writeStore({
         oauth: {

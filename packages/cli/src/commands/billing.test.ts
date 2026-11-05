@@ -4,16 +4,26 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 
 const opened = vi.hoisted(() => [] as string[]);
 const plan = vi.hoisted(() => ({ calls: 0 }));
-const terminal = vi.hoisted(() => ({ attended: false, checkouts: 0 }));
+const terminal = vi.hoisted(() => ({ attended: false, checkouts: 0, enter: false }));
+const held = vi.hoisted(() => ({
+  offer: undefined as Promise<object> | undefined,
+  checkout: undefined as Promise<string> | undefined,
+  realOffer: false,
+  headerCalls: 0,
+  holdHeadersAfter: undefined as number | undefined,
+  neverPaid: false,
+}));
 
 vi.mock("../utils/attendedTerminal.js", () => ({ isUnattended: () => !terminal.attended }));
 vi.mock("node:readline/promises", () => ({
   createInterface: () => ({
     question: (_q: string, opts: { signal: AbortSignal }) =>
-      new Promise((_resolve, reject) =>
-        opts.signal.addEventListener("abort", () =>
-          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
-        ),
+      new Promise((resolve, reject) =>
+        terminal.enter
+          ? resolve("")
+          : opts.signal.addEventListener("abort", () =>
+              reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            ),
       ),
     close: () => undefined,
   }),
@@ -23,20 +33,24 @@ vi.mock("../auth/browser.js", () => ({
   openBrowser: async (url: string) => void opened.push(url),
 }));
 vi.mock("../cloud/auth.js", () => ({
-  resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
+  resolveCloudAuthHeaders: () =>
+    held.holdHeadersAfter !== undefined && ++held.headerCalls > held.holdHeadersAfter
+      ? new Promise(() => undefined)
+      : Promise.resolve({ "x-api-key": "k" }),
   resolveCloudBaseUrl: () => "https://api.example.test",
 }));
 vi.mock("../heygen/plan.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../heygen/plan.js")>();
   return {
     ...real,
-    readOffer: async () => ({}),
+    readOffer: async (stop?: AbortSignal) =>
+      held.realOffer ? real.readOffer(stop) : (held.offer ?? {}),
     createCheckout: async () => {
       terminal.checkouts++;
-      return "https://checkout.stripe.com/c/pay/cs_test_1";
+      return held.checkout ?? "https://checkout.stripe.com/c/pay/cs_test_1";
     },
     readPlan: async () => ({
-      plan: ++plan.calls === 1 ? "none" : "pro",
+      plan: ++plan.calls === 1 || held.neverPaid ? "none" : "pro",
       credits: plan.calls === 1 ? 0 : 500,
     }),
   };
@@ -57,6 +71,15 @@ afterEach(() => {
   plan.calls = 0;
   terminal.attended = false;
   terminal.checkouts = 0;
+  terminal.enter = false;
+  Object.assign(held, {
+    offer: undefined,
+    checkout: undefined,
+    realOffer: false,
+    headerCalls: 0,
+    holdHeadersAfter: undefined,
+    neverPaid: false,
+  });
   vi.restoreAllMocks();
   consumeCommandResult();
 });
@@ -131,5 +154,81 @@ describe("billing at a terminal", () => {
     vi.useRealTimers();
     expect(terminal.checkouts).toBe(0);
     expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
+  });
+});
+
+function release<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+describe("billing once the wait has ended", () => {
+  it("creates no checkout when the purchase lands while the price is still being read", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const offer = release<object>();
+    held.offer = offer.promise;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    offer.resolve({ pro: { amount: 2900, currency: "usd" } });
+    await done;
+    vi.useRealTimers();
+    expect(terminal.checkouts).toBe(0);
+    expect(log.mock.calls.flat().join("\n")).not.toContain("Checkout link");
+  });
+
+  it("opens no checkout page when the purchase lands while Enter's checkout is being created", async () => {
+    terminal.attended = true;
+    terminal.enter = true;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const checkout = release<string>();
+    held.checkout = checkout.promise;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    checkout.resolve("https://checkout.stripe.com/c/pay/cs_late");
+    await done;
+    vi.useRealTimers();
+    expect(opened.map((u) => new URL(u).hostname)).toEqual(["hyperframes.studio"]);
+  });
+
+  it("ends at --timeout while the price read is still unanswered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    held.realOffer = true;
+    held.neverPaid = true;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) =>
+      String(url).includes("/hyperframes/plans")
+        ? new Promise((_, reject) =>
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)),
+          )
+        : new Response(JSON.stringify({ data: { space_info: { space_id: "sp-1" } } })),
+    );
+    vi.useFakeTimers();
+    let settled = false;
+    const done = runCommand(billing, { rawArgs: ["subscribe", "--timeout", "4"] }).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(6000);
+    vi.useRealTimers();
+    expect(settled).toBe(true);
+    await done;
+    expect(terminal.checkouts).toBe(0);
+  });
+
+  it("ends when the purchase lands while a sign-in refresh is still unanswered", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    held.realOffer = true;
+    held.holdHeadersAfter = 1; // the plans page's workspace read answers; the price read's does not
+    let settled = false;
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] }).then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(2000);
+    vi.useRealTimers();
+    expect(settled).toBe(true);
+    await done;
+    expect(terminal.checkouts).toBe(0);
   });
 });

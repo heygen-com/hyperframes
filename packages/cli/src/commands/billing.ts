@@ -36,30 +36,35 @@ function priceLine(
   return `${needed ? `This run needs ${needed.toLocaleString("en-US")} credits. ` : ""}${credits} add-on credits: ${price}`;
 }
 
+// `stop` fires once the wait ends (paid or timed out): from then on no checkout is created, printed or opened.
 async function offerCheckout(
   kind: "plans" | "credits",
   before: Plan | null,
-  signal: AbortSignal,
+  stop: AbortSignal,
   needed?: number,
 ) {
-  const offer = await readOffer();
+  const offer = await readOffer(stop);
+  if (stop.aborted) return;
   const missing = needed ? needed - (before?.credits ?? 0) : undefined;
   const line = priceLine(kind, offer, missing, needed);
   if (line) console.log(line);
   try {
     if (isUnattended()) {
-      console.log(`Checkout link: ${c.accent(await createCheckout(kind, offer, missing))}`);
+      const link = await createCheckout(kind, offer, missing, stop);
+      if (!stop.aborted) console.log(`Checkout link: ${c.accent(link)}`);
       return;
     }
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     try {
-      await rl.question("Press Enter to pay ", { signal });
+      await rl.question("Press Enter to pay ", { signal: stop });
     } finally {
       rl.close();
     }
-    await openBrowser(await createCheckout(kind, offer, missing));
+    if (stop.aborted) return;
+    const link = await createCheckout(kind, offer, missing, stop);
+    if (!stop.aborted) await openBrowser(link);
   } catch (error) {
-    if (signal.aborted) return;
+    if (stop.aborted) return;
     console.error(c.error(error instanceof Error ? error.message : String(error)));
   }
 }

@@ -356,6 +356,7 @@ function retryAfterSeconds(response: Response, nowMs: number): number | undefine
 }
 
 const refreshing = new Map<string, Promise<OAuthTokens>>();
+const REFRESH_TIMEOUT_MS = 20_000;
 
 /** Refresh the stored login. Calls that overlap in this process share one request, since the server rotates the token. */
 export function refreshTokens(
@@ -388,6 +389,7 @@ async function refreshOnce(refresh_token: string, opts: RefreshOptions): Promise
       accept: "application/json",
     },
     body: body.toString(),
+    signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS),
   });
 
   if (res.status === 400 || res.status === 401) {
