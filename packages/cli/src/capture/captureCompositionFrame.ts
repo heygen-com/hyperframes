@@ -491,6 +491,11 @@ export function seekInPage(
         "drawElementsInstanced",
         "drawRangeElements",
         "blitFramebuffer",
+        "texImage2D",
+        "texSubImage2D",
+        "copyTexImage2D",
+        "compressedTexImage2D",
+        "compressedTexSubImage2D",
       ]) {
         const draw = getProperty(proto, method);
         if (typeof draw !== "function") continue;
