@@ -24,8 +24,6 @@ export interface RenderJobState {
    * Optional abort hook set by the adapter. The cancel route calls this to
    * stop an in-flight render; adapters that can't abort may omit it (the
    * route still marks the job cancelled so the SSE stream terminates).
-   * An adapter whose stop has side effects to finish (a cloud render ended
-   * at its service) returns a promise; the route replies once it settles.
    */
   cancel?: () => void | Promise<void>;
 }

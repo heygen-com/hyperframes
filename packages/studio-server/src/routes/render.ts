@@ -253,7 +253,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!job) return c.json({ error: "not found" }, 404);
     if (job.status === "rendering") {
       job.status = "cancelled";
-      // The reply follows the adapter's stop, so a caller reads the state the stop left.
       let giveUp: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
       await Promise.race([job.cancel?.(), late]).finally(() => clearTimeout(giveUp));
