@@ -147,7 +147,7 @@ to a shared space with `--space`.
 | `HEYGEN_ACCESS_TOKEN` | OAuth token a host app injects; never refreshed or saved. |
 | `HEYGEN_API_BASE` | A host app's gateway for media workflows; never read from a project `.env`. |
 | `HEYGEN_API_URL` | API base URL for `hyperframes` CLI commands (default `https://api.heygen.com`). |
-| `HYPERFRAMES_CONFIG_DIR` | HyperFrames credentials root (default `~/.hyperframes`). |
+| `HYPERFRAMES_CONFIG_DIR` | HyperFrames settings root: credentials, telemetry and update settings, project links (default `~/.hyperframes`). |
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` keeps credentials in a separate `dev/` directory under the root. Hosts and the OAuth client id come from `HEYGEN_API_URL`, `HYPERFRAMES_OAUTH_*` and `HYPERFRAMES_PUBLISHED_PROJECTS_API_URL`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the public client ID for a controlled OAuth environment. |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. |
