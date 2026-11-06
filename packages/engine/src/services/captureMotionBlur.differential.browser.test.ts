@@ -28,6 +28,8 @@ const EXTRA_OUTSIDE_TIMES = new Map<string, readonly number[]>([
   ["callbacks", [frameTime(6), frameTime(9), frameTime(12)]],
 ]);
 
+type Tier = "capture" | "filter";
+
 const radiusPx = (f: BlurFixture): number => Math.ceil(2 * f.dpr);
 const sizeOf = (f: BlurFixture): { width: number; height: number } => ({
   width: f.width,
@@ -39,8 +41,9 @@ async function onFreshPage<T>(
   f: BlurFixture,
   blur: "on" | "off",
   use: (page: Page) => Promise<T>,
+  tier?: Tier,
 ): Promise<T> {
-  const page = await openFixture(browser, f.html(blur), f.dpr, sizeOf(f));
+  const page = await openFixture(browser, f.html(blur, tier), f.dpr, sizeOf(f));
   try {
     return await use(page);
   } finally {
@@ -76,11 +79,16 @@ function firstFive(d: Differential): string {
   return JSON.stringify(d.bad.slice(0, 5));
 }
 
-async function measureOutside(browser: Browser, f: BlurFixture, t: number): Promise<Differential> {
+async function measureOutside(
+  browser: Browser,
+  f: BlurFixture,
+  t: number,
+  tier?: Tier,
+): Promise<Differential> {
   const offFrames = await onFreshPage(browser, f, "off", (p) =>
     captureInOrder(p, neighbourTimes(t)),
   );
-  const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t));
+  const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
   const reference = offFrames[INVARIANTS.radiusFrames];
   if (!reference) throw new Error("missing reference frame");
   return compareTiles(reference, onFrame, trailMask(offFrames, radiusPx(f)), "outside", {
@@ -89,7 +97,8 @@ async function measureOutside(browser: Browser, f: BlurFixture, t: number): Prom
   });
 }
 
-const caseName = (what: string, f: BlurFixture, t: number): string => `${what}: ${f.name} at ${t}`;
+const caseName = (what: string, f: BlurFixture, t: number, tier?: Tier): string =>
+  `${tier ? `${tier} tier, ` : ""}${what}: ${f.name} at ${t}`;
 
 let launched: Browser | undefined;
 let supported = false;
@@ -105,12 +114,12 @@ function fixtureNamed(name: string): BlurFixture {
   return f;
 }
 
-function defineOutsideCase(f: BlurFixture, t: number): void {
+function defineOutsideCase(f: BlurFixture, t: number, tier?: Tier): void {
   it(
-    caseName("outside the trail, blur on equals blur off", f, t),
+    caseName("outside the trail, blur on equals blur off", f, t, tier),
     async (ctx) => {
       if (!supported) ctx.skip();
-      const d = await measureOutside(chrome(), f, t);
+      const d = await measureOutside(chrome(), f, t, tier);
       expect(d.bad, `${f.name} ${firstFive(d)}`).toEqual([]);
       expect(d.checkedFraction).toBeGreaterThanOrEqual(INVARIANTS.minCheckedFraction);
     },
@@ -118,15 +127,15 @@ function defineOutsideCase(f: BlurFixture, t: number): void {
   );
 }
 
-function defineInsideCase(f: BlurFixture, t: number): void {
+function defineInsideCase(f: BlurFixture, t: number, tier?: Tier): void {
   it(
-    caseName("inside the trail, blur on matches the shutter average", f, t),
+    caseName("inside the trail, blur on matches the shutter average", f, t, tier),
     async (ctx) => {
       if (!supported) ctx.skip();
       const samples = await onFreshPage(chrome(), f, "off", (p) =>
         captureInOrder(p, shutterTimes(t), { subFrameDivisions: SUB_FRAME_DIVISIONS }),
       );
-      const onFrame = await onFreshPage(chrome(), f, "on", (p) => captureFrame(p, t));
+      const onFrame = await onFreshPage(chrome(), f, "on", (p) => captureFrame(p, t), tier);
       const d = compareTiles(
         meanFrame(samples),
         onFrame,
@@ -190,6 +199,14 @@ function defineFixtureCases(f: BlurFixture): void {
   for (const t of f.moving) defineInsideCase(f, t);
 }
 
+/** One hold and one move per fixture is enough to hold the filter tier to the same two invariants. */
+function defineFilterCases(f: BlurFixture): void {
+  const hold = f.checkpoints[Math.floor(f.checkpoints.length / 2)];
+  const move = f.moving[Math.floor(f.moving.length / 2)];
+  if (hold !== undefined) defineOutsideCase(f, hold, "filter");
+  if (move !== undefined) defineInsideCase(f, move, "filter");
+}
+
 describe.skipIf(!hasBrowser)("capture motion blur against blur off in Chrome", () => {
   beforeAll(async () => {
     ({ browser: launched, supported } = await launch());
@@ -197,6 +214,7 @@ describe.skipIf(!hasBrowser)("capture motion blur against blur off in Chrome", (
   afterAll(() => closeTestChrome(launched));
 
   for (const f of FIXTURES) defineFixtureCases(f);
+  for (const f of FIXTURES) defineFilterCases(f);
 
   describe("the blur-off reference is a valid yardstick", () => {
     for (const name of ["held-card", "callbacks"]) {

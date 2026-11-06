@@ -9,16 +9,14 @@ Fast-moving elements get a shutter smear along their path. It is opt-in: nothing
 - `data-motion-blur-phase` — when the shutter opens, in degrees of a frame, -360 to 360: 0 opens on the frame (default: centred on the frame, which is minus half the shutter)
 - `data-motion-blur-samples` — samples per frame, 2-64 (default: at least 32, sized to the smear)
 - `data-motion-blur-events` — `on` runs timeline callbacks while blur looks for movers; needed when motion is set from a `render(t)` callback
-- `data-motion-blur-tier` — `auto` (default), `capture` or `filter`
+- `data-motion-blur-tier` — `auto` (default, draws with `filter`), `filter` or `capture`
 
 The same attributes drive the browser editor preview and `hyperframes render`.
 
 ## Two ways it is drawn
 
-- `capture` redraws each mover along its path, so turns and zooms smear truthfully. Needs a browser with HTML in Canvas.
-- `filter` puts an SVG filter on each mover. Works in any Chrome and costs little; turns and zooms are only softened.
-
-`auto` uses `filter` when every mover only translates and `capture` when anything turns or scales.
+- `filter` puts an SVG filter on each mover. Works in any Chrome and costs little; turns and zooms are only softened. `auto` draws with it.
+- `capture` is opt-in. It redraws each mover along its path, so turns and zooms streak truthfully. Needs a browser with HTML in Canvas. It loses anything drawn in front of a mover, ignores `mix-blend-mode` on movers, and breaks selectors that reach the root through its parent.
 
 ## Check and render
 
