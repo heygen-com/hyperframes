@@ -688,6 +688,22 @@ function partitionWeightRuns(
   return runs;
 }
 
+function bundledWeightsWithin(
+  weight: string,
+  style: string,
+  covered: ReadonlySet<string>,
+): string[] {
+  const range = /^(\d+)\s+(\d+)$/.exec(weight.trim());
+  if (!range) return [];
+  const [low, high] = [Number(range[1]), Number(range[2])];
+  return [...covered].flatMap((key) => {
+    const [value, coveredStyle] = key.split(":");
+    return coveredStyle === style && Number(value) >= low && Number(value) <= high
+      ? [value ?? ""]
+      : [];
+  });
+}
+
 // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
 // then fetch from Google Fonts to fill missing weights and character subsets.
 async function bundledFamilyFaceRules(
@@ -744,6 +760,11 @@ async function bundledFamilyFaceRules(
     const last = run[run.length - 1];
     if (!first || !last) continue;
     const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
+    // The exact-weight bundled face (Latin only) wins over a range face: emit the range at each bundled weight too.
+    for (const exact of bundledWeightsWithin(weight, first.style, coveredWeights))
+      rules.push(
+        buildFontFaceRule(emitFamily, first.dataUri, exact, first.style, first.unicodeRange),
+      );
     rules.push(
       buildFontFaceRule(emitFamily, first.dataUri, weight, first.style, first.unicodeRange),
     );
