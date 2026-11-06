@@ -175,3 +175,26 @@ function writeTempSibling(
 function errorCode(error: unknown): string {
   return String((error as NodeJS.ErrnoException)?.code);
 }
+
+const STAGING_NAME_TRIES = 5;
+const STAGING_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+const randomStagingSuffix = () =>
+  Array.from(randomBytes(6), (byte) => STAGING_ALPHABET[byte % STAGING_ALPHABET.length]).join("");
+
+/** A fresh private directory `prefix` + 6 random letters or digits in `parent`; mkdtemp fails past 260 characters on Windows. */
+export function createStagingDir(
+  parent: string,
+  prefix: string,
+  suffix: () => string = randomStagingSuffix,
+): string {
+  for (let attempt = 1; ; attempt++) {
+    const dir = join(parent, `${prefix}${suffix()}`);
+    try {
+      fs.mkdirSync(dir, { mode: 0o700 });
+      return dir;
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST" || attempt >= STAGING_NAME_TRIES) throw error;
+    }
+  }
+}
