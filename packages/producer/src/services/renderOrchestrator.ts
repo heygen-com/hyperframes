@@ -3689,9 +3689,11 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
-    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
-      code: "start_browsers",
-    });
+    const startingFrameCapture = () =>
+      updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
+        code: "start_browsers",
+      });
+    startingFrameCapture();
 
     // Start file server (may already be running from duration discovery).
     // The page-side compositing stub is injected later (after hasHdrContent
@@ -3730,6 +3732,7 @@ async function executeRenderPipeline(input: {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
     // downstream strategy + telemetry code reads the corrected value.
@@ -4237,6 +4240,7 @@ async function executeRenderPipeline(input: {
       } finally {
         calibrationFrames?.release();
       }
+      startingFrameCapture();
       captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;

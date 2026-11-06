@@ -109,7 +109,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function render(): Promise<void> {
+function render(config: { lowMemoryMode?: boolean } = {}): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hf-page-never-ready-"));
   dirs.push(root);
   writeFileSync(join(root, "index.html"), "<div></div>");
@@ -117,11 +117,28 @@ function render(): Promise<void> {
     fps: 30,
     quality: "standard",
     hdrMode: "force-sdr",
-    producerConfig: resolveConfig({ forceScreenshot: true, browserGpuMode: "software" }),
+    producerConfig: {
+      ...resolveConfig({ forceScreenshot: true, browserGpuMode: "software" }),
+      ...config,
+    },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
+  lastJob = job;
   return executeRenderJob(job, root, join(root, "output.mp4"));
 }
+
+let lastJob: ReturnType<typeof createRenderJob>;
+
+it.each([
+  ["after calibration", {}],
+  ["with no calibration, straight after the GPU check", { lowMemoryMode: true }],
+])(
+  "names frame capture as the failed stage for a failure before frame one, %s",
+  async (_, config) => {
+    await render(config).catch(() => undefined);
+    expect(lastJob.failedStage).toBe("Starting frame capture");
+  },
+);
 
 it("fails once as non-retryable when calibration and capture both timed out with no frame", async () => {
   state.calibrationEvaluateTimedOut = true;
