@@ -37,8 +37,8 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "animated-science-explainer": {
     id: "M9003",
-    sha256: "acf15d5630c7896fe1cae6c27f19823bccc30650d7837323e67349586ba2e77c",
-    bytes: 25535320,
+    sha256: "205011f9ed345db786a611bfff43036e6c971368420c87120ff376a7797a26ee",
+    bytes: 25535379,
   },
   "finance-explainer": {
     id: "M9002",
