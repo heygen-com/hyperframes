@@ -22,15 +22,19 @@ export interface SceneRootLookup {
   hasLiveRoot: boolean;
 }
 
+/** The scene root is the first `<template>` whose content holds a composition root. */
 export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
-  const template = document.querySelector("template");
+  const templates = Array.from(document.querySelectorAll("template")) as Element[];
   const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
-  if (!template) return { root: liveRoot, hasTemplate: false, hasLiveRoot: liveRoot !== null };
-  const root = parseHTML(template.innerHTML).document.querySelector(
-    "[data-composition-id]",
-  ) as Element | null;
-  return { root, hasTemplate: true, hasLiveRoot: liveRoot !== null };
+  let root: Element | null = null;
+  for (const template of templates) {
+    root = parseHTML(template.innerHTML).document.querySelector(
+      "[data-composition-id]",
+    ) as Element | null;
+    if (root) break;
+  }
+  return { root, hasTemplate: templates.length > 0, hasLiveRoot: liveRoot !== null };
 }
 
 export function isTemplateEntry(html: string): boolean {
