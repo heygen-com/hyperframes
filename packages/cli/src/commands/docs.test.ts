@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { renderMarkdownLines } from "./docs.js";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
 const EXAMPLES_DIR = join(REPO_ROOT, "registry", "examples");
@@ -46,6 +47,27 @@ describe("docs examples topic", () => {
     for (const item of registryExamples()) {
       expect(sections.get(item.name) ?? "").toContain(item.description);
     }
+  });
+});
+
+describe("renderMarkdownLines", () => {
+  it("renders bold spans without their markers", () => {
+    const [line] = renderMarkdownLines("Set **data-composition-variables** on the root.");
+    expect(line).not.toContain("**");
+    expect(line).toContain("data-composition-variables");
+  });
+
+  it("renders bold inside list items and next to inline code", () => {
+    const [item, mixed] = renderMarkdownLines("- **name**: the file\n`a` and **b** and `c`");
+    expect(item).not.toContain("**");
+    expect(item).toContain("name");
+    expect(mixed).not.toContain("**");
+    expect(mixed).toContain("a");
+    expect(mixed).toContain("b");
+  });
+
+  it("leaves a lone asterisk pair alone", () => {
+    expect(renderMarkdownLines("2 ** 3 is 8")).toEqual(["2 ** 3 is 8"]);
   });
 });
 

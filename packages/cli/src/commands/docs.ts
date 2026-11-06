@@ -67,15 +67,17 @@ function docsDir(): string {
   return existsSync(devPath) ? devPath : builtPath;
 }
 
-function formatInlineCode(line: string): string {
-  // Replace inline backtick spans with accented text
-  return line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
+function formatInline(line: string): string {
+  // Replace inline backtick spans with accented text, then bold spans with bold text
+  return line
+    .replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code))
+    .replace(/\*\*([^*\n]+)\*\*/g, (_match, text: string) => c.bold(text));
 }
 
-function renderMarkdown(content: string): void {
-  const lines = content.split("\n");
+export function renderMarkdownLines(content: string): string[] {
+  const rendered: string[] = [];
 
-  for (const line of lines) {
+  for (const line of content.split("\n")) {
     // Skip code fences
     if (line.trim().startsWith("```")) {
       continue;
@@ -83,25 +85,32 @@ function renderMarkdown(content: string): void {
 
     // H1 heading
     if (line.startsWith("# ")) {
-      console.log(c.bold(line.slice(2)));
+      rendered.push(c.bold(line.slice(2)));
       continue;
     }
 
     // H2 subheading
     if (line.startsWith("## ")) {
-      console.log(c.bold(c.dim(line.slice(3))));
+      rendered.push(c.bold(c.dim(line.slice(3))));
       continue;
     }
 
     // List items
     if (line.startsWith("- ")) {
-      const rest = formatInlineCode(line.slice(2));
-      console.log(`${c.dim("  \u2022")} ${rest}`);
+      rendered.push(`${c.dim("  \u2022")} ${formatInline(line.slice(2))}`);
       continue;
     }
 
     // Everything else
-    console.log(formatInlineCode(line));
+    rendered.push(formatInline(line));
+  }
+
+  return rendered;
+}
+
+function renderMarkdown(content: string): void {
+  for (const line of renderMarkdownLines(content)) {
+    console.log(line);
   }
 }
 
