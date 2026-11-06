@@ -209,6 +209,19 @@ describe("WebAudioTransport", () => {
       expect(node.connect).not.toHaveBeenCalled();
     });
 
+    it("sounds a handed-over element through the output again once playback stops", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.releaseRouted(mockEl);
+      node.connect.mockClear();
+
+      transport.stopAll();
+
+      expect(node.connect).toHaveBeenCalledWith(mock.ctx.destination);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 

@@ -240,7 +240,7 @@ export class WebAudioTransport {
   private _pendingDecodeBytes = new Map<string, number>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-  private _handedOver = new WeakSet<HTMLMediaElement>();
+  private _handedOver = new Set<HTMLMediaElement>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   /** Where the master bus chain lands; the program meter taps here. */
@@ -1052,8 +1052,7 @@ export class WebAudioTransport {
     }
   }
 
-  /** Drops the routed element's source once a decoded buffer plays in its place. A captured element has no native
-   *  output, so left unconnected it is silent; WebKit sounds it through the destination even while muted. */
+  /** Drops the routed element's source once a decoded buffer plays in its place; it stays silent until a stop. */
   releaseRouted(el: HTMLMediaElement): void {
     const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
     if (!routed) return;
@@ -1133,9 +1132,21 @@ export class WebAudioTransport {
   stopAll(): void {
     for (const source of this._activeSources) this.dispose(source);
     this._activeSources = [];
+    this.reconnectHandedOver();
     this._paused = true;
     this._playGeneration += 1;
     this.rest();
+  }
+
+  private reconnectHandedOver(): void {
+    for (const el of this._handedOver) {
+      try {
+        if (this._ctx) this._mediaElementSources.get(el)?.connect(this._ctx.destination);
+      } catch (err) {
+        swallow("webAudioTransport.reconnectHandedOver", err);
+      }
+    }
+    this._handedOver.clear();
   }
 
   /** Stops what plays from media gone from the page, without sending it to the destination as a stop does. */
