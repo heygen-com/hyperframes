@@ -688,7 +688,6 @@ function partitionWeightRuns(
   return runs;
 }
 
-/** The bundled weights a variable face's range ("100 900") spans, as exact weights. */
 function bundledWeightsWithin(
   weight: string,
   style: string,
@@ -761,8 +760,7 @@ async function bundledFamilyFaceRules(
     const last = run[run.length - 1];
     if (!first || !last) continue;
     const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
-    // The browser picks the exact-weight bundled face (Latin only) before a range face, so a variable face that
-    // spans a bundled weight must also exist at that weight or its Latin Extended glyphs never draw there.
+    // The exact-weight bundled face (Latin only) wins over a range face: emit the range at each bundled weight too.
     for (const exact of bundledWeightsWithin(weight, first.style, coveredWeights))
       rules.push(
         buildFontFaceRule(emitFamily, first.dataUri, exact, first.style, first.unicodeRange),
