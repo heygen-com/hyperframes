@@ -1021,7 +1021,12 @@ describe("foldShort", () => {
 });
 
 describe("pickVoice", () => {
-  const voice = (id: string, name: string) => ({ voice_id: id.repeat(32), name, gender: "female" });
+  const voice = (id: string, name: string, language?: string) => ({
+    voice_id: id.repeat(32),
+    name,
+    gender: "female",
+    language,
+  });
   let catalog = [voice("a", "Lin"), voice("b", "Wei")];
   const asked: string[] = [];
   const posts: { key: string | null; body: Record<string, unknown> }[] = [];
@@ -1059,6 +1064,46 @@ describe("pickVoice", () => {
     const r = { type: "voice" as const, out: join(project, "assets/a.mp3"), voice: "Chinese" };
     expect((await pickVoice(r)).name).toBe("Lin");
     expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
+  });
+
+  for (const [spelled, language] of [
+    ["en", "English"],
+    ["en-US", "English"],
+    ["zh-CN", "Chinese"],
+    ["cmn", "Chinese"],
+  ] as const) {
+    it(`asks for ${language} voices when --voice is the language code ${spelled}, not for multilingual ones`, async () => {
+      heygen();
+      catalog = [voice("a", "Lin", language)];
+      const r = {
+        type: "voice" as const,
+        out: join(project, `assets/${spelled}.mp3`),
+        voice: spelled,
+      };
+      expect((await pickVoice(r)).name).toBe("Lin");
+      expect(new URL(asked[0]!).searchParams.get("language")).toBe(language);
+    });
+  }
+
+  it("refuses the multilingual voice HeyGen offers for a language it does not list, instead of using it", async () => {
+    heygen();
+    catalog = [voice("g", "Gail in car", "Multilingual")];
+    const r = { type: "voice" as const, out: join(project, "assets/m.mp3"), voice: "Mandarin" };
+    await expect(pickVoice(r)).rejects.toMatchObject({
+      message: "HeyGen has no public voice for Mandarin (it offered a Multilingual one)",
+      fix: expect.stringContaining("English or Chinese"),
+    });
+  });
+
+  it("takes a multilingual voice when the request names Multilingual", async () => {
+    heygen();
+    catalog = [voice("g", "Gail in car", "Multilingual")];
+    const r = {
+      type: "voice" as const,
+      out: join(project, "assets/ml.mp3"),
+      voice: "Multilingual",
+    };
+    expect((await pickVoice(r)).name).toBe("Gail in car");
   });
 
   it("says what to do when HeyGen will not list its voices", async () => {
