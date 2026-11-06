@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { encodeUrlPath } from "@hyperframes/parsers";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
-import { subscribeFileChanges } from "../../hooks/useExternalFileChangeCoordinator";
+import { onExternalFileChange } from "../../hooks/fileChangeFanout";
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { findBoardFile, readBoardFrames, touchesBoard, type BoardFrame } from "./storyboardBoard";
@@ -56,17 +56,14 @@ export function useStoryboardBoard(projectId: string): StoryboardBoard {
   refreshRef.current = files?.refreshFileTree;
 
   useEffect(() => {
-    return subscribeFileChanges(
-      (payload) => {
-        const change = changeOf(payload);
-        if (!change || (change.projectId && change.projectId !== projectId)) return;
-        const board = pathRef.current;
-        if (board && touchesBoard(change.path, board)) setRevision((n) => n + 1);
-        // A board written or removed changes the file list the tab is found in.
-        if (isBoardName(change.path)) void refreshRef.current?.();
-      },
-      () => setRevision((n) => n + 1),
-    );
+    return onExternalFileChange((payload) => {
+      const change = changeOf(payload);
+      if (!change || (change.projectId && change.projectId !== projectId)) return;
+      const board = pathRef.current;
+      if (board && touchesBoard(change.path, board)) setRevision((n) => n + 1);
+      // A board written or removed changes the file list the tab is found in.
+      if (isBoardName(change.path)) void refreshRef.current?.();
+    });
   }, [projectId]);
 
   useEffect(() => {

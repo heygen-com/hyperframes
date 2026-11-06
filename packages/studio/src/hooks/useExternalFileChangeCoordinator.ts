@@ -1,3 +1,4 @@
+import { announceExternalFileChange } from "./fileChangeFanout";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   mergeFileChangePayloads,
@@ -138,24 +139,6 @@ export function sseFileChangeChannel(
     opened = true;
   });
   return () => eventSource.close();
-}
-
-export function subscribeFileChanges(
-  onChange: (payload: unknown) => void,
-  onCatchUp: () => void,
-): () => void {
-  // One decoder for all three transports; the rungs only choose the channel.
-  const handler = (delivery?: unknown) => onChange(decodeFileChange(delivery));
-  const adapter = testHotAdapter();
-  if (adapter) {
-    adapter.on("hf:file-change", handler);
-    return () => adapter.off("hf:file-change", handler);
-  }
-  if (import.meta.hot) {
-    import.meta.hot.on("hf:file-change", handler);
-    return () => import.meta.hot?.off?.("hf:file-change", handler);
-  }
-  return sseFileChangeChannel(handler, onCatchUp);
 }
 
 function eventIdentity(path: string, payload: unknown): string | null {
@@ -493,14 +476,25 @@ export function useExternalFileChangeCoordinator({
 
   const processChangeRef = useRef(processChange);
   processChangeRef.current = processChange;
-  useEffect(
-    () =>
-      subscribeFileChanges(
-        (payload) => processChangeRef.current(payload),
-        () => processChangeRef.current({ path: "." }),
-      ),
-    [],
-  );
+  useEffect(() => {
+    // One decoder for all three transports; the rungs only choose the channel.
+    const handler = (delivery?: unknown) => {
+      const payload = decodeFileChange(delivery);
+      announceExternalFileChange(payload);
+      processChangeRef.current(payload);
+    };
+    const adapter = testHotAdapter();
+    if (adapter) {
+      adapter.on("hf:file-change", handler);
+      return () => adapter.off("hf:file-change", handler);
+    }
+    if (import.meta.hot) {
+      import.meta.hot.on("hf:file-change", handler);
+      return () => import.meta.hot?.off?.("hf:file-change", handler);
+    }
+    const catchUp = () => processChangeRef.current({ path: "." });
+    return sseFileChangeChannel(handler, catchUp);
+  }, []);
 
   const retry = useCallback(async () => {
     const current = blockedRef.current;
