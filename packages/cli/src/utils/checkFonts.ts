@@ -20,6 +20,8 @@ interface ProbeElement {
   index: number;
   selector: string;
   family: string;
+  /** Computed `font` shorthand plus language: what decides which face draws a given character. */
+  fontKey: string;
   text: string;
   bbox: CheckBbox;
 }
@@ -37,6 +39,8 @@ const GENERIC_FAMILIES = new Set([
   "cursive",
   "fantasy",
   "system-ui",
+  "-apple-system",
+  "blinkmacsystemfont",
   "ui-serif",
   "ui-sans-serif",
   "ui-monospace",
@@ -47,6 +51,8 @@ const GENERIC_FAMILIES = new Set([
 ]);
 
 const MAX_PROBED_ELEMENTS = 400;
+// A film with a missing webfont flags most of its text; this many findings say so, and each costs a per-character probe.
+const MAX_FLAGGED_ELEMENTS = 30;
 const MAX_PROBED_CHARS = 48;
 const MAX_SAMPLE_CHARS = 12;
 const PROBE_STORE = "__hyperframesFontProbe";
@@ -63,8 +69,34 @@ export function declaresNamedFamily(family: string): boolean {
 }
 
 /**
+ * Core OS faces that are the metric-compatible substitute for a proprietary family: the platform reports the
+ * substitute, and it is what the author's declaration resolves to there, so it counts as the declared face.
+ * Only OS substitutes belong here, never per-language entries.
+ * - Liberation Sans is metric-compatible with Arial, and Arial's metrics are Helvetica's.
+ * - Liberation Serif is metric-compatible with Times New Roman (and Times).
+ * - Liberation Mono is metric-compatible with Courier New (and Courier).
+ * - macOS reports its system UI face as ".SF NS" when the SF family names are declared.
+ */
+const OS_SUBSTITUTES: ReadonlyMap<string, readonly string[]> = new Map([
+  ["arial", ["liberation sans"]],
+  ["helvetica", ["liberation sans"]],
+  ["helvetica neue", ["liberation sans"]],
+  ["times new roman", ["liberation serif"]],
+  ["times", ["liberation serif"]],
+  ["courier new", ["liberation mono"]],
+  ["courier", ["liberation mono"]],
+  ["sf pro", [".sf ns"]],
+  ["sf pro text", [".sf ns"]],
+  ["sf pro display", [".sf ns"]],
+  ["san francisco", [".sf ns"]],
+]);
+
+/**
  * Whether `font` is the face `declared` names. Chrome reports a system face by its family name, but a
- * webfont by the file's internal name, so a custom face matches when `declared` is a loaded @font-face family.
+ * webfont by the file's internal name, so any custom (@font-face) face counts as declared when the declared
+ * family is a loaded webfont. By design that includes a webfont later in the author's own stack: Korean drawn
+ * by a second listed webfont such as "Noto Sans KR" passes, because the author chose that face. A system face
+ * counts only by its own name or as the OS's metric-compatible substitute (see OS_SUBSTITUTES).
  */
 export function isDeclaredFace(
   font: Pick<PlatformFont, "familyName" | "isCustomFont">,
@@ -73,8 +105,13 @@ export function isDeclaredFace(
 ): boolean {
   const name = declared.trim().toLowerCase();
   if (font.isCustomFont) return webfonts.has(name);
-  return font.familyName.trim().toLowerCase() === name;
+  const used = font.familyName.trim().toLowerCase();
+  return used === name || (OS_SUBSTITUTES.get(name)?.includes(used) ?? false);
 }
+
+// Emoji and symbols are drawn by the system emoji or symbol face on purpose; they are never a fallback defect.
+const NOT_TEXT =
+  /[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{S}]|\u200d|\u20e3|\ufe0e|\ufe0f/u;
 
 /** Elements with their own text, in the page: also parks them in a window store the CDP side reads by index. */
 function listTextElements(limit: number, store: string): ProbeElement[] {
@@ -115,6 +152,7 @@ function listTextElements(limit: number, store: string): ProbeElement[] {
       index: found.length,
       selector: selectorFor(element),
       family: style.fontFamily,
+      fontKey: `${style.font}|${element.closest("[lang]")?.getAttribute("lang") ?? ""}`,
       text,
       bbox: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
     });
@@ -158,6 +196,8 @@ function parkCharProbes(args: { store: string; index: number; chars: string[] })
     parked.push(span);
   }
   document.body.appendChild(host);
+  // Platform fonts are read from layout, so settle it before the probes are asked.
+  host.getBoundingClientRect();
   Reflect.set(window, args.store + "Host", host);
   return indices;
 }
@@ -177,55 +217,71 @@ async function platformFontsAt(
     expression: `window.${store}[${index}]`,
   });
   if (!result.objectId) return [];
-  try {
-    const { nodeId } = await cdp.send("DOM.requestNode", { objectId: result.objectId });
-    const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
-    return fonts.map((font) => ({
-      familyName: font.familyName,
-      isCustomFont: font.isCustomFont,
-      glyphCount: font.glyphCount,
-    }));
-  } finally {
-    await cdp.send("Runtime.releaseObject", { objectId: result.objectId }).catch(() => undefined);
-  }
+  // Remote objects are released when the session detaches; a release per probe would double the round trips.
+  const { nodeId } = await cdp.send("DOM.requestNode", { objectId: result.objectId });
+  const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+  return fonts.map((font) => ({
+    familyName: font.familyName,
+    isCustomFont: font.isCustomFont,
+    glyphCount: font.glyphCount,
+  }));
 }
 
 function distinctChars(text: string): string[] {
   const seen = new Set<string>();
-  for (const char of text) if (char.trim() !== "") seen.add(char);
+  for (const char of text) if (char.trim() !== "" && !NOT_TEXT.test(char)) seen.add(char);
   return [...seen].slice(0, MAX_PROBED_CHARS);
 }
 
-/** Which of the element's characters a mismatching face actually drew, by probing each one alone. */
-async function affectedChars(
+/** Faces that drew one character, per computed font: the same font and character answer the same on every element. */
+type CharFontCache = Map<string, PlatformFont[]>;
+
+/** Per distinct character of the element, the faces other than the declared one that drew it, probed in one batch. */
+async function fallbackByChar(
   page: Page,
   cdp: CDPSession,
   element: ProbeElement,
   declared: string,
   webfonts: ReadonlySet<string>,
-): Promise<string> {
+  cache: CharFontCache,
+): Promise<Map<string, PlatformFont[]>> {
   const chars = distinctChars(element.text);
-  const indices = await page.evaluate(parkCharProbes, {
-    store: PROBE_STORE,
-    index: element.index,
-    chars,
-  });
-  try {
-    const hit: string[] = [];
-    for (const [i, char] of chars.entries()) {
-      const fonts = await platformFontsAt(cdp, PROBE_STORE, indices[i] ?? -1);
-      if (fonts.some((font) => !isDeclaredFace(font, declared, webfonts))) hit.push(char);
+  const key = (char: string): string => `${element.fontKey}|${char}`;
+  const todo = chars.filter((char) => !cache.has(key(char)));
+  if (todo.length > 0) {
+    const indices = await page.evaluate(parkCharProbes, {
+      store: PROBE_STORE,
+      index: element.index,
+      chars: todo,
+    });
+    try {
+      const probed = await Promise.all(
+        todo.map((char, i) => platformFontsAt(cdp, PROBE_STORE, indices[i] ?? -1)),
+      );
+      todo.forEach((char, i) => cache.set(key(char), probed[i] ?? []));
+    } finally {
+      await page.evaluate(dropCharProbes, PROBE_STORE);
     }
-    return hit.slice(0, MAX_SAMPLE_CHARS).join("");
-  } finally {
-    await page.evaluate(dropCharProbes, PROBE_STORE);
   }
+  return new Map(
+    chars.map((char) => [
+      char,
+      (cache.get(key(char)) ?? []).filter((font) => !isDeclaredFace(font, declared, webfonts)),
+    ]),
+  );
+}
+
+function countOccurrences(text: string, chars: ReadonlySet<string>): number {
+  let count = 0;
+  for (const char of text) if (chars.has(char)) count += 1;
+  return count;
 }
 
 /**
  * Text drawn in a face other than the declared first family, at the page's current seek.
  * Chrome says which platform fonts drew each element (CDP `CSS.getPlatformFontsForNode`), so
  * this holds for any script or cause: a missing glyph, an unloaded webfont, a system fallback.
+ * Error when the declared face drew none of the run's characters (the whole run fell back); warning for a partial fallback.
  */
 export async function collectFontFallback(
   page: Page,
@@ -240,26 +296,30 @@ export async function collectFontFallback(
     await cdp.send("DOM.enable");
     await cdp.send("CSS.enable");
     await cdp.send("DOM.getDocument", { depth: 0 });
-    const drafts: { element: ProbeElement; declared: string; used: PlatformFont[] }[] = [];
-    for (const element of elements) {
-      const declared = firstFamily(element.family);
-      if (!declaresNamedFamily(declared)) continue;
-      const fonts = await platformFontsAt(cdp, PROBE_STORE, element.index);
-      const used = fonts.filter((font) => !isDeclaredFace(font, declared, webfonts));
-      if (used.length > 0) drafts.push({ element, declared, used });
-    }
+    const cache: CharFontCache = new Map();
     const findings: Omit<FontFallbackFinding, keyof CheckAnchor>[] = [];
     const requests: AnchorRequest[] = [];
-    for (const { element, declared, used } of drafts) {
-      const text = await affectedChars(page, cdp, element, declared, webfonts);
-      const glyphCount = used.reduce((sum, font) => sum + font.glyphCount, 0);
-      const usedFamily = used.map((font) => font.familyName).join(", ");
+    const named = elements.filter((element) => declaresNamedFamily(firstFamily(element.family)));
+    // One pipelined round of element-level reads; only elements with a foreign face go on to the per-character probe.
+    const drawn = await Promise.all(named.map((e) => platformFontsAt(cdp, PROBE_STORE, e.index)));
+    for (const [n, element] of named.entries()) {
+      if (findings.length >= MAX_FLAGGED_ELEMENTS) break;
+      const declared = firstFamily(element.family);
+      if ((drawn[n] ?? []).every((font) => isDeclaredFace(font, declared, webfonts))) continue;
+      const byChar = await fallbackByChar(page, cdp, element, declared, webfonts, cache);
+      const affected = new Set([...byChar].filter(([, used]) => used.length > 0).map(([c]) => c));
+      if (affected.size === 0) continue;
+      const usedFamily = [
+        ...new Set([...byChar.values()].flat().map((font) => font.familyName)),
+      ].join(", ");
+      const glyphCount = countOccurrences(element.text, affected);
+      const wholeRun = affected.size === byChar.size;
       findings.push({
         code: FONT_FALLBACK_CODE,
-        severity: "error",
-        message: `Text in ${element.selector} is declared in "${declared}" but ${glyphCount} glyph(s) were drawn in "${usedFamily}".`,
+        severity: wholeRun ? "error" : "warning",
+        message: `Text in ${element.selector} is declared in "${declared}" but ${wholeRun ? "the whole run" : `${glyphCount} glyph(s)`} was drawn in "${usedFamily}".`,
         fixHint: `Load a face for "${declared}" that covers these characters, or declare a family that does.`,
-        text,
+        text: [...affected].slice(0, MAX_SAMPLE_CHARS).join(""),
         declaredFamily: declared,
         usedFamily,
         glyphCount,
@@ -298,6 +358,7 @@ export function mergeFontFindings(batches: FontFallbackFinding[][]): FontFallbac
       continue;
     }
     seen.times.push(finding.time);
+    if (finding.severity === "error") seen.severity = "error";
     if (finding.glyphCount > seen.glyphCount) {
       Object.assign(seen, { glyphCount: finding.glyphCount, text: finding.text });
     }

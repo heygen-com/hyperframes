@@ -5,7 +5,12 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findSystemBrowser } from "../browser/manager.js";
 import { createPageDriver } from "./checkBrowser.js";
-import { collectFontFallback, declaresNamedFamily, firstFamily } from "./checkFonts.js";
+import {
+  collectFontFallback,
+  declaresNamedFamily,
+  firstFamily,
+  isDeclaredFace,
+} from "./checkFonts.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 
 function resolveExecutable(): string | undefined {
@@ -45,7 +50,32 @@ describe("firstFamily / declaresNamedFamily", () => {
     expect(declaresNamedFamily("IBM Plex Mono")).toBe(true);
     expect(declaresNamedFamily("monospace")).toBe(false);
     expect(declaresNamedFamily("system-ui")).toBe(false);
+    expect(declaresNamedFamily("-apple-system")).toBe(false);
+    expect(declaresNamedFamily("BlinkMacSystemFont")).toBe(false);
     expect(declaresNamedFamily("")).toBe(false);
+  });
+});
+
+describe("isDeclaredFace", () => {
+  const system = (familyName: string) => ({ familyName, isCustomFont: false });
+  const none = new Set<string>();
+
+  it("takes the OS's metric-compatible substitute as the declared face, and nothing else", () => {
+    expect(isDeclaredFace(system("Liberation Sans"), "Arial", none)).toBe(true);
+    expect(isDeclaredFace(system("Liberation Sans"), "Helvetica", none)).toBe(true);
+    expect(isDeclaredFace(system("Liberation Serif"), "Times New Roman", none)).toBe(true);
+    expect(isDeclaredFace(system("Liberation Mono"), "Courier New", none)).toBe(true);
+    expect(isDeclaredFace(system(".SF NS"), "SF Pro Text", none)).toBe(true);
+    expect(isDeclaredFace(system("Liberation Mono"), "Arial", none)).toBe(false);
+    expect(isDeclaredFace(system("Noto Sans CJK KR"), "Arial", none)).toBe(false);
+  });
+
+  it("counts a loaded webfont later in the author's own stack as declared", () => {
+    const loaded = new Set(["noto sans kr"]);
+    expect(isDeclaredFace({ familyName: ".", isCustomFont: true }, "Noto Sans KR", loaded)).toBe(
+      true,
+    );
+    expect(isDeclaredFace({ familyName: ".", isCustomFont: true }, "Inter", loaded)).toBe(false);
   });
 });
 
@@ -80,13 +110,13 @@ describe.skipIf(!RUNS_CHROMIUM)("collectFontFallback (real Chromium)", () => {
     );
   }
 
-  it("flags characters the declared face does not cover, naming the fallback and which characters", async () => {
+  it("warns on a partial fallback, naming the fallback face and which characters", async () => {
     const findings = await findingsFor(`<p id="mix" class="mono">ABC xyz</p>`);
     expect(findings).toHaveLength(1);
     const [finding] = findings;
     expect(finding).toMatchObject({
       code: "text_in_fallback_face",
-      severity: "error",
+      severity: "warning",
       selector: "#mix",
       declaredFamily: "FixtureMono",
       glyphCount: 3,
@@ -94,6 +124,32 @@ describe.skipIf(!RUNS_CHROMIUM)("collectFontFallback (real Chromium)", () => {
     });
     expect(finding?.usedFamily).not.toBe("");
     expect(finding?.usedFamily).not.toBe("FixtureMono");
+  });
+
+  it("errors when the declared face drew none of the run", async () => {
+    const findings = await findingsFor(`<p id="all" class="mono">xyz xyz</p>`);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      severity: "error",
+      selector: "#all",
+      glyphCount: 6,
+      text: "xyz",
+    });
+  });
+
+  it("does not flag emoji and symbols drawn by the system emoji face", async () => {
+    expect(await findingsFor(`<p class="mono">ABC \u{1F680} \u2605 \u2192</p>`)).toEqual([]);
+    expect(await findingsFor(`<p class="mono">\u{1F680}\u{1F389}</p>`)).toEqual([]);
+  });
+
+  it("does not flag a -apple-system stack, and still flags emoji-free fallback beside emoji", async () => {
+    expect(
+      await findingsFor(
+        `<p style="font-family: -apple-system, BlinkMacSystemFont, sans-serif">ABC xyz \u{1F680}</p>`,
+      ),
+    ).toEqual([]);
+    const mixed = await findingsFor(`<p class="mono">ABC xyz \u{1F680}</p>`);
+    expect(mixed.map((f) => [f.severity, f.text])).toEqual([["warning", "xyz"]]);
   });
 
   it("does not flag text the declared face covers", async () => {
