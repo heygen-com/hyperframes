@@ -383,12 +383,24 @@ export async function runCaptureWithScreenshotFallback<T>(input: {
   try {
     return await input.run(input.forceScreenshot);
   } catch (error) {
-    if (input.forceScreenshot || (await input.canRetry?.()) === false) throw error;
-    if (!shouldRetryChunkCaptureWithScreenshot(error)) throw error;
+    if (input.forceScreenshot || (await input.canRetry?.()) === false)
+      throw imageMissingIn(error) ?? error;
+    if (!shouldRetryChunkCaptureWithScreenshot(error)) throw imageMissingIn(error) ?? error;
     input.onFallback?.(error);
     await input.resetForScreenshotRetry();
-    return await input.run(true);
+    return await input.run(true).catch((retryError: unknown) => {
+      throw imageMissingIn(retryError) ?? retryError;
+    });
   }
+}
+
+function imageMissingIn(error: unknown): unknown {
+  let e = error;
+  for (let depth = 0; depth < 5 && typeof e === "object" && e !== null; depth++) {
+    if ((e as { name?: unknown }).name === "ImageMissingFromFrameError") return e;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 /**
