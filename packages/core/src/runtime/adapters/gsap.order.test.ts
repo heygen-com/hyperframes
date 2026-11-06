@@ -205,3 +205,26 @@ describe("a render where a set interrupts a running tween", () => {
     }
   });
 });
+
+describe("a fromTo beside a set on another property of the same element", () => {
+  it("renders forward without rewinding the timeline when the fromTo ends", () => {
+    const tile = { x: 0, opacity: 1 };
+    const real = gsap.timeline({ paused: true });
+    real.fromTo(tile, { x: 0 }, { x: 100, duration: 1, ease: "none" }, 0);
+    real.set(tile, { opacity: 0 }, 0);
+    real.to(tile, { x: 200, duration: 1, ease: "none" }, 1);
+    const landed: number[] = [];
+    const timeline = producerStandIn(real);
+    const totalTime = timeline.totalTime!;
+    timeline.totalTime = ((...args: [number, boolean?]) => {
+      if (args.length > 0) landed.push(args[0]);
+      return totalTime(...args);
+    }) as typeof totalTime;
+    const structure = { owner: timeline, version: "1" };
+    seekGsapTimeline(timeline, 0, true, structure, 30);
+    landed.length = 0;
+    for (const frame of range(1, 60)) seekGsapTimeline(timeline, frame / 30, true, structure, 30);
+    expect(landed.filter((t, i) => i > 0 && t < landed[i - 1]!)).toEqual([]);
+    expect(tile.x).toBeCloseTo(100 + 100 * (59 / 30 - 1), 5);
+  });
+});
