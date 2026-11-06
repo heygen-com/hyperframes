@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock, vi } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +26,9 @@ let sessionWorkerEncodeEnabled = false;
 let captureSessionMode: "drawelement" | "screenshot" = "drawelement";
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
+let hangDeferredDrawElementInit = false;
+/** While set, opening a session waits for this promise instead of returning a fresh one. */
+let pendingOpen: Promise<unknown> | null = null;
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 const createdSessionConfigs: Array<{ enableBrowserPool?: boolean }> = [];
@@ -62,10 +65,12 @@ mock.module("@hyperframes/engine", () => ({
     return { buffer: Buffer.from("frame"), captureTimeMs: 1 };
   },
   closeCaptureSession,
-  completeDeferredDrawElementInit: async () => {},
+  completeDeferredDrawElementInit: () =>
+    hangDeferredDrawElementInit ? new Promise<void>(() => {}) : Promise.resolve(),
   createCaptureSession: async (...args: unknown[]) => {
     createdSessionConfigs.push(args[4] as { enableBrowserPool?: boolean });
     createdSessionHooks.push(args[3]);
+    if (pendingOpen) return pendingOpen;
     return {
       isInitialized: false,
       browserConsoleBuffer,
@@ -449,6 +454,81 @@ describe("runCaptureSegmentedStage", () => {
       deps: { spawnEncoder },
     });
     expect(result).toEqual({ success: false });
+  });
+
+  /** Runs the stage on a fake clock, a second at a time, until it settles or 30 minutes pass. */
+  const settleOnFakeClock = async (run: Promise<unknown>) => {
+    const state = { done: false, error: undefined as unknown, elapsedMs: 0 };
+    run.then(
+      () => (state.done = true),
+      (error: unknown) => Object.assign(state, { done: true, error }),
+    );
+    const flush = async () => {
+      for (let i = 0; i < 200; i++) await Promise.resolve();
+    };
+    await flush();
+    while (!state.done && state.elapsedMs < 30 * 60_000) {
+      vi.advanceTimersByTime(1_000);
+      state.elapsedMs += 1_000;
+      await flush();
+    }
+    return state;
+  };
+
+  it("gives up on a deferred drawElement init that never finishes, within the session-init budget", async () => {
+    hangDeferredDrawElementInit = true;
+    closeCaptureSession.mockClear();
+    const prev = process.env.HF_DE_STALL_MS;
+    delete process.env.HF_DE_STALL_MS;
+    vi.useFakeTimers();
+    try {
+      const input = fakeStageInput({ totalFrames: 3 });
+      const state = await settleOnFakeClock(
+        runCaptureSegmentedStage({ ...input, segmentFrames: 3 }),
+      );
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/3)",
+      );
+      expect(closeCaptureSession.mock.calls.map((c) => c[0])).toContain(input.probeSession);
+    } finally {
+      vi.useRealTimers();
+      hangDeferredDrawElementInit = false;
+      if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
+    }
+  });
+
+  it("gives up on a session that never finishes opening, and closes it when it opens late", async () => {
+    let openLate: (session: unknown) => void = () => {};
+    pendingOpen = new Promise((resolve) => (openLate = resolve));
+    closeCaptureSession.mockClear();
+    const prev = process.env.HF_DE_STALL_MS;
+    delete process.env.HF_DE_STALL_MS;
+    vi.useFakeTimers();
+    try {
+      const state = await settleOnFakeClock(
+        runCaptureSegmentedStage({
+          ...fakeStageInput({ totalFrames: 3 }),
+          probeSession: undefined,
+          segmentFrames: 3,
+        }),
+      );
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/3 while opening the capture session)",
+      );
+
+      const late = { browserConsoleBuffer: [] };
+      openLate(late);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(closeCaptureSession).toHaveBeenCalledWith(late);
+    } finally {
+      vi.useRealTimers();
+      pendingOpen = null;
+      if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
+    }
   });
 
   it("returns success:false when the first encoder cannot spawn, and has closed the probe", async () => {
