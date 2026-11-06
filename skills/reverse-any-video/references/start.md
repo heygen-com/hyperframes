@@ -65,8 +65,8 @@ or at the end of a run. `reverse start` and `auth status` are for the sign-in: d
 A refused step prints what it needs and the command that fixes it (buy add-on credits, or pick a plan). Buying is the
 person's to do: never run a `billing` command yourself. Shots are launched all at once, so several refuse together: wait
 until every launched step has answered, add up what each refused step needs, and give them `npx hyperframes billing add-credits --needed <total> --skill reverse-any-video` to run once for that total, never one step at a time, with the
-refusal's `url` (on an older CLI, the link in its `fix`) as a link. If a refusal prints no amount, give plain
-`billing add-credits` for that one. Either opens the add-on credits page, where they see the price. When they say their
+refusal's `url` (on an older CLI, the link in its `fix`) as a link. If any refusal prints no amount, the total is unknown:
+give plain `billing add-credits` once instead, for the whole run, never one per step. Either opens the add-on credits page, where they see the price. When they say their
 balance is topped up, relaunch every refused step, keeping the plan whole.
 
 > Three steps need 633 credits together and you have 30. Add credits here: <url> (or run

@@ -65,6 +65,15 @@ test("reverse hands every purchase to the person instead of running billing itse
   );
   assert.match(start, /You run every command except `billing`, which\s+is theirs/);
   assert.doesNotMatch(start, /you run every command,/);
+  const outOfCredits = section("Out of credits mid-run");
+  assert.match(
+    outOfCredits,
+    /If any refusal prints no amount, the total is unknown:\s+give plain `billing add-credits` once instead, for the whole run/,
+  );
+  assert.doesNotMatch(
+    outOfCredits,
+    /for that one|for each (?:refused )?step|one per (?:refused )?step(?!\.)/,
+  );
   for (const heading of ["Signed in on Free", "Out of credits mid-run"]) {
     const text = section(heading);
     assert.match(text, /never run a `billing` command yourself/, heading);
