@@ -16,7 +16,11 @@ import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
-import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
+import {
+  CheckCopiesUnfinishedError,
+  CheckDeadlineError,
+  CheckStoppedError,
+} from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
 
@@ -3610,6 +3614,22 @@ describe("check report telemetry", () => {
       }),
     );
     expect(report.ok).toBe(true);
+  });
+
+  it("a check stopped by the copy wait still sends the copy facts and stays browserSkipped", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async (_project, _options, _motion, deadline) => {
+      deadline?.keepPartial(() => ({
+        mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 },
+      }));
+      throw new CheckCopiesUnfinishedError(120_000, ["a.mp4 40%"]);
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.browserSkipped).toBe(true);
+    expect(trackCheckReport).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } }),
+    );
   });
 
   it("reports one failing contrast run with its section error count", async () => {

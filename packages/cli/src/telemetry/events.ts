@@ -1195,6 +1195,8 @@ export function trackCheckReport(props: {
   ok: boolean;
   exitCode: number;
   stopCode?: StopCode;
+  /** Present when the project had videos Chrome cannot decode: counts and milliseconds only. */
+  mediaCopies?: { total: number; waitedMs: number; unfinished: number };
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1227,6 +1229,11 @@ export function trackCheckReport(props: {
     ok: props.ok,
     exit_code: props.exitCode,
     ...(props.stopCode && { stop_code: props.stopCode }),
+    ...(props.mediaCopies && {
+      copies_total: props.mediaCopies.total,
+      copies_waited_ms: props.mediaCopies.waitedMs,
+      copies_unfinished: props.mediaCopies.unfinished,
+    }),
     ...runIdField(props.runId),
   });
 }
