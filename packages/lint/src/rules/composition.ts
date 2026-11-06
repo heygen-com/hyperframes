@@ -1102,6 +1102,34 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // invalid_data_duration + invalid_track_index
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const timing = readTagTiming(tag.raw);
+      for (const { code, attribute, value } of timing.diagnostics) {
+        if (code !== "invalid-duration" && code !== "invalid-track-index") continue;
+        const elementId = readAttr(tag.raw, "id") || undefined;
+        const isDuration = code === "invalid-duration";
+        findings.push({
+          code: isDuration ? "invalid_data_duration" : "invalid_track_index",
+          severity: "error",
+          message:
+            `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has ${attribute}="${value}" which the parser rejects. ` +
+            (isDuration
+              ? 'data-duration must be a non-negative number of seconds, e.g. data-duration="3".'
+              : `${attribute} must be a whole number, e.g. ${attribute}="1".`),
+          elementId,
+          fixHint: isDuration
+            ? "Set data-duration to a non-negative number; the render falls back to a different duration when the value is invalid."
+            : `Set ${attribute} to a whole number; invalid values fall back to track 0.`,
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // split_data_attribute_selector
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];

@@ -67,6 +67,43 @@ describe("composition rules", () => {
     });
   });
 
+  describe("invalid timing attribute values", () => {
+    it("reports invalid data-duration values as errors", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div id="a" class="clip" data-start="0" data-duration="2s" data-track-index="0"></div>
+          <div id="b" class="clip" data-start="0" data-duration="-3" data-track-index="0"></div>
+        </div>
+      </body></html>`);
+
+      const invalid = result.findings.filter(({ code }) => code === "invalid_data_duration");
+      expect(invalid).toHaveLength(2);
+      expect(invalid.every(({ severity }) => severity === "error")).toBe(true);
+    });
+
+    it("does not report invalid_data_duration for valid numeric durations", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div class="clip" data-start="0" data-duration="3.5" data-track-index="0"></div>
+        </div>
+      </body></html>`);
+
+      expect(result.findings.find(({ code }) => code === "invalid_data_duration")).toBeUndefined();
+    });
+
+    it("reports non-integer data-track-index values as errors", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div class="clip" data-start="0" data-duration="2" data-track-index="1.5"></div>
+        </div>
+      </body></html>`);
+
+      expect(result.findings.map(({ code }) => code)).toEqual(
+        expect.arrayContaining(["invalid_track_index"]),
+      );
+    });
+  });
+
   describe("subcomposition guidance", () => {
     it("warns when any HTML composition file is over 300 lines", async () => {
       const html = Array.from({ length: 301 }, (_, i) =>
