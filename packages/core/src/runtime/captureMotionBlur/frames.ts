@@ -11,7 +11,7 @@ import {
   translate,
 } from "./pose";
 
-const CONTENT_NODE_LIMIT = 256;
+export const CONTENT_NODE_LIMIT = 256;
 
 type Box = [number, number, number, number];
 type PoseReader = ReturnType<typeof createPoseReader>;

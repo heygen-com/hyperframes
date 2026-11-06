@@ -2105,6 +2105,71 @@ describe("filter fallback", () => {
     expect(el.style.filter).toBe("drop-shadow(0px 0px 4px red)");
   });
 
+  describe("a mover holding a fixed child", () => {
+    /** A mover that slides through `left`, 300 px over the composition, holding a fixed badge. */
+    function leftMoverWithBadge(root: HTMLElement) {
+      const el = root.appendChild(document.createElement("div"));
+      el.id = "card";
+      const badge = el.appendChild(document.createElement("div"));
+      badge.style.position = "fixed";
+      const left = () => parseFloat(el.style.left) || 0;
+      for (const [k, v] of Object.entries({ offsetWidth: 10, offsetHeight: 10, offsetTop: 0 })) {
+        Object.defineProperty(el, k, { value: v, configurable: true });
+      }
+      Object.defineProperty(el, "offsetParent", { value: root, configurable: true });
+      Object.defineProperty(el, "offsetLeft", { get: left, configurable: true });
+      el.getBoundingClientRect = () =>
+        ({
+          left: left(),
+          top: 0,
+          right: left() + 10,
+          bottom: 10,
+          width: 10,
+          height: 10,
+        }) as DOMRect;
+      return el;
+    }
+
+    it("stays sharp when it moves through left, while the other movers blur", () => {
+      const { root, el: other, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report().moverNames).toEqual(["div#slider", "div#card"]);
+      expect(card.style.filter).toBe("");
+      expect(other.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+
+    it("still blurs when a transform already made it the containing block", () => {
+      const { el, h } = movingHost();
+      el.append(Object.assign(document.createElement("div"), { style: "position: fixed" }));
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("blurs on the frames where a transform is set, and not on those where it is none", () => {
+      const { root, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+        card.style.transform = t >= 0.5 ? "matrix(1, 0, 0, 1, 0, 0)" : "";
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.3, PLAY);
+      expect(card.style.filter).toBe("");
+      void paintCaptureMotionBlur(0.7, PLAY);
+      expect(card.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+  });
+
   it("reads poses with callbacks off when callbacks move no mover in the filter tier too", () => {
     const { h } = movingHost({
       "data-motion-blur": "on",
