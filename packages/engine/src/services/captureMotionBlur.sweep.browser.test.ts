@@ -115,19 +115,10 @@ const CASES: readonly SweepCase[] = [
       measuredMae: S.C,
     },
   },
-  ...(["capture", "filter"] as const).map(
-    (tier): SweepCase => ({
-      fixture: "pseudo-after",
-      tier,
-      frame: 14,
-      check: "inside",
-      bug: {
-        finding: "D",
-        reason: "an ::after drawn outside the mover's box is cut off",
-        regions: [rect(376, 150, 72, 68)],
-        measuredMae: tier === "capture" ? S.D_CAPTURE : S.D_FILTER,
-      },
-    }),
+  ...(["pseudo-after", "pseudo-before"] as const).flatMap((fixture) =>
+    (["capture", "filter"] as const).map(
+      (tier): SweepCase => ({ fixture, tier, frame: 14, check: "inside" }),
+    ),
   ),
   {
     fixture: "own-clip-polygon",
