@@ -3031,6 +3031,8 @@ processing (default 300). A processing result is accepted, not playback-ready:
 check `ready` and `state` in JSON before distributing a URL. `url` is only
 returned for a ready share. Run `--status` to check again. Exit codes are 0
 for an accepted/read operation, 1 for failure, and 2 for invalid arguments.
+A successful local render does not finish sharing: upload failures still return
+a failure exit code.
 
 Existing `/p/...` publications remain separate and reachable. Sharing does not
 convert a legacy publication or change its URL, visibility or ownership.

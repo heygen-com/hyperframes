@@ -62,7 +62,13 @@ export async function prepareShareRender(dir: string): Promise<void> {
   ]);
   const plan = createRenderPlan({ dir, output, format: "mp4", quiet: true, strict: true });
   await executeRenderPlan(plan, {
-    renderLocal: render.renderLocal,
+    renderLocal: (project, output, options, cancellation) =>
+      render.renderLocal(
+        project,
+        output,
+        { ...options, embedded: true, exitAfterComplete: false },
+        cancellation,
+      ),
     renderDocker: async () => {
       throw new Error("Share renders locally.");
     },
