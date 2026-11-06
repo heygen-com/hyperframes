@@ -65,17 +65,19 @@ interface WebGlProbeInfo {
   renderer: string;
 }
 
+export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
+  "swiftshader",
+  "llvmpipe",
+  "lavapipe",
+  "softpipe",
+  "mesa offscreen",
+  "microsoft basic render driver",
+  "software rasterizer",
+];
+
 function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
   const renderer = rendererInfo.trim().toLowerCase();
-  return (
-    renderer.includes("swiftshader") ||
-    renderer.includes("llvmpipe") ||
-    renderer.includes("lavapipe") ||
-    renderer.includes("softpipe") ||
-    renderer.includes("mesa offscreen") ||
-    renderer.includes("microsoft basic render driver") ||
-    renderer.includes("software rasterizer")
-  );
+  return SOFTWARE_WEBGL_RENDERER_TOKENS.some((token) => renderer.includes(token));
 }
 
 async function getPuppeteer(): Promise<PuppeteerNode> {

@@ -1,9 +1,15 @@
 // Windowed source-video frames (HF_VIDEO_FRAME_WINDOW), rendered for real: each case renders twice
 // on the segmented route, once reading a segment's frames at a time and once extracting whole
 // videos, and the two outputs must match frame for frame. Needs Chrome + ffmpeg: integration lane.
-// Known gap: this test pins `browserGpuMode: "software"`, so every render here takes the screenshot
-// path. Windowed drawElement output parity was measured by hand on real footage and has no automated
-// guard.
+// Every case but one pins `browserGpuMode: "software"`, which takes the screenshot path. The
+// drawElement case asks for `browserGpuMode: "hardware"` and `useDrawElement`, the only way to get
+// past the engine's software-rasterizer gate without HF_FORCE_DRAWELEMENT (which skips self-verify),
+// so it guards drawElement capture, self-verify through the on-demand hook, and a browser recycle.
+// The drawElement branch runs only on a macOS or Windows host with a GPU. Linux always gates it away,
+// with or without a GPU, because headless-shell launches for BeginFrame, which has no self-verify;
+// there, and on any host with no GPU, the case asserts the named fallback and says in its output that
+// drawElement did not run. HF_TEST_REQUIRE_DRAWELEMENT=1 turns that fallback into a failure, for the
+// hosts that are meant to run it.
 //
 // HF_TEST_RETRY_BROWSER_STALL=1 renders once more after Chrome dies, for an overloaded local host.
 // Never set it in CI: a windowed render that needs the retry alone fails the case.
@@ -66,6 +72,19 @@ interface Case {
   calibrates?: boolean;
   /** Caps the worker count the orchestrator picks, to keep the Chromes it opens few. */
   maxWorkers?: number;
+  /** Captures with drawElement and its self-verify, which software rasterization would route away from. */
+  drawElement?: boolean;
+  /** Recycles a worker's browser after this many segments. */
+  recycleEverySegments?: number;
+  /** Keeps the windowed render's work dir to read `segment-frames` once it closes, and polls it meanwhile. */
+  inspectsFolder?: boolean;
+}
+
+interface DrawElementFacts {
+  mode: string | undefined;
+  verifyArmed: number | undefined;
+  selfVerifyFallback: boolean | undefined;
+  gateReason: string | undefined;
 }
 
 interface Run {
@@ -79,10 +98,15 @@ interface Run {
   peakBytes: number | undefined;
   extractedFrames: number | undefined;
   calibration: string;
+  drawElement: DrawElementFacts;
+  /** Cadence-driven browser restarts the segmented capture reported. */
+  browserRecycles: number | undefined;
   /** Windowed renders only: what a poll of `segment-frames` saw while the render ran. */
   sampled: { peakBytes: number; largestFileBytes: number };
   /** `keepWorkDir` renders only: the entries left in `segment-frames` once the render closed. */
   leftInSegmentFrames: string[] | undefined;
+  /** `keepWorkDir` renders only: the `on-demand_*` folders a poll saw while they held a frame. */
+  onDemandWithFrames: number;
 }
 
 let root: string;
@@ -193,15 +217,23 @@ function firstDifference(left: string[], right: string[]): number {
 const ENV_KEYS = [
   "HF_SEGMENTED_CAPTURE",
   "HF_SEGMENT_FRAMES",
+  "HF_SEGMENT_BROWSER_RECYCLE",
   "HF_VIDEO_FRAME_WINDOW",
   "KEEP_TEMP",
 ] as const;
 
 /** Sets the render's env and returns the call that puts the caller's back. */
-function setRenderEnv(windowed: boolean, keepWorkDir: boolean | undefined): () => void {
+function setRenderEnv(
+  windowed: boolean,
+  keepWorkDir: boolean | undefined,
+  recycleEverySegments: number | undefined,
+): () => void {
   const saved = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
   process.env.HF_SEGMENTED_CAPTURE = "true";
   process.env.HF_SEGMENT_FRAMES = String(SEGMENT_FRAMES);
+  if (recycleEverySegments !== undefined) {
+    process.env.HF_SEGMENT_BROWSER_RECYCLE = String(recycleEverySegments);
+  }
   if (windowed) process.env.HF_VIDEO_FRAME_WINDOW = "true";
   else delete process.env.HF_VIDEO_FRAME_WINDOW;
   if (keepWorkDir) process.env.KEEP_TEMP = "1";
@@ -240,6 +272,29 @@ function watchWorkDirs(output: string, jobId: string) {
   return { own };
 }
 
+/**
+ * Counts the `on-demand_*` folders seen holding a frame, by name. An extraction of one frame lasts
+ * about as long as an ffmpeg spawn, so this polls much faster than {@link sampleSegmentFrames}.
+ */
+function watchOnDemandFolders(own: () => string[]) {
+  const withFrames = new Set<string>();
+  const poll = setInterval(() => {
+    for (const workDir of own()) {
+      const folder = join(workDir, "segment-frames");
+      let names: string[];
+      try {
+        names = readdirSync(folder).filter((name) => name.startsWith("on-demand_"));
+      } catch {
+        continue;
+      }
+      for (const name of names) {
+        if (directoryBytes(join(folder, name), () => {}) > 0) withFrames.add(name);
+      }
+    }
+  }, 5);
+  return { withFrames, stop: () => clearInterval(poll) };
+}
+
 /** Polls `segment-frames` in the render's work dir for the most it holds at once. */
 function sampleSegmentFrames(own: () => string[]) {
   const sampled = { peakBytes: 0, largestFileBytes: 0 };
@@ -260,6 +315,7 @@ function describeRun(
   job: RenderJob,
   output: string,
   trace: Array<Record<string, unknown>>,
+  seen: { browserRecycles: number | undefined },
 ): Omit<Run, "sampled" | "leftInSegmentFrames"> {
   const perf = job.perfSummary;
   const capture = perf?.observability?.capture;
@@ -281,6 +337,13 @@ function describeRun(
     peakBytes: capture?.videoFrameWindowPeakBytes,
     extractedFrames: perf?.observability?.extraction?.totalFramesExtracted,
     calibration: String(calibration?.message ?? "not reached"),
+    drawElement: {
+      mode: perf?.drawElement?.mode,
+      verifyArmed: perf?.drawElement?.verifyArmed,
+      selfVerifyFallback: perf?.drawElement?.selfVerifyFallback,
+      gateReason: perf?.drawElement?.gateReason,
+    },
+    browserRecycles: seen.browserRecycles,
   };
 }
 
@@ -309,7 +372,11 @@ async function render(
   }
 }
 
-function createJob(testCase: Case, trace: Array<Record<string, unknown>>): RenderJob {
+function createJob(
+  testCase: Case,
+  trace: Array<Record<string, unknown>>,
+  seen: { browserRecycles: number | undefined },
+): RenderJob {
   return createRenderJob({
     fps: testCase.fps,
     quality: "draft",
@@ -320,13 +387,19 @@ function createJob(testCase: Case, trace: Array<Record<string, unknown>>): Rende
     logger: {
       info(message: string, meta?: Record<string, unknown>) {
         if (message === "[Render:trace]" && meta) trace.push(meta);
+        if (message.startsWith("[Render] Segmented capture complete") && meta) {
+          seen.browserRecycles = Number(meta.browserRecycles);
+        }
       },
       warn() {},
       error() {},
       debug() {},
     },
     producerConfig: resolveConfig({
-      browserGpuMode: "software",
+      // "hardware" is what keeps drawElement from being routed to screenshot capture as software
+      // rasterization; the engine still runs every gate and the self-verify on the render.
+      browserGpuMode: testCase.drawElement ? "hardware" : "software",
+      useDrawElement: testCase.drawElement ? true : undefined,
       concurrency: testCase.maxWorkers ?? "auto",
     }),
   });
@@ -345,11 +418,13 @@ async function renderOnce(testCase: Case, windowed: boolean, options: RenderOpti
   const label = `${testCase.name.replace(/\W+/g, "-")}-${windowed ? "windowed" : "full"}`;
   writeFileSync(join(root, "index.html"), composition(testCase));
   const trace: Array<Record<string, unknown>> = [];
-  const job = createJob(testCase, trace);
-  const restoreEnv = setRenderEnv(windowed, options.keepWorkDir);
+  const seen = { browserRecycles: undefined as number | undefined };
+  const job = createJob(testCase, trace, seen);
+  const restoreEnv = setRenderEnv(windowed, options.keepWorkDir, testCase.recycleEverySegments);
   const output = join(root, `${label}.mp4`);
   const { own } = watchWorkDirs(output, job.id);
   const sampler = options.sampleFolder ? sampleSegmentFrames(own) : NO_SAMPLER;
+  const onDemand = options.sampleFolder ? watchOnDemandFolders(own) : null;
   const kept: string[] = [];
   try {
     await executeRenderJob(job, root, output).catch((error: unknown) => {
@@ -357,12 +432,14 @@ async function renderOnce(testCase: Case, windowed: boolean, options: RenderOpti
     });
     if (options.keepWorkDir) kept.push(...own());
     return {
-      ...describeRun(job, output, trace),
+      ...describeRun(job, output, trace, seen),
       sampled: sampler.sampled,
       leftInSegmentFrames: leftInSegmentFrames(kept),
+      onDemandWithFrames: onDemand?.withFrames.size ?? 0,
     };
   } finally {
     sampler.stop();
+    onDemand?.stop();
     restoreEnv();
     for (const workDir of kept) rmSync(workDir, { recursive: true, force: true });
   }
@@ -376,9 +453,10 @@ function renderPair(testCase: Case): Promise<{ windowed: Run; full: Run }> {
   if (!pair) {
     pair = (async () => {
       const full = await render(testCase, false);
+      const inspects = testCase.name === PEAK_CASE || testCase.inspectsFolder === true;
       const windowed = await render(testCase, true, {
-        keepWorkDir: testCase.name === PEAK_CASE,
-        sampleFolder: testCase.name === PEAK_CASE,
+        keepWorkDir: inspects,
+        sampleFolder: inspects,
       });
       if (windowed.retried && !full.retried) {
         throw new Error(`${testCase.name}: only the windowed render needed a retry`);
@@ -397,6 +475,9 @@ function renderPair(testCase: Case): Promise<{ windowed: Run; full: Run }> {
 }
 
 const PEAK_CASE = "2 workers";
+const DRAW_ELEMENT_CASE = "drawElement capture with a browser recycle";
+/** The engine's `deGateReason`s for a host that cannot run drawElement: software or no WebGL, or a BeginFrame launch. */
+const HOST_GATES = new Set(["swiftshader", "webgl_unavailable", "beginframe_no_self_verify"]);
 // Four segments for two workers, so the window has something to hold back.
 const PEAK_SECONDS = 8;
 const CFR = "assets/cfr.mp4";
@@ -477,6 +558,16 @@ function cases(): Case[] {
     },
     {
       ...base,
+      name: DRAW_ELEMENT_CASE,
+      drawElement: true,
+      recycleEverySegments: 1,
+      inspectsFolder: true,
+      // Two segments, so the one recycle falls between them.
+      seconds: 4,
+      clips: [{ id: "clip", src: CFR, start: 0, duration: 4 }],
+    },
+    {
+      ...base,
       name: "motion blur, which declines the window",
       motionBlur: { samplesPerFrame: 2 },
       windowed: false,
@@ -545,6 +636,62 @@ describe.skipIf(!HAS_FFMPEG)("windowed source-video frames — real render", () 
       expectWindowing(testCase, windowed, full);
     }, 600_000);
   }
+
+  it("captures with drawElement where the host can run it, and names its gate where it cannot", async () => {
+    const testCase = cases().find((candidate) => candidate.name === DRAW_ELEMENT_CASE)!;
+    const { windowed, full } = await renderPair(testCase);
+
+    // `gateReason` is a `|`-joined set across the render's sessions.
+    const gates = [windowed, full].map((run) => run.drawElement.gateReason ?? "");
+    const gated = gates.every(
+      (gate) => gate !== "" && gate.split("|").every((r) => HOST_GATES.has(r)),
+    );
+    if (gated) {
+      if (process.env.HF_TEST_REQUIRE_DRAWELEMENT === "1") {
+        throw new Error(
+          `HF_TEST_REQUIRE_DRAWELEMENT=1 but drawElement was gated away (${gates.join(", ")}): ` +
+            "this host cannot run it (no GPU, or a BeginFrame launch)",
+        );
+      }
+      for (const run of [windowed, full]) {
+        const { drawElement } = run;
+        // Falling back is the contract here: the render completed, on the baseline capture, with no
+        // self-verify armed and none to fail.
+        expect(drawElement.mode).not.toContain("drawelement");
+        expect(drawElement.verifyArmed ?? 0).toBe(0);
+        expect(drawElement.selfVerifyFallback ?? false).toBe(false);
+      }
+      expect(windowed.videoFrameWindow).toBe("on");
+      expect(windowed.leftInSegmentFrames).toEqual([]);
+      console.warn(
+        `[windowedFrames] ${DRAW_ELEMENT_CASE}: drawElement did NOT run on this host (gate ${gates.join(", ")}): ` +
+          "no GPU, or a BeginFrame launch. Only the fallback was asserted; drawElement capture, self-verify " +
+          "and the on-demand hook are unexercised here. Run on a macOS or Windows host with a GPU to cover them.",
+      );
+      return;
+    }
+
+    for (const run of [windowed, full]) {
+      const { drawElement } = run;
+      // A fall back to screenshot capture, or past the capability or software gates, reads here.
+      expect(`${drawElement.mode} gate=${drawElement.gateReason}`).toBe(
+        "drawelement gate=undefined",
+      );
+      // Armed samples read off a video comp mean the ground truth had real frames, not black boxes.
+      expect(drawElement.verifyArmed ?? 0).toBeGreaterThan(0);
+      expect(drawElement.selfVerifyFallback).toBe(false);
+    }
+    expect(windowed.videoFrameWindow).toBe("on");
+    expect(windowed.browserRecycles ?? 0).toBeGreaterThanOrEqual(1);
+    // The ground truth went through the on-demand hook: a hook that injected nothing leaves no folder to see.
+    expect(windowed.onDemandWithFrames).toBeGreaterThan(0);
+    // The folder exists once the render closes and holds neither an `on-demand_*` leftover nor anything else.
+    expect(windowed.leftInSegmentFrames).toEqual([]);
+    console.log(
+      `[windowedFrames] ${DRAW_ELEMENT_CASE}: ${JSON.stringify(windowed.drawElement)}; ` +
+        `recycles=${windowed.browserRecycles}; onDemandWithFrames=${windowed.onDemandWithFrames}; left=${JSON.stringify(windowed.leftInSegmentFrames)}`,
+    );
+  }, 600_000);
 
   it("never holds more than workers x segment frames of source frames", async () => {
     const testCase = cases().find((candidate) => candidate.name === PEAK_CASE)!;

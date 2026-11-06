@@ -414,9 +414,9 @@ export interface CapturePerfSummary {
   chromeMemorySamples?: number;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
-   * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
-   * `3d_init_failed` | `supersampling` | `render_mode_hint`. Undefined when
-   * drawElement ran or was never attempted.
+   * to the baseline: `swiftshader` | `webgl_unavailable` | `beginframe_no_self_verify` |
+   * `css_effect:<fx>` | `at_risk_timeline` | `3d_init_failed` | `supersampling` |
+   * `render_mode_hint`. Undefined when drawElement ran or was never attempted.
    */
   deGateReason?: string;
   motionBlur?: PageMotionBlurSummary;
