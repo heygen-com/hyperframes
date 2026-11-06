@@ -31,7 +31,7 @@ That is all. The same attribute drives the browser editor preview and `hyperfram
 | `data-motion-blur-phase` | centred | When the shutter opens, in degrees of a frame, -360 to 360. The window starts at `t + phase / 360 / fps` and lasts `shutter / 360 / fps`. `0` opens on the frame, so the smear trails ahead of it; unset centres it, the same as minus half the shutter. Matches After Effects' Shutter Phase. |
 | `data-motion-blur-samples` | at least 32 | A fixed number of samples per frame, 2–64. Left unset, each mover gets at least 32, and about one per 2 px of smear when that is more, so a fast move never shows steps. |
 | `data-motion-blur-events` | off | `on` runs timeline callbacks (`onUpdate` and similar) while blur looks for movers, and at each sample when a callback changes an element's inline style or its box. Needed when the motion is set from a callback, such as a `render(t)` function, which blur cannot otherwise see. |
-| `data-motion-blur-tier` | `auto` | `capture` or `filter` forces one of the two ways blur is drawn (below). |
+| `data-motion-blur-tier` | `auto` | `auto` and `filter` draw with the filter tier; `capture` asks for the capture tier (below). |
 
 ## In the browser editor
 
@@ -43,15 +43,19 @@ Elements that move quickly in 2D: position, scale and rotation changes from GSAP
 
 ## Two ways it is drawn
 
-**Capture** copies each mover out of the page with Chrome's [HTML in Canvas](/guides/html-in-canvas) API and redraws it along its path. It draws turns and zooms truthfully: a spinning tile smears along its arc and its centre stays sharp, and a zoom streaks outward.
+**Filter** puts an SVG filter on each mover: copies of the element along its path, averaged, and softened along the motion. It is what `data-motion-blur-tier="auto"` (the default) draws with. It works in any Chrome and over a WebGL canvas. On a four-whip test it cost about what a render without blur costs; on two real films it cost more than capture (see Cost and limits). Turns and zooms are only softened, not streaked.
 
-**Filter** puts an SVG filter on each mover: copies of the element along its path, averaged, and softened along the motion. It works in any Chrome, over a WebGL canvas, and costs about what a render without blur costs. Turns and zooms are only softened, not streaked.
+**Capture** is opt-in with `data-motion-blur-tier="capture"`. It copies each mover out of the page with Chrome's [HTML in Canvas](/guides/html-in-canvas) API and redraws it along its path. It draws turns and zooms truthfully: a spinning tile smears along its arc and its centre stays sharp, and a zoom streaks outward. It has limits of its own, listed here (the filter tier's are listed under Cost and limits, and a few, such as `backdrop-filter`, apply to both), so ask for it only for a film whose spins and zooms need the streak:
 
-With `data-motion-blur-tier="auto"` (the default), blur uses the filter tier when every mover only translates and capture when anything turns or scales, because for translation the two look the same and the filter tier is much cheaper.
+- Anything in front of a mover is lost: a static panel, an overlay or a title card over a moving element is drawn behind its smear.
+- `mix-blend-mode` and `backdrop-filter` on a mover or its ancestor are not applied.
+- A CSS selector that reaches the root through its parent, such as `body > #root > .m`, stops matching once capture wraps the root.
+- A mover sliding into an `overflow: hidden` or clipped card drags the clip edge along, two overlapping movers carry each other's pixels, and content past the frame edge leaves a thin band.
+- In preview, the first frame after every play shows black for a moment.
 
 Capture needs a browser with HTML in Canvas. Chrome 157 and 158 builds exposed it without a flag in headless and Chrome-for-Testing builds; whether stable Chrome does is unverified. Chrome 155 and earlier need `chrome://flags/#html-in-canvas`.
 
-Blur uses the filter tier instead of capture when capture cannot run:
+A page that asks for capture gets the filter tier instead when capture cannot run:
 
 | Found in the composition | Why capture cannot draw it |
 | --- | --- |
@@ -75,17 +79,24 @@ npx hyperframes check
 
 | Finding | Severity | Meaning |
 | --- | --- | --- |
-| `motion_blur_filter_fallback` | info | Capture could not run, so the filter tier draws. The message names the cause and how to get capture back. |
+| `motion_blur_filter_fallback` | info | The page asked for capture, which could not run, so the filter tier draws. The message names the cause. |
 | `motion_blur_no_movers` | info | Blur is on but nothing moves fast enough to blur. If the motion is set from a callback, add `data-motion-blur-events="on"`. |
-| `motion_blur_unverified` | info | The check browser cannot run capture, so it drew with the filter tier. Render once to see capture. |
+| `motion_blur_unverified` | info | The page asks for capture and the check browser cannot run it, so it drew with the filter tier. Render once to see capture. |
 
 In the page, `window.__hfMotionBlur.report()` returns `state`, `tier`, `reason`, `reasonCode` and `movers`. A render logs one line per session with the tier, and a session-end line when any frames fell back to sharp (`failedFrames > 0`).
 
 ## Cost and limits
 
-- **Render time.** On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). Capture adds a second paint per blurred frame; the filter tier adds almost nothing.
-- **Editing.** With capture the root is wrapped only while playing or rendering; paused, it is plain DOM, so click-to-select works. The filter tier never wraps anything.
+- **Render time.** It varies by film. On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). On two real 1080p films the filter tier cost more than capture, measured as CPU seconds of the whole render (wall time was too noisy on a loaded machine): `spacex-launch` (77 movers, 39.5 s) took 547–552 CPU s with the filter tier, 302–320 with capture and 184–193 with no blur (three runs each, 2.9 times no blur); `k3-promo` (106 movers, 16.5 s) took 236, 205 and 117 (one run per arm, 2.0 times no blur). The two films do not order by mover count, and the cause of the difference was not isolated. The filter tier draws each mover as at least 32 offset copies per frame; capture adds a second paint per blurred frame.
+- **Editing.** The filter tier never wraps anything. With capture the root is wrapped only while playing or rendering; paused, it is plain DOM, so click-to-select works.
 - **Capture only.** Blurred preview can run at half the frame rate on heavy compositions, and a `<video>` drawn through the capture looks about 2–3% darker in the browser editor preview than in normal playback. Renders are not affected.
-- **Preview and render.** A browser without HTML in Canvas previews with the filter tier. A render then uses capture where the composition needs it, so a spin or zoom looks softer in that preview than in the render. Force one tier with `data-motion-blur-tier` for an exact match.
+- **Preview and render.** `auto` draws the same way in both. A page that asks for capture previews with the filter tier in a browser without HTML in Canvas, so a spin or zoom looks softer there than in the render.
 - **Worker count.** Output is not bit-identical between worker counts (around 60 dB PSNR), about the size of the difference chunking already causes.
 - **Not handled.** Pose errors under CSS `zoom`, `position: fixed` and `foreignObject`; a very short Web Animations API animation that falls between scan samples; a large see-through mover (a full-frame translucent sweep), which is left sharp while its fast children still blur. With capture, a mover is drawn above the static content, so a static element that should cover a mover does not.
+- **Limits of the filter tier** (the default), as measured on one-pattern test compositions:
+  - `::before` or `::after` content outside the mover's box is cut off.
+  - A mover's own `clip-path` or mask gets hard edges: the smear is clipped to the shape it has at that frame.
+  - A `position: fixed` child of a mover that moves via `left` jumps, because the filter makes the mover its containing block.
+  - A `:last-child` selector on the root's children also matches the `<svg>` the tier adds to the root (`nth-last-*` works the same way but was not measured).
+  - A visibility toggle inside the shutter window is drawn at full strength instead of half.
+  - `backdrop-filter` on a mover differs from the 32-sample oracle in the sweep (the backdrop only).

@@ -1943,8 +1943,8 @@ describe("filter fallback", () => {
     return { root, el, h: { ...h, seek } };
   }
 
-  it("draws with filters where html-in-canvas is missing, and says why", () => {
-    const { root, el, h } = movingHost();
+  it("draws with filters where html-in-canvas is missing and capture was asked for", () => {
+    const { root, el, h } = movingHost(CAPTURE);
     initCaptureMotionBlur(h);
     expect(win.__hfMotionBlur?.report()).toMatchObject({
       state: "on",
@@ -2045,7 +2045,7 @@ describe("filter fallback", () => {
       });
     });
 
-    it("takes the cheaper filter tier when every mover only translates", () => {
+    it("draws with the filter tier on auto, where capture could run, for a mover that translates", () => {
       installHtmlInCanvas();
       const { root, el, h } = movingHost();
       initCaptureMotionBlur(h);
@@ -2053,15 +2053,28 @@ describe("filter fallback", () => {
       expect(win.__hfMotionBlur?.report()).toMatchObject({
         state: "on",
         tier: "filter",
-        reasonCode: "translation-only",
+        reasonCode: "tier-auto",
       });
       expect(root.parentElement).toBe(document.body);
       expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
     });
 
-    it("keeps capture for a mover that turns", () => {
+    it("draws with the filter tier on auto for a mover that turns", () => {
       installHtmlInCanvas();
-      const { root, h } = turningHost({ "data-motion-blur": "on" });
+      const { root, el, h } = turningHost({ "data-motion-blur": "on" });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report()).toMatchObject({
+        tier: "filter",
+        reasonCode: "tier-auto",
+      });
+      expect(root.parentElement).toBe(document.body);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("keeps capture for a mover that turns when the page asks for it", () => {
+      installHtmlInCanvas();
+      const { root, h } = turningHost(CAPTURE);
       initCaptureMotionBlur(h);
       void paintCaptureMotionBlur(0.5, PLAY);
       expect(win.__hfMotionBlur?.report()).toMatchObject({ tier: "capture", reasonCode: null });

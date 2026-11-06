@@ -8,7 +8,7 @@ import {
   openFixture,
   type BlurWindow,
 } from "./__fixtures__/motionBlur/blurPage.js";
-import { FIXTURES } from "./__fixtures__/motionBlur/fixtures.js";
+import { FIXTURES, ROTATING_CARD } from "./__fixtures__/motionBlur/fixtures.js";
 import type { Rgba } from "./__fixtures__/blurDifferential.js";
 
 // A fixture with no `moving` times still slides its card in at 0.2 s: that is where blur on and blur off must differ.
@@ -77,6 +77,39 @@ describe.skipIf(!hasBrowser)("capture motion blur fixtures in Chrome", () => {
       } finally {
         await on.close();
       }
+    },
+    CASE_TIMEOUT_MS,
+  );
+
+  it(
+    "auto draws a rotating mover with the filter tier and a page that asks for capture keeps it",
+    async (ctx) => {
+      if (!supported) ctx.skip();
+      const f = ROTATING_CARD;
+      const size = { width: f.width, height: f.height };
+      const probeOn = async (tier?: "capture" | "filter") => {
+        const page = await openFixture(browser, f.html("on", tier), f.dpr, size);
+        try {
+          await captureFrame(page, PROBE_WHILE_CARD_SLIDES);
+          return await page.evaluate(() => (window as BlurWindow).__hfMotionBlur?.probe());
+        } finally {
+          await page.close();
+        }
+      };
+      const auto = await probeOn();
+      expect(auto).toMatchObject({
+        state: "on",
+        tier: "filter",
+        reasonCode: "tier-auto",
+        failedFrames: 0,
+      });
+      expect(auto?.movers).toBeGreaterThanOrEqual(1);
+      expect(await probeOn("capture")).toMatchObject({
+        state: "on",
+        tier: "capture",
+        reasonCode: null,
+        failedFrames: 0,
+      });
     },
     CASE_TIMEOUT_MS,
   );
