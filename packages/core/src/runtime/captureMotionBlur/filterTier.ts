@@ -102,6 +102,23 @@ function holdsFixedChild(el: HTMLElement): boolean {
   return false;
 }
 
+const CONTAINING_BLOCK_PROPERTIES = [
+  "transform",
+  "translate",
+  "rotate",
+  "scale",
+  "perspective",
+] as const;
+
+function makesContainingBlock(el: HTMLElement): boolean {
+  const style = getComputedStyle(el);
+  return (
+    CONTAINING_BLOCK_PROPERTIES.some((p) => (style[p] || "none") !== "none") ||
+    /transform|perspective|filter/.test(style.willChange ?? "") ||
+    /paint|layout|strict|content/.test(style.contain ?? "")
+  );
+}
+
 const strip = (el: HTMLElement): string => el.style.filter.replace(OWN, "").trim();
 
 export function createFilterTier(
@@ -117,6 +134,7 @@ export function createFilterTier(
   const readSeek = (t: number): void => host.seek(t, !readEvents);
   let defs: SVGSVGElement | null = null;
   let movers: HTMLElement[] = [];
+  let fixedHolders = new Set<HTMLElement>();
   let pads = new Map<HTMLElement, number>();
   let reader: ReturnType<typeof createPoseReader> | null = null;
   let scanned: unknown;
@@ -147,7 +165,8 @@ export function createFilterTier(
       landing?.stop();
     }
     readEvents = found.readEvents;
-    movers = found.movers.filter((el) => !holdsFixedChild(el));
+    movers = found.movers;
+    fixedHolders = new Set(movers.filter(holdsFixedChild));
     pads = found.pads;
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
@@ -216,6 +235,7 @@ export function createFilterTier(
     const plans: Array<[HTMLElement, FilterPlan]> = [];
     read.els.forEach((el, i) => {
       const frame = read.frames[i];
+      if (fixedHolders.has(el) && !makesContainingBlock(el)) return;
       const plan = frame && planFilter(frame, pads.get(el) ?? 0, width);
       if (plan) plans.push([el, plan]);
     });
