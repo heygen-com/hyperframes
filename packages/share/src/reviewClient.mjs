@@ -116,8 +116,8 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
     /** One page of the project's comments, every state. @param {string} id @param {URLSearchParams} query
      * @returns {Promise<import("./types/reviewWire.js").FeedbackPage>} */
     feedback: (id, query) => call("GET", `${project(id)}/feedback?${query}`),
-    /** A new version from a local MP4; an identical retry answers the same export.
-     * @param {string} id @param {import("./types/reviewWire.js").ExportRequest} body @returns {Promise<ExportDTO>} */
+    /** A new version from a local MP4. A body factory runs after sign-in on each attempt.
+     * @param {string} id @param {ExportRequest | (() => Promise<ExportRequest>)} body @returns {Promise<ExportDTO>} */
     createExport: (id, body) => call("POST", `${project(id)}/exports`, body),
     /** @param {string} id @param {string} videoId @returns {Promise<ExportDTO>} */
     readExport: (id, videoId) =>
@@ -211,12 +211,16 @@ function grantCreator(call, project, access) {
   };
 }
 
-/** @typedef {ReturnType<typeof reviewClient>} ReviewClient */
+/** @typedef {ReturnType<typeof reviewClient>} ReviewClient
+ * @typedef {import("./types/reviewWire.js").ExportRequest} ExportRequest */
 
 /** @param {(method: string, route: string, body?: unknown, headers?: Record<string,string>) => Promise<any>} call
  * @param {(id: string) => string} project @param {import("./types/access.js").ApiAccess} access */
 function managementClient(call, project, access) {
   return {
+    /** @param {string} id @param {{ title: string, expected_title: string }} body
+     * @returns {Promise<{title: string}>} */
+    updateTitle: (id, body) => call("PATCH", project(id), body),
     /** @param {string} spaceId @param {string | null} [cursor] @returns
      * {Promise<import("./types/reviewWire.js").ManagedReviewPage>} */
     listProjects: (spaceId, cursor = null) =>

@@ -11,6 +11,7 @@ export {
   reviewProjectId,
   localReviewProjects,
   reviewRecord,
+  reviewRecordPath,
   reviewSwitchPath,
   onRebound,
   rebindRecord,

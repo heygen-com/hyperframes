@@ -63,7 +63,11 @@ async function claim(candidate, lock, owner) {
   try {
     await fs.link(candidate, lock);
   } catch (error) {
-    if (!["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EINVAL"].includes(String(errorCode(error))))
+    if (
+      !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EINVAL", "EISDIR"].includes(
+        String(errorCode(error)),
+      )
+    )
       throw error;
     const handle = await open(lock, "wx", 0o600);
     let written = false;

@@ -114,7 +114,8 @@ export function signedInRequest({
         throw error instanceof AccountUnreachable ? offline() : error;
       });
       if (!signedIn || signedIn.token === refused) throw signedOut();
-      const reply = await send(signedIn, method, route, body, headers, answers, label);
+      const sending = typeof body === "function" ? await body() : body;
+      const reply = await send(signedIn, method, route, sending, headers, answers, label);
       if (reply.status !== 401 || refused)
         return { reply, heygen: signedIn.heygen, owner: signedIn.owner ?? null };
       refused = signedIn.token;

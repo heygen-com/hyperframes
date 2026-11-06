@@ -122,6 +122,8 @@ export interface ExportRequest {
   /** The synced snapshot the video was rendered from, sent only while the server's `share_files` is on. The server
    * refuses one it cannot match with 422 `snapshot_mismatch`. */
   snapshot?: SnapshotRef;
+  /** Whether this version addresses review feedback, when the host can tell. */
+  from_review?: "yes" | "no";
 }
 
 /** A composition-sync snapshot a review version carries, named in the snapshot's own workspace, which may differ from

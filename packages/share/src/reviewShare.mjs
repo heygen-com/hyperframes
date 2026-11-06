@@ -52,6 +52,9 @@ const recordPath = (projectPath, at = site()) =>
     at === channelSite() ? "review.json" : `review-${new URL(at).host}.json`,
   );
 
+/** The review metadata path for the current sign-in site. @param {string} projectPath */
+export const reviewRecordPath = (projectPath) => recordPath(projectPath);
+
 /** @param {unknown} value @returns {value is import("./types/reviewWire.js").RegisterProjectRequest} */
 function isRegistration(value) {
   return (

@@ -19,6 +19,7 @@ import {
   writeJsonAtomic,
 } from "./storage.mjs";
 import { ReviewFailed } from "./reviewClient.mjs";
+import { readFromReview, sharedFromReview } from "./fromReview.mjs";
 import { reviewProjectId } from "./reviewShare.mjs";
 import { fileSha256Base64, putFile } from "./reviewUpload.mjs";
 import { versionSentence } from "./reviewVersionSentences.mjs";
@@ -28,26 +29,29 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  * @typedef {import("./types/share.js").ReviewVersion} ReviewVersion */
 
 /** @typedef {import("./types/share.js").ReviewExportProgress} ReviewExportProgress
- * @typedef {{ duration: number, width: number, height: number }} VideoFacts */
+ * @typedef {{ duration: number, width: number, height: number }} VideoFacts
+ * @typedef {import("./fromReview.mjs").FromReview} FromReview
+ * @typedef {{ since: number, value?: "yes" | "no" }} ReviewSent
+ * @typedef {{ files: boolean, first: boolean, fromReview?: "yes" | "no" }} Added */
 
 /** `pending`: the create body as sent and its video once answered, so a retry is the same; `snapshotRefused`: the
  * server refused its snapshot, so it goes up video-only; `unanswered`: its create may have gone out and no answer has
  * said the server made nothing; `last`: the newest version.
  * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string | null,
- *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean } | null,
+ *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean, reviewSent?: ReviewSent } | null,
  *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean, checksum?: string }
  *   | null }} VersionRecord */
 
 /** `onAdded`: a version went ready, with whether it carries files and whether it is the page's first from here.
  * @typedef {{ onProgress?: (progress: ReviewExportProgress | null) => void, onUploaded?: () => Promise<void>,
- *   open?: () => boolean, onAdded?: (added: { files: boolean, first: boolean }) => void }} VersionHooks */
+ *   open?: () => boolean, onAdded?: (added: Added) => void }} VersionHooks */
 
 /** `projectId` overrides the recorded review project; `open`: a held video is watched only while the project is open.
  * `filesForExport`: the synced snapshot a new version carries, null for
  * none.
  * @typedef {VersionHooks & { projectPath: string, title: string, client: ReviewClient, put?: typeof putFile,
  *   sleep?: (ms: number) => Promise<void>, probe?: (file: string) => Promise<VideoFacts | null>, now?: () => number,
- *   projectId?: string | null, filesForExport?: FilesForRender }} VersionRequest */
+ *   projectId?: string | null, filesForExport?: FilesForRender, fromReview?: FromReview | null }} VersionRequest */
 
 /** The snapshot of `rendered`, the project as the export was rendered; null when the folder is not that render.
  * @typedef {(projectPath: string, rendered: string | null) => Promise<import("./types/reviewWire.js").SnapshotRef | null>}
@@ -152,7 +156,15 @@ const isPending = (value) =>
   isOptionalSavedId(value.projectId) &&
   (value.checkingSince === undefined || Number.isFinite(value.checkingSince)) &&
   isOptionalBoolean(value.snapshotRefused) &&
-  isOptionalBoolean(value.unanswered);
+  isOptionalBoolean(value.unanswered) &&
+  isOptionalReviewSent(value.reviewSent);
+
+/** @param {unknown} sent */
+const isOptionalReviewSent = (sent) =>
+  sent === undefined ||
+  (isJsonObject(sent) &&
+    Number.isFinite(sent.since) &&
+    (sent.value === undefined || sent.value === "yes" || sent.value === "no"));
 
 /** @param {unknown} value @returns {value is NonNullable<VersionRecord["last"]>} */
 function isLast(value) {
@@ -342,7 +354,7 @@ const unanswered = (error) =>
 async function createdExport(r, id, pending, kept) {
   if (pending.videoId) return { dto: await r.client.readExport(id, pending.videoId), pending };
   try {
-    return { dto: await r.client.createExport(id, pending.body), pending };
+    return await sendCreate(r, id, pending);
   } catch (error) {
     if (!unanswered(error)) await kept({ ...pending, unanswered: false });
     const refused = error instanceof ReviewFailed && error.reason === "snapshot_mismatch";
@@ -352,8 +364,23 @@ async function createdExport(r, id, pending, kept) {
     delete body.snapshot;
     const next = { ...pending, body, snapshotRefused: true };
     await kept(next);
-    return { dto: await r.client.createExport(id, next.body), pending: next };
+    return sendCreate(r, id, next);
   }
+}
+
+/** Keep the mark from the attempt the server answered, without persisting it in the idempotent body.
+ * @param {Required<VersionRequest>} r @param {string} id @param {NonNullable<VersionRecord["pending"]>} pending */
+async function sendCreate(r, id, pending) {
+  if (!r.fromReview) return { dto: await r.client.createExport(id, pending.body), pending };
+  const host = r.fromReview;
+  const { from_review: _, ...body } = pending.body;
+  const attempt = { mark: /** @type {ReviewSent | null} */ (null) };
+  const dto = await r.client.createExport(id, async () => {
+    const mark = await readFromReview(host, r.projectPath);
+    attempt.mark = mark;
+    return { ...body, ...(mark.value && { from_review: mark.value }) };
+  });
+  return { dto, pending: attempt.mark ? { ...pending, reviewSent: attempt.mark } : pending };
 }
 
 /** Bytes sent, reported when the whole percent moves, not per chunk (a 2 GiB file is ~32k chunks).
@@ -502,8 +529,8 @@ const spent = (error) =>
 
 /** A video that is done: ready goes on the record as the newest version, anything else says why.
  * @param {string} dir @param {VersionRecord} state @param {NonNullable<VersionRecord["pending"]>} pending
- * @param {string} id @param {ExportDTO} done @returns {Promise<Said | null>} */
-async function finish(dir, state, pending, id, done) {
+ * @param {string} id @param {ExportDTO} done @param {FromReview | null} fromReview @returns {Promise<Said | null>} */
+async function finish(dir, state, pending, id, done, fromReview) {
   const ready = done.status === "ready";
   const last = {
     fingerprint: pending.body.source_fingerprint ?? "",
@@ -514,6 +541,7 @@ async function finish(dir, state, pending, id, done) {
     checksum: pending.body.local_upload.checksum_sha256,
   };
   await writeState(dir, { pending: null, last: ready ? last : state.last });
+  if (ready) await sharedFromReview(fromReview, dir, pending.reviewSent?.since);
   return ready ? null : said(new ReviewFailed(200, done.error?.reason ?? ""));
 }
 
@@ -581,8 +609,11 @@ async function sendVersion(r, report, source, id, state) {
  * @param {NonNullable<VersionRecord["pending"]>} pending @param {string} id @param {ExportDTO} done @param {boolean} first */
 async function finishRun(r, state, pending, id, done, first) {
   if (going(done)) return stillGoing(done);
-  const failed = await finish(r.projectPath, state, pending, id, done);
-  if (!failed) r.onAdded({ files: Boolean(pending.body.snapshot), first });
+  const failed = await finish(r.projectPath, state, pending, id, done, r.fromReview);
+  if (!failed) {
+    const fromReview = pending.reviewSent?.value;
+    r.onAdded({ files: Boolean(pending.body.snapshot), first, ...(fromReview && { fromReview }) });
+  }
   return failed;
 }
 
@@ -601,6 +632,7 @@ export async function addVersion(request) {
     onProgress: () => {},
     open: () => true,
     filesForExport: async () => null,
+    fromReview: null,
     onAdded: () => {},
     ...request,
     projectId: request.projectId ?? null,
@@ -641,8 +673,8 @@ export async function addVersion(request) {
 /** The popover opening reads a held video again: a running watch reads now, and one that ran out reads the video
  * back once, so a video staff approved or refused since shows as it is. A read that finds it still held changes
  * nothing; Check again starts a new watch.
- * @param {string} projectPath @param {ReviewClient} client */
-export async function recheckHeld(projectPath, client) {
+ * @param {string} projectPath @param {ReviewClient} client @param {FromReview | null} [fromReview] */
+export async function recheckHeld(projectPath, client, fromReview = null) {
   const key = normalize(projectPath);
   if (inFlight.has(key)) return void (wakers.get(key) ?? (() => woken.add(key)))();
   const failed = failures.get(key);
@@ -664,7 +696,7 @@ export async function recheckHeld(projectPath, client) {
     ) {
       return;
     }
-    const failure = await finish(projectPath, state, current, id, done);
+    const failure = await finish(projectPath, state, current, id, done, fromReview);
     if (failure) failures.set(key, { ...failure, exportKey: failed.exportKey });
     else failures.delete(key);
   });
@@ -680,19 +712,19 @@ async function whenExportIdle(dir, run) {
 }
 
 /** Settle a saved upload after its host exits, without competing with an active uploader.
- * @param {string} projectPath @param {ReviewClient} client */
-export async function refreshReviewExport(projectPath, client) {
-  await whenExportIdle(projectPath, () => settleSavedExport(projectPath, client));
+ * @param {string} projectPath @param {ReviewClient} client @param {FromReview | null} [fromReview] */
+export async function refreshReviewExport(projectPath, client, fromReview = null) {
+  await whenExportIdle(projectPath, () => settleSavedExport(projectPath, client, fromReview));
 }
-/** @param {string} dir @param {ReviewClient} client */
-async function settleSavedExport(dir, client) {
+/** @param {string} dir @param {ReviewClient} client @param {FromReview | null} fromReview */
+async function settleSavedExport(dir, client, fromReview) {
   const state = await readState(dir);
   const pending = state.pending;
   const id = await reviewProjectId(dir);
   if (!pending?.videoId || !id || pending.projectId !== id) return;
   const done = await client.readExport(id, pending.videoId);
   if (going(done)) return;
-  const failure = await finish(dir, state, pending, id, done);
+  const failure = await finish(dir, state, pending, id, done, fromReview);
   const key = normalize(dir);
   if (failure) failures.set(key, { ...failure, exportKey: exportKeyOf(dir) });
   else failures.delete(key);
