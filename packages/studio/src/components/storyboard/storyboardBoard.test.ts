@@ -8,7 +8,7 @@ import {
   stillPath,
   touchesBoard,
 } from "./storyboardBoard";
-import { frameStart } from "./StoryboardBoardView";
+import { boardMode, frameStart } from "./StoryboardBoardView";
 
 const page = (body: string) => new DOMParser().parseFromString(`<body>${body}</body>`, "text/html");
 
@@ -144,5 +144,29 @@ describe("frameStart", () => {
   it("reads a frame's start from its range", () => {
     expect(frameStart("9.4 to 15.7s")).toBe(9.4);
     expect(frameStart("")).toBe(null);
+  });
+});
+
+describe("boardMode", () => {
+  const frame = { number: "01", title: "A", act: "", time: "", still: "", words: "" };
+
+  it("shows the page as written, with the reason, when it holds no frames or cannot be read", () => {
+    expect(boardMode({ state: "read", frames: [] }, false)).toMatchObject({
+      mode: "page",
+      reason: "No frames found, shown as written",
+    });
+    expect(boardMode({ state: "failed" }, false)).toMatchObject({
+      mode: "page",
+      reason: "Couldn't read the page, shown as written",
+    });
+  });
+
+  it("shows the frames, or the page when the person asks for it", () => {
+    expect(boardMode({ state: "read", frames: [frame] }, false)).toEqual({
+      mode: "frames",
+      frames: [frame],
+      reason: null,
+    });
+    expect(boardMode({ state: "read", frames: [frame] }, true).mode).toBe("page");
   });
 });

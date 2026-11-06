@@ -105,21 +105,28 @@ function frameInfo(doc: Document, el: HTMLElement, i: number): BoardFrame {
   const box = ownBox(el);
   const heading = box.querySelector(".scene-title, .label, [class*='title']");
   const first = heading?.firstElementChild ? text(heading.firstElementChild) : text(heading);
-  const time = (text(box.querySelector(".time")) || (text(heading).match(TIME)?.[0] ?? "")).replace(
-    /\s*[–-]\s*/,
-    " to ",
-  );
   const named = NUMBERED.exec(tidy(first));
-  const badge = /\d+/.exec(text(box.querySelector(".scene-badge")))?.[0];
   return {
-    number: named?.[1] ?? (badge ? pad(Number(badge)) : pad(i + 1)),
+    number: named?.[1] ?? badgeNumber(box) ?? pad(i + 1),
     title: named?.[2]?.trim() ?? tidy(first),
     act: actBefore(doc, el),
-    time,
+    time: timeOf(box, heading),
     still: el.querySelector("img")?.getAttribute("src") ?? "",
     // First by this order, not the page's: a .words box can hold the title and time before its .note.
     words: text(NOTE_PLACES.map((place) => box.querySelector(place)).find(Boolean)),
   };
+}
+
+/** The page's own range, read as the board writes one: "0.0 to 3.0s". */
+function timeOf(box: HTMLElement, heading: Element | null): string {
+  const raw = text(box.querySelector(".time")) || (text(heading).match(TIME)?.[0] ?? "");
+  return raw.replace(/\s*[\u2013-]\s*/, " to ");
+}
+
+/** A `.scene-badge` number, two digits, or undefined when the box has none. */
+function badgeNumber(box: HTMLElement): string | undefined {
+  const badge = /\d+/.exec(text(box.querySelector(".scene-badge")))?.[0];
+  return badge === undefined ? undefined : pad(Number(badge));
 }
 
 /** The act heading last before the frame, by its own words (not the times beside them). */

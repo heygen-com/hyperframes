@@ -18,22 +18,26 @@ export const frameStart = (time: string): number | null => {
   return at === undefined ? null : Number(at);
 };
 
+/** What the board area shows: the page as written, a wait, or the frames; and why, when it is not the frames. */
+export function boardMode(
+  read: StoryboardBoard["read"],
+  asWritten: boolean,
+): { mode: "page" | "loading" | "frames"; frames: BoardFrame[]; reason: string | null } {
+  if (read.state === "failed")
+    return { mode: "page", frames: [], reason: "Couldn't read the page, shown as written" };
+  if (read.state === "loading") return { mode: "loading", frames: [], reason: null };
+  if (!read.frames.length)
+    return { mode: "page", frames: [], reason: "No frames found, shown as written" };
+  return { mode: asWritten ? "page" : "frames", frames: read.frames, reason: null };
+}
+
 /**
  * The storyboard, drawn by Studio from the frames the agent's page holds: a board of stills, and one frame at a time.
  * Notes, drawings and the go are Desktop's (they go to its agent), so the bar hands the project there.
  */
 export function StoryboardBoardView({ projectId, board, onShowInPreview }: Props) {
-  const [open, setOpen] = useState<number | null>(null);
   const [asWritten, setAsWritten] = useState(false);
-  const frames = board.read.state === "read" ? board.read.frames : [];
-  const noFrames = board.read.state === "read" && frames.length === 0;
-  const showPage = asWritten || noFrames || board.read.state === "failed";
-  const openFrame = open !== null && !showPage ? frames[open] : undefined;
-
-  useEffect(() => {
-    if (open !== null && open >= frames.length) setOpen(frames.length ? frames.length - 1 : null);
-  }, [frames.length, open]);
-
+  const { mode, frames, reason } = boardMode(board.read, asWritten);
   const still = (frame: BoardFrame): string | null => {
     const path = stillPath(board.path, frame.still);
     return path ? projectFileUrl(projectId, path, board.revision) : null;
@@ -47,50 +51,68 @@ export function StoryboardBoardView({ projectId, board, onShowInPreview }: Props
       <BoardBar
         path={board.path}
         count={frames.length}
-        asWritten={showPage}
-        canToggle={!noFrames && board.read.state === "read"}
+        asWritten={mode === "page"}
+        canToggle={reason === null && mode !== "loading"}
         onToggle={() => {
           trackStudioEvent("storyboard_action", { action: asWritten ? "board" : "as_written" });
           setAsWritten((v) => !v);
         }}
-        reason={
-          noFrames
-            ? "No frames found, shown as written"
-            : board.read.state === "failed"
-              ? "Couldn't read the page, shown as written"
-              : null
-        }
+        reason={reason}
       />
       <div className="min-h-0 flex-1 overflow-auto">
-        {showPage ? (
+        {mode === "page" && (
           <PageAsWritten url={projectFileUrl(projectId, board.path, board.revision)} />
-        ) : board.read.state === "loading" ? (
+        )}
+        {mode === "loading" && (
           <p className="p-6 text-step-11 text-text-4">Reading the storyboard…</p>
-        ) : openFrame ? (
-          <OpenFrame
-            frame={openFrame}
-            index={open!}
-            count={frames.length}
-            src={still(openFrame)}
-            onStep={(to) => setOpen(Math.max(0, Math.min(frames.length - 1, to)))}
-            onClose={() => setOpen(null)}
-            onShowInPreview={() => {
-              trackStudioEvent("storyboard_action", { action: "show_in_preview" });
-              onShowInPreview(frameStart(openFrame.time));
-            }}
-          />
-        ) : (
-          <BoardGrid
-            frames={frames}
-            still={still}
-            onOpen={(i) => {
-              trackStudioEvent("storyboard_action", { action: "open_frame" });
-              setOpen(i);
-            }}
-          />
+        )}
+        {mode === "frames" && (
+          <FramesBody frames={frames} still={still} onShowInPreview={onShowInPreview} />
         )}
       </div>
     </div>
+  );
+}
+
+/** The board of stills, or one frame of it. */
+function FramesBody({
+  frames,
+  still,
+  onShowInPreview,
+}: {
+  frames: BoardFrame[];
+  still: (frame: BoardFrame) => string | null;
+  onShowInPreview: (seconds: number | null) => void;
+}) {
+  const [open, setOpen] = useState<number | null>(null);
+  useEffect(() => {
+    if (open !== null && open >= frames.length) setOpen(frames.length ? frames.length - 1 : null);
+  }, [frames.length, open]);
+  const frame = open === null ? undefined : frames[open];
+  if (!frame || open === null)
+    return (
+      <BoardGrid
+        frames={frames}
+        still={still}
+        onOpen={(i) => {
+          trackStudioEvent("storyboard_action", { action: "open_frame" });
+          setOpen(i);
+        }}
+      />
+    );
+  return (
+    <OpenFrame
+      frame={frame}
+      index={open}
+      count={frames.length}
+      src={still(frame)}
+      onStep={(to) => setOpen(Math.max(0, Math.min(frames.length - 1, to)))}
+      onClose={() => setOpen(null)}
+      onShowInPreview={() => {
+        trackStudioEvent("storyboard_action", { action: "show_in_preview" });
+        onShowInPreview(frameStart(frame.time));
+      }}
+    />
   );
 }
 
