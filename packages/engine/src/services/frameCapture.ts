@@ -2525,7 +2525,8 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
 function recordReadiness(session: CaptureSession, warnings: readonly CaptureWarning[]): void {
   recordCaptureWarnings(session, warnings);
   for (const warning of warnings) {
-    if (warning.code !== "media_readiness_timeout" || warning.details?.mediaType !== "image") continue;
+    if (warning.code !== "media_readiness_timeout" || warning.details?.mediaType !== "image")
+      continue;
     session.lateImages ??= new Set();
     for (const source of warning.details.sources ?? []) session.lateImages.add(source);
   }
@@ -2560,7 +2561,9 @@ export async function waitForShownLateImages(
   for (;;) {
     const { arrived, waiting, broken } = await session.page.evaluate(async (urls: string[]) => {
       const listed = new Set(urls);
-      const found = Array.from(document.querySelectorAll("img")).filter((img) => listed.has(img.src));
+      const found = Array.from(document.querySelectorAll("img")).filter((img) =>
+        listed.has(img.src),
+      );
       const loaded = found.filter((img) => img.complete && img.naturalWidth > 0);
       await Promise.allSettled(loaded.map((img) => img.decode()));
       const box = (img: HTMLImageElement) => img.getBoundingClientRect();
@@ -3179,7 +3182,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           `Continuing render. Affected videos will appear as blank/black frames.`,
       );
     }
-    recordReadiness(session, await collectMediaReadinessWarnings(page, skipVideoIds, pageReadyTimeout));
+    recordReadiness(
+      session,
+      await collectMediaReadinessWarnings(page, skipVideoIds, pageReadyTimeout),
+    );
     await recordLiveMapWarning(session, page);
 
     await recordSessionInitTelemetry(session, initStart);
@@ -3318,7 +3324,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           `Continuing render. Affected videos will appear as blank/black frames.`,
       );
     }
-    recordReadiness(session, await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout));
+    recordReadiness(
+      session,
+      await collectMediaReadinessWarnings(page, bfSkipVideoIds, pageReadyTimeout),
+    );
     await recordLiveMapWarning(session, page);
 
     await recordSessionInitTelemetry(session, initStart);
@@ -5353,7 +5362,11 @@ export async function captureFramesBatchPipelined(
   if (session.lateImages?.size) {
     const oneByOne: Array<{ frameIndex: number; encodeResult: Promise<Buffer> }> = [];
     for (const [i, frameIndex] of frameIndices.entries()) {
-      const { encodeResult } = await captureFrameToBufferPipelined(session, frameIndex, times[i] ?? 0);
+      const { encodeResult } = await captureFrameToBufferPipelined(
+        session,
+        frameIndex,
+        times[i] ?? 0,
+      );
       oneByOne.push({ frameIndex, encodeResult });
     }
     return oneByOne;
