@@ -38,6 +38,17 @@ export const fixtureNamed = (name: string): BlurFixture => {
   return f;
 };
 
+/** The fixture with its `data-motion-blur-tier` removed, so `auto` itself picks the tier (the filter tier). */
+function withoutTierAttribute(f: BlurFixture): BlurFixture {
+  const html = (blur: "on" | "off"): string => {
+    const pinned = f.html(blur);
+    const stripped = pinned.replace(/ data-motion-blur-tier="[a-z]+"/, "");
+    if (blur === "on" && stripped === pinned) throw new Error(`${f.name} pins no tier to remove`);
+    return stripped;
+  };
+  return { ...f, html };
+}
+
 /** A scratch directory for the suite, whose fontconfig draws grayscale text so DOM glyphs and the capture canvas agree. */
 export function useBlurScratch(): () => string {
   let root = "";
@@ -187,8 +198,12 @@ export function expectEqualFrames(
 }
 
 /** The frames of plan() -> renderChunk() -> assemble() with blur on equal a whole in-process render with blur on. */
-export async function expectChunksEqualWhole(root: string, name: string): Promise<void> {
-  const f = fixtureNamed(name);
+export async function expectChunksEqualWhole(
+  root: string,
+  name: string,
+  tier: "capture" | "auto" = "capture",
+): Promise<void> {
+  const f = tier === "auto" ? withoutTierAttribute(fixtureNamed(name)) : fixtureNamed(name);
   const whole = await renderWhole(root, f, "on", WHOLE_WORKERS);
   const chunked = await renderChunked(root, f, "on", "chunked-on");
   expectEqualFrames(name, compareEveryFrame(whole, chunked));

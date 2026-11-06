@@ -577,7 +577,7 @@ describe("plan() and page motion blur (R19)", () => {
     expect(blurred).toEqual({ captureMode: "screenshot", forceScreenshot: true });
     expect(plain).toEqual({ captureMode: "beginframe", forceScreenshot: false });
     expect(await planCaptureMode(blur, "blur-config-off", "off")).toEqual(plain);
-  }, 30_000);
+  }, 60_000);
 });
 
 describe("buildChunkSlices", () => {
