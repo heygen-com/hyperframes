@@ -16,6 +16,7 @@ import {
   createAssetContactSheet,
   createScrollContactSheet,
   createSvgContactSheet,
+  svgContactSheetLabel,
 } from "./contactSheet.js";
 
 function tempDir(): string {
@@ -310,4 +311,14 @@ describe("contact-sheet capture budget", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("svgContactSheetLabel", () => {
+  it("captions an svg with its file name, whatever separator the platform joins paths with", () => {
+    expect(svgContactSheetLabel(join("assets", "svgs", "logo.svg"))).toBe("logo");
+  });
+
+  it("only drops a trailing .svg", () => {
+    expect(svgContactSheetLabel(join("assets", "a.svg.backup.svg"))).toBe("a.svg.backup");
+  });
 });

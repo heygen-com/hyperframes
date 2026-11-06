@@ -266,6 +266,11 @@ export async function createAssetContactSheet(
   });
 }
 
+/** The caption under an SVG thumbnail: its file name without the extension. */
+export function svgContactSheetLabel(svgPath: string): string {
+  return basename(svgPath, ".svg");
+}
+
 /**
  * Contact sheet for SVGs — renders each SVG to a thumbnail PNG, then grids them.
  * Sharp supports SVG input natively, so no browser needed.
@@ -304,8 +309,6 @@ export async function createSvgContactSheet(
   if (svgPaths.length === 0) return [];
   const sharp = await loadSharp("contact sheets");
 
-  const svgFileNames = svgPaths.map((p) => p.split("/").pop()!);
-
   // Render ALL SVGs to PNG thumbnails first, then paginate the sheets
   const thumbSize = 200;
   const tmpDir = dirname(outputPath);
@@ -328,7 +331,7 @@ export async function createSvgContactSheet(
         .toBuffer();
       writeCaptureFileSync(tmpPath, thumb);
       tmpPaths.push(tmpPath);
-      labels.push(svgFileNames[i]!.replace(".svg", ""));
+      labels.push(svgContactSheetLabel(svgPath));
     } catch {
       // SVG might be malformed — skip
     }
