@@ -1,6 +1,6 @@
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
-import { seekGsapTimeline } from "./gsap";
+import { rerenderGsapTimelineAt, seekGsapTimeline } from "./gsap";
 import { producerStandIn } from "./gsapStandIn.test-helpers";
 import type { RuntimeTimelineLike } from "../types";
 
@@ -136,8 +136,44 @@ function panelAt(frames: number[], fps?: number, standIn = false): Map<number, n
   return opacity;
 }
 
+/** The panel at each frame through both steps of a real seek: the seek, then the runtime's re-render. */
+function panelThroughRuntimeSeek(frames: number[], standIn = false): Map<number, number> {
+  const { panel, timeline } = fadeInterruptedBySet(standIn);
+  const opacity = new Map<number, number>();
+  for (const frame of frames) {
+    const t = frame / SET_FPS;
+    if (!seekGsapTimeline(timeline, t, false, undefined, SET_FPS)) {
+      rerenderGsapTimelineAt(
+        {
+          totalTime: timeline.totalTime!.bind(timeline),
+          totalDuration: timeline.totalDuration?.bind(timeline),
+          getChildren: timeline.getChildren?.bind(timeline),
+        },
+        t,
+      );
+    }
+    opacity.set(frame, panel.opacity);
+  }
+  return opacity;
+}
+
 describe("a render where a set interrupts a running tween", () => {
   const preview = panelAt(range(0, 90));
+
+  it("keeps the set's value through the runtime's re-render, however frames are shared out", () => {
+    for (const standIn of [false, true]) {
+      for (const workers of [1, 2, 3, 4, 6]) {
+        for (let worker = 0; worker < workers; worker++) {
+          for (const [frame, opacity] of panelThroughRuntimeSeek(
+            range(worker, 90, workers),
+            standIn,
+          )) {
+            if (frame >= SET_FPS) expect([workers, frame, opacity]).toEqual([workers, frame, 1]);
+          }
+        }
+      }
+    }
+  });
 
   it("lands every frame where preview does when one worker renders in order", () => {
     for (const [frame, opacity] of panelAt(range(0, 90), SET_FPS)) {
