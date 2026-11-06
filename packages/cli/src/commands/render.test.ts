@@ -2370,6 +2370,9 @@ describe("normalizeStageCode", () => {
     expect(normalizeStageCode("Encoding frame 600/600")).toBe("encoding_video");
     expect(normalizeStageCode("Encoding frame 12/90")).toBe("encoding_video");
     expect(normalizeStageCode("Capturing frame 120/600 (6 workers)")).toBe("capturing_frame");
+    expect(normalizeStageCode("Checking effects, 240 of 240 frames")).toBe(
+      normalizeStageCode("Checking effects, 12 of 90 frames"),
+    );
     expect(normalizeStageCode("Streaming frame 3/40 (segment 1/2, 2 workers)")).toBe(
       "streaming_frame",
     );

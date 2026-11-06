@@ -3689,6 +3689,7 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
+    const EFFECT_SCAN_STAGE = "Checking effects";
     const startingFrameCapture = () =>
       updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
         code: "start_browsers",
@@ -3810,10 +3811,13 @@ async function executeRenderPipeline(input: {
         updateJobStatus(
           job,
           "rendering",
-          `Checking effects, ${scanned} of ${total} frames`,
+          `${EFFECT_SCAN_STAGE}, ${scanned} of ${total} frames`,
           25,
           onProgress,
         ),
+      onEffectScanEnd: () => {
+        if (job.currentStage.startsWith(EFFECT_SCAN_STAGE)) startingFrameCapture();
+      },
       requiresWebGpu: compositionRequiresWebGpu(compiled.html),
       // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
       // through CapturePerfSummary only exists on success; a mid-capture

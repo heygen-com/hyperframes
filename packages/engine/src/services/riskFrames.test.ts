@@ -140,6 +140,28 @@ describe("scanCssEffectLiveFrames", () => {
     }
   });
 
+  it("says the scan ended when it finishes, stops early over budget, or the page fails", async () => {
+    let ended = 0;
+    const onEnd = () => ended++;
+    await scanCssEffectLiveFrames(makePage(between(0, 0)), 10, 500, 500, { onEnd });
+    expect(ended).toBe(1);
+
+    let clock = 0;
+    const stoppedEarly = await scanCssEffectLiveFrames(makePage(between(0, 0)), 10, 5_000, 5_000, {
+      budgetMs: 1_000,
+      now: () => (clock += 500),
+      onEnd,
+    });
+    expect(stoppedEarly).toBeNull();
+    expect(ended).toBe(2);
+
+    const failing = { evaluate: () => Promise.reject(new Error("page gone")) } as unknown as Page;
+    await expect(scanCssEffectLiveFrames(failing, 10, 500, 500, { onEnd })).rejects.toThrow(
+      "page gone",
+    );
+    expect(ended).toBe(3);
+  });
+
   it("reports the frames scanned after each chunk", async () => {
     const seen: Array<[number, number]> = [];
 

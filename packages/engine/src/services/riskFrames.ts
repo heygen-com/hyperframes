@@ -82,6 +82,7 @@ interface ScanOptions {
   budgetMs?: number;
   now?: () => number;
   onProgress?: (scannedFrames: number, totalFrames: number) => void;
+  onEnd?: () => void;
 }
 
 /**
@@ -93,7 +94,21 @@ export async function scanCssEffectLiveFrames(
   fps: number,
   totalFrames: number,
   maxFrames: number,
-  { budgetMs = SCAN_BUDGET_MS, now = () => performance.now(), onProgress }: ScanOptions = {},
+  options: ScanOptions = {},
+): Promise<Set<number> | null> {
+  try {
+    return await scanLiveFrames(page, fps, totalFrames, maxFrames, options);
+  } finally {
+    options.onEnd?.();
+  }
+}
+
+async function scanLiveFrames(
+  page: Page,
+  fps: number,
+  totalFrames: number,
+  maxFrames: number,
+  { budgetMs = SCAN_BUDGET_MS, now = () => performance.now(), onProgress }: ScanOptions,
 ): Promise<Set<number> | null> {
   const live = new Set<number>();
   const started = now();

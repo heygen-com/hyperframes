@@ -262,6 +262,7 @@ export interface CaptureOptions {
   deVerifySamples?: number;
   deFrameFallback?: boolean;
   onEffectScanProgress?: (scannedFrames: number, totalFrames: number) => void;
+  onEffectScanEnd?: () => void;
 }
 
 export interface CaptureVideoMetadataHint {
