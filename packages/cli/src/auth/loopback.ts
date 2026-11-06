@@ -18,6 +18,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
+import { connectedPage, failurePage } from "./callbackPage.js";
 
 export interface LoopbackOptions {
   /** Expected `state` value — flow fails if it doesn't match. */
@@ -137,14 +138,14 @@ function handleRequest(
   const error = params.get("error");
   if (error) {
     const desc = params.get("error_description") ?? "";
-    respond(res, 400, errorPage(error, desc));
+    respond(res, 400, failurePage(error, desc));
     rejectResult(new Error(`OAuth authorize returned error: ${error}${desc ? ` — ${desc}` : ""}`));
     return;
   }
 
   const state = params.get("state");
   if (!state || !stateMatches(state, expectedState)) {
-    respond(res, 400, errorPage("invalid_state", "State parameter did not match."));
+    respond(res, 400, failurePage("invalid_state", "State parameter did not match."));
     rejectResult(new Error("OAuth state mismatch — possible CSRF, aborting."));
     return;
   }
@@ -154,13 +155,13 @@ function handleRequest(
     respond(
       res,
       400,
-      errorPage("missing_code", "Authorization code is missing from the redirect."),
+      failurePage("missing_code", "Authorization code is missing from the redirect."),
     );
     rejectResult(new Error("OAuth redirect did not include `code`."));
     return;
   }
 
-  respond(res, 200, successPage());
+  respond(res, 200, connectedPage());
   resolveResult({ code, redirectUri });
 }
 
@@ -190,27 +191,4 @@ function respond(res: ServerResponse, status: number, body: string): void {
       connection: "close",
     })
     .end(body);
-}
-
-function successPage(): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Signed in to HyperFrames</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0f14;color:#e6e8eb}main{max-width:480px;text-align:center;padding:32px;border-radius:12px;background:#11161d;border:1px solid #1f2630}h1{font-weight:600;margin:0 0 8px;color:#3CE6AC}p{margin:0;color:#9aa3ad}</style>
-</head><body><main><h1>You're signed in.</h1><p>You can close this tab and return to your terminal.</p></main></body></html>`;
-}
-
-function errorPage(code: string, description: string): string {
-  const safeCode = escapeHtml(code);
-  const safeDesc = escapeHtml(description);
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign-in failed</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a0b0b;color:#e6e8eb}main{max-width:480px;text-align:center;padding:32px;border-radius:12px;background:#1d1111;border:1px solid #301f1f}h1{font-weight:600;margin:0 0 8px;color:#ff7a7a}code{background:#2a1414;padding:2px 6px;border-radius:4px}p{margin:8px 0 0;color:#9aa3ad}</style>
-</head><body><main><h1>Sign-in failed</h1><p><code>${safeCode}</code></p><p>${safeDesc}</p></main></body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
