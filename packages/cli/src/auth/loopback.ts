@@ -18,7 +18,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
-import { connectedPage, couldNotConnectPage, notAuthorizedPage } from "./callbackPage.js";
+import { connectedPage, failurePage } from "./callbackPage.js";
 
 export interface LoopbackOptions {
   /** Expected `state` value — flow fails if it doesn't match. */
@@ -138,18 +138,14 @@ function handleRequest(
   const error = params.get("error");
   if (error) {
     const desc = params.get("error_description") ?? "";
-    respond(
-      res,
-      400,
-      error === "access_denied" ? notAuthorizedPage() : couldNotConnectPage(error, desc),
-    );
+    respond(res, 400, failurePage(error, desc));
     rejectResult(new Error(`OAuth authorize returned error: ${error}${desc ? ` — ${desc}` : ""}`));
     return;
   }
 
   const state = params.get("state");
   if (!state || !stateMatches(state, expectedState)) {
-    respond(res, 400, couldNotConnectPage("invalid_state", "State parameter did not match."));
+    respond(res, 400, failurePage("invalid_state", "State parameter did not match."));
     rejectResult(new Error("OAuth state mismatch — possible CSRF, aborting."));
     return;
   }
@@ -159,7 +155,7 @@ function handleRequest(
     respond(
       res,
       400,
-      couldNotConnectPage("missing_code", "Authorization code is missing from the redirect."),
+      failurePage("missing_code", "Authorization code is missing from the redirect."),
     );
     rejectResult(new Error("OAuth redirect did not include `code`."));
     return;

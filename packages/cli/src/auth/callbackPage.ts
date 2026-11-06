@@ -16,7 +16,6 @@ body{background:var(--bg);color:var(--ink);font:400 15px/1.45 "TT Norms",system-
 h1{margin:0;font-size:30px;line-height:1.1;font-weight:600;letter-spacing:-.02em;text-wrap:balance}
 p{margin:10px 0 0;color:var(--ink2);max-width:360px;text-wrap:pretty}
 code{font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2)}
-a.btn{align-self:flex-start;display:inline-block;margin-top:24px;padding:13px 22px;border-radius:100px;background:var(--btn);color:var(--btn-ink);font-weight:600;text-decoration:none}
 .panel{margin:14px;border-radius:24px;background:var(--panel);color:var(--panel-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
 .panel b{font-size:26px;font-weight:600;letter-spacing:-.01em}
 .panel small{color:rgb(244 241 236/.58);font-size:14px;margin-top:-10px}
@@ -39,7 +38,7 @@ function mark(width: number, height: number, id: string): string {
   return `<svg viewBox="4 22 92 56" width="${width}" height="${height}" aria-hidden="true"><defs>${gradient("a", "48.57", "25", "44.78", "71.94")}${gradient("b", "54.83", "73.84", "72.1", "32.89")}</defs><path fill="url(#a${id})" d="${MARK_A}"/><path fill="url(#b${id})" d="${MARK_B}"/></svg>`;
 }
 
-export function escapeHtml(s: string): string {
+function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -61,16 +60,15 @@ export function connectedPage(): string {
   });
 }
 
-/** Only for a person who pressed Cancel: any other ending is a failure and says so. */
-export function notAuthorizedPage(): string {
-  return page({
-    ok: false,
-    title: "Not authorized",
-    text: "Nothing was connected. Run the login again from your terminal.",
-  });
-}
-
-export function couldNotConnectPage(code: string, description: string): string {
+/** A Cancel says "Not authorized"; any other ending is a failure and says so. */
+export function failurePage(code: string, description: string): string {
+  if (code === "access_denied") {
+    return page({
+      ok: false,
+      title: "Not authorized",
+      text: "Nothing was connected. Run the login again from your terminal.",
+    });
+  }
   return page({
     ok: false,
     title: "Couldn't connect",
