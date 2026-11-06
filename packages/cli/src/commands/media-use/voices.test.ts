@@ -41,5 +41,8 @@ describe("media-use voices", () => {
     ]);
     expect(printed.whose).toMatch(/a teammate's included/);
     expect(printed.whose).toMatch(/never pick one by count, language or name/);
+    expect(printed.whose).toMatch(
+      /says it is theirs or that its owner agreed, whether they name it or give its id/,
+    );
   });
 });

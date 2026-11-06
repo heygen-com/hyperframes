@@ -8,7 +8,7 @@ export const examples: Example[] = [
 ];
 
 const WHOSE =
-  "Every clone this workspace can use, a teammate's included: HeyGen does not say who made one. Use a clone only when the person names it, or gives its id, as their own; never pick one by count, language or name.";
+  "Every clone this workspace can use, a teammate's included: HeyGen does not say who made one. Use a clone only when the person says it is theirs or that its owner agreed, whether they name it or give its id; never pick one by count, language or name.";
 
 export default defineCommand({
   meta: {
