@@ -572,7 +572,6 @@ export interface RenderOptions {
   variables?: Record<string, unknown>;
   entryFile?: string;
   exitAfterComplete?: boolean;
-  /** A caller still has work to do after the local artifact is ready. */
   embedded?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
