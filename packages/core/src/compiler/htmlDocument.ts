@@ -22,7 +22,6 @@ export interface SceneRootLookup {
   hasLiveRoot: boolean;
 }
 
-/** The scene root is the first `<template>` whose content holds a composition root. */
 export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
   const templates = Array.from(document.querySelectorAll("template")) as Element[];
