@@ -189,6 +189,15 @@ function toWin32LongPath(path: string): string {
 
 /** A fresh private folder `prefix` + 6 random characters in `parent`; mkdtemp needs the long-path form past 260 characters on Windows. */
 export function createStagingDir(parent: string, prefix: string): string {
-  const created = fs.mkdtempSync(toWin32LongPath(join(parent, prefix)));
-  return created.replace(/^\\\\\?\\(UNC\\)?/, (_prefix, unc) => (unc ? "\\\\" : ""));
+  const requested = join(parent, prefix);
+  const long = toWin32LongPath(requested);
+  const created = fs.mkdtempSync(long);
+  return long === requested ? created : withoutAddedLongPrefix(created);
+}
+
+function withoutAddedLongPrefix(path: string): string {
+  const unc = `${WIN32_LONG_PREFIX}UNC\\`;
+  return path.startsWith(unc)
+    ? `\\\\${path.slice(unc.length)}`
+    : path.slice(WIN32_LONG_PREFIX.length);
 }
