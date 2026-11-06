@@ -295,31 +295,42 @@ function parseStyleAttr(styleAttr: string): Record<string, string> {
   return result;
 }
 
-/** Serialize camelCase style map → style attribute string. */
-function serializeStyleAttr(styles: Record<string, string>): string {
-  return Object.entries(styles)
-    .map(([k, v]) => `${toKebab(k)}: ${v}`)
-    .join("; ");
-}
-
 export function getElementStyles(el: Element): Record<string, string> {
   const attr = el.getAttribute("style") ?? "";
   return parseStyleAttr(attr);
 }
 
 export function setElementStyles(el: Element, updates: Record<string, string | null>): void {
-  const current = getElementStyles(el);
-  for (const [prop, value] of Object.entries(updates)) {
-    // Stored map is keyed camelCase (parseStyleAttr); custom props (--foo) stay
-    // verbatim. Normalize the incoming key the same way for both set and delete.
-    const key = toCamel(prop);
-    if (value === null) {
-      delete current[key];
-    } else {
-      current[key] = value;
+  // Patch the authored declaration list instead of rebuilding it from the
+  // collapsed property map (#6267). A duplicate declaration — an earlier
+  // `color: red !important` followed by `color: blue` — is what the browser
+  // renders from, and parseStyleAttr's last-wins map drops it, so rebuilding
+  // silently changed the element's color during an unrelated edit.
+  // Declarations the update does not name keep their value, priority, position
+  // and spacing. A named property is rewritten at its first declaration (as
+  // CSSOM setProperty does): the set value replaces it without priority, later
+  // duplicates of the same property are dropped, and a property the attribute
+  // did not declare is appended at the end.
+  const updatesByCamel = new Map(Object.entries(updates).map(([p, v]) => [toCamel(p), v] as const));
+  const declared = new Set<string>();
+  const kept = splitStyleDeclarations(el.getAttribute("style") ?? "")
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .flatMap((text) => {
+      const idx = text.indexOf(":");
+      const key = idx === -1 ? null : toCamel(text.slice(0, idx).trim());
+      if (key === null || !updatesByCamel.has(key)) return [text];
+      if (declared.has(key)) return [];
+      declared.add(key);
+      const value = updatesByCamel.get(key)!;
+      return value === null ? [] : [`${toKebab(key)}: ${value}`];
+    });
+  for (const [key, value] of updatesByCamel) {
+    if (value !== null && !declared.has(key)) {
+      kept.push(`${toKebab(key)}: ${value}`);
     }
   }
-  const serialized = serializeStyleAttr(current);
+  const serialized = kept.join("; ");
   if (serialized) {
     el.setAttribute("style", serialized);
   } else {
