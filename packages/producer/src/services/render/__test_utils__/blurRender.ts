@@ -2,7 +2,7 @@
 // that moved, a blur-on render must equal the blur-off render frame by frame. A PNG sequence is
 // lossless and does not encode while capturing, so each worker captures one contiguous
 // block of frames and every block but the first starts mid-film. Needs Chrome + ffmpeg: integration lane.
-// The suites share this module and split the fixtures between two files to stay inside the flake gate's run limit.
+// The blur render suites share these helpers.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -205,8 +205,12 @@ function defineFixtureCases(f: BlurFixture): void {
   });
 }
 
-export function defineBlurRenderSuite(title: string, fixtureNames: readonly string[]): void {
-  describe.skipIf(!HAS_FFMPEG && !ON_CI)(title, () => {
+export function defineBlurRenderSuite(
+  suite: typeof describe,
+  title: string,
+  fixtureNames: readonly string[],
+): void {
+  suite.skipIf(!HAS_FFMPEG && !ON_CI)(title, () => {
     let priorFontconfig: string | undefined;
 
     beforeAll(() => {
