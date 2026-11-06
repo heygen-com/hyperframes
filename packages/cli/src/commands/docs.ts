@@ -67,12 +67,22 @@ function docsDir(): string {
   return existsSync(devPath) ? devPath : builtPath;
 }
 
-function formatInlineCode(line: string): string {
-  // Replace inline backtick spans with accented text
-  return line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
+function formatInline(line: string): string {
+  // Split on inline backtick spans first: markdown is literal inside code, so
+  // a `**` there stays one. Only the prose around them gets bold rendered --
+  // c.bold no-ops to plain text off a TTY, which strips the markers instead.
+  return line
+    .split(/(`[^`]+`)/g)
+    .map((part, index) => {
+      if (index % 2 === 1) {
+        return c.accent(part.slice(1, -1));
+      }
+      return part.replace(/\*\*([^*]+)\*\*/g, (_match, bold: string) => c.bold(bold));
+    })
+    .join("");
 }
 
-function renderMarkdown(content: string): void {
+export function renderMarkdown(content: string): void {
   const lines = content.split("\n");
 
   for (const line of lines) {
@@ -95,13 +105,13 @@ function renderMarkdown(content: string): void {
 
     // List items
     if (line.startsWith("- ")) {
-      const rest = formatInlineCode(line.slice(2));
+      const rest = formatInline(line.slice(2));
       console.log(`${c.dim("  \u2022")} ${rest}`);
       continue;
     }
 
     // Everything else
-    console.log(formatInlineCode(line));
+    console.log(formatInline(line));
   }
 }
 

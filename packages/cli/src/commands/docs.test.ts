@@ -2,7 +2,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { renderMarkdown } from "./docs.js";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
 const EXAMPLES_DIR = join(REPO_ROOT, "registry", "examples");
@@ -61,5 +62,32 @@ describe("docs topics", () => {
     for (const file of files) {
       expect(readdirSync(join(REPO_ROOT, "packages", "cli", "src", "docs"))).toContain(file);
     }
+  });
+});
+
+describe("renderMarkdown", () => {
+  function captureOutput(content: string): string {
+    const lines: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts: unknown[]) => void lines.push(parts.map(String).join(" ")));
+    try {
+      renderMarkdown(content);
+    } finally {
+      log.mockRestore();
+    }
+    return lines.join("\n");
+  }
+
+  it("renders bold spans so no ** marker survives the output", () => {
+    const out = captureOutput("see **data-composition-variables** below\n- and **timing** too");
+    expect(out).toContain("data-composition-variables");
+    expect(out).toContain("timing");
+    expect(out).not.toContain("**");
+  });
+
+  it("keeps ** literal inside inline code spans", () => {
+    const out = captureOutput("pass `**not prose**` through");
+    expect(out).toContain("**not prose**");
   });
 });
