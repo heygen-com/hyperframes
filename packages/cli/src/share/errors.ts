@@ -1,9 +1,8 @@
 import { ReviewFailed, reviewSentence } from "@hyperframes/share";
 import { isAuthError } from "../auth/errors.js";
+import { CliUsageError } from "../utils/commandResult.js";
 
 const HINTS: Record<string, string> = {
-  audience_required:
-    "Choose an audience with --public, --team, --invite-only or --private. --yes is not audience consent.",
   review_project_limit_reached:
     "Your workspace has used its five free shared projects. Update an existing share, or manage and remove one to free a slot. Turning a link off does not free a slot.",
   review_subscription_required:
@@ -16,6 +15,7 @@ const HINTS: Record<string, string> = {
     "This project has no shared review yet. Run hyperframes share with an explicit audience.",
 };
 export function shareError(error: unknown): { code: string; message: string } {
+  if (error instanceof CliUsageError) return { code: error.code, message: error.message };
   if (isAuthError(error))
     return {
       code: error.code.toLowerCase(),

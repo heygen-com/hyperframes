@@ -75,7 +75,7 @@ describe("share operation consent and identity", () => {
   });
   it("never chooses an audience for unattended first share", async () => {
     await expect(createShareService("/project").run({ action: "share" })).rejects.toMatchObject({
-      reason: "audience_required",
+      code: "audience_required",
     });
     expect(mocks.render).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
@@ -111,6 +111,17 @@ describe("share operation consent and identity", () => {
     mocks.version.mockResolvedValue({ last: { current: false }, source: "ready" });
     const result = await createShareService("/project").run({ action: "update" });
     expect(result).toMatchObject({ state: "processing", ready: false, url: null });
+  });
+  it("reports rejection discovered after the upload watch ends", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.add.mockResolvedValue(null);
+    mocks.refresh.mockResolvedValueOnce(undefined).mockImplementationOnce(async () => {
+      mocks.version.mockResolvedValue({ last: null, source: "ready", failure: "Video rejected." });
+    });
+
+    await expect(createShareService("/project").run({ action: "update" })).rejects.toThrow(
+      "Video rejected.",
+    );
   });
   it("does not silently upload changed edits while resuming first share", async () => {
     mocks.status.mockResolvedValue(shared);

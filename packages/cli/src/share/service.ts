@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { CliUsageError } from "../utils/commandResult.js";
 import {
   addVersion,
   pendingReviewExport,
@@ -90,7 +91,11 @@ function retrievesExisting(current: ShareState, input: ShareAction) {
 }
 async function preflightFirst(dir: string, client: ReviewClient, input: ShareAction) {
   const audience = input.audience;
-  if (!audience) throw new ReviewFailed(400, "audience_required");
+  if (!audience)
+    throw new CliUsageError(
+      "Choose an audience with --public, --team, --invite-only or --private. --yes is not audience consent.",
+      { code: "audience_required" },
+    );
   const spaces = await client.spaces();
   const space = selectSpace(spaces, input.space);
   if (!space || !space.can_create_review) throw new ReviewFailed(403, "workspace_cannot_share");
@@ -134,6 +139,7 @@ export function createShareService(
       title: basename(dir),
       client,
       onProgress: progress,
+      allowPending: true,
       onAdded: () => {
         added = true;
       },
@@ -141,6 +147,7 @@ export function createShareService(
     });
     if (failure) throw new Error(failure);
     const result = await status();
+    if (result.version.failure) throw new Error(result.version.failure);
     if (!added && !result.version.last?.current)
       return { ...result, state: "processing", ready: false, url: null };
     return result;

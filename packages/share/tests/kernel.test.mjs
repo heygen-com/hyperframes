@@ -12,6 +12,7 @@ import {
   shareForReview,
   reviewRecord,
   addVersion,
+  pendingReviewExport,
   reviewVersion,
   refreshReviewExport,
   putFile,
@@ -145,6 +146,45 @@ test("HTML stamps and generated render metadata do not dirty the shared source",
   assert.equal(await projectFingerprint(dir), before);
   await writeFile(join(dir, "index.html"), '<div data-hf-id="123">Changed</div>');
   assert.notEqual(await projectFingerprint(dir), before);
+});
+test("a host can accept a version that is still screening when it stops waiting", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let video = {
+    status: "screening",
+    screening_state: "held",
+    video_id: "vid",
+    version_id: "v1",
+    exported_at: "2026-11-04T00:00:00Z",
+  };
+  api.createExport = t.mock.fn(async () => video);
+  api.readExport = async () => video;
+  const onAdded = t.mock.fn();
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: api,
+    probe: async () => ({ width: 1920, height: 1080, duration: 1 }),
+    open: () => false,
+    onAdded,
+  };
+
+  assert.ok(await addVersion(request));
+  assert.equal((await reviewVersion(dir)).held, true);
+  assert.equal(await addVersion({ ...request, allowPending: true }), null);
+  assert.equal((await pendingReviewExport(dir)).videoId, "vid");
+  assert.equal((await reviewVersion(dir)).failure, null);
+  assert.equal(onAdded.mock.callCount(), 0);
+  assert.equal(api.createExport.mock.callCount(), 1);
+
+  video = { ...video, status: "ready" };
+  await refreshReviewExport(dir, api);
+  assert.equal(await pendingReviewExport(dir), null);
+  assert.equal((await reviewVersion(dir)).last.current, true);
 });
 const moduleUrl = new URL("../src/index.mjs", import.meta.url).href;
 function child(script, args) {
