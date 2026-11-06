@@ -4,7 +4,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   createStagingDir,
   atomicTempPath,
@@ -562,24 +562,23 @@ describe("createStagingDir", () => {
     const first = createStagingDir(parent, ".stage-");
     const second = createStagingDir(parent, ".stage-");
     expect(first).not.toBe(second);
-    expect(first).toMatch(/\.stage-[A-Za-z0-9]{6}$/);
+    expect(first).toBe(join(parent, basename(first)));
+    expect(basename(first)).toMatch(/^\.stage-[A-Za-z0-9]{6}$/);
     expect(fs.statSync(first).isDirectory()).toBe(true);
     if (process.platform !== "win32") expect(fs.statSync(first).mode & 0o777).toBe(0o700);
   });
 
-  it("tries another name when one is taken, and gives up after five", () => {
-    const parent = root();
-    expect(createStagingDir(parent, ".s-", () => "same")).toBe(join(parent, ".s-same"));
-    const names = ["same", "same", "next"];
-    expect(createStagingDir(parent, ".s-", () => names.shift() ?? "x")).toBe(
-      join(parent, ".s-next"),
-    );
-    expect(() => createStagingDir(parent, ".s-", () => "same")).toThrow(/EEXIST/);
+  it("does not create the parent", () => {
+    expect(() => createStagingDir(join(root(), "missing"), ".s-")).toThrow(/ENOENT/);
   });
 
-  it("does not retry a failure other than a taken name", () => {
-    const suffix = vi.fn(() => "x");
-    expect(() => createStagingDir(join(root(), "missing"), ".s-", suffix)).toThrow(/ENOENT/);
-    expect(suffix).toHaveBeenCalledTimes(1);
+  it.runIf(process.platform === "win32")("works when the full path passes 260 characters", () => {
+    let parent = root();
+    while (parent.length < 280) parent = join(parent, "d".repeat(40));
+    fs.mkdirSync(parent, { recursive: true });
+    const dir = createStagingDir(parent, ".stage-");
+    expect(dir.length).toBeGreaterThan(260);
+    expect(dir.startsWith("\\\\?\\")).toBe(false);
+    expect(fs.statSync(dir).isDirectory()).toBe(true);
   });
 });

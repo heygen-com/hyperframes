@@ -176,25 +176,23 @@ function errorCode(error: unknown): string {
   return String((error as NodeJS.ErrnoException)?.code);
 }
 
-const STAGING_NAME_TRIES = 5;
-const STAGING_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const WIN32_LONG_PREFIX = "\\\\?\\";
 
-const randomStagingSuffix = () =>
-  Array.from(randomBytes(6), (byte) => STAGING_ALPHABET[byte % STAGING_ALPHABET.length]).join("");
+/** The path in Windows' `\\?\` form, which lifts the 260-character limit; unchanged elsewhere. */
+function longPath(path: string): string {
+  if (process.platform !== "win32") return path;
+  const full = resolve(path);
+  if (full.startsWith(WIN32_LONG_PREFIX)) return full;
+  return full.startsWith("\\\\")
+    ? `${WIN32_LONG_PREFIX}UNC\\${full.slice(2)}`
+    : `${WIN32_LONG_PREFIX}${full}`;
+}
 
-/** A fresh private directory `prefix` + 6 random letters or digits in `parent`; mkdtemp fails past 260 characters on Windows. */
-export function createStagingDir(
-  parent: string,
-  prefix: string,
-  suffix: () => string = randomStagingSuffix,
-): string {
-  for (let attempt = 1; ; attempt++) {
-    const dir = join(parent, `${prefix}${suffix()}`);
-    try {
-      fs.mkdirSync(dir, { mode: 0o700 });
-      return dir;
-    } catch (error) {
-      if (errorCode(error) !== "EEXIST" || attempt >= STAGING_NAME_TRIES) throw error;
-    }
-  }
+/**
+ * A fresh private directory `prefix` + 6 random letters or digits in `parent`. Node's mkdtemp, unlike
+ * mkdir, is not given the long-path form, so past 260 characters on Windows it needs it spelled out.
+ */
+export function createStagingDir(parent: string, prefix: string): string {
+  const created = fs.mkdtempSync(longPath(join(parent, prefix)));
+  return created.replace(/^\\\\\?\\(UNC\\)?/, (_prefix, unc) => (unc ? "\\\\" : ""));
 }
