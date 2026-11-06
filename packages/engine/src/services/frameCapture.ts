@@ -84,9 +84,10 @@ import {
 import {
   classifyGpuRenderer,
   detectGpuBackend,
+  drawElementGate,
+  type DrawElementGateReason,
   injectDrawElementCanvas,
   captureDrawElementFrame,
-  resolveDrawElementCaptureMode,
   forcePreservedDrawingBuffer,
   instrumentAcceleratedCanvases,
   initDrawElementWorkerEncode,
@@ -971,6 +972,18 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
+const DE_GATE_MESSAGES: Record<DrawElementGateReason, string> = {
+  swiftshader:
+    "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
+    "parity-or-slower; see fast-capture-limitations.md)",
+  webgl_unavailable:
+    "WebGL is unavailable (no GPU behind this browser, so it rasterizes in software and " +
+    "drawElement has no GPU egress to skip)",
+  beginframe_no_self_verify:
+    "this browser was launched for BeginFrame capture, whose self-verify truth page has no " +
+    "BeginFrame driver, so drawElement frames could not be checked",
+};
+
 /**
  * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
  * init paths (called after the page is fully ready). When `useDrawElement` is
@@ -1125,18 +1138,21 @@ async function initDrawElementOrTransparentBackground(
     // Both reproduced on Chrome <=150 (video+caption-fade ~12 dB; stacked fade
     // 24.5 dB) and both render correctly on 151 (verified: video+nested-fade repro
     // PSNR=inf; efb59c5b 24.5→47.4 dB, 0 damaged frames). 151 is the pinned floor.
-    const mode = resolveDrawElementCaptureMode(session.isSwiftShader, transparent);
-    if (mode === "screenshot") {
-      session.deGateReason = "swiftshader";
-      session.deFallbackTrigger = "swiftshader";
+    const gateReason = drawElementGate({
+      backend: gpuBackend,
+      launchCaptureMode: session.launchCaptureMode,
+      forceDE,
+    });
+    if (gateReason !== null) {
+      session.deGateReason = gateReason;
+      session.deFallbackTrigger = gateReason;
       // Fall back to the browser's LAUNCH mode, not unconditionally to
       // "screenshot": on a BeginFrame-launched browser (Linux fast capture)
       // Page.captureScreenshot hangs for the full protocol timeout, while
       // beginFrameCapture is the platform's normal baseline path.
       console.error(
         `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
-          "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
-          "parity-or-slower; see fast-capture-limitations.md)",
+          DE_GATE_MESSAGES[gateReason],
       );
       await routeToFallback();
     } else {

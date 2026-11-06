@@ -672,7 +672,7 @@ export interface RenderPerfSummary {
     parallelRouter?: string;
     /** Worker count the auto-resolution chose BEFORE the router pinned it to 3 — the single-worker-inversion counterfactual. Only set when the router fired. */
     preRouterWorkers?: number;
-    /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
+    /** Engine init-time gate: swiftshader | webgl_unavailable | beginframe_no_self_verify | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Low-cardinality GPU bucket from DE session init (`<backend>/<vendor>`, e.g. `d3d11/nvidia`); |-joined across parallel sessions (bounded: one bucket per distinct backend on the host). */
     gpuRenderer?: string;
