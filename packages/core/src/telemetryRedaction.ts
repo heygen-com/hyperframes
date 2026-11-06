@@ -2,7 +2,9 @@ const MAX_TELEMETRY_STRING_LENGTH = 240;
 
 function truncateTelemetryString(value: string, maxLength: number): string {
   if (value.length <= maxLength) return value;
-  return `${value.slice(0, maxLength - 1)}…`;
+  let end = maxLength - 1;
+  if (end > 0 && /[\uD800-\uDBFF]/.test(value[end - 1] ?? "")) end -= 1;
+  return `${value.slice(0, end)}…`;
 }
 
 /** Strips http(s) URL queries, and any signing parameter left without its URL (e.g. after a cut). */
