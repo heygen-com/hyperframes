@@ -68,10 +68,17 @@ describe("isTemplateEntry", () => {
     expect(locateSceneRoot(html).root?.getAttribute("data-composition-id")).toBe("scene");
   });
 
-  it("takes the first template that holds a composition root when several do", () => {
-    const second = `<div data-composition-id="later"></div>`;
-    const html = `<template>${ROOT}</template><template>${second}</template>`;
-    expect(locateSceneRoot(html).root?.getAttribute("data-composition-id")).toBe("scene");
+  it("refuses a file whose several templates each hold a composition root, naming them", () => {
+    const html = `<template id="intro">${ROOT}</template><template><div data-composition-id="later"></div></template>`;
+    expect(() => locateSceneRoot(html)).toThrow(
+      'This file has more than one scene template, so it is unclear which one to render: template #1 (id="intro") holding composition "scene"; template #2 holding composition "later". Keep one composition root per file.',
+    );
+    expect(() => isTemplateEntry(html)).toThrow(/more than one scene template/);
+  });
+
+  it("does not refuse when a live root makes the file a plain entry", () => {
+    const html = `<template>${ROOT}</template><template>${ROOT}</template><div data-composition-id="live"></div>`;
+    expect(isTemplateEntry(html)).toBe(false);
   });
 
   it("reports no root when no template holds a composition root", () => {

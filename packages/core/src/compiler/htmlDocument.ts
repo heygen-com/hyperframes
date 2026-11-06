@@ -16,24 +16,43 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
 
+interface SceneTemplate {
+  position: number;
+  id: string | null;
+  root: Element;
+}
+
 export interface SceneRootLookup {
   root: Element | null;
   hasTemplate: boolean;
   hasLiveRoot: boolean;
 }
 
+function describeSceneTemplate({ position, id, root }: SceneTemplate): string {
+  const label = id ? `template #${position} (id="${id}")` : `template #${position}`;
+  return `${label} holding composition "${root.getAttribute("data-composition-id")}"`;
+}
+
 export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
-  const templates = Array.from(document.querySelectorAll("template")) as Element[];
   const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
-  let root: Element | null = null;
-  for (const template of templates) {
-    root = parseHTML(template.innerHTML).document.querySelector(
+  const templates = Array.from(document.querySelectorAll("template")) as Element[];
+  const sceneTemplates = templates.flatMap((template, index) => {
+    const root = parseHTML(template.innerHTML).document.querySelector(
       "[data-composition-id]",
     ) as Element | null;
-    if (root) break;
+    return root ? [{ position: index + 1, id: template.getAttribute("id"), root }] : [];
+  });
+  if (!liveRoot && sceneTemplates.length > 1) {
+    throw new Error(
+      `This file has more than one scene template, so it is unclear which one to render: ${sceneTemplates.map(describeSceneTemplate).join("; ")}. Keep one composition root per file.`,
+    );
   }
-  return { root, hasTemplate: templates.length > 0, hasLiveRoot: liveRoot !== null };
+  return {
+    root: sceneTemplates[0]?.root ?? null,
+    hasTemplate: templates.length > 0,
+    hasLiveRoot: liveRoot !== null,
+  };
 }
 
 export function isTemplateEntry(html: string): boolean {
