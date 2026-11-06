@@ -5,13 +5,14 @@
 import { firstReviewAudience } from "./reviewAudience.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirInside } from "./storage.mjs";
-import { readJsonOr, writeJsonAtomic } from "./storage.mjs";
+import { writeJsonAtomic } from "./storage.mjs";
 import { ReviewFailed } from "./reviewClient.mjs";
 import {
   applyFirstAudience,
   listSpaces,
   oneAtATime,
   projectLine,
+  readReviewSwitch as readSwitch,
   readShare,
   rebindRecord,
   reviewRecord,
@@ -49,12 +50,6 @@ class SwitchFailed extends ReviewFailed {
 }
 
 const switchPath = reviewSwitchPath;
-
-/** @param {string} dir @returns {Promise<Switch | null>} */
-async function readSwitch(dir) {
-  const saved = /** @type {Partial<Switch> | null} */ (await readJsonOr(switchPath(dir), null));
-  return typeof saved?.from === "string" && saved.body ? /** @type {Switch} */ (saved) : null;
-}
 
 /** Starts a new journal; only ever called once no earlier one holds an old link on. @param {string} dir
  * @param {Switch} change */

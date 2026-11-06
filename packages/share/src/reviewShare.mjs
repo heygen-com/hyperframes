@@ -6,7 +6,16 @@ import { firstReviewAudience } from "./reviewAudience.mjs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { mkdirInside } from "./storage.mjs";
-import { readJsonOr, writeJsonAtomic } from "./storage.mjs";
+import {
+  isJsonObject,
+  isNullableSavedId,
+  isOptionalBoolean,
+  isOptionalSavedId,
+  isSavedId,
+  readJsonRecord,
+  SharingStateError,
+  writeJsonAtomic,
+} from "./storage.mjs";
 import { channelSite, normalize, signinSites } from "./host.mjs";
 import { ReviewFailed } from "./reviewClient.mjs";
 import { rename } from "./storage.mjs";
@@ -43,23 +52,50 @@ const recordPath = (projectPath, at = site()) =>
     at === channelSite() ? "review.json" : `review-${new URL(at).host}.json`,
   );
 
+/** @param {unknown} value @returns {value is import("./types/reviewWire.js").RegisterProjectRequest} */
+function isRegistration(value) {
+  return (
+    isJsonObject(value) &&
+    isSavedId(value.studio_project_id) &&
+    isSavedId(value.client_operation_id) &&
+    typeof value.title === "string"
+  );
+}
+
+/** @typedef {{ studioProjectId: string } &
+ * Partial<Pick<ReviewRecord, "spaceId" | "projectId" | "opened" | "removed">>} SavedIdentity */
+
+/** @param {Record<string, unknown>} record @returns {record is Record<string, unknown> & SavedIdentity} */
+const isSavedIdentity = (record) =>
+  isSavedId(record.studioProjectId) &&
+  isOptionalSavedId(record.spaceId) &&
+  isOptionalSavedId(record.projectId) &&
+  isOptionalBoolean(record.opened) &&
+  isOptionalBoolean(record.removed) &&
+  (!(record.opened || record.removed) || isSavedId(record.projectId));
+
+/** @param {unknown} value @param {string} studioProjectId @param {string} file */
+function savedRegistration(value, studioProjectId, file) {
+  if (value == null) return undefined;
+  if (!isRegistration(value) || value.studio_project_id !== studioProjectId)
+    throw new SharingStateError(file);
+  return value;
+}
+
 /** @param {string} projectPath @param {string} [at] @returns {Promise<ReviewRecord | null>} */
 async function readRecord(projectPath, at = site()) {
-  const record =
-    /** @type {{ studioProjectId?: unknown, spaceId?: unknown, projectId?: unknown, opened?: unknown,
-     *   site?: unknown, ownerEmail?: unknown, removed?: unknown, registration?: unknown } | null} */ (
-      await readJsonOr(recordPath(projectPath, at), null)
-    );
-  if (typeof record?.studioProjectId !== "string") return null;
-  const madeOn = typeof record.site === "string" ? record.site : channelSite();
-  if (madeOn !== at) return null;
+  const file = recordPath(projectPath, at);
+  const record = await readJsonRecord(file);
+  if (!record) return null;
+  const { site: madeOn = channelSite() } = record;
+  if (madeOn !== at || !isSavedIdentity(record)) throw new SharingStateError(file);
   return {
     studioProjectId: record.studioProjectId,
-    spaceId: typeof record.spaceId === "string" ? record.spaceId : null,
-    projectId: typeof record.projectId === "string" ? record.projectId : null,
+    spaceId: record.spaceId ?? null,
+    projectId: record.projectId ?? null,
     opened: record.opened === true,
     removed: record.removed === true,
-    registration: /** @type {ReviewRecord["registration"]} */ (record.registration),
+    registration: savedRegistration(record.registration, record.studioProjectId, file),
     site: madeOn,
     ownerEmail: typeof record.ownerEmail === "string" ? record.ownerEmail : null,
   };
@@ -249,6 +285,27 @@ export const reviewRecord = (projectPath) => readRecord(projectPath);
  * @param {string} projectPath */
 export const reviewSwitchPath = (projectPath) =>
   recordPath(projectPath).replace(/\.json$/, ".switch.json");
+
+/** @param {string} dir @returns {Promise<import("./reviewSwitch.mjs").Switch | null>} */
+export async function readReviewSwitch(dir) {
+  const file = reviewSwitchPath(dir);
+  const change = await readJsonRecord(file);
+  if (!change) return null;
+  if (
+    !isSavedId(change.from) ||
+    !isSavedId(change.spaceId) ||
+    typeof change.space !== "string" ||
+    !isNullableSavedId(change.projectId) ||
+    (change.id !== undefined && !isSavedId(change.id)) ||
+    !isOptionalBoolean(change.opened) ||
+    !isOptionalBoolean(change.paused) ||
+    (change.opened && !isSavedId(change.projectId)) ||
+    !isRegistration(change.body)
+  ) {
+    throw new SharingStateError(file);
+  }
+  return /** @type {import("./reviewSwitch.mjs").Switch} */ (change);
+}
 
 /** @type {Set<(projectPath: string) => void>} */
 const rebound = new Set();
@@ -490,6 +547,7 @@ const SENTENCES = {
  * call when the reason has no sentence of its own.
  * @param {unknown} error @param {string} [fallback] */
 export function reviewSentence(error, fallback = "Couldn't share this project. Try again.") {
+  if (error instanceof SharingStateError) return error.message;
   if (!(error instanceof ReviewFailed)) return fallback;
   if (error.status === 0) return "Couldn't reach HeyGen. Check your connection and try again.";
   if (error.status === 401) return "Your sign-in has expired. Sign in again, then share.";
@@ -522,9 +580,7 @@ export async function removeReviewProject(projectId, client, projectPaths) {
   const affected = [];
   for (const dir of [...new Set(projectPaths.map(normalize))].sort()) {
     const record = await readRecord(dir);
-    const change = /** @type {{from?: string, projectId?: string} | null} */ (
-      await readJsonOr(reviewSwitchPath(dir), null)
-    );
+    const change = await readReviewSwitch(dir);
     if (
       record?.projectId === projectId ||
       change?.from === projectId ||
@@ -545,9 +601,7 @@ export async function removeReviewProject(projectId, client, projectPaths) {
 /** @param {string} projectPath @param {string} projectId */
 async function retainRemovedRecord(projectPath, projectId) {
   const record = await readRecord(projectPath);
-  const journal = /** @type {{from?:string, projectId?:string} | null} */ (
-    await readJsonOr(reviewSwitchPath(projectPath), null)
-  );
+  const journal = await readReviewSwitch(projectPath);
   if (journal?.from === projectId || journal?.projectId === projectId)
     await rename(
       reviewSwitchPath(projectPath),

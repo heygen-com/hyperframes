@@ -58,7 +58,7 @@ export function reviewFiles({ client, match, forRender }) {
       if (snapshotRefusal(error, "snapshot_mismatch")) mismatched.add(pair);
       if (!snapshotRefusal(error, "snapshot_already_attached")) throw error;
     }
-    await markFiles(dir, last.versionId);
+    await markFiles(dir, last.versionId, last.projectId);
   };
   /** @param {string} dir @returns {Promise<void>} */
   const attach = (dir) => {

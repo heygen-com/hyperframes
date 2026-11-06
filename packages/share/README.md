@@ -7,7 +7,6 @@ import {
   bindShareHost,
   reviewClient,
   signedInRequest,
-  reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   projectFingerprint,
   shareForReview,
   addVersion,
@@ -19,6 +18,7 @@ bindShareHost({
   normalize: realpathSync,
   channelSite: "https://hyperframes.dev",
   signinSites: ["https://hyperframes.dev"],
+  reviewUploadOrigins: ["https://review-bucket.s3.us-east-1.amazonaws.com"],
   signedInRequest,
   projectFingerprint,
   latestExportFile, // (dir) => { path, fingerprint, id } | null

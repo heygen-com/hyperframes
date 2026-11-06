@@ -70,17 +70,47 @@ export function writeJsonAtomic(path, data) {
   void settled.then(() => queued.get(path) === settled && queued.delete(path));
   return save;
 }
+export class SharingStateError extends Error {
+  /** @param {string} path @param {unknown} [cause] */
+  constructor(path, cause) {
+    super(
+      `Sharing state in .hyperframes/${basename(path)} could not be read. Restore this file from a backup, or contact support to reconnect the existing share. Keep the file; deleting it can lose recovery state or create a duplicate share.`,
+      { cause },
+    );
+    this.name = "SharingStateError";
+  }
+}
+
 /** @template T @param {string} path @param {T} fallback @returns {Promise<Record<string, unknown> | Exclude<T, object>>} */
 export async function readJsonOr(path, fallback) {
   try {
     return JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
-    if (errorCode(error) !== "ENOENT") {
-      throw new Error(
-        `Sharing state in .hyperframes/${basename(path)} could not be read. Restore this file from a backup, or contact support to reconnect the existing share. Keep the file; deleting it can lose recovery state or create a duplicate share.`,
-        { cause: error },
-      );
-    }
+    if (errorCode(error) !== "ENOENT") throw new SharingStateError(path, error);
     return /** @type {Record<string, unknown> | Exclude<T, object>} */ (fallback);
   }
+}
+
+/** @param {unknown} value @returns {value is Record<string, unknown>} */
+export const isJsonObject = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** @param {unknown} value @returns {value is string} */
+export const isSavedId = (value) => typeof value === "string" && value.trim() !== "";
+
+/** @param {unknown} value @returns {value is string | null} */
+export const isNullableSavedId = (value) => value === null || isSavedId(value);
+
+/** @param {unknown} value @returns {value is string | null | undefined} */
+export const isOptionalSavedId = (value) => value === undefined || isNullableSavedId(value);
+
+/** @param {unknown} value @returns {value is boolean | undefined} */
+export const isOptionalBoolean = (value) => value === undefined || typeof value === "boolean";
+
+/** An absent file is the only source of an empty record. @param {string} path */
+export async function readJsonRecord(path) {
+  const value = await readJsonOr(path, undefined);
+  if (value === undefined) return null;
+  if (!isJsonObject(value)) throw new SharingStateError(path);
+  return value;
 }

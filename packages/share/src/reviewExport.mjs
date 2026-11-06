@@ -8,7 +8,16 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { ffBinary, latestExportFile, normalize, projectFingerprint } from "./host.mjs";
 import { mkdirInside } from "./storage.mjs";
-import { readJsonOr, writeJsonAtomic } from "./storage.mjs";
+import {
+  isJsonObject,
+  isNullableSavedId,
+  isOptionalBoolean,
+  isOptionalSavedId,
+  isSavedId,
+  readJsonRecord,
+  SharingStateError,
+  writeJsonAtomic,
+} from "./storage.mjs";
 import { ReviewFailed } from "./reviewClient.mjs";
 import { reviewProjectId } from "./reviewShare.mjs";
 import { fileSha256Base64, putFile } from "./reviewUpload.mjs";
@@ -24,7 +33,7 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
 /** `pending`: the create body as sent and its video once answered, so a retry is the same; `snapshotRefused`: the
  * server refused its snapshot, so it goes up video-only; `unanswered`: its create may have gone out and no answer has
  * said the server made nothing; `last`: the newest version.
- * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string,
+ * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string | null,
  *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean } | null,
  *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean, checksum?: string }
  *   | null }} VersionRecord */
@@ -101,15 +110,76 @@ export function factsOf(stdout) {
   return width > 0 && height > 0 && duration > 0 ? { duration, width, height } : null;
 }
 
+/** @param {unknown} upload */
+const isSavedUpload = (upload) =>
+  isJsonObject(upload) &&
+  Number.isSafeInteger(upload.size_bytes) &&
+  isSavedId(upload.checksum_sha256) &&
+  upload.content_type === "video/mp4";
+
+/** @param {unknown} snapshot */
+const isOptionalSnapshot = (snapshot) =>
+  snapshot === undefined ||
+  (isJsonObject(snapshot) &&
+    isSavedId(snapshot.space_id) &&
+    isSavedId(snapshot.composition_id) &&
+    isSavedId(snapshot.snapshot_id));
+
+/** @param {Record<string, unknown>} body */
+const isSavedExportSource = (body) =>
+  body.source_revision_id === null &&
+  (body.source_fingerprint == null || typeof body.source_fingerprint === "string") &&
+  isOptionalSnapshot(body.snapshot);
+
+/** @param {unknown} body */
+function isSavedExportBody(body) {
+  if (!isJsonObject(body)) return false;
+  return (
+    isSavedId(body.client_operation_id) &&
+    typeof body.title_snapshot === "string" &&
+    [body.coordinate_width, body.coordinate_height, body.duration_seconds].every(Number.isFinite) &&
+    isJsonObject(body.render_settings) &&
+    isSavedUpload(body.local_upload) &&
+    isSavedExportSource(body)
+  );
+}
+
+/** @param {unknown} value @returns {value is NonNullable<VersionRecord["pending"]>} */
+const isPending = (value) =>
+  isJsonObject(value) &&
+  isSavedExportBody(value.body) &&
+  isNullableSavedId(value.videoId) &&
+  isOptionalSavedId(value.projectId) &&
+  (value.checkingSince === undefined || Number.isFinite(value.checkingSince)) &&
+  isOptionalBoolean(value.snapshotRefused) &&
+  isOptionalBoolean(value.unanswered);
+
+/** @param {unknown} value @returns {value is NonNullable<VersionRecord["last"]>} */
+function isLast(value) {
+  return (
+    isJsonObject(value) &&
+    typeof value.fingerprint === "string" &&
+    isSavedId(value.versionId) &&
+    isSavedId(value.exportedAt) &&
+    isSavedId(value.projectId) &&
+    (value.files === undefined || typeof value.files === "boolean") &&
+    (value.checksum === undefined || isSavedId(value.checksum))
+  );
+}
+
+/** @param {Record<string, unknown>} saved @returns {saved is Partial<VersionRecord>} */
+const isExportState = (saved) =>
+  ("pending" in saved || "last" in saved) &&
+  (saved.pending == null || isPending(saved.pending)) &&
+  (saved.last == null || isLast(saved.last));
+
 /** @param {string} dir @returns {Promise<VersionRecord>} */
 async function readState(dir) {
-  const saved = /** @type {Partial<VersionRecord> | null} */ (
-    await readJsonOr(statePath(dir), null)
-  );
-  return {
-    pending: saved?.pending?.body ? saved.pending : null,
-    last: typeof saved?.last?.fingerprint === "string" ? saved.last : null,
-  };
+  const file = statePath(dir);
+  const saved = await readJsonRecord(file);
+  if (!saved) return { pending: null, last: null };
+  if (!isExportState(saved)) throw new SharingStateError(file);
+  return { pending: saved.pending ?? null, last: saved.last ?? null };
 }
 
 /** @param {string} dir @param {VersionRecord} state */
@@ -250,7 +320,7 @@ function bodyToSend(state, fresh, projectId) {
 function sameRender(pending, fresh, projectId) {
   return (
     (pending.projectId ?? projectId) === projectId &&
-    pending.body.source_fingerprint === fresh.source_fingerprint &&
+    (pending.body.source_fingerprint ?? null) === fresh.source_fingerprint &&
     pending.body.local_upload.checksum_sha256 === fresh.local_upload.checksum_sha256
   );
 }
@@ -451,11 +521,11 @@ async function finish(dir, state, pending, id, done) {
  * @returns {Promise<Said | null>} */
 async function run(r, report) {
   report({ step: "preparing", sent: 0, total: 0 });
+  const state = await readState(r.projectPath);
   const source = await exportSource(r.projectPath, r.title, r.probe, r.filesForExport);
   if ("failure" in source) return source.failure ?? null;
   const id = r.projectId ?? (await reviewProjectId(r.projectPath));
   if (!id) return local("Share the project first, then add a version.");
-  let state = await readState(r.projectPath);
   if (await alreadyUploaded(r.client, id, state, source.body)) return null;
   return sendVersion(r, report, source, id, state);
 }
@@ -552,7 +622,8 @@ export async function addVersion(request) {
     return failure?.sentence ?? null;
   } catch (error) {
     console.error("[review] version failed:", error);
-    const sentence = "Couldn't add this version. Try again.";
+    const sentence =
+      error instanceof SharingStateError ? error.message : "Couldn't add this version. Try again.";
     failures.set(key, {
       sentence,
       final: false,
@@ -576,31 +647,42 @@ export async function recheckHeld(projectPath, client) {
   if (inFlight.has(key)) return void (wakers.get(key) ?? (() => woken.add(key)))();
   const failed = failures.get(key);
   if (!failed?.held) return;
-  const state = await readState(projectPath);
-  const pending = state.pending;
+  const { pending } = await readState(projectPath);
   const id = pending?.projectId ?? (await reviewProjectId(projectPath));
   if (!pending?.videoId || !id) return;
   const done = await client.readExport(id, pending.videoId);
-  // A press may have started a run, or settled the video, while this read was out.
-  if (going(done) || inFlight.has(key) || failures.get(key) !== failed) return;
-  const failure = await finish(projectPath, state, pending, id, done);
-  if (failure) failures.set(key, { ...failure, exportKey: failed.exportKey });
-  else failures.delete(key);
+  if (going(done)) return;
+  await whenExportIdle(projectPath, async () => {
+    if (inFlight.has(key) || failures.get(key) !== failed) return;
+    const state = await readState(projectPath);
+    const current = state.pending;
+    if (
+      !current ||
+      current.videoId !== pending.videoId ||
+      current.body.client_operation_id !== pending.body.client_operation_id ||
+      (current.projectId ?? (await reviewProjectId(projectPath))) !== id
+    ) {
+      return;
+    }
+    const failure = await finish(projectPath, state, current, id, done);
+    if (failure) failures.set(key, { ...failure, exportKey: failed.exportKey });
+    else failures.delete(key);
+  });
+}
+
+/** @param {string} dir @param {() => Promise<void>} run */
+async function whenExportIdle(dir, run) {
+  try {
+    await withProjectShareLock(dir, "export", run, { timeoutMs: 0 });
+  } catch (error) {
+    if (!(error instanceof ShareBusyError)) throw error;
+  }
 }
 
 /** Settle a saved upload after its host exits, without competing with an active uploader.
  * @param {string} projectPath @param {ReviewClient} client */
 export async function refreshReviewExport(projectPath, client) {
-  try {
-    await withProjectShareLock(
-      projectPath,
-      "export",
-      () => settleSavedExport(projectPath, client),
-      { timeoutMs: 0 },
-    );
-  } catch (error) {
-    if (!(error instanceof ShareBusyError)) throw error;
-  }
+  await whenExportIdle(projectPath, () => settleSavedExport(projectPath, client));
 }
 /** @param {string} dir @param {ReviewClient} client */
 async function settleSavedExport(dir, client) {
@@ -649,12 +731,22 @@ export async function versionOnPage(dir) {
   return state.last?.projectId === projectId ? state.last : null;
 }
 
-/** Records that `versionId` carries files now, unless a run is out or a newer version took its place.
- * @param {string} dir @param {string} versionId */
-export async function markFiles(dir, versionId) {
-  const state = await readState(dir);
-  if (!state.last || state.last.versionId !== versionId || inFlight.has(normalize(dir))) return;
-  await writeState(dir, { ...state, last: { ...state.last, files: true } });
+/** Records that `versionId` carries files now, if it is still the last ready version.
+ * @param {string} dir @param {string} versionId @param {string} [projectId] */
+export async function markFiles(dir, versionId, projectId) {
+  if (inFlight.has(normalize(dir))) return;
+  await withProjectShareLock(dir, "export", async () => {
+    const state = await readState(dir);
+    const { last } = state;
+    if (
+      !last ||
+      last.versionId !== versionId ||
+      (projectId !== undefined && last.projectId !== projectId)
+    ) {
+      return;
+    }
+    await writeState(dir, { ...state, last: { ...last, files: true } });
+  });
 }
 
 /** A pending operation is not the last ready version. @param {string} projectPath */
