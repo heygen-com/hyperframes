@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
@@ -1606,5 +1608,40 @@ describe("speed_ramp_on_non_media", () => {
     );
     expect(bad.findings.find((f) => f.code === "speed_ramp_on_non_media")?.elementId).toBe("pic");
     expect(good.findings.some((f) => f.code === "speed_ramp_on_non_media")).toBe(false);
+  });
+});
+
+describe("media_invalid_data_volume", () => {
+  const page = (volume: string) => `<!DOCTYPE html><html><body>
+    <div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="10">
+      <video id="v1" src="a.mp4" data-start="0" data-duration="4" muted data-volume="${volume}"></video>
+    </div>
+  </body></html>`;
+
+  it.each(["80", "-1", "loud"])(
+    "warns on data-volume=%s (out of range or not a finite number)",
+    async (volume) => {
+      const result = await lintHyperframeHtml(page(volume));
+      const finding = result.findings.find((f) => f.code === "media_invalid_data_volume");
+      expect(finding).toBeDefined();
+      expect(finding?.elementId).toBe("v1");
+      expect(finding?.severity).toBe("warning");
+    },
+  );
+
+  it.each(["0", "1", "3.98"])("does not warn on the valid data-volume=%s", async (volume) => {
+    const result = await lintHyperframeHtml(page(volume));
+    expect(result.findings.some((f) => f.code === "media_invalid_data_volume")).toBe(false);
+  });
+
+  it("keeps the 3.98 ceiling in sync with core's MAX_AUDIO_GAIN (0..+12 dB)", () => {
+    // vitest runs with cwd at packages/lint; resolve core's source relative to it.
+    const source = readFileSync(resolve(process.cwd(), "../core/src/audioGain.ts"), "utf8");
+    const match = source.match(/MAX_AUDIO_GAIN_DB\s*=\s*([\d.]+)/);
+    expect(match).not.toBeNull();
+    const maxGain = 10 ** (Number(match![1]) / 20);
+    // The lint ceiling must not exceed core's clamp, and must round to 3.98.
+    expect(maxGain).toBeGreaterThan(3.98);
+    expect(maxGain).toBeLessThan(3.98 + 0.002);
   });
 });
