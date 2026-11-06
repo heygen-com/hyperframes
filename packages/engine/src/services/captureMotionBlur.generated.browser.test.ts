@@ -4,10 +4,12 @@ import type { Differential } from "./__fixtures__/blurDifferential.js";
 import { hasBrowser } from "./__fixtures__/motionBlur/blurPage.js";
 import {
   CASE_TIMEOUT_MS,
+  blurOffDisagreement,
   chrome,
   firstFive,
   isSupported,
   measureInside,
+  type Measured,
   measureOutside,
   startChrome,
   stopChrome,
@@ -30,37 +32,62 @@ interface KnownBad {
 
 const KNOWN_BAD: Readonly<Record<number, KnownBad>> = {};
 
-interface Failure {
-  seed: number;
+interface FailureRecord {
+  seed: number | null;
   features: readonly string[];
   problems: readonly string[];
+  unstableReference?: number;
 }
 
-const failures: Failure[] = [];
+const records: FailureRecord[] = [];
 
 const worst = (d: Differential): string =>
   `${d.bad.length} bad tiles, worst MAE ${d.worstMae.toFixed(1)}, first ${firstFive(d)}`;
 
-async function problemsOf(f: GeneratedFixture): Promise<string[]> {
-  const problems: string[] = [];
+interface Outcome {
+  problems: string[];
+  unstable: number[];
+}
+
+async function judge(
+  f: GeneratedFixture,
+  region: "outside" | "inside",
+  t: number,
+  first: Measured,
+  outcome: Outcome,
+): Promise<void> {
+  if (first.d.bad.length === 0) return;
+  const disagreement = await blurOffDisagreement(chrome(), f, region, t, first);
+  if (disagreement === undefined) {
+    outcome.problems.push(`${region} the trail at ${t}: ${worst(first.d)}`);
+  } else {
+    outcome.unstable.push(disagreement);
+  }
+}
+
+async function check(f: GeneratedFixture): Promise<Outcome> {
+  const outcome: Outcome = { problems: [], unstable: [] };
   const times = [...f.checkpoints, ...f.moving].sort((a, b) => a - b);
   for (const t of times) {
     const moving = f.moving.includes(t);
     const outside = await measureOutside(chrome(), f, t);
-    if (outside.bad.length > 0) problems.push(`outside the trail at ${t}: ${worst(outside)}`);
-    if (!moving && outside.checkedFraction < INVARIANTS.minCheckedFraction) {
-      problems.push(
-        `outside the trail at ${t}: only ${outside.checkedFraction} of the frame was checked`,
+    await judge(f, "outside", t, outside, outcome);
+    if (!moving && outside.d.checkedFraction < INVARIANTS.minCheckedFraction) {
+      outcome.problems.push(
+        `outside the trail at ${t}: only ${outside.d.checkedFraction} of the frame was checked`,
       );
     }
-    if (outside.checkedBlocks === 0)
-      problems.push(`outside the trail at ${t}: no tile was checked`);
+    if (outside.d.checkedBlocks === 0) {
+      outcome.problems.push(`outside the trail at ${t}: no tile was checked`);
+    }
     if (!moving) continue;
     const inside = await measureInside(chrome(), f, t);
-    if (inside.bad.length > 0) problems.push(`inside the trail at ${t}: ${worst(inside)}`);
-    if (inside.checkedBlocks === 0) problems.push(`inside the trail at ${t}: no tile was checked`);
+    await judge(f, "inside", t, inside, outcome);
+    if (inside.d.checkedBlocks === 0) {
+      outcome.problems.push(`inside the trail at ${t}: no tile was checked`);
+    }
   }
-  return problems;
+  return outcome;
 }
 
 function defineSeedCase(seed: number): void {
@@ -70,7 +97,12 @@ function defineSeedCase(seed: number): void {
     pinned ? `KNOWN BAD on main: ${pinned.finding}: ${pinned.reason}: ${f.name}` : f.name,
     async (ctx) => {
       if (!isSupported()) ctx.skip();
-      const problems = await problemsOf(f);
+      let found: string[] = [];
+      ctx.onTestFailed(() => {
+        const thrown = ctx.task.result?.errors?.map((e) => String(e.message)) ?? [];
+        records.push({ seed, features: f.features, problems: found.length ? found : thrown });
+      });
+      const { problems, unstable } = await check(f);
       if (pinned) {
         expect(
           problems.length,
@@ -78,7 +110,15 @@ function defineSeedCase(seed: number): void {
         ).toBeGreaterThan(0);
         return;
       }
-      if (problems.length > 0) failures.push({ seed, features: f.features, problems });
+      found = problems;
+      if (problems.length === 0 && unstable.length > 0) {
+        records.push({
+          seed,
+          features: f.features,
+          problems: [],
+          unstableReference: Math.max(...unstable),
+        });
+      }
       expect(problems, `${f.name}: rerun with HF_BLUR_SEEDS=${seed}`).toEqual([]);
     },
     CASE_TIMEOUT_MS * 2,
@@ -95,10 +135,17 @@ async function startRequiredChrome(): Promise<void> {
 describe.skipIf(!hasBrowser && !REQUIRED)(
   "capture motion blur over generated compositions in Chrome",
   () => {
-    beforeAll(REQUIRED ? startRequiredChrome : startChrome, 30_000);
+    beforeAll(async () => {
+      try {
+        await (REQUIRED ? startRequiredChrome() : startChrome());
+      } catch (error) {
+        records.push({ seed: null, features: [], problems: [`Chrome did not start: ${error}`] });
+        throw error;
+      }
+    }, 30_000);
     afterAll(async () => {
       await stopChrome();
-      if (FAILURES_FILE) writeFileSync(FAILURES_FILE, JSON.stringify(failures, null, 2));
+      if (FAILURES_FILE) writeFileSync(FAILURES_FILE, JSON.stringify(records, null, 2));
     });
 
     for (const seed of SEEDS) defineSeedCase(seed);

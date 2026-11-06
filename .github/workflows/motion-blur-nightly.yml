@@ -85,66 +85,31 @@ jobs:
           if-no-files-found: ignore
 
   report:
-    name: Open issues for failing seeds
+    name: Report failures
     needs: [plan, generated]
-    if: always() && needs.generated.result == 'failure'
+    if: always() && needs.plan.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       issues: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
         with:
           pattern: blur-nightly-failures-*
           path: failures
-      - name: One issue per failing seed
+      - name: Open issues, warn and summarize
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          GENERATED_RESULT: ${{ needs.generated.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MAX_ISSUES: "25"
-        run: |
-          shopt -s nullglob
-          files=(failures/*/blur-nightly-failures.json)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "::warning::A job failed without naming a failing seed; see $RUN_URL"
-            exit 0
-          fi
-          for f in "${files[@]}"; do
-            name="$(basename "$(dirname "$f")")"
-            flavour="${name#blur-nightly-failures-}"
-            jq -c --arg flavour "${flavour%%-*}" '.[] | . + {flavour: $flavour}' "$f"
-          done | jq -sc 'group_by(.seed) | map({seed: .[0].seed, features: .[0].features, flavours: map(.flavour), problems: (map(.problems) | add | unique)}) | .[]' > seeds.jsonl
-          opened=0
-          while read -r row; do
-            seed="$(jq -r .seed <<< "$row")"
-            title="motion blur nightly: seed $seed"
-            if gh issue list --state open --search "\"$title\" in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
-              echo "skipping seed $seed: an open issue exists"
-              continue
-            fi
-            if [ "$opened" -ge "$MAX_ISSUES" ]; then
-              echo "::warning::More than $MAX_ISSUES failing seeds; not opening an issue for seed $seed"
-              continue
-            fi
-            {
-              echo "Seed $seed fails the pixel invariants on \`auto\`."
-              echo
-              echo "- Features: $(jq -r '.features | join(", ")' <<< "$row")"
-              echo "- Chrome flavours: $(jq -r '.flavours | join(", ")' <<< "$row")"
-              echo "- Run: $RUN_URL"
-              echo
-              echo "Reproduce from \`packages/engine\`:"
-              echo
-              echo '```sh'
-              echo "HF_BLUR_SEEDS=$seed bunx vitest run --project browser src/services/captureMotionBlur.generated.browser.test.ts"
-              echo '```'
-              echo
-              echo "Findings:"
-              echo
-              jq -r '.problems[] | "- " + .' <<< "$row"
-            } > body.md
-            gh issue create --title "$title" --body-file body.md --label bug --label area/quality
-            opened=$(( opened + 1 ))
-          done < seeds.jsonl
+        run: >-
+          node scripts/ci/motion-blur-nightly-report.mjs
+          --failures failures
+          --generated-result "$GENERATED_RESULT"
+          --date "$(date -u +%F)"
+          --run-url "$RUN_URL"
+          --summary "$GITHUB_STEP_SUMMARY"
