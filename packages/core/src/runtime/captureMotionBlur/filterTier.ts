@@ -8,7 +8,7 @@
 import { swallow } from "../diagnostics";
 import { landThenUndoDom, scanMovers } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { readMoverFrames, shutterTimes } from "./frames";
+import { CONTENT_NODE_LIMIT, readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 
@@ -94,6 +94,14 @@ function aim(layer: Layer, plan: FilterPlan): void {
   layer.filter.setAttribute("height", h.toFixed(1));
 }
 
+function holdsFixedChild(el: HTMLElement): boolean {
+  const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_ELEMENT);
+  for (let n = 0; n < CONTENT_NODE_LIMIT && walker.nextNode(); n++) {
+    if (getComputedStyle(walker.currentNode as Element).position === "fixed") return true;
+  }
+  return false;
+}
+
 const strip = (el: HTMLElement): string => el.style.filter.replace(OWN, "").trim();
 
 export function createFilterTier(
@@ -139,7 +147,7 @@ export function createFilterTier(
       landing?.stop();
     }
     readEvents = found.readEvents;
-    movers = found.movers;
+    movers = found.movers.filter((el) => !holdsFixedChild(el));
     pads = found.pads;
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);

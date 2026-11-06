@@ -56,7 +56,6 @@ export const SWEEP_SYMPTOMS = {
   D_FILTER: 107.66,
   E: 27.6,
   F_CAPTURE: 40.62,
-  F_FILTER: 126.54,
   H: 135.67,
   I: 53.63,
   J: 25.79,

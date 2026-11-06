@@ -2063,6 +2063,29 @@ describe("filter fallback", () => {
     expect(el.style.filter).toBe("drop-shadow(0px 0px 4px red)");
   });
 
+  it("leaves a mover with a fixed descendant out of the filter tier and blurs the others", () => {
+    const { root, el, h } = movingHost();
+    const badge = document.createElement("div");
+    badge.style.position = "fixed";
+    el.append(badge);
+    const other = root.appendChild(el.cloneNode(false) as HTMLElement);
+    other.id = "other";
+    for (const k of ["offsetWidth", "offsetHeight", "offsetLeft", "offsetTop", "offsetParent"]) {
+      Object.defineProperty(other, k, { value: Reflect.get(el, k), configurable: true });
+    }
+    other.getBoundingClientRect = el.getBoundingClientRect;
+    const slide = h.seek;
+    h.seek = vi.fn((t: number, quiet: boolean) => {
+      slide(t, quiet);
+      other.style.transform = el.style.transform;
+    });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(win.__hfMotionBlur?.report().moverNames).toEqual(["div#other"]);
+    expect(el.style.filter).toBe("");
+    expect(other.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+  });
+
   it("reads poses with callbacks off when callbacks move no mover in the filter tier too", () => {
     const { h } = movingHost({
       "data-motion-blur": "on",

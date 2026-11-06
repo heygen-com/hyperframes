@@ -158,13 +158,6 @@ const CASES: readonly SweepCase[] = [
     tier: "filter",
     frame: 11,
     check: "outside",
-    bug: {
-      finding: "F",
-      reason:
-        "the blur filter makes the mover a containing block, so its fixed child jumps into it",
-      regions: [rect(10, 10, 60, 30), trail(152)],
-      measuredMae: S.F_FILTER,
-    },
   },
   {
     fixture: "body-child-selector",
