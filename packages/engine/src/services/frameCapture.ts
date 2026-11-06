@@ -5601,7 +5601,7 @@ export async function seekDeVerifyTruth(
   );
 }
 
-async function captureDeVerificationFrames(
+export async function captureDeVerificationFrames(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
