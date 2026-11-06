@@ -1,16 +1,10 @@
-/**
- * The storyboard page an agent writes beside the film (`boards/storyboard.html`, per the hyperframes skill's
- * `references/storyboard.md`), read the way HyperFrames Desktop's Storyboard tab reads it, so a board one shows is a
- * board the other shows.
- */
+// Read the way HyperFrames Desktop's Storyboard tab reads the page, so a board one shows is a board the other shows.
 
 /** Where the page may sit, in the order a copy wins: the project root, then boards/. */
 const BOARD_DIRS = ["", "boards/"];
 const BOARD_FILE = "storyboard.html";
-/** The plan beside the page; a rewrite of it can rename every frame. */
 const PLAN_FILE = "storyboard.md";
 
-/** The board's project path among `files`: the root copy, else the one in boards/, whatever the name's case. */
 export function findBoardFile(files: readonly string[]): string | null {
   for (const dir of BOARD_DIRS) {
     const found = files.find((path) => path.toLowerCase() === dir + BOARD_FILE);
@@ -19,7 +13,6 @@ export function findBoardFile(files: readonly string[]): string | null {
   return null;
 }
 
-/** The folder a page sits in, with its trailing slash ("" at the root). */
 const folderOf = (path: string): string => path.slice(0, path.lastIndexOf("/") + 1);
 
 /** Whether a write to `changed` changes what the board at `board` shows: the page, anything beside it, or the plan. */
@@ -55,16 +48,12 @@ const safeDecode = (part: string): string => {
 };
 
 export interface BoardFrame {
-  /** Its number as the page shows it, two digits when the page gives none ("01"). */
   number: string;
   title: string;
-  /** The act heading last before it, or "". */
   act: string;
   /** Its range as "a to b" ("0.0 to 3.0s"), or "". */
   time: string;
-  /** Its first picture's `src` as the page wrote it, or "". */
   still: string;
-  /** The line under it, or "". */
   words: string;
 }
 
@@ -75,7 +64,6 @@ const NOTE_PLACES = [".desc", ".description", ".caption", ".note", ".words", "p"
 
 const text = (el: Element | null | undefined): string =>
   (el?.textContent ?? "").replace(/\s+/g, " ").trim();
-/** Words without their times or a separator left dangling after them. */
 const tidy = (words: string): string =>
   words
     .replace(TIME, "")
@@ -117,13 +105,11 @@ function frameInfo(doc: Document, el: HTMLElement, i: number): BoardFrame {
   };
 }
 
-/** The page's own range, read as the board writes one: "0.0 to 3.0s". */
 function timeOf(box: HTMLElement, heading: Element | null): string {
   const raw = text(box.querySelector(".time")) || (text(heading).match(TIME)?.[0] ?? "");
   return raw.replace(/\s*[\u2013-]\s*/, " to ");
 }
 
-/** A `.scene-badge` number, two digits, or undefined when the box has none. */
 function badgeNumber(box: HTMLElement): string | undefined {
   const badge = /\d+/.exec(text(box.querySelector(".scene-badge")))?.[0];
   return badge === undefined ? undefined : pad(Number(badge));

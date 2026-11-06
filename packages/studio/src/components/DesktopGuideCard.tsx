@@ -16,7 +16,6 @@ export type DesktopRoute = {
     os: string;
     app_installed: boolean;
     download_available: boolean;
-    /** Where the button sits, so the funnel can tell the header's presses from the storyboard's. */
     placement: DesktopCtaPlacement;
   };
 };

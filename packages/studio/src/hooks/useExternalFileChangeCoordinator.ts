@@ -140,6 +140,24 @@ export function sseFileChangeChannel(
   return () => eventSource.close();
 }
 
+export function subscribeFileChanges(
+  onChange: (payload: unknown) => void,
+  onCatchUp: () => void,
+): () => void {
+  // One decoder for all three transports; the rungs only choose the channel.
+  const handler = (delivery?: unknown) => onChange(decodeFileChange(delivery));
+  const adapter = testHotAdapter();
+  if (adapter) {
+    adapter.on("hf:file-change", handler);
+    return () => adapter.off("hf:file-change", handler);
+  }
+  if (import.meta.hot) {
+    import.meta.hot.on("hf:file-change", handler);
+    return () => import.meta.hot?.off?.("hf:file-change", handler);
+  }
+  return sseFileChangeChannel(handler, onCatchUp);
+}
+
 function eventIdentity(path: string, payload: unknown): string | null {
   const version = readFileChangeVersion(payload);
   if (version) return `${path}\0${version}`;
@@ -475,21 +493,14 @@ export function useExternalFileChangeCoordinator({
 
   const processChangeRef = useRef(processChange);
   processChangeRef.current = processChange;
-  useEffect(() => {
-    // One decoder for all three transports; the rungs only choose the channel.
-    const handler = (delivery?: unknown) => processChangeRef.current(decodeFileChange(delivery));
-    const adapter = testHotAdapter();
-    if (adapter) {
-      adapter.on("hf:file-change", handler);
-      return () => adapter.off("hf:file-change", handler);
-    }
-    if (import.meta.hot) {
-      import.meta.hot.on("hf:file-change", handler);
-      return () => import.meta.hot?.off?.("hf:file-change", handler);
-    }
-    const catchUp = () => processChangeRef.current({ path: "." });
-    return sseFileChangeChannel(handler, catchUp);
-  }, []);
+  useEffect(
+    () =>
+      subscribeFileChanges(
+        (payload) => processChangeRef.current(payload),
+        () => processChangeRef.current({ path: "." }),
+      ),
+    [],
+  );
 
   const retry = useCallback(async () => {
     const current = blockedRef.current;

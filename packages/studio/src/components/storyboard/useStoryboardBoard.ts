@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { encodeUrlPath } from "@hyperframes/parsers";
 import { useFileManagerContextOptional } from "../../contexts/FileManagerContext";
-import { sseFileChangeChannel } from "../../hooks/useExternalFileChangeCoordinator";
+import { subscribeFileChanges } from "../../hooks/useExternalFileChangeCoordinator";
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { findBoardFile, readBoardFrames, touchesBoard, type BoardFrame } from "./storyboardBoard";
@@ -25,22 +25,10 @@ export interface StoryboardBoard {
 export const projectFileUrl = (projectId: string, path: string, revision = 0): string =>
   `${buildProjectApiPath(projectId, `/preview/${encodeUrlPath(path)}`)}${revision ? `?v=${revision}` : ""}`;
 
-/** One file-change delivery's project path and project, or null for one this tab cannot read. */
-function changeOf(delivery: unknown): { path: string; projectId?: string } | null {
-  const data = (delivery as { data?: unknown } | null)?.data;
-  try {
-    const payload = (typeof data === "string" ? JSON.parse(data) : delivery) as {
-      path?: unknown;
-      projectId?: unknown;
-    } | null;
-    if (typeof payload?.path !== "string") return null;
-    return {
-      path: payload.path,
-      projectId: typeof payload.projectId === "string" ? payload.projectId : undefined,
-    };
-  } catch {
-    return null;
-  }
+function changeOf(payload: unknown): { path: string; projectId?: string } | null {
+  const { path, projectId } = (payload ?? {}) as { path?: unknown; projectId?: unknown };
+  if (typeof path !== "string") return null;
+  return { path, projectId: typeof projectId === "string" ? projectId : undefined };
 }
 
 const isBoardName = (path: string): boolean => /(^|[\\/])storyboard\.html$/i.test(path);
@@ -68,10 +56,9 @@ export function useStoryboardBoard(projectId: string): StoryboardBoard {
   refreshRef.current = files?.refreshFileTree;
 
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
-    return sseFileChangeChannel(
-      (delivery) => {
-        const change = changeOf(delivery);
+    return subscribeFileChanges(
+      (payload) => {
+        const change = changeOf(payload);
         if (!change || (change.projectId && change.projectId !== projectId)) return;
         const board = pathRef.current;
         if (board && touchesBoard(change.path, board)) setRevision((n) => n + 1);
