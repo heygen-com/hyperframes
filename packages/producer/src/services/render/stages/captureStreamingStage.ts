@@ -272,8 +272,8 @@ export function raceAgainstStall<T>(
 }
 
 /**
- * One budget for everything before a session's first frame: opening it, initializing it, and the
- * deferred drawElement init. Each call races against what is left of the same clock.
+ * The setup budget for opening a session, initializing it, and the deferred drawElement init.
+ * It bounds each step, not setup as a whole: the clock drops a step longer than its suspend gap.
  */
 export function createSessionInitBudget(input: {
   frameIndex: number;
