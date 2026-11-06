@@ -322,7 +322,7 @@ export interface CheckTimings {
   overlapMs: number;
 }
 
-/** What making browser-playable copies cost a check: how many hostile videos, how long it waited, how many were not done. */
+/** What a check's browser-playable copies cost: videos, ms waited, videos not done. */
 export interface MediaCopyFacts {
   total: number;
   waitedMs: number;
