@@ -485,3 +485,8 @@ export {
   PAGE_MOTION_BLUR_OFF_GLOBAL,
   acceleratedCanvasTrackerSource,
 } from "./pageMotionBlur.js";
+export {
+  MOTION_BLUR_FINGERPRINT_FIELDS,
+  type MotionBlurFingerprint,
+  type MotionBlurFingerprintField,
+} from "./motionBlurFingerprint.js";
