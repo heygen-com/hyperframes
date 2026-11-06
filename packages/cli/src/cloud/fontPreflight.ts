@@ -83,8 +83,7 @@ const placeholderFace = (family: string) =>
 
 /**
  * Adds the system fonts the project uses to its entry page as inline @font-face rules, so the zip carries them.
- * A family with no font file on this machine gets an empty face, so the cloud renders it with the same fallback a
- * local render uses; those families are returned, for the caller to name.
+ * A family with no font file here gets an empty face (the local fallback) and is returned for the caller to name.
  */
 export async function embedSystemFonts(
   opts: { dir: string; entryFile?: string; entryPath: string; fileMap: Map<string, StagedFile> },
