@@ -1,7 +1,9 @@
 /** The page the browser lands on after sign-in: one design for the CLI's three endings. */
 
-const MARK_A = "M10.1851 57.8021L33.1145 73.8313C36.2202 75.9978 41.5173 73.5433 42.4816 69.4984L51.7611 30.4271C52.7253 26.3822 48.5802 23.9277 44.4602 26.0942L13.917 42.1235C6.96677 45.7676 4.97564 54.1579 10.1851 57.8021Z";
-const MARK_B = "M87.5129 57.5141L56.9696 73.5433C52.8371 75.7098 48.7046 73.2553 49.6688 69.2104L58.9483 30.1391C59.9125 26.0942 65.2097 23.6397 68.3154 25.8062L91.2447 41.8354C96.4668 45.4796 94.4631 53.8699 87.5129 57.5141Z";
+const MARK_A =
+  "M10.1851 57.8021L33.1145 73.8313C36.2202 75.9978 41.5173 73.5433 42.4816 69.4984L51.7611 30.4271C52.7253 26.3822 48.5802 23.9277 44.4602 26.0942L13.917 42.1235C6.96677 45.7676 4.97564 54.1579 10.1851 57.8021Z";
+const MARK_B =
+  "M87.5129 57.5141L56.9696 73.5433C52.8371 75.7098 48.7046 73.2553 49.6688 69.2104L58.9483 30.1391C59.9125 26.0942 65.2097 23.6397 68.3154 25.8062L91.2447 41.8354C96.4668 45.4796 94.4631 53.8699 87.5129 57.5141Z";
 
 const STYLE = `:root{color-scheme:light dark;--bg:#f2f0ed;--ink:#1d1b18;--ink2:#5d5a55;--tile:#dff3ea;--tile-ink:#087a54;--bad:#fbe6e1;--bad-ink:#b3402e;--btn:#1d1b18;--btn-ink:#f2f0ed;--panel:#0c0c0e;--panel-ink:#f4f1ec}
 @media(prefers-color-scheme:dark){:root{--bg:#201e1b;--ink:#f6f4f1;--ink2:#b5b1aa;--tile:#1f3a2f;--tile-ink:#37de91;--bad:#3a2420;--bad-ink:#f08a78;--btn:#f6f4f1;--btn-ink:#201e1b}}
@@ -72,7 +74,9 @@ export function couldNotConnectPage(code: string, description: string): string {
   return page({
     ok: false,
     title: "Couldn't connect",
-    text: description || "Something went wrong on the way back. Run the login again from your terminal.",
+    text:
+      description ||
+      "Something went wrong on the way back. Run the login again from your terminal.",
     detail: code,
   });
 }

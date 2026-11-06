@@ -196,4 +196,3 @@ function respond(res: ServerResponse, status: number, body: string): void {
     })
     .end(body);
 }
-
