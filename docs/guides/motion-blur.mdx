@@ -93,7 +93,7 @@ In the page, `window.__hfMotionBlur.report()` returns `state`, `tier`, `reason`,
 - **Preview and render.** `auto` draws the same way in both. A page that asks for capture previews with the filter tier in a browser without HTML in Canvas, so a spin or zoom looks softer there than in the render.
 - **Worker count.** Output is not bit-identical between worker counts (around 60 dB PSNR), about the size of the difference chunking already causes.
 - **Not handled.** Pose errors under CSS `zoom`, `position: fixed` and `foreignObject`; a very short Web Animations API animation that falls between scan samples; a large see-through mover (a full-frame translucent sweep), which is left sharp while its fast children still blur. With capture, a mover is drawn above the static content, so a static element that should cover a mover does not.
-- **Limits of the filter tier** (the default), as measured on one-pattern test compositions. Each is pinned by a test in the sweep:
+- **Limits of the filter tier** (the default), as measured on one-pattern test compositions:
   - `::before` or `::after` content outside the mover's box is cut off.
   - A mover's own `clip-path` or mask gets hard edges: the smear is clipped to the shape it has at that frame.
   - A `position: fixed` child of a mover that moves via `left` jumps, because the filter makes the mover its containing block.
