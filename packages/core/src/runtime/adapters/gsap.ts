@@ -260,6 +260,18 @@ function framesSkippedSinceLastSeek(
   return [...replay].sort((x, y) => y - x).map((back) => t - back / fps);
 }
 
+function landOn(
+  timeline: RuntimeTimelineLike,
+  t: number,
+  suppressEvents: boolean,
+  version: string,
+): number {
+  const from = Number(timeline.totalTime?.());
+  timeline.totalTime?.(t, suppressEvents);
+  settleOverlapsEndedBetween(timeline, from, t, version);
+  return from;
+}
+
 export function seekGsapTimeline(
   timeline: RuntimeTimelineLike,
   t: number,
@@ -271,14 +283,13 @@ export function seekGsapTimeline(
     if (typeof timeline.seek === "function") timeline.seek(t, suppressEvents);
     return false;
   }
+  const version = structure?.version ?? "";
   if (renderFps) {
-    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, structure?.version)) {
-      timeline.totalTime(time, suppressEvents);
+    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, version)) {
+      landOn(timeline, time, suppressEvents, version);
     }
   }
-  const from = Number(timeline.totalTime());
-  timeline.totalTime(t, suppressEvents);
-  if (!renderFps) settleOverlapsEndedBetween(timeline, from, t, structure?.version ?? "");
+  const from = landOn(timeline, t, suppressEvents, version);
   if (t < from && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
   if (from !== t || !gsapNeverRendered(timeline)) return false;
   rerenderGsapTimelineAt(
