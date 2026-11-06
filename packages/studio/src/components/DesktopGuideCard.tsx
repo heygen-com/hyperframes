@@ -7,10 +7,18 @@ import { Button, cn } from "./ui";
 // The desktop-app guide card under OpenInDesktopButton: Framey and three steps (download, install, open), all drawn
 // from one `Progress`.
 
+export type DesktopCtaPlacement = "header" | "storyboard";
+
 export type DesktopRoute = {
   handoff: boolean;
   downloadUrl: string | null;
-  context: { os: string; app_installed: boolean; download_available: boolean };
+  context: {
+    os: string;
+    app_installed: boolean;
+    download_available: boolean;
+    /** Where the button sits, so the funnel can tell the header's presses from the storyboard's. */
+    placement: DesktopCtaPlacement;
+  };
 };
 
 /** The OS for the download, and what "this …" calls the machine. */
