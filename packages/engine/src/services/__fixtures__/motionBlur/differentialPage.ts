@@ -154,6 +154,22 @@ function expectBlurredAwayFromSharp(
   );
 }
 
+export async function measureInside(
+  browser: Browser,
+  f: BlurFixture,
+  t: number,
+  tier?: Tier,
+): Promise<Differential> {
+  const samples = await captureInOrder(await referencePage(f), shutterTimes(t), {
+    subFrameDivisions: SUB_FRAME_DIVISIONS,
+  });
+  const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
+  return compareTiles(meanFrame(samples), onFrame, trailMask(samples, radiusPx(f)), "inside", {
+    block: INVARIANTS.block,
+    maxMae: INVARIANTS.insideMaxMae,
+  });
+}
+
 export function defineInsideCase(f: BlurFixture, t: number, tier?: Tier): void {
   it(
     caseName("inside the trail, blur on matches the shutter average", f, t, tier),
