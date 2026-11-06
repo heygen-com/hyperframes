@@ -43,9 +43,9 @@ Elements that move quickly in 2D: position, scale and rotation changes from GSAP
 
 ## Two ways it is drawn
 
-**Filter** puts an SVG filter on each mover: copies of the element along its path, averaged, and softened along the motion. It is what `data-motion-blur-tier="auto"` (the default) draws with. It works in any Chrome and over a WebGL canvas. With a few movers it costs about what a render without blur costs; with many it costs more than capture (see Cost and limits). Turns and zooms are only softened, not streaked.
+**Filter** puts an SVG filter on each mover: copies of the element along its path, averaged, and softened along the motion. It is what `data-motion-blur-tier="auto"` (the default) draws with. It works in any Chrome and over a WebGL canvas. On a four-whip test it cost about what a render without blur costs; on two real films it cost more than capture (see Cost and limits). Turns and zooms are only softened, not streaked.
 
-**Capture** is opt-in with `data-motion-blur-tier="capture"`. It copies each mover out of the page with Chrome's [HTML in Canvas](/guides/html-in-canvas) API and redraws it along its path. It draws turns and zooms truthfully: a spinning tile smears along its arc and its centre stays sharp, and a zoom streaks outward. It has limits the filter tier does not, so ask for it only for a film whose spins and zooms need the streak:
+**Capture** is opt-in with `data-motion-blur-tier="capture"`. It copies each mover out of the page with Chrome's [HTML in Canvas](/guides/html-in-canvas) API and redraws it along its path. It draws turns and zooms truthfully: a spinning tile smears along its arc and its centre stays sharp, and a zoom streaks outward. It has limits of its own, listed here (the filter tier's are listed under Cost and limits, and a few, such as `backdrop-filter`, apply to both), so ask for it only for a film whose spins and zooms need the streak:
 
 - Anything in front of a mover is lost: a static panel, an overlay or a title card over a moving element is drawn behind its smear.
 - `mix-blend-mode` and `backdrop-filter` on a mover or its ancestor are not applied.
@@ -87,16 +87,16 @@ In the page, `window.__hfMotionBlur.report()` returns `state`, `tier`, `reason`,
 
 ## Cost and limits
 
-- **Render time.** It depends on how many elements move and how large they are. On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). On real 1080p films with many movers the filter tier cost more than capture, measured as CPU seconds of the whole render (wall time was too noisy on a loaded machine): `spacex-launch` (77 movers, 39.5 s) took 547–552 CPU s with the filter tier, 302–320 with capture and 184–193 with no blur (three runs each); `k3-promo` (106 movers, 16.5 s) took 236, 205 and 117 (one run each). Each mover is drawn with at least 32 filter copies every frame, so the filter tier's cost grows with the number and size of movers; capture adds a second paint per blurred frame.
+- **Render time.** It varies by film. On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). On two real 1080p films the filter tier cost more than capture, measured as CPU seconds of the whole render (wall time was too noisy on a loaded machine): `spacex-launch` (77 movers, 39.5 s) took 547–552 CPU s with the filter tier, 302–320 with capture and 184–193 with no blur (three runs each, 2.9 times no blur); `k3-promo` (106 movers, 16.5 s) took 236, 205 and 117 (one run per arm, 2.0 times no blur). The two films do not order by mover count, and the cause of the difference was not isolated. The filter tier draws each mover as at least 32 offset copies per frame; capture adds a second paint per blurred frame.
 - **Editing.** The filter tier never wraps anything. With capture the root is wrapped only while playing or rendering; paused, it is plain DOM, so click-to-select works.
 - **Capture only.** Blurred preview can run at half the frame rate on heavy compositions, and a `<video>` drawn through the capture looks about 2–3% darker in the browser editor preview than in normal playback. Renders are not affected.
 - **Preview and render.** `auto` draws the same way in both. A page that asks for capture previews with the filter tier in a browser without HTML in Canvas, so a spin or zoom looks softer there than in the render.
 - **Worker count.** Output is not bit-identical between worker counts (around 60 dB PSNR), about the size of the difference chunking already causes.
 - **Not handled.** Pose errors under CSS `zoom`, `position: fixed` and `foreignObject`; a very short Web Animations API animation that falls between scan samples; a large see-through mover (a full-frame translucent sweep), which is left sharp while its fast children still blur. With capture, a mover is drawn above the static content, so a static element that should cover a mover does not.
-- **Limits of the filter tier** (the default), as measured on one-pattern test compositions. None is fixed yet:
+- **Limits of the filter tier** (the default), as measured on one-pattern test compositions. Each is pinned by a test in the sweep:
   - `::before` or `::after` content outside the mover's box is cut off.
   - A mover's own `clip-path` or mask gets hard edges: the smear is clipped to the shape it has at that frame.
-  - A `position: fixed` child of a mover that moves through `left` or `top` jumps, because the filter makes the mover its containing block.
-  - `:last-child` and `nth-last-*` selectors on the root's children also match the `<svg>` the tier adds to the root.
+  - A `position: fixed` child of a mover that moves via `left` jumps, because the filter makes the mover its containing block.
+  - A `:last-child` selector on the root's children also matches the `<svg>` the tier adds to the root (`nth-last-*` works the same way but was not measured).
   - A visibility toggle inside the shutter window is drawn at full strength instead of half.
-  - `backdrop-filter` on a mover is drawn wrongly (360 px off in the sweep).
+  - `backdrop-filter` on a mover differs from the 32-sample oracle in the sweep (the backdrop only).
