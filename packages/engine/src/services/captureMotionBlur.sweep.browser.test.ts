@@ -184,12 +184,6 @@ const CASES: readonly SweepCase[] = [
     tier: "filter",
     frame: 11,
     check: "outside",
-    bug: {
-      finding: "I",
-      reason: "the filter tier's svg becomes the root's last child, so :last-child moves to it",
-      regions: [rect(0, 0, 0, 0), rect(494, 14, 112, 62)],
-      measuredMae: S.I,
-    },
   },
   {
     fixture: "overflow-card",

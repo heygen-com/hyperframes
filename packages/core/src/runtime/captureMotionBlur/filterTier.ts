@@ -163,7 +163,7 @@ export function createFilterTier(
       defs.setAttribute("data-hf-ignore", "");
       defs.style.cssText = "position:absolute;left:0;top:0;pointer-events:none";
       node(defs, "defs", {});
-      root.append(defs);
+      document.documentElement.append(defs);
     }
     layer = buildLayer(defs.querySelector("defs") ?? defs, layers.size, el);
     layers.set(el, layer);
