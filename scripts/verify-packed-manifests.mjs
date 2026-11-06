@@ -4,6 +4,7 @@
 // fallow-ignore-file complexity
 
 import { execFileSync } from "node:child_process";
+import ts from "typescript";
 import {
   copyFileSync,
   existsSync,
@@ -151,20 +152,28 @@ function hasExplicitRuntimeExtension(specifier) {
 }
 
 function listRelativeImportSpecifiers(source) {
-  const patterns = [
-    /^\s*import\s+["'](\.\.?\/[^"']+)["']/gm,
-    /^\s*(?:import|export)\b(?:(?!;)[\s\S])*?\s+from\s+["'](\.\.?\/[^"']+)["']/gm,
-    /\bimport\s*\(\s*["'](\.\.?\/[^"']+)["']\s*\)/gm,
-    /\brequire\s*\(\s*["'](\.\.?\/[^"']+)["']\s*\)/gm,
-  ];
+  const file = ts.createSourceFile(
+    "packed.js",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
   const specifiers = [];
-
-  for (const pattern of patterns) {
-    for (const match of source.matchAll(pattern)) {
-      specifiers.push({ index: match.index, specifier: match[1] });
-    }
-  }
-
+  const visit = (node) => {
+    let target;
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) target = node.moduleSpecifier;
+    if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+    )
+      target = node.arguments[0];
+    if (target && ts.isStringLiteral(target) && /^\.\.?\//.test(target.text))
+      specifiers.push({ index: node.getStart(file), specifier: target.text });
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
   return specifiers;
 }
 
@@ -237,9 +246,11 @@ function verifyPackedJavaScriptImports(workspace, filename, packedFiles) {
   }
 }
 
-function parsePackJson(output, workspace) {
+export function parsePackJson(output, workspace) {
   try {
-    const parsed = JSON.parse(output);
+    // pnpm lifecycle scripts can precede the pretty-printed JSON result with stdout.
+    const start = output.search(/^[{[]/m);
+    const parsed = JSON.parse(output.slice(start));
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     throw new Error(`Could not parse pnpm pack JSON output for ${workspace}`);
