@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../store/playerStore";
 import { TimelineClip } from "./TimelineClip";
+import { TOOLTIP_HOVER_DELAY_MS } from "../../components/ui/Tooltip";
 import { ClipFadesContext } from "./TimelineClipFades";
 import type { TimelineEditCapabilities } from "./timelineEditing";
 import { defaultTimelineTheme, type TimelineTheme } from "./timelineTheme";
@@ -30,12 +31,14 @@ function renderClip({
   isSelected = false,
   hasCustomContent = true,
   theme = defaultTimelineTheme,
+  isComposition = false,
 }: {
   element: TimelineElement;
   pps?: number;
   isSelected?: boolean;
   hasCustomContent?: boolean;
   theme?: TimelineTheme;
+  isComposition?: boolean;
 }) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -53,7 +56,7 @@ function renderClip({
         hasCustomContent={hasCustomContent}
         capabilities={capabilities}
         theme={theme}
-        isComposition={false}
+        isComposition={isComposition}
         onHoverStart={vi.fn()}
         onHoverEnd={vi.fn()}
         onClick={onClick}
@@ -298,6 +301,185 @@ describe("TimelineClip", () => {
     expect(clip.style.getPropertyValue("--clip-bg")).not.toBe("var(--clip-bg)");
     expect(clip.style.getPropertyValue("--clip-handle")).toBe("var(--timeline-handle)");
     act(() => root.unmount());
+  });
+
+  it("shows the full name in a tooltip when the label is cut off, and no tooltip when it fits", async () => {
+    const longName = "International Space Station flyover";
+    const shortName = "Cut";
+    const prior = ["scrollWidth", "clientWidth"].map(
+      (key) => [key, Object.getOwnPropertyDescriptor(HTMLElement.prototype, key)] as const,
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        const text = (this as HTMLElement).textContent ?? "";
+        const measured =
+          (this as HTMLElement).classList.contains("timeline-clip__name") ||
+          (this as HTMLElement).classList.contains("timeline-clip__label");
+        if (!measured) return 0;
+        return text.length > 12 ? 240 : 40;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        const measured =
+          (this as HTMLElement).classList.contains("timeline-clip__name") ||
+          (this as HTMLElement).classList.contains("timeline-clip__label");
+        return measured ? 80 : 0;
+      },
+    });
+    try {
+      const long = renderClip({
+        element: { id: "long", label: longName, tag: "div", start: 0, duration: 2, track: 0 },
+      });
+      const short = renderClip({
+        element: { id: "short", label: shortName, tag: "div", start: 0, duration: 2, track: 0 },
+      });
+      const longClip = long.host.querySelector("button")!;
+      const shortClip = short.host.querySelector("button")!;
+      expect(longClip.parentElement).toBe(long.host);
+      expect(long.host.querySelector(".timeline-clip__name")?.textContent).toBe(longName);
+      expect(longClip.getAttribute("title")).toBe(`${longName} • 0.0s to 2.0s`);
+      expect(shortClip.getAttribute("title")).toContain(shortName);
+
+      await act(async () => longClip.focus());
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          `${longName} • 0.0s to 2.0s`,
+        ),
+      );
+      expect(longClip.getAttribute("title")).toBeNull();
+
+      await act(async () => shortClip.focus());
+      await vi.waitFor(() => expect(document.querySelector('[role="tooltip"]')).toBeNull());
+      expect(shortClip.getAttribute("title")).toContain(shortName);
+
+      act(() => {
+        long.root.unmount();
+        short.root.unmount();
+      });
+    } finally {
+      for (const [key, descriptor] of prior) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+        else Reflect.deleteProperty(HTMLElement.prototype, key);
+      }
+    }
+  });
+
+  it("shows the composition name, and keeps the double-click hint, when the name is cut off", async () => {
+    const name = "Opening title that does not fit";
+    const prior = ["scrollWidth", "clientWidth"].map(
+      (key) => [key, Object.getOwnPropertyDescriptor(HTMLElement.prototype, key)] as const,
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).classList.contains("timeline-clip__name") ? 240 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).classList.contains("timeline-clip__name") ? 80 : 0;
+      },
+    });
+    try {
+      const view = renderClip({
+        element: {
+          id: "scene",
+          label: name,
+          tag: "div",
+          start: 1,
+          duration: 3,
+          track: 0,
+          compositionSrc: "compositions/title.html",
+        },
+        isComposition: true,
+      });
+      const clip = view.host.querySelector("button")!;
+      await act(async () => clip.focus());
+      await vi.waitFor(() =>
+        expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+          `${name} • Double-click to open`,
+        ),
+      );
+      act(() => view.root.unmount());
+    } finally {
+      for (const [key, descriptor] of prior) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+        else Reflect.deleteProperty(HTMLElement.prototype, key);
+      }
+    }
+  });
+
+  it("waits the shared tooltip delay on hover, and closes the tooltip when the clip is pressed", async () => {
+    const prior = ["scrollWidth", "clientWidth"].map(
+      (key) => [key, Object.getOwnPropertyDescriptor(HTMLElement.prototype, key)] as const,
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).classList.contains("timeline-clip__name") ? 240 : 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get() {
+        return (this as HTMLElement).classList.contains("timeline-clip__name") ? 80 : 0;
+      },
+    });
+    try {
+      const view = renderClip({
+        element: {
+          id: "long",
+          label: "International Space Station flyover",
+          tag: "div",
+          start: 0,
+          duration: 2,
+          track: 0,
+        },
+      });
+      const clip = view.host.querySelector("button")!;
+      const tooltip = () => document.querySelector('[role="tooltip"]');
+      const wait = (ms: number) => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, ms);
+        return act(async () => {
+          await promise;
+        });
+      };
+      await act(async () => {
+        clip.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+      });
+      expect(tooltip()).toBeNull();
+      await act(async () => {
+        clip.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+      });
+      await wait(TOOLTIP_HOVER_DELAY_MS + 50);
+      expect(tooltip()).toBeNull();
+
+      await act(async () => {
+        clip.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+      });
+      expect(tooltip()).toBeNull();
+      await vi.waitFor(
+        () =>
+          expect(tooltip()?.textContent).toBe("International Space Station flyover • 0.0s to 2.0s"),
+        { timeout: 1000 },
+      );
+
+      await act(async () => {
+        clip.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      });
+      expect(tooltip()).toBeNull();
+      act(() => view.root.unmount());
+    } finally {
+      for (const [key, descriptor] of prior) {
+        if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+        else Reflect.deleteProperty(HTMLElement.prototype, key);
+      }
+    }
   });
 
   it("is a roving native button with explicit selection semantics", () => {

@@ -1,4 +1,12 @@
-import { memo, type CSSProperties, type ReactNode } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type { TimelineElement } from "../store/playerStore";
 import {
   CLIP_TRIM_HIT_PX,
@@ -16,6 +24,7 @@ import { ClipBadges } from "./ClipBadges";
 import { linkLabelColor } from "./linkLabelColor";
 import { OutOfSyncBadge } from "./OutOfSyncBadge";
 import { clipSpeedSuffix } from "./clipToolAttrs";
+import { TOOLTIP_HOVER_DELAY_MS, Tooltip } from "../../components/ui/Tooltip";
 import { ClipPeakTooltip } from "./ClipPeakTooltip";
 import { timeLayerPercent } from "./TimelineTimeLayer";
 
@@ -95,6 +104,37 @@ export const TimelineClip = memo(function TimelineClip({
   const showDefaultText = !hasCustomContent && ladder === "labeled";
   const startLabel = el.start.toFixed(1);
   const endLabel = (el.start + el.duration).toFixed(1);
+  const clipRef = useRef<HTMLButtonElement>(null);
+  const nameTooltipId = useId();
+  const [showFullName, setShowFullName] = useState(false);
+  const nameTitle = isComposition
+    ? `${displayLabel} • Double-click to open`
+    : `${displayLabel} • ${startLabel}s to ${endLabel}s`;
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRevealTimer = () => {
+    if (revealTimer.current === null) return;
+    clearTimeout(revealTimer.current);
+    revealTimer.current = null;
+  };
+  useEffect(() => clearRevealTimer, []);
+  const hideFullName = () => {
+    clearRevealTimer();
+    setShowFullName(false);
+  };
+  const revealFullName = (target: HTMLElement, delayMs = 0) => {
+    clearRevealTimer();
+    const measure = () => {
+      const node = target.querySelector<HTMLElement>(
+        isAudioClip ? ".timeline-clip__label" : ".timeline-clip__name",
+      );
+      setShowFullName(Boolean(node && node.scrollWidth > node.clientWidth));
+    };
+    if (delayMs <= 0) {
+      measure();
+      return;
+    }
+    revealTimer.current = setTimeout(measure, delayMs);
+  };
   const themeVariables = {
     "--clip-bg": theme.clipBackground,
     "--clip-bg-active": theme.clipBackgroundActive,
@@ -145,6 +185,7 @@ export const TimelineClip = memo(function TimelineClip({
 
   const clip = (
     <button
+      ref={clipRef}
       type="button"
       data-clip={isGestureActor ? undefined : "true"}
       data-el-id={isGestureActor ? undefined : (el.key ?? el.id)}
@@ -167,14 +208,23 @@ export const TimelineClip = memo(function TimelineClip({
       }
       className={clipClassName}
       style={style}
-      title={
-        isComposition
-          ? `${el.compositionSrc} • Double-click to open`
-          : `${displayLabel} • ${startLabel}s to ${endLabel}s`
-      }
-      onPointerEnter={onHoverStart}
-      onPointerLeave={onHoverEnd}
-      onPointerDown={onPointerDown}
+      title={showFullName ? undefined : nameTitle}
+      aria-describedby={showFullName ? nameTooltipId : undefined}
+      onPointerEnter={(event) => {
+        // Audio already waits inside ClipPeakTooltip. Picture clips own their open state.
+        revealFullName(event.currentTarget, isAudioClip ? 0 : TOOLTIP_HOVER_DELAY_MS);
+        onHoverStart();
+      }}
+      onPointerLeave={() => {
+        hideFullName();
+        onHoverEnd();
+      }}
+      onFocus={(event) => revealFullName(event.currentTarget)}
+      onBlur={hideFullName}
+      onPointerDown={(event) => {
+        hideFullName();
+        onPointerDown?.(event);
+      }}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
@@ -271,5 +321,16 @@ export const TimelineClip = memo(function TimelineClip({
       )}
     </button>
   );
-  return isAudioClip || el.hasAudio ? <ClipPeakTooltip>{clip}</ClipPeakTooltip> : clip;
+  if (isAudioClip || el.hasAudio) {
+    return (
+      <ClipPeakTooltip overflowLabel={showFullName ? nameTitle : undefined}>{clip}</ClipPeakTooltip>
+    );
+  }
+  // The button stays a direct lane child. A wrapper span would split it from the keyframe diamonds beside it.
+  return (
+    <>
+      {clip}
+      <Tooltip label={nameTitle} anchorRef={clipRef} open={showFullName} id={nameTooltipId} />
+    </>
+  );
 });
