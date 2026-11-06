@@ -1046,24 +1046,52 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  it("compileForRender re-points a sibling asset of a sub-composition whose folder is %20-encoded", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-encoded-dir-subcomp-",
+      [{ id: "intro", src: "my%20dir/scene.html" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, "my dir"), { recursive: true });
+      writeFileSync(join(projectDir, "my dir", "img.png"), "png");
+      writeFileSync(
+        join(projectDir, "my dir", "scene.html"),
+        `<!doctype html><html><body><div data-composition-id="intro" data-width="100" data-height="100"><img id="pic" src="img.png"></div></body></html>`,
+      );
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+      const src = parseHTML(compiled.html).document.getElementById("pic")?.getAttribute("src");
+      expect(decodeURIComponent(src ?? "")).toContain("my dir/img.png");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["dot-dot segments", "../outside-scene.html"],
     ["an encoded ../", "%2e%2e%2foutside-scene.html"],
     ["a leading slash and dot-dot", "/../outside-scene.html"],
     ["an encoded leading slash and dot-dot", "%2f%2e%2e%2foutside-scene.html"],
-  ])("compileForRender refuses a data-composition-src that leaves the project through %s", async (_label, src) => {
-    const projectDir = makeSubCompProject("hf-outside-subcomp-", [{ id: "intro", src }], {});
-    const outside = join(dirname(projectDir), "outside-scene.html");
-    writeFileSync(outside, validSubCompHtml("intro", "Outside"));
-    try {
-      await expect(
-        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/outside the project folder/);
-    } finally {
-      rmSync(outside, { force: true });
-      rmSync(projectDir, { recursive: true, force: true });
-    }
-  });
+  ])(
+    "compileForRender refuses a data-composition-src that leaves the project through %s",
+    async (_label, src) => {
+      const projectDir = makeSubCompProject("hf-outside-subcomp-", [{ id: "intro", src }], {});
+      const outside = join(dirname(projectDir), "outside-scene.html");
+      writeFileSync(outside, validSubCompHtml("intro", "Outside"));
+      try {
+        await expect(
+          compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+        ).rejects.toThrow(/outside the project folder/);
+      } finally {
+        rmSync(outside, { force: true });
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("compileForRender preserves a bare fragment's markup, sibling styles, and script", async () => {
     const projectDir = makeSubCompProject(

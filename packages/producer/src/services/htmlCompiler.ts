@@ -13,7 +13,7 @@ import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
-import { join, dirname, resolve, basename, relative } from "path";
+import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import {
   COMPOSITION_SOURCE_URL,
@@ -211,6 +211,16 @@ class EmptyCompositionError extends Error {
     this.name = "EmptyCompositionError";
     this.problems = problems;
   }
+}
+
+/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /). */
+function normalizeCompositionSrcs(html: string, projectDir: string): string {
+  return html.replace(/(\bdata-composition-src=)(["'])([^"']*)\2/g, (whole, name, quote, value) => {
+    if (!value.includes("%") && !value.startsWith("/")) return whole;
+    const file = resolveCompositionSrc(projectDir, value);
+    if (file === null) return whole;
+    return `${name}${quote}${relative(projectDir, file).split(sep).join("/")}${quote}`;
+  });
 }
 
 /**
@@ -796,7 +806,7 @@ async function parseSubCompositions(
       continue;
     }
 
-    const rawSubHtml = read.text;
+    const rawSubHtml = normalizeCompositionSrcs(read.text, projectDir);
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
 
@@ -2073,7 +2083,10 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
-  const rawHtml = rewriteUnresolvableGsapToCdn(entryHtml, projectDir);
+  const rawHtml = normalizeCompositionSrcs(
+    rewriteUnresolvableGsapToCdn(entryHtml, projectDir),
+    projectDir,
+  );
 
   // Pre-flight: every data-composition-src reference must resolve to a
   // usable file before we spend any time compiling, launching a browser, or
