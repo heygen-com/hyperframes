@@ -616,10 +616,25 @@ export async function pickVoice(r: GenerateRequest): Promise<Voice> {
   ]);
   const kept = keptVoice(project, request);
   if (kept) return kept;
-  const [voice] = await publicVoices(r.voice, 1);
-  if (!voice) throw new Fix(`HeyGen has no public voice for ${r.voice}`, "--voice <voice id>");
+  const language = languageName(r.voice);
+  const [voice] = await publicVoices(language, 1);
+  const named = voice?.language?.toLowerCase() === language.toLowerCase();
+  if (!voice || (!named && voice.language?.toLowerCase() === "multilingual"))
+    throw new Fix(
+      `HeyGen has no public voice for ${r.voice}${voice ? ` (it offered a ${voice.language} one)` : ""}`,
+      "--voice <the language's English name, e.g. English or Chinese>, or --voice <voice id>",
+    );
   keepVoice(project, request, voice);
   return voice;
+}
+
+const LANGUAGE_TAG = /^([a-z]{2,3})(?:[-_][a-z0-9]{2,8})*$/i;
+const LANGUAGE_NAMES = new Intl.DisplayNames(["en"], { type: "language", fallback: "none" });
+
+function languageName(spelled: string): string {
+  const tag = LANGUAGE_TAG.exec(spelled.trim());
+  if (!tag) return spelled;
+  return LANGUAGE_NAMES.of(tag[1]!.toLowerCase()) ?? spelled;
 }
 
 export function checkRequest(r: GenerateRequest): void {
