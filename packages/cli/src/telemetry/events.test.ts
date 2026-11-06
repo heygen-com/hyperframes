@@ -241,7 +241,11 @@ describe("trackCheckReport", () => {
     trackCheckReport({ ...props, mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } });
     expect(trackEvent).toHaveBeenLastCalledWith(
       "check_report",
-      expect.objectContaining({ copies_total: 47, copies_waited_ms: 120_000, copies_unfinished: 12 }),
+      expect.objectContaining({
+        copies_total: 47,
+        copies_waited_ms: 120_000,
+        copies_unfinished: 12,
+      }),
     );
     trackCheckReport(props);
     expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("copies_total");

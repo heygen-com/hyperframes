@@ -3619,7 +3619,9 @@ describe("check report telemetry", () => {
   it("a check stopped by the copy wait still sends the copy facts and stays browserSkipped", async () => {
     const { deps } = dependencies(fakeDriver());
     deps.runBrowserCheck = async (_project, _options, _motion, deadline) => {
-      deadline?.keepPartial(() => ({ mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } }));
+      deadline?.keepPartial(() => ({
+        mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 },
+      }));
       throw new CheckCopiesUnfinishedError(120_000, ["a.mp4 40%"]);
     };
     const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
