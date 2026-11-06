@@ -36,7 +36,10 @@ vi.mock("./auth.js", () => ({
   createShareAccess: () => ({ access: vi.fn() }),
   shareSite: () => "https://hyperframes.dev",
 }));
-vi.mock("./host.js", () => ({ bindCliShareProject: (path: string) => path }));
+vi.mock("./host.js", () => ({
+  assertReviewUploadStorage: vi.fn(),
+  bindCliShareProject: (path: string) => path,
+}));
 vi.mock("./render.js", () => ({ prepareShareRender: mocks.render }));
 import { createShareService } from "./service.js";
 const shared = {

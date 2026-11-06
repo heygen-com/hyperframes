@@ -18,7 +18,7 @@ import {
   type ReviewShare,
 } from "@hyperframes/share";
 import { createShareAccess, shareSite } from "./auth.js";
-import { bindCliShareProject } from "./host.js";
+import { assertReviewUploadStorage, bindCliShareProject } from "./host.js";
 import { prepareShareRender } from "./render.js";
 
 export interface ShareAction {
@@ -161,6 +161,7 @@ export function createShareService(
       throw new ReviewFailed(403, "feature_unavailable");
     if (!current.share) await preflightFirst(dir, client, input);
     assertResumeSource(current, input);
+    assertReviewUploadStorage();
     await prepareShareRender(dir);
     const share =
       current.share ??

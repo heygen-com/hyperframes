@@ -3034,5 +3034,10 @@ for an accepted/read operation, 1 for failure, and 2 for invalid arguments.
 A successful local render does not finish sharing: upload failures still return
 a failure exit code.
 
+Hosts must configure trusted video storage origins before creating or updating
+a share. When running from source or using a custom storage setup, set
+`HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` to the comma-separated HTTPS origins
+provided by your deployment. Use exact origins without paths or wildcards.
+
 Existing `/p/...` publications remain separate and reachable. Sharing does not
 convert a legacy publication or change its URL, visibility or ownership.

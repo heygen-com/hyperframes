@@ -272,13 +272,15 @@ test("status recovery settles distinct video/version IDs without a new upload", 
       },
     }),
   );
+  const saved = await readFile(file, "utf8");
+  let status = "upload_pending";
   let reads = 0;
   api.readExport = async (project, video) => {
     reads++;
     assert.equal(project, "p1");
     assert.equal(video, "video-id");
     return {
-      status: "ready",
+      status,
       video_id: video,
       version_id: "version-id",
       exported_at: "2026-11-04T00:00:00Z",
@@ -288,13 +290,17 @@ test("status recovery settles distinct video/version IDs without a new upload", 
   assert.equal(reads, 0);
   await refreshReviewExport(dir, api);
   assert.equal(reads, 1);
+  assert.equal(await readFile(file, "utf8"), saved);
+  status = "ready";
+  await refreshReviewExport(dir, api);
+  assert.equal(reads, 2);
   assert.equal(JSON.parse(await readFile(file, "utf8")).pending, null);
   assert.equal(
     (await reviewVersion(dir, { latestReadyVersionId: "version-id" })).last.current,
     true,
   );
   await refreshReviewExport(dir, api);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
 });
 test("refuses an unconfigured review upload destination before sending the file", async (t) => {
   const dir = await folder(t);

@@ -3,6 +3,8 @@ import { isAuthError } from "../auth/errors.js";
 import { CliUsageError } from "../utils/commandResult.js";
 
 const HINTS: Record<string, string> = {
+  review_upload_origins_required:
+    "Review video storage is not configured. Set HYPERFRAMES_REVIEW_UPLOAD_ORIGINS to the exact storage origins provided by your deployment.",
   review_project_limit_reached:
     "Your workspace has used its five free shared projects. Update an existing share, or manage and remove one to free a slot. Turning a link off does not free a slot.",
   review_subscription_required:

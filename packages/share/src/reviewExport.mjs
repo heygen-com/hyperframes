@@ -757,7 +757,7 @@ async function settleSavedExport(dir, client, fromReview) {
   const id = await reviewProjectId(dir);
   if (!pending?.videoId || !id || pending.projectId !== id) return;
   const done = await client.readExport(id, pending.videoId);
-  if (going(done)) return;
+  if (done.status === "upload_pending" || going(done)) return;
   const failure = await finish(dir, state, pending, id, done, fromReview);
   const key = normalize(dir);
   if (failure) failures.set(key, { ...failure, exportKey: exportKeyOf(dir) });
