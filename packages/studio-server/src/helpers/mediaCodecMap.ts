@@ -68,7 +68,6 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
   prores: { representativeMime: null, prewarm: true },
   theora: { representativeMime: 'video/ogg; codecs="theora"', prewarm: true },
-  // MPEG-4 Part 2 (OpenCV's default "mp4v", ffmpeg -c:v mpeg4) and MJPEG in an mp4: Chrome answers error code 4.
   mpeg4: { representativeMime: null, prewarm: true },
   mjpeg: { representativeMime: null, prewarm: true },
   // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
