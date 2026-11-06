@@ -74,7 +74,7 @@ import {
   readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import { isPathInside, resolveCompositionSrc, toExternalAssetKey } from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -242,7 +242,11 @@ function assertSubCompositionsUsable(
     if (!srcPath) continue;
     if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
-    const filePath = resolve(projectDir, srcPath);
+    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    if (filePath === null) {
+      problems.push({ srcPath, detail: "it is outside the project folder" });
+      continue;
+    }
     // Circular reference guard. parseSubCompositions (below) silently
     // `continue`s on a repeat visit with no reporting at all — mirror that
     // silence here rather than pretend it surfaces an error somewhere else.
@@ -779,7 +783,8 @@ async function parseSubCompositions(
     const srcPath = el.getAttribute("data-composition-src");
     if (!srcPath) continue;
 
-    const filePath = resolve(projectDir, srcPath);
+    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    if (filePath === null) continue;
 
     // Circular reference guard
     if (visited.has(filePath)) {
@@ -1072,8 +1077,9 @@ function inlineSubCompositions(
       resolveHtml: (srcPath: string) => {
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
-          const read = readProjectFile(resolve(projectDir, srcPath));
-          if (read.kind === "file") {
+          const filePath = resolveCompositionSrc(projectDir, srcPath);
+          const read = filePath ? readProjectFile(filePath) : null;
+          if (read?.kind === "file") {
             compHtml = rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath);
           }
         }

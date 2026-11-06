@@ -1027,6 +1027,44 @@ describe("detectRenderModeHints", () => {
     ).rejects.toThrow(/compositions\/does-not-exist\.html/);
   });
 
+  it.each([
+    ["a %20-encoded name", "compositions/my%20scene.html"],
+    ["a leading slash for the project root", "/compositions/my scene.html"],
+  ])("compileForRender reads a data-composition-src written with %s", async (_label, src) => {
+    const projectDir = makeSubCompProject("hf-spelled-subcomp-", [{ id: "intro", src }], {
+      "my scene.html": validSubCompHtml("intro", "Spelled"),
+    });
+    try {
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+      expect(compiled.html).toContain("Spelled");
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["dot-dot segments", "../outside-scene.html"],
+    ["an encoded ../", "%2e%2e%2foutside-scene.html"],
+    ["a leading slash and dot-dot", "/../outside-scene.html"],
+    ["an encoded leading slash and dot-dot", "%2f%2e%2e%2foutside-scene.html"],
+  ])("compileForRender refuses a data-composition-src that leaves the project through %s", async (_label, src) => {
+    const projectDir = makeSubCompProject("hf-outside-subcomp-", [{ id: "intro", src }], {});
+    const outside = join(dirname(projectDir), "outside-scene.html");
+    writeFileSync(outside, validSubCompHtml("intro", "Outside"));
+    try {
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/outside the project folder/);
+    } finally {
+      rmSync(outside, { force: true });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender preserves a bare fragment's markup, sibling styles, and script", async () => {
     const projectDir = makeSubCompProject(
       "hf-fragment-subcomp-",
