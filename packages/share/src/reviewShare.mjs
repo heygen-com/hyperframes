@@ -75,7 +75,7 @@ const isSavedIdentity = (record) =>
   isOptionalSavedId(record.projectId) &&
   isOptionalBoolean(record.opened) &&
   isOptionalBoolean(record.removed) &&
-  (!(record.opened || record.removed) || isSavedId(record.projectId));
+  (!record.opened || isSavedId(record.projectId));
 
 /** @param {unknown} value @param {string} studioProjectId @param {string} file */
 function savedRegistration(value, studioProjectId, file) {

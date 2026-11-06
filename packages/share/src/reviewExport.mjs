@@ -166,20 +166,23 @@ const isOptionalReviewSent = (sent) =>
     Number.isFinite(sent.since) &&
     (sent.value === undefined || sent.value === "yes" || sent.value === "no"));
 
-/** @param {unknown} value @returns {value is NonNullable<VersionRecord["last"]>} */
+/** @typedef {Omit<NonNullable<VersionRecord["last"]>, "fingerprint"> & {fingerprint?: string}} SavedLast */
+
+/** @param {unknown} value @returns {value is SavedLast} */
 function isLast(value) {
   return (
     isJsonObject(value) &&
-    typeof value.fingerprint === "string" &&
+    (value.fingerprint === undefined || typeof value.fingerprint === "string") &&
     isSavedId(value.versionId) &&
     isSavedId(value.exportedAt) &&
     isSavedId(value.projectId) &&
-    (value.files === undefined || typeof value.files === "boolean") &&
+    isOptionalBoolean(value.files) &&
     (value.checksum === undefined || isSavedId(value.checksum))
   );
 }
 
-/** @param {Record<string, unknown>} saved @returns {saved is Partial<VersionRecord>} */
+/** @param {Record<string, unknown>} saved
+ * @returns {saved is {pending?: VersionRecord["pending"], last?: SavedLast | null}} */
 const isExportState = (saved) =>
   ("pending" in saved || "last" in saved) &&
   (saved.pending == null || isPending(saved.pending)) &&
@@ -191,7 +194,11 @@ async function readState(dir) {
   const saved = await readJsonRecord(file);
   if (!saved) return { pending: null, last: null };
   if (!isExportState(saved)) throw new SharingStateError(file);
-  return { pending: saved.pending ?? null, last: saved.last ?? null };
+  const { last, pending } = saved;
+  return {
+    pending: pending ?? null,
+    last: typeof last?.fingerprint === "string" ? { ...last, fingerprint: last.fingerprint } : null,
+  };
 }
 
 /** @param {string} dir @param {VersionRecord} state */

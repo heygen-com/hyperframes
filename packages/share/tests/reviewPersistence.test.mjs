@@ -13,6 +13,7 @@ import {
   changeSpace,
   pendingReviewExport,
   recheckHeld,
+  reviewDestination,
   reviewFiles,
   reviewVersion,
   shareForReview,
@@ -265,6 +266,35 @@ test("malformed export state keeps its bytes and refuses a new operation", async
     assert.equal(await readFile(stateFile, "utf8"), contents);
   }
   assert.equal(createExport.mock.callCount(), 0);
+});
+
+test("a saved version without a fingerprint is left untracked", async (t) => {
+  const { dir, stateFile } = await project(t);
+  const contents = JSON.stringify({
+    pending: null,
+    last: { versionId: "version", exportedAt: "2026-11-04T00:00:00Z", projectId },
+  });
+  await writeFile(stateFile, contents);
+  assert.equal((await reviewVersion(dir)).last, null);
+  assert.equal(await readFile(stateFile, "utf8"), contents);
+});
+
+test("an unopened removal record can refuse sharing without a server project ID", async (t) => {
+  const { dir, metadata } = await project(t);
+  const file = join(metadata, "review.json");
+  const contents = JSON.stringify({
+    studioProjectId: "studio",
+    projectId: null,
+    opened: false,
+    removed: true,
+  });
+  await writeFile(file, contents);
+  const spaces = t.mock.fn(async () => []);
+  await assert.rejects(reviewDestination({ projectPath: dir, client: { spaces } }), {
+    reason: "review_project_removed",
+  });
+  assert.equal(spaces.mock.callCount(), 0);
+  assert.equal(await readFile(file, "utf8"), contents);
 });
 
 test("a malformed workspace switch journal cannot be replaced by a new move", async (t) => {
