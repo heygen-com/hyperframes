@@ -1193,6 +1193,8 @@ export function trackCheckReport(props: {
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
+  /** The code of the finding that stopped the check, one of a closed set (checkPipeline's STOP_CODES). */
+  stopCode?: string;
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1224,6 +1226,7 @@ export function trackCheckReport(props: {
     contrast_points: props.contrastPoints,
     ok: props.ok,
     exit_code: props.exitCode,
+    ...(props.stopCode && { stop_code: props.stopCode }),
     ...runIdField(props.runId),
   });
 }

@@ -2562,6 +2562,9 @@ describe("check pipeline", () => {
       expect(reached?.message).toMatch(
         /^Check reached its --budget of 70 s while running the overlap pass .*Seconds per phase: /,
       );
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_budget_reached" }),
+      );
       expect(report.ok).toBe(false);
       expect(report.layout.findings.some((finding) => finding.code === "container_overflow")).toBe(
         true,
@@ -3626,6 +3629,7 @@ describe("check report telemetry", () => {
       }),
     );
     expect(report.contrast.errorCount).toBe(1);
+    expect(trackCheckReport.mock.calls[0]?.[0].stopCode).toBeUndefined();
   });
 
   it("reports zero browser samples and timings after a lint short circuit", async () => {
