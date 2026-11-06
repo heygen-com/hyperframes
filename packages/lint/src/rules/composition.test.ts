@@ -65,6 +65,43 @@ describe("composition rules", () => {
       expect(deprecatedEnd).toBeDefined();
       expect(deprecatedEnd?.message).toMatch(/disagrees with data-duration/);
     });
+
+    it("reports invalid-duration values the parser rejects", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div id="bad" class="clip" data-start="1" data-duration="2s" data-track-index="0"></div>
+          <div id="neg" class="clip" data-start="1" data-duration="-3" data-track-index="0"></div>
+          <div id="ok" class="clip" data-start="2" data-duration="2" data-track-index="0"></div>
+        </div>
+      </body></html>`);
+
+      const invalid = result.findings.filter(({ code }) => code === "invalid_data_duration");
+      expect(invalid.map(({ elementId }) => elementId)).toEqual(["bad", "neg"]);
+      expect(invalid[0]?.message).toMatch(/data-duration="2s"/);
+      expect(invalid[0]?.message).toMatch(/<div id="bad">/);
+    });
+
+    it("does not report invalid_data_duration for a valid duration", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div class="clip" data-start="1" data-duration="2" data-track-index="0"></div>
+        </div>
+      </body></html>`);
+
+      expect(result.findings.filter(({ code }) => code === "invalid_data_duration")).toEqual([]);
+    });
+
+    it("reports invalid-track-index values the parser rejects", async () => {
+      const result = await lintHyperframeHtml(`<!doctype html><html><body>
+        <div data-composition-id="main" data-start="0" data-duration="5">
+          <div id="bad" class="clip" data-start="1" data-duration="2" data-track-index="1.5"></div>
+        </div>
+      </body></html>`);
+
+      const invalid = result.findings.find(({ code }) => code === "invalid_data_track_index");
+      expect(invalid).toBeDefined();
+      expect(invalid?.message).toMatch(/data-track-index="1.5"/);
+    });
   });
 
   describe("subcomposition guidance", () => {

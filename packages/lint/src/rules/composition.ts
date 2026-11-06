@@ -1102,6 +1102,31 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // invalid_data_duration + invalid_data_track_index
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const timing = readTagTiming(tag.raw);
+      for (const diagnostic of timing.diagnostics) {
+        if (diagnostic.code !== "invalid-duration" && diagnostic.code !== "invalid-track-index")
+          continue;
+        const elementId = readAttr(tag.raw, "id") || undefined;
+        const isDuration = diagnostic.code === "invalid-duration";
+        findings.push({
+          code: isDuration ? "invalid_data_duration" : "invalid_data_track_index",
+          severity: "error",
+          message: `<${tag.name}${elementId ? ` id="${elementId}"` : ""}> has ${diagnostic.attribute}="${diagnostic.value ?? ""}", which the parser rejects. The clip gets a ${isDuration ? "default duration" : "track index of 0"} instead of what the author wrote.`,
+          elementId,
+          fixHint: isDuration
+            ? `Set ${diagnostic.attribute} to a non-negative number of seconds (for example data-duration="2").`
+            : `Set ${diagnostic.attribute} to a non-negative integer (for example data-track-index="1").`,
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // split_data_attribute_selector
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
