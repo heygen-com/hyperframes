@@ -301,6 +301,7 @@ interface LineCandidate {
   floor: number;
   window: LineWindow;
   firstIndex: number;
+  lastIndex: number;
 }
 
 /** A run that reaches the last sample lasts to the film's end; one at sample 0 starts exactly there. */
@@ -348,7 +349,16 @@ function lineCandidates(frames: CraftFrame[], duration: number, canvas: Canvas):
     const floor = lineFloorSec(words, finalLine);
     // Clearly long enough even at the shortest the grid allows.
     if (window.endIn - window.startIn >= floor) continue;
-    candidates.push({ track, words, text, finalLine, floor, window, firstIndex: run[0] });
+    candidates.push({
+      track,
+      words,
+      text,
+      finalLine,
+      floor,
+      window,
+      firstIndex: run[0],
+      lastIndex: run[1],
+    });
   }
   return candidates;
 }
@@ -430,26 +440,25 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
-    measured: measuredAround(frames, track.key, candidate.firstIndex),
+    measured: measuredAround(frames, track.key, candidate.firstIndex, candidate.lastIndex),
   };
 }
 
-const MEASURED_BEFORE = 3;
-const MEASURED_AFTER = 2;
+const MEASURED_SPAN = 3;
 
-/** The samples either side of where a line was first read, as measured: a report of a line read late shows whether
- * the frames before it painted nothing or painted it too faint or too small. */
+/** The samples at both ends of the line's run, as the sampler measured them. */
 function measuredAround(
   frames: CraftFrame[],
   key: number,
   first: number,
+  last: number,
 ): NonNullable<CraftFinding["measured"]> {
+  const indices = new Set<number>();
+  for (const edge of [first, last]) {
+    for (let at = edge - MEASURED_SPAN; at <= edge + MEASURED_SPAN; at += 1) indices.add(at);
+  }
   const out: NonNullable<CraftFinding["measured"]> = [];
-  for (
-    let index = Math.max(0, first - MEASURED_BEFORE);
-    index <= first + MEASURED_AFTER;
-    index += 1
-  ) {
+  for (const index of [...indices].sort((a, b) => a - b)) {
     const frame = frames[index];
     if (!frame) continue;
     const parts = frame.parts.filter((part) => part.block === key && !part.captions);
