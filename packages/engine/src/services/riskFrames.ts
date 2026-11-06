@@ -94,12 +94,17 @@ export async function scanCssEffectLiveFrames(
   fps: number,
   totalFrames: number,
   maxFrames: number,
-  options: ScanOptions = {},
+  {
+    budgetMs = SCAN_BUDGET_MS,
+    now = () => performance.now(),
+    onProgress = () => {},
+    onEnd,
+  }: ScanOptions = {},
 ): Promise<Set<number> | null> {
   try {
-    return await scanLiveFrames(page, fps, totalFrames, maxFrames, options);
+    return await scanLiveFrames(page, fps, totalFrames, maxFrames, budgetMs, now, onProgress);
   } finally {
-    options.onEnd?.();
+    onEnd?.();
   }
 }
 
@@ -108,7 +113,9 @@ async function scanLiveFrames(
   fps: number,
   totalFrames: number,
   maxFrames: number,
-  { budgetMs = SCAN_BUDGET_MS, now = () => performance.now(), onProgress }: ScanOptions,
+  budgetMs: number,
+  now: () => number,
+  onProgress: NonNullable<ScanOptions["onProgress"]>,
 ): Promise<Set<number> | null> {
   const live = new Set<number>();
   const started = now();
@@ -125,7 +132,7 @@ async function scanLiveFrames(
       return null;
     }
     for (const i of shown) live.add(from + i);
-    onProgress?.(to, totalFrames);
+    onProgress(to, totalFrames);
     const projectedMs = ((now() - started) / to) * totalFrames;
     if (to < totalFrames && projectedMs > budgetMs) {
       console.error(
