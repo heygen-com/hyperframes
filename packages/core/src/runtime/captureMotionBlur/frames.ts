@@ -53,8 +53,32 @@ function growToRect(box: Box, back: Affine, r: DOMRect): void {
   }
 }
 
+const POSITIONED = new Set(["absolute", "fixed"]);
+const NO_CONTENT = new Set(["none", "normal"]);
+
+function pseudoBox(el: HTMLElement, which: "::before" | "::after"): Box | null {
+  const cs = getComputedStyle(el, which);
+  if (NO_CONTENT.has(cs.content) || !POSITIONED.has(cs.position)) return null;
+  const left = parseFloat(cs.left) + el.clientLeft;
+  const top = parseFloat(cs.top) + el.clientTop;
+  const width = parseFloat(cs.width);
+  const height = parseFloat(cs.height);
+  if (![left, top, width, height].every(Number.isFinite)) return null;
+  return [left, top, left + width, top + height];
+}
+
+function growToBox(box: Box, other: Box | null): void {
+  if (!other) return;
+  box[0] = Math.min(box[0], other[0]);
+  box[1] = Math.min(box[1], other[1]);
+  box[2] = Math.max(box[2], other[2]);
+  box[3] = Math.max(box[3], other[3]);
+}
+
 function grownBox(el: HTMLElement, pose: Affine, scene: HTMLElement, frameW: number): Box {
   const box: Box = [0, 0, el.offsetWidth, el.offsetHeight];
+  growToBox(box, pseudoBox(el, "::before"));
+  growToBox(box, pseudoBox(el, "::after"));
   const back = clientToMover(pose, scene, frameW);
   if (!back) return box;
   const own = el.getBoundingClientRect();
