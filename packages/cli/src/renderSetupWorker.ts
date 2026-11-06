@@ -32,9 +32,24 @@ function lowerPriority(): void {
   }
 }
 
+/**
+ * Each small disk write of the Chrome download queues for CPU: behind a busy Windows PC's work that took minutes
+ * for seconds of work, with data still arriving so nothing ever counted as a stall.
+ */
+function raisePriority(): void {
+  try {
+    setPriority(constants.priority.PRIORITY_ABOVE_NORMAL);
+  } catch {
+    // expected: most Unix systems refuse this without privileges, and the install then runs at normal priority.
+  }
+}
+
 async function runMode(): Promise<unknown> {
   if (mode === "browser") return ensureBrowser(input);
-  if (mode === "browser-install") return runBrowserInstall(input);
+  if (mode === "browser-install") {
+    raisePriority();
+    return runBrowserInstall(input);
+  }
   if (mode === "lint") {
     // A background lint (Studio's, preview's) takes idle CPU only; a render waits on its lint, so that one does not.
     if (input.background) lowerPriority();
