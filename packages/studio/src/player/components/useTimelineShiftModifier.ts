@@ -1,8 +1,6 @@
 import type { RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 
-/** Shift over the timeline only changes its cursor, so it stays out of React: a press anywhere in the app must not
- * render the timeline. */
 export function useTimelineShiftModifier(container: RefObject<HTMLElement | null>): void {
   useMountEffect(() => {
     const hold = (held: boolean) => container.current?.toggleAttribute("data-shift-held", held);

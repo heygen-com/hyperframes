@@ -20,7 +20,9 @@ it("Shift marks the timeline for its cursor without rendering it", () => {
   const root = createRoot(host);
   let commits = 0;
   act(() =>
-    root.render(createElement(Profiler, { id: "t", onRender: () => (commits += 1) }, createElement(Timeline))),
+    root.render(
+      createElement(Profiler, { id: "t", onRender: () => (commits += 1) }, createElement(Timeline)),
+    ),
   );
   const timeline = host.querySelector("[data-testid=timeline]")!;
   const start = commits;
