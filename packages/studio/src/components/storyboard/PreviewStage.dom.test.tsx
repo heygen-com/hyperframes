@@ -10,11 +10,15 @@ import type { StoryboardBoard } from "./useStoryboardBoard";
 const pauses = vi.fn();
 const player = create<{
   isPlaying: boolean;
+  playLocked: boolean;
+  setPlayLocked: (locked: boolean) => void;
   setIsPlaying: (playing: boolean) => void;
   requestPlayback: (playing: boolean) => void;
   requestSeek: (seconds: number) => void;
 }>((set) => ({
   isPlaying: false,
+  playLocked: false,
+  setPlayLocked: (playLocked) => set({ playLocked }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   requestPlayback: (playing) => {
     if (!playing) pauses();
@@ -61,7 +65,7 @@ const boardShown = () => document.querySelector('[data-testid="board-view"]') !=
 beforeEach(() => {
   mounts = 0;
   board = noBoard;
-  player.setState({ isPlaying: false });
+  player.setState({ isPlaying: false, playLocked: false });
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -94,11 +98,17 @@ it("keeps the film mounted when the board goes and comes back", async () => {
   expect(mounts).toBe(1);
 });
 
-it("pauses a play started while the board covers the film, as a shortcut would", async () => {
-  await render();
+it("holds the player while the board covers the film, and leaves another owner's hold alone", async () => {
   board = written;
   await render();
-  pauses.mockClear();
-  await act(async () => player.getState().setIsPlaying(true));
-  expect(pauses).toHaveBeenCalledTimes(1);
+  expect(player.getState().playLocked).toBe(true);
+  board = noBoard;
+  await render();
+  expect(player.getState().playLocked).toBe(false);
+  player.setState({ playLocked: true });
+  board = written;
+  await render();
+  board = noBoard;
+  await render();
+  expect(player.getState().playLocked).toBe(true);
 });

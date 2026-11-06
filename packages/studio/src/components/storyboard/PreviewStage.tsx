@@ -34,12 +34,12 @@ export function PreviewStage({ projectId, children }: { projectId: string; child
     if (board.appeared) show("storyboard", "shown_on_write");
   }, [board.appeared, show]);
 
-  // The film is hidden under the board, so a play from anywhere (a shortcut, a stray request) is undone there.
+  // The film is hidden under the board: the player's own hold refuses a play from anywhere (J, Space, a request)
+  // before it starts. Another owner's hold is left as it is.
   useEffect(() => {
-    if (tab !== "storyboard") return;
-    return usePlayerStore.subscribe((state, prev) => {
-      if (state.isPlaying && !prev.isPlaying) state.requestPlayback(false);
-    });
+    if (tab !== "storyboard" || usePlayerStore.getState().playLocked) return;
+    usePlayerStore.getState().setPlayLocked(true);
+    return () => usePlayerStore.getState().setPlayLocked(false);
   }, [tab]);
 
   useEffect(() => {
