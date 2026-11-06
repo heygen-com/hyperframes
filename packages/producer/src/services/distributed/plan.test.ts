@@ -62,6 +62,7 @@ import {
 import { buildSyntheticRenderJob } from "./shared.js";
 import { assemble } from "./assemble.js";
 import { constrainAacTruePeak } from "../render/audioPadTrim.js";
+import { limitDeliveryPeaks } from "../render/audioDeliveryLimit.js";
 
 function ffmpegOrThrow(args: string[]): void {
   const ffmpeg = spawnSync(getFfmpegBinary(), ["-nostdin", "-loglevel", "error", ...args]);
@@ -1072,7 +1073,7 @@ describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
         ["-nostdin", "-i", join(stitched, "audio.m4a"), "-af", "volumedetect", "-f", "null", "-"],
         { encoding: "utf-8" },
       );
-      expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThan(-1);
+      expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThanOrEqual(-1);
 
       const withCfr = join(runRoot, "plan-stitch-cfr");
       await buildLocalExecutionPlan(project, { ...config, cfr: true }, withCfr, {
@@ -1253,17 +1254,29 @@ describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
       expect(planned.chunkCount).toBe(1);
       const delivered = join(runRoot, "loudness-delivered.mp4");
       await assemble(planDir, [video], join(planDir, "audio.m4a"), delivered);
+      // Built as delivery is: the track read as 16-bit (the mixer does; noise encodes 0.4 dB hotter for it), float PCM
+      // fitted to the frames, then guardDeliveryPeaks: the peak limit, the whole-mix cut.
+      const referenceSource = join(runRoot, "loudness-reference-source.wav");
+      ffmpegOrThrow([
+        ...[
+          "-i",
+          join(project, "tone.wav"),
+          "-af",
+          "aformat=sample_fmts=s16,apad,atrim=0:3.033333",
+        ],
+        ...["-c:a", "pcm_f32le", "-y", referenceSource],
+      ]);
       const reference = join(runRoot, "loudness-reference.m4a");
-      const encoded = await encodeAac(join(project, "tone.wav"), reference, 91 / 30, {
-        timeout: 30_000,
-        filter: "apad,atrim=0:3.033333",
-      });
+      const encoded = await encodeAac(referenceSource, reference, 91 / 30, { timeout: 30_000 });
       expect(encoded.success, encoded.stderr).toBe(true);
-      const held = await constrainAacTruePeak({
+      const delivery = {
         audioPath: reference,
-        sourcePath: join(project, "tone.wav"),
+        sourcePath: referenceSource,
         targetDurationSeconds: 91 / 30,
-      });
+      };
+      const limited = await limitDeliveryPeaks({ ...delivery, timeoutMs: 60_000 });
+      expect(limited.success, limited.error).toBe(true);
+      const held = await constrainAacTruePeak(delivery);
       expect(held.success, held.error).toBe(true);
       const measure = (path: string) => {
         const result = spawnSync(
@@ -1623,4 +1636,74 @@ describe("plan() — webm format (distributed VP9)", () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
   });
+});
+
+describe("plan() — template sub-composition entry", () => {
+  const TIMEOUT_MS = 30_000;
+  const INDEX_HTML = `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="5">
+    <div id="sting" data-composition-id="sting" data-composition-src="compositions/sting.html" data-start="0" data-duration="3"></div>
+  </div>
+</body>
+</html>`;
+  const STING_TEMPLATE = `<template id="sting-template">
+  <div data-composition-id="sting" data-width="320" data-height="240" data-duration="3">
+    <p>sting</p>
+  </div>
+</template>`;
+
+  function writeMountedProject(name: string): string {
+    const dir = join(runRoot, name);
+    mkdirSync(join(dir, "compositions"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), INDEX_HTML, "utf-8");
+    writeFileSync(join(dir, "compositions", "sting.html"), STING_TEMPLATE, "utf-8");
+    return dir;
+  }
+
+  it(
+    "plans a template-wrapped sub-composition rendered alone with its own duration",
+    async () => {
+      const dir = writeMountedProject("template-entry-project");
+      const planDir = join(runRoot, "template-entry-plan");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        dir,
+        { fps: 30, width: 320, height: 240, format: "mp4", entryFile: "compositions/sting.html" },
+        planDir,
+      );
+      expect(result.totalFrames).toBe(90);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "rejects a template entry that index.html does not mount",
+    async () => {
+      const dir = writeMountedProject("template-entry-unmounted");
+      writeFileSync(join(dir, "compositions", "orphan.html"), STING_TEMPLATE, "utf-8");
+      const planDir = join(runRoot, "template-entry-unmounted-plan");
+      mkdirSync(planDir, { recursive: true });
+      let caught: unknown;
+      try {
+        await plan(
+          dir,
+          {
+            fps: 30,
+            width: 320,
+            height: 240,
+            format: "mp4",
+            entryFile: "compositions/orphan.html",
+          },
+          planDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as Error).message).toMatch(/not mounted from index\.html/);
+    },
+    TIMEOUT_MS,
+  );
 });

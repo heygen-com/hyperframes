@@ -56,7 +56,9 @@ import { createCssAdapter } from "./adapters/css";
 import {
   createGsapAdapter,
   holdFrameMarks,
+  muteDiscreteCallbacks,
   rerenderGsapTimelineAt,
+  gsapTimelineOf,
   seekGsapTimeline,
   type GsapStructureKey,
 } from "./adapters/gsap";
@@ -203,7 +205,12 @@ import type {
 } from "./types";
 import type { PlayerAPI } from "../core.types";
 import { parseFps } from "../fps";
-import { recordStartupError, SCENE_CALLBACK_ERROR_PREFIX, swallow } from "./diagnostics";
+import {
+  recordBuildReadyRejection,
+  recordStartupError,
+  SCENE_CALLBACK_ERROR_PREFIX,
+  swallow,
+} from "./diagnostics";
 import { readTimelineDurationSeconds } from "./timelineDuration";
 import {
   CHANGE_DRIVEN_SERVICE_MIN_INTERVAL_MS,
@@ -308,6 +315,15 @@ function compositionFps(): number | null {
 
 function samePromiseSet(a: PromiseLike<unknown>[], b: PromiseLike<unknown>[] | null): boolean {
   return b !== null && a.length === b.length && a.every((p, i) => p === b[i]);
+}
+
+class BuildReadyRejection extends Error {
+  constructor(
+    readonly key: string,
+    readonly reason: unknown,
+  ) {
+    super(`window.__hf.buildReady[${JSON.stringify(key)}] rejected`);
+  }
 }
 
 // `Promise.all` allocates a fresh promise every call, so comparing ITS
@@ -484,15 +500,14 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
-const DECODE_FIRST_MAX_SECONDS = 300;
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
-function decodesFirst(el: HTMLMediaElement): boolean {
+function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
   return (
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
-    el.duration <= DECODE_FIRST_MAX_SECONDS &&
+    webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
   );
@@ -1027,6 +1042,7 @@ export function initSandboxRuntimeModular(): void {
         el.style.position = "absolute";
       }
       if (tag !== "audio") {
+        const sizedByItsFile = tag === "img";
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
         const hasMeaningfulComputedWidth = computed.width !== "0px" && computed.width !== "auto";
@@ -1035,14 +1051,14 @@ export function initSandboxRuntimeModular(): void {
           if (!el.style.width && !hasMeaningfulComputedWidth) {
             el.style.width = forcedWidth;
           }
-        } else if (!el.style.width && computed.width === "0px") {
+        } else if (!sizedByItsFile && !el.style.width && computed.width === "0px") {
           el.style.width = "100%";
         }
         if (forcedHeight) {
           if (!el.style.height && !hasMeaningfulComputedHeight) {
             el.style.height = forcedHeight;
           }
-        } else if (!el.style.height && computed.height === "0px") {
+        } else if (!sizedByItsFile && !el.style.height && computed.height === "0px") {
           el.style.height = "100%";
         }
       }
@@ -1438,16 +1454,16 @@ export function initSandboxRuntimeModular(): void {
   // second cache checking for itself would be told nothing changed.
   let compositionTimingRevision = 0;
 
-  const queryCache = new Map<string, { revision: number; nodes: Element[] }>();
+  const queryCache = new Map<string, Element[]>();
   const queryForTransport = (selector: string): Element[] => {
     if (!compositionTimingObserver || renderCaptureSeekStarted)
       return Array.from(document.querySelectorAll(selector));
     if (recordsMoveTiming(compositionTimingObserver.takeRecords()))
       invalidateCompositionTimingCaches();
     const cached = queryCache.get(selector);
-    if (cached?.revision === compositionTimingRevision) return cached.nodes;
+    if (cached) return cached;
     const nodes = Array.from(document.querySelectorAll(selector));
-    queryCache.set(selector, { revision: compositionTimingRevision, nodes });
+    queryCache.set(selector, nodes);
     return nodes;
   };
 
@@ -1460,6 +1476,7 @@ export function initSandboxRuntimeModular(): void {
 
   const invalidateCompositionTimingCaches = () => {
     compositionTimingRevision += 1;
+    queryCache.clear();
     // The same records that stale the duration caches are what a parked
     // transport is waiting for: a timing attribute edited, a sub-composition
     // mounted, media metadata arriving. One signal, two readers.
@@ -1625,9 +1642,6 @@ export function initSandboxRuntimeModular(): void {
 
   // Sub-composition timelines the runtime nested into the root: the host composition id, and where.
   const autoNested = new WeakMap<object, { hostId: string; parent: unknown; at: number }>();
-  // The producer's GSAP stub registers stand-ins; GSAP's tree holds the timelines behind them.
-  const gsapTimelineOf = (timeline: object): object =>
-    (timeline as { __hfReal?: object }).__hfReal ?? timeline;
   // The composite that holds the children of a root with no timeline, and how many it holds.
   let missingRootComposite: { timeline: RuntimeTimelineLike; size: number } | null = null;
   // Roots the runtime built. One it no longer holds would stay on GSAP's global timeline with all it last held.
@@ -2924,7 +2938,6 @@ export function initSandboxRuntimeModular(): void {
         currentTime: time,
         compositionDuration,
         canonicalFps: state.canonicalFps,
-        exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
         timelineRegistry: window.__timelines ?? {},
         resolver: timingResolverFor(true),
       });
@@ -2964,10 +2977,10 @@ export function initSandboxRuntimeModular(): void {
   // A clip's first visible style pass is slow; playing, each hidden clip gets it once just before its start.
   const clipsNeverStyledVisible = new Set<StylableElement>();
   const clipsStyledVisible = new WeakSet<Element>();
-  let neverStyledStarts = { revision: -1, starts: new Map<StylableElement, number>() };
+  let neverStyledStarts = { revision: -1, starts: new WeakMap<StylableElement, number>() };
   const neverStyledStart = (el: StylableElement, revision: number): number => {
     if (neverStyledStarts.revision !== revision)
-      neverStyledStarts = { revision, starts: new Map() };
+      neverStyledStarts = { revision, starts: new WeakMap() };
     let start = neverStyledStarts.starts.get(el);
     if (start === undefined) {
       start = resolveStartForElement(el, Number.NaN);
@@ -3406,7 +3419,12 @@ export function initSandboxRuntimeModular(): void {
         style.setProperty("visibility", shown, isVisibleNow ? "" : "important");
       }
       rawNode.toggleAttribute(CLIP_HIDDEN_ATTR, !isRuntimeStamped && !isVisibleNow);
-      if (!isRuntimeStamped && !isVisibleNow && !clipsStyledVisible.has(rawNode))
+      if (
+        !isRuntimeStamped &&
+        !isVisibleNow &&
+        !clipsStyledVisible.has(rawNode) &&
+        rawNode.isConnected
+      )
         clipsNeverStyledVisible.add(rawNode);
       const upcoming =
         (hiddenImagesSkipped || mediaDeferred) &&
@@ -4059,17 +4077,37 @@ export function initSandboxRuntimeModular(): void {
   // window.__hf.buildReady[key]: a piece registers a promise for setup no
   // adapter can observe (mesh building, shader compiles). Waited the same
   // way as adapter readiness, so render and preview both hold on it.
+  // A rejection still releases the hold, but it is recorded as a startup error (with the key that
+  // failed) so render, snapshot and check fail instead of capturing a scene that was never built.
+  // Each entry is wrapped once and cached so the tracker sees the same promise set on every poll.
+  const keyedBuildReadyPromises = new WeakMap<object, PromiseLike<unknown>>();
+  let buildReadyRejectionMessage: string | null = null;
   const isBuildReadinessSettled = createSettledTracker(
     () => {
       const registry = window.__hf?.buildReady;
       if (!registry) return [];
-      return Object.values(registry).filter(
-        (p): p is PromiseLike<unknown> =>
-          p != null && typeof (p as PromiseLike<unknown>).then === "function",
-      );
+      const promises: PromiseLike<unknown>[] = [];
+      for (const [key, p] of Object.entries(registry)) {
+        if (p == null || typeof (p as PromiseLike<unknown>).then !== "function") continue;
+        let keyed = keyedBuildReadyPromises.get(p);
+        if (!keyed) {
+          keyed = Promise.resolve(p).then(undefined, (reason: unknown) => {
+            throw new BuildReadyRejection(key, reason);
+          });
+          keyedBuildReadyPromises.set(p, keyed);
+        }
+        promises.push(keyed);
+      }
+      return promises;
     },
     () => maybePublishRenderReady(),
-    (err) => swallow("runtime.init.buildReady", err),
+    (err) => {
+      if (err instanceof BuildReadyRejection) {
+        buildReadyRejectionMessage = recordBuildReadyRejection(err.key, err.reason);
+        return;
+      }
+      swallow("runtime.init.buildReady", err);
+    },
   );
 
   // Passes that must see scene DOM, which arrives after init: when scenes mount, or when one is
@@ -4104,6 +4142,11 @@ export function initSandboxRuntimeModular(): void {
             seekRootChildrenAndAdapters(state.capturedTimeline, t, { suppressEvents: true }),
           );
       },
+      muteCallbacks: () =>
+        muteDiscreteCallbacks([
+          ...sceneTimelines().map(([, timeline]) => timeline),
+          ...(state.capturedTimeline ? [state.capturedTimeline] : []),
+        ]),
       ignoreMutations: withoutOwnCompositionRecords,
     });
   }
@@ -4671,6 +4714,8 @@ export function initSandboxRuntimeModular(): void {
     stopSceneAnimations([host]);
     const placeholder = parkScene(name);
     if (placeholder) moveDisplayHide(host, placeholder);
+    for (const clip of clipsNeverStyledVisible)
+      if (!clip.isConnected) clipsNeverStyledVisible.delete(clip);
     parkedNames.add(name);
     releaseDetachedMedia();
     webAudio.releaseDecodedExcept(webAudioMediaIn(document));
@@ -5047,7 +5092,6 @@ export function initSandboxRuntimeModular(): void {
       duration: (element) => resolveDurationForElement(element),
       compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
       canonicalFps: () => state.canonicalFps,
-      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
     }),
     createWaapiAdapter(),
     createCssAdapter({
@@ -6099,7 +6143,7 @@ export function initSandboxRuntimeModular(): void {
           : Promise.resolve(null);
       void capture.then((scheduled) => {
         const replacedByNewerPass = gen !== webAudio.currentGeneration();
-        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl)) {
+        if (scheduled && state.playbackRate === 1 && decodesFirst(rawEl, webAudio)) {
           void webAudio.decodeAudioElement(rawEl).then(async (buffer) => {
             if (!buffer || !clock.isPlaying() || gen !== webAudio.currentGeneration()) return;
             const played = await webAudio.schedulePlayback(
@@ -6414,6 +6458,14 @@ export function initSandboxRuntimeModular(): void {
     // would otherwise permanently block render-ready for whatever loads next
     // into this window, since window.__hf itself is never reset.
     if (window.__hf?.buildReady) window.__hf.buildReady = {};
+    // Likewise its rejected build must not fail the next composition's readiness waits.
+    if (
+      buildReadyRejectionMessage !== null &&
+      window.__hfStartupError === buildReadyRejectionMessage
+    ) {
+      delete window.__hfStartupError;
+    }
+    buildReadyRejectionMessage = null;
     for (const cleanup of runtimeCleanupCallbacks.splice(0)) {
       try {
         cleanup();

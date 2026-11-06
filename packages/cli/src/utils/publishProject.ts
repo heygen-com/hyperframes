@@ -12,7 +12,8 @@ import {
 } from "node:fs";
 import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
-import ignore, { type Ignore } from "ignore";
+import type { Ignore } from "ignore";
+import { projectIgnore } from "@hyperframes/lint";
 import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
@@ -24,12 +25,6 @@ import { writeProjectLink } from "./projectLink.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
-const HYPERFRAMES_IGNORE_FILE = ".hyperframesignore";
-// Unanchored (no leading/mid slash) so it matches a dot-prefixed name at any
-// depth, same as the segments it replaces below — but as a matcher pattern
-// instead of a hard skip, a project's own `.hyperframesignore` negation can
-// still override it.
-const DEFAULT_PROJECT_IGNORE = ["/renders/", "/snapshots/", ".*"];
 const PUBLISH_CONTENT_TYPE = "application/zip";
 const PUBLISH_METADATA_TIMEOUT_MS = 30_000;
 const PUBLISH_UPLOAD_MIN_TIMEOUT_MS = 120_000;
@@ -301,19 +296,10 @@ export function uploadTimeoutMs(byteLength: number): number {
 
 // Absolute, non-negotiable exclusions only — anything a `.hyperframesignore`
 // negation rule should be able to override (including dot-prefixed paths;
-// see DEFAULT_PROJECT_IGNORE) must go through the ignore matcher instead of
+// see projectIgnore) must go through the ignore matcher instead of
 // short-circuiting here.
 function shouldIgnoreSegment(segment: string): boolean {
   return IGNORED_DIRS.has(segment) || IGNORED_FILES.has(segment);
-}
-
-function createProjectIgnore(rootDir: string): Ignore {
-  const matcher = ignore().add(DEFAULT_PROJECT_IGNORE);
-  const ignorePath = join(rootDir, HYPERFRAMES_IGNORE_FILE);
-  if (existsSync(ignorePath)) {
-    matcher.add(readFileSync(ignorePath, "utf-8"));
-  }
-  return matcher;
 }
 
 function collectProjectFiles(
@@ -636,7 +622,7 @@ export function stagePublishFiles(
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
-  collectProjectFiles(absProjectDir, absProjectDir, filePaths, createProjectIgnore(absProjectDir));
+  collectProjectFiles(absProjectDir, absProjectDir, filePaths, projectIgnore(absProjectDir));
   if (!filePaths.includes("index.html")) {
     throw new Error(
       "Project archive must include index.html at the root. Check that .hyperframesignore does not exclude it.",

@@ -41,6 +41,7 @@ import {
   type UnconfiguredContext,
 } from "./status-guidance.js";
 import { jsonFailure } from "../../utils/jsonError.js";
+import { NetworkFailure } from "../../utils/networkFailure.js";
 import { defaultClientId, resolveClientId } from "../../auth/config.js";
 
 type BillingProduct = "hyperframes" | "heygen" | "unknown";
@@ -65,6 +66,7 @@ interface VerifiedStatus {
   apiError: string | null;
   /** The HyperFrames plan and credits, when the server (or the mock) answers. */
   plan?: Plan | null;
+  upgradeUrl?: string;
 }
 
 /** True for credentials resolved from the HyperFrames store (not env). */
@@ -96,10 +98,9 @@ export default defineCommand({
       return;
     }
 
-    const resolved = credential;
-    const status = await verify(await refreshIfNeeded(resolved).catch(() => resolved));
+    const status = await verifyRefreshed(credential);
     if (asJson) printJsonStatus(status);
-    else printHumanStatus(status);
+    else await printHumanStatus(status);
     setCommandExitCode(status.apiError ? 1 : 0);
   },
 });
@@ -162,6 +163,18 @@ function handleResolveError(err: unknown, asJson: boolean): never {
   failCommand();
 }
 
+/** An offline refresh says so at once rather than waiting out a second request with the stale token. */
+async function verifyRefreshed(credential: ResolvedCredential): Promise<VerifiedStatus> {
+  let current = credential;
+  try {
+    current = await refreshIfNeeded(credential);
+  } catch (error) {
+    if (error instanceof NetworkFailure)
+      return unreachable(credential, error, await loadPersistedUser(credential));
+  }
+  return await verify(current);
+}
+
 async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
   const client = new AuthClient({
     // Return the full new token set so the retry's credential carries
@@ -174,6 +187,7 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
     const user = await client.getCurrentUser(credential);
     return { credential, user, persistedUser, apiError: null, plan: await readPlan() };
   } catch (err) {
+    if (err instanceof NetworkFailure) return unreachable(credential, err, persistedUser);
     if (!isAuthError(err)) throw err;
     return {
       credential,
@@ -182,6 +196,14 @@ async function verify(credential: ResolvedCredential): Promise<VerifiedStatus> {
       apiError: err instanceof Error ? err.message : String(err),
     };
   }
+}
+
+function unreachable(
+  credential: ResolvedCredential,
+  failure: NetworkFailure,
+  persistedUser: StoredUserInfo | null,
+): VerifiedStatus {
+  return { credential, user: null, persistedUser, apiError: `${failure.message} ${failure.hint}` };
 }
 
 /**
@@ -217,13 +239,15 @@ function printJsonStatus(s: VerifiedStatus): void {
   };
   if (s.credential.type === "oauth") {
     payload["hyperframes_balance"] = null;
-    // With the plan read, `hyperframes` above holds the plan and credits, so there is no notice to give.
     if (product !== "hyperframes")
       payload["billing_notice"] =
         "OAuth billing product is not verified here; user billing fields describe the HeyGen account.";
     else if (!s.plan)
       payload["billing_notice"] =
         "HyperFrames balance is unavailable here; user billing fields describe the HeyGen account.";
+    else
+      payload["billing_notice"] =
+        "`hyperframes` is the HyperFrames plan and credits. user.subscription is the HeyGen app's plan and does not unlock HyperFrames features.";
     payload["expires_at"] = s.credential.expires_at?.toISOString() ?? null;
     payload["refreshable"] = s.credential.refreshable;
     payload["scope"] = s.credential.scope ?? null;
@@ -249,8 +273,11 @@ function persistedUserJson(u: StoredUserInfo | null): Record<string, unknown> | 
   };
 }
 
-function printHumanStatus(s: VerifiedStatus): void {
-  const rows = collectStatusRows(s);
+async function printHumanStatus(s: VerifiedStatus): Promise<void> {
+  const rows = collectStatusRows({
+    ...s,
+    ...(s.plan?.plan === "none" ? { upgradeUrl: await pageUrl("plans") } : {}),
+  });
   for (const [label, value] of rows) console.log(`${c.bold(label)} ${value}`);
 }
 
@@ -276,7 +303,7 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
     rows.push([
       "HyperFrames:",
       plan.plan === "none"
-        ? `Free · Upgrade to Pro: ${pageUrl("plans")}${tag}`
+        ? `Free · Upgrade to Pro: ${s.upgradeUrl}${tag}`
         : `${plan.plan} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
     ]);
   }

@@ -29,6 +29,7 @@ import {
   readTeamProject,
   writeTeamProject,
 } from "../utils/projectLink.js";
+import { cliSourced } from "../utils/sourceTag.js";
 
 export const examples: Example[] = [
   ["Publish the current project privately to a stable URL", "hyperframes publish"],
@@ -313,7 +314,7 @@ export default defineCommand({
       } else {
         const claimUrl = new URL(published.url);
         claimUrl.searchParams.set("claim_token", published.claimToken);
-        console.log(`  ${c.dim("Claim URL")}  ${c.accent(claimUrl.toString())}`);
+        console.log(`  ${c.dim("Claim URL")}  ${c.accent(cliSourced(claimUrl.toString()))}`);
         console.log(`  ${c.dim("Access")}     ${c.accent("Sign in required to claim")}`);
         console.log();
         console.log(

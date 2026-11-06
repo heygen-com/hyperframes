@@ -1,7 +1,10 @@
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
+  CheckBudgetError,
   CheckDeadline,
+  CheckCopiesUnfinishedError,
   CheckDeadlineError,
   CheckStoppedError,
   idleWindow,
@@ -28,7 +31,7 @@ import { trackCheckReport, trackCommandFailure } from "../telemetry/events.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import type { ProjectDir } from "./project.js";
-import { lintProject, shouldBlockRender, type ProjectLintResult } from "./lintProject.js";
+import { lintProject, type ProjectLintResult } from "./lintProject.js";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
@@ -120,7 +123,7 @@ export const DEFAULT_CHECK_OPTIONS: CheckOptions = {
   maxIssues: 80,
   collapseStatic: true,
   tolerance: 2,
-  timeout: 10_000,
+  timeout: DEFAULT_CONFIG.playerReadyTimeout,
   contrast: true,
   strict: false,
   snapshots: false,
@@ -757,12 +760,18 @@ async function collectMotionOverlapSamples(
     const craftStart = performance.now();
     // The render's last frame lands before the duration, where the runtime has already unmounted clips.
     const craftTimes = buildCraftSampleTimes(grid.duration).filter((time) => time < grid.duration);
-    for (const [index, time] of craftTimes.entries()) {
+    const last = craftTimes.length - 1;
+    for (let index = 0, sampled = 1; index <= last; sampled += 1) {
+      const time = craftTimes[index]!;
       progress(`craft frame at ${time}s`);
       await driver.seekGeometry(time, { draws: true });
       collected.craftFrames.push(...(await collectCraftFrame(driver, time)));
       progress();
       report("craft", index + 1, craftTimes.length);
+      index =
+        index === last
+          ? last + 1
+          : Math.min(last, index + craftStride(craftStart, sampled, last - index));
     }
     collected.craftMs = Math.round(performance.now() - craftStart);
   }
@@ -784,6 +793,15 @@ async function collectMotionOverlapSamples(
 // Craft times how long a line shows, so it keeps 8 fps past the overlap pass's ceiling, up to ~75 s.
 const CRAFT_SAMPLE_FPS = 8;
 const CRAFT_MAX_SAMPLES = 600;
+const CRAFT_BUDGET_MS = 90_000;
+const CRAFT_MAX_STRIDE = 12;
+
+function craftStride(startedAt: number, sampled: number, remaining: number): number {
+  const spent = performance.now() - startedAt;
+  const left = CRAFT_BUDGET_MS - spent;
+  const wanted = left <= 0 ? remaining : Math.ceil(((spent / sampled) * remaining) / left);
+  return Math.min(CRAFT_MAX_STRIDE, Math.max(1, wanted));
+}
 
 function buildCraftSampleTimes(duration: number): number[] {
   if (!Number.isFinite(duration) || duration <= 0) return [];
@@ -1505,6 +1523,23 @@ function disabledCraft(): CraftResult {
   return { enabled: false, step: 0, samples: 0, findings: [] };
 }
 
+/** The analysis re-seeks and re-captures frames on its own; each call it makes restarts the idle window. */
+export function reportingProgress<T extends object>(
+  driver: T,
+  enter: (phase: CheckPhase, detail?: string) => void,
+): T {
+  return new Proxy(driver, {
+    get(target, name) {
+      const member = Reflect.get(target, name);
+      if (typeof member !== "function") return member;
+      return (...args: unknown[]) => {
+        enter("analysis", String(name));
+        return member.apply(target, args);
+      };
+    },
+  });
+}
+
 export async function runAuditGrid(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -1536,19 +1571,21 @@ export async function runAuditGrid(
   const seekLoopMs = Date.now() - seekLoopStart;
 
   report("analyze", 0, 3);
+  enter("analysis");
+  const analysing = reportingProgress(driver, enter);
   let motionIssues = plan.preflightIssues;
   if (motion.kind === "valid" && plan.assertions.length > 0 && collected.motionFrames.length > 0) {
-    const canvas = await driver.getCanvas();
+    const canvas = await analysing.getCanvas();
     let evaluated = evaluateMotion(collected.motionFrames, plan.assertions, canvas, grid.duration);
     if (evaluated.some((issue) => issue.code === "motion_frozen")) {
-      const frames = await withFrameMotion(driver, collected.motionFrames, plan.assertions);
+      const frames = await withFrameMotion(analysing, collected.motionFrames, plan.assertions);
       evaluated = evaluateMotion(frames, plan.assertions, canvas, grid.duration);
     }
-    motionIssues = [...motionIssues, ...(await driver.anchorMotionIssues(evaluated))];
+    motionIssues = [...motionIssues, ...(await analysing.anchorMotionIssues(evaluated))];
   }
   report("analyze", 1, 3);
   const userPicked = new Set(grid.userPickedSamples);
-  const noTimeline = await driver.hasNoTimelineDeclaration();
+  const noTimeline = await analysing.hasNoTimelineDeclaration();
   const sweepSamples = collected.layoutStateSignatures.filter(
     (sample) => !userPicked.has(sample.time),
   );
@@ -1558,34 +1595,34 @@ export async function runAuditGrid(
   const sweepFindings =
     sweepVerdict.length > 0 &&
     (await framesMoved(
-      driver,
+      analysing,
       sweepSamples.map((sample) => sample.time),
     ))
       ? []
       : sweepVerdict;
   const rotationFindings = detectRotationPivotDrift(
     collected.rotationSamples,
-    await driver.getCanvas(),
+    await analysing.getCanvas(),
   );
   const offPivotFindings = detectOffPivotRotation(collected.indicatorFrames);
   const contrast = buildContrastResults(collected.contrastEntries);
   report("analyze", 2, 3);
-  const craft = craftEnabled(driver, options)
+  const craft = craftEnabled(analysing, options)
     ? await auditCraft(
         {
           frames: collected.craftFrames,
           duration: grid.duration,
-          canvas: await driver.getCanvas(),
-          soundSources: driver.collectCraftFilm
-            ? (await driver.collectCraftFilm()).soundSources
+          canvas: await analysing.getCanvas(),
+          soundSources: analysing.collectCraftFilm
+            ? (await analysing.collectCraftFilm()).soundSources
             : null,
           stillnessJudgedElsewhere:
             noTimeline || sweepFindings.length > 0 || wholeCompositionKeepsMoving(plan.assertions),
         },
         async (time) => {
-          await driver.seekGeometry(time, { draws: true });
-          if (!driver.collectCraftFrame) throw new Error("craft sampling unavailable");
-          return driver.collectCraftFrame(time);
+          await analysing.seekGeometry(time, { draws: true });
+          if (!analysing.collectCraftFrame) throw new Error("craft sampling unavailable");
+          return analysing.collectCraftFrame(time);
         },
       )
     : disabledCraft();
@@ -1639,6 +1676,12 @@ export async function runAuditGrid(
   };
 }
 
+export const leavesNothingToLoad = (finding: { code: string; severity: string }): boolean =>
+  finding.severity === "error" && finding.code === "root_missing_composition_id";
+
+const compositionCannotLoad = (lintResult: ProjectLintResult): boolean =>
+  lintResult.results[0]?.result.findings.some(leavesNothingToLoad) ?? false;
+
 export async function runCheckPipeline(
   project: ProjectDir,
   options: CheckOptions,
@@ -1665,7 +1708,7 @@ export async function runCheckPipeline(
 
     const lint = buildLintSection(lintResult);
     const { hdr, audio } = await inspectProjectMedia(project, dependencies);
-    if (shouldBlockRender(true, false, lintResult.totalErrors, lintResult.totalWarnings)) {
+    if (compositionCannotLoad(lintResult)) {
       return buildReport(
         options,
         lint,
@@ -1692,7 +1735,7 @@ export async function runCheckPipeline(
           ]
         : [];
 
-    const deadline = new CheckDeadline(idleWindow(options.timeout));
+    const deadline = new CheckDeadline(idleWindow(options.timeout), options.budget);
     const forgetStop = onStopSignal(deadline.stop);
     let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
     try {
@@ -1704,7 +1747,8 @@ export async function runCheckPipeline(
         );
       } catch (error) {
         const found = deadline.partialResult();
-        browser = { ...emptyBrowserResult(), ...found, skipped: Object.keys(found).length === 0 };
+        const ran = Object.keys(found).filter((key) => key !== "mediaCopies");
+        browser = { ...emptyBrowserResult(), ...found, skipped: ran.length === 0 };
         browser.runtimeFindings = [...browser.runtimeFindings, runtimeFailure(error)];
       }
 
@@ -1797,7 +1841,7 @@ async function withFindingCrops(
   deadline: CheckDeadline,
 ): Promise<CheckReport> {
   const cropRequests = selectFindingCropRequests(report);
-  if (cropRequests.length === 0) return report;
+  if (cropRequests.length === 0 || deadline.signal.aborted) return report;
   try {
     deadline.enter("crops");
     const findingFiles = await deadline.run(() =>
@@ -1805,7 +1849,7 @@ async function withFindingCrops(
     );
     return { ...report, snapshots: { ...report.snapshots, findingFiles } };
   } catch (error) {
-    if (error instanceof CheckDeadlineError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1839,7 +1883,7 @@ async function withOptionalFindingFrames(
     const captured = await deadline.run(() => capture(project, options, requests, deadline));
     return withFindingFrameFields(report, plan, captured);
   } catch (error) {
-    if (error instanceof CheckDeadlineError || error instanceof CheckStoppedError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1848,6 +1892,11 @@ async function withOptionalFindingFrames(
     return report;
   }
 }
+
+const isCheckExpiry = (error: unknown): boolean =>
+  error instanceof CheckDeadlineError ||
+  error instanceof CheckStoppedError ||
+  error instanceof CheckBudgetError;
 
 const MAX_FINDING_CROPS = 12;
 
@@ -2082,6 +2131,10 @@ function buildReport(
     contrastPoints: browser.contrastChecked,
     ok: report.ok,
     exitCode: checkExitCode(report),
+    stopCode: browser.runtimeFindings
+      .map((finding) => finding.code)
+      .find((code): code is StopCode => (STOP_CODES as readonly string[]).includes(code)),
+    mediaCopies: browser.mediaCopies,
     runId: getRunId(),
   });
   return filterComponentReport(report, options);
@@ -2216,9 +2269,21 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
-function runtimeFailure(error: unknown, code = "check_runtime_failure"): CheckFinding {
+export const STOP_CODES = [
+  "media_copies_unfinished",
+  "check_budget_reached",
+  "check_runtime_failure",
+] as const;
+export type StopCode = (typeof STOP_CODES)[number];
+
+function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(
-    code,
+    code ??
+      (error instanceof CheckCopiesUnfinishedError
+        ? "media_copies_unfinished"
+        : error instanceof CheckBudgetError
+          ? "check_budget_reached"
+          : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

@@ -14,6 +14,7 @@ export class Fix extends Error {
   constructor(
     problem: string,
     readonly fix: string,
+    readonly url?: string,
   ) {
     super(problem);
     this.name = "Fix";
@@ -30,6 +31,16 @@ function ffprobeBin(): string {
   const bin = findFFprobe();
   if (!bin) throw new Fix("ffprobe is not installed", getFFmpegInstallHint());
   return bin;
+}
+
+/**
+ * `terms` added up for an ffmpeg expression. ffmpeg 8 refuses an expression nested too deep, and a flat sum counts
+ * one level a term (about 100 in all, less inside other calls), so past 50 the sum nests in halves.
+ */
+export function sumOf(terms: string[]): string {
+  if (terms.length <= 50) return terms.join("+");
+  const half = terms.length >> 1;
+  return `(${sumOf(terms.slice(0, half))})+(${sumOf(terms.slice(half))})`;
 }
 
 /** Runs ffmpeg and returns its stdout; `input` is piped to stdin. */
@@ -61,6 +72,7 @@ export interface VideoInfo {
   /** The container's frame rate and the stream's average differ: frames are not evenly spaced. */
   vfr: boolean;
   hdr: boolean;
+  transfer?: string;
   codec: string;
 }
 
@@ -86,11 +98,28 @@ const rate = (text: string | undefined): number => {
   return b ? (a ?? 0) / b : (a ?? 0);
 };
 
+/** A sound's length in seconds. */
+export function probeSeconds(path: string): number {
+  if (!existsSync(path)) throw new Fix(`no file at ${path}`, "pass a sound from the project");
+  const text = execFileSync(
+    ffprobeBin(),
+    ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", path],
+    { maxBuffer: MAX_BUFFER, windowsHide: true },
+  ).toString();
+  return Number(text) || 0;
+}
+
 /** Size (as displayed, rotation applied), clock and sound of a video. */
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string): VideoInfo {
   if (!existsSync(path))
-    throw new Fix(`no file at ${path}`, "pass the video's path from the project folder");
+    throw new Fix(
+      `no file at ${path}`,
+      // `D:video\clip.mp4` reached us as `D:videoclip.mp4`: an unquoted Windows path in bash.
+      /^[A-Za-z]:[^\\/]/.test(path)
+        ? "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)"
+        : "pass the video's path from the project folder",
+    );
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(
@@ -132,6 +161,7 @@ export function probeVideo(path: string): VideoInfo {
     avgFps: avg || fps,
     vfr: avg > 0 && Math.abs(avg - fps) / fps > 0.01,
     hdr: /smpte2084|arib-std-b67/.test(video.color_transfer ?? ""),
+    transfer: video.color_transfer,
     codec: video.codec_name ?? "",
   };
 }
@@ -198,7 +228,10 @@ export function readClip(clip: Clip, opts: Omit<ReadOptions, "start" | "seconds"
   if (fps) filters.push(`fps=${fps}`);
   let [w, h] = [clip.width, clip.height];
   if (roi) {
-    filters.push(`crop=${roi[2]}:${roi[3]}:${roi[0]}:${roi[1]}`);
+    filters.push(
+      `format=${gray ? "gray" : "rgb24"}`,
+      `crop=${roi[2]}:${roi[3]}:${roi[0]}:${roi[1]}`,
+    );
     [w, h] = [roi[2], roi[3]];
   }
   if (width && width !== w) {

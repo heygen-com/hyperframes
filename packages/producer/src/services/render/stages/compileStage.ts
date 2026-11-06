@@ -35,9 +35,12 @@
  *     same behavior as before this PR.
  */
 
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
+import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -53,9 +56,7 @@ import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
 export interface CompileStageInput {
   projectDir: string;
   workDir: string;
-  /** Absolute path to the entry HTML (already resolved to standalone-entry if needed). */
-  htmlPath: string;
-  /** The relative `entryFile` string, used only for log payloads. */
+  /** Entry HTML relative to `projectDir`; a `<template>` sub-composition is isolated inside the index shell. */
   entryFile: string;
   job: RenderJob;
   /**
@@ -152,11 +153,48 @@ function adaptAspectAgnosticResolution(
   return flipped;
 }
 
+/**
+ * The HTML file to compile for `entryFile`. A `<template>`-wrapped
+ * sub-composition has no live root, timeline or duration of its own, so it is
+ * rendered through the project's index.html shell with only its mount host kept.
+ */
+export function resolveEntryHtmlPath(input: {
+  projectDir: string;
+  workDir: string;
+  entryFile: string;
+  log: ProducerLogger;
+}): string {
+  const { projectDir, workDir, entryFile, log } = input;
+  const htmlPath = join(projectDir, entryFile);
+  const rawEntry = readTextFile(htmlPath);
+  if (entryFile === "index.html" || !isTemplateEntry(rawEntry)) return htmlPath;
+
+  const projectIndexPath = join(projectDir, "index.html");
+  if (!existsSync(projectIndexPath)) {
+    throw new Error(
+      `Template entry file "${entryFile}" requires a project index.html to extract its render shell.`,
+    );
+  }
+  const standaloneHtml = extractStandaloneEntryFromIndex(
+    readTextFile(projectIndexPath),
+    entryFile,
+    rawEntry,
+  );
+  if (!standaloneHtml) {
+    throw new Error(
+      `Entry file "${entryFile}" is not mounted from index.html via data-composition-src, so it cannot be rendered independently.`,
+    );
+  }
+  const wrapperPath = join(workDir, "standalone-entry.html");
+  writeFileSync(wrapperPath, standaloneHtml, "utf-8");
+  log.info("Extracted standalone entry from index.html host context", { entryFile });
+  return wrapperPath;
+}
+
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
   const {
     projectDir,
     workDir,
-    htmlPath,
     entryFile,
     job,
     cfg,
@@ -168,6 +206,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     abortSignal,
   } = input;
 
+  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log });
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     log,

@@ -7,12 +7,13 @@ export function parseTimeoutMs(
   fallback: number,
   floorMs = 0,
   warn: (message: string) => void = console.error,
+  flag = "--timeout",
 ): number {
   if (raw === undefined || raw === null || raw === "") return fallback;
   const text = String(raw).trim();
   const match = /^(\d+(?:\.\d+)?)\s*(ms|s|m)?$/i.exec(text);
   if (!match) {
-    warn(`[hyperframes] --timeout "${text}" is not a duration; using ${fallback} ms.`);
+    warn(`[hyperframes] ${flag} "${text}" is not a duration; using ${fallback} ms.`);
     return fallback;
   }
   const unit = match[2]?.toLowerCase() as keyof typeof UNIT_MS | undefined;
@@ -21,7 +22,7 @@ export function parseTimeoutMs(
   const used = Math.max(ms, floorMs);
   if (!unit && ms < 1_000) {
     warn(
-      `[hyperframes] --timeout ${text} is ${ms} ms, so ${used} ms is used. Write ${text}s for seconds.`,
+      `[hyperframes] ${flag} ${text} is ${ms} ms, so ${used} ms is used. Write ${text}s for seconds.`,
     );
   }
   return used;

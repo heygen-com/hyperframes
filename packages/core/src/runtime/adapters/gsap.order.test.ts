@@ -1,24 +1,33 @@
 import gsap from "gsap";
 import { describe, expect, it } from "vitest";
 import { seekGsapTimeline } from "./gsap";
+import { producerStandIn } from "./gsapStandIn.test-helpers";
 import type { RuntimeTimelineLike } from "../types";
 
 const FPS = 60;
 const FRAMES = 150;
 
 // A zoom punch still running when a cut sets the zoom and a slower move starts from wherever the zoom is.
-function overlappingZoom() {
+function overlappingZoom(standIn = false) {
   const params = { z: 1 };
   const timeline = gsap.timeline({ paused: true });
   timeline.to(params, { z: 1.45, duration: 0.3, ease: "power4.out" }, 0.573);
   timeline.set(params, { z: 1.04 }, 0.8);
   timeline.to(params, { z: 1.12, duration: 1.39, ease: "power1.in" }, 0.869);
-  return { params, timeline: timeline as unknown as RuntimeTimelineLike };
+  return {
+    params,
+    timeline: standIn ? producerStandIn(timeline) : (timeline as unknown as RuntimeTimelineLike),
+  };
 }
 
 /** The zoom at each frame a renderer captures, in order; a scene's clock starts at `hostStart`. */
-function capture(frames: number[], hostStart = 0, seekFirst?: number): Map<number, number> {
-  const { params, timeline } = overlappingZoom();
+function capture(
+  frames: number[],
+  hostStart = 0,
+  seekFirst?: number,
+  standIn = false,
+): Map<number, number> {
+  const { params, timeline } = overlappingZoom(standIn);
   const zoom = new Map<number, number>();
   if (seekFirst !== undefined) seekGsapTimeline(timeline, seekFirst, true, undefined, FPS);
   for (const frame of frames) {
@@ -37,6 +46,14 @@ describe("a render that captures frames out of order", () => {
   it("gives every frame the same value when 8 workers each capture every 8th frame", () => {
     for (let worker = 0; worker < 8; worker++) {
       for (const [frame, z] of capture(range(worker, FRAMES, 8))) {
+        expect([frame, z]).toEqual([frame, inOrder.get(frame)]);
+      }
+    }
+  });
+
+  it("gives every frame the same value when the producer hands out a stand-in for the timeline", () => {
+    for (let worker = 0; worker < 8; worker++) {
+      for (const [frame, z] of capture(range(worker, FRAMES, 8), 0, undefined, true)) {
         expect([frame, z]).toEqual([frame, inOrder.get(frame)]);
       }
     }
@@ -90,5 +107,65 @@ describe("a render that captures frames out of order", () => {
       return [renders, a.x, b.x, c.x, d.x];
     };
     expect(rendersOfTwoSeeks(FPS)).toEqual(rendersOfTwoSeeks());
+  });
+});
+
+// A panel fading out while a set brings it back: the set is what preview and a seek show once the fade has ended.
+function fadeInterruptedBySet(standIn: boolean) {
+  const panel = { opacity: 1 };
+  const timeline = gsap.timeline({ paused: true });
+  timeline.fromTo(panel, { opacity: 1 }, { opacity: 0, duration: 1, ease: "none" }, 0);
+  timeline.set(panel, { opacity: 1 }, 0.3);
+  return {
+    panel,
+    timeline: standIn ? producerStandIn(timeline) : (timeline as unknown as RuntimeTimelineLike),
+  };
+}
+
+const SET_FPS = 30;
+
+/** The panel at each frame, rendered when `fps` is given, previewed when it is not. */
+function panelAt(frames: number[], fps?: number, standIn = false): Map<number, number> {
+  const { panel, timeline } = fadeInterruptedBySet(standIn);
+  const structure = { owner: timeline, version: "1" };
+  const opacity = new Map<number, number>();
+  for (const frame of frames) {
+    seekGsapTimeline(timeline, frame / SET_FPS, true, structure, fps);
+    opacity.set(frame, panel.opacity);
+  }
+  return opacity;
+}
+
+describe("a render where a set interrupts a running tween", () => {
+  const preview = panelAt(range(0, 90));
+
+  it("lands every frame where preview does when one worker renders in order", () => {
+    for (const [frame, opacity] of panelAt(range(0, 90), SET_FPS)) {
+      expect([frame, opacity]).toEqual([frame, preview.get(frame)]);
+    }
+  });
+
+  it("lands every frame where preview does when workers start partway through", () => {
+    for (const start of [5, 15, 29, 31, 45]) {
+      for (const [frame, opacity] of panelAt(range(start, 90), SET_FPS)) {
+        expect([start, frame, opacity]).toEqual([start, frame, preview.get(frame)]);
+      }
+    }
+  });
+
+  it("lands every frame where preview does behind the producer's timeline stand-in", () => {
+    for (const start of [0, 15, 45]) {
+      for (const [frame, opacity] of panelAt(range(start, 90), SET_FPS, true)) {
+        expect([start, frame, opacity]).toEqual([start, frame, preview.get(frame)]);
+      }
+    }
+  });
+
+  it("shows the set's value after the tween ends, whichever way the frames are shared out", () => {
+    for (let worker = 0; worker < 6; worker++) {
+      for (const [frame, opacity] of panelAt(range(worker, 90, 6), SET_FPS)) {
+        if (frame / SET_FPS >= 1) expect([frame, opacity]).toEqual([frame, 1]);
+      }
+    }
   });
 });

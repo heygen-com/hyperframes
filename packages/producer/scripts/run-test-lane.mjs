@@ -32,7 +32,13 @@ const vitestFiles = tests.filter((test) => test.runner === "vitest").map((test) 
 const vitestEnv = unit
   ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${noNetwork.href}`.trim() }
   : {};
-if (vitestFiles.length > 0) run(["x", "vitest", "run", ...vitestFiles], vitestEnv);
+// Files that start many Chromes at once run alone, after the rest: next to them, the Chrome
+// node-count assertions in coreRuntimeBrowser.test.ts see a different garbage-collection schedule.
+const runsAlone = (file) => /\/blurDifferential(\.\w+)?\.integration\.test\.ts$/.test(file);
+const shared = vitestFiles.filter((file) => !runsAlone(file));
+const alone = vitestFiles.filter(runsAlone);
+if (shared.length > 0) run(["x", "vitest", "run", ...shared], vitestEnv);
+if (alone.length > 0) run(["x", "vitest", "run", "--no-file-parallelism", ...alone], vitestEnv);
 
 // Bun's mock.module registry is process-global. Run each file in a fresh
 // process so mocks from one source test cannot mutate another test's imports.

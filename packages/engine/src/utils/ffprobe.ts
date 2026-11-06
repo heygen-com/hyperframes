@@ -225,6 +225,7 @@ export interface VideoMetadata {
   colorRange?: string;
   pixelFormat?: string;
   sampleAspectRatio?: number;
+  rotation?: number;
   /** Decoded frame count from the video stream's `nb_frames`. Omitted when the
    * container does not surface a reliable count (still images, malformed
    * streams, or muxes that require `-count_packets` to populate). Callers
@@ -274,6 +275,7 @@ interface FFProbeStream {
   color_primaries?: string;
   color_space?: string;
   tags?: Record<string, string>;
+  side_data_list?: { rotation?: number }[];
   disposition?: { attached_pic?: number };
 }
 
@@ -855,6 +857,24 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
   return rounded > 0 ? rounded : 0.01;
 }
 
+function displayRotation(stream: FFProbeStream): { rotation?: number } {
+  const turn = Number(
+    stream.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ??
+      stream.tags?.rotate ??
+      0,
+  );
+  return Number.isFinite(turn) && turn % 360 !== 0 ? { rotation: turn } : {};
+}
+
+export function displaySize(
+  metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
+): { width: number; height: number } {
+  const width = Math.round(metadata.width * (metadata.sampleAspectRatio ?? 1));
+  return Math.abs(metadata.rotation ?? 0) % 180 === 90
+    ? { width: metadata.height, height: width }
+    : { width, height: metadata.height };
+}
+
 export function parseSampleAspectRatio(value: string | undefined): number | undefined {
   const [num, den] = (value ?? "").split(":").map(Number);
   if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
@@ -1003,8 +1023,12 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       ? await probeDecodedAlphaPlane(filePath, alphaDecoder)
       : undefined;
 
-    const containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
+    let containerDuration = output?.format.duration ? parseFloat(output.format.duration) : 0;
     const streamDuration = videoStream.duration ? parseFloat(videoStream.duration) : 0;
+    // Recorder output (WebM/Matroska written to a pipe) carries no duration header: read it off the packets.
+    if (!(containerDuration > 0) && !(streamDuration > 0) && !isPng) {
+      containerDuration = (await scanPacketDuration(filePath, fps)) ?? 0;
+    }
     const parsedStreamStart = videoStream.start_time ? parseFloat(videoStream.start_time) : 0;
     const streamStart = Number.isFinite(parsedStreamStart) ? parsedStreamStart : 0;
     // `nb_frames` is populated by the container demuxer; a muxer that requires
@@ -1052,6 +1076,7 @@ export async function extractMediaMetadata(filePath: string): Promise<VideoMetad
       colorRange: videoStream.color_range,
       pixelFormat,
       ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
+      ...displayRotation(videoStream),
       frames,
     };
   })();
@@ -1095,6 +1120,35 @@ export function readStoredFinalFrame(
       ? stored
       : undefined;
   });
+}
+
+const PACKET_TAIL_CHARS = 64 * 1024;
+
+/** The video stream's length from its packets (last end time), for a file whose headers state none. */
+async function scanPacketDuration(filePath: string, fps: number): Promise<number | undefined> {
+  try {
+    const stdout = await runFfprobe(
+      filePath,
+      [
+        ...["-select_streams", "v:0", "-show_entries", "packet=pts_time,duration_time"],
+        ...["-of", "csv=p=0"],
+      ],
+      undefined,
+      { retainTail: true, maxChars: PACKET_TAIL_CHARS },
+    );
+    const lines = stdout.split("\n");
+    // A tail cut at the cap starts partway through a line, and its number would read as a huge time.
+    if (stdout.length >= PACKET_TAIL_CHARS) lines.shift();
+    const frame = fps > 0 ? 1 / fps : 0;
+    const ends = lines
+      .map((line) => line.trim().split(",").map(Number))
+      .filter(([pts]) => Number.isFinite(pts))
+      .map(([pts, duration]) => pts! + (Number.isFinite(duration) ? duration! : frame));
+    return ends.length ? Math.max(...ends) : undefined;
+  } catch {
+    // expected: a file ffprobe cannot scan keeps its "no duration" verdict.
+    return undefined;
+  }
 }
 
 /**

@@ -23,8 +23,10 @@ export const examples: Example[] = [
 ];
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   copyFileSync,
+  statSync,
   writeFileSync,
   readFileSync,
   readdirSync,
@@ -60,6 +62,7 @@ import {
   VIEWPORT_META_SIZE_RE,
 } from "@hyperframes/parsers";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
+import { cliSourced } from "../utils/sourceTag.js";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -277,8 +280,58 @@ function getSharedTemplateDir(): string {
   return resolveAssetDir(["..", "templates", "_shared"], ["templates", "_shared"]);
 }
 
-function holdsFilesBesideProjectConfig(dir: string): boolean {
-  return existsSync(dir) && readdirSync(dir).some((name) => name !== "hyperframes.json");
+const MEDIA_THE_SCAFFOLD_NEVER_WRITES =
+  /\.(mp4|m4v|mov|webm|mkv|avi|mpe?g|wav|mp3|m4a|aac|ogg|oga|opus|flac)$/i;
+
+function fileOnDisk(path: string): string | undefined {
+  try {
+    const { dev, ino } = statSync(path);
+    return `${dev}:${ino}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function holdsFilesBesideProjectConfigOrSources(
+  dir: string,
+  sources: (string | undefined)[] = [],
+): boolean {
+  const kept = new Set(
+    sources.flatMap((s) => (s && MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(s) ? [fileOnDisk(s)] : [])),
+  );
+  kept.delete(undefined);
+  const isKeptSource = (name: string) =>
+    MEDIA_THE_SCAFFOLD_NEVER_WRITES.test(name) && kept.has(fileOnDisk(resolve(dir, name)));
+  return (
+    existsSync(dir) &&
+    readdirSync(dir).some((name) => name !== "hyperframes.json" && !isKeptSource(name))
+  );
+}
+
+function nothingAt(path: string): boolean {
+  try {
+    lstatSync(path);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The first of `name.mp4`, `name.h264.mp4`, `name.h264-2.mp4`, ... with nothing at its path. FFmpeg
+ * overwrites its output, and a link or a case-only spelling there can be the source itself.
+ */
+function freeTranscodeName(destDir: string, localVideoName: string): string {
+  const stem = localVideoName.replace(/\.[^.]+$/, "");
+  for (let n = 0; ; n++) {
+    const name = n === 0 ? `${stem}.mp4` : `${stem}.h264${n === 1 ? "" : `-${n}`}.mp4`;
+    if (nothingAt(resolve(destDir, name))) return name;
+  }
+}
+
+function copyIntoProjectUnlessAlreadyThere(src: string, dest: string): void {
+  const same = resolve(src) === resolve(dest) || fileOnDisk(src) === (fileOnDisk(dest) ?? "");
+  if (!same) copyFileSync(src, dest);
 }
 
 /** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
@@ -491,7 +544,7 @@ async function handleVideoFile(
       }
 
       if (shouldTranscode) {
-        const mp4Name = localVideoName.replace(/\.[^.]+$/, ".mp4");
+        const mp4Name = freeTranscodeName(destDir, localVideoName);
         const mp4Path = resolve(destDir, mp4Name);
         const spin = clack.spinner();
         spin.start("Transcoding to H.264 MP4...");
@@ -501,10 +554,10 @@ async function handleVideoFile(
           localVideoName = mp4Name;
         } else {
           spin.stop(c.warn("Transcode failed — copying original file"));
-          copyFileSync(videoPath, resolve(destDir, localVideoName));
+          copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
         }
       } else {
-        copyFileSync(videoPath, resolve(destDir, localVideoName));
+        copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
       }
     } else {
       if (interactive) {
@@ -514,10 +567,10 @@ async function handleVideoFile(
         console.log(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
         console.log(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
       }
-      copyFileSync(videoPath, resolve(destDir, localVideoName));
+      copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
     }
   } else {
-    copyFileSync(videoPath, resolve(destDir, localVideoName));
+    copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
   }
 
   return { meta, localVideoName };
@@ -690,7 +743,9 @@ async function keepSkillsCurrent(destDir: string): Promise<void> {
       // "up to date"; the engine already reported what it could verify or
       // blind-install. Point at the recovery command instead.
       console.log(
-        c.dim("Skills freshness unverified — run `npx hyperframes skills update` when online."),
+        c.dim(
+          "Skills freshness unverified (offline?). For the user: `npx hyperframes skills update` refreshes them once online.",
+        ),
       );
     } else if (result.installed.length === 0) {
       console.log(c.success("AI coding skills are already up to date."));
@@ -861,7 +916,7 @@ export default defineCommand({
         failCommand();
       }
 
-      if (holdsFilesBesideProjectConfig(destDir)) {
+      if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
         console.error(c.error(`Directory already exists and is not empty: ${name}`));
         failCommand();
       }
@@ -909,7 +964,7 @@ export default defineCommand({
       // Handle audio
       if (audioPath) {
         sourceFilePath = audioPath;
-        copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+        copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
         const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
         videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
         console.log(`Audio: ${basename(audioPath)}`);
@@ -977,7 +1032,7 @@ export default defineCommand({
       console.log();
       if (skipSkills) {
         console.log(
-          `  ${c.accent("1.")} Use your HyperFrames plugin, or install standalone skills:`,
+          `  ${c.accent("1.")} For the user: use your HyperFrames plugin, or install standalone skills with:`,
         );
         console.log(`     ${c.accent("npx hyperframes skills update")}`);
       } else {
@@ -995,7 +1050,9 @@ export default defineCommand({
       console.log(
         `     ${c.dim('"Using /hyperframes, create a 15-second intro about [your topic]"')}`,
       );
-      console.log(`     ${c.dim("More patterns: hyperframes.heygen.com/prompting/overview")}`);
+      console.log(
+        `     ${c.dim(`More patterns: ${cliSourced("https://hyperframes.heygen.com/prompting/overview")}`)}`,
+      );
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
@@ -1006,7 +1063,7 @@ export default defineCommand({
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
       console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
       console.log();
-      console.log(`  ${c.dim("Full docs: hyperframes.heygen.com")}`);
+      console.log(`  ${c.dim(`Full docs: ${cliSourced("https://hyperframes.heygen.com")}`)}`);
       return;
     }
 
@@ -1043,7 +1100,7 @@ export default defineCommand({
       failCommand();
     }
 
-    if (holdsFilesBesideProjectConfig(destDir)) {
+    if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
       const overwrite = await clack.confirm({
         message: `Directory ${c.accent(name)} already exists and is not empty. Overwrite?`,
         initialValue: false,
@@ -1084,7 +1141,7 @@ export default defineCommand({
       }
       mkdirSync(destDir, { recursive: true });
       sourceFilePath = audioPath;
-      copyFileSync(audioPath, resolve(destDir, basename(audioPath)));
+      copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
       const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
       videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
       clack.log.info(`Audio copied to ${c.accent(basename(audioPath))}`);

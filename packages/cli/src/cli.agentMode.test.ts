@@ -364,6 +364,22 @@ describe("agent-mode contract", () => {
     expect(JSON.parse(run.stdout).error.hint).toBe("Did you mean 'hyperframes render'?");
   });
 
+  it("an unknown command answers in a few lines, never the full help", async () => {
+    const captions = await runAsAgent(["captions"]);
+    const typo = await runAsAgent(["rendr"]);
+    expect(captions.code).toBe(2);
+    expect(captions.stderr).toContain("Unknown command: captions");
+    expect(captions.stderr).toContain(
+      "Run 'hyperframes transcribe', then read ../hyperframes/references/captions.md",
+    );
+    expect(typo.code).toBe(2);
+    expect(typo.stderr).toContain("Did you mean 'hyperframes render'?");
+    for (const run of [captions, typo]) {
+      expect(run.stderr).toContain("Run 'hyperframes --help' to list every command.");
+      expect(run.stderr.split("\n").length).toBeLessThan(8);
+    }
+  });
+
   it("an unknown flag suggests the flag it most likely means", async () => {
     const run = await runAsAgent(["render", "--out", "x.mp4"]);
     expect(run.code).toBe(2);
@@ -380,6 +396,16 @@ describe("agent-mode contract", () => {
       expect(run.stderr).toContain("--yes");
     },
   );
+
+  // Updating is the person's decision: the hint states that and names no step for the agent.
+  it("update without --yes refuses to prompt, exits 2, and leaves updating to the person", async () => {
+    const run = await runAsAgent(["update"]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("Updating is the person's call; `update --check` only reports.");
+    expect(run.stderr).not.toContain("--yes");
+  });
 
   it("only the prompt wrapper loads @clack/prompts, statically or dynamically", () => {
     const offenders = (readdirSync(srcDir, { recursive: true }) as string[]).filter(

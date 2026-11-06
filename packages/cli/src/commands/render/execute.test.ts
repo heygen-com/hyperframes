@@ -2,11 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReferenceBackground } from "@hyperframes/producer";
 import { createRenderPlan } from "./plan.js";
 import { batchRowRenderOptions, executeRenderPlan, renderOptionsFromPlan } from "./execute.js";
 import * as manager from "../../browser/manager.js";
 import * as system from "../../telemetry/system.js";
-import { wantsDesktopHint } from "../render.js";
+import { wantsDesktopHint, type SingleRenderResult } from "../render.js";
 
 describe("renderOptionsFromPlan", () => {
   let projectDir: string;
@@ -106,4 +107,84 @@ describe("a render on a nearly full disk", () => {
       expect(said.includes("Low disk space")).toBe(!downloads);
     },
   );
+});
+
+describe("the machine result line after a single render", () => {
+  let projectDir: string;
+  const originalIsTTY = process.stdout.isTTY;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "hf-render-result-"));
+    writeFileSync(join(projectDir, "index.html"), '<main data-composition-id="main"></main>');
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(manager, "sweepKilledInstalls").mockResolvedValue();
+    vi.spyOn(system, "getFreeDiskMb").mockReturnValue(100_000);
+    vi.spyOn(manager, "ensureBrowser").mockResolvedValue({
+      executablePath: "/usr/bin/chrome",
+      source: "system",
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    Object.defineProperty(process.stdout, "isTTY", { value: originalIsTTY, configurable: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  async function resultLines(
+    outcome: SingleRenderResult | Error,
+    args: { quiet?: boolean; docker?: boolean } = {},
+  ): Promise<string[]> {
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+    let output = "";
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      output += String(chunk);
+      return true;
+    });
+    const render = vi.fn(async () => {
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    });
+    const plan = createRenderPlan({ dir: projectDir, ...args });
+    const dependencies = {
+      renderLocal: render,
+      renderDocker: render,
+      checkResolution: async () => undefined,
+    };
+    try {
+      await executeRenderPlan(plan, dependencies);
+    } catch {
+      // The failure path is asserted through the absence of a result line.
+    }
+    expect(render).toHaveBeenCalledTimes(1);
+    return output.split("\n").filter((line) => line.startsWith("@hf-result "));
+  }
+
+  it.each<ReferenceBackground>([
+    { kind: "solid", rgb: [12, 34, 56] },
+    { kind: "none" },
+    { kind: "unsupported_non_solid" },
+    { kind: "unknown" },
+  ])("prints the render's reference background once: %j", async (reference) => {
+    const lines = await resultLines({ renderTimeMs: 5, reference_background: reference });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse((lines[0] ?? "").slice("@hf-result ".length))).toEqual({
+      version: 1,
+      operation: "render",
+      reference_background: reference,
+    });
+  });
+
+  it("prints nothing when the render fails", async () => {
+    expect(await resultLines(new Error("capture failed"))).toEqual([]);
+  });
+
+  it("prints nothing in quiet mode or when a Docker render reports no background", async () => {
+    const measured: SingleRenderResult = {
+      renderTimeMs: 5,
+      reference_background: { kind: "none" },
+    };
+    expect(await resultLines(measured, { quiet: true })).toEqual([]);
+    expect(await resultLines({ renderTimeMs: 5 }, { docker: true })).toEqual([]);
+  });
 });

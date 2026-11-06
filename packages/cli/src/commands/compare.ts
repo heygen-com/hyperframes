@@ -9,6 +9,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -364,7 +365,7 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
       renderReadyTimedOut = renderReadyTimedOut || rendered.renderReadyTimedOut;
     }
 
-    mkdirSync(dirname(parsed.outPath), { recursive: true });
+    makeOutputFolder(dirname(parsed.outPath));
     await createContactSheet(framePaths, parsed.outPath, {
       cols: parsed.cols ?? defaultCompareCols(framePaths.length),
       maxImages: framePaths.length,

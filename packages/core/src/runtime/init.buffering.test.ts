@@ -7,8 +7,24 @@ import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture
 function audio(id: string, duration: number, readyState: { value: number; bufferedTo?: number }) {
   const el = document.getElementById(id) as HTMLAudioElement;
   let paused = true;
+  let position = 0;
+  let movedAtMs = 0;
+  // A playing element moves only while it has data, as a real one does.
+  const read = () => {
+    if (!paused && readyState.value >= 3) position += (performance.now() - movedAtMs) / 1000;
+    movedAtMs = performance.now();
+    return position;
+  };
   Object.defineProperties(el, {
     duration: { value: duration, configurable: true },
+    currentTime: {
+      get: read,
+      set: (t: number) => {
+        read();
+        position = t;
+      },
+      configurable: true,
+    },
     readyState: { get: () => readyState.value, configurable: true },
     buffered: {
       get: () => ({ length: 1, start: () => 0, end: () => readyState.bufferedTo ?? 0 }),
@@ -17,10 +33,12 @@ function audio(id: string, duration: number, readyState: { value: number; buffer
     paused: { get: () => paused, configurable: true },
   });
   el.play = vi.fn(() => {
+    read();
     paused = false;
     return Promise.resolve();
   });
   el.pause = vi.fn(() => {
+    read();
     if (!paused) el.dispatchEvent(new Event("pause"));
     paused = true;
   });

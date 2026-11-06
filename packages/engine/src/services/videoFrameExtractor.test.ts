@@ -3858,6 +3858,26 @@ const FFPROBE_READS_CONTAINER_TRANSFER =
   (FFPROBE_RELEASE !== undefined &&
     (FFPROBE_RELEASE[0]! > 8 || (FFPROBE_RELEASE[0] === 8 && FFPROBE_RELEASE[1]! >= 1)));
 
+/** The colour probes run so far: first-frame reads, and SPS transfer reads of an HLG source. */
+function colourProbeRuns() {
+  const runs = vi
+    .mocked(runFfmpeg)
+    .mock.calls.map(([args]) => args)
+    .filter((args) => args.some((arg) => /showinfo|trace_headers/.test(arg)));
+  return {
+    firstFrame: runs.filter((args) => args.includes("-frames:v")).length,
+    keyframes: runs.filter((args) => args.includes("nokey")).length,
+  };
+}
+
+function colourProbesSince(before: ReturnType<typeof colourProbeRuns>) {
+  const now = colourProbeRuns();
+  return {
+    firstFrame: now.firstFrame - before.firstFrame,
+    keyframes: now.keyframes - before.keyframes,
+  };
+}
+
 describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   let fixtureDir = "";
 
@@ -3977,8 +3997,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   it("probes each source's first frame once, however many cuts of it extract together", async () => {
     const sources = ["a", "b"].map((name) => join(fixtureDir, `cuts-${name}.mp4`));
     for (const source of sources) await synthesizeHlgClip(source);
-    const probes = () =>
-      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const probes = colourProbeRuns;
     const before = probes();
     await Promise.all(
       Array.from({ length: 12 }, (_, cut) =>
@@ -3990,14 +4009,13 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
         }),
       ),
     );
-    expect(probes() - before).toBe(2);
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 2 });
   }, 60_000);
 
   it("probes a source again after its first-frame probe failed", async () => {
     const source = join(fixtureDir, "probe-retry.mp4");
     await synthesizeHlgClip(source);
-    const probes = () =>
-      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const probes = colourProbeRuns;
     const { runFfmpeg: real } =
       await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
     vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
@@ -4025,7 +4043,40 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
       vi.mocked(runFfmpeg).mockImplementation(real);
     }
     await extract("retry-again");
-    expect(probes() - before).toBe(2);
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 1 });
+  }, 60_000);
+
+  it("reads an HLG source's keyframes again after that read failed", async () => {
+    const source = join(fixtureDir, "keyframe-retry.mp4");
+    await synthesizeHlgClip(source);
+    const { runFfmpeg: real } =
+      await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+    vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
+      args.includes("nokey")
+        ? Promise.resolve({
+            success: false,
+            exitCode: 1,
+            stderr: "",
+            durationMs: 0,
+            terminationReason: "exit",
+          })
+        : real(args, opts),
+    );
+    const extract = (id: string) =>
+      extractVideoFramesRange(source, id, 0, 1, {
+        fps: 1,
+        outputDir: join(fixtureDir, "keyframe-retry"),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+    const before = colourProbeRuns();
+    try {
+      await extract("keyframes-failed");
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+    await extract("keyframes-again");
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 2 });
   }, 60_000);
 
   // One stream with HLG frames, then PQ frames: each is tone-mapped with its own transfer.
@@ -4148,7 +4199,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
       "-t",
       "1",
       "-vf",
-      "fps=1,zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "fps=1,zscale=t=linear:npl=203,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
       "-q:v",
       "0",
       "-compression_level",

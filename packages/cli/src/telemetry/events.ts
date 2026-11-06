@@ -1,4 +1,5 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
+import type { StopCode } from "../utils/checkPipeline.js";
 import type { OutputResolutionIssueKind } from "@hyperframes/core";
 import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
@@ -993,6 +994,39 @@ export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
 }
 
+// A reverse session could not be recorded. `cause` is a closed set (never free text) so an
+// alert can page on a failing start route; `status` is the HTTP status when there was one.
+export type ReverseUnrecordedCause =
+  | "not_signed_in"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "network"
+  | "bad_body";
+
+export function trackReverseStartUnrecorded(props: {
+  cause: ReverseUnrecordedCause;
+  status?: number;
+}): void {
+  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+}
+
+// `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.
+export function trackBillingCheckoutFailed(props: {
+  reason: "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+}): void {
+  trackEvent("cli_billing_checkout_failed", { reason: props.reason });
+}
+
+export function trackBillingCheckoutReturnRefused(): void {
+  trackEvent("cli_billing_checkout_return_refused", {});
+}
+
+// `billing` waited out its timeout with no payment: the person did not finish, nothing is broken.
+export function trackBillingWaitTimeout(props: { action: "subscribe" | "add-credits" }): void {
+  trackEvent("cli_billing_wait_timeout", { action: props.action });
+}
+
 // grade-compare / compare stand up headless Chrome and render up to 16 cells.
 // Cell count, truncation-cap hits, and whether the render-ready timeout fired
 // are the signals needed before safely lifting the cap. Low-cardinality only.
@@ -1160,6 +1194,9 @@ export function trackCheckReport(props: {
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
+  stopCode?: StopCode;
+  /** Present when the project had videos Chrome cannot decode: counts and milliseconds only. */
+  mediaCopies?: { total: number; waitedMs: number; unfinished: number };
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1191,6 +1228,12 @@ export function trackCheckReport(props: {
     contrast_points: props.contrastPoints,
     ok: props.ok,
     exit_code: props.exitCode,
+    ...(props.stopCode && { stop_code: props.stopCode }),
+    ...(props.mediaCopies && {
+      copies_total: props.mediaCopies.total,
+      copies_waited_ms: props.mediaCopies.waitedMs,
+      copies_unfinished: props.mediaCopies.unfinished,
+    }),
     ...runIdField(props.runId),
   });
 }

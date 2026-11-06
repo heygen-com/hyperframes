@@ -61,7 +61,9 @@ const browser = await puppeteer.launch({
 });
 try {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1600, height: 900 });
+  // Tall enough that every composition card is well inside the list's 200 px thumbnail margin. At 900 px the root card
+  // sat on that edge, and the runner image's fonts decided whether it asked for a thumbnail.
+  await page.setViewport({ width: 1600, height: 1400 });
   const counters = await startWorkCounters(browser, page);
   const thumbnailsInFlight = new Set();
   const thumbnailOutcomes = [];

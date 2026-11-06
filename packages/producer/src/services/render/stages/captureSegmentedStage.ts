@@ -23,6 +23,7 @@ import {
   getCapturePerfSummary,
   initializeSession,
   prepareCaptureSessionForReuse,
+  resolveDeVerifyMinDb,
   shouldDisableBrowserPoolForParallelWorker,
   spawnStreamingEncoder,
   type BeforeCaptureHook,
@@ -42,11 +43,13 @@ import { reportFrameProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
 import { planSegments, type SegmentSlice } from "../segmentPlan.js";
+import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFrames.js";
 import { createSegmentQueue } from "../segmentQueue.js";
 import { isTargetLossError } from "../segmentRecycle.js";
 import {
   raceAgainstStall,
   resolveCaptureStallTimeoutMs,
+  verifyDrawElementSample,
   type StreamingEncoderOptions,
 } from "./captureStreamingStage.js";
 
@@ -59,9 +62,9 @@ export interface SegmentedStageDeps {
   removeFile: (path: string) => void;
 }
 
-/** Opens a fresh, initialized capture session with the video injector attached. */
+/** Opens a fresh, initialized capture session with the video injector attached; a custom factory may ignore the override. */
 export interface SessionFactory {
-  create: () => Promise<CaptureSession>;
+  create: (injectorOverride?: () => BeforeCaptureHook | null) => Promise<CaptureSession>;
 }
 
 export interface CaptureSegmentedStageInput {
@@ -80,6 +83,8 @@ export interface CaptureSegmentedStageInput {
   streamingEncoderOptions: StreamingEncoderOptions;
   buildCaptureOptions: () => CaptureOptions;
   createRenderVideoFrameInjector: () => BeforeCaptureHook | null;
+  /** Windowed frames: extracted per segment, deleted when it closes; segment files are deleted once joined. */
+  segmentVideoFrames?: SegmentVideoFrames;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -174,6 +179,7 @@ class SegmentEncoderSpawnError extends Error {
 
 interface SegmentCaptureContext {
   session: CaptureSession;
+  frames?: SegmentWorkerFrames;
   job: RenderJob;
   cfg: EngineConfig;
   totalFrames: number;
@@ -184,6 +190,8 @@ interface SegmentCaptureContext {
   spawnEncoder: SegmentedStageDeps["spawnEncoder"];
   captureFrame: SegmentedStageDeps["captureFrame"];
   stallTimeoutMs: number;
+  log: ProducerLogger;
+  verifyMinDb: number;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   onProgress?: ProgressCallback;
@@ -211,6 +219,10 @@ async function captureSegmentFrames(
       },
       ctx.abortSignal,
     );
+    await verifyDrawElementSample(ctx.session, i, buffer, {
+      log: ctx.log,
+      verifyMinDb: ctx.verifyMinDb,
+    });
     ensureFrameWritten(await encoder.writeFrame(buffer), i, encoder);
     ctx.job.framesRendered = i + 1;
     lastProgressAt = Date.now();
@@ -228,8 +240,32 @@ async function captureSegmentFrames(
   }
 }
 
-/** Capture one segment into its own encoder. Returns the encoder's result. */
+/** Capture one segment; when windowed, its video frames are read first and released however it ends. */
 async function captureSegment(
+  ctx: SegmentCaptureContext,
+  segment: SegmentSlice,
+): Promise<StreamingEncoderResult> {
+  const { frames } = ctx;
+  if (!frames) return captureSegmentToEncoder(ctx, segment);
+  try {
+    reportFrameProgress(
+      ctx.job,
+      `Reading video for segment ${segment.index + 1}/${ctx.segmentCount}`,
+      Math.round(25 + (segment.startFrame / ctx.totalFrames) * 55),
+      ctx.onProgress,
+      segment.startFrame,
+      ctx.totalFrames,
+    );
+    await frames.prepare(segment);
+    ctx.assertNotAborted();
+    return await captureSegmentToEncoder(ctx, segment);
+  } finally {
+    frames.release();
+  }
+}
+
+/** Capture one segment into its own encoder. Returns the encoder's result. */
+async function captureSegmentToEncoder(
   ctx: SegmentCaptureContext,
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
@@ -295,15 +331,15 @@ const DEFAULT_DEPS: SegmentedStageDeps = {
 function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactory {
   let probeSession = input.probeSession;
   return {
-    create: async () => {
+    create: async (injector = input.createRenderVideoFrameInjector) => {
       const probeCannotCaptureEveryFrame = Boolean(probeSession?.deRiskFrames?.size);
       if (probeSession && probeCannotCaptureEveryFrame) {
         await closeCaptureSession(probeSession).catch(() => {});
         probeSession = null;
       }
-      const session = probeSession ?? (await openSegmentedSession(input));
+      const session = probeSession ?? (await openSegmentedSession(input, injector));
       if (probeSession) {
-        openSegmentedSessionReuse(input, probeSession);
+        openSegmentedSessionReuse(input, probeSession, injector);
         probeSession = null;
       }
       try {
@@ -321,18 +357,22 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
 function openSegmentedSessionReuse(
   input: CaptureSegmentedStageInput,
   session: CaptureSession,
+  injector: () => BeforeCaptureHook | null,
 ): void {
-  prepareCaptureSessionForReuse(session, input.framesDir, input.createRenderVideoFrameInjector());
+  prepareCaptureSessionForReuse(session, input.framesDir, injector());
 }
 
-async function openSegmentedSession(input: CaptureSegmentedStageInput): Promise<CaptureSession> {
+async function openSegmentedSession(
+  input: CaptureSegmentedStageInput,
+  injector: () => BeforeCaptureHook | null,
+): Promise<CaptureSession> {
   // Same reasoning as the streaming stage: the resolved forceScreenshot comes
   // from the immutable plan, not from the caller-owned cfg.
   const captureCfg: EngineConfig =
     input.cfg.forceScreenshot === input.plan.forceScreenshot
       ? input.cfg
       : { ...input.cfg, forceScreenshot: input.plan.forceScreenshot };
-  const videoInjector = input.createRenderVideoFrameInjector();
+  const videoInjector = injector();
   const captureOptions = { ...input.buildCaptureOptions(), deFrameFallback: false };
   const ownBrowser = shouldDisableBrowserPoolForParallelWorker({
     parallel: (input.workerCount ?? 1) > 1,
@@ -344,6 +384,24 @@ async function openSegmentedSession(input: CaptureSegmentedStageInput): Promise<
     videoInjector,
     ownBrowser ? { ...captureCfg, enableBrowserPool: false } : captureCfg,
   );
+}
+
+/**
+ * Joined segments would hold the video twice, so the windowed route deletes them unless `--keep-segments`.
+ * A file that will not delete costs disk, not the finished render: log it and try the rest.
+ */
+function removeJoinedSegments(run: SegmentRun, segmentPaths: readonly string[]): void {
+  if (!run.input.segmentVideoFrames || run.input.job.config.keepSegments === true) return;
+  for (const path of segmentPaths) {
+    try {
+      run.deps.removeFile(path);
+    } catch (err) {
+      run.input.log.warn("[Render] could not remove a joined segment file", {
+        path,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 }
 
 /** Stream-copy the finished segments into the video-only file, or throw. */
@@ -395,12 +453,14 @@ interface SegmentRun {
 async function createSegmentWorker(run: SegmentRun, id: number): Promise<SegmentWorker> {
   const { input, deps } = run;
   const factory = input.sessionFactoryForWorker?.(id) ?? run.sessionFactory;
+  const frames = input.segmentVideoFrames?.forWorker();
   return {
     id,
     factory,
     sessionSegments: 0,
     ctx: {
-      session: await factory.create(),
+      session: await factory.create(frames && (() => frames.hook)),
+      frames,
       job: input.job,
       cfg: input.cfg,
       totalFrames: input.totalFrames,
@@ -411,6 +471,8 @@ async function createSegmentWorker(run: SegmentRun, id: number): Promise<Segment
       spawnEncoder: deps.spawnEncoder,
       captureFrame: deps.captureFrame,
       stallTimeoutMs: resolveCaptureStallTimeoutMs(),
+      log: input.log,
+      verifyMinDb: resolveDeVerifyMinDb(),
       abortSignal: input.abortSignal,
       assertNotAborted: input.assertNotAborted,
       onProgress: input.onProgress,
@@ -441,7 +503,8 @@ async function recycleWorkerSession(
   run.input.dedupPerfs.push(getCapturePerfSummary(worker.ctx.session));
   const memory = worker.ctx.session.chromeMemory?.stats();
   await run.deps.closeSession(worker.ctx.session);
-  worker.ctx.session = await worker.factory.create();
+  const { frames } = worker.ctx;
+  worker.ctx.session = await worker.factory.create(frames && (() => frames.hook));
   worker.sessionSegments = 0;
   if (why === "cadence") run.totals.browserRecycles += 1;
   run.input.log.info(`[Render] segment browser recycled (${why})`, {
@@ -549,6 +612,7 @@ async function concatResumedRun(
     input.abortSignal,
     input.cfg,
   );
+  removeJoinedSegments(run, segmentPaths);
   return {
     success: true,
     encodeMs: 0,
@@ -639,6 +703,7 @@ export async function runCaptureSegmentedStage(
     input.abortSignal,
     input.cfg,
   );
+  removeJoinedSegments(run, segmentPaths);
 
   return {
     success: true,

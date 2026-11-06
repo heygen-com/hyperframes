@@ -280,7 +280,12 @@ export { bakeHfColorGradingCube, type BakeHfColorGradingCubeOptions } from "./co
 export {
   firstFrameColourArgs,
   hdrToSdrToneMapFilter,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  readsKeyframeTransfers,
+  toneMapReferenceNits,
   parseFirstFrameColour,
+  type ToneMapFrameColour,
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
@@ -392,7 +397,12 @@ export {
 // (verify:packed-manifests catches exactly that).
 export { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 // Also exposed via the ./runtime/clip-window subpath; re-exported here for the same dist-emit reason.
-export { hasClipStarted, isClipVisibleAt, isInClipWindow } from "./runtime/clipWindow.js";
+export {
+  hasClipStarted,
+  isClipOnScreenAt,
+  isClipVisibleAt,
+  isInClipWindow,
+} from "./runtime/clipWindow.js";
 export { MEDIA_ELEMENT_LEAD_SECONDS, mediaElementTime } from "./runtime/mediaClock.js";
 export {
   normalizePlaybackRate,

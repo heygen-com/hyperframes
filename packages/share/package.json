@@ -1,0 +1,116 @@
+{
+  "name": "@hyperframes/share",
+  "version": "0.9.10",
+  "description": "Shared review identity, version upload and sharing state for HyperFrames hosts",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygen-com/hyperframes",
+    "directory": "packages/share"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "scripts/copy-types.mjs"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.mjs",
+      "types": "./dist/index.d.mts"
+    },
+    "./hosts": "./dist/hosts.d.ts",
+    "./package.json": "./package.json",
+    "./appOwnedPaths.mjs": {
+      "import": "./src/appOwnedPaths.mjs",
+      "types": "./dist/appOwnedPaths.d.mts"
+    },
+    "./grantRefusal.mjs": {
+      "import": "./src/grantRefusal.mjs",
+      "types": "./dist/grantRefusal.d.mts"
+    },
+    "./host.mjs": {
+      "import": "./src/host.mjs",
+      "types": "./dist/host.d.mts"
+    },
+    "./index.mjs": {
+      "import": "./src/index.mjs",
+      "types": "./dist/index.d.mts"
+    },
+    "./projectLock.mjs": {
+      "import": "./src/projectLock.mjs",
+      "types": "./dist/projectLock.d.mts"
+    },
+    "./projectSnapshot.mjs": {
+      "import": "./src/projectSnapshot.mjs",
+      "types": "./dist/projectSnapshot.d.mts"
+    },
+    "./reviewAudience.mjs": {
+      "import": "./src/reviewAudience.mjs",
+      "types": "./dist/reviewAudience.d.mts"
+    },
+    "./reviewClient.mjs": {
+      "import": "./src/reviewClient.mjs",
+      "types": "./dist/reviewClient.d.mts"
+    },
+    "./reviewExport.mjs": {
+      "import": "./src/reviewExport.mjs",
+      "types": "./dist/reviewExport.d.mts"
+    },
+    "./reviewFiles.mjs": {
+      "import": "./src/reviewFiles.mjs",
+      "types": "./dist/reviewFiles.d.mts"
+    },
+    "./reviewLinkStates.mjs": {
+      "import": "./src/reviewLinkStates.mjs",
+      "types": "./dist/reviewLinkStates.d.mts"
+    },
+    "./reviewOpenCalls.mjs": {
+      "import": "./src/reviewOpenCalls.mjs",
+      "types": "./dist/reviewOpenCalls.d.mts"
+    },
+    "./reviewShare.mjs": {
+      "import": "./src/reviewShare.mjs",
+      "types": "./dist/reviewShare.d.mts"
+    },
+    "./reviewSwitch.mjs": {
+      "import": "./src/reviewSwitch.mjs",
+      "types": "./dist/reviewSwitch.d.mts"
+    },
+    "./reviewUpload.mjs": {
+      "import": "./src/reviewUpload.mjs",
+      "types": "./dist/reviewUpload.d.mts"
+    },
+    "./reviewVersionSentences.mjs": {
+      "import": "./src/reviewVersionSentences.mjs",
+      "types": "./dist/reviewVersionSentences.d.mts"
+    },
+    "./signedInRequest.mjs": {
+      "import": "./src/signedInRequest.mjs",
+      "types": "./dist/signedInRequest.d.mts"
+    },
+    "./storage.mjs": {
+      "import": "./src/storage.mjs",
+      "types": "./dist/storage.d.mts"
+    },
+    "./types/access": "./dist/types/access.d.ts",
+    "./types/review": "./dist/types/review.d.ts",
+    "./types/reviewWire": "./dist/types/reviewWire.d.ts",
+    "./types/share": "./dist/types/share.d.ts",
+    "./types/shareOpen": "./dist/types/shareOpen.d.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-types.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.10",
+    "typescript": "^5.0.0"
+  }
+}

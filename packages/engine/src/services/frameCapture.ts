@@ -11,6 +11,7 @@
 import {
   type Browser,
   type CDPSession,
+  type HTTPRequest,
   type Page,
   type Protocol,
   type Viewport,
@@ -221,6 +222,8 @@ export interface CaptureSession {
    * were hitting that wall — a 705-render spike at the 45s setup bucket).
    */
   scriptLoadFailures: string[];
+  /** Closed origin and error of each of `scriptLoadFailures`, same order. */
+  scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
@@ -454,15 +457,25 @@ export function getDrawElementVerificationDetails(
   return undefined;
 }
 
-/** Wait for inline CSS background images introduced by the latest seek. */
-export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+/** Longest the capture waits for one inline background image to decode; it is then left out. */
+export const BACKGROUND_DECODE_TIMEOUT_MS = 15_000;
+
+/**
+ * Wait for inline CSS background images introduced by the latest seek.
+ * Resolves with the urls that did not settle in time: they are captured as they stand and not waited on again.
+ */
+export async function decodeDynamicCssBackgroundImages(page: Page): Promise<string[]> {
+  return page.evaluate(async (timeoutMs: number) => {
     const root = globalThis as typeof globalThis & {
       __hf_css_background_decoded?: Set<string>;
-      __hfDecodeDynamicCssBackgroundImages?: () => Promise<void>;
+      __hf_css_background_timed_out?: Set<string>;
+      __hf_css_background_timeout_ms?: number;
+      __hfDecodeDynamicCssBackgroundImages?: () => Promise<string[]>;
     };
     const decode = (root.__hfDecodeDynamicCssBackgroundImages ??= async () => {
+      const limitMs = root.__hf_css_background_timeout_ms ?? 0;
       const decoded = (root.__hf_css_background_decoded ??= new Set<string>());
+      const timedOut = (root.__hf_css_background_timed_out ??= new Set<string>());
       const urls: string[] = [];
       const parseBackgroundUrls = (value: string): string[] => {
         const found: string[] = [];
@@ -516,26 +529,42 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<void
         if (!backgroundImage || backgroundImage === "none") continue;
 
         for (const url of parseBackgroundUrls(backgroundImage)) {
-          if (!decoded.has(url)) urls.push(url);
+          if (!decoded.has(url) && !timedOut.has(url)) urls.push(url);
         }
       }
 
+      const late: string[] = [];
       await Promise.all(
         [...new Set(urls)].map(async (url) => {
           const image = new Image();
           image.src = url;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const expired = new Promise<"late">((resolve) => {
+            timer = setTimeout(() => resolve("late"), limitMs);
+          });
           try {
-            await image.decode();
-            decoded.add(url);
+            const outcome = await Promise.race([
+              image.decode().then(() => "ready" as const),
+              expired,
+            ]);
+            if (outcome === "ready") decoded.add(url);
+            else {
+              timedOut.add(url);
+              late.push(url);
+            }
           } catch {
             // Keep existing capture behavior for missing assets; request diagnostics report them.
+          } finally {
+            clearTimeout(timer);
           }
         }),
       );
+      return late;
     });
 
-    await decode();
-  });
+    root.__hf_css_background_timeout_ms = timeoutMs;
+    return decode();
+  }, BACKGROUND_DECODE_TIMEOUT_MS);
 }
 
 // Circular buffer for browser console messages dumped on render failure diagnostics.
@@ -632,14 +661,6 @@ export function sanitizeDiagnosticUrl(input: string): string {
   if (!input) return "(empty)";
   if (input.startsWith("data:")) return "data:<redacted>";
   if (input.startsWith("blob:")) return "blob:<redacted>";
-  if (input.startsWith("/")) {
-    try {
-      const url = new URL(input, "http://hyperframes.local");
-      return url.pathname;
-    } catch {
-      return input;
-    }
-  }
 
   try {
     const url = new URL(input);
@@ -649,7 +670,12 @@ export function sanitizeDiagnosticUrl(input: string): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return input;
+    // A relative reference keeps its path only, and raw input never comes back.
+    try {
+      return new URL(input, "http://hyperframes.local").pathname;
+    } catch {
+      return input.split(/[?#]/, 1)[0] ?? "";
+    }
   }
 }
 
@@ -1356,7 +1382,7 @@ async function finalizeDrawElementInit(
   const { transparent, forceDE } = opts;
   // Install the page-local decoder before batch drawElement capture begins;
   // the batch loop re-runs it after every in-page seek.
-  await decodeDynamicCssBackgroundImages(page);
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
   // Self-verification ground truth: must run pre-injection — after the canvas
   // wraps the root, a page screenshot shows the canvas's last-drawn bitmap,
   // not the live DOM (see the Lim 6 boundary-screenshot note).
@@ -1863,13 +1889,17 @@ export interface HfDiagnostic {
 }
 
 // fallow-ignore-next-line complexity
-export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
+export function buildZeroDurationDiagnostic(diag: HfDiagnostic, timeoutMs?: number): string {
   const hints: string[] = [];
   if (diag.pendingBuildReadyKeys.length > 0) {
     hints.push(
       `window.__hf.buildReady never resolved for: ${diag.pendingBuildReadyKeys.join(", ")}. ` +
         "The runtime holds render-ready until every registered buildReady promise settles. " +
-        "Find where the composition registers that key and confirm it actually resolves.",
+        "Find where the composition registers that key and confirm it actually resolves. " +
+        "During a render, Date and performance.now stay at 0 and requestAnimationFrame " +
+        "callbacks wait until the first frame, so setup that awaits an animation frame or " +
+        "the clock never finishes. Await the library's own readiness promise instead (for " +
+        "Three.js, renderer.compileAsync).",
     );
   }
   if (diag.rejectedBuildReadyKeys.length > 0) {
@@ -1881,7 +1911,7 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   if (!diag.hasPlayer) {
     hints.push("window.__player was never set: the HyperFrames runtime did not initialize.");
   }
-  if (!diag.hasTimeline) {
+  if (diag.renderReady && !diag.hasTimeline) {
     hints.push(
       "No GSAP timeline registered (window.__timelines is empty). " +
         "CSS/WAAPI/Lottie animations are usually auto-detected (the runtime infers " +
@@ -1899,8 +1929,12 @@ export function buildZeroDurationDiagnostic(diag: HfDiagnostic): string {
   if (diag.hasSeek && diag.duration === 0 && diag.renderReady) {
     hints.push("The runtime finished initializing but reported zero duration. This is permanent.");
   }
+  const within = timeoutMs === undefined ? "" : ` within ${timeoutMs}ms`;
+  const headline = diag.renderReady
+    ? "Composition has zero duration."
+    : `Composition setup did not finish${within}.`;
   return (
-    `[FrameCapture] Composition has zero duration.\n` +
+    `[FrameCapture] ${headline}\n` +
     `  Runtime ready: ${diag.renderReady}, __player: ${diag.hasPlayer}, ` +
     `__hf.seek: ${diag.hasSeek}, GSAP timeline: ${diag.hasTimeline}, ` +
     `data-duration: ${diag.declaredDuration > 0 ? diag.declaredDuration + "s" : "not set"}\n` +
@@ -1969,7 +2003,7 @@ export async function pollHfReady(
 
   const diag = await evaluateHfDiagnostic(page);
   if (diag.hasSeek && diag.duration === 0) {
-    throw new Error(buildZeroDurationDiagnostic(diag));
+    throw new Error(buildZeroDurationDiagnostic(diag, timeoutMs));
   }
   throw new Error(
     `[FrameCapture] window.__hf not ready after ${timeoutMs}ms. ` +
@@ -2466,6 +2500,29 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
   }
 }
 
+/** Report background urls that timed out decoding; the shown url drops credentials and query. */
+export function recordBackgroundDecodeTimeouts(
+  session: CaptureSession,
+  urls: readonly string[] | undefined,
+): void {
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  if (!urls?.length) return;
+  const sources = [...new Set(urls.map(sanitizeDiagnosticUrl))].sort();
+  for (const source of sources) {
+    appendBrowserDiagnostic(
+      session,
+      `[FrameCapture] background image still decoding after ${BACKGROUND_DECODE_TIMEOUT_MS}ms, captured without it: ${source}`,
+    );
+  }
+  recordCaptureWarnings(session, [
+    {
+      code: "media_readiness_timeout",
+      message: `image media did not finish decoding within ${BACKGROUND_DECODE_TIMEOUT_MS}ms`,
+      details: { mediaType: "image", sources, timeoutMs: BACKGROUND_DECODE_TIMEOUT_MS },
+    },
+  ]);
+}
+
 export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: number): void {
   const outcome = session.subTimelineWaitOutcome;
   if (outcome === "ready" || !outcome) return;
@@ -2473,6 +2530,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
     session.pageErrors.length > 0 && session.scriptLoadFailures.length === 0;
   const scriptFailure = isScriptFailure(session);
   const sources = [...session.scriptLoadFailures, ...session.pageErrors];
+  const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
   const isolated = session.isolatedCompositions ?? [];
@@ -2501,7 +2559,8 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
           `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
-          ? `A sub-composition timeline script failed to load (${sources.join(", ")})`
+          ? `A sub-composition timeline script failed to load${scriptLoadCauseSuffix(loadCauses)} ` +
+            `(${sources.join(", ")})`
           : `Sub-composition timelines did not become ready within ${timeoutMs}ms${pendingSuffix}. ` +
             `This can be intentional: a composition driven by CSS animations or rAF never registers ` +
             `window.__timelines[id], and marking its host with data-no-timeline skips the wait entirely. ` +
@@ -2706,10 +2765,72 @@ function recordPageError(session: CaptureSession, error: string | null): void {
 // (e.g. a `requestfailed` following the 4xx), and repeated <script> tags for
 // the same URL duplicate it further — dedupe so the fail-fast warning names
 // each failed URL once.
-function recordScriptLoadFailure(session: CaptureSession, url: string): void {
+function recordScriptLoadFailure(
+  session: CaptureSession,
+  url: string,
+  cause: ScriptLoadCause,
+): void {
   if (!session.scriptLoadFailures.includes(url)) {
     session.scriptLoadFailures.push(url);
+    (session.scriptLoadCauses ??= []).push(cause);
   }
+}
+
+type ScriptLoadOrigin = "local" | "cdn" | "remote" | "unknown";
+export interface ScriptLoadCause {
+  origin: ScriptLoadOrigin;
+  /** `net::ERR_*`, `http-<status>` or `unknown`. */
+  code: string;
+}
+
+const CDN_HOSTS = /^(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)$/;
+
+/** Where a failed script came from and why, never its URL, host or path. */
+export function classifyScriptLoadCause(
+  url: string,
+  serverUrl: string,
+  failure: string | number,
+): ScriptLoadCause {
+  let origin: ScriptLoadOrigin = "unknown";
+  if (url.startsWith(`${serverUrl}/`)) origin = "local";
+  else if (/^https?:\/\//.test(url)) {
+    origin = CDN_HOSTS.test(new URL(url).hostname) ? "cdn" : "remote";
+  }
+  const code =
+    typeof failure === "number"
+      ? `http-${failure}`
+      : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
+        ? failure
+        : "unknown";
+  return { origin, code };
+}
+
+function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
+  const shown = causes.slice(0, 4).map((c) => `${c.origin}/${c.code}`);
+  return shown.length === 0 ? "" : ` [script_load: ${shown.join(", ")}]`;
+}
+
+const CANCELLED_BY_THE_PAGE_NOT_REFUSED = "net::ERR_ABORTED";
+
+export function recordFailedRequest(
+  session: CaptureSession,
+  request: Pick<HTTPRequest, "resourceType" | "url" | "method" | "failure">,
+): void {
+  const resourceType = request.resourceType();
+  const url = request.url();
+  const failureText = request.failure()?.errorText ?? "unknown";
+  if (resourceType === "script" && failureText !== CANCELLED_BY_THE_PAGE_NOT_REFUSED) {
+    recordScriptLoadFailure(
+      session,
+      url,
+      classifyScriptLoadCause(url, session.serverUrl, failureText),
+    );
+  }
+  if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
+  appendBrowserDiagnostic(
+    session,
+    formatRequestFailureDiagnostic({ method: request.method(), resourceType, url, failureText }),
+  );
 }
 
 const SCRIPT_ERROR_LABEL = "[HyperFrames] composition script error:";
@@ -2809,7 +2930,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
 
     // A blocked script can never register its timeline (#3352); a thrown one may still, so it only counts on timeout.
     const scriptFailure = classifyConsoleScriptFailure(type, text);
-    if (scriptFailure) recordScriptLoadFailure(session, scriptFailure);
+    if (scriptFailure)
+      recordScriptLoadFailure(session, scriptFailure, { origin: "unknown", code: "unknown" });
     recordConsoleScriptError(session, classifyConsoleScriptError(type, text));
   });
 
@@ -2823,24 +2945,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     appendBrowserDiagnostic(session, text);
   });
 
-  page.on("requestfailed", (request) => {
-    const resourceType = request.resourceType();
-    const url = request.url();
-    const failureText = request.failure()?.errorText ?? "unknown";
-    if (resourceType === "script") {
-      recordScriptLoadFailure(session, request.url());
-    }
-    if (shouldIgnoreRequestFailureDiagnostic({ resourceType, url, failureText })) return;
-    appendBrowserDiagnostic(
-      session,
-      formatRequestFailureDiagnostic({
-        method: request.method(),
-        resourceType,
-        url,
-        failureText,
-      }),
-    );
-  });
+  page.on("requestfailed", (request) => recordFailedRequest(session, request));
 
   const projectScripts = new Set<string>();
   page.on("response", (response) => {
@@ -2853,7 +2958,13 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       return;
     }
 
-    if (isScript) recordScriptLoadFailure(session, responseUrl);
+    if (isScript) {
+      recordScriptLoadFailure(
+        session,
+        responseUrl,
+        classifyScriptLoadCause(responseUrl, serverUrl, status),
+      );
+    }
     appendBrowserDiagnostic(
       session,
       formatHttpErrorDiagnostic({
@@ -3298,7 +3409,8 @@ async function prepareFrameForCapture(
   const hasPendingComposite = await seekPageTimeline(page, quantizedTime, seekOptions);
 
   session.captureStep = "decoding CSS background images";
-  await decodeDynamicCssBackgroundImages(page);
+  // Mocked pages answer evaluate() with undefined, so tolerate a missing list.
+  recordBackgroundDecodeTimeouts(session, await decodeDynamicCssBackgroundImages(page));
 
   const seekMs = Date.now() - seekStart;
 
@@ -5154,13 +5266,14 @@ export async function captureFramesBatchPipelined(
   const quantized = times.map((t) => quantizeTimeToFrame(t, fps));
 
   session.captureStep = "capturing the frame";
-  const { encodeResults, failedAt, error } = await produceDrawElementFrameBatch(
+  const { encodeResults, failedAt, error, lateBackgrounds } = await produceDrawElementFrameBatch(
     page,
     quantized,
     options.width,
     options.height,
     options.quality ?? 80,
   );
+  recordBackgroundDecodeTimeouts(session, lateBackgrounds);
 
   // A later batch failure abandons this prefix. Its asynchronous encodes can
   // still reject while session cleanup shuts the worker down.

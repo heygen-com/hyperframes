@@ -243,6 +243,54 @@ describe("resolveProxy on a long source", () => {
     expect(copiesIn(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
   });
 
+  it("copies only the first stretch when asked, as a copy of its own", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath, proxyWindowSeconds } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    const window = await proxyWindowSeconds(sourcePath, 5);
+    expect(window).toBe(PIECE_SECONDS);
+    const windowed = getProxyCachePath(projectDir, sourcePath, "h264", undefined, window);
+    expect(windowed).not.toBe(getProxyCachePath(projectDir, sourcePath));
+
+    const result = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      limitSeconds: window,
+    });
+    await flush();
+    succeed(calls[0]!);
+
+    expect(await result).toBe(windowed);
+    expect(calls).toHaveLength(1);
+    expect(
+      calls[0]!.args.slice(calls[0]!.args.indexOf("-t"), calls[0]!.args.indexOf("-t") + 2),
+    ).toEqual(["-t", String(PIECE_SECONDS)]);
+  });
+
+  it("copies the whole source when the stretch saves less than a piece", async () => {
+    const { spawn } = createSpawnSpy();
+    const { proxyWindowSeconds } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const sourcePath = join(tmpProject(), "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+
+    expect(await proxyWindowSeconds(sourcePath, LONG_SECONDS - 10)).toBeUndefined();
+  });
+
   it("copies alpha pieces side by side, shares the cores out, and counts them together", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy } = await loadModule(
@@ -793,11 +841,11 @@ describe("resolveProxy", () => {
       ]);
 
       const proxyPath = await resolveProxy(projectDir, sourcePath);
-      // Reference: the render tone map's RGB, converted with BT.709. Mean luma is ~53 there;
-      // skipping the tone map gives ~60, a BT.601 conversion ~56.
+      // Reference: the render tone map's RGB, converted with BT.709. Skipping the tone map or
+      // converting with BT.601 each moves mean luma by several levels.
       const reference = meanLuma(
         sourcePath,
-        `${hdrToSdrToneMapFilter({ colorTransfer: "arib-std-b67" }, { colorTransfer: "arib-std-b67" })},format=gbrp,scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=yuv420p,`,
+        `${hdrToSdrToneMapFilter({ colorTransfer: "arib-std-b67" }, { colorTransfer: "arib-std-b67", keyframeTransfers: ["arib-std-b67"] })},format=gbrp,scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=yuv420p,`,
       );
       expect(Math.abs(meanLuma(proxyPath) - reference)).toBeLessThan(1);
     },

@@ -16,8 +16,9 @@ import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { cliSourced } from "../../utils/sourceTag.js";
 
-const DOCS_URL = "https://hyperframes.heygen.com/deploy/aws-lambda";
+const DOCS_URL = cliSourced("https://hyperframes.heygen.com/deploy/aws-lambda");
 const HANDLER_CACHE_DIR = hyperframesCacheDir("lambda-handler");
 
 type AdapterSdk = typeof import("@hyperframes/aws-lambda/sdk");

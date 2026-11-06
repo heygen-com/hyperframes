@@ -11,6 +11,7 @@ import {
   DEFAULT_MIN_P05,
   diffVideos,
   findLedger,
+  parseOffset,
   type DiffResult,
 } from "../measure/diff.js";
 import { Fix, formatJson, outDir, parseNumbers, parseRange } from "../measure/media.js";
@@ -98,7 +99,7 @@ function printHuman(r: DiffResult) {
     );
   if (r.duration)
     console.log(
-      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass ? "" : " (differ)"}`,
+      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${r.duration.note})` : r.duration.pass ? "" : " (differ)"}`,
     );
   if (r.sound)
     console.log(
@@ -159,11 +160,15 @@ export default defineCommand({
     yours: {
       type: "positional",
       description:
-        "A rendered video, or a project folder (captured at the original's frame times, no render)",
-      required: true,
+        "A rendered video, or a project folder (captured at the original's frame times, no render) (required)",
+      required: false,
     },
     at: { type: "string", description: "Compare only these seconds, e.g. 0.5,2.4" },
     range: { type: "string", description: "Compare every frame of start,end seconds" },
+    offset: {
+      type: "string",
+      description: "Compare the original at t with yours at t + offset seconds (may be negative)",
+    },
     segments: {
       type: "string",
       description:
@@ -216,6 +221,11 @@ export default defineCommand({
     try {
       if (args.at !== undefined && args.range !== undefined)
         throw new Fix("--at and --range both given", "pass one of them");
+      if (args.yours === undefined)
+        throw new Fix(
+          "diff compares two: the original and yours",
+          "hyperframes diff <original.mp4> <your render.mp4 | your project folder>",
+        );
       const yours = resolve(String(args.yours));
       const stem = basename(yours, extname(yours)) || "project";
       const segmentsFile = args.segments === undefined ? undefined : resolve(String(args.segments));
@@ -231,6 +241,7 @@ export default defineCommand({
             : resolve(String(args.ledger)),
         project: args.project === undefined ? undefined : resolve(String(args.project)),
         drawn: repeated(rawArgs, "--drawn").map(parseDrawn),
+        offset: args.offset === undefined ? undefined : parseOffset(args.offset),
         thresholds: {
           mean: number(args["min-mean"], "--min-mean"),
           p05: number(args["min-p05"], "--min-p05"),

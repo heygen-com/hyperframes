@@ -1,0 +1,57 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"renderer","type":"enum","label":"Renderer","description":"raster draws each frame in milliseconds for previews. path traces light bounces for the final export and is much slower.","default":"raster","options":[{"value":"raster","label":"Raster (fast preview)"},{"value":"path","label":"Path tracing (export)"}]},{"id":"samples","type":"number","label":"Path samples per pixel","description":"Samples traced for every frame in path mode. More samples mean less noise and proportionally longer renders.","default":64,"min":1,"max":1024,"step":1},{"id":"bounces","type":"number","label":"Path light bounces","description":"How many times a ray may bounce in path mode. Reflections between objects need at least 2.","default":4,"min":1,"max":12,"step":1}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Path-traced 3D - HyperFrames</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0e1115;
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+      #pt-canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+      data-no-timeline
+    >
+      <canvas
+        id="pt-canvas"
+        class="clip"
+        data-start="0"
+        data-duration="6"
+        data-track-index="1"
+      ></canvas>
+    </div>
+    <script type="module" src="assets/render.js"></script>
+  </body>
+</html>

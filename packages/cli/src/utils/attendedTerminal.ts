@@ -5,8 +5,8 @@ export function envFlagEnabled(name: string): boolean {
   return Boolean(value && value !== "0" && value !== "false" && value !== "no");
 }
 
-export function isCI(): boolean {
-  const value = process.env["CI"]?.trim().toLowerCase();
+export function isCI(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env["CI"]?.trim().toLowerCase();
   return Boolean(value) && value !== "0" && value !== "false";
 }
 

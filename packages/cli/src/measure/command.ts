@@ -19,9 +19,15 @@ export async function runMeasure(work: () => object | Promise<object>): Promise<
     console.log(formatJson(withMeta({ ok: true, ...(await work()) })));
   } catch (err) {
     const fix = err instanceof Fix ? err.fix : undefined;
+    const url = err instanceof Fix ? err.url : undefined;
     console.log(
       formatJson(
-        withMeta({ ok: false, error: normalizeErrorMessage(err), ...(fix ? { fix } : {}) }),
+        withMeta({
+          ok: false,
+          error: normalizeErrorMessage(err),
+          ...(fix ? { fix } : {}),
+          ...(url ? { url } : {}),
+        }),
       ),
     );
     if (process.stdout.isTTY) console.error(`${c.error("✗")} ${normalizeErrorMessage(err)}`);

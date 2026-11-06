@@ -50,8 +50,13 @@ export function optedOut() {
 }
 
 // Read and write the shared config so media-use keeps one identity per install.
+// Until the CLI seeds HYPERFRAMES_CONFIG_DIR's copy, ~/.hyperframes' own still holds the opt-out.
 function sharedConfigPath() {
-  return join(homedir(), ".hyperframes", "config.json");
+  const home = join(homedir(), ".hyperframes", "config.json");
+  const dir = process.env.HYPERFRAMES_CONFIG_DIR;
+  if (!dir) return home;
+  const file = join(dir, "config.json");
+  return existsSync(file) || !existsSync(home) ? file : home;
 }
 
 function readSharedConfig() {

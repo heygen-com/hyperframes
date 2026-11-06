@@ -36,9 +36,9 @@ import {
 import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
-import { scanMovers } from "./discover";
+import { scanMovers, whileCallbacksMuted } from "./discover";
 import { createFilterTier } from "./filterTier";
-import { readMoverFrames } from "./frames";
+import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
 import {
   type CaptureMotionBlurHost,
@@ -65,6 +65,8 @@ const HIDE_ATTR = "data-hf-motion-blur-hide";
 /** On the root while the movers alone are captured; the movers carry MOVER_ATTR. */
 const ONLY_ATTR = "data-hf-motion-blur-only";
 const MOVER_ATTR = "data-hf-motion-blur-mover";
+const SVG_DRAWN_BY_REFERENCE = ["defs", "clipPath", "mask", "pattern", "marker", "symbol"];
+const IN_SVG_RESOURCE = SVG_DRAWN_BY_REFERENCE.flatMap((tag) => [tag, `${tag} *`]).join(", ");
 const NESTED_CANVAS_KEEPS_ITS_PLACE = `:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`;
 
 interface Job {
@@ -94,8 +96,8 @@ const LOG_EVERY = 25;
 function readConfig(root: HTMLElement): Config | null {
   const settings = readMotionBlurSettings((name) => root.getAttribute(name));
   if (!settings.enabled) return null;
-  const { shutterDeg, samples, events, tier } = settings;
-  return { shutterDeg, samples, events, tier };
+  const { shutterDeg, phaseDeg, samples, events, tier } = settings;
+  return { shutterDeg, phaseDeg, samples, events, tier };
 }
 
 /** Must run before composition scripts: see `installAcceleratedCanvasTracker`. */
@@ -169,8 +171,9 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     `[${HIDE_ATTR}] { opacity: 0 !important; }`,
     // The root stays visible: a rotated or scaled mover under a hidden root is captured at the origin, untransformed.
     `[${ONLY_ATTR}] { background: none !important; border-color: transparent !important; box-shadow: none !important; outline-color: transparent !important; }`,
-    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *) { visibility: hidden !important; }`,
+    `[${ONLY_ATTR}]::before, [${ONLY_ATTR}]::after, [${ONLY_ATTR}] *:not([${MOVER_ATTR}], [${MOVER_ATTR}] *, ${IN_SVG_RESOURCE}) { visibility: hidden !important; }`,
     `[${ONLY_ATTR}] [${MOVER_ATTR}] { visibility: visible !important; }`,
+    `[${ONLY_ATTR}] :is(${SVG_DRAWN_BY_REFERENCE.join(", ")}) { visibility: visible !important; }`,
     NESTED_CANVAS_KEEPS_ITS_PLACE,
   ].join("\n");
 
@@ -193,14 +196,20 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   let scannedTimeline: unknown = undefined;
   let scanDefect: CaptureDefect | null = null;
   let faceNow: () => boolean = () => false;
-  let translationOnly = false;
   const loggedBackstops = new Set<string>();
   let wrapped = false;
   // Once the engine drives frames, paused-style requests come from the transport, not a user.
   let rendering = false;
 
   function moveRootThenResync(move: () => void): void {
+    const scrolled = [root, ...root.querySelectorAll<HTMLElement>("*")]
+      .filter((el) => el.scrollLeft !== 0 || el.scrollTop !== 0)
+      .map((el) => ({ el, left: el.scrollLeft, top: el.scrollTop }));
     (host.ignoreMutations ?? ((write: () => void) => write()))(move);
+    for (const { el, left, top } of scrolled) {
+      el.scrollLeft = left;
+      el.scrollTop = top;
+    }
     host.seek(host.now(), true);
   }
 
@@ -248,40 +257,46 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
     const s0 = performance.now();
-    const found = scanMovers({
-      scene: root,
-      durationSeconds: duration,
-      fps: host.fps,
-      seek: host.seek,
-      events: config.events,
-      onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
+    const found = whileCallbacksMuted(host, config.events, () => {
+      const scan = scanMovers({
+        scene: root,
+        durationSeconds: duration,
+        fps: host.fps,
+        seek: host.seek,
+        events: config.events,
+        onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
+      });
+      seek(restoreTo);
+      return scan;
     });
-    seek(restoreTo);
     readEvents = found.readEvents;
     scanDefect = defects.result();
     faceNow = defects.facesNow;
     movers = found.movers;
     pads = found.pads;
-    translationOnly = found.translationOnly;
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
   }
 
   function frames(t: number, reads: number): { els: HTMLElement[]; frames: MoverFrame[] } {
     if (!reader) return { els: [], frames: [] };
-    return readMoverFrames({
-      movers,
-      reader,
-      seek: readSeek,
-      restore: readEvents ? undefined : host.holdFrame?.(),
-      t,
-      reads,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
-      taps: config.samples,
-      pads,
-      frameW: width,
-      frameH: height,
-    });
+    const poseReader = reader;
+    return whileCallbacksMuted(host, readEvents, () =>
+      readMoverFrames({
+        movers,
+        reader: poseReader,
+        seek: readSeek,
+        restore: readEvents ? undefined : host.holdFrame?.(),
+        t,
+        reads,
+        ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
+        taps: config.samples,
+        pads,
+        frameW: width,
+        scene: root,
+        frameH: height,
+      }),
+    );
   }
 
   const capture = (): void => {
@@ -465,15 +480,9 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     compositor = createCompositor(width, height, dpr);
   }
 
-  /** Who should draw instead of capture: it turned itself off, or the filter tier does as well for less. */
+  /** Who should draw instead of capture: it turned itself off. */
   function handOff(): CaptureDefect | null {
     if (disabled) return { code: disabledCode ?? "capture-failures", reason: disabled };
-    if (config.tier === "auto" && reader && translationOnly && filterTierAllowed()) {
-      return {
-        code: "translation-only",
-        reason: "every mover only translates, which the filter tier draws as well and far cheaper",
-      };
-    }
     return null;
   }
 
@@ -557,6 +566,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       moverNames: movers.map(describe),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames: timings.length,
       meanMs: Math.round(mean * 10) / 10,
       failures,
@@ -611,7 +621,6 @@ let activeConfig: Config | null = null;
 /** The filter tier stands in for capture; a scene re-init tries capture again. */
 let onFallback = false;
 let fallbackEnabled = true;
-const filterTierAllowed = (): boolean => fallbackEnabled;
 let suspended = false;
 let priorResolver: (() => boolean) | null = null;
 let ourResolver: (() => boolean) | null = null;
@@ -649,6 +658,17 @@ const TIER_ATTRIBUTE: CaptureDefect = {
   reason: 'data-motion-blur-tier="filter"',
 };
 
+const TIER_AUTO: CaptureDefect = {
+  code: "tier-auto",
+  reason:
+    'auto draws with the filter tier; data-motion-blur-tier="capture" streaks turns and zooms',
+};
+
+function filterReason(tier: Config["tier"], why: CaptureDefect | null): CaptureDefect | null {
+  if (tier === "auto") return TIER_AUTO;
+  return tier === "filter" ? TIER_ATTRIBUTE : why;
+}
+
 function selectTier(host: CaptureMotionBlurHost, config: Config, w: CompositeWindow): void {
   const form = htmlInCanvasForm();
   const why = unsupported(host.root);
@@ -658,8 +678,7 @@ function selectTier(host: CaptureMotionBlurHost, config: Config, w: CompositeWin
     defect: why,
     fallback: fallbackEnabled,
   });
-  if (choice === "filter")
-    startFallback(host, config, config.tier === "filter" ? TIER_ATTRIBUTE : why);
+  if (choice === "filter") startFallback(host, config, filterReason(config.tier, why));
   else if (choice === "capture" && form) instance = createInstance(host, config, form);
   else standDown(w, config, why);
 }
@@ -697,6 +716,7 @@ function offReport(config: Config, why: CaptureDefect | null): Report {
     moverNames: [],
     scanMs: 0,
     shutterDeg: config.shutterDeg,
+    phaseDeg: config.phaseDeg,
     frames: 0,
     meanMs: 0,
     failures: 0,

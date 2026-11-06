@@ -28,6 +28,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  leavesNothingToLoad,
   prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
@@ -164,6 +165,11 @@ async function saveCheckReport(
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  "lint-verbose": {
+    type: "boolean",
+    description: "Accepted as render's spelling; check always prints every lint finding",
+    default: false,
+  },
   samples: {
     type: "string",
     description: "Number of midpoint samples across the duration (default: 9)",
@@ -209,11 +215,16 @@ const CHECK_COMMAND_ARGS = {
     description: "Allowed pixel overflow before reporting an issue (default: 2)",
     default: "2",
   },
+  budget: {
+    type: "string",
+    description:
+      "Stop the whole check this long after it starts (ms, or 90s, 8m; at least 30s) and report what it found so far",
+  },
   timeout: {
     type: "string",
     description:
-      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 10000)",
-    default: "10000",
+      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 45000, as snapshot and render)",
+    default: String(DEFAULT_CHECK_OPTIONS.timeout),
   },
   contrast: {
     type: "boolean",
@@ -342,6 +353,13 @@ function reportCheckFailure(
 }
 
 const REPORT_GRACE_MS = 5_000;
+const MIN_BUDGET_MS = 30_000;
+const BUDGET_REPORT_MS = 10_000;
+
+function parseBudget(raw: unknown): CheckOptions["budget"] {
+  const ms = parseTimeoutMs(raw, 0, MIN_BUDGET_MS, console.error, "--budget");
+  return ms > 0 ? { ms, stopAt: Date.now() + ms - BUDGET_REPORT_MS } : undefined;
+}
 
 function untilReported(): { done: () => void } {
   let done = (): void => undefined;
@@ -417,6 +435,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     collapseStatic: args["collapse-static"] !== false,
     tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
     timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
+    budget: parseBudget(args.budget),
     contrast: args.contrast !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
@@ -653,9 +672,8 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 }
 
 function browserSkippedLine(report: CheckReport): string {
-  const lintError = report.lint.findings.some((finding) => finding.severity === "error");
-  return lintError
-    ? "Browser validation skipped because of the lint error above: fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
+  return report.lint.findings.some(leavesNothingToLoad)
+    ? "Browser validation skipped: the lint error above leaves no composition to load. Fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
     : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
 }
 

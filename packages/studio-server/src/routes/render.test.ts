@@ -739,6 +739,34 @@ describe("POST /render/:jobId/cancel", () => {
     }
   });
 
+  it("replies only once the adapter's stop has settled", async () => {
+    const { adapter, rendersDir } = createAdapter(vi.fn());
+    const baseStartRender = adapter.startRender.bind(adapter);
+    let settled = false;
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.cancel = () =>
+        new Promise<void>((done) =>
+          setTimeout(() => {
+            settled = true;
+            state.status = "failed";
+            done();
+          }, 30),
+        );
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const jobId = await startJob(app);
+      const res = await app.request(`http://localhost/render/${jobId}/cancel`, { method: "POST" });
+      expect(settled).toBe(true);
+      expect(((await res.json()) as { status: string }).status).toBe("failed");
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not cancel a job that already completed", async () => {
     const spy = vi.fn();
     const states: Array<{ status: string }> = [];

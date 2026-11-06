@@ -2,8 +2,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import { findFFmpeg } from "../browser/ffmpeg.js";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FFMPEG_PATH_ENV, findFFmpeg } from "../browser/ffmpeg.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 import { probeVideo } from "../measure/media.js";
 
 vi.mock("../cloud/auth.js", () => ({
@@ -11,6 +12,25 @@ vi.mock("../cloud/auth.js", () => ({
   refreshIfNeeded: async <T>(credential: T) => credential,
   resolveCloudBaseUrl: () => "https://api.test",
 }));
+
+vi.mock("../cloud/index.js", () => ({ createCloudClient: async () => ({}) }));
+const uploads = vi.hoisted(() => [] as { filename: string; contentType: string }[]);
+vi.mock("../cloud/upload.js", () => ({
+  uploadAssetViaDirectUpload: async (u: { filename: string; contentType: string }) => {
+    uploads.push({ filename: u.filename, contentType: u.contentType });
+    return { asset_id: `asset-${u.filename}` };
+  },
+}));
+
+const sharpGone = vi.hoisted(() => ({ on: false }));
+vi.mock("../utils/optionalPackages.js", async (load) => {
+  const real = await load<typeof import("../utils/optionalPackages.js")>();
+  return {
+    ...real,
+    loadSharp: (feature: string) =>
+      sharpGone.on ? Promise.reject(new Error("no sharp here")) : real.loadSharp(feature),
+  };
+});
 
 vi.stubEnv("HEYGEN_API_KEY", "k");
 vi.stubEnv("HEYGEN_API_URL", "https://api.test");
@@ -40,6 +60,22 @@ afterAll(() => rmSync(project, { recursive: true, force: true }));
 afterEach(() => vi.unstubAllGlobals());
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+
+/** Runs `work` to the end with the poll interval's timers fast-forwarded. */
+async function settled<T>(work: Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["setTimeout"] });
+  let done = false;
+  const run = work.finally(() => (done = true));
+  try {
+    while (!done) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    return await run;
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
 /** A 30 fps clip of these lavfi sources one after another: each new source is a cut. */
 function shots(name: string, sources: string[], size = "180x320"): string {
@@ -105,6 +141,103 @@ describe("generate", () => {
     const ledger = readFileSync(join(project, ".media/manifest.jsonl"), "utf8");
     expect(ledger).toContain('"source":"generated"');
     expect(ledger).toContain('"references":["ref.png"]');
+  });
+
+  it("sends a picture with no ffmpeg on the machine, shrunk to 2048 px", async () => {
+    const big = join(project, "big.png");
+    const sharp = await loadSharp("test");
+    await sharp({ create: { width: 3000, height: 1000, channels: 3, background: "#c33" } })
+      .png()
+      .toFile(big);
+    const before = process.env[FFMPEG_PATH_ENV];
+    process.env[FFMPEG_PATH_ENV] = join(project, "no-ffmpeg");
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/big.png") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "img2", status: "completed", images: [{ url: "https://files.test/big.png" }] },
+      });
+    });
+    try {
+      await generate({
+        type: "image",
+        out: join(project, "assets/big-out.png"),
+        prompt: "p",
+        references: [big],
+      });
+    } finally {
+      if (before === undefined) delete process.env[FFMPEG_PATH_ENV];
+      else process.env[FFMPEG_PATH_ENV] = before;
+    }
+    const [picture] = (sent[0]!.reference_images as { media_type: string; data: string }[])!;
+    expect(picture!.media_type).toBe("image/jpeg");
+    const { width, height, format } = await sharp(Buffer.from(picture!.data, "base64")).metadata();
+    expect([format, width, height]).toEqual(["jpeg", 2048, 683]);
+  });
+
+  it.skipIf(!ffmpeg)("sends a picture sharp cannot read through ffmpeg", async () => {
+    const bmp = join(project, "still.bmp");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=blue:s=40x30", "-frames:v", "1", bmp],
+    ]);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/bmp.png") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "img3", status: "completed", images: [{ url: "https://files.test/bmp.png" }] },
+      });
+    });
+    await generate({
+      type: "image",
+      out: join(project, "assets/bmp-out.png"),
+      prompt: "p",
+      references: [bmp],
+    });
+    const [picture] = sent[0]!.reference_images as { data: string }[];
+    const sharp = await loadSharp("test");
+    const { width, height, format } = await sharp(Buffer.from(picture!.data, "base64")).metadata();
+    expect([format, width, height]).toEqual(["jpeg", 40, 30]);
+  });
+
+  it.skipIf(!ffmpeg)("sends pictures through ffmpeg when sharp cannot be loaded", async () => {
+    answers(textured("no-sharp.mp4", "1344x768", false));
+    sharpGone.on = true;
+    try {
+      const r = await generate({
+        type: "video",
+        out: join(project, "assets/no-sharp-out.mp4"),
+        prompt: "p",
+        firstFrame: still("no-sharp.png", "120x90"),
+      });
+      const { width, height } = probeVideo(r.out);
+      expect([width, height]).toEqual([1024, 768]);
+    } finally {
+      sharpGone.on = false;
+    }
+  });
+
+  it("prepares only the pictures the route sends: --avatar leaves a stale --photo alone", async () => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/av.mp4") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "av1", status: "completed", video_url: "https://files.test/av.mp4" },
+      });
+    });
+    await settled(
+      generate({
+        type: "avatar",
+        out: join(project, "assets/av-out.mp4"),
+        avatar: "look-1",
+        photo: join(project, "gone.png"),
+        script: "hi",
+        voice: "v1",
+      }),
+    );
+    expect(sent[0]).toMatchObject({ type: "avatar", avatar_id: "look-1" });
   });
 
   it.skipIf(!ffmpeg)("re-shoots a person speaking a stretch of the original voice", async () => {
@@ -633,6 +766,7 @@ describe("generate", () => {
       }).usd,
     ).toBe(0.07);
     expect(priceOf({ type: "voice", out: "a.mp3" }).usd).toBeNull();
+    expect(creditsOf(priceOf({ type: "voice", out: "a.mp3", script: "今天聊黄金" }))).toBe(1);
   });
 
   it("prices only a request the real call would accept", () => {
@@ -657,12 +791,118 @@ describe("generate", () => {
     );
   });
 
+  it.skipIf(!ffmpeg)("redoes a shot's mouth to the exact voice", async () => {
+    const video = shots("lips-shot.mp4", ["color=c=red:d=2"]);
+    const audio = join(project, "lips-voice.mp3");
+    writeFileSync(audio, "voice");
+    const sent: { url: string; body?: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      sent.push({ url, ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
+      if (url === "https://files.test/lips.mp4") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") return json({ data: { lipsync_id: "lip1" } });
+      return json({
+        data: { id: "lip1", status: "completed", video_url: "https://files.test/lips.mp4" },
+      });
+    });
+    const out = join(project, "lips-out.mp4");
+    const request = { type: "lipsync" as const, video, audio, out };
+    const made = await generate(request);
+    expect(made.job).toBe("lip1");
+    expect(sent[0]!.url).toBe("https://api.test/v3/lipsyncs");
+    expect(sent[0]!.body).toMatchObject({
+      video: { type: "asset_id", asset_id: "asset-lips-shot.mp4" },
+      audio: { type: "asset_id", asset_id: "asset-lips-voice.mp3" },
+      mode: "speed",
+      enable_dynamic_duration: false,
+    });
+    expect(sent[1]!.url).toBe("https://api.test/v3/lipsyncs/lip1");
+    expect(existsSync(out)).toBe(true);
+    expect(creditsOf(priceOf(request))).toBe(14);
+    expect(() => checkRequest({ type: "lipsync", audio, out })).toThrow("--video");
+  });
+
+  it.skipIf(!ffmpeg)("cuts out a WebM or MOV shot as video, with its key in the body", async () => {
+    const posts: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/fg.webm") return new Response(new Uint8Array([1, 2, 3]));
+      if (init?.method === "POST") posts.push(JSON.parse(String(init.body)));
+      return json({
+        data: {
+          id: "bg1",
+          status: "completed",
+          layers: { foreground: "https://files.test/fg.webm" },
+        },
+      });
+    });
+    uploads.length = 0;
+    for (const ext of ["webm", "mov"]) {
+      const video = join(project, `cut-shot.${ext}`);
+      execFileSync(ffmpeg!, [
+        "-v",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=64x36:d=1",
+        video,
+      ]);
+      const out = join(project, `cut-${ext}.webm`);
+      await generate({ type: "cutout", video, out });
+      await generate({ type: "cutout", video, out });
+    }
+    expect(uploads.map((u) => u.contentType)).toEqual([
+      "video/webm",
+      "video/webm",
+      "video/quicktime",
+      "video/quicktime",
+    ]);
+    // the route dedupes on the body's request_id alone, so a re-run must send the same one
+    const ids = posts.map((p) => p.request_id);
+    expect(ids[0]).toMatch(/\S/);
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).toBe(ids[3]);
+    expect(ids[2]).not.toBe(ids[0]);
+  });
+
+  it.skipIf(!ffmpeg)("speaks a finished voice as it is, from a photo or a look", async () => {
+    const photo = join(project, "avatar-photo.png");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x36"],
+      ...["-frames:v", "1", photo],
+    ]);
+    const audio = join(project, "avatar-voice.wav");
+    execFileSync(ffmpeg!, [
+      ...["-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", audio],
+    ]);
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "https://files.test/a.mp4") return new Response(new Uint8Array([1]));
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      return json({
+        data: { id: "v1", status: "completed", video_url: "https://files.test/a.mp4" },
+      });
+    });
+    const out = join(project, "avatar-out.mp4");
+    await generate({ type: "avatar", photo, audio, prompt: "talks with both hands", out });
+    await generate({ type: "avatar", avatar: "look1", audio, out });
+    expect(sent[0]).toMatchObject({
+      type: "image",
+      audio_asset_id: "asset-avatar-voice.wav",
+      motion_prompt: "talks with both hands",
+    });
+    expect(sent[0]).not.toHaveProperty("script");
+    expect(sent[1]).toMatchObject({ type: "avatar", avatar_id: "look1" });
+    expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(116);
+    expect(() => checkRequest({ type: "avatar", photo, out })).toThrow("--script");
+  });
+
   it("prices an avatar on the plan's avatar rows, not its API price", () => {
     const script = Array.from({ length: 30 }, () => "word").join(" ");
     const avatar = priceOf({ type: "avatar", out: "a.mp4", script });
-    expect(creditsOf(avatar)).toBe(200);
+    expect(creditsOf(avatar)).toBe(289);
     expect(avatar.list).toBeCloseTo(1.2167);
-    expect(() => checkLimit(creditsOf(avatar), 220)).not.toThrow();
+    expect(() => checkLimit(creditsOf(avatar), 300)).not.toThrow();
   });
 
   it("charges a reference shot's pictures after the first two", () => {
@@ -673,21 +913,97 @@ describe("generate", () => {
       references: Array.from({ length: pictures }, (_, i) => `${i}.png`),
     });
     const credits = [1, 2, 3, 9].map((n) => creditsOf(priceOf(shot(n))));
-    expect(credits).toEqual([167, 167, 180, 260]);
+    expect(credits).toEqual([250, 250, 270, 390]);
     expect(priceOf(shot(9)).list).toBeCloseTo(0.39);
-    expect(() => checkLimit(credits[3]!, 250)).toThrow("about 260 credits, over --max-credits 250");
-    expect(() => checkLimit(credits[3]!, 260)).not.toThrow();
+    expect(() => checkLimit(credits[3]!, 380)).toThrow("about 390 credits, over --max-credits 380");
+    expect(() => checkLimit(credits[3]!, 390)).not.toThrow();
   });
 
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
-    expect(shot).toBe(72);
+    expect(shot).toBe(108);
     expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(67);
-    expect(() => checkLimit(shot, 72)).not.toThrow();
-    expect(() => checkLimit(shot, 30)).toThrow("about 72 credits, over --max-credits 30");
+    expect(() => checkLimit(shot, 108)).not.toThrow();
+    expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
   });
+});
+
+describe("each route through the generated client", () => {
+  // Keys an earlier refusal in this file marked failed would move this file's keys on.
+  beforeEach(() => {
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", mkdtempSync(join(tmpdir(), "hf-route-test-")));
+  });
+  const file = "https://files.test/route-result";
+  const routes = [
+    { type: "image", path: "/v3/images", ext: "png", done: { images: [{ url: file }] } },
+    { type: "video", path: "/v3/models/videos", ext: "mp4", done: { video_url: file } },
+    { type: "avatar", path: "/v3/videos", ext: "mp4", done: { video_url: file } },
+    { type: "voice", path: "/v3/voices/speech", ext: "mp3", done: { audio_url: file } },
+    { type: "music", path: "/v3/audio/music", ext: "mp3", done: { audio_url: file } },
+  ] as const;
+  const request = (type: GenerateRequest["type"], ext: string): GenerateRequest => {
+    const photo = join(project, "route-photo.png");
+    if (type === "avatar")
+      execFileSync(ffmpeg!, [
+        ...["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64"],
+        ...["-frames:v", "1", photo],
+      ]);
+    return {
+      type,
+      out: join(project, `assets/route-${type}.${ext}`),
+      prompt: "a desk",
+      script: "Hello",
+      voice: "c".repeat(32),
+      ...(type === "avatar" ? { photo } : {}),
+    };
+  };
+
+  for (const { type, path, ext, done } of routes) {
+    const polled = type !== "voice";
+    it.skipIf(!ffmpeg && type === "avatar")(
+      `${type}: posts ${path}${polled ? ", keyed, and polls it to completion" : " once, unkeyed"}`,
+      async () => {
+        const calls: { url: string; method?: string; key: string | null; body?: unknown }[] = [];
+        const answers = polled
+          ? [
+              json({ data: { id: "j/1", status: "pending" } }),
+              json({ data: { id: "j/1", status: "completed", ...done } }),
+            ]
+          : [json({ data: { ...done, duration: 1 } })];
+        vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+          calls.push({
+            url,
+            method: init?.method,
+            key: new Headers(init?.headers).get("Idempotency-Key"),
+            ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+          });
+          if (url === file) return new Response(new Uint8Array([1]));
+          return answers.shift()!;
+        });
+        const r = await settled(generate(request(type, ext)));
+        const [post, ...rest] = calls;
+        expect(post).toMatchObject({ url: `https://api.test${path}`, method: "POST" });
+        expect(post!.key).toEqual(polled ? expect.stringMatching(/^hf-[0-9a-f]{40}$/) : null);
+        expect(post!.body).toBeTypeOf("object");
+        expect(rest.map((c) => [c.url, c.method])).toEqual([
+          ...(polled ? [[`https://api.test${path}/j%2F1`, "GET"]] : []),
+          [file, undefined],
+        ]);
+        expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+      },
+    );
+
+    it.skipIf(!ffmpeg && type === "avatar")(`${type}: says what a refusal needs`, async () => {
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(JSON.stringify({ error: { code: "hf_usage_exhausted" } }), { status: 402 }),
+      );
+      await expect(generate(request(type, ext))).rejects.toThrow("out of HyperFrames credits");
+    });
+  }
 });
 
 describe("foldShort", () => {
@@ -705,7 +1021,12 @@ describe("foldShort", () => {
 });
 
 describe("pickVoice", () => {
-  const voice = (id: string, name: string) => ({ voice_id: id.repeat(32), name, gender: "female" });
+  const voice = (id: string, name: string, language?: string) => ({
+    voice_id: id.repeat(32),
+    name,
+    gender: "female",
+    language,
+  });
   let catalog = [voice("a", "Lin"), voice("b", "Wei")];
   const asked: string[] = [];
   const posts: { key: string | null; body: Record<string, unknown> }[] = [];
@@ -713,10 +1034,14 @@ describe("pickVoice", () => {
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
       asked.push(url);
       if (url.includes("/v3/voices?")) return json({ data: catalog });
+      if (url === "https://files.test/vo.mp3") return new Response(new Uint8Array([1]));
       if (init?.method === "POST") {
         const key = new Headers(init.headers).get("Idempotency-Key");
         posts.push({ key, body: JSON.parse(String(init.body)) });
       }
+      // Speech answers in the request; a video is a job to poll.
+      if (url.endsWith("/v3/voices/speech"))
+        return json({ data: { audio_url: "https://files.test/vo.mp3", duration: 1 } });
       return json({ data: { id: "j1", status: "pending" } });
     });
   afterEach(() => {
@@ -741,6 +1066,58 @@ describe("pickVoice", () => {
     expect(asked[0]).toBe("https://api.test/v3/voices?type=public&language=Chinese&limit=1");
   });
 
+  for (const [spelled, language] of [
+    ["en", "English"],
+    ["en-US", "English"],
+    ["zh-CN", "Chinese"],
+    ["cmn", "Chinese"],
+  ] as const) {
+    it(`asks for ${language} voices when --voice is the language code ${spelled}, not for multilingual ones`, async () => {
+      heygen();
+      catalog = [voice("a", "Lin", language)];
+      const r = {
+        type: "voice" as const,
+        out: join(project, `assets/${spelled}.mp3`),
+        voice: spelled,
+      };
+      expect((await pickVoice(r)).name).toBe("Lin");
+      expect(new URL(asked[0]!).searchParams.get("language")).toBe(language);
+    });
+  }
+
+  it("refuses the multilingual voice HeyGen offers for a language it does not list, instead of using it", async () => {
+    heygen();
+    catalog = [voice("g", "Gail in car", "Multilingual")];
+    const r = { type: "voice" as const, out: join(project, "assets/m.mp3"), voice: "Mandarin" };
+    await expect(pickVoice(r)).rejects.toMatchObject({
+      message: "HeyGen has no public voice for Mandarin (it offered a Multilingual one)",
+      fix: expect.stringContaining("English or Chinese"),
+    });
+  });
+
+  it("takes a multilingual voice when the request names Multilingual", async () => {
+    heygen();
+    catalog = [voice("g", "Gail in car", "Multilingual")];
+    const r = {
+      type: "voice" as const,
+      out: join(project, "assets/ml.mp3"),
+      voice: "Multilingual",
+    };
+    expect((await pickVoice(r)).name).toBe("Gail in car");
+  });
+
+  it("says what to do when HeyGen will not list its voices", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: { code: "unauthorized" } }), { status: 401 }),
+    );
+    await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
+      message: "HeyGen 401 listing its voices",
+      fix: "npx hyperframes auth login",
+    });
+  });
+
   it("lists voices to pick from when none is named", async () => {
     heygen();
     await expect(pickVoice({ type: "voice", out: "vo.mp3" })).rejects.toMatchObject({
@@ -756,10 +1133,20 @@ describe("pickVoice", () => {
     if (picked instanceof Error) return picked;
     request.voice = (picked as { voice_id: string }).voice_id;
     vi.useFakeTimers({ toFake: ["Date", "setTimeout"] });
-    const run = generate(request).catch((err: unknown) => err);
-    await vi.advanceTimersByTimeAsync(31 * 60_000);
-    vi.useRealTimers();
-    return run;
+    let done = false;
+    const run = generate(request)
+      .catch((err: unknown) => err)
+      .finally(() => (done = true));
+    // A photo is read before the first poll, so the clock moves until the run ends, not in one jump.
+    try {
+      while (!done) {
+        await new Promise((r) => setImmediate(r));
+        await vi.advanceTimersByTimeAsync(60_000);
+      }
+      return await run;
+    } finally {
+      vi.useRealTimers();
+    }
   };
 
   for (const [type, extra] of [
@@ -790,7 +1177,11 @@ describe("pickVoice", () => {
           script: "你好",
           ...(type === "avatar" ? { photo: face } : {}),
         };
-        expect(await runOnce(r)).toMatchObject({ message: "HeyGen job j1 is still pending" });
+        expect(await runOnce(r)).toMatchObject(
+          type === "voice"
+            ? { route: "/v3/voices/speech" }
+            : { message: "HeyGen job j1 is still pending" },
+        );
         catalog = [voice("b", "Wei"), voice("a", "Lin")];
         await runOnce(r);
         expect(posts).toHaveLength(2);

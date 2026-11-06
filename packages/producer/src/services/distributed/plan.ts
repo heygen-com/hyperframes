@@ -1302,7 +1302,6 @@ async function compilePlanComposition(
     urlByAbsentLocalPath,
     projectDir,
     workDir,
-    htmlPath,
     entryFile,
     job,
     cfg,

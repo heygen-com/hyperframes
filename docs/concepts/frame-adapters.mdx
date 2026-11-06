@@ -10,7 +10,7 @@ description: "Connect a seekable animation timeline to a custom HyperFrames host
 
 A frame adapter answers one question: what state should an animation have at frame N?
 
-Most composition authors do not implement this interface. HyperFrames already seeks registered GSAP, CSS, Anime.js, Lottie, Three.js, Web Animations, and TypeGPU animation through its browser runtime. Use the [GSAP guide](/guides/gsap-animation) for the normal authoring path.
+Most composition authors do not implement this interface. HyperFrames already seeks registered GSAP, CSS, Anime.js, Lottie, Three.js, Web Animations, and TypeGPU animation through its browser runtime. Use the [GSAP guide](/guides/gsap-animation) for the normal authoring path. For a Three.js scene with a raster preview and a path-traced export, start from the [path-traced 3D example](/guides/path-tracing).
 
 Use `FrameAdapter` when you are building a custom host around a seekable animation object.
 

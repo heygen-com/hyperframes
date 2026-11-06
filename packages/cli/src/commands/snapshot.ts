@@ -1,7 +1,6 @@
 import {
   DEFAULT_CONFIG,
   buildZeroDurationDiagnostic,
-  isTransientBrowserError,
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
@@ -10,6 +9,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
 import { reportArtifacts } from "../utils/toolContext.js";
@@ -53,6 +53,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
   DEFAULT_ZOOM_SCALE,
@@ -69,16 +70,23 @@ import {
 } from "../capture/captureCompositionFrame.js";
 import {
   firstFrameColourArgs,
+  exportClipWindow,
   hdrToSdrToneMapFilter,
-  isClipVisibleAt,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
+  isClipOnScreenAt,
   isInClipWindow,
+  parseFpsWithDefault,
   MEDIA_RENDER_ID_ATTR,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
+import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -245,15 +253,18 @@ export function resolveSnapshotVideoFrameTime(input: {
   relativeTime: number;
   sourceDuration: number;
   compositionDuration: number;
+  fps?: number;
 }): number | null {
   const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
+  const fps = input.fps ?? 30;
   const clipEnd = clipStart + clipDuration;
-  if (!isClipVisibleAt(globalTime, clipStart, clipEnd, compositionDuration)) return null;
+  if (!isClipOnScreenAt(globalTime, clipStart, clipEnd, fps, compositionDuration)) return null;
+  const onFrames = exportClipWindow(clipStart, clipEnd, fps);
   const relativeTime =
     globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
   if (relativeTime < 0) return null;
   const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
-  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
+  if (isInClipWindow(globalTime, onFrames.start, onFrames.end) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
@@ -307,6 +318,7 @@ export function activeVideoAt(
   candidate: SnapshotVideoCandidate,
   time: number,
   compositionDuration: number,
+  fps: number,
 ) {
   const start = resolveSnapshotVideoClipStart(candidate);
   const playbackRate = resolveSnapshotVideoRateSpec(candidate);
@@ -332,6 +344,7 @@ export function activeVideoAt(
     relativeTime: relTime,
     sourceDuration: candidate.srcDuration,
     compositionDuration,
+    fps,
   });
   return frameTime === null
     ? null
@@ -352,17 +365,6 @@ interface SnapshotCompositePage {
     quality: number;
     clip: { x: number; y: number; width: number; height: number };
   }): Promise<Uint8Array>;
-}
-
-export async function screenshotOnceMore<T>(shoot: () => Promise<T>): Promise<T> {
-  try {
-    return await shoot();
-  } catch (err) {
-    if (!isTransientBrowserError(err)) throw err;
-    return shoot().catch(() => {
-      throw err;
-    });
-  }
 }
 
 /** Recapture canvas composites once the decoded video overlays have been injected. */
@@ -630,18 +632,24 @@ async function videoColour(ffmpegPath: string, videoPath: string) {
     metadata && isHdrColorSpace(metadata.colorSpace)
       ? hdrToSdrToneMapFilter(
           metadata.colorSpace ?? {},
-          parseFirstFrameColour(
-            (
-              await runFfmpegOnce(
-                ffmpegPath,
-                firstFrameColourArgs(videoPath),
-                FFMPEG_EXTRACT_TIMEOUT_MS,
-              )
-            ).stderr,
-          ),
+          await frameColour(ffmpegPath, videoPath, metadata.videoCodec),
         )
       : null;
   return { metadata, toneMap };
+}
+
+async function frameColour(
+  ffmpegPath: string,
+  videoPath: string,
+  codec: string,
+): Promise<ToneMapFrameColour> {
+  const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+  const probe = await read(firstFrameColourArgs(videoPath));
+  const first = parseFirstFrameColour(probe.stderr);
+  if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
+  const keyframes = await read(keyframeTransferArgs(videoPath, codec));
+  const keyframeTransfers = keyframes.code === 0 ? parseKeyframeTransfers(keyframes.stderr) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function frameFilters(
@@ -721,7 +729,7 @@ export async function extractVideoFrameToBuffer(
 export function selectFirstFrameAfterEach(offsets: number[]): string {
   const sinceLast = "if(isnan(prev_selected_t)\\,-1\\,prev_selected_t-start_t)";
   const open = offsets.map((offset) => `gte(t-start_t\\,${offset})*gt(${offset}\\,${sinceLast})`);
-  return `select=gt(${open.join("+")}\\,0)`;
+  return `select=gt(${sumOf(open)}\\,0)`;
 }
 
 /** One ffmpeg pass that writes every planned frame of a video: the source decodes from the earliest keyframe once.
@@ -901,6 +909,12 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
+function compositionFps(html: string): number {
+  const root = parseHTML(html).document.querySelector("[data-composition-id]");
+  const declared = parseFpsWithDefault(root?.getAttribute("data-fps") ?? undefined);
+  return declared.ok ? declared.value.num / declared.value.den : 30;
+}
+
 export function serveCapturePage(projectDir: string, html: string, proxy: boolean | undefined) {
   return serveStaticProjectHtml(projectDir, html, undefined, [], proxy === true);
 }
@@ -971,6 +985,7 @@ export async function captureSnapshots(
     console.warn(`   ${c.warn("⚠")} ${swallowed}`);
   }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
+  const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
   const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
@@ -1270,7 +1285,7 @@ export async function captureSnapshots(
           );
           let unreadable = 0;
           const active = candidates.flatMap((candidate) => {
-            const video = activeVideoAt(candidate, time, duration);
+            const video = activeVideoAt(candidate, time, duration, fps);
             if (!video) return [];
             if (!candidate.id || !candidate.src) {
               unreadable += 1;
@@ -1314,7 +1329,7 @@ export async function captureSnapshots(
                   (opts.zoom ? (opts.zoomScale ?? DEFAULT_ZOOM_SCALE) : v.devicePixelRatio),
               );
               const wantAt = (t: number): FrameWant | null => {
-                const shown = activeVideoAt(v, t, duration);
+                const shown = activeVideoAt(v, t, duration, fps);
                 if (!shown) return null;
                 const holdLastFrame =
                   shown.srcDuration > 0 && shown.relTime >= shown.srcDuration - 1;

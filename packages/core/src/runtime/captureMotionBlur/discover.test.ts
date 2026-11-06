@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverMovers } from "./discover";
 
 // jsdom lays nothing out: each element's rect follows the x its fake timeline writes.
@@ -301,99 +301,5 @@ describe("discoverMovers", () => {
     scene.getBoundingClientRect = () => ({ width: 100, height: 100 }) as DOMRect;
     fast.style.opacity = "0.5";
     expect(discoverMovers({ scene, durationSeconds: 1, fps: 30, seek }).movers).toEqual([fast]);
-  });
-});
-
-describe("discoverMovers translationOnly", () => {
-  // jsdom resolves no transforms: give computed style the inline matrix, as Chrome's would be.
-  beforeEach(() => {
-    const real = window.getComputedStyle.bind(window);
-    vi.spyOn(window, "getComputedStyle").mockImplementation((el: Element) => {
-      const cs = real(el);
-      return new Proxy(cs, {
-        get: (target, key) => {
-          if (key === "transform")
-            return el instanceof HTMLElement ? el.style.transform || "none" : "none";
-          const value = Reflect.get(target, key);
-          return typeof value === "function" ? value.bind(target) : value;
-        },
-      });
-    });
-  });
-  afterEach(() => vi.restoreAllMocks());
-
-  // The box follows the matrix's x, or `left` when it has no transform.
-  function mover(parent: Element, size = 10): HTMLElement {
-    const el = document.createElement("div");
-    parent.append(el);
-    el.getBoundingClientRect = () => {
-      const m = /matrix\(([^)]*)\)/.exec(el.style.transform);
-      const x = m ? Number(m[1]?.split(",")[4]) : parseFloat(el.style.left) || 0;
-      return {
-        left: x,
-        top: 0,
-        right: x + size,
-        bottom: size,
-        width: size,
-        height: size,
-      } as DOMRect;
-    };
-    return el;
-  }
-  const scan = (scene: HTMLElement, seek: (t: number) => void) => {
-    seek(0);
-    return discoverMovers({ scene, durationSeconds: 1, fps: 30, seek });
-  };
-
-  it("is true when movers only translate, with their own transform", () => {
-    const scene = document.createElement("div");
-    const el = mover(scene);
-    const found = scan(scene, (t) => {
-      el.style.transform = `matrix(1, 0, 0, 1, ${300 * t}, 0)`;
-    });
-    expect(found.movers).toEqual([el]);
-    expect(found.translationOnly).toBe(true);
-  });
-
-  it("is still true under a parent that scales by a constant", () => {
-    const scene = document.createElement("div");
-    const wrapper = document.createElement("div");
-    wrapper.style.transform = "matrix(1.5, 0, 0, 1.5, 0, 0)";
-    scene.append(wrapper);
-    const el = mover(wrapper);
-    const found = scan(scene, (t) => {
-      el.style.transform = `matrix(1, 0, 0, 1, ${300 * t}, 0)`;
-    });
-    expect(found.translationOnly).toBe(true);
-  });
-
-  it("is false when a mover turns or scales while it moves", () => {
-    for (const linear of ["rotate", "scale"]) {
-      const scene = document.createElement("div");
-      const el = mover(scene);
-      const found = scan(scene, (t) => {
-        const a = linear === "scale" ? 1 + t : Math.cos(t);
-        const b = linear === "scale" ? 0 : Math.sin(t);
-        el.style.transform = `matrix(${a}, ${b}, ${-b}, ${a}, ${300 * t}, 0)`;
-      });
-      expect(found.movers).toEqual([el]);
-      expect(found.translationOnly).toBe(false);
-    }
-  });
-
-  it("is false when a mover is moved without a transform, which a filter would re-stack", () => {
-    const scene = document.createElement("div");
-    const el = mover(scene);
-    const found = scan(scene, (t) => {
-      el.style.left = `${300 * t}px`;
-    });
-    expect(found.movers).toEqual([el]);
-    expect(found.translationOnly).toBe(false);
-  });
-
-  it("is false when nothing moves", () => {
-    const scene = document.createElement("div");
-    mover(scene);
-    expect(scan(scene, () => {}).translationOnly).toBe(false);
   });
 });

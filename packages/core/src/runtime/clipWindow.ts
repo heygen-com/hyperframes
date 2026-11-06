@@ -1,4 +1,5 @@
 import { sameInstant } from "../clipFacts";
+import { exportClipWindow } from "../inline-scripts/parityContract";
 
 export const hasClipStarted = (time: number, start: number) =>
   time >= start || sameInstant(time, start);
@@ -23,3 +24,15 @@ export const isClipVisibleAt = (
   (hasClipStarted(time, start) &&
     compositionDuration > 0 &&
     end >= compositionDuration - TERMINAL_EPSILON_SECONDS);
+
+/** The one on-screen rule render, snapshot and preview share: edges a hair off a frame count as on it. */
+export const isClipOnScreenAt = (
+  time: number,
+  start: number,
+  end: number,
+  fps: number,
+  compositionDuration: number,
+): boolean => {
+  const snapped = exportClipWindow(start, end, fps);
+  return isClipVisibleAt(time, snapped.start, snapped.end, compositionDuration);
+};
