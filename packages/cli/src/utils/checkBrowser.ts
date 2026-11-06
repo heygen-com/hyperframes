@@ -334,7 +334,11 @@ export async function preResolveHostileMediaProxies(
   const unfinished = sources.flatMap(({ file }, index) =>
     results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
   );
-  record?.({ total, waitedMs: Date.now() - startedAt, unfinished: unfinished.length });
+  record?.({
+    total,
+    waitedMs: Date.now() - startedAt,
+    unfinished: overBudget === undefined ? 0 : unfinished.length,
+  });
   if (overBudget !== undefined && unfinished.length > 0) {
     throw new CheckCopiesUnfinishedError(overBudget, unfinished);
   }

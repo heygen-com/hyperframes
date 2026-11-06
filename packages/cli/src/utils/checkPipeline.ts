@@ -1747,7 +1747,8 @@ export async function runCheckPipeline(
         );
       } catch (error) {
         const found = deadline.partialResult();
-        browser = { ...emptyBrowserResult(), ...found, skipped: Object.keys(found).length === 0 };
+        const ran = Object.keys(found).filter((key) => key !== "mediaCopies");
+        browser = { ...emptyBrowserResult(), ...found, skipped: ran.length === 0 };
         browser.runtimeFindings = [...browser.runtimeFindings, runtimeFailure(error)];
       }
 
