@@ -4,7 +4,13 @@ import { useFileManagerContextOptional } from "../../contexts/FileManagerContext
 import { onExternalFileChange } from "../../hooks/fileChangeFanout";
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { studioApiFetch } from "../../utils/studioApiFetch";
-import { findBoardFile, readBoardFrames, touchesBoard, type BoardFrame } from "./storyboardBoard";
+import {
+  findBoardFile,
+  readBoardFrames,
+  stillPath,
+  touchesBoard,
+  type BoardFrame,
+} from "./storyboardBoard";
 
 export type BoardRead =
   | { state: "loading" }
@@ -52,6 +58,7 @@ export function useStoryboardBoard(projectId: string): StoryboardBoard {
 
   const pathRef = useRef(path);
   pathRef.current = path;
+  const stillsRef = useRef<ReadonlySet<string>>(new Set());
   const refreshRef = useRef(files?.refreshFileTree);
   refreshRef.current = files?.refreshFileTree;
 
@@ -60,7 +67,7 @@ export function useStoryboardBoard(projectId: string): StoryboardBoard {
       const change = changeOf(payload);
       if (!change || (change.projectId && change.projectId !== projectId)) return;
       const board = pathRef.current;
-      if (board && touchesBoard(change.path, board)) setRevision((n) => n + 1);
+      if (board && touchesBoard(change.path, board, stillsRef.current)) setRevision((n) => n + 1);
       // A board written or removed changes the file list the tab is found in.
       if (isBoardName(change.path)) void refreshRef.current?.();
     });
@@ -76,7 +83,11 @@ export function useStoryboardBoard(projectId: string): StoryboardBoard {
         if (!live) return;
         // DOMParser builds an inert document: the page's scripts never run here.
         const doc = new DOMParser().parseFromString(html, "text/html");
-        setRead({ state: "read", frames: readBoardFrames(doc) });
+        const frames = readBoardFrames(doc);
+        stillsRef.current = new Set(
+          frames.map((frame) => stillPath(path, frame.still)).filter((still) => still !== null),
+        );
+        setRead({ state: "read", frames });
       })
       .catch(() => live && setRead({ state: "failed" }));
     return () => {

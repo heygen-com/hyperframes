@@ -15,10 +15,15 @@ export function findBoardFile(files: readonly string[]): string | null {
 
 const folderOf = (path: string): string => path.slice(0, path.lastIndexOf("/") + 1);
 
-/** Whether a write to `changed` changes what the board at `board` shows: the page, anything beside it, or the plan. */
-export function touchesBoard(changed: string, board: string): boolean {
+/** Whether a write to `changed` changes what the board at `board` shows: the page, anything beside it, a still
+ * it draws (`stills`, as project paths), or the plan. */
+export function touchesBoard(
+  changed: string,
+  board: string,
+  stills: ReadonlySet<string> = new Set(),
+): boolean {
   const path = changed.replace(/\\/g, "/").replace(/^\.\//, "");
-  if (path === board || path.toLowerCase() === PLAN_FILE) return true;
+  if (path === board || path.toLowerCase() === PLAN_FILE || stills.has(path)) return true;
   const folder = folderOf(board);
   return folder !== "" && path.startsWith(folder);
 }

@@ -41,6 +41,17 @@ describe("touchesBoard", () => {
   it("does not take every project write as the board's when the board is at the root", () => {
     expect(touchesBoard("index.html", "storyboard.html")).toBe(false);
   });
+
+  it("counts a still the board draws from outside its own folder: a root board, or ../assets", () => {
+    const rootStills = new Set([stillPath("storyboard.html", "stills/frame-01.png")!]);
+    expect(touchesBoard("stills/frame-01.png", "storyboard.html", rootStills)).toBe(true);
+    expect(touchesBoard("stills/frame-02.png", "storyboard.html", rootStills)).toBe(false);
+    expect(touchesBoard("index.html", "storyboard.html", rootStills)).toBe(false);
+    const board = "boards/storyboard.html";
+    const upStills = new Set([stillPath(board, "../assets/a.png")!]);
+    expect(touchesBoard("assets/a.png", board, upStills)).toBe(true);
+    expect(touchesBoard("assets/b.png", board, upStills)).toBe(false);
+  });
 });
 
 describe("stillPath", () => {
