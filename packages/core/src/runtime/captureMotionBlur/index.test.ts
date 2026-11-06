@@ -2078,6 +2078,25 @@ describe("filter fallback", () => {
     expect(h.seek.mock.calls.every(([, suppress]) => suppress === true)).toBe(true);
   });
 
+  it("keeps the filter tier's svg out of the root and removes it on teardown", () => {
+    const { root, h } = movingHost();
+    const svgs = () => document.querySelectorAll("svg[data-hf-ignore]").length;
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    initCaptureMotionBlur({ ...h, timeline: () => "tl2" });
+    void paintCaptureMotionBlur(0.6, PLAY);
+    expect(svgs()).toBe(1);
+    const next = movingHost();
+    initCaptureMotionBlur(next.h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(next.root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    resetCaptureMotionBlurForTests();
+    expect(svgs()).toBe(0);
+  });
+
   it("removes its filters and its SVG on teardown", () => {
     const { el, h } = movingHost();
     initCaptureMotionBlur(h);
