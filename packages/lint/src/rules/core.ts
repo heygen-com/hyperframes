@@ -965,6 +965,11 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
         hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
       },
       {
+        pattern: /crypto\.randomUUID\s*\(/,
+        label: "crypto.randomUUID()",
+        hint: "Use a seeded PRNG (e.g. a simple mulberry32) so renders are deterministic across frames.",
+      },
+      {
         pattern: /gsap\.utils\.random\s*\(/,
         label: "gsap.utils.random()",
         hint: "Each render worker initializes independently, so random values diverge across chunks. Use a seeded PRNG or fixed values.",
