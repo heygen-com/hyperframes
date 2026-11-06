@@ -15,7 +15,7 @@ The same attributes drive the browser editor preview and `hyperframes render`.
 
 ## Two ways it is drawn
 
-- `filter` puts an SVG filter on each mover. Works in any Chrome and costs little; turns and zooms are only softened. `auto` draws with it.
+- `filter` puts an SVG filter on each mover. Works in any Chrome; costs about nothing with a few movers and more than `capture` with many (a film with 77 movers took about 2.9 times the CPU of no blur); turns and zooms are only softened. `auto` draws with it. It cuts off `::before`/`::after` content outside a mover's box, gives a mover's own `clip-path` or mask hard edges, makes a `position: fixed` child of a `left`-moved mover jump, lets `:last-child` match the `<svg>` it adds to the root, draws a visibility toggle inside the shutter at full strength, and mis-draws `backdrop-filter` on a mover.
 - `capture` is opt-in. It redraws each mover along its path, so turns and zooms streak truthfully. Needs a browser with HTML in Canvas. It loses anything drawn in front of a mover, ignores `mix-blend-mode` on movers, and breaks selectors that reach the root through its parent.
 
 ## Check and render
