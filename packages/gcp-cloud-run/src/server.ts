@@ -683,6 +683,7 @@ const NON_RETRYABLE_ERROR_NAMES = new Set([
   "BROWSER_GPU_NOT_SOFTWARE",
   "FONT_FETCH_FAILED",
   "ChromeBinaryUnavailableError",
+  "ImageMissingFromFrameError",
 ]);
 
 /**

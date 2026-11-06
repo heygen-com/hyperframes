@@ -136,7 +136,7 @@ describe("render diagnostic wire", () => {
     [
       new CaptureFailure({
         kind: "authoring",
-        message: `Frame 0 shows ${PRIVATE}, which did not load in time, so the video would be missing it.`,
+        message: `Frame 0 shows ${PRIVATE}, which did not load in time, so the render stopped rather than make a video missing it.`,
       }),
       "IMAGE_MISSING_FROM_FRAME",
     ],

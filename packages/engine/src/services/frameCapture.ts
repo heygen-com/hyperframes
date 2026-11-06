@@ -2537,10 +2537,14 @@ export class ImageMissingFromFrameError extends Error {
   constructor(
     readonly frameIndex: number,
     readonly sources: readonly string[],
+    readonly failedToLoad: boolean,
   ) {
     super(
-      `Frame ${frameIndex} shows ${sources.join(", ")}, which did not load in time, so the video would be missing it. ` +
-        `Try fewer workers (--workers 1) or a longer --player-ready-timeout.`,
+      `Frame ${frameIndex} shows ${sources.join(", ")}, which ${failedToLoad ? "failed to load" : "did not load in time"}, ` +
+        `so the render stopped rather than make a video missing it. ` +
+        (failedToLoad
+          ? `Check that the image exists and can be opened.`
+          : `Try fewer workers (--workers 1) or a longer --player-ready-timeout.`),
     );
     this.name = "ImageMissingFromFrameError";
   }
@@ -2591,11 +2595,21 @@ export async function waitForShownLateImages(
     }, Array.from(lateImages));
     for (const source of arrived) lateImages.delete(source);
     const missing = Date.now() >= deadline ? [...waiting, ...broken] : broken;
-    if (missing.length > 0)
-      throw new ImageMissingFromFrameError(
+    if (missing.length > 0) {
+      const stopped = new ImageMissingFromFrameError(
         frameIndex,
         [...new Set(missing.map(sanitizeDiagnosticUrl))].sort(),
+        broken.length > 0,
       );
+      recordCaptureWarnings(session, [
+        {
+          code: "image_missing_from_frame",
+          message: stopped.message,
+          details: { mediaType: "image", sources: [...stopped.sources] },
+        },
+      ]);
+      throw stopped;
+    }
     if (waiting.length === 0) return;
     await new Promise((resolve) => setTimeout(resolve, LATE_IMAGE_POLL_MS));
   }

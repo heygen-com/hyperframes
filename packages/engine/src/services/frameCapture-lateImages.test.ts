@@ -13,6 +13,7 @@ function sessionReading(readings: Reading[], late: string[], playerReadyTimeout 
   const session = {
     page: { evaluate } as unknown as Page,
     lateImages: new Set(late),
+    warnings: [],
     config: { playerReadyTimeout },
   } as unknown as CaptureSession;
   return { session, evaluate };
@@ -53,7 +54,14 @@ describe("waitForShownLateImages", () => {
     const { session } = sessionReading([{ arrived: [], waiting: [PHOTO], broken: [] }], [PHOTO], 0);
     const stopped = await waitForShownLateImages(session, 360).catch((error: unknown) => error);
     expect(stopped).toBeInstanceOf(ImageMissingFromFrameError);
-    expect(stopped).toMatchObject({ frameIndex: 360, sources: [PHOTO] });
+    expect(stopped).toMatchObject({ frameIndex: 360, sources: [PHOTO], failedToLoad: false });
+    expect((stopped as Error).message).toContain("did not load in time");
+    expect(session.warnings).toEqual([
+      expect.objectContaining({
+        code: "image_missing_from_frame",
+        message: (stopped as Error).message,
+      }),
+    ]);
   });
 
   it("stops at once for a shown image that failed to load, since waiting cannot help", async () => {
@@ -61,9 +69,9 @@ describe("waitForShownLateImages", () => {
       [{ arrived: [], waiting: [], broken: [PHOTO] }],
       [PHOTO],
     );
-    await expect(waitForShownLateImages(session, 5)).rejects.toBeInstanceOf(
-      ImageMissingFromFrameError,
-    );
+    const stopped = await waitForShownLateImages(session, 5).catch((error: unknown) => error);
+    expect(stopped).toBeInstanceOf(ImageMissingFromFrameError);
+    expect((stopped as Error).message).toContain("failed to load");
     expect(evaluate).toHaveBeenCalledTimes(1);
   });
 });

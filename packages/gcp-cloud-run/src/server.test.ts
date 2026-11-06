@@ -429,6 +429,24 @@ describe("createApp HTTP mapping", () => {
     expect(await res.json()).toMatchObject({ error: "PLAN_PROTOCOL_UNSUPPORTED" });
   });
 
+  it("does not retry an image a frame shows but never got", async () => {
+    const gcs = new FakeGcs();
+    await seedProjectTar(gcs, planBody.ProjectGcsUri);
+    const app = createApp(
+      depsWith(gcs, {
+        planV2WithPublisher: async () => {
+          throw Object.assign(new Error("test"), { name: "ImageMissingFromFrameError" });
+        },
+      }),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(planBody),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it.each([
     ["INVALID_VIDEO_METADATA", 400],
     [PLAN_V2_INTEGRITY_UNRECOVERABLE, 400],
