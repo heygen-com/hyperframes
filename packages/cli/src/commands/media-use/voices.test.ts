@@ -44,5 +44,8 @@ describe("media-use voices", () => {
     expect(printed.whose).toMatch(
       /says it is theirs or that its owner agreed, whether they name it or give its id/,
     );
+    expect(printed.whose).toMatch(
+      /an id missing here may still be a teammate's clone, never proof of a stock voice/,
+    );
   });
 });
