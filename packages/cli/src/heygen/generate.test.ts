@@ -764,9 +764,30 @@ describe("generate", () => {
         aspect: "1:1",
         references: ["a", "b"],
       }).usd,
-    ).toBe(0.07);
+    ).toBe(0.09);
     expect(priceOf({ type: "voice", out: "a.mp3" }).usd).toBeNull();
     expect(creditsOf(priceOf({ type: "voice", out: "a.mp3", script: "今天聊黄金" }))).toBe(1);
+  });
+
+  it("prices every reference picture of a GPT Image edit, on each GPT Image model", () => {
+    const edit = (model: string, references: string[]) =>
+      creditsOf(priceOf({ type: "image", out: "a.png", model, aspect: "16:9", references }));
+    for (const model of ["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]) {
+      expect(edit(model, [])).toBe(40);
+      expect(edit(model, ["a"])).toBe(53);
+      expect(
+        edit(
+          model,
+          Array.from({ length: 16 }, (_, i) => `r${i}`),
+        ),
+      ).toBe(240);
+    }
+    expect(
+      creditsOf(
+        priceOf({ type: "image", out: "a.png", model: "nano-banana-2.1", references: ["a", "b"] }),
+      ),
+    ).toBe(37);
+    expect(priceOf({ type: "image", out: "a.png", model: "some-new-model" }).credits).toBeNull();
   });
 
   it("prices only a request the real call would accept", () => {
