@@ -393,7 +393,7 @@ export async function detectLineUnread(
     const held = windowSeconds(window);
     if (held >= candidate.floor - T.measureToleranceSec) continue;
     const error = Math.max(window.startIn - window.startOut, window.endOut - window.endIn) / 2;
-    findings.push(lineUnreadFinding(candidate, window, held, error));
+    findings.push(lineUnreadFinding(candidate, window, held, error, frames));
   }
   return findings;
 }
@@ -403,6 +403,7 @@ function lineUnreadFinding(
   window: LineWindow,
   held: number,
   error: number,
+  frames: CraftFrame[],
 ): CraftFinding {
   const { track, words, text, finalLine, floor } = candidate;
   const quoted = quote(text, 60);
@@ -429,7 +430,42 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
+    measured: measuredAround(frames, track.key, candidate.firstIndex),
   };
+}
+
+const MEASURED_BEFORE = 3;
+const MEASURED_AFTER = 2;
+
+/** The samples either side of where a line was first read, as measured: a report of a line read late shows whether
+ * the frames before it painted nothing or painted it too faint or too small. */
+function measuredAround(
+  frames: CraftFrame[],
+  key: number,
+  first: number,
+): NonNullable<CraftFinding["measured"]> {
+  const out: NonNullable<CraftFinding["measured"]> = [];
+  for (
+    let index = Math.max(0, first - MEASURED_BEFORE);
+    index <= first + MEASURED_AFTER;
+    index += 1
+  ) {
+    const frame = frames[index];
+    if (!frame) continue;
+    const parts = frame.parts.filter((part) => part.block === key && !part.captions);
+    if (parts.length === 0) {
+      out.push({ time: round(frame.time), opacity: null, heightPx: null });
+      continue;
+    }
+    const top = Math.min(...parts.map((part) => part.rect.top));
+    const bottom = Math.max(...parts.map((part) => part.rect.top + part.rect.height));
+    out.push({
+      time: round(frame.time),
+      opacity: round(Math.max(...parts.map((part) => part.opacity))),
+      heightPx: Math.round(bottom - top),
+    });
+  }
+  return out;
 }
 
 // ---------- text_below_floor ----------

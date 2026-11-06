@@ -350,6 +350,8 @@ export interface CraftFinding extends CheckFinding {
   fontPx?: number;
   floorPx?: number;
   until?: number;
+  /** What the sampler measured for this line around where it was first read: time, opacity and height of its block (null: nothing painted there). */
+  measured?: { time: number; opacity: number | null; heightPx: number | null }[];
   elements?: { selector: string; text: string; fontPx: number; time: number; seconds: number }[];
 }
 
