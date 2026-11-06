@@ -1,9 +1,9 @@
 # Opening a Reverse
 
 What the person reads at the start, and when credits run out mid-run. Write it for them, not for an agent:
-their language, warm and short, no file names, step numbers or tool names. They type nothing: you run every command,
-and any page they need (sign-in, upgrade, add-on credits) goes in your message as a plain link they can click, in case the
-browser did not open.
+their language, warm and short, no file names, step numbers or tool names. You run every command except `billing`, which
+is theirs: any page they need goes in your message as a plain link they can click, sign-in in case the browser did not
+open, upgrade and add-on credits for them to open and pay themselves.
 
 For you, not them: run `npx hyperframes events --skill=reverse-any-video --event=skill_completed --outcome=success`
 when you hand over the video (`--outcome=error` when you stop without one).
