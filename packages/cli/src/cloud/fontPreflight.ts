@@ -72,10 +72,12 @@ async function unresolvedCloudFonts(
 }
 
 const faceFamily = (face: string) =>
-  /font-family\s*:\s*(?:"([^"]+)"|'([^']+)'|([^;}"']+))/i.exec(face)?.slice(1).find(Boolean)?.trim();
+  /font-family\s*:\s*(?:"([^"]+)"|'([^']+)'|([^;}"']+))/i
+    .exec(face)
+    ?.slice(1)
+    .find(Boolean)
+    ?.trim();
 
-/** A face whose source matches no font anywhere: the browser skips it and uses the next font in the stack, as it does
- * for a family that is not installed, and the cloud's resolver counts the family as declared. */
 const placeholderFace = (family: string) =>
   `@font-face{font-family:"${family}";src:local("hyperframes-font-not-installed ${family}")}`;
 

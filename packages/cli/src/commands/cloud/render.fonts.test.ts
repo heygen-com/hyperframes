@@ -42,7 +42,9 @@ afterEach(() => {
 describe("cloud render font preflight", () => {
   it("does not stop for a font that is not on this computer: the dry run names it and carries on", async () => {
     const lines: string[] = [];
-    const log = vi.spyOn(console, "log").mockImplementation((line) => void lines.push(String(line)));
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((line) => void lines.push(String(line)));
     await runCommand(render, { rawArgs: [project, "--dry-run", "--json"] });
     log.mockRestore();
 

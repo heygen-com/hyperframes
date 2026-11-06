@@ -46,7 +46,9 @@ describe("embedSystemFonts", () => {
     });
     expect(left).toEqual(["PingFang SC"]);
     const entry = s.fileMap.get("index.html")!.toString();
-    expect(entry).toContain('@font-face{font-family:"PingFang SC";src:local("hyperframes-font-not-installed');
+    expect(entry).toContain(
+      '@font-face{font-family:"PingFang SC";src:local("hyperframes-font-not-installed',
+    );
     expect(entry).not.toContain("data:font");
   });
 
@@ -55,11 +57,14 @@ describe("embedSystemFonts", () => {
     const fileMap = new Map([["index.html", Buffer.from(page)]]);
     const dir = mkdtempSync(join(tmpdir(), "hf-font-pre-"));
     writeFileSync(join(dir, "index.html"), page);
-    const left = await embedSystemFonts({ dir, entryPath: "index.html", fileMap }, async (html, options) => {
-      if ((options as { allowSystemFontCapture: boolean }).allowSystemFontCapture)
-        return `${html}<style>@font-face{font-family:"PingFang SC";src:url(data:font/woff2;base64,AAAA)}</style>`;
-      throw missing(["PingFang SC", "Zapfino"]);
-    });
+    const left = await embedSystemFonts(
+      { dir, entryPath: "index.html", fileMap },
+      async (html, options) => {
+        if ((options as { allowSystemFontCapture: boolean }).allowSystemFontCapture)
+          return `${html}<style>@font-face{font-family:"PingFang SC";src:url(data:font/woff2;base64,AAAA)}</style>`;
+        throw missing(["PingFang SC", "Zapfino"]);
+      },
+    );
     expect(left).toEqual(["Zapfino"]);
     const entry = fileMap.get("index.html")!.toString();
     expect(entry).toContain('font-family:"PingFang SC";src:url(data:font/woff2');

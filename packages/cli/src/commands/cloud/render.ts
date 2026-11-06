@@ -653,7 +653,6 @@ interface PreparedLocalArchive {
   fileCount: number;
   largestFiles: ArchiveFileSummary[];
   offloaded: OffloadedMedia[];
-  /** Fonts not on this computer: the cloud renders them in the fallback a local render uses. */
   swappedFonts: string[];
 }
 
