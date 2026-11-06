@@ -444,6 +444,7 @@ export interface SyntheticRenderJobInput {
   producerConfig?: RenderConfig["producerConfig"];
   /** Render-time overrides consumed by the plan browser probe. */
   variables?: RenderConfig["variables"];
+  pageMotionBlur?: RenderConfig["pageMotionBlur"];
 }
 
 /**
@@ -471,7 +472,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     strictness: input.strictness,
     producerConfig: input.producerConfig,
     variables: input.variables,
-    pageMotionBlur: "off",
+    pageMotionBlur: input.pageMotionBlur,
   };
   return createRenderJob(renderConfig);
 }

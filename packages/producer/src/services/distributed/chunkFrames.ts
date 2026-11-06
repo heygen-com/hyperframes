@@ -162,7 +162,7 @@ export function buildChunkCaptureOptions(input: {
     ...(videoCaptureBeyondViewport !== undefined
       ? { captureBeyondViewport: videoCaptureBeyondViewport }
       : {}),
-    pageMotionBlur: encoder.pageMotionBlur ?? "distributed-render",
+    pageMotionBlur: encoder.pageMotionBlur,
     // A fixed warmup count keeps `beginFrameTimeTicks` host-independent.
     lockWarmupTicks: true,
     requiresWebGpu: compositionRequiresWebGpu(input.html),

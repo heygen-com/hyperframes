@@ -69,7 +69,7 @@ A page that asks for capture gets the filter tier instead when capture cannot ru
 
 This is decided once for the whole composition, from the first frame. A defect the scan misses (a WebGL canvas added late, say) is caught per frame instead: that one frame is rendered sharp and counted in `failedFrames`.
 
-Blur is off, and stays off, for HDR renders, distributed renders, and renders that use the engine's own sub-frame blur.
+Blur is off, and stays off, for HDR renders and renders that use the engine's own sub-frame blur. Distributed renders (`plan`, `renderChunk`, `assemble`, as the AWS Lambda and Google Cloud Run adapters run them) and `--start`/`--end` range renders blur like a whole local render. Pass `--page-motion-blur off` (or `pageMotionBlur: "off"` in a distributed config) to render them sharp.
 
 ### Find out which one is drawing
 
@@ -88,6 +88,7 @@ In the page, `window.__hfMotionBlur.report()` returns `state`, `tier`, `reason`,
 ## Cost and limits
 
 - **Render time.** It varies by film. On an 8 s test composition with four whips, a render took 9.8 s with capture, 5.2–5.4 s with the filter tier and 5.3–5.9 s with no blur (two runs each, including startup). On two real 1080p films the filter tier cost more than capture, measured as CPU seconds of the whole render (wall time was too noisy on a loaded machine): `spacex-launch` (77 movers, 39.5 s) took 547–552 CPU s with the filter tier, 302–320 with capture and 184–193 with no blur (three runs each, 2.9 times no blur); `k3-promo` (106 movers, 16.5 s) took 236, 205 and 117 (one run per arm, 2.0 times no blur). The two films do not order by mover count, and the cause of the difference was not isolated. The filter tier draws each mover as at least 32 offset copies per frame; capture adds a second paint per blurred frame.
+- **Distributed renders.** Blur applies in every chunk, drawn with the filter tier on `auto`. Measured on two real 1080p films with plan, `renderChunk` and assemble at 240 frames per chunk, in a software-GPU Chrome 153 on a machine other work was loading (load average 12 to 25), one run per arm: summed chunk CPU seconds went from 155 to 246 (1.6 times) on `k3-promo` and from 338 to 545 (1.6 times) on `spacex-launch`; summed chunk wall time rose 1.2 and 1.4 times. A film with `data-motion-blur="on"` also plans screenshot capture instead of BeginFrame capture, and the measured cost includes that switch.
 - **Editing.** The filter tier never wraps anything. With capture the root is wrapped only while playing or rendering; paused, it is plain DOM, so click-to-select works.
 - **Capture only.** Blurred preview can run at half the frame rate on heavy compositions, and a `<video>` drawn through the capture looks about 2–3% darker in the browser editor preview than in normal playback. Renders are not affected.
 - **Preview and render.** `auto` draws the same way in both. A page that asks for capture previews with the filter tier in a browser without HTML in Canvas, so a spin or zoom looks softer there than in the render.
