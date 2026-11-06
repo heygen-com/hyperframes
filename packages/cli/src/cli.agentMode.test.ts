@@ -70,10 +70,13 @@ interface Run {
   stderr: string;
 }
 
-function runAsAgent(args: string[], { ci = true } = {}): Promise<Run> {
+function runAsAgent(
+  args: string[],
+  { ci = true, cwd = home }: { ci?: boolean; cwd?: string } = {},
+): Promise<Run> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["run", cliEntry, ...args], {
-      cwd: home,
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 15_000,
       env: {
@@ -261,6 +264,205 @@ describe("agent-mode contract", () => {
       expect(run.code, run.stderr).toBe(2);
       expect(run.stdout + run.stderr).toContain(message);
     });
+  });
+
+  it.each([
+    [
+      "lambda render width",
+      ["lambda", "render", "proj", "--width", "1920.5", "--height", "1080"],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "lambda render fps",
+      ["lambda", "render", "proj", "--width", "1920", "--height", "1080", "--fps", "30.5"],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "lambda render-batch width",
+      [
+        "lambda",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920.5",
+        "--height",
+        "1080",
+      ],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "lambda render-batch fps",
+      [
+        "lambda",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30.5",
+      ],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "cloudrun render width",
+      ["cloudrun", "render", "proj", "--width", "1920.5", "--height", "1080"],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "cloudrun render fps",
+      ["cloudrun", "render", "proj", "--width", "1920", "--height", "1080", "--fps", "30.5"],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "cloudrun render-batch width",
+      [
+        "cloudrun",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920.5",
+        "--height",
+        "1080",
+        "--dry-run",
+      ],
+      "--width",
+      "1920.5",
+    ],
+    [
+      "cloudrun render-batch fps",
+      [
+        "cloudrun",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30.5",
+        "--dry-run",
+      ],
+      "--fps",
+      "30.5",
+    ],
+    [
+      "cloudrun render-batch unsafe max-concurrent",
+      [
+        "cloudrun",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(home, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30",
+        "--max-concurrent",
+        "9007199254740993",
+        "--dry-run",
+      ],
+      "--max-concurrent",
+      "9007199254740993",
+    ],
+  ] as const)(
+    "`%s` returns an agent-mode usage_error for malformed integer input",
+    async (_label, args, flag, raw) => {
+      writeFileSync(join(home, "batch.jsonl"), '{"outputKey":"output.mp4"}\n');
+      const run = await runAsAgent([...args, "--json"]);
+      expectQuiet(run);
+      expect(run.code, run.stderr).toBe(2);
+      expectJsonFailure(run, "usage_error");
+      const { message } = JSON.parse(run.stdout).error as { message: string };
+      expect(message).toContain(flag);
+      expect(message).toContain(JSON.stringify(raw));
+    },
+  );
+
+  it("lambda render-batch rejects unsafe max-concurrent in agent mode", async () => {
+    const cwd = mkdtempSync(join(home, "lambda-unsafe-batch-"));
+    const projectDir = join(cwd, "proj");
+    const stateDir = join(cwd, ".hyperframes");
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html data-width="1920" data-height="1080"></html>',
+    );
+    writeFileSync(join(cwd, "batch.jsonl"), '{"outputKey":"output.mp4"}\n');
+    writeFileSync(
+      join(stateDir, "lambda-stack-hyperframes-default.json"),
+      JSON.stringify({
+        stackName: "hyperframes-default",
+        region: "us-east-1",
+        bucketName: "bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:render",
+        functionName: "render",
+        lambdaMemoryMb: 10240,
+        deployedAt: "2026-11-03T00:00:00.000Z",
+      }),
+    );
+
+    const run = await runAsAgent(
+      [
+        "lambda",
+        "render-batch",
+        "proj",
+        "--batch",
+        join(cwd, "batch.jsonl"),
+        "--width",
+        "1920",
+        "--height",
+        "1080",
+        "--fps",
+        "30",
+        "--max-concurrent",
+        "9007199254740993",
+        "--dry-run",
+        "--json",
+      ],
+      { cwd },
+    );
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expectJsonFailure(run, "usage_error");
+    const { message } = JSON.parse(run.stdout).error as { message: string };
+    expect(message).toContain("--max-concurrent");
+    expect(message).toContain('"9007199254740993"');
+  });
+
+  it("prints a plain usage diagnostic for malformed distributed integers", async () => {
+    const run = await runAsAgent([
+      "cloudrun",
+      "render",
+      "proj",
+      "--width",
+      "1920.5",
+      "--height",
+      "1080",
+    ]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("--width");
+    expect(run.stderr).toContain("1920.5");
   });
 
   it.each([

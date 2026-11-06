@@ -2762,6 +2762,19 @@ And these drive `render` and `render-batch`:
 | `--wait-interval-ms`    | `5000`                              | Poll cadence while `--wait` is set                                                                                |
 | `--json`                | off                                 | Machine-readable output                                                                                            |
 
+For Lambda and Cloud Run integer flags, use a complete base-10 safe integer
+within JavaScript's exact integer range (±9,007,199,254,740,991). This applies
+to distributed render dimensions, FPS, chunk and batch limits, and wait
+intervals, plus Lambda deploy `--memory` and numeric `--concurrency` values
+(`none` remains the unreserved-concurrency sentinel), and Cloud Run deploy
+`--max-instances` and `--timeout`. Decimal, partial, and larger values fail with a usage error
+before they can be rounded or passed to a provider. This is a CLI precision
+limit; providers may accept a smaller range. Empty optional values are treated
+as omitted, while an empty required dimension still fails its required-value
+check. Omit an optional flag entirely to use its default. Omit `--fps` to use
+the composition's supported frame rate, or the `30` fps fallback; a supplied
+FPS must still be `24`, `25`, `30`, or `60`.
+
 ### `lambda deploy`
 
 Builds `packages/aws-lambda/dist/handler.zip` and SAM-deploys the stack at

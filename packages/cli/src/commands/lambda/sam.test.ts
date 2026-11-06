@@ -120,4 +120,11 @@ describe("parseReservedConcurrency", () => {
     samDeploy({ samDir: "/repo", stackName: "s", region: "r", reservedConcurrency: -1 });
     expect(vi.mocked(spawnSync).mock.lastCall?.[1]).toContain("ReservedConcurrency=-1");
   });
+
+  it.each(["8.0", "8e0", "9007199254740993"])(
+    "rejects --concurrency unless it is a safe base-10 integer token: %s",
+    (value) => {
+      expect(() => parseReservedConcurrency(value)).toThrow('positive integer or "none"');
+    },
+  );
 });
