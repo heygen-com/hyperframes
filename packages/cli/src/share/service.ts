@@ -158,7 +158,7 @@ export function createShareService(
       client,
       onProgress: progress,
       allowPending: true,
-      filesForExport: sources.filesForExport,
+      ...(sources.filesForExport && { filesForExport: sources.filesForExport }),
       requireSource: sources.requireSource,
       onAdded: () => {
         added = true;
