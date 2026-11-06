@@ -2566,13 +2566,22 @@ export async function waitForShownLateImages(
       );
       const loaded = found.filter((img) => img.complete && img.naturalWidth > 0);
       await Promise.allSettled(loaded.map((img) => img.decode()));
-      const box = (img: HTMLImageElement) => img.getBoundingClientRect();
+      const inViewport = (img: HTMLImageElement) => {
+        const box = img.getBoundingClientRect();
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          box.right > 0 &&
+          box.bottom > 0 &&
+          box.left < window.innerWidth &&
+          box.top < window.innerHeight
+        );
+      };
       const shown = found.filter(
         (img) =>
           !loaded.includes(img) &&
           img.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
-          box(img).width > 0 &&
-          box(img).height > 0,
+          inViewport(img),
       );
       return {
         arrived: loaded.map((img) => img.src),
