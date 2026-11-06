@@ -17,6 +17,12 @@ describe("createStagingDir with Windows parents", () => {
   it.each([
     ["a volume-GUID parent", "\\\\?\\Volume{11111111-1111-1111-1111-111111111111}\\project", ""],
     ["an already namespaced UNC parent", "\\\\?\\unc\\server\\share\\project", ""],
+    ["a device drive parent", "\\\\.\\C:\\project", ""],
+    [
+      "a device volume-GUID parent",
+      "\\\\.\\Volume{11111111-1111-1111-1111-111111111111}\\project",
+      "",
+    ],
     ["a drive parent", "C:\\project", "\\\\?\\C:\\project"],
     ["a UNC parent", "\\\\server\\share\\project", "\\\\?\\UNC\\server\\share\\project"],
   ])("returns the folder it made for %s", (_name, parent, longForm) => {
