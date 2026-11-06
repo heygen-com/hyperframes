@@ -2,14 +2,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveConfig } from "@hyperframes/engine";
+import { type CaptureOptions, resolveConfig } from "@hyperframes/engine";
 import { CaptureStageError } from "./render/captureStageError.js";
 import { extractSafeRenderErrorMetadata } from "../server.js";
 import { createRenderJob, executeRenderJob } from "./renderOrchestrator.js";
 
 // Entry: executeRenderJob on the streaming route; calibration and the streaming stage are scripted.
 const { state } = vi.hoisted(() => ({
-  state: { calibrationEvaluateTimedOut: false, framesBeforeFailure: 0 },
+  state: { calibrationEvaluateTimedOut: false, framesBeforeFailure: 0, effectScanRan: false },
 }));
 
 vi.mock("@hyperframes/engine", async (importOriginal) => ({
@@ -90,8 +90,16 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
 }));
 vi.mock("./render/stages/captureStreamingStage.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/stages/captureStreamingStage.js")>()),
-  runCaptureStreamingStage: async (input: { job: { framesRendered?: number } }) => {
+  runCaptureStreamingStage: async (input: {
+    job: { framesRendered?: number };
+    buildCaptureOptions: () => CaptureOptions;
+  }) => {
     input.job.framesRendered = state.framesBeforeFailure;
+    if (state.effectScanRan) {
+      const options = input.buildCaptureOptions();
+      options.onEffectScanProgress?.(240, 240);
+      options.onEffectScanEnd?.();
+    }
     throw new CaptureStageError({ cause: new Error(EVALUATE_TIMEOUT), browserConsole: [] });
   },
 }));
@@ -102,6 +110,7 @@ const dirs: string[] = [];
 beforeEach(() => {
   state.calibrationEvaluateTimedOut = false;
   state.framesBeforeFailure = 0;
+  state.effectScanRan = false;
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "false");
 });
 afterEach(() => {
@@ -109,7 +118,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function render(): Promise<void> {
+function render(config: { lowMemoryMode?: boolean } = {}): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hf-page-never-ready-"));
   dirs.push(root);
   writeFileSync(join(root, "index.html"), "<div></div>");
@@ -117,11 +126,34 @@ function render(): Promise<void> {
     fps: 30,
     quality: "standard",
     hdrMode: "force-sdr",
-    producerConfig: resolveConfig({ forceScreenshot: true, browserGpuMode: "software" }),
+    producerConfig: {
+      ...resolveConfig({ forceScreenshot: true, browserGpuMode: "software" }),
+      ...config,
+    },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
+  lastJob = job;
   return executeRenderJob(job, root, join(root, "output.mp4"));
 }
+
+let lastJob: ReturnType<typeof createRenderJob>;
+
+it("names frame capture as the failed stage for a failure after the effect scan, before frame one", async () => {
+  state.effectScanRan = true;
+  await render().catch(() => undefined);
+  expect(lastJob.failedStage).toBe("Starting frame capture");
+});
+
+it.each([
+  ["after calibration", {}],
+  ["with no calibration, straight after the GPU check", { lowMemoryMode: true }],
+])(
+  "names frame capture as the failed stage for a failure before frame one, %s",
+  async (_, config) => {
+    await render(config).catch(() => undefined);
+    expect(lastJob.failedStage).toBe("Starting frame capture");
+  },
+);
 
 it("fails once as non-retryable when calibration and capture both timed out with no frame", async () => {
   state.calibrationEvaluateTimedOut = true;

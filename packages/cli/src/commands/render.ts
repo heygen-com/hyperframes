@@ -1854,7 +1854,7 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 };
 
 // Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
-const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+|\d+ of \d+/g;
 
 export function normalizeStageCode(stage: string): string {
   const base = stage.replace(STAGE_COUNTS, "").trim();

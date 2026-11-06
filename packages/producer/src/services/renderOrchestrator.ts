@@ -3689,9 +3689,12 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
-    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
-      code: "start_browsers",
-    });
+    const EFFECT_SCAN_STAGE = "Checking effects";
+    const startingFrameCapture = () =>
+      updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
+        code: "start_browsers",
+      });
+    startingFrameCapture();
 
     // Start file server (may already be running from duration discovery).
     // The page-side compositing stub is injected later (after hasHdrContent
@@ -3730,6 +3733,7 @@ async function executeRenderPipeline(input: {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
     // downstream strategy + telemetry code reads the corrected value.
@@ -3807,10 +3811,13 @@ async function executeRenderPipeline(input: {
         updateJobStatus(
           job,
           "rendering",
-          `Checking effects, ${scanned} of ${total} frames`,
+          `${EFFECT_SCAN_STAGE}, ${scanned} of ${total} frames`,
           25,
           onProgress,
         ),
+      onEffectScanEnd: () => {
+        if (job.currentStage.startsWith(EFFECT_SCAN_STAGE)) startingFrameCapture();
+      },
       requiresWebGpu: compositionRequiresWebGpu(compiled.html),
       // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
       // through CapturePerfSummary only exists on success; a mid-capture
@@ -4237,6 +4244,7 @@ async function executeRenderPipeline(input: {
       } finally {
         calibrationFrames?.release();
       }
+      startingFrameCapture();
       captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
