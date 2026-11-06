@@ -103,6 +103,22 @@ describe("openInDesktop", () => {
       expect(existsSync(record)).toBe(false);
       openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
       expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({ cta: "page-1" });
+      expect(JSON.parse(readFileSync(record, "utf8"))).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the app to open on the storyboard when the press came from the Storyboard tab", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-doc-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({
+        cta: "page-1",
+        doc: "storyboard",
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

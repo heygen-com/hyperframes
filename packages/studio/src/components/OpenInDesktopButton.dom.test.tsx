@@ -476,6 +476,20 @@ it("tells the storyboard's button from the header's in every funnel event", asyn
     .map(([, props]) => (props as { placement?: string }).placement);
   expect(placements.length).toBeGreaterThan(0);
   expect(new Set(placements)).toEqual(new Set(["storyboard"]));
+  expect(postBodies).toEqual([{ cta: resolveTabId(), doc: "storyboard" }]);
+});
+
+it("asks the storyboard's visitor to approve the board in the app, not to edit the video", async () => {
+  serve(Response.json({ ...MAC, available: true, handoff: false, downloadUrl: DOWNLOAD }));
+  await mount("storyboard");
+  await act(async () =>
+    document
+      .querySelector<HTMLButtonElement>('[data-testid="storyboard-open-in-desktop"]')!
+      .click(),
+  );
+  expect(guide()!.textContent).toContain("Approve this storyboard in the desktop app");
+  expect(guide()!.textContent).toContain("then press Build");
+  expect(guide()!.textContent).not.toContain("Edit this video");
 });
 
 it("records one impression, only once the button is on screen", async () => {

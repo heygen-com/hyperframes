@@ -266,7 +266,10 @@ function useGuide(
       const res = await studioApiFetch(ROUTE, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cta: resolveTabId() }),
+        body: JSON.stringify({
+          cta: resolveTabId(),
+          ...(placement === "storyboard" ? { doc: "storyboard" } : {}),
+        }),
       });
       await landed((await res.json()) as OpenResult);
     } catch {

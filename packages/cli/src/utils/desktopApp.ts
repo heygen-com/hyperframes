@@ -180,10 +180,12 @@ export function openInDesktop(
     installed = () => desktopInstalled({ platform }),
     env = process.env,
     cta,
+    doc,
     src = "cli",
     ...where
   }: AppLookup & {
     cta?: string;
+    doc?: "storyboard";
     src?: DownloadSource;
     ready?: boolean;
     open?: (bundleId: string, dir: string) => boolean;
@@ -199,7 +201,8 @@ export function openInDesktop(
     downloadUrl: desktopDownloadUrl(platform, src) ?? STUDIO_PAGE,
   });
   const opened = (app: string): DesktopOpenResult => {
-    if (cta) writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now() }));
+    if (cta || doc)
+      writeRecord(dir, DESKTOP_CTA_RECORD, JSON.stringify({ cta, at: Date.now(), doc }));
     return {
       opened: true,
       app,
