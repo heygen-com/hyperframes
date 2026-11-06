@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   assertArchiveFits,
+  logsTick,
   resolveCloudFpsArg,
   parseAspectRatioFlag,
   resolveAspectRatioForSubmit,
@@ -58,6 +59,15 @@ describe("resolveCloudFpsArg", () => {
       resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
     ).toBeUndefined();
     expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("logsTick", () => {
+  it("logs a long render once a minute while its status holds, so a slow render does not read as a hang", () => {
+    const logged = { status: "rendering", at: 2_000 };
+    expect(logsTick("rendering", 30_000, logged)).toBe(false);
+    expect(logsTick("rendering", 62_000, logged)).toBe(true);
+    expect(logsTick("completed", 3_000, logged)).toBe(true);
   });
 });
 

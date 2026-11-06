@@ -978,6 +978,7 @@ async function pollWithProgress(
   // mode stays silent altogether.
   const interactive = !asJson && process.stdout.isTTY === true;
   let lastStatus = "";
+  let logged = { status: "", at: 0 };
   try {
     return await pollUntilTerminal(client, renderId, {
       intervalMs: poll.intervalMs,
@@ -993,10 +994,11 @@ async function pollWithProgress(
             process.stdout.write(`  ${formatTickLine(detail, elapsedMs)}`);
             lastStatus = detail.status;
           }
-        } else if (detail.status !== lastStatus) {
-          // Non-TTY: one line per status transition, no carriage returns.
+        } else if (logsTick(detail.status, elapsedMs, logged)) {
+          // Non-TTY: a line per status change and one a minute while it holds, no carriage returns.
           console.log(`  ${formatTickLine(detail, elapsedMs)}`);
           lastStatus = detail.status;
+          logged = { status: detail.status, at: elapsedMs };
         }
       },
     });
@@ -1016,6 +1018,16 @@ async function pollWithProgress(
   } finally {
     if (!asJson && lastStatus && interactive) process.stdout.write("\n");
   }
+}
+
+const STILL_RUNNING_EVERY_MS = 60_000;
+
+export function logsTick(
+  status: string,
+  elapsedMs: number,
+  logged: { status: string; at: number },
+): boolean {
+  return status !== logged.status || elapsedMs - logged.at >= STILL_RUNNING_EVERY_MS;
 }
 
 function formatTickLine(detail: HyperframesRenderDetail, elapsedMs: number): string {
