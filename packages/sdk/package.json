@@ -90,7 +90,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.14.6",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
   }
