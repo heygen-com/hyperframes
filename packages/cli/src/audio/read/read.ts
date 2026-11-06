@@ -28,7 +28,14 @@ import {
   spanDb,
 } from "./signal.js";
 import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import { READ_VERSION, type AudibleStem, type Music, type ReadAudio, type Voice } from "./types.js";
+import {
+  READ_VERSION,
+  type AudibleStem,
+  type Music,
+  type ReadAudio,
+  type ReadLayer,
+  type Voice,
+} from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -37,6 +44,8 @@ export interface ReadOptions {
   /** A transcript of the recording; `<file>.transcript.json` next to it is used when absent. */
   transcript?: string;
   quality?: AnalysisQuality;
+  /** The file is declared to be this one layer: no separation runs and the other layers are not read. */
+  layer?: ReadLayer;
 }
 
 export interface ReadResult {
@@ -78,6 +87,7 @@ interface CacheEntry {
   revision: number;
   analysis: ReadAudio;
   transcriptKey: string;
+  layer?: ReadLayer;
 }
 
 async function stemsFor(
@@ -333,6 +343,53 @@ async function described(
   return { ...located, stems, description };
 }
 
+/** A file declared to be one layer: read whole as that layer, with no separation. */
+async function analyzeLayer(
+  layer: ReadLayer,
+  path: string,
+  file: string,
+  sha: string,
+  transcript: string | null,
+): Promise<ReadAudio> {
+  const samples = await decodeMono(path);
+  const about = {
+    ...base(file, sha, round(samples.length / READ_RATE, 3), null, transcript),
+    layer,
+  };
+  const warnings = [
+    `declared single-layer ${layer}: not separated, and the other layers are not read`,
+  ];
+  const none = { voice: null, effects: null, music: null, ambience: null };
+  if (layer === "music") {
+    const { music, ambience } = readMusic({
+      stems: { music: samples },
+      drums: null,
+      sampleRate: READ_RATE,
+    });
+    return { ...about, ...none, music, ambience, bpm: tempoOf(music), warnings };
+  }
+  if (layer === "sfx") {
+    const effects = findEffects({
+      sources: [{ samples }],
+      sampleRate: READ_RATE,
+      mix: samples,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    return { ...about, ...none, effects, warnings };
+  }
+  const words = transcript ? wordsOf(transcript) : [];
+  if (!words.length)
+    warnings.push(`no transcript: voice lines carry no words; ${transcribeHint(file)}`);
+  const pitch = pitchTrack(await decodeMono(path, PITCH_RATE));
+  const levelOf = (span: Span) => spanDb(samples, READ_RATE, span.start, span.end);
+  const voice = words.length
+    ? voiceFromWords(words, pitch, levelOf)
+    : voiceFromActivity(samples, READ_RATE, pitch, levelOf);
+  return { ...about, ...none, voice, warnings };
+}
+
 async function analyze(
   path: string,
   file: string,
@@ -419,10 +476,12 @@ export async function readAudio(
   if (existsSync(jsonPath) && existsSync(textPath)) {
     const entry = JSON.parse(readFileSync(jsonPath, "utf8")) as CacheEntry;
     const stemsNowPossible =
+      !options.layer &&
       entry.analysis.separation === "mix" &&
       quality === "best" &&
       (cachedStems(stemDir) !== null || typeof (await stemsAccess()) !== "string");
     if (
+      entry.layer === options.layer &&
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
       entry.revision === CACHE_REVISION &&
@@ -437,10 +496,17 @@ export async function readAudio(
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
-  const analysis = await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
+  const analysis = options.layer
+    ? await analyzeLayer(options.layer, path, file, sha, transcript)
+    : await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
   writeAtomic(
     jsonPath,
-    JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),
+    JSON.stringify({
+      revision: CACHE_REVISION,
+      analysis,
+      transcriptKey,
+      ...(options.layer ? { layer: options.layer } : {}),
+    } satisfies CacheEntry),
   );
   writeAtomic(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };

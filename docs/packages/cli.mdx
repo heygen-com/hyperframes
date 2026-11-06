@@ -842,6 +842,7 @@ time-stamped lines an agent can read or grep, instead of measurements of one sou
 ```bash
 npx hyperframes audio refs/episode.mp4 --read                 # the whole recording
 npx hyperframes audio refs/episode.mp4 --read --range 60,70   # only what overlaps 60–70 s
+npx hyperframes audio take.mp3 --read --layer music         # a file that is already one layer: no separation
 ```
 
 - **voice**: one line per sentence with its text, speaking rate against the
