@@ -482,6 +482,43 @@ export function holdFrameMarks({
   };
 }
 
+type GsapCallbackHolder = {
+  vars?: Record<string, unknown>;
+  timeline?: { getChildren?: RuntimeTimelineLike["getChildren"] };
+  getChildren?: RuntimeTimelineLike["getChildren"];
+};
+
+const DISCRETE_CALLBACKS = ["onStart", "onComplete", "onReverseComplete", "onRepeat"] as const;
+
+const noOpInPlaceOfCallback = (): void => {};
+
+function eachAnimationIn(
+  animation: GsapCallbackHolder,
+  visit: (a: GsapCallbackHolder) => void,
+): void {
+  visit(animation);
+  for (const child of (animation.getChildren?.(false, true, true) ?? []) as GsapCallbackHolder[])
+    eachAnimationIn(child, visit);
+  if (animation.timeline) eachAnimationIn(animation.timeline as GsapCallbackHolder, visit);
+}
+
+export function muteDiscreteCallbacks(timelines: RuntimeTimelineLike[]): () => void {
+  const held: Array<[Record<string, unknown>, string, unknown]> = [];
+  for (const timeline of timelines) {
+    eachAnimationIn(gsapTimelineOf(timeline) as GsapCallbackHolder, ({ vars }) => {
+      if (!vars) return;
+      for (const name of DISCRETE_CALLBACKS) {
+        if (typeof vars[name] !== "function" || vars[name] === noOpInPlaceOfCallback) continue;
+        held.push([vars, name, vars[name]]);
+        vars[name] = noOpInPlaceOfCallback;
+      }
+    });
+  }
+  return () => {
+    for (const [vars, name, callback] of held) vars[name] = callback;
+  };
+}
+
 function landingMarksOf(
   timeline: { getChildren?: RuntimeTimelineLike["getChildren"] },
   structure: GsapStructureKey | undefined,

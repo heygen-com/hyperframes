@@ -6,7 +6,7 @@
  */
 
 import { swallow } from "../diagnostics";
-import { landThenUndoDom, scanMovers } from "./discover";
+import { scanMovers, whileCallbacksMuted } from "./discover";
 import { planFilter, type FilterPlan } from "./filterPlan";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
@@ -123,21 +123,17 @@ export function createFilterTier(
   function discover(restoreTo: number): void {
     scanned = host.timeline();
     const s0 = performance.now();
-    const landing = config.events ? landThenUndoDom(seek, document) : null;
-    let found: ReturnType<typeof scanMovers>;
-    try {
-      found = scanMovers({
+    const found = whileCallbacksMuted(host, config.events, () => {
+      const scan = scanMovers({
         scene: root,
         durationSeconds: host.durationSeconds(),
         fps: host.fps,
         seek: host.seek,
         events: config.events,
-        onStep: landing?.flush,
       });
-      (landing?.land ?? seek)(restoreTo);
-    } finally {
-      landing?.stop();
-    }
+      seek(restoreTo);
+      return scan;
+    });
     readEvents = found.readEvents;
     movers = found.movers;
     pads = found.pads;
@@ -186,14 +182,13 @@ export function createFilterTier(
   function plansAt(t: number, engineMode: boolean): Array<[HTMLElement, FilterPlan]> {
     if (!reader || host.timeline() !== scanned) discover(t);
     if (!reader) return [];
-    const landing = readEvents ? landThenUndoDom(readSeek, document) : null;
-    let read: ReturnType<typeof readMoverFrames>;
-    try {
-      read = readMoverFrames({
+    const poseReader = reader;
+    const read = whileCallbacksMuted(host, readEvents, () =>
+      readMoverFrames({
         movers,
-        reader,
+        reader: poseReader,
         seek: readSeek,
-        restore: landing?.land ?? host.holdFrame?.(),
+        restore: readEvents ? undefined : host.holdFrame?.(),
         t,
         reads: engineMode ? RENDER_READS : PREVIEW_READS,
         ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
@@ -201,10 +196,8 @@ export function createFilterTier(
         frameW: width,
         scene: root,
         frameH: height,
-      });
-    } finally {
-      landing?.stop();
-    }
+      }),
+    );
     const plans: Array<[HTMLElement, FilterPlan]> = [];
     read.els.forEach((el, i) => {
       const frame = read.frames[i];

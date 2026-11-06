@@ -12,6 +12,7 @@ export interface CaptureMotionBlurHost {
   /** Seek the timeline and adapters (not media) for a pose read. */
   seek: (t: number, suppressEvents: boolean) => void;
   holdFrame?: () => (t: number) => void;
+  muteCallbacks?: () => () => void;
   ignoreMutations?: (write: () => void) => void;
 }
 

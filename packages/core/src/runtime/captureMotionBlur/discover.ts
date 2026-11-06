@@ -292,80 +292,17 @@ function boxesKey(boxes: ReadonlyArray<DOMRect | undefined>): number {
   return h;
 }
 
-type FirstValue = [namespace: string | null, name: string, old: string | null];
-
-type DomJournal = { flush: () => void; undo: () => void; stop: () => void };
-
-function journalDom(doc: Document): DomJournal {
-  const firstValues = new Map<Node, Map<string, FirstValue>>();
-  const trees: MutationRecord[] = [];
-  const fold = (records: MutationRecord[]): void => {
-    for (const r of records) {
-      if (r.type === "childList") {
-        trees.push(r);
-        continue;
-      }
-      const own = firstValues.get(r.target) ?? new Map<string, FirstValue>();
-      firstValues.set(r.target, own);
-      const key = `${r.attributeNamespace}:${r.attributeName}`;
-      if (!own.has(key)) own.set(key, [r.attributeNamespace, r.attributeName ?? "", r.oldValue]);
-    }
-  };
-  const observer = new MutationObserver(fold);
-  observer.observe(doc, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeOldValue: true,
-    characterData: true,
-    characterDataOldValue: true,
-  });
-  return {
-    flush: () => fold(observer.takeRecords()),
-    stop: () => observer.disconnect(),
-    undo: () => {
-      fold(observer.takeRecords());
-      observer.disconnect();
-      for (const r of trees.reverse()) {
-        r.addedNodes.forEach((n) => n.parentNode === r.target && r.target.removeChild(n));
-        r.removedNodes.forEach((n) => r.target.insertBefore(n, r.nextSibling));
-      }
-      for (const [node, values] of firstValues) {
-        for (const [ns, name, old] of values.values()) {
-          putBack(node, ns, name, old);
-        }
-      }
-    },
-  };
-}
-
-const isElement = (node: Node): node is Element => node.nodeType === 1;
-
-function putBack(node: Node, ns: string | null, name: string, old: string | null): void {
-  if (!isElement(node)) {
-    const text = old ?? "";
-    if ((node as CharacterData).data !== text) (node as CharacterData).data = text;
-    return;
+export function whileCallbacksMuted<T>(
+  host: { muteCallbacks?: () => () => void },
+  muted: boolean,
+  run: () => T,
+): T {
+  const unmute = muted ? host.muteCallbacks?.() : undefined;
+  try {
+    return run();
+  } finally {
+    unmute?.();
   }
-  if (node.getAttributeNS(ns, name) === old) return;
-  if (old === null) node.removeAttributeNS(ns, name);
-  else node.setAttributeNS(ns, name, old);
-}
-
-// A callback a loud seek fired cannot be un-fired: land with callbacks on, then put the DOM back.
-export function landThenUndoDom(
-  seek: (t: number) => void,
-  doc: Document,
-): Omit<DomJournal, "undo"> & { land: (t: number) => void } {
-  const journal = journalDom(doc);
-  return {
-    flush: journal.flush,
-    stop: journal.stop,
-    land: (t) => {
-      seek(t);
-      journal.undo();
-    },
-  };
 }
 
 /** Discovery, and whether pose reads need callbacks: when they change an element's style or box. */

@@ -184,6 +184,14 @@ export const FIXTURES: readonly BlurFixture[] = [
         .call(write("first"), null, 1).call(write("second"), null, 1);`,
   }),
   fixture({
+    name: "once-guard-label",
+    checkpoints: frames(21, 24, 36),
+    extra: `<div id="label" style="position:absolute;left:10px;top:10px;font:700 24px monospace;color:#fff">A</div>`,
+    script: `const label = document.getElementById("label");
+      let done = false;
+      tl.call(() => { if (done) return; done = true; label.textContent = "B" }, null, ${frame(16)});`,
+  }),
+  fixture({
     name: "stateful-callback",
     extra: `<div id="count" style="position:absolute;left:10px;top:10px;font:700 24px monospace;color:#fff">0</div>`,
     script: `const count = document.getElementById("count");

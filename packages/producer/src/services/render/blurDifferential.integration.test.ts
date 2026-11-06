@@ -35,7 +35,10 @@ const WORKERS = 4;
  * calls shows any call state its scan leaves behind; one starting on a call only by timing (#6967).
  * 7 workers over 60 frames start at 0, 9, 18, 27, 36, 45 and 54.
  */
-const WORKERS_BY_FIXTURE = new Map<string, number>([["callbacks", 7]]);
+const WORKERS_BY_FIXTURE = new Map<string, number>([
+  ["callbacks", 7],
+  ["once-guard-label", 7],
+]);
 /** Block starts the partition must have, at least `count` of them in [from, to]. */
 const REQUIRED_STARTS = new Map<string, { from: number; to: number; count: number }>([
   ["callbacks", { from: 18, to: 28, count: 2 }],
@@ -46,6 +49,7 @@ const RENDER_TIMEOUT_MS = 600_000;
 
 const FIXTURE_NAMES = [
   "callbacks",
+  "once-guard-label",
   "scroll-list",
   "nested-canvas-offset",
   "held-card",
