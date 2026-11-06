@@ -55,10 +55,13 @@ host documentation when its interface differs.
 
 <Tabs>
   <Tab title="Claude">
-    1. Open **Customize → Connectors**.
-    2. Choose **Add custom connector** and enter the MCP address above.
+    HyperFrames by HeyGen is listed in Claude's [connector directory](https://claude.com/connectors/hyperframes-heygen).
+
+    1. Open **Customize → Connectors** and choose **Discover**.
+    2. Search **HyperFrames** and choose **Connect** on HyperFrames by HeyGen.
     3. Complete the HeyGen sign-in.
-    4. In a new chat, open the **+** menu, choose **Connectors**, and enable HyperFrames.
+
+    To add it by address instead, choose **+ Add → Add custom connector** in **Customize → Connectors** and enter the MCP address above.
 
     See [Anthropic’s current connector instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for plan and workspace requirements.
 
@@ -90,10 +93,11 @@ Host products change their connector interfaces independently. If a menu or butt
 
 ## Create a first composition
 
-Describe the video as you would to an editor:
+Describe the video as you would to an editor, and name HyperFrames so the chat app uses the connector instead of
+writing its own video code:
 
 ```text
-Make a 15-second vertical product intro for a meditation app.
+Use HyperFrames to make a 15-second vertical product intro for a meditation app.
 Audience: people who have trouble falling asleep.
 Style: quiet, spacious, and warm.
 Show the breathing timer and end with “Rest starts here.”
