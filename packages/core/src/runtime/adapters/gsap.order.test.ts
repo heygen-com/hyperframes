@@ -109,3 +109,63 @@ describe("a render that captures frames out of order", () => {
     expect(rendersOfTwoSeeks(FPS)).toEqual(rendersOfTwoSeeks());
   });
 });
+
+// A panel fading out while a set brings it back: the set is what preview and a seek show once the fade has ended.
+function fadeInterruptedBySet(standIn: boolean) {
+  const panel = { opacity: 1 };
+  const timeline = gsap.timeline({ paused: true });
+  timeline.fromTo(panel, { opacity: 1 }, { opacity: 0, duration: 1, ease: "none" }, 0);
+  timeline.set(panel, { opacity: 1 }, 0.3);
+  return {
+    panel,
+    timeline: standIn ? producerStandIn(timeline) : (timeline as unknown as RuntimeTimelineLike),
+  };
+}
+
+const SET_FPS = 30;
+
+/** The panel at each frame, rendered when `fps` is given, previewed when it is not. */
+function panelAt(frames: number[], fps?: number, standIn = false): Map<number, number> {
+  const { panel, timeline } = fadeInterruptedBySet(standIn);
+  const structure = { owner: timeline, version: "1" };
+  const opacity = new Map<number, number>();
+  for (const frame of frames) {
+    seekGsapTimeline(timeline, frame / SET_FPS, true, structure, fps);
+    opacity.set(frame, panel.opacity);
+  }
+  return opacity;
+}
+
+describe("a render where a set interrupts a running tween", () => {
+  const preview = panelAt(range(0, 90));
+
+  it("lands every frame where preview does when one worker renders in order", () => {
+    for (const [frame, opacity] of panelAt(range(0, 90), SET_FPS)) {
+      expect([frame, opacity]).toEqual([frame, preview.get(frame)]);
+    }
+  });
+
+  it("lands every frame where preview does when workers start partway through", () => {
+    for (const start of [5, 15, 29, 31, 45]) {
+      for (const [frame, opacity] of panelAt(range(start, 90), SET_FPS)) {
+        expect([start, frame, opacity]).toEqual([start, frame, preview.get(frame)]);
+      }
+    }
+  });
+
+  it("lands every frame where preview does behind the producer's timeline stand-in", () => {
+    for (const start of [0, 15, 45]) {
+      for (const [frame, opacity] of panelAt(range(start, 90), SET_FPS, true)) {
+        expect([start, frame, opacity]).toEqual([start, frame, preview.get(frame)]);
+      }
+    }
+  });
+
+  it("shows the set's value after the tween ends, whichever way the frames are shared out", () => {
+    for (let worker = 0; worker < 6; worker++) {
+      for (const [frame, opacity] of panelAt(range(worker, 90, 6), SET_FPS)) {
+        if (frame / SET_FPS >= 1) expect([frame, opacity]).toEqual([frame, 1]);
+      }
+    }
+  });
+});
