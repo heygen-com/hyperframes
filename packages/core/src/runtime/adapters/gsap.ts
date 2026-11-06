@@ -57,7 +57,12 @@ function renderOntoInAuthoredOrder(
   timeline.totalTime(below ? t - REDRAW_STEP : t + REDRAW_STEP, true);
   primeTweensStartingAt(children, t, below ? REDRAW_STEP : 0);
   timeline.totalTime(t, true);
-  if (!below) reapplyStepsInAuthoredOrder(timeline, structure ?? ownStructureOf(children), t);
+  const own = structure ?? ownStructureOf(children);
+  if (!below) {
+    reapplyStepsInAuthoredOrder(timeline, own, t);
+  } else if (own) {
+    settleOverlapsEndedBetween(own.owner as RuntimeTimelineLike, t - REDRAW_STEP, t, own.version);
+  }
 }
 
 function ownStructureOf(children: unknown[]): GsapStructureKey | undefined {
