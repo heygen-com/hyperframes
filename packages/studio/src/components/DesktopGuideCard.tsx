@@ -291,7 +291,7 @@ export function GuideCard(props: CardProps) {
         <div className="min-w-0">
           <p className="text-step-14 font-semibold text-balance text-text-0">
             {boardFirst(progress)
-              ? "Approve this storyboard in the desktop app"
+              ? "Comment on this storyboard in the desktop app"
               : "Edit this video in the desktop app"}
           </p>
           <p className={NOTE}>
