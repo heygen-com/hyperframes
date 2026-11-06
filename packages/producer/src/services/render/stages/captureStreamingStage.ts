@@ -189,9 +189,9 @@ function captureModeLabel(mode: CaptureSession["captureMode"]): string {
   return "screenshot";
 }
 
-type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
+export type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
 
-const OPENING_CAPTURE_SESSION: StalledSession = {
+export const OPENING_CAPTURE_SESSION: StalledSession = {
   captureMode: "screenshot",
   captureStep: "opening the capture session",
 };
@@ -269,6 +269,31 @@ export function raceAgainstStall<T>(
       },
     );
   });
+}
+
+/**
+ * One budget for everything before a session's first frame: opening it, initializing it, and the
+ * deferred drawElement init. Each call races against what is left of the same clock.
+ */
+export function createSessionInitBudget(input: {
+  frameIndex: number;
+  totalFrames: number;
+  abortSignal: AbortSignal | undefined;
+}): <T>(work: Promise<T>, stalled: StalledSession) => Promise<T> {
+  const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
+  const setup = createStallClock();
+  return (work, stalled) =>
+    raceAgainstStall(
+      work,
+      initStallMs - setup.idle(0),
+      {
+        session: stalled,
+        frameIndex: input.frameIndex,
+        totalFrames: input.totalFrames,
+        stallTimeoutMs: initStallMs,
+      },
+      input.abortSignal,
+    );
 }
 
 /**
@@ -1037,15 +1062,11 @@ export async function runCaptureStreamingStage(
       let resumes = 0;
       for (;;) {
         const videoInjector = createRenderVideoFrameInjector();
-        const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
-        const setup = createStallClock();
-        const withinInitBudget = <T>(work: Promise<T>, stalled: StalledSession) =>
-          raceAgainstStall(
-            work,
-            initStallMs - setup.idle(0),
-            { session: stalled, frameIndex: resume.from, totalFrames, stallTimeoutMs: initStallMs },
-            abortSignal,
-          );
+        const withinInitBudget = createSessionInitBudget({
+          frameIndex: resume.from,
+          totalFrames,
+          abortSignal,
+        });
         const openSession = async (): Promise<CaptureSession> => {
           const opening = createCaptureSession(
             fileServer.url,
