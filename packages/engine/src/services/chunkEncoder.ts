@@ -13,7 +13,6 @@ import {
   existsSync,
   ftruncateSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -50,6 +49,7 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -764,7 +764,7 @@ export async function encodeFramesChunkedConcat(
   mkdirSync(dirname(outputPath), { recursive: true });
   // Keep intermediates under the caller-owned output directory for its existing
   // cleanup/debug policy, but never reuse another invocation's chunk files.
-  const chunkDir = mkdtempSync(join(dirname(outputPath), "chunk-encode-"));
+  const chunkDir = createStagingDir(dirname(outputPath), "chunk-encode-");
   const chunkPaths: string[] = [];
 
   for (let i = 0; i < chunkCount; i++) {

@@ -4,7 +4,6 @@ import {
   writeFileSync,
   mkdirSync,
   lstatSync,
-  mkdtempSync,
   renameSync,
   rmSync,
   statSync,
@@ -12,6 +11,7 @@ import {
 import { dirname, join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -132,7 +132,7 @@ export function writeWaveformCache(cachePath: string, peaks: number[]): void {
   if (!isWaveformCacheDirectory(cacheDir)) {
     throw new Error("Waveform cache must be a directory, not a symlink");
   }
-  const stagingDir = mkdtempSync(join(cacheDir, ".waveform-"));
+  const stagingDir = createStagingDir(cacheDir, ".waveform-");
   try {
     const stagingPath = join(stagingDir, "peaks.json");
     writeFileSync(stagingPath, JSON.stringify(peaks), { flag: "wx" });
