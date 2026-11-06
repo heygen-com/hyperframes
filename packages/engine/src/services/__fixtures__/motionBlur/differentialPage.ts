@@ -142,27 +142,37 @@ export function defineOutsideCase(f: BlurFixture, t: number, tier?: Tier): void 
   );
 }
 
+function expectBlurredAwayFromSharp(
+  f: BlurFixture,
+  sharp: Rgba,
+  onFrame: Rgba,
+  mask: Uint8Array,
+): void {
+  const { worstMae } = compareTiles(sharp, onFrame, mask, "inside", { block: INVARIANTS.block });
+  expect(worstMae, `${f.name}: blur on is the sharp frame, so nothing blurred`).toBeGreaterThan(
+    INVARIANTS.outsideMaxMae,
+  );
+}
+
 export function defineInsideCase(f: BlurFixture, t: number, tier?: Tier): void {
   it(
     caseName("inside the trail, blur on matches the shutter average", f, t, tier),
     async (ctx) => {
       if (!supported) ctx.skip();
-      const samples = await captureInOrder(await referencePage(f), shutterTimes(t), {
+      const offPage = await referencePage(f);
+      const samples = await captureInOrder(offPage, shutterTimes(t), {
         subFrameDivisions: SUB_FRAME_DIVISIONS,
       });
+      const sharp = await captureFrame(offPage, t);
       const onFrame = await onFreshPage(chrome(), f, "on", (p) => captureFrame(p, t), tier);
-      const d = compareTiles(
-        meanFrame(samples),
-        onFrame,
-        trailMask(samples, radiusPx(f)),
-        "inside",
-        {
-          block: INVARIANTS.block,
-          maxMae: INVARIANTS.insideMaxMae,
-        },
-      );
+      const mask = trailMask(samples, radiusPx(f));
+      const d = compareTiles(meanFrame(samples), onFrame, mask, "inside", {
+        block: INVARIANTS.block,
+        maxMae: INVARIANTS.insideMaxMae,
+      });
       expect(d.checkedBlocks).toBeGreaterThan(0);
       expect(d.bad, `${f.name} ${firstFive(d)}`).toEqual([]);
+      expectBlurredAwayFromSharp(f, sharp, onFrame, mask);
     },
     CASE_TIMEOUT_MS,
   );
