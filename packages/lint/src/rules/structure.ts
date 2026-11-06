@@ -6,7 +6,7 @@ import {
   trackKindOf,
   type StructureNode,
 } from "@hyperframes/parsers/top-level-elements";
-import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { parseStartExpression, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { TIMING_TOLERANCE_SECONDS } from "@hyperframes/parsers/composition-duration";
 
@@ -228,7 +228,53 @@ function neverVisibleNestedFindings(parent: TagNode, severity: Severity): Hyperf
   });
 }
 
+const SECONDS_WITH_UNIT = /^(\d+(?:\.\d+)?)s$/;
+
+/** A reference resolves among the clips of its own composition; an id none of them carries resolves to 0. */
+function unknownStartReferenceFindings(scope: TagNode): HyperframeLintFinding[] {
+  const members: TagNode[] = [];
+  const nestedScopes: TagNode[] = [];
+  const collect = (node: TagNode): void => {
+    for (const child of node.children) {
+      if (child.tag === "template") continue;
+      members.push(child);
+      if (child.attrs["data-composition-id"] !== undefined) nestedScopes.push(child);
+      else collect(child);
+    }
+  };
+  collect(scope);
+  const knownIds = new Set(
+    members
+      .flatMap((m) => [m.attrs.id, m.attrs["data-composition-id"]])
+      .filter((id): id is string => Boolean(id)),
+  );
+  const findings = members.flatMap((member): HyperframeLintFinding[] => {
+    const raw = member.attrs["data-start"];
+    const expression = parseStartExpression(raw);
+    if (expression?.kind !== "reference" || knownIds.has(expression.refId)) return [];
+    const seconds = SECONDS_WITH_UNIT.exec(expression.refId)?.[1];
+    return [
+      {
+        code: "start_reference_unknown_id",
+        severity: "warning",
+        message: `${describe(member)} has data-start="${raw}", which starts it when the clip "${expression.refId}" ends, but no element in this composition has id or data-composition-id "${expression.refId}", so it starts at 0. References resolve only inside the same composition.`,
+        elementId: member.attrs.id,
+        fixHint:
+          seconds !== undefined
+            ? `data-start takes seconds as a plain number: write data-start="${seconds}".`
+            : `Point data-start at the id of a clip in this composition, or use a number of seconds.`,
+        snippet: truncateSnippet(member.open.raw),
+      },
+    ];
+  });
+  return [...findings, ...nestedScopes.flatMap(unknownStartReferenceFindings)];
+}
+
 export const structureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
+  (ctx) => {
+    const root = buildTree(ctx);
+    return root ? unknownStartReferenceFindings(root) : [];
+  },
   (ctx) => {
     // The timeline shows the root composition's rows; a sub-composition file is the leaf where layout lives.
     if (ctx.options.isSubComposition) return [];
