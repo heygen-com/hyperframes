@@ -27,7 +27,8 @@ export function mountDesktopRoutes(
   projectDir: string,
   {
     ready = HANDOFF_READY,
-    open = (dir: string, cta?: string) => openInDesktop(dir, { cta, src: "browser-editor" }),
+    open = (dir: string, cta?: string, doc?: "storyboard") =>
+      openInDesktop(dir, { cta, doc, src: "browser-editor" }),
     platform = process.platform,
     installed = () => desktopInstalled({ platform }),
   } = {},
@@ -57,7 +58,13 @@ export function mountDesktopRoutes(
         downloadUrl,
       });
     const body: unknown = await c.req.json().catch(() => null);
-    const cta = (body as { cta?: unknown } | null)?.cta;
-    return c.json(open(projectDir, typeof cta === "string" && CTA_ID.test(cta) ? cta : undefined));
+    const { cta, doc } = (body ?? {}) as { cta?: unknown; doc?: unknown };
+    return c.json(
+      open(
+        projectDir,
+        typeof cta === "string" && CTA_ID.test(cta) ? cta : undefined,
+        doc === "storyboard" ? doc : undefined,
+      ),
+    );
   });
 }
