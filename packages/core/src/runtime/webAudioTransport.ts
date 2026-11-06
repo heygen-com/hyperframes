@@ -1052,12 +1052,13 @@ export class WebAudioTransport {
     }
   }
 
-  /** Drops the routed element's source once a decoded buffer plays in its place; the element then sounds natively. */
+  /** Drops the routed element's source once a decoded buffer plays in its place. A captured element has no native
+   *  output, so left unconnected it is silent; WebKit sounds it through the destination even while muted. */
   releaseRouted(el: HTMLMediaElement): void {
     const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
     if (!routed) return;
     this._activeSources.splice(this._activeSources.indexOf(routed), 1);
-    this.dispose(routed);
+    this.dispose(routed, false);
     this._handedOver.add(el);
   }
 
