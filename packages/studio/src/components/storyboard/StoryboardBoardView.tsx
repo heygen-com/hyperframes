@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { OpenInDesktopButton } from "../OpenInDesktopButton";
+import { ApproveBoardButton } from "./ApproveBoardButton";
 import { Button, cn } from "../ui";
 import { groupByAct, stillPath, type BoardFrame } from "./storyboardBoard";
 import { projectFileUrl, type StoryboardBoard } from "./useStoryboardBoard";
@@ -147,8 +148,9 @@ function BoardBar({
       </div>
       <div className="flex items-center gap-2">
         <span className="text-step-10 text-text-3 max-[1100px]:hidden">
-          Comment on a frame, draw on it, then approve the board in the desktop app
+          Approve to have your agent build it. Comments on frames are in the desktop app
         </span>
+        <ApproveBoardButton />
         <OpenInDesktopButton placement="storyboard" />
       </div>
     </div>
