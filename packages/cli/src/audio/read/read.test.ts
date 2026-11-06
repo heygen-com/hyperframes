@@ -494,4 +494,55 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(stemCalls).toBe(callsBefore);
     expect(analysis.warnings[1]).toContain("no transcript and no stems");
   });
+
+  it("reads a file declared --layer music as music without separating it, and leaves voice and effects unread", async () => {
+    const path = wav("take.wav", 6, bed);
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    const cacheDir = join(dir, "cache-layer-music");
+    const callsBefore = stemCalls;
+    const declared = await readAudio(path, "take.wav", {
+      cacheDir,
+      quality: "best",
+      layer: "music",
+    });
+    expect(stemCalls).toBe(callsBefore);
+    expect(declared.analysis).toMatchObject({
+      separation: "mix",
+      layer: "music",
+      stemsDir: null,
+      voice: null,
+      effects: null,
+    });
+    expect(declared.analysis.music!.segments.length).toBeGreaterThan(0);
+    expect(declared.analysis.warnings.join("\n")).toContain("declared single-layer music");
+    expect(formatRead(declared.analysis)).toMatch(/music +/);
+    expect(formatRead(declared.analysis)).toContain("declared single-layer music");
+    expect(
+      (await readAudio(path, "take.wav", { cacheDir, quality: "best", layer: "music" })).cached,
+    ).toBe(true);
+    const plain = await readAudio(path, "take.wav", { cacheDir, quality: "local" });
+    expect(plain.cached).toBe(false);
+    expect(plain.analysis.layer).toBeUndefined();
+    expect(plain.analysis).toMatchObject({ music: null });
+  });
+
+  it("reads --layer voice without separation, and --layer sfx as effects only", async () => {
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    const callsBefore = stemCalls;
+    const talk = await readAudio(wav("layer-talk.wav", 6, voiced), "layer-talk.wav", {
+      cacheDir: join(dir, "cache-layer-voice"),
+      quality: "best",
+      layer: "voice",
+    });
+    expect(talk.analysis.voice!.sentences.length).toBeGreaterThan(0);
+    expect(talk.analysis).toMatchObject({ layer: "voice", music: null, effects: null });
+    const hit = await readAudio(wav("layer-hit.wav", 6, boom), "layer-hit.wav", {
+      cacheDir: join(dir, "cache-layer-sfx"),
+      quality: "best",
+      layer: "sfx",
+    });
+    expect(hit.analysis.effects!.events.length).toBeGreaterThan(0);
+    expect(hit.analysis).toMatchObject({ layer: "sfx", voice: null, music: null });
+    expect(stemCalls).toBe(callsBefore);
+  });
 });

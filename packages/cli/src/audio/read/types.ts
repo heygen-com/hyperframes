@@ -4,6 +4,11 @@ export const READ_VERSION = 7;
 
 export type Separation = "stems" | "mix";
 
+/** What a caller declares a whole file to be, so it is read as that one layer without separation. */
+export type ReadLayer = "music" | "sfx" | "voice";
+
+export const READ_LAYERS: readonly ReadLayer[] = ["music", "sfx", "voice"];
+
 export type RateUnit = "chars" | "words";
 
 export type Ending = "rising" | "falling" | "level";
@@ -121,6 +126,8 @@ export interface ReadAudio {
   sha256: string;
   duration: number;
   separation: Separation;
+  /** Set only when the caller declared the file a single layer with --layer. */
+  layer?: ReadLayer;
   stems: AudibleStem[];
   stemsDir: string | null;
   voiceFreeMix: string | null;

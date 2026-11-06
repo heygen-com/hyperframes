@@ -242,7 +242,11 @@ function header(analysis: ReadAudio): string[] {
   return [
     ...(separated
       ? byStem(analysis)
-      : [`${analysis.file} · ${s(analysis.duration)} s · not separated`]),
+      : [
+          `${analysis.file} · ${s(analysis.duration)} s · ${
+            analysis.layer ? `declared single-layer ${analysis.layer}` : "not separated"
+          }`,
+        ]),
     voice && voiceSummary(voice),
     effects && effectsSummary(effects),
     music && musicSummary(music),
