@@ -17,6 +17,7 @@
  */
 import {
   readdirSync,
+  readFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -74,7 +75,20 @@ function discover() {
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
       const html = join(dir, name, `${name}.html`);
-      if (existsSync(html)) out.push({ name, kind, html });
+      if (!existsSync(html)) continue;
+      // #7279 — items ship assets their manifest declares (`files[].target`);
+      // the mount has to bring them or the lint fails on files the item itself
+      // provides (`yt-lower-third`'s avatar, `texture-mask-text`'s 67 masks).
+      let files = [];
+      const manifestPath = join(dir, name, "registry-item.json");
+      if (existsSync(manifestPath)) {
+        try {
+          files = JSON.parse(readFileSync(manifestPath, "utf8")).files ?? [];
+        } catch {
+          // an unreadable manifest leaves the item mounted as before
+        }
+      }
+      out.push({ name, kind, html, dir: join(dir, name), files });
     }
   }
   return out;
@@ -96,8 +110,26 @@ for (const item of items) {
     mkdirSync(join(proj, "compositions"), { recursive: true });
     writeFileSync(join(proj, "index.html"), HOST);
     copyFileSync(item.html, join(proj, "compositions", `${item.name}.html`));
+    // Install every file the manifest lists at its target path (#7279) so the
+    // lint judges the item as a user receives it — assets included.
+    for (const f of item.files ?? []) {
+      if (!f?.target || !f?.path) continue;
+      const from = join(item.dir, f.path);
+      const to = join(proj, f.target);
+      if (!existsSync(from)) continue; // a real missing file stays a real finding
+      mkdirSync(dirname(to), { recursive: true });
+      copyFileSync(from, to);
+    }
 
     const res = spawnSync("bun", [cli, "lint", proj], { encoding: "utf-8" });
+    // A spawn failure must not read as a clean pass: on hosts where `bun` is
+    // not an .exe on PATH, spawnSync errors with empty output, and every
+    // item would silently "pass" (seen on a Windows machine).
+    if (res.error) {
+      failed++;
+      console.error(`\n✗ ${item.kind}/${item.name}: lint could not run (${res.error.message})`);
+      continue;
+    }
     const lines = `${res.stdout ?? ""}${res.stderr ?? ""}`.split("\n");
     // Only the item's own file — the host scaffold is not under review.
     const hits = lines.filter(
