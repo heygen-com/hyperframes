@@ -2133,6 +2133,7 @@ function buildReport(
     stopCode: browser.runtimeFindings
       .map((finding) => finding.code)
       .find((code): code is StopCode => (STOP_CODES as readonly string[]).includes(code)),
+    mediaCopies: browser.mediaCopies,
     runId: getRunId(),
   });
   return filterComponentReport(report, options);
