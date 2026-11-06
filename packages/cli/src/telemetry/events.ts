@@ -1,4 +1,5 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
+import type { StopCode } from "../utils/checkPipeline.js";
 import type { OutputResolutionIssueKind } from "@hyperframes/core";
 import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
@@ -1193,8 +1194,7 @@ export function trackCheckReport(props: {
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
-  /** The code of the finding that stopped the check, one of a closed set (checkPipeline's STOP_CODES). */
-  stopCode?: string;
+  stopCode?: StopCode;
   runId?: string;
 }): void {
   trackEvent("check_report", {

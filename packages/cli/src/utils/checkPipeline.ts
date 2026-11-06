@@ -2130,7 +2130,9 @@ function buildReport(
     contrastPoints: browser.contrastChecked,
     ok: report.ok,
     exitCode: checkExitCode(report),
-    stopCode: browser.runtimeFindings.find((finding) => STOP_CODES.has(finding.code))?.code,
+    stopCode: browser.runtimeFindings
+      .map((finding) => finding.code)
+      .find((code): code is StopCode => (STOP_CODES as readonly string[]).includes(code)),
     runId: getRunId(),
   });
   return filterComponentReport(report, options);
@@ -2265,12 +2267,12 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
-/** The codes `runtimeFailure` gives a finding that ends the browser check early; `check_report` sends the first one. */
-const STOP_CODES: ReadonlySet<string> = new Set([
+export const STOP_CODES = [
   "media_copies_unfinished",
   "check_budget_reached",
   "check_runtime_failure",
-]);
+] as const;
+export type StopCode = (typeof STOP_CODES)[number];
 
 function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(
