@@ -177,22 +177,18 @@ function errorCode(error: unknown): string {
 }
 
 const WIN32_LONG_PREFIX = "\\\\?\\";
+const WIN32_ABSOLUTE = /^([A-Za-z]:\\|\\\\)/;
 
-/** The path in Windows' `\\?\` form, which lifts the 260-character limit; unchanged elsewhere. */
-function longPath(path: string): string {
-  if (process.platform !== "win32") return path;
+function toWin32LongPath(path: string): string {
   const full = resolve(path);
-  if (full.startsWith(WIN32_LONG_PREFIX)) return full;
+  if (!WIN32_ABSOLUTE.test(full) || full.startsWith(WIN32_LONG_PREFIX)) return path;
   return full.startsWith("\\\\")
     ? `${WIN32_LONG_PREFIX}UNC\\${full.slice(2)}`
     : `${WIN32_LONG_PREFIX}${full}`;
 }
 
-/**
- * A fresh private directory `prefix` + 6 random letters or digits in `parent`. Node's mkdtemp, unlike
- * mkdir, is not given the long-path form, so past 260 characters on Windows it needs it spelled out.
- */
+/** A fresh private folder `prefix` + 6 random characters in `parent`; mkdtemp needs the long-path form past 260 characters on Windows. */
 export function createStagingDir(parent: string, prefix: string): string {
-  const created = fs.mkdtempSync(longPath(join(parent, prefix)));
+  const created = fs.mkdtempSync(toWin32LongPath(join(parent, prefix)));
   return created.replace(/^\\\\\?\\(UNC\\)?/, (_prefix, unc) => (unc ? "\\\\" : ""));
 }
