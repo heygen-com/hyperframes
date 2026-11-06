@@ -167,6 +167,46 @@ describe("trackCheckReport", () => {
     });
   });
 
+  it("names the finding that stopped the check, and omits it when none did", () => {
+    const props = {
+      contrastGate: false,
+      motionGate: false,
+      captionZoneGate: false,
+      frameCheckGate: false,
+      snapshotsGate: false,
+      lintErrors: 0,
+      lintWarnings: 0,
+      runtimeErrors: 1,
+      runtimeWarnings: 0,
+      layoutErrors: 0,
+      layoutWarnings: 0,
+      motionErrors: 0,
+      motionWarnings: 0,
+      contrastErrors: 0,
+      contrastWarnings: 0,
+      craftWarnings: 0,
+      launchSettleMs: 0,
+      renderReadyTimedOut: false,
+      seekLoopMs: 0,
+      contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
+      gridPoints: 0,
+      contrastPoints: 0,
+      ok: false,
+      exitCode: 1,
+    };
+    trackCheckReport({ ...props, stopCode: "media_copies_unfinished" });
+    expect(trackEvent).toHaveBeenLastCalledWith(
+      "check_report",
+      expect.objectContaining({ stop_code: "media_copies_unfinished" }),
+    );
+    trackCheckReport(props);
+    expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("stop_code");
+  });
+
   it("omits run_id when no run ID is provided", () => {
     trackCheckReport({
       contrastGate: false,
