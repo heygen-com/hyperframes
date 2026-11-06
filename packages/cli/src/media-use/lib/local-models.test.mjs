@@ -62,7 +62,7 @@ test("selectModel picks the large tier on a strong machine", () => {
 test("selectModel falls back to medium on a CPU-only machine", () => {
   const r = selectModel("tts", cpuOnly);
   assert.equal(r.tier, "medium");
-  assert.equal(r.model.id, "kokoro", "Kokoro is the CPU/medium default (native word timestamps)");
+  assert.equal(r.model.id, "kokoro", "Kokoro is the CPU/medium default");
 });
 
 test("selectModel recommends the CLI path when no tier fits", () => {

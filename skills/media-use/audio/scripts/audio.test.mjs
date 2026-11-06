@@ -1,10 +1,19 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { readManifest } from "../../scripts/lib/manifest.mjs";
 import { recordInManifest } from "./lib/media-record.mjs";
 import { resolveSfx } from "./lib/sfx.mjs";
 
@@ -163,4 +172,90 @@ for (const [label, request, args, shown] of [
 
 test("a numeric string speed, as the adapters forward it, passes the check", () => {
   assert.doesNotMatch(runEngineWith({ speed: "0.8" }, "--only", "tts").stderr, /speed must/);
+});
+
+// Stand-ins on PATH for the Kokoro path: `tts` copies the line's text into the wav, `transcribe`
+// reads it back as one word, and ffprobe reports a tenth of a second per byte.
+const npxStub = `#!${process.execPath}
+const fs = require("node:fs");
+const path = require("node:path");
+const [, command, input, ...rest] = process.argv.slice(2);
+const after = (name) => rest[rest.indexOf(name) + 1];
+if (command === "tts") {
+  fs.mkdirSync(path.dirname(after("--output")), { recursive: true });
+  fs.copyFileSync(input, after("--output"));
+} else {
+  const text = fs.readFileSync(input, "utf8");
+  const words = [{ text, start: 0, end: 1 }];
+  fs.writeFileSync(path.join(after("--dir"), "transcript.json"), JSON.stringify(words));
+}
+`;
+const ffprobeStub = `#!${process.execPath}
+console.log(require("node:fs").statSync(process.argv.at(-1)).size / 10);
+`;
+
+test("re-voicing one line keeps every other voice", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-partial-tts-"));
+  try {
+    const bin = join(dir, "bin");
+    const project = join(dir, "project");
+    mkdirSync(bin);
+    mkdirSync(project);
+    for (const [name, source] of [
+      ["npx", npxStub],
+      ["ffprobe", ffprobeStub],
+    ]) {
+      writeFileSync(join(bin, name), source);
+      chmodSync(join(bin, name), 0o755);
+    }
+    const run = (lines, args = ["--only", "tts"]) => {
+      const request = { provider: "kokoro", lines };
+      writeFileSync(join(project, "audio_request.json"), JSON.stringify(request));
+      const r = spawnSync(
+        process.execPath,
+        [join(HERE, "audio.mjs"), "--hyperframes", project, ...args],
+        {
+          encoding: "utf8",
+          timeout: 15000,
+          env: {
+            ...process.env,
+            PATH: bin,
+            HEYGEN_CONFIG_DIR: dir,
+            HEYGEN_API_KEY: "",
+            HYPERFRAMES_API_KEY: "",
+            HYPERFRAMES_MEDIA_HOME: dir,
+          },
+        },
+      );
+      assert.equal(r.status, 0, r.stderr);
+      return JSON.parse(readFileSync(join(project, "audio_meta.json"), "utf8"));
+    };
+    run(["a", "b", "c"].map((id) => ({ id, text: `line ${id}` })));
+    const meta = run([{ id: "b", text: "line b, again" }]);
+    assert.deepEqual(
+      meta.voices.map((v) => [v.id, v.path, v.duration_s, v.words[0].text]),
+      [
+        ["a", "assets/voice/a.wav", 0.6, "line a"],
+        ["b", "assets/voice/b.wav", 1.3, "line b, again"],
+        ["c", "assets/voice/c.wav", 0.6, "line c"],
+      ],
+    );
+    assert.equal(meta.total_duration_s, 2.5);
+    // Only the re-voiced line is recorded again; the kept voices keep their own records.
+    assert.deepEqual(
+      readManifest(project).map((record) => record.description),
+      ["line a", "line b", "line c", "line b, again"],
+    );
+    // A full run without --only still replaces the voices, so a removed line goes away.
+    const full = run(
+      ["a", "c"].map((id) => ({ id, text: `line ${id}` })),
+      [],
+    );
+    assert.deepEqual(
+      full.voices.map((v) => v.id),
+      ["a", "c"],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
