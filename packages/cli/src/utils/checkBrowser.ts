@@ -4,6 +4,7 @@ import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeo
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
+import { collectFontFallback } from "./checkFonts.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -1147,6 +1148,8 @@ export function createPageDriver(
       collectContrast(page, time, annotations, skipInMotion),
     collectCraftFrame: (time) => collectCraftFrame(page, time),
     collectCraftFilm: () => collectCraftFilm(page),
+    collectFontFallback: (time) =>
+      collectFontFallback(page, time, (requests) => resolveAnchors(page, requests)),
   });
 }
 

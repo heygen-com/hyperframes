@@ -11,6 +11,7 @@ import type { HdrAutoPromotion } from "@hyperframes/engine";
 import type { ComponentReport } from "@hyperframes/inspector/live";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import type { CheckPhase } from "./checkDeadline.js";
+import type { FontFallbackFinding } from "./checkFonts.js";
 
 export interface CheckOptions {
   samples: number;
@@ -306,6 +307,8 @@ export interface CheckAuditDriver {
   /** Craft section: text, stillness and paint at the current seek. A driver without it skips the section. */
   collectCraftFrame?(time: number): Promise<CraftFrame>;
   collectCraftFilm?(): Promise<CraftFilm>;
+  /** Fonts section: text drawn in a face other than its declared one at the current seek. A driver without it skips the section. */
+  collectFontFallback?(time: number): Promise<FontFallbackFinding[]>;
 }
 
 export interface CheckScreenshot {
@@ -343,6 +346,7 @@ export interface CheckBrowserResult {
   contrastChecked: number;
   contrastPassed: number;
   craft: CraftResult;
+  fontFindings: FontFallbackFinding[];
   screenshots: CheckScreenshot[];
   timings: CheckTimings;
   renderReadyTimedOut: boolean;
@@ -416,6 +420,7 @@ export interface CheckReport {
     passed: number;
   };
   craft: CheckSection<CraftFinding> & { enabled: boolean; step: number; samples: number };
+  fonts: CheckSection<FontFallbackFinding>;
   audio: CheckSection;
   hdr: { autoPromotion: HdrAutoPromotion | null; inspection: "available" | "unavailable" };
   snapshots: { enabled: boolean; files: string[]; times: number[]; findingFiles: string[] };
