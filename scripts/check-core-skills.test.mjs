@@ -48,8 +48,10 @@ test("reverse builds the project with init --video and asks for the run's total 
   );
   assert.match(
     start,
-    /add up what each refused step\s+needs, and run `npx hyperframes billing (?:top-up|add-credits) --needed <total>(?: --skill reverse-any-video)?` once for that total/,
+    /add up what each refused step\s+needs, and (?:run|give them) `npx hyperframes billing (?:top-up|add-credits) --needed <total>(?: --skill reverse-any-video)?`(?: to run)? once for that total/,
   );
+  assert.doesNotMatch(start, /then run the `reverse\.subscribe_command`/);
+  assert.doesNotMatch(start, /\n\s*run `npx hyperframes billing/);
   assert.doesNotMatch(read("SKILL.md"), /copy the video into the project/);
   assert.match(read("SKILL.md"), /`init --video` put the video in/);
 });
