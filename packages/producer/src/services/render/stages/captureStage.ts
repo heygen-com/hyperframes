@@ -71,6 +71,7 @@ import { reportFrameProgress, reportWorkerStartup } from "../shared.js";
 import { withWorkerPageErrors } from "../perfSummary.js";
 import type { SdrDiskCapturePlan } from "../capturePlan.js";
 import type { OpenStallAttempt } from "../observability.js";
+import { createSessionInitBudget } from "./captureStreamingStage.js";
 
 export interface CaptureStageInput {
   fileServer: FileServerHandle;
@@ -501,7 +502,11 @@ async function runSequentialDiskCapture(
         prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
       }
-      await ensureSessionReady(session);
+      await ensureSessionReady(session, {
+        frameIndex: resumeFrom,
+        totalFrames,
+        abortSignal: input.abortSignal,
+      });
       assertAttemptActive();
       lastBrowserConsole = session.browserConsoleBuffer;
 
@@ -576,7 +581,10 @@ function planTransientResume(
     : null;
 }
 
-async function ensureSessionReady(session: CaptureSession): Promise<void> {
+async function ensureSessionReady(
+  session: CaptureSession,
+  budget: Parameters<typeof createSessionInitBudget>[0],
+): Promise<void> {
   if (!session.isInitialized) {
     await initializeSession(session);
     return;
@@ -584,7 +592,7 @@ async function ensureSessionReady(session: CaptureSession): Promise<void> {
   // Deferred drawElement init (probe-initialized video comps). The disk path has no
   // drain-time self-verification, so only the explicit fast-capture opt-in completes it.
   if (process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE === "true") {
-    await completeDeferredDrawElementInit(session);
+    await createSessionInitBudget(budget)(completeDeferredDrawElementInit(session), session);
   }
 }
 
