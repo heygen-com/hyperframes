@@ -134,6 +134,13 @@ describe("render diagnostic wire", () => {
       "COMPOSITION_SETUP_TIMEOUT",
     ],
     [
+      new CaptureFailure({
+        kind: "authoring",
+        message: `Frame 0 shows ${PRIVATE}, which did not load in time, so the video would be missing it.`,
+      }),
+      "IMAGE_MISSING_FROM_FRAME",
+    ],
+    [
       new CaptureFailure({ kind: "authoring", message: PRIVATE, pageErrorLines: [PRIVATE] }),
       "PAGE_ERROR",
     ],

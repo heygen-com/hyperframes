@@ -155,6 +155,7 @@ export {
   type DiscardWarmupInnerCapture,
   type StaticVerificationOutcome,
   VfxFailureError,
+  ImageMissingFromFrameError,
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,

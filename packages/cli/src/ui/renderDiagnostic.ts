@@ -42,6 +42,8 @@ function producerCodeOf(error: unknown): string | undefined {
 function captureCodeOf(error: unknown, message: string): string | undefined {
   if (/Composition has zero duration/.test(message)) return "COMPOSITION_ZERO_DURATION";
   if (/Composition setup did not finish/.test(message)) return "COMPOSITION_SETUP_TIMEOUT";
+  if (/did not load in time, so the video would be missing it/.test(message))
+    return "IMAGE_MISSING_FROM_FRAME";
   if (!(error instanceof CaptureFailure)) return undefined;
   return error.pageErrorLines.length > 0 ? "PAGE_ERROR" : `CAPTURE_${error.kind.toUpperCase()}`;
 }
