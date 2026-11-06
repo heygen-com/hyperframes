@@ -51,7 +51,8 @@ it.each(["video", "audio"])(
     expect(play).not.toHaveBeenCalled();
     for (let i = 0; i < 11; i++) step();
     if (tag === "video") expect(video.style.visibility).toBe("visible");
-    expect(seek).toHaveBeenCalledTimes(1);
+    // A video is landed once more where its pre-roll plays from.
+    expect(seek).toHaveBeenCalledTimes(tag === "video" ? 2 : 1);
     expect(play).toHaveBeenCalledTimes(1);
   },
 );
