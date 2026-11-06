@@ -109,6 +109,7 @@ import {
   augmentPageNavigationTimeoutError,
   displaySize,
   type MotionBlurOptions,
+  type PageMotionBlurSummary,
 } from "@hyperframes/engine";
 import {
   referenceBackgroundResult,
@@ -623,6 +624,7 @@ export interface RenderPerfSummary {
     noDamageFrames: number;
     hasDamageFrames: number;
   };
+  motionBlur?: PageMotionBlurSummary;
   /**
    * drawElement fast-capture outcome for this render (default-on release
    * visibility). Undefined when no capture session ran.

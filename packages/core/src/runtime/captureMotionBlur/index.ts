@@ -38,8 +38,10 @@ import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
 import { scanMovers, whileCallbacksMuted } from "./discover";
 import { createFilterTier } from "./filterTier";
+import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
+import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import {
   type CaptureMotionBlurHost,
   type Config,
@@ -193,6 +195,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   const timings: number[] = [];
   let sampleMs = 0;
   let scanMs = 0;
+  let fingerprint: MotionBlurFingerprint | null = null;
   let scannedTimeline: unknown = undefined;
   let scanDefect: CaptureDefect | null = null;
   let faceNow: () => boolean = () => false;
@@ -256,6 +259,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     scannedTimeline = host.timeline();
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
+    const coverage = coverageSampler(root);
     const s0 = performance.now();
     const found = whileCallbacksMuted(host, config.events, () => {
       const scan = scanMovers({
@@ -265,6 +269,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
         seek: host.seek,
         events: config.events,
         onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
+        onFast: coverage.sample,
       });
       seek(restoreTo);
       return scan;
@@ -274,6 +279,7 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     faceNow = defects.facesNow;
     movers = found.movers;
     pads = found.pads;
+    fingerprint = compositionFingerprint(root, movers, coverage.covered);
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
   }
@@ -571,6 +577,8 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       meanMs: Math.round(mean * 10) / 10,
       failures,
       failedFrames,
+      fingerprint,
+      readEvents,
     };
   }
 
@@ -721,6 +729,8 @@ function offReport(config: Config, why: CaptureDefect | null): Report {
     meanMs: 0,
     failures: 0,
     failedFrames: 0,
+    fingerprint: null,
+    readEvents: false,
   };
 }
 

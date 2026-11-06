@@ -53,6 +53,7 @@ import {
   describePageMotionBlur,
   describePageMotionBlurAtEnd,
   installPageMotionBlur,
+  pageMotionBlurRecorder,
 } from "./pageMotionBlur.js";
 
 // ── Extracted modules ───────────────────────────────────────────────────────
@@ -114,6 +115,7 @@ import type {
   CapturePerfSummary,
   CaptureWarning,
   HfSeekOptions,
+  PageMotionBlurSummary,
   SubTimelineWaitMemo,
   SubTimelineWaitOutcome,
 } from "../types.js";
@@ -179,6 +181,7 @@ export interface CaptureSession {
   lastFrameAbsoluteIndex?: number;
   /** Count of frames served from a reused buffer (dedup telemetry). */
   staticDedupCount?: number;
+  pageMotionBlur?: PageMotionBlurSummary;
   /** Live Chrome memory sampler; started in initializeSession, stopped in closeCaptureSession. */
   chromeMemory?: ChromeMemorySampler;
   /**
@@ -4964,7 +4967,10 @@ async function captureFrameCore(
     session.capturePerf.totalMs += captureTimeMs;
     session.capturePerf.frameMs.push(captureTimeMs);
     if (session.capturePerf.frames === 1) {
-      const blur = await describePageMotionBlur(session.page).catch(() => null);
+      const blur = await describePageMotionBlur(
+        session.page,
+        pageMotionBlurRecorder(session),
+      ).catch(() => null);
       if (blur) console.error(blur);
     }
 
@@ -5415,7 +5421,11 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
     await waitForCloseWithTimeout(session.chromeMemory.sampleOnce());
   }
   if (session.page && !session.pageReleased) {
-    const blur = await describePageMotionBlurAtEnd(session.page);
+    const blur = await describePageMotionBlurAtEnd(
+      session.page,
+      undefined,
+      pageMotionBlurRecorder(session),
+    );
     if (blur) console.error(blur);
   }
   // Realized static-dedup telemetry: how much the cache actually helped this
@@ -5758,6 +5768,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     chromeGpuProcessSeenLastSample: session.chromeMemory?.stats().gpuProcessSeenLastSample,
     chromeMemorySamples: session.chromeMemory?.stats().samples,
     deGateReason: session.deGateReason,
+    motionBlur: session.pageMotionBlur,
     deFallbackTrigger: session.deFallbackTrigger,
     deWorkerEncode: session.workerEncodeEnabled ?? false,
     deVerifyArmed: session.deVerifyFrames?.size ?? 0,

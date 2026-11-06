@@ -7,9 +7,11 @@
 
 import { swallow } from "../diagnostics";
 import { scanMovers, whileCallbacksMuted } from "./discover";
+import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { CONTENT_NODE_LIMIT, readMoverFrames, shutterTimes } from "./frames";
+import { holdsFixedChild, readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
+import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -94,14 +96,6 @@ function aim(layer: Layer, plan: FilterPlan): void {
   layer.filter.setAttribute("height", h.toFixed(1));
 }
 
-function holdsFixedChild(el: HTMLElement): boolean {
-  const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_ELEMENT);
-  for (let n = 0; n < CONTENT_NODE_LIMIT && walker.nextNode(); n++) {
-    if (getComputedStyle(walker.currentNode as Element).position === "fixed") return true;
-  }
-  return false;
-}
-
 const CONTAINING_BLOCK_PROPERTIES = [
   "transform",
   "translate",
@@ -131,6 +125,7 @@ export function createFilterTier(
   const height = Number(root.getAttribute("data-height")) || root.offsetHeight;
   const seek = (t: number): void => host.seek(t, !config.events);
   let readEvents = false;
+  let fingerprint: MotionBlurFingerprint | null = null;
   const readSeek = (t: number): void => host.seek(t, !readEvents);
   let defs: SVGSVGElement | null = null;
   let movers: HTMLElement[] = [];
@@ -148,6 +143,7 @@ export function createFilterTier(
 
   function discover(restoreTo: number): void {
     scanned = host.timeline();
+    const coverage = coverageSampler(root);
     const s0 = performance.now();
     const found = whileCallbacksMuted(host, config.events, () => {
       const scan = scanMovers({
@@ -156,6 +152,7 @@ export function createFilterTier(
         fps: host.fps,
         seek: host.seek,
         events: config.events,
+        onFast: coverage.sample,
       });
       seek(restoreTo);
       return scan;
@@ -164,6 +161,7 @@ export function createFilterTier(
     movers = found.movers;
     fixedHolders = new Set(movers.filter(holdsFixedChild));
     pads = found.pads;
+    fingerprint = compositionFingerprint(root, movers, coverage.covered);
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
   }
@@ -268,6 +266,8 @@ export function createFilterTier(
       meanMs: frames ? Math.round((totalMs / frames) * 10) / 10 : 0,
       failures: 0,
       failedFrames: 0,
+      fingerprint,
+      readEvents,
     };
   }
 

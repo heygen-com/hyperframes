@@ -1642,6 +1642,23 @@ describe("probe", () => {
     expect(document.querySelector("canvas")).toBeNull();
   });
 
+  it.each(["capture", "filter"])("counts what the composition holds on the %s tier", (tier) => {
+    installHtmlInCanvas();
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const { root, h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-tier": tier });
+    root.append(document.createElement("video"), document.createElement("video"));
+    initCaptureMotionBlur(h);
+    expect(win.__hfMotionBlur?.report()).toMatchObject({ fingerprint: null, readEvents: false });
+    expect(probe()).toMatchObject({ tier, fingerprint: { video: 2, webgl: 0 }, readEvents: false });
+  });
+
+  it("carries no counts when blur stands down before any scan", () => {
+    win.__HF_PAGE_MOTION_BLUR_OFF__ = "hdr-render";
+    const { h } = movingHost();
+    initCaptureMotionBlur(h);
+    expect(probe()).toMatchObject({ state: "off", fingerprint: null, readEvents: false });
+  });
+
   it("reports no movers for a composition where nothing moves", () => {
     installHtmlInCanvas();
     initCaptureMotionBlur(host(makeRoot()));

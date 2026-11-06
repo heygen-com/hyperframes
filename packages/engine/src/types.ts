@@ -6,12 +6,21 @@
  */
 import type { ReferenceBackground } from "./services/referenceBackground.js";
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
-import type { Fps } from "@hyperframes/core";
+import type { Fps, MotionBlurFingerprint } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 export type PageMotionBlurOff = "off" | "hdr-render" | "layered-composite" | "distributed-render";
+
+export interface PageMotionBlurSummary {
+  tier: "capture" | "filter" | null;
+  reasonCode: string | null;
+  movers: number;
+  failedFrames: number;
+  readEvents: boolean;
+  fingerprint: MotionBlurFingerprint | null;
+}
 
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
@@ -410,6 +419,7 @@ export interface CapturePerfSummary {
    * drawElement ran or was never attempted.
    */
   deGateReason?: string;
+  motionBlur?: PageMotionBlurSummary;
   /**
    * Full-fidelity fallback trigger — the specific reason (CSS FX + property,
    * e.g. `filter:blur`, `filter:drop-shadow`, `backdrop-filter`, `clip-path`,

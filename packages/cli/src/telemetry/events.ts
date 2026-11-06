@@ -8,6 +8,10 @@ import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
 import type { RenderCpuTelemetryPayload } from "./renderCpu.js";
+import {
+  type RenderMotionBlurTelemetryPayload,
+  renderMotionBlurEventProperties,
+} from "./renderMotionBlur.js";
 import { CliRuntimeError } from "../utils/commandResult.js";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
@@ -488,7 +492,8 @@ export function trackRenderComplete(
   } & RenderObservabilityTelemetryPayload &
     RenderOutputShapeTelemetryPayload &
     RenderEnvironmentTelemetryPayload &
-    RenderCpuTelemetryPayload,
+    RenderCpuTelemetryPayload &
+    RenderMotionBlurTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -614,6 +619,7 @@ export function trackRenderComplete(
       ...renderOutputShapeEventProperties(props),
       ...renderEnvironmentEventProperties(props),
       ...renderCpuEventProperties(props),
+      ...renderMotionBlurEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
