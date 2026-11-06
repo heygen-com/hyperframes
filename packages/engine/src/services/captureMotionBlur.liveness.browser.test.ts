@@ -6,10 +6,21 @@ import { acceleratedCanvasTrackerSource } from "@hyperframes/core";
 import { closeTestChrome } from "./__fixtures__/loopback.js";
 import { RUNTIME, hasBrowser, launch } from "./__fixtures__/motionBlur/blurPage.js";
 import { FIXTURES, type BlurFixture } from "./__fixtures__/motionBlur/fixtures.js";
+import {
+  advancedOf,
+  distinctOf,
+  newFramesIn,
+  slideOutWatched,
+  type Shot,
+} from "./__fixtures__/motionBlur/slideOutWatch.js";
 
 const MIN_CLOCK_ADVANCE_S = 0.3;
 const MIN_DISTINCT_FRAMES = 3;
 const LIVENESS_DEADLINE_MS = 3_000;
+// held-card holds from 0.4 s to 1.6 s and slides out until 2.0 s: a freeze anywhere in the hold shows as a slide-out that never draws.
+const SLIDE_OUT_FIXTURE = "held-card";
+const SLIDE_OUT = { startS: 1.6, endS: 2 };
+const SLIDE_OUT_DEADLINE_MS = 5_000;
 const WRAP_DEADLINE_MS = 3_000;
 const CASE_TIMEOUT_MS = 30_000;
 
@@ -87,38 +98,59 @@ async function stopPlaying(preview: Frame): Promise<void> {
 
 const hashOf = (png: Uint8Array): string => createHash("md5").update(png).digest("hex");
 
-/** Screenshots of the preview while it plays, until the clock and the pixels have both moved or time runs out. */
+/** Screenshots of the preview while it plays, until `enough` says the clock and the pixels have moved or time runs out. */
 async function watchPreview(
   page: Page,
   preview: Frame,
   fixture: BlurFixture,
-): Promise<{ advanced: number; distinct: number }> {
+  enough: (shots: readonly Shot[]) => boolean,
+  deadlineMs: number,
+): Promise<Shot[]> {
   const clip = { x: 0, y: 0, width: fixture.width, height: fixture.height };
-  const seen = new Set<string>();
+  const shots: Shot[] = [];
   const clock0 = await clockOf(preview);
-  let advanced = 0;
-  const deadline = Date.now() + LIVENESS_DEADLINE_MS;
+  let clockAfter = clock0;
+  const deadline = Date.now() + deadlineMs;
   await startPlaying(preview);
-  while (Date.now() < deadline) {
-    seen.add(hashOf(await page.screenshot({ type: "png", clip })));
-    advanced = (await clockOf(preview)) - clock0;
-    if (advanced >= MIN_CLOCK_ADVANCE_S && seen.size >= MIN_DISTINCT_FRAMES) break;
+  while (Date.now() < deadline && !enough(shots)) {
+    const clockBefore = clockAfter;
+    const hash = hashOf(await page.screenshot({ type: "png", clip }));
+    clockAfter = await clockOf(preview);
+    shots.push({ hash, clockBefore: clockBefore - clock0, clockAfter: clockAfter - clock0 });
   }
-  return { advanced, distinct: seen.size };
+  return shots;
 }
+
+const movedEnough = (shots: readonly Shot[]): boolean =>
+  advancedOf(shots) >= MIN_CLOCK_ADVANCE_S && distinctOf(shots) >= MIN_DISTINCT_FRAMES;
 
 async function checkKeepsChanging(browser: Browser, fixture: BlurFixture): Promise<void> {
   const { page, preview } = await openPreview(browser, fixture);
   try {
-    const { advanced, distinct } = await watchPreview(page, preview, fixture);
+    const wholeFilm = fixture.name === SLIDE_OUT_FIXTURE;
+    const shots = await watchPreview(
+      page,
+      preview,
+      fixture,
+      wholeFilm ? (s) => slideOutWatched(s, SLIDE_OUT) : movedEnough,
+      wholeFilm ? SLIDE_OUT_DEADLINE_MS : LIVENESS_DEADLINE_MS,
+    );
+    const advanced = advancedOf(shots);
+    const distinct = distinctOf(shots);
     expect(
       advanced,
-      `the preview never played: ${fixture.name}'s clock moved ${advanced.toFixed(3)} s in ${LIVENESS_DEADLINE_MS} ms`,
-    ).toBeGreaterThanOrEqual(MIN_CLOCK_ADVANCE_S);
+      `the preview never played: ${fixture.name}'s clock moved ${advanced.toFixed(3)} s`,
+    ).toBeGreaterThanOrEqual(wholeFilm ? SLIDE_OUT.startS : MIN_CLOCK_ADVANCE_S);
     expect(
       distinct,
       `the preview froze: ${fixture.name}'s clock advanced ${advanced.toFixed(3)} s but the pixels showed ${distinct} distinct frames`,
     ).toBeGreaterThanOrEqual(MIN_DISTINCT_FRAMES);
+    if (wholeFilm) {
+      expect(
+        newFramesIn(shots, SLIDE_OUT),
+        `the preview froze mid-film: ${fixture.name} drew nothing new after ${SLIDE_OUT.startS} s (${distinct} distinct frames in ${advanced.toFixed(3)} s)`,
+      ).toBeGreaterThan(0);
+    }
   } finally {
     await page.close();
   }
