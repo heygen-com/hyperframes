@@ -41,6 +41,7 @@ export interface SubTimelineWaitMemo {
 export type CaptureWarningCode =
   | "media_readiness_timeout"
   | "media_load_failed"
+  | "image_missing_from_frame"
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
   | "sub_timeline_script_failure"
