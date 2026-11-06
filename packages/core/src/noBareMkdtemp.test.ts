@@ -10,6 +10,7 @@ const MKDTEMP = /\bmkdtemp(Sync)?\(/;
 
 // Not beside a project or output path: a system temp root, a standalone skill script, a cloud function's scratch root.
 const ALLOWED = new Set([
+  "core/src/atomicFile.ts",
   "cli/src/media-use/lib/lut-preset-provider.mjs",
   "producer/src/server.ts",
   "producer/src/regression-harness.ts",
