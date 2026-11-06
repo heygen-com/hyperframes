@@ -30,12 +30,9 @@ const GPT_IMAGE: Record<string, number> = {
   "4:3": 0.03612,
   "3:4": 0.03612,
 };
-// fal bills every reference picture as input tokens, the first one too: about $0.0125 each (experiment-framework
-// image_catalog.py, 2026-11-06). GPT Image 2.6 and its flare variant bill the same tokens as 2.5.
 const GPT_REFERENCE = 0.0125;
 const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
 const NANO_IMAGE = 0.067;
-// Nano Banana 2.1 bills each reference picture as 1,120 input tokens, $0.00168.
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
 const VIDEO_768P_PER_S = 0.018;
