@@ -22,37 +22,25 @@ const disposeSignalHandlers = installRenderSetupSignalHandlers(
 
 const SANDBOX_REFUSED_PRIORITY = new Set(["EPERM", "EACCES"]);
 
-function lowerPriority(): void {
+function setOwnPriority(priority: number, whatStaysNormal: string): void {
   try {
-    setPriority(constants.priority.PRIORITY_LOW);
+    setPriority(priority);
   } catch (error) {
     if (SANDBOX_REFUSED_PRIORITY.has((error as { info?: { code?: string } }).info?.code ?? ""))
       return;
-    process.stderr.write(`Lint runs at normal priority: ${(error as Error).message}\n`);
-  }
-}
-
-/**
- * Each small disk write of the Chrome download queues for CPU: behind a busy Windows PC's work that took minutes
- * for seconds of work, with data still arriving so nothing ever counted as a stall.
- */
-function raisePriority(): void {
-  try {
-    setPriority(constants.priority.PRIORITY_ABOVE_NORMAL);
-  } catch {
-    // expected: most Unix systems refuse this without privileges, and the install then runs at normal priority.
+    process.stderr.write(`${whatStaysNormal} at normal priority: ${(error as Error).message}\n`);
   }
 }
 
 async function runMode(): Promise<unknown> {
   if (mode === "browser") return ensureBrowser(input);
   if (mode === "browser-install") {
-    raisePriority();
+    setOwnPriority(constants.priority.PRIORITY_ABOVE_NORMAL, "The Chrome install runs");
     return runBrowserInstall(input);
   }
   if (mode === "lint") {
     // A background lint (Studio's, preview's) takes idle CPU only; a render waits on its lint, so that one does not.
-    if (input.background) lowerPriority();
+    if (input.background) setOwnPriority(constants.priority.PRIORITY_LOW, "Lint runs");
     return lintProject(
       input.projectDir,
       input.entryFile,

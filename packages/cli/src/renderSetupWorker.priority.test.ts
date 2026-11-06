@@ -7,7 +7,9 @@ vi.mock("node:os", async (importOriginal) => ({
   setPriority: os.setPriority,
 }));
 vi.mock("./utils/lintProject.js", () => ({ lintProject: vi.fn(async () => ({ ok: true })) }));
-vi.mock("./browser/installRun.js", () => ({ runBrowserInstall: vi.fn(async () => ({ ok: true })) }));
+vi.mock("./browser/installRun.js", () => ({
+  runBrowserInstall: vi.fn(async () => ({ ok: true })),
+}));
 
 beforeEach(() => {
   vi.resetModules();
