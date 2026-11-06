@@ -260,7 +260,6 @@ function framesSkippedSinceLastSeek(
   return [...replay].sort((x, y) => y - x).map((back) => t - back / fps);
 }
 
-/** Moves the playhead and settles any overlap that ended on the way; returns where it was. */
 function landOn(
   timeline: RuntimeTimelineLike,
   t: number,
