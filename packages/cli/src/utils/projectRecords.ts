@@ -91,7 +91,7 @@ export function writeRecord(projectDir: string, name: string, data: string): boo
   return dir !== null && replaceFile(join(dir, name), data, 0o600);
 }
 
-/** Removes a record that is a plain file; false when nothing was removed. */
+/** Deletes a record that is a plain file; false when there is none to delete. */
 export function removeRecord(projectDir: string, name: string): boolean {
   const dir = recordsDir(projectDir);
   try {
