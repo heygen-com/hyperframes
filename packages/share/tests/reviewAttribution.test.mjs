@@ -33,6 +33,7 @@ async function makeProject(t) {
   });
   return {
     dir,
+    render,
     state: () => readFile(join(metadata, "review-export.json"), "utf8").then(JSON.parse),
     request: {
       projectPath: dir,
@@ -59,7 +60,11 @@ test("an authenticated export retry sends a fresh mark and clears only the accep
       return session(refused ? "second" : "first");
     },
     fetchImpl: async (_url, init) => {
-      sent.push({ token: init.headers.authorization, body: JSON.parse(init.body) });
+      sent.push({
+        token: init.headers.authorization,
+        body: JSON.parse(init.body),
+        cutoff: (await project.state()).pending.reviewSent?.since,
+      });
       if (sent.length === 1) return new Response(null, { status: 401 });
       return Response.json({ data: { ...exportDto, status: "ready" } });
     },
@@ -75,12 +80,78 @@ test("an authenticated export retry sends a fresh mark and clears only the accep
     ],
   );
   assert.equal(sent[0].body.client_operation_id, sent[1].body.client_operation_id);
+  assert.deepEqual(
+    sent.map(({ cutoff }) => cutoff),
+    [100, 200],
+  );
   assert.equal(published.mock.callCount(), 1);
   assert.deepEqual(published.mock.calls[0].arguments, [project.dir, 200]);
   assert.deepEqual(onAdded.mock.calls[0].arguments, [
     { files: false, first: true, fromReview: "yes" },
   ]);
 });
+
+for (const refusedRetry of [false, true]) {
+  test(`a lost accepted export reply preserves later feedback (intervening 401: ${refusedRetry})`, async (t) => {
+    const project = await makeProject(t);
+    let timestamp = 100;
+    const activity = [];
+    const sent = [];
+    const accepted = new Map();
+    const published = t.mock.fn(async (_dir, cutoff) => {
+      while (activity.length && activity[0] <= cutoff) activity.shift();
+    });
+    const onAdded = t.mock.fn();
+    const client = reviewClient({
+      access: async () => session("token"),
+      fetchImpl: async (_url, init) => {
+        const body = JSON.parse(init.body);
+        sent.push({ body, mark: (await project.state()).pending.reviewSent });
+        if (refusedRetry && sent.length === 2) return new Response(null, { status: 401 });
+        const key = body.client_operation_id;
+        if (!accepted.has(key)) {
+          accepted.set(key, { ...exportDto, version_id: key, status: "ready" });
+        }
+        if (sent.length === 1) throw new Error("Accepted, but the response was lost");
+        return Response.json({ data: accepted.get(key) });
+      },
+    });
+    const fromReview = {
+      now: () => timestamp,
+      read: async () => (activity.length ? "yes" : "no"),
+      published,
+    };
+    const request = { ...project.request, client, fromReview, onAdded };
+
+    assert.notEqual(await addVersion(request), null);
+    activity.push(150);
+    timestamp = 200;
+    if (refusedRetry) assert.notEqual(await addVersion(request), null);
+    assert.equal(await addVersion(request), null);
+
+    const firstOperation = sent[0].body.client_operation_id;
+    assert.ok(sent.every(({ body }) => body.client_operation_id === firstOperation));
+    assert.deepEqual(
+      sent.map(({ body }) => body.from_review),
+      refusedRetry ? ["no", "yes", "yes"] : ["no", "yes"],
+    );
+    assert.ok(sent.every(({ mark }) => mark?.since === 100));
+    assert.deepEqual(published.mock.calls[0].arguments, [project.dir, 100]);
+    assert.deepEqual(onAdded.mock.calls[0].arguments, [{ files: false, first: true }]);
+    assert.deepEqual(activity, [150]);
+
+    timestamp = 300;
+    await writeFile(project.render, "next rendered video");
+    assert.equal(await addVersion(request), null);
+    assert.notEqual(sent.at(-1).body.client_operation_id, firstOperation);
+    assert.equal(sent.at(-1).body.from_review, "yes");
+    assert.deepEqual(published.mock.calls[1].arguments, [project.dir, 300]);
+    assert.deepEqual(onAdded.mock.calls[1].arguments, [
+      { files: false, first: false, fromReview: "yes" },
+    ]);
+    assert.deepEqual(activity, []);
+  });
+}
 
 test("approval of a held version clears its persisted review mark", async (t) => {
   const project = await makeProject(t);

@@ -35,8 +35,9 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  * @typedef {{ files: boolean, first: boolean, fromReview?: "yes" | "no" }} Added */
 
 /** `pending`: the create body as sent and its video once answered, so a retry is the same; `snapshotRefused`: the
- * server refused its snapshot, so it goes up video-only; `unanswered`: its create may have gone out and no answer has
- * said the server made nothing; `last`: the newest version.
+ * server refused its snapshot, so it goes up video-only; `unanswered`: its create may have gone out without a
+ * definitive result; `reviewSent`: cleanup cutoff, with attribution only when the accepted attempt is
+ * known; `last`: the newest version.
  * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string | null,
  *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean, reviewSent?: ReviewSent } | null,
  *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean, checksum?: string }
@@ -333,7 +334,7 @@ function bodyToSend(state, fresh, projectId) {
   const pending = state.pending;
   if (pending && sameRender(pending, fresh, projectId) && reusableSnapshot(pending, fresh))
     return pending;
-  return { body: fresh, videoId: null, projectId, unanswered: true };
+  return { body: fresh, videoId: null, projectId };
 }
 /** @param {NonNullable<VersionRecord["pending"]>} pending @param {ExportRequest} fresh @param {string} projectId */
 function sameRender(pending, fresh, projectId) {
@@ -352,43 +353,65 @@ function reusableSnapshot(pending, fresh) {
 /** No answer, or a server error, can follow a create the server made; a refusal says it made nothing.
  * @param {unknown} error */
 const unanswered = (error) =>
-  !(error instanceof ReviewFailed) || error.status === 0 || error.status >= 500;
+  !(error instanceof ReviewFailed) ||
+  error.status === 0 ||
+  error.status === 408 ||
+  error.status >= 500;
 
 /** The export as the server has it. A 422 `snapshot_mismatch` never costs the version: it goes up as video only, under
- * a new key, `kept` for a retry. A body is `unanswered` from before it is sent (the app can quit) until a refusal.
+ * a new key when no earlier send is unanswered.
  * @param {Required<VersionRequest>} r @param {string} id @param {NonNullable<VersionRecord["pending"]>} pending
  * @param {(next: NonNullable<VersionRecord["pending"]>) => Promise<void>} kept */
 async function createdExport(r, id, pending, kept) {
   if (pending.videoId) return { dto: await r.client.readExport(id, pending.videoId), pending };
   try {
-    return await sendCreate(r, id, pending);
+    return await sendCreate(r, id, pending, kept);
   } catch (error) {
-    if (!unanswered(error)) await kept({ ...pending, unanswered: false });
     const refused = error instanceof ReviewFailed && error.reason === "snapshot_mismatch";
-    if (!refused || !pending.body.snapshot) throw error;
+    if (!refused || !pending.body.snapshot || pending.unanswered) throw error;
     console.error("[review] snapshot refused; the version goes up without files:", error);
     const body = { ...pending.body, client_operation_id: `export-${randomUUID()}` };
     delete body.snapshot;
     const next = { ...pending, body, snapshotRefused: true };
     await kept(next);
-    return sendCreate(r, id, next);
+    return sendCreate(r, id, next, kept);
   }
 }
 
-/** Keep the mark from the attempt the server answered, without persisting it in the idempotent body.
- * @param {Required<VersionRequest>} r @param {string} id @param {NonNullable<VersionRecord["pending"]>} pending */
-async function sendCreate(r, id, pending) {
-  if (!r.fromReview) return { dto: await r.client.createExport(id, pending.body), pending };
+/** @param {Required<VersionRequest>} r @param {string} id @param {NonNullable<VersionRecord["pending"]>} pending
+ * @param {(next: NonNullable<VersionRecord["pending"]>) => Promise<void>} kept */
+async function sendCreate(r, id, pending, kept) {
   const host = r.fromReview;
   const { from_review: _, ...body } = pending.body;
-  const attempt = { mark: /** @type {ReviewSent | null} */ (null) };
-  const dto = await r.client.createExport(id, async () => {
-    const mark = await readFromReview(host, r.projectPath);
-    attempt.mark = mark;
-    return { ...body, ...(mark.value && { from_review: mark.value }) };
-  });
-  return { dto, pending: attempt.mark ? { ...pending, reviewSent: attempt.mark } : pending };
+  const replay = pending.unanswered;
+  /** @param {ReviewSent} [reviewSent] */
+  const beforeSend = (reviewSent) => kept({ ...pending, unanswered: true, reviewSent });
+  /** @type {ReviewSent | undefined} */
+  let mark;
+  try {
+    if (!host && !replay) await beforeSend();
+    const dto = await r.client.createExport(
+      id,
+      host
+        ? async () => {
+            mark = await readFromReview(host, r.projectPath);
+            // The auth loop only prepares a second send after a 401. A replay of an earlier run
+            // cannot assume that earlier send was refused.
+            if (!replay) await beforeSend({ since: mark.since });
+            return { ...body, ...(mark.value && { from_review: mark.value }) };
+          }
+        : pending.body,
+    );
+    const reviewSent = replay ? cleanupOnly(pending.reviewSent) : mark;
+    return { dto, pending: { ...pending, unanswered: false, reviewSent } };
+  } catch (error) {
+    if (!replay && !unanswered(error)) await kept(pending);
+    throw error;
+  }
 }
+
+/** @param {ReviewSent | undefined} mark */
+const cleanupOnly = (mark) => mark && { since: mark.since };
 
 /** Bytes sent, reported when the whole percent moves, not per chunk (a 2 GiB file is ~32k chunks).
  * @param {number} size @param {(progress: ReviewExportProgress) => void} report */
@@ -527,8 +550,10 @@ async function poll(r, id, current, until, every) {
 }
 
 /** A refusal the same body would get again, or a spent upload, needs a new key next time.
- * @param {unknown} error */
-const spent = (error) =>
+ * A refusal of a replay cannot settle an earlier unanswered create.
+ * @param {unknown} error @param {VersionRecord["pending"]} pending */
+const spent = (error, pending) =>
+  (!pending?.unanswered || pending.videoId !== null) &&
   error instanceof ReviewFailed &&
   error.status >= 400 &&
   error.status < 500 &&
@@ -606,7 +631,7 @@ async function sendVersion(r, report, source, id, state) {
     const done = await watch(r, id, uploaded, size, report, clock);
     return finishRun(r, state, pending, id, done, first);
   } catch (error) {
-    if (spent(error)) await writeState(r.projectPath, { ...state, pending: null });
+    if (spent(error, state.pending)) await writeState(r.projectPath, { ...state, pending: null });
     console.error("[review] version failed:", error);
     return said(error);
   }
