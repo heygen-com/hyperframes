@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <!-- Struktur mengikuti template resmi `blank` (packages/cli/src/templates/blank). -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --ground: #0b1020;
+        --ink: #ffffff;
+        --accent: #38bdf8;
+        --font-display: sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--ground);
+      }
+      #root {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        font-family: var(--font-display);
+        background: linear-gradient(135deg, #0b1020 0%, #172554 100%);
+      }
+      #bar {
+        width: 480px;
+        height: 10px;
+        border-radius: 5px;
+        background: var(--accent);
+        transform-origin: left center;
+      }
+      #title {
+        color: var(--ink);
+        font-size: 120px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+      }
+      #subtitle {
+        color: #cbd5e1;
+        font-size: 48px;
+        font-weight: 400;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="5"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="bar" class="clip" data-start="0" data-duration="5" data-track-index="0"></div>
+      <h1 id="title" class="clip" data-start="0" data-duration="5" data-track-index="1">Halo, HyperFrames</h1>
+      <p id="subtitle" class="clip" data-start="0.6" data-duration="4.4" data-track-index="2">
+        Dirender di Cloudflare Free + GitHub Actions
+      </p>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      // Aksen sudah tampil di frame 0 (thumbnail tidak kosong), lalu melebar.
+      tl.fromTo("#bar", { scaleX: 0.2 }, { scaleX: 1, duration: 1.2, ease: "power3.out" }, 0);
+      tl.fromTo("#title", { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.9, ease: "power3.out" }, 0.1);
+      tl.fromTo("#subtitle", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.8, ease: "power2.out" }, 0.6);
+      // Gerak lambat sampai akhir supaya tidak ada "dead stretch" > 3 detik.
+      tl.to("#root", { backgroundPosition: "20% 20%", duration: 5, ease: "none" }, 0);
+      tl.to("#title", { scale: 1.04, duration: 3.8, ease: "none" }, 1.2);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

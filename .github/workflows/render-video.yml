@@ -1,0 +1,153 @@
+# Render video HyperFrames -> R2 (semua di paket GRATIS).
+#
+# Pemicu:
+#   - repository_dispatch (event_type: render-video) dari Worker `hyperframes-render`
+#   - workflow_dispatch (manual, untuk tes dari tab Actions)
+#
+# Alur: validasi input -> setup Node 22 + FFmpeg -> render komposisi
+#       cloudflare-free/compositions/<composition> dengan CLI publik (`npx hyperframes`)
+#       -> artifact cadangan -> upload ke R2: renders/<id>.mp4
+#
+# Secret yang dibutuhkan (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN  (izin R2 edit)   CLOUDFLARE_ACCOUNT_ID
+# Input TIDAK diinterpolasi langsung ke shell: semuanya lewat `env:` lalu divalidasi.
+#
+# CATATAN: repository_dispatch hanya berjalan dari workflow di default branch.
+name: Render video
+
+on:
+  repository_dispatch:
+    types: [render-video]
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "ID output (^[a-zA-Z0-9_-]{1,64}$) -> renders/<id>.mp4"
+        required: true
+        type: string
+      composition:
+        description: "Nama folder di cloudflare-free/compositions/"
+        required: true
+        default: contoh
+        type: string
+      quality:
+        description: "Preset kualitas encode"
+        required: false
+        default: standard
+        type: choice
+        options: [draft, standard, high]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-video-${{ github.event.client_payload.id || inputs.id }}
+  cancel-in-progress: false
+
+env:
+  # Versi dipin supaya render bisa diulang. Naikkan secara sadar.
+  HYPERFRAMES_VERSION: "0.9.19"
+  WRANGLER_VERSION: "4.156.2"
+  R2_BUCKET: hyperframes-renders
+  # Dokumentasi CLI: variabel ini mematikan telemetri & cek update.
+  HYPERFRAMES_NO_TELEMETRY: "1"
+  DO_NOT_TRACK: "1"
+  HYPERFRAMES_NO_UPDATE_CHECK: "1"
+
+jobs:
+  render:
+    # Jangan jalan di repo upstream bila workflow ini ikut ter-merge ke sana.
+    if: github.repository_owner != 'heygen-com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # SHA action dipin, disalin dari workflow bawaan repo ini (ci.yml).
+      - name: Checkout (hanya folder komposisi)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: cloudflare-free/compositions
+          persist-credentials: false
+
+      - name: Validasi input
+        env:
+          INPUT_ID: ${{ github.event.client_payload.id || inputs.id }}
+          INPUT_COMPOSITION: ${{ github.event.client_payload.composition || inputs.composition || 'contoh' }}
+          INPUT_QUALITY: ${{ github.event.client_payload.quality || inputs.quality || 'standard' }}
+        run: |
+          set -euo pipefail
+          re='^[a-zA-Z0-9_-]{1,64}$'
+          [[ "$INPUT_ID" =~ $re ]] || { echo "::error::id tidak valid"; exit 1; }
+          [[ "$INPUT_COMPOSITION" =~ $re ]] || { echo "::error::composition tidak valid"; exit 1; }
+          case "$INPUT_QUALITY" in
+            draft|standard|high) ;;
+            *) echo "::error::quality tidak valid"; exit 1 ;;
+          esac
+          dir="cloudflare-free/compositions/$INPUT_COMPOSITION"
+          [ -f "$dir/index.html" ] || { echo "::error::komposisi tidak ditemukan: $dir/index.html"; exit 1; }
+          # Nilai sudah lolos regex (tanpa newline), aman ditulis ke GITHUB_ENV.
+          {
+            echo "RENDER_ID=$INPUT_ID"
+            echo "RENDER_DIR=$dir"
+            echo "RENDER_QUALITY=$INPUT_QUALITY"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Pasang FFmpeg
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+
+      - name: hyperframes doctor (informasi)
+        continue-on-error: true
+        run: npx --yes "hyperframes@$HYPERFRAMES_VERSION" doctor
+
+      - name: Render komposisi
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/out"
+          OUT="$RUNNER_TEMP/out/$RENDER_ID.mp4"
+          cd "$RENDER_DIR"
+          npx --yes "hyperframes@$HYPERFRAMES_VERSION" lint
+          npx --yes "hyperframes@$HYPERFRAMES_VERSION" render --output "$OUT" --quality "$RENDER_QUALITY"
+          echo "OUT_FILE=$OUT" >> "$GITHUB_ENV"
+
+      - name: Verifikasi MP4
+        run: |
+          set -euo pipefail
+          [ -s "$OUT_FILE" ] || { echo "::error::MP4 tidak ada atau kosong"; exit 1; }
+          size=$(stat -c%s "$OUT_FILE")
+          echo "Ukuran: $size byte"
+          # Batas aman upload `wrangler r2 object put` (300 MiB).
+          [ "$size" -le 314572800 ] || { echo "::error::MP4 lebih dari 300 MiB"; exit 1; }
+          ffprobe -v error -show_entries format=duration,size -of default=nw=1 "$OUT_FILE"
+
+      - name: Artifact cadangan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: render-${{ env.RENDER_ID }}
+          path: ${{ env.OUT_FILE }}
+          retention-days: 3
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload ke R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::Secret CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID belum diset"
+            exit 1
+          fi
+          npx --yes "wrangler@$WRANGLER_VERSION" r2 object put \
+            "$R2_BUCKET/renders/$RENDER_ID.mp4" \
+            --file "$OUT_FILE" \
+            --content-type video/mp4 \
+            --remote --force
+          echo "Terupload: renders/$RENDER_ID.mp4" >> "$GITHUB_STEP_SUMMARY"

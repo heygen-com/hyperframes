@@ -1,0 +1,21 @@
+// Worker "hyperframes-render" — jalan di paket Workers FREE.
+// Tidak ada Containers / Sandbox / Browser Rendering / Paid plan di sini.
+//
+// Secret (JANGAN ditulis di file ini; set lewat `wrangler secret put` atau worker_secret_put):
+//   - GITHUB_TOKEN : PAT fine-grained, hanya untuk repo fork ini, izin Contents: Read and write
+//   - API_KEY      : kunci untuk header x-api-key pada POST /render
+{
+  "name": "hyperframes-render",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "r2_buckets": [
+    {
+      "binding": "VIDEOS",
+      "bucket_name": "hyperframes-renders"
+    }
+  ],
+  "vars": {
+    "GITHUB_REPO": "harvey-moeid/hyperframes"
+  }
+}
