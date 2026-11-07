@@ -251,6 +251,17 @@ export async function completeWithRetry(
 // complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
 const TYPE_REFUSAL = /^(Stored file type|content_type not allowed|Stored file does not have a ZIP)/;
 
+const STATUSES_NOT_ABOUT_THE_FILE = new Set([401, 403, 408, 409, 429]);
+
+function refusesTheFile(err: unknown): boolean {
+  return (
+    err instanceof HyperframesApiError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    !STATUSES_NOT_ABOUT_THE_FILE.has(err.status)
+  );
+}
+
 function nameRefusedFile(err: unknown, filename: string, contentType: string): unknown {
   if (!(err instanceof HyperframesApiError) || err.code !== "invalid_parameter") return err;
   const kind = contentType.split("/")[0];
@@ -380,6 +391,7 @@ export async function uploadAssetViaDirectUpload(
     opts.signal,
     sent.inParts,
   ).catch((err: unknown) => {
+    if (refusesTheFile(err)) sent.forget?.();
     throw nameRefusedFile(err, opts.filename, opts.contentType);
   });
   sent.forget?.();

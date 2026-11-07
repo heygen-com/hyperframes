@@ -190,6 +190,35 @@ describe("a big file goes up in parts", () => {
     expect(second.mocks.createAssetUpload).not.toHaveBeenCalled();
   }, 30_000);
 
+  it("forgets the saved plan when the cloud refuses the file, and keeps it when complete only failed", async () => {
+    const file = bigFile(FILE_BYTES);
+    const upload = (client: HyperframesCloudClient) =>
+      uploadAssetViaDirectUpload({
+        client,
+        ...file,
+        filename: "big.mp4",
+        contentType: "video/mp4",
+      });
+
+    const refused = cloud();
+    refused.complete.mockRejectedValue(
+      new HyperframesApiError({ status: 400, code: "invalid_parameter", message: "bad type" }),
+    );
+    await expect(upload(refused.client)).rejects.toThrow(/bad type/);
+    const afterRefusal = cloud();
+    await upload(afterRefusal.client);
+    expect(afterRefusal.mocks.createAssetUpload).toHaveBeenCalledTimes(1);
+
+    const failed = cloud();
+    failed.complete.mockRejectedValue(
+      new HyperframesApiError({ status: 503, message: "try again later" }),
+    );
+    await expect(upload(failed.client)).rejects.toThrow(/try again later/);
+    const afterFailure = cloud();
+    await upload(afterFailure.client);
+    expect(afterFailure.mocks.createAssetUpload).not.toHaveBeenCalled();
+  }, 60_000);
+
   it("reports bytes from the parts done plus the live ones", async () => {
     const events: UploadProgressEvent[] = [];
     const { client } = cloud();
