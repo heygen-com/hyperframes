@@ -71,9 +71,11 @@ export function priceOf(r: GenerateRequest): Price {
       if (!GPT_MODELS.has(model))
         return { usd: null, list: null, credits: null, basis: `${model}, not priced ahead` };
       const each = GPT_IMAGE[r.aspect ?? "16:9"] ?? GPT_IMAGE["16:9"]!;
+      const list = each + refs * GPT_REFERENCE;
+      const about = Math.ceil(list * HF_CREDITS_PER_USD - 1e-9);
       return at(
-        each + refs * GPT_REFERENCE,
-        `${model} at ${r.aspect ?? "16:9"}, about $0.0125 a reference`,
+        list,
+        `${model} at ${r.aspect ?? "16:9"}, about ${about} credits (charged at vendor cost), with about $0.0125 a reference`,
       );
     }
     case "video": {

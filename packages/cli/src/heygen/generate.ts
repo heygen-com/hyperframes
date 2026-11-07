@@ -660,6 +660,7 @@ export interface Generated {
   cuts_inside?: number[] | null;
   /** What was changed or looks wrong in the result: a crop to the requested aspect, text that may have come back. */
   notes?: string[];
+  charged_credits?: number;
 }
 
 // fallow-ignore-next-line complexity
@@ -707,6 +708,10 @@ export async function generate(
         "run the same command again; it re-reads the job",
       );
     writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    const charged =
+      isRecord(job.charged) && typeof job.charged.amount === "number"
+        ? job.charged.amount
+        : undefined;
     // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
     let cuts: number[] | null | undefined;
     if (r.type === "video")
@@ -761,6 +766,7 @@ export async function generate(
             : {}),
           ...(r.voice ? { voice: r.voice } : {}),
           ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
+          ...(charged !== undefined ? { charged_credits: charged } : {}),
         },
       }).id;
       regenerateIndex(project);
@@ -773,6 +779,7 @@ export async function generate(
       ...(ledger ? { ledger } : {}),
       ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
       ...(notes.length ? { notes } : {}),
+      ...(charged !== undefined ? { charged_credits: charged } : {}),
     };
   } finally {
     rmSync(work, { recursive: true, force: true });

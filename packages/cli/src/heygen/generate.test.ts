@@ -143,6 +143,52 @@ describe("generate", () => {
     expect(ledger).toContain('"references":["ref.png"]');
   });
 
+  it("reports and records the credits HeyGen says it charged", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img2",
+              status: "completed",
+              images: [{ url: "https://files.test/charged.png" }],
+              charged: { amount: 41, pool: "hyperframes" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/charged.png"),
+      prompt: "a charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r.charged_credits).toBe(41);
+    expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
+      '"charged_credits":41',
+    );
+  });
+
+  it("reports no charge when HeyGen does not say one", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/uncharged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img3",
+              status: "completed",
+              images: [{ url: "https://files.test/uncharged.png" }],
+              charged: null,
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/uncharged.png"),
+      prompt: "an uncharged picture",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
+  });
+
   it("sends a picture with no ffmpeg on the machine, shrunk to 2048 px", async () => {
     const big = join(project, "big.png");
     const sharp = await loadSharp("test");
@@ -790,6 +836,15 @@ describe("generate", () => {
     expect(priceOf({ type: "image", out: "a.png", model: "some-new-model" }).credits).toBeNull();
   });
 
+  it("says a GPT Image price is an estimate charged at vendor cost, and a Nano Banana one is not", () => {
+    expect(
+      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" }).basis,
+    ).toBe(
+      "gpt-image-2.5 at 16:9, about 40 credits (charged at vendor cost), with about $0.0125 a reference",
+    );
+    expect(priceOf({ type: "image", out: "a.png" }).basis).toBe("nano-banana-2, $0.067 an image");
+  });
+
   it("prices only a request the real call would accept", () => {
     // --plan runs the same checks as the real call, so it never prices a request the call would refuse.
     const [plate, voice] = [join(project, "plate.png"), join(project, "voice.m4a")];
@@ -1013,6 +1068,7 @@ describe("each route through the generated client", () => {
           [file, undefined],
         ]);
         expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+        expect(r).not.toHaveProperty("charged_credits");
       },
     );
 
