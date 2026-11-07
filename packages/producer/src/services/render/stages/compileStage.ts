@@ -154,6 +154,44 @@ function adaptAspectAgnosticResolution(
 }
 
 /**
+ * The HTML file to compile for `entryFile`. A `<template>`-wrapped
+ * sub-composition has no live root, timeline or duration of its own, so it is
+ * rendered through the project's index.html shell with only its mount host kept.
+ */
+export function resolveEntryHtmlPath(input: {
+  projectDir: string;
+  workDir: string;
+  entryFile: string;
+  log: ProducerLogger;
+}): string {
+  const { projectDir, workDir, entryFile, log } = input;
+  const htmlPath = join(projectDir, entryFile);
+  const rawEntry = readTextFile(htmlPath);
+  if (entryFile === "index.html" || !isTemplateEntry(rawEntry)) return htmlPath;
+
+  const projectIndexPath = join(projectDir, "index.html");
+  if (!existsSync(projectIndexPath)) {
+    throw new Error(
+      `Template entry file "${entryFile}" requires a project index.html to extract its render shell.`,
+    );
+  }
+  const standaloneHtml = extractStandaloneEntryFromIndex(
+    readTextFile(projectIndexPath),
+    entryFile,
+    rawEntry,
+  );
+  if (!standaloneHtml) {
+    throw new Error(
+      `Entry file "${entryFile}" is not mounted from index.html via data-composition-src, so it cannot be rendered independently.`,
+    );
+  }
+  const wrapperPath = join(workDir, "standalone-entry.html");
+  writeFileSync(wrapperPath, standaloneHtml, "utf-8");
+  log.info("Extracted standalone entry from index.html host context", { entryFile });
+  return wrapperPath;
+}
+
+/**
  * 4:4:4 captures opaque PNG, which drawElement cannot verify or worker-encode (JPEG-only), so it
  * turns drawElement off. Returns the compile gate that applies after this check.
  */

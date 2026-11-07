@@ -470,6 +470,72 @@ describe("runCompileStage — aspect-agnostic --resolution re-map", () => {
   });
 });
 
+describe("resolveEntryHtmlPath", () => {
+  const TEMPLATE = `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="2"></div></template>`;
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  function resolve(entryFile: string): string {
+    if (!fixture) throw new Error("fixture not set up");
+    return resolveEntryHtmlPath({
+      projectDir: join(fixture.workDir, "project"),
+      workDir: fixture.workDir,
+      entryFile,
+      log: noopLog,
+    });
+  }
+
+  it("returns a plain entry untouched and writes no wrapper", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    expect(resolve("index.html")).toBe(fixture.htmlPath);
+    expect(existsSync(join(fixture.workDir, "standalone-entry.html"))).toBe(false);
+  });
+
+  it("returns a non-template sub-composition file untouched", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    const subPath = join(fixture.workDir, "project", "full.html");
+    writeFileSync(subPath, PLAIN_HTML, "utf-8");
+    expect(resolve("full.html")).toBe(subPath);
+  });
+
+  it("isolates a mounted template entry inside the index shell", () => {
+    fixture = setupFixture(
+      `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="9">
+          <div id="scene" data-composition-id="scene" data-composition-src="compositions/scene.html"></div>
+          <div id="other" data-composition-id="other" data-composition-src="compositions/other.html"></div>
+        </div>
+      </body></html>`,
+    );
+    mkdirSync(join(fixture.workDir, "project", "compositions"));
+    writeFileSync(join(fixture.workDir, "project", "compositions", "scene.html"), TEMPLATE);
+    const wrapper = resolve("compositions/scene.html");
+    expect(wrapper).toBe(join(fixture.workDir, "standalone-entry.html"));
+    const html = readFileSync(wrapper, "utf-8");
+    expect(html).toContain('id="scene"');
+    expect(html).toContain('data-duration="2"');
+    expect(html).not.toContain('id="other"');
+  });
+
+  it("refuses a template entry that index.html does not mount", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    mkdirSync(join(fixture.workDir, "project", "compositions"));
+    writeFileSync(join(fixture.workDir, "project", "compositions", "orphan.html"), TEMPLATE);
+    expect(() => resolve("compositions/orphan.html")).toThrow(/not mounted from index\.html/);
+  });
+
+  it("requires an index.html to extract a template entry's shell", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    rmSync(fixture.htmlPath);
+    writeFileSync(join(fixture.workDir, "project", "scene.html"), TEMPLATE);
+    expect(() => resolve("scene.html")).toThrow(/requires a project index\.html/);
+  });
+});
+
 describe("runCompileStage — chromaSubsampling 444 drawElement gate", () => {
   let fixture: CompileFixture | null = null;
 

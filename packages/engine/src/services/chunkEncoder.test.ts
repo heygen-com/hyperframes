@@ -955,11 +955,15 @@ describe("getEncoderPreset", () => {
   });
 
   it("ignores the chroma option for webm, mov and HDR presets", () => {
-    expect(getEncoderPreset("standard", "webm", undefined, undefined, "444").pixelFormat).toBe("yuva420p");
-    expect(getEncoderPreset("standard", "mov", undefined, undefined, "444").pixelFormat).toBe("yuva444p10le");
-    expect(getEncoderPreset("standard", "mp4", { transfer: "pq" }, undefined, "444").pixelFormat).toBe(
-      "yuv420p10le",
+    expect(getEncoderPreset("standard", "webm", undefined, undefined, "444").pixelFormat).toBe(
+      "yuva420p",
     );
+    expect(getEncoderPreset("standard", "mov", undefined, undefined, "444").pixelFormat).toBe(
+      "yuva444p10le",
+    );
+    expect(
+      getEncoderPreset("standard", "mp4", { transfer: "pq" }, undefined, "444").pixelFormat,
+    ).toBe("yuv420p10le");
   });
 });
 
