@@ -89,7 +89,6 @@ export interface ProjectLintResult {
   totalErrors: number;
   totalWarnings: number;
   totalInfos: number;
-  /** Files under compositions/ that the entry never mounts, so they were not linted. */
   unmountedCompositions?: string[];
 }
 
@@ -646,7 +645,6 @@ function lintMissingLocalAsset(
   return findings;
 }
 
-/** A url() match's local path, or undefined for a remote, inline or unresolved-placeholder url. */
 function localCssUrl(match: RegExpMatchArray): string | undefined {
   const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
   // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
