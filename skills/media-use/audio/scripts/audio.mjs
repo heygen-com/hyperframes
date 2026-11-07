@@ -26,7 +26,7 @@
 //   }
 //
 // ── audio_meta.json (output, id-keyed) ───────────────────────────────────────
-//   { tts_provider, voice_id,
+//   { tts_provider, voice_id, voice_credit,
 //     bgm: { path, volume, mode, query?, duration_s? } | null,
 //     bgm_pending, bgm_provider, bgm_pid, bgm_log, bgm_mode, bgm_target_duration_s, …,
 //     voices: [ { id, path, duration_s, words: [{id,text,start,end}] } ],
@@ -52,6 +52,7 @@ import {
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
+import { voiceCredit } from "./lib/voice-credit.mjs";
 import { parseWords, scaleWords, stretchToWav } from "./lib/recording.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
@@ -315,6 +316,7 @@ if (only.has("sfx")) {
 const meta = {
   tts_provider: ttsProvider,
   voice_id: voiceId,
+  voice_credit: voiceCredit(voices, ttsProvider),
   bgm,
   ...bgmFields,
   voices,
