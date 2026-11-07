@@ -20,12 +20,14 @@ import {
 import { createShareAccess, shareSite } from "./auth.js";
 import { assertReviewUploadStorage, bindCliShareProject } from "./host.js";
 import { prepareShareRender } from "./render.js";
+import { prepareCliShareSource, uncheckedSource, type PreparedShareSource } from "./sources.js";
 
 export interface ShareAction {
   action: "share" | "update" | "status" | "manage";
   audience?: AccessMode;
   space?: string;
   waitSeconds?: number;
+  videoOnly?: boolean;
 }
 function linkState(share: ReviewShare | null, ready: boolean): string {
   if (!share) return "not_shared";
@@ -49,6 +51,7 @@ async function readStatus(dir: string, client: ReviewClient, expectedProjectId?:
     pending,
     state: linkState(share, ready),
     ready,
+    source: uncheckedSource(),
     ...statusLinks(activeUrl, ready, processing, project),
   };
 }
@@ -77,11 +80,13 @@ function selectSpace(spaces: Awaited<ReturnType<ReviewClient["spaces"]>>, id?: s
   if (id) return spaces.find((space) => space.space_id === id);
   return spaces.find((space) => space.bound) ?? spaces.find((space) => space.kind === "personal");
 }
-function assertUploadProject(share: ReviewShare | null, expectedId?: string): string {
+function assertUploadProject(
+  share: ReviewShare | null,
+  expectedId?: string,
+): asserts share is ReviewShare & { projectId: string } {
   const id = share?.projectId;
   if (!id || (expectedId && id !== expectedId))
     throw new ReviewFailed(409, "review_binding_changed");
-  return id;
 }
 function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
   if (!share) {
@@ -145,7 +150,7 @@ export function createShareService(
     await auth.access();
     return readStatus(dir, client, expectedProjectId);
   };
-  const upload = async (input: ShareAction, projectId: string) => {
+  const upload = async (input: ShareAction, projectId: string, sources: PreparedShareSource) => {
     const end = Date.now() + (input.waitSeconds ?? 300) * 1000;
     let added = false;
     const failure = await addVersion({
@@ -155,13 +160,16 @@ export function createShareService(
       client,
       onProgress: progress,
       allowPending: true,
+      ...(sources.filesForExport && { filesForExport: sources.filesForExport }),
+      requireSource: sources.requireSource,
+      omitSource: sources.source.at === "video_only",
       onAdded: () => {
         added = true;
       },
       open: () => Date.now() < end,
     });
     if (failure) throw new Error(failure);
-    const result = await status(projectId);
+    const result = { ...(await status(projectId)), source: sources.source };
     if (result.version.failure) throw new Error(result.version.failure);
     if (!added && !result.version.last?.current)
       return { ...result, state: "processing", ready: false, url: null };
@@ -177,29 +185,45 @@ export function createShareService(
           spaceId: space,
           audience: input.audience,
         });
-    const projectId = assertUploadProject(share, current?.projectId);
-    if (share?.takedown) throw new ReviewFailed(409, "moderation_hold");
+    assertUploadProject(share, current?.projectId);
+    if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
     assertExistingIntent(share, {
       ...input,
       space: input.space ?? space,
       audience: input.audience ?? current?.access,
     });
-    return projectId;
+    return { projectId: share.projectId, spaceId: share.space?.id, audience: share.access };
+  };
+  const checkPreparedTarget = async (target: Awaited<ReturnType<typeof uploadTarget>>) => {
+    const share = await reviewStatus({ projectPath: dir, client });
+    assertUploadProject(share, target.projectId);
+    if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
+    assertExistingIntent(share, {
+      action: "update",
+      space: target.spaceId,
+      audience: target.audience,
+    });
   };
   const run = async (input: ShareAction) => {
     const current = await status();
     if (input.action === "status" || input.action === "manage") return current;
     assertExistingIntent(current.share, input);
     if (retrievesExisting(current, input)) return current;
-    if (!(await client.reviewFlags()).versionSharing)
-      throw new ReviewFailed(403, "feature_unavailable");
+    const flags = await client.reviewFlags();
+    if (!flags.versionSharing) throw new ReviewFailed(403, "feature_unavailable");
     const space = current.share
       ? current.share.space?.id
       : await preflightFirst(dir, client, input);
     assertResumeSource(current, input);
     assertReviewUploadStorage();
     await prepareShareRender(dir);
-    return upload(input, await uploadTarget(current.share, input, space));
+    const target = await uploadTarget(current.share, input, space);
+    const sources = await prepareCliShareSource(dir, auth.access, target.spaceId, {
+      videoOnly: input.videoOnly,
+      shareFiles: flags.shareFiles,
+    });
+    if (sources.requireSource) await checkPreparedTarget(target);
+    return upload(input, target.projectId, sources);
   };
   return {
     status,

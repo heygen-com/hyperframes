@@ -1,4 +1,5 @@
 import { ReviewFailed, reviewSentence } from "@hyperframes/share";
+import { ShareSourceError } from "./sources.js";
 import { isAuthError } from "../auth/errors.js";
 import { CliUsageError } from "../utils/commandResult.js";
 
@@ -20,6 +21,8 @@ const HINTS: Record<string, string> = {
 };
 export function shareError(error: unknown): { code: string; message: string } {
   if (error instanceof CliUsageError) return { code: error.code, message: error.message };
+  if (error instanceof ShareSourceError)
+    return { code: "source_unavailable", message: error.message };
   if (isAuthError(error))
     return {
       code: error.code.toLowerCase(),

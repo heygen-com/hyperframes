@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { projectFingerprint } from "@hyperframes/share";
+import { projectFingerprint, shareSourceFingerprint } from "@hyperframes/share";
+
+export const shareContentFingerprint = shareSourceFingerprint;
 
 export interface ShareRender {
   path: string;
   id: string;
   fingerprint: string;
+  contentFingerprint?: string;
 }
 
 export function latestShareRender(dir: string): ShareRender | null {
@@ -33,16 +36,29 @@ export function latestShareRender(dir: string): ShareRender | null {
     const expected = join(realpathSync(dir), ".hyperframes", "share-renders", `${value.id}.mp4`);
     if (value.path !== expected || !existsSync(expected) || realpathSync(expected) !== expected)
       return null;
-    return { path: expected, id: value.id, fingerprint: value.fingerprint };
+    const contentFingerprint =
+      "contentFingerprint" in value && typeof value.contentFingerprint === "string"
+        ? value.contentFingerprint
+        : undefined;
+    return {
+      path: expected,
+      id: value.id,
+      fingerprint: value.fingerprint,
+      ...(contentFingerprint && { contentFingerprint }),
+    };
   } catch {
     return null;
   }
 }
 
 export async function prepareShareRender(dir: string): Promise<void> {
-  const before = await projectFingerprint(dir);
+  const [before, content] = await Promise.all([
+    projectFingerprint(dir),
+    shareContentFingerprint(dir),
+  ]);
   const previous = latestShareRender(dir);
-  if (previous?.fingerprint === before) return;
+  if (content && previous?.fingerprint === before && previous.contentFingerprint === content)
+    return;
   const stateFolder = join(dir, ".hyperframes");
   if (existsSync(stateFolder) && realpathSync(stateFolder) !== stateFolder)
     throw new Error("Sharing state must stay inside this project, without symlinks.");
@@ -79,11 +95,18 @@ export async function prepareShareRender(dir: string): Promise<void> {
     });
     if (!existsSync(output))
       throw new Error("The render did not produce a video. Run hyperframes render to diagnose it.");
-    if ((await projectFingerprint(dir)) !== before)
+    const [after, afterContent] = await Promise.all([
+      projectFingerprint(dir),
+      shareContentFingerprint(dir),
+    ]);
+    if (after !== before || afterContent !== content)
       throw new Error(
         "The project changed while rendering. Share again to capture the current project.",
       );
-    await writeFile(temporary, JSON.stringify({ id, path: output, fingerprint: before }));
+    await writeFile(
+      temporary,
+      JSON.stringify({ id, path: output, fingerprint: before, contentFingerprint: content }),
+    );
     await rename(temporary, target);
   } catch (error) {
     await Promise.allSettled([rm(output, { force: true }), rm(temporary, { force: true })]);

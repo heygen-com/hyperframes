@@ -1,8 +1,16 @@
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { latestShareRender, prepareShareRender } from "./render.js";
+import { dirname, join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { projectFingerprint } from "@hyperframes/share";
+import { latestShareRender, prepareShareRender, shareContentFingerprint } from "./render.js";
+const rendering = vi.hoisted(() => ({ execute: vi.fn() }));
+vi.mock("../commands/render/plan.js", () => ({ createRenderPlan: (plan: unknown) => plan }));
+vi.mock("../commands/render/execute.js", () => ({ executeRenderPlan: rendering.execute }));
+vi.mock("../commands/render.js", () => ({
+  renderLocal: vi.fn(),
+  checkRenderResolutionPreflight: vi.fn(),
+}));
 const dirs: string[] = [];
 function folder() {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-share-")));
@@ -41,4 +49,26 @@ describe("local sharing render boundary", () => {
     );
     expect(latestShareRender(dir)).toEqual({ id, path: output, fingerprint: "f" });
   });
+  it.each([".media/voice.mp3", ".hyperframes/studio-manual-edits.json"])(
+    "invalidates a cached render when %s changes",
+    async (path) => {
+      const dir = folder();
+      writeFileSync(join(dir, "index.html"), '<audio src=".media/voice.mp3"></audio>');
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), "original");
+      rendering.execute.mockImplementation(async ({ output }: { output: string }) => {
+        writeFileSync(output, "rendered video");
+      });
+      await prepareShareRender(dir);
+      const original = latestShareRender(dir);
+      const watcher = await projectFingerprint(dir);
+      await prepareShareRender(dir);
+      expect(latestShareRender(dir)?.id).toBe(original?.id);
+      writeFileSync(join(dir, path), "changed");
+      expect(await projectFingerprint(dir)).toBe(watcher);
+      expect(await shareContentFingerprint(dir)).not.toBe(original?.contentFingerprint);
+      await prepareShareRender(dir);
+      expect(latestShareRender(dir)?.id).not.toBe(original?.id);
+    },
+  );
 });

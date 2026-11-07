@@ -38,6 +38,10 @@ export default defineCommand({
       type: "boolean",
       description: "Render and add a new video version to the existing share",
     },
+    "video-only": {
+      type: "boolean",
+      description: "Share only the rendered video, without editable source",
+    },
     status: { type: "boolean", description: "Read status without rendering or uploading" },
     manage: { type: "boolean", description: "Open this share's web management page" },
     space: { type: "string", description: "Owning workspace for a new share" },
@@ -87,6 +91,7 @@ interface ShareArgs {
   json?: boolean;
   "wait-seconds"?: string;
   space?: string;
+  "video-only"?: boolean;
 }
 function parseInput(args: ShareArgs): ShareAction {
   const waitSeconds = Number(args["wait-seconds"]);
@@ -97,7 +102,7 @@ function parseInput(args: ShareArgs): ShareAction {
   const audience = requestedAudience(args);
   const action = args.status ? "status" : args.manage ? "manage" : args.update ? "update" : "share";
 
-  return { action, audience, space: args.space, waitSeconds };
+  return { action, audience, space: args.space, waitSeconds, videoOnly: args["video-only"] };
 }
 
 function requestedAudience(args: ShareArgs) {
@@ -137,6 +142,8 @@ async function chooseAudience(input: ShareAction, args: ShareArgs, service: Shar
 }
 
 async function presentResult(result: ShareState, input: ShareAction, json: boolean) {
+  if (!json && result.source.at === "video_only")
+    console.error(`Sharing video only (${result.source.reason}).`);
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
   else if (input.action === "manage") {
     console.log(result.manageUrl);
