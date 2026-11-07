@@ -116,9 +116,9 @@ export class CheckDeadline {
   enter = (phase: CheckPhase, detail?: string): void => {
     if (this.expired) return;
     const now = Date.now();
+    if (this.work?.phase !== phase) this.announce(phase, PHASE_LABELS[phase]);
     if (this.work) this.spend(this.work.phase, now - this.work.since);
     this.work = { phase, since: now, detail };
-    this.announce(phase, `${PHASE_LABELS[phase]}${detail ? ` (${detail})` : ""}`);
     this.spend(phase, 0);
     this.rearm();
   };
