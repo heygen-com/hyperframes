@@ -16,6 +16,7 @@ import {
   readSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -356,6 +357,59 @@ function concatArgs(count: number, video: boolean, audio: number | null): string
   ];
 }
 
+// Share of the cap a limited re-encode aims at; the rest covers the container and the rate limit's one-second buffer.
+const LIMITED_SHARE = 0.85;
+
+/** Rate limits that keep a re-encode under `maxBytes`: crf stays the quality target and the limit bounds the size.
+ * Empty when the audio alone fills the budget. */
+export function sizeLimitArgs(opts: {
+  maxBytes: number;
+  seconds: number;
+  audioBitsPerSecond: number;
+}): string[] {
+  const bits = (opts.maxBytes * 8 * LIMITED_SHARE) / opts.seconds - opts.audioBitsPerSecond;
+  if (!(bits >= 1000)) return [];
+  const rate = `${Math.floor(bits / 1000)}k`;
+  return ["-maxrate", rate, "-bufsize", rate];
+}
+
+const bitsPerSecond = (args: readonly string[]) => {
+  const rate = args[args.indexOf("-b:a") + 1];
+  return rate ? Number.parseInt(rate, 10) * 1000 : 0;
+};
+
+async function durationSeconds(sourcePath: string): Promise<number | null> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return null;
+  const { stdout } = await execFileAsync(ffprobe, [
+    ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", sourcePath],
+  ]);
+  const value = Number(stdout.trim());
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** The size limit for one re-encode, only when the source is itself over the cap (a smaller one keeps crf alone). */
+async function limitFor(
+  sourcePath: string,
+  preset: (typeof REENCODE_PRESETS)[PresetName],
+  segments: PlayedSegment[] | undefined,
+): Promise<string[]> {
+  const maxBytes = ACCEPTED[preset.ext]?.maxBytes ?? 0;
+  if (!preset.contentType.startsWith("video/") || statSync(sourcePath).size <= maxBytes) return [];
+  const seconds = segments?.length
+    ? segments.reduce((sum, s) => sum + s.end - s.start, 0)
+    : await durationSeconds(sourcePath);
+  if (!seconds) return [];
+  const limit = sizeLimitArgs({
+    maxBytes,
+    seconds,
+    audioBitsPerSecond: bitsPerSecond(preset.audio),
+  });
+  // VP9 takes its ceiling from -b:v; the preset's `-b:v 0` is pure constant quality and ignores -maxrate.
+  const vp9 = preset.args.includes("libvpx-vp9") && limit.length > 0;
+  return vp9 ? [...limit, "-b:v", limit[1]!] : limit;
+}
+
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
@@ -378,6 +432,7 @@ async function ffmpegReencode(
         "-y",
         ...(await segmentArgs(sourcePath, decoder, segments, mediaOf(presetName))),
         ...preset.args,
+        ...(await limitFor(sourcePath, preset, segments)),
         ...color,
         ...preset.audio,
         outPath,
