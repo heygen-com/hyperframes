@@ -414,6 +414,31 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
+/**
+ * A reference inside the project must ship even when the ignore rules (dot-paths) skipped it.
+ * Sub-compositions are inlined into the root, so a reference may resolve from the
+ * referring file's folder or from the project root.
+ */
+function includeReferencedProjectFile(
+  ctx: ExternalAssetContext,
+  resolvedPath: string,
+  rawPath: string,
+): void {
+  const fromRoot = resolve(ctx.absProjectDir, rawPath);
+  for (const candidate of [resolvedPath, fromRoot]) {
+    const absPath = candidate.replace(/[?#].*$/, ""); // media fragments and cache-busting queries
+    if (!isPathInside(absPath, ctx.absProjectDir)) continue;
+    const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
+    if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return;
+    if (!existsSync(absPath)) continue;
+    if (statSync(absPath).isFile()) {
+      ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
+    }
+    return;
+  }
+  throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
+}
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
@@ -422,7 +447,10 @@ function tryResolveExternal(
   if (isNonRelativeUrl(rawPath)) return null;
   for (const path of decodeUrlPathVariants(rawPath)) {
     const absPath = resolve(referrerAbsDir, path);
-    if (isPathInside(absPath, ctx.absProjectDir)) return null;
+    if (isPathInside(absPath, ctx.absProjectDir)) {
+      includeReferencedProjectFile(ctx, absPath, rawPath);
+      return null;
+    }
     try {
       if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
     } catch {
