@@ -379,7 +379,7 @@ async function settle(res: IncomingMessage, sent: Promise<void>): Promise<void> 
 
 /** A 409 on complete means the cloud is still checking the file. The wait is baseMs plus perMiBMs per MiB, up to maxMs;
  * polls slow from firstPollMs to maxPollMs. */
-export const completeWait = {
+const completeWait = {
   baseMs: 30_000,
   perMiBMs: 500,
   maxMs: 600_000,
