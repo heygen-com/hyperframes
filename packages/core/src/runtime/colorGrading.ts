@@ -1,4 +1,5 @@
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ADJUST_KEYS,
   HF_COLOR_GRADING_ANIMATABLE_PROPERTIES,
@@ -3419,6 +3420,7 @@ type DrawableFrame = {
 };
 
 function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
+  if (document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)) return null;
   const source = getDrawableSource(entry.element);
   const pixels = source && readablePixels(source, entry);
   if (!source || !pixels) {

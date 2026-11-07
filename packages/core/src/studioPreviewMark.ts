@@ -1,6 +1,7 @@
 import { isWebKit } from "./runtime/mediaClock.js";
 
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
+export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
 
