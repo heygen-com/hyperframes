@@ -110,6 +110,27 @@ describe("showHiddenClips", () => {
     hideAgain();
     expect([clip.hasAttribute(CLIP_HIDDEN_ATTR), clip.style.visibility]).toEqual([true, "hidden"]);
   });
+
+  it("detaches the until-first-pass sheet while clips show and puts it back after", () => {
+    hideTimedClipsUntilFirstPass();
+    const sheet = () => document.querySelector("style[data-hf-first-pass-hide]");
+    expect(sheet()).not.toBeNull();
+
+    const hideAgain = showHiddenClips();
+    expect(sheet()).toBeNull();
+    hideAgain();
+    expect(sheet()).not.toBeNull();
+  });
+
+  it("leaves the sheet detached when the first pass lifted it in the meantime", () => {
+    hideTimedClipsUntilFirstPass();
+    const hideAgain = showHiddenClips();
+    // The first pass runs while the sheet is detached: it clears the flag but
+    // finds no sheet to remove.
+    revealTimedClipsAfterFirstPass();
+    hideAgain();
+    expect(document.querySelector("style[data-hf-first-pass-hide]")).toBeNull();
+  });
 });
 
 describe("revealClip", () => {

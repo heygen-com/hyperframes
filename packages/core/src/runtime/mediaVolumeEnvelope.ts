@@ -3,6 +3,7 @@ import { clampAudioGain, withUnclampedVolume } from "../audioGain.js";
 import { parseStrictFiniteTimingNumber } from "./playbackRate";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { isMediaElement } from "./domRealm";
+import { showHiddenClips } from "./timedClipHide";
 
 /**
  * Shared volume-automation utilities used by both the renderer (offline PCM
@@ -315,10 +316,20 @@ export function probeAndCacheElementVolume(
         ? Number(timeline.seek())
         : 0;
   const probeWindow = resolveVolumeProbeWindow(mediaEl, compositionDuration);
-  const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);
-  if (Number.isFinite(originalTime)) seekFn(originalTime);
-  if (keyframes) {
-    const envelope = normaliseEnvelope(keyframes, probeWindow.start, probeWindow.staticVolume);
-    if (envelope.length > 0) cache.set(mediaEl, envelope);
+  // The sweep seeks the live timeline before the first visibility pass, while
+  // the until-first-pass sheet hides every clip with `!important`. A tween
+  // rendered for the first time during the sweep would record that inherited
+  // `hidden` as its start value and write it back on later seeks (#7193 — the
+  // same pattern #5690 fixed for jump seeks).
+  const restoreHiddenClips = showHiddenClips();
+  try {
+    const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);
+    if (Number.isFinite(originalTime)) seekFn(originalTime);
+    if (keyframes) {
+      const envelope = normaliseEnvelope(keyframes, probeWindow.start, probeWindow.staticVolume);
+      if (envelope.length > 0) cache.set(mediaEl, envelope);
+    }
+  } finally {
+    restoreHiddenClips();
   }
 }
