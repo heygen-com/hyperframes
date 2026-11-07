@@ -208,7 +208,12 @@ export function buildPatchEvent(
   origin: unknown,
   opTypes: readonly string[],
 ): PatchEvent {
-  return { formatVersion: 1, patches: forward, inversePatches: inverse, origin, opTypes };
+  const formatVersion =
+    forward.some((patch) => patch.restoreStyleProperties !== undefined) ||
+    inverse.some((patch) => patch.restoreStyleProperties !== undefined)
+      ? 2
+      : 1;
+  return { formatVersion, patches: forward, inversePatches: inverse, origin, opTypes };
 }
 
 // ─── Replace/add/remove helpers ───────────────────────────────────────────────

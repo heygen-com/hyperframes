@@ -3,7 +3,7 @@ title: "Undo, Redo & Patches"
 description: "Use the SDK's built-in undo stack, subscribe to patch events, and integrate with a host application's own history."
 ---
 
-The SDK ships undo/redo by default for standalone sessions and emits RFC 6902 JSON patches on every change. Patch events are the integration seam for host application history, collaborative editing, audit logs, and embedded override mode.
+The SDK ships undo/redo by default for standalone sessions and emits versioned patch events on every change. Hosts use these events for their own history, collaborative editing, audit logs, and embedded override mode.
 
 ## Built-in Undo and Redo
 
@@ -65,8 +65,10 @@ Every committed change emits a `patch` event. Subscribe to mirror SDK edits into
 
 ```typescript
 const off = comp.on("patch", ({ formatVersion, patches, inversePatches, origin, opTypes }) => {
-  if (formatVersion !== 1) throw new Error("Unexpected patch format version");
-  saveToDB({ patches, inversePatches, origin, opTypes });
+  if (formatVersion !== 1 && formatVersion !== 2) {
+    throw new Error("Unexpected patch format version");
+  }
+  saveToDB({ formatVersion, patches, inversePatches, origin, opTypes });
 });
 
 // Unsubscribe when done
@@ -75,8 +77,10 @@ off();
 
 ### PatchEvent fields
 
-<ResponseField name="formatVersion" type="1">
-  Always `1` in the current SDK. Check this and reject unknown versions — a bump means a breaking change.
+<ResponseField name="formatVersion" type="1 | 2">
+  Version `1` uses ordinary JSON patches. Version `2` adds selective style inverses to restore
+  repeated CSS declarations without reverting unrelated edits made afterward. Integrations that
+  support only version `1` must reject version `2` before processing its operations.
 </ResponseField>
 <ResponseField name="patches" type="JsonPatchOp[]">
   Forward patches that were applied: the add/remove/replace ops describing how the document changed.
@@ -98,12 +102,37 @@ The SDK emits and accepts only the add/remove/replace subset of RFC 6902:
 ```typescript
 interface JsonPatchOp {
   op: "add" | "remove" | "replace";
-  path: string;   // JSON Pointer (RFC 6901), e.g. "/elements/hf-title/style/color"
+  path: string;   // JSON Pointer (RFC 6901), e.g. "/elements/hf-title/inlineStyles/color"
   value?: unknown;
+  restoreStyleProperties?: readonly string[];
 }
 ```
 
 The SDK never emits `move`, `copy`, or `test` ops, and `applyPatches()` ignores them if passed.
+
+For version `2`, keep `restoreStyleProperties` when storing inverse patches and pass the full
+operations to `applyPatches()`. That SDK-specific list limits a style-attribute inverse to the
+edited properties. A generic RFC 6902 applier does not implement these selective semantics.
+
+### Upgrading a host from version 1
+
+Upgrade the host's history consumer and replay SDK before adopting an SDK that emits version
+`2`. A host that accepts only version `1` cannot safely consume every event from this SDK.
+Rejecting an event in a listener does not undo the SDK mutation that already committed.
+
+Existing version-`1` history records remain replayable without conversion. Keep their original
+operations: a whole-style replacement still replaces the entire attribute. Previously discarded
+declarations cannot be recovered from an old history record. Saved override objects use the same
+format and need no migration.
+
+If an older host stored only the two patch arrays, label those records version `1` only when
+their source is known to be a version-1-only SDK. Do not infer version `1` from a missing tag in
+new or unknown records.
+
+For new history records, store `formatVersion` alongside both patch arrays, including every
+`restoreStyleProperties` field. A session can emit versions `1`, `2`, then `1` again, so check
+each event and each stored record before replay. Pass supported records to the upgraded SDK's
+`applyPatches()`; do not project operations down to only `op`, `path`, and `value`.
 
 ---
 
@@ -143,23 +172,29 @@ comp.batch(() => {
 When `history: false`, the host maintains its own undo stack from the patch events the SDK emits. To replay an undo step back into the SDK, call `applyPatches()` with the inverse patches from that stack entry:
 
 ```typescript
-// Host undo stack entry (built from PatchEvent)
-type HostEntry = {
-  patches: JsonPatchOp[];
-  inversePatches: JsonPatchOp[];
-};
+import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
+import type { PatchEvent } from "@hyperframes/sdk";
 
-let history: HostEntry[] = [];
+type HostEntry = Pick<PatchEvent, "formatVersion" | "patches" | "inversePatches">;
 
-comp.on("patch", ({ patches, inversePatches, origin }) => {
+const history: HostEntry[] = [];
+
+comp.on("patch", ({ formatVersion, patches, inversePatches, origin }) => {
   // Skip — this is the SDK replaying a host-initiated undo
   if (origin === ORIGIN_APPLY_PATCHES) return;
-  history.push({ patches, inversePatches });
+  if (formatVersion !== 1 && formatVersion !== 2) {
+    throw new Error("Unsupported patch format version");
+  }
+  history.push({ formatVersion, patches, inversePatches });
 });
 
 function hostUndo() {
-  const entry = history.pop();
+  const entry = history.at(-1);
   if (!entry) return;
+  if (entry.formatVersion !== 1 && entry.formatVersion !== 2) {
+    throw new Error("Unsupported stored patch format version");
+  }
+  history.pop();
   comp.applyPatches(entry.inversePatches);
 }
 ```
@@ -171,9 +206,12 @@ function hostUndo() {
 ```typescript
 import { ORIGIN_APPLY_PATCHES } from "@hyperframes/sdk";
 
-comp.on("patch", ({ patches, inversePatches, origin }) => {
+comp.on("patch", ({ formatVersion, patches, inversePatches, origin }) => {
   if (origin === ORIGIN_APPLY_PATCHES) return; // <-- required guard
-  history.push({ patches, inversePatches });
+  if (formatVersion !== 1 && formatVersion !== 2) {
+    throw new Error("Unsupported patch format version");
+  }
+  history.push({ formatVersion, patches, inversePatches });
 });
 ```
 
@@ -207,18 +245,26 @@ const comp = await openComposition(baseTemplateHtml, {
   history: false,
 });
 
-let hostStack: HostEntry[] = [];
+const hostStack: HostEntry[] = [];
 
-comp.on("patch", ({ patches, inversePatches, origin }) => {
+comp.on("patch", ({ formatVersion, patches, inversePatches, origin }) => {
   if (origin === ORIGIN_APPLY_PATCHES) return;
-  hostStack.push({ patches, inversePatches });
+  if (formatVersion !== 1 && formatVersion !== 2) {
+    throw new Error("Unsupported patch format version");
+  }
+  hostStack.push({ formatVersion, patches, inversePatches });
   // Persist the updated override set
   saveOverrides(comp.getOverrides());
 });
 
 function undo() {
-  const entry = hostStack.pop();
-  if (entry) comp.applyPatches(entry.inversePatches);
+  const entry = hostStack.at(-1);
+  if (!entry) return;
+  if (entry.formatVersion !== 1 && entry.formatVersion !== 2) {
+    throw new Error("Unsupported stored patch format version");
+  }
+  hostStack.pop();
+  comp.applyPatches(entry.inversePatches);
 }
 ```
 

@@ -291,25 +291,26 @@ export interface GsapTweenSpec {
   stagger?: number | Record<string, unknown>;
 }
 
-// ─── Patch layer (F2: RFC 6902 frozen contract) ───────────────────────────────
+// ─── Patch layer (F2: versioned contract) ────────────────────────────────────
 
 /**
- * Emit-only subset of RFC 6902: the SDK never emits move/copy/test, and
- * applyPatches() ignores ops outside this subset. Hosts feeding patches back
- * must restrict themselves to add/remove/replace.
+ * Add/remove/replace operations. Version 2 style inverses also carry
+ * SDK-specific property selection; replay those through applyPatches().
+ * The SDK never emits move/copy/test and ignores other operation types.
  */
 export interface JsonPatchOp {
   op: "add" | "remove" | "replace";
   path: string;
   value?: unknown;
+  restoreStyleProperties?: readonly string[];
 }
 
 /**
  * Emitted by session.on('patch') after every committed change.
- * formatVersion bumps = breaking; hosts check once and reject unknown versions.
+ * Hosts reject unsupported formats before processing each event.
  */
 export interface PatchEvent {
-  readonly formatVersion: 1;
+  readonly formatVersion: 1 | 2;
   readonly patches: readonly JsonPatchOp[];
   readonly inversePatches: readonly JsonPatchOp[];
   /** Re-emitted verbatim from the mutation entry. Use ORIGIN_APPLY_PATCHES to detect undo loops. */

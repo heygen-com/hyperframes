@@ -101,6 +101,8 @@ comp.setVariableValue("brandColor", "#6C5CE7");
 comp.removeElement("hf-old-caption");
 ```
 
+`setStyle()` preserves all declarations of untouched properties in their original order, including `!important` priorities and browser fallbacks such as `display:-moz-box !important;display:block`. Setting a property explicitly replaces all of its declarations with the new value and priority; passing `null` removes them. When the edited property has repeated declarations, undo and batch rollback restore the original sequence while retaining unrelated edits made afterward. These inverse patches use `formatVersion: 2` and carry a `restoreStyleProperties` list with the original `style` attribute. Store the operations intact and replay them through `applyPatches()` so host-managed history preserves unrelated properties. Other patch events remain version `1`.
+
 Use `batch()` when several mutations should become one undo entry, one persist write, and one change notification:
 
 ```typescript

@@ -7,6 +7,7 @@
 
 import { isFullHtmlDocument, parseHTMLContent } from "@hyperframes/core/compiler/html-document";
 import { findTimelineScript } from "@hyperframes/core/gsap-parser-acorn";
+import { decodeCssEscapes } from "@hyperframes/parsers";
 import { findVariableDeclaration } from "./variableModel.js";
 import {
   ensureHfIds,
@@ -237,7 +238,6 @@ function toKebab(prop: string): string {
   return prop.replace(/([A-Z])/g, (c) => `-${c.toLowerCase()}`);
 }
 
-/** Parse style attribute string → camelCase map (custom props kept as-is). */
 interface StyleDeclarationScan {
   depth: number;
   quote: "'" | '"' | null;
@@ -261,7 +261,7 @@ function advanceStyleDeclarationScan(scan: StyleDeclarationScan, ch: string, nex
   else if (ch === ")") scan.depth = Math.max(0, scan.depth - 1);
 }
 
-function splitStyleDeclarations(style: string): string[] {
+function splitStyleAtTopLevel(style: string, delimiter: ";" | "!"): string[] {
   const declarations: string[] = [];
   const scan: StyleDeclarationScan = { depth: 0, quote: null, skip: false };
   let start = 0;
@@ -270,36 +270,94 @@ function splitStyleDeclarations(style: string): string[] {
       scan.skip = false;
       continue;
     }
-    const ch = style[i] ?? "";
-    if (ch === ";" && scan.depth === 0 && scan.quote === null) {
+    const ch = style.charAt(i);
+    const topLevel = scan.depth === 0 && scan.quote === null;
+    // Unquoted URL tokens can contain literal comment markers inside parentheses.
+    if (topLevel && style.startsWith("/*", i)) {
+      const end = style.indexOf("*/", i + 2);
+      if (end === -1) {
+        // EOF ends the comment; close it so later serialized properties stay outside.
+        declarations.push(`${style.slice(start)}*/`);
+        return declarations;
+      }
+      i = end + 1;
+      continue;
+    }
+    if (ch === delimiter && topLevel) {
       declarations.push(style.slice(start, i));
       start = i + 1;
-    } else {
-      advanceStyleDeclarationScan(scan, ch, style[i + 1] ?? "");
+      continue;
     }
+    advanceStyleDeclarationScan(scan, ch, style.charAt(i + 1));
   }
   declarations.push(style.slice(start));
   return declarations;
 }
 
-function parseStyleAttr(styleAttr: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const decl of splitStyleDeclarations(styleAttr)) {
+function skipStyleTrivia(text: string, start: number): number {
+  let i = start;
+  while (i < text.length) {
+    if (/[ \t\r\n\f]/.test(text.charAt(i))) {
+      i++;
+      continue;
+    }
+    if (!text.startsWith("/*", i)) break;
+    const end = text.indexOf("*/", i + 2);
+    if (end === -1) return text.length;
+    i = end + 2;
+  }
+  return i;
+}
+
+function hasImportant(value: string): boolean {
+  const parts = splitStyleAtTopLevel(value, "!");
+  if (parts.length === 1) return false;
+  const suffix = parts.at(-1) ?? "";
+  const start = skipStyleTrivia(suffix, 0);
+  const identifier = suffix
+    .slice(start)
+    .match(
+      /^(?:\\(?:[0-9a-f]{1,6}(?:\r\n|[ \t\r\n\f])?|[^\r\n\f0-9a-f])|[-\w\u0080-\uffff])+/i,
+    )?.[0];
+  if (!identifier || decodeCssEscapes(identifier).toLowerCase() !== "important") return false;
+  return skipStyleTrivia(suffix, start + identifier.length) === suffix.length;
+}
+
+function trimStyleWhitespace(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (/[ \t\r\n\f]/.test(value.charAt(start))) start++;
+  while (end > start && /[ \t\r\n\f]/.test(value.charAt(end - 1))) end--;
+  return value.slice(start, end);
+}
+
+export function parseStyleDeclarations(styleAttr: string): [string, string][] {
+  const declarations: [string, string][] = [];
+  for (const decl of splitStyleAtTopLevel(styleAttr, ";")) {
     const idx = decl.indexOf(":");
     if (idx === -1) continue;
     const rawProp = decl.slice(0, idx).trim();
-    const value = decl.slice(idx + 1).trim();
+    const value = trimStyleWhitespace(decl.slice(idx + 1));
     if (!rawProp) continue;
-    result[toCamel(rawProp)] = value;
+    declarations.push([toCamel(rawProp), value]);
+  }
+  return declarations;
+}
+
+function parseStyleAttr(styleAttr: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const important = new Set<string>();
+  for (const [prop, value] of parseStyleDeclarations(styleAttr)) {
+    const isImportant = hasImportant(value);
+    if (important.has(prop) && !isImportant) continue;
+    result[prop] = value;
+    if (isImportant) important.add(prop);
   }
   return result;
 }
 
-/** Serialize camelCase style map → style attribute string. */
-function serializeStyleAttr(styles: Record<string, string>): string {
-  return Object.entries(styles)
-    .map(([k, v]) => `${toKebab(k)}: ${v}`)
-    .join("; ");
+function serializeStyleAttr(styles: [string, string][]): string {
+  return styles.map(([k, v]) => `${toKebab(k)}: ${v}`).join("; ");
 }
 
 export function getElementStyles(el: Element): Record<string, string> {
@@ -308,23 +366,176 @@ export function getElementStyles(el: Element): Record<string, string> {
 }
 
 export function setElementStyles(el: Element, updates: Record<string, string | null>): void {
-  const current = getElementStyles(el);
-  for (const [prop, value] of Object.entries(updates)) {
-    // Stored map is keyed camelCase (parseStyleAttr); custom props (--foo) stay
-    // verbatim. Normalize the incoming key the same way for both set and delete.
-    const key = toCamel(prop);
-    if (value === null) {
-      delete current[key];
-    } else {
-      current[key] = value;
+  const normalized = new Map(
+    Object.entries(updates).map(([prop, value]) => [toCamel(prop), value]),
+  );
+  const declarations: [string, string][] = [];
+  for (const [prop, value] of parseStyleDeclarations(el.getAttribute("style") ?? "")) {
+    const update = normalized.get(prop);
+    if (update === undefined) {
+      declarations.push([prop, value]);
+      continue;
     }
+    if (update !== null) declarations.push([prop, update]);
+    normalized.set(prop, null);
   }
-  const serialized = serializeStyleAttr(current);
+  for (const [prop, value] of normalized) {
+    if (value !== null) declarations.push([prop, value]);
+  }
+  const serialized = serializeStyleAttr(declarations);
   if (serialized) {
     el.setAttribute("style", serialized);
   } else {
     el.removeAttribute("style");
   }
+}
+
+function countStyleProperties(
+  declarations: readonly [string, string][],
+  limits?: ReadonlyMap<string, number>,
+) {
+  const counts = new Map<string, number>();
+  for (const [prop] of declarations) {
+    const count = (counts.get(prop) ?? 0) + 1;
+    counts.set(prop, limits ? Math.min(count, limits.get(prop) ?? 0) : count);
+  }
+  return counts;
+}
+
+function nextUntouchedStyleIndex(
+  original: readonly [string, string][],
+  remaining: ReadonlyMap<string, number>,
+  selected: ReadonlySet<string>,
+  index: number,
+) {
+  while (index < original.length) {
+    const prop = original[index]?.[0] ?? "";
+    if (remaining.get(prop) && !selected.has(prop)) break;
+    index++;
+  }
+  return index;
+}
+
+function matchStyleRestoreAnchors(
+  original: readonly [string, string][],
+  anchors: readonly { prop: string; value: string; end: number }[],
+  selected: ReadonlySet<string>,
+) {
+  const occurrences = new Map<
+    string,
+    { groups: { group: number; value: string }[]; index: number }
+  >();
+  let group = 0;
+  for (const [prop, value] of original) {
+    const entry = occurrences.get(prop) ?? { groups: [], index: 0 };
+    entry.groups.push({ group, value });
+    occurrences.set(prop, entry);
+    if (selected.has(prop)) group++;
+  }
+
+  return anchors.flatMap((anchor) => {
+    const entry = occurrences.get(anchor.prop);
+    const occurrence = entry?.groups[entry.index++];
+    if (!occurrence) return [];
+    return [
+      {
+        group: occurrence.group,
+        end: anchor.end,
+        unchanged: !selected.has(anchor.prop) && occurrence.value === anchor.value,
+      },
+    ];
+  });
+}
+
+function groupStyleRestoreAnchors(anchors: ReturnType<typeof matchStyleRestoreAnchors>) {
+  // Anchors cannot cross a following unchanged declaration's original interval.
+  const followingGroups: number[] = [];
+  anchors.reduceRight((following, anchor, index) => {
+    const limit = anchor.unchanged ? Math.min(following, anchor.group) : following;
+    followingGroups[index] = limit;
+    return limit;
+  }, Infinity);
+
+  const grouped: { group: number; end: number }[] = [];
+  let preceding = -1;
+  for (const [index, anchor] of anchors.entries()) {
+    const { group } = anchor;
+    if (group < preceding || group > (followingGroups[index] ?? Infinity)) continue;
+    if (anchor.unchanged) preceding = Math.max(preceding, group);
+    const previous = grouped.at(-1);
+    if (previous?.group === group) previous.end = anchor.end;
+    else grouped.push({ group, end: anchor.end });
+  }
+  return grouped;
+}
+
+function findStyleRestoreAnchors(
+  original: readonly [string, string][],
+  current: readonly [string, string][],
+  selected: ReadonlySet<string>,
+) {
+  const available = countStyleProperties(current);
+  const remaining = countStyleProperties(original, available);
+  const anchors: { prop: string; value: string; end: number }[] = [];
+  let end = 0;
+  let originalIndex = 0;
+  for (const [prop, value] of current) {
+    if (!selected.has(prop)) end++;
+    originalIndex = nextUntouchedStyleIndex(original, remaining, selected, originalIndex);
+    const expected = original[originalIndex]?.[0];
+    const count = remaining.get(prop);
+    if (!count) continue;
+    const occurrences = available.get(prop) ?? 0;
+    available.set(prop, occurrences - 1);
+    if (prop !== expected && occurrences > count) continue;
+    if (prop === expected) originalIndex++;
+    remaining.set(prop, count - 1);
+    anchors.push({ prop, value, end });
+  }
+  return groupStyleRestoreAnchors(matchStyleRestoreAnchors(original, anchors, selected));
+}
+
+export function restoreElementStyleProperties(
+  el: Element,
+  originalStyle: string,
+  properties: readonly string[],
+): string {
+  const selected = new Set(properties);
+  const original = parseStyleDeclarations(originalStyle);
+  const originalUntouched = original.filter(([prop]) => !selected.has(prop));
+  const current = parseStyleDeclarations(el.getAttribute("style") ?? "");
+  const untouched = current.filter(([prop]) => !selected.has(prop));
+  if (
+    untouched.length === originalUntouched.length &&
+    untouched.every(
+      ([prop, value], index) =>
+        prop === originalUntouched[index]?.[0] && value === originalUntouched[index]?.[1],
+    )
+  ) {
+    el.setAttribute("style", originalStyle);
+    return originalStyle;
+  }
+
+  const restored: [string, string][] = [];
+  const anchors = findStyleRestoreAnchors(original, current, selected);
+  let index = 0;
+  let anchorIndex = 0;
+  let group = 0;
+  for (const declaration of original) {
+    const anchor = anchors[anchorIndex];
+    if (anchor?.group === group) {
+      for (const retained of untouched.slice(index, anchor.end)) restored.push(retained);
+      index = anchor.end;
+      anchorIndex++;
+    }
+    if (selected.has(declaration[0])) {
+      restored.push(declaration);
+      group++;
+    }
+  }
+  const serialized = serializeStyleAttr(restored.concat(untouched.slice(index)));
+  el.setAttribute("style", serialized);
+  return serialized;
 }
 
 // ─── Text helpers ─────────────────────────────────────────────────────────────

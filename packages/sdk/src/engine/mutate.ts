@@ -26,6 +26,7 @@ import {
   findRoot,
   declarationElement,
   getElementStyles,
+  parseStyleDeclarations,
   setElementStyles,
   toCamel,
   getOwnText,
@@ -446,9 +447,26 @@ function handleSetStyle(
   styles: Record<string, string | null>,
 ): MutationResult {
   const result: MutationResult = { forward: [], inverse: [] };
+  const editedProps = new Set(Object.keys(styles).map(toCamel));
   for (const id of ids) {
     const el = resolveScoped(parsed.document, id);
     if (!el) continue;
+    const originalStyle = el.getAttribute("style") ?? "";
+    const seen = new Set<string>();
+    const restoresDuplicates = parseStyleDeclarations(originalStyle).some(([prop]) => {
+      const duplicate = seen.has(prop);
+      seen.add(prop);
+      return duplicate && editedProps.has(prop);
+    });
+    if (restoresDuplicates) {
+      // Scalar inverses cannot restore fallback order; replay this last after reversal.
+      result.inverse.push({
+        op: "replace",
+        path: attrPath(id, "style"),
+        value: originalStyle,
+        restoreStyleProperties: [...editedProps],
+      });
+    }
     const old = getElementStyles(el);
     setElementStyles(el, styles);
     for (const [prop, value] of Object.entries(styles)) {
