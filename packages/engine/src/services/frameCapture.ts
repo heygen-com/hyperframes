@@ -547,7 +547,10 @@ export async function decodeDynamicCssBackgroundImages(page: Page): Promise<stri
           image.src = url;
           let timer: ReturnType<typeof setTimeout> | undefined;
           const expired = new Promise<"late">((resolve) => {
-            timer = setTimeout(() => resolve("late"), limitMs);
+            timer = (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(
+              () => resolve("late"),
+              limitMs,
+            );
           });
           try {
             const outcome = await Promise.race([
@@ -1878,7 +1881,9 @@ export const HF_READY_DIAGNOSTIC_EXPR = `(async function() {
         function() { settled[key] = "rejected"; },
       );
     });
-    await new Promise(function(r) { setTimeout(r, 0); });
+    await new Promise(function(r) {
+      (window.__HF_VIRTUAL_TIME__ && window.__HF_VIRTUAL_TIME__.originalSetTimeout || setTimeout)(r, 0);
+    });
   }
   // A thenable resolving via its own setTimeout(0) can still misreport as
   // pending here (macrotask registration order, not resolution order), a

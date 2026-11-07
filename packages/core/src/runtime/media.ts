@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
@@ -64,12 +65,12 @@ function holdSeekBarrierUntilVideoLands(el: HTMLMediaElement): void {
     new Promise<void>((resolve) => {
       const done = (event?: Event) => {
         if (event?.type === "loadeddata" && el.seeking) return;
-        clearTimeout(cap);
+        wallClearTimeout(cap);
         for (const type of HOLD_END_EVENTS) el.removeEventListener(type, done, true);
         if (releaseHeldVideo.get(el) === done) releaseHeldVideo.delete(el);
         resolve();
       };
-      const cap = setTimeout(done, HOLD_CAP_MS);
+      const cap = wallSetTimeout(done, HOLD_CAP_MS);
       for (const type of HOLD_END_EVENTS) el.addEventListener(type, done, true);
       releaseHeldVideo.set(el, done);
     }),
