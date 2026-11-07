@@ -162,6 +162,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
 }: TimelineToolbarProps) {
   const keys = useStudioKeys();
   const kf = keyHint("addKeyframe", keys);
+  const splitKey = splitShortcut ?? keyHint("split", keys);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
@@ -400,7 +401,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
                   }
-                  shortcut={canSplit ? (splitShortcut ?? keyHint("split", keys)) : undefined}
+                  shortcut={canSplit ? splitKey : undefined}
                 >
                   <button
                     type="button"
