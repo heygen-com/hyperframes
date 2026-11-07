@@ -331,7 +331,7 @@ describe("usePlaybackKeyboard — frame step", () => {
       dispatch(keydown({ code: "ArrowRight", key: "ArrowRight" }));
     });
 
-    expect(spies.seek).toHaveBeenCalledWith((frame + 1) / fps);
+    expect(spies.seek).toHaveBeenCalledWith((frame + 1) / fps, { settled: true });
   });
 });
 

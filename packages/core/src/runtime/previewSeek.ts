@@ -3,6 +3,7 @@ import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { isUnplayable, mediaSourceTimeAt } from "./media";
 import type { RuntimeMediaClip } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { getPausedVideoFrame, type PreparedPausedVideoFrames } from "./pausedVideoFrames";
 
 const HELD_VIDEO_ATTR = "data-hf-seek-video";
 const SEEK_CAP_MS = 5000;
@@ -22,13 +23,20 @@ function videoFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
   }
 }
 
+function heldVideoStyle(video: HTMLVideoElement): CSSStyleDeclaration | null {
+  if (getPausedVideoFrame(video)) return null;
+  // Its grading canvas already holds the picture; hiding the source would retire that canvas on refresh.
+  if (video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) return null;
+  const css = getComputedStyle(video);
+  if (css.display === "none" || css.visibility === "hidden" || video.readyState < 2) return null;
+  if (!video.videoWidth || !video.videoHeight) return null;
+  return css;
+}
+
 /** Keep a displayed video in its layout slot while its decoder moves independently of the page. */
 function holdVideoFrame(video: HTMLVideoElement): (() => void) | undefined {
-  // Its grading canvas already holds the picture; hiding the source would retire that canvas on refresh.
-  if (video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) return;
-  const css = getComputedStyle(video);
-  if (css.display === "none" || css.visibility === "hidden" || video.readyState < 2) return;
-  if (!video.videoWidth || !video.videoHeight) return;
+  const css = heldVideoStyle(video);
+  if (!css) return;
   const canvas = videoFrame(video);
   if (!canvas) return;
   for (const name of Array.from(css)) canvas.style.setProperty(name, css.getPropertyValue(name));
@@ -49,7 +57,7 @@ function holdVideoFrames(videos: HTMLVideoElement[]): () => void {
   const restore = videos.map(holdVideoFrame);
   const style = document.createElement("style");
   style.textContent = `[${HELD_VIDEO_ATTR}] { display: none !important; }`;
-  document.head.appendChild(style);
+  if (restore.some(Boolean)) document.head.appendChild(style);
   document.documentElement.setAttribute(PREVIEW_SEEK_HOLD_ATTR, "");
   return () => {
     for (const putBack of restore) putBack?.();
@@ -64,28 +72,46 @@ type SeekHost = {
   scenesReadyAt: (time: number) => boolean;
   prepare: (clips: RuntimeMediaClip[], time: number) => void;
   commit: (time: number) => void;
+  frames?: {
+    available(): boolean;
+    prepare(
+      clips: RuntimeMediaClip[],
+      time: number,
+      signal: AbortSignal,
+      settled?: boolean,
+    ): Promise<PreparedPausedVideoFrames | null>;
+    prepareNative(): void;
+    clear(): void;
+  };
 };
 
-/** One decoder job at a time; requests arriving during it replace the queued destination. */
+/** One preparation at a time; publish coherent progress and coalesce newer destinations. */
 export function createPreviewSeek(host: SeekHost) {
-  let pending: { time: number; done: Promise<void>; resolve: () => void } | null = null;
+  let pending: {
+    time: number;
+    native: boolean;
+    settled: boolean;
+    done: Promise<void>;
+    resolve: () => void;
+  } | null = null;
   let releasePicture = () => {};
   let stopWaiting = () => {};
   let runningClips: RuntimeMediaClip[] = [];
+  let cancelWork = () => {};
+  let committing = false;
+  let committingSettled = false;
   let runId = 0;
 
   const ready = (clips: RuntimeMediaClip[], time: number) =>
     host.scenesReadyAt(time) &&
-    clips.every((clip) => {
-      const { el } = clip;
-      return (
+    clips.every(
+      ({ el, ...clip }) =>
         !el.isConnected ||
         isUnplayable(el) ||
         (el.readyState >= 2 &&
           !el.seeking &&
-          Math.abs(el.currentTime - mediaSourceTimeAt(clip, time)) < 0.02)
-      );
-    });
+          Math.abs(el.currentTime - mediaSourceTimeAt({ el, ...clip }, time)) < 0.02),
+    );
 
   const cancel = () => {
     const request = pending;
@@ -93,6 +119,8 @@ export function createPreviewSeek(host: SeekHost) {
     runId++;
     stopWaiting();
     stopWaiting = () => {};
+    cancelWork();
+    cancelWork = () => {};
     releasePicture();
     releasePicture = () => {};
     request?.resolve();
@@ -101,35 +129,107 @@ export function createPreviewSeek(host: SeekHost) {
   const run = () => {
     const request = pending;
     if (!request) return;
+    cancelWork();
     const id = ++runId;
     const time = request.time;
     const clips = host.clipsAt(time);
     runningClips = clips;
+    const selection = clips.map((clip) => ({ el: clip.el, time: mediaSourceTimeAt(clip, time) }));
+    const controller = new AbortController();
+    let frame: PreparedPausedVideoFrames | null = null;
     let preparing = true;
+    let nativePhase = false;
     let finished = false;
+    const live = () => pending === request && runId === id && !finished;
+    cancelWork = () => {
+      controller.abort();
+      frame?.release();
+    };
+
+    const publish = () => {
+      releasePicture();
+      releasePicture = () => {};
+      if (!frame) host.frames?.clear();
+      committing = true;
+      committingSettled = request.settled;
+      try {
+        host.commit(time);
+        frame?.refresh();
+      } finally {
+        committing = false;
+        committingSettled = false;
+      }
+    };
+    const selectionChanged = () => {
+      const current = host.clipsAt(time);
+      return (
+        current.length !== selection.length ||
+        current.some(
+          (clip, index) =>
+            clip.el !== selection[index]?.el ||
+            Math.abs(mediaSourceTimeAt(clip, time) - selection[index]!.time) > 1e-8,
+        )
+      );
+    };
+    const frameReadyToPublish = () => {
+      if (!frame) return true;
+      if (selectionChanged()) {
+        stopWaiting();
+        run();
+        return false;
+      }
+      if (!frame.valid() || !frame.present()) {
+        native();
+        return false;
+      }
+      return true;
+    };
     const finish = () => {
-      if (finished || pending !== request || id !== runId) return;
+      if (!live() || !frameReadyToPublish()) return;
       finished = true;
       stopWaiting();
       stopWaiting = () => {};
       if (request.time !== time) {
-        if (ready(host.clipsAt(time), time)) {
-          releasePicture();
-          host.commit(time);
+        if (frame || ready(host.clipsAt(time), time)) {
+          publish();
+          if (pending !== request) return;
           releasePicture = holdVideoFrames(host.videosToHold());
         }
         run();
         return;
       }
-      cancel();
-      host.commit(time);
+      pending = null;
+      runId++;
+      const cleanup = cancelWork;
+      cancelWork = () => {};
+      try {
+        publish();
+      } finally {
+        cleanup();
+        request.resolve();
+      }
     };
     const check = () => {
-      if (!preparing && ready(host.clipsAt(time), time)) finish();
+      if (preparing || !live()) return;
+      if (frame ? host.scenesReadyAt(time) : ready(host.clipsAt(time), time)) finish();
+    };
+    const native = () => {
+      if (!live() || nativePhase) return;
+      nativePhase = true;
+      controller.abort();
+      frame?.release();
+      frame = null;
+      host.frames?.prepareNative();
+      host.prepare(host.clipsAt(time), time);
+      preparing = false;
+      check();
     };
     const metadata = () => {
-      if (pending !== request || finished || id !== runId) return;
-      // A source/proxy change resets currentTime; the parked clock still describes the old picture.
+      if (!live()) return;
+      if (!nativePhase) {
+        check();
+        return;
+      }
       preparing = true;
       host.prepare(host.clipsAt(time), time);
       preparing = false;
@@ -140,58 +240,89 @@ export function createPreviewSeek(host: SeekHost) {
         el.addEventListener(type, type === "loadedmetadata" ? metadata : check, type === "error");
       return () => {
         for (const type of EVENTS)
-          el.removeEventListener(
-            type,
-            type === "loadedmetadata" ? metadata : check,
-            type === "error",
-          );
+          el.removeEventListener(type, type === "loadedmetadata" ? metadata : check, type === "error");
       };
     });
-    const cap = wallSetTimeout(finish, SEEK_CAP_MS);
+    let cap = wallSetTimeout(() => {
+      if (!nativePhase && !frame) {
+        native();
+        if (live()) cap = wallSetTimeout(finish, SEEK_CAP_MS);
+      } else finish();
+    }, SEEK_CAP_MS);
     stopWaiting = () => {
       wallClearTimeout(cap);
       for (const remove of listeners) remove();
     };
-    host.prepare(clips, time);
-    preparing = false;
-    check();
+    if (!request.native && host.frames?.available()) {
+      void host.frames
+        .prepare(clips, time, controller.signal, request.settled)
+        .then((decoded) => {
+          if (!live() || controller.signal.aborted) {
+            decoded?.release();
+            return;
+          }
+          if (!decoded) return native();
+          frame = decoded;
+          preparing = false;
+          check();
+        })
+        .catch(native);
+    } else native();
   };
 
+  const seek = (time: number, native = false, settled = false): Promise<void> | void => {
+    if (pending && (pending.native !== native || pending.settled !== settled)) cancel();
+    if (pending) {
+      const request = pending;
+      request.time = time;
+      const clips = host.clipsAt(time);
+      if (
+        clips.length !== runningClips.length ||
+        clips.some((clip, index) => clip.el !== runningClips[index]?.el)
+      ) {
+        stopWaiting();
+        run();
+      }
+      return request.done;
+    }
+    if ((native || !host.frames?.available()) && ready(host.clipsAt(time), time)) {
+      host.frames?.clear();
+      host.commit(time);
+      return;
+    }
+    let resolve = () => {};
+    const done = new Promise<void>((settle) => {
+      resolve = settle;
+    });
+    pending = { time, native, settled, done, resolve };
+    releasePicture = holdVideoFrames(host.videosToHold());
+    run();
+    return done;
+  };
   return {
+    get committing() {
+      return committing;
+    },
+    get refining() {
+      return committingSettled;
+    },
     get time() {
       return pending?.time;
     },
-    seek(time: number): Promise<void> | void {
-      if (pending) {
-        const request = pending;
-        request.time = time;
-        const clips = host.clipsAt(time);
-        if (
-          clips.length !== runningClips.length ||
-          clips.some((clip, index) => clip.el !== runningClips[index]?.el)
-        ) {
-          stopWaiting();
-          run();
-        }
-        return request.done;
-      }
-      if (ready(host.clipsAt(time), time)) {
-        host.commit(time);
-        return;
-      }
-      let resolve = () => {};
-      const done = new Promise<void>((settle) => {
-        resolve = settle;
-      });
-      pending = { time, done, resolve };
-      releasePicture = holdVideoFrames(host.videosToHold());
-      run();
-      return done;
+    seek,
+    refine(time: number) {
+      return seek(time, false, true);
     },
     refresh() {
-      if (!pending) return;
-      stopWaiting();
-      run();
+      if (pending) {
+        stopWaiting();
+        run();
+      }
+    },
+    handoff(time: number) {
+      cancel();
+      host.frames?.prepareNative();
+      return seek(time, true);
     },
     cancel,
   };

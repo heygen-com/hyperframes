@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from "react";
+import { memo, useEffect, useRef, type PointerEvent } from "react";
 import { formatTime } from "../lib/time";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 
@@ -9,9 +9,16 @@ export const PreviewSeekBar = memo(function PreviewSeekBar({
 }: {
   duration: number;
   disabled: boolean;
-  onSeek: (time: number) => void;
+  onSeek: (time: number, options?: { settled?: boolean }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const settledRef = useRef(true);
+
+  const finishPointerSeek = (event: PointerEvent<HTMLInputElement>) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onSeek(event.currentTarget.valueAsNumber, { settled: true });
+  };
 
   useEffect(() => {
     const input = inputRef.current;
@@ -39,7 +46,17 @@ export const PreviewSeekBar = memo(function PreviewSeekBar({
         defaultValue={0}
         disabled={disabled || duration <= 0}
         aria-label="Seek preview"
-        onChange={(event) => onSeek(event.currentTarget.valueAsNumber)}
+        onPointerDown={() => {
+          settledRef.current = false;
+        }}
+        onPointerUp={finishPointerSeek}
+        onPointerCancel={finishPointerSeek}
+        onKeyDown={() => {
+          settledRef.current = true;
+        }}
+        onChange={(event) =>
+          onSeek(event.currentTarget.valueAsNumber, { settled: settledRef.current })
+        }
         className="h-6 w-full cursor-pointer accent-neutral-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-ink disabled:cursor-default disabled:opacity-30"
       />
     </div>

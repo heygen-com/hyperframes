@@ -19,6 +19,7 @@ import { hasFrameSources, registerFrameSource } from "./frameSources";
 import { createFilmBridge } from "./filmBridge";
 import { trackAcceleratedCanvases } from "./captureMotionBlur";
 import { parkFarScenesAtBoot } from "./sceneWindow";
+import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -44,6 +45,7 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+installPausedVideoCallbacks();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();
 window.__hfHasFrameSources = hasFrameSources;
