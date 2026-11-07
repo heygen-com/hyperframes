@@ -480,6 +480,7 @@ it("measures text on its own opaque fill without a contrast screenshot", async (
         backgroundColor: "rgb(0,0,0)",
         backgroundImage: "none",
         fontSize: "32px",
+        fontFamily: "Inter, sans-serif",
         fontWeight: "700",
       }) as unknown as CSSStyleDeclaration,
   );
@@ -578,6 +579,7 @@ it("round-trips the browser script's raw contrast candidates back into finish", 
         backgroundColor: "rgba(0,0,0,0)",
         backgroundImage: "none",
         fontSize: "32px",
+        fontFamily: "Inter, sans-serif",
         fontWeight: "700",
       }) as unknown as CSSStyleDeclaration,
   );
@@ -671,6 +673,7 @@ it.each([
           fill: "",
           clipPath: "none",
           fontSize: "32px",
+          fontFamily: "Inter, sans-serif",
           fontWeight: "700",
         }) as unknown as CSSStyleDeclaration,
     );
@@ -743,6 +746,7 @@ describe("skipContrastInMotion", () => {
           backgroundColor: "rgba(0,0,0,0)",
           backgroundImage: "none",
           fontSize: "32px",
+          fontFamily: "Inter, sans-serif",
           fontWeight: "700",
         }) as unknown as CSSStyleDeclaration,
     );
@@ -1910,9 +1914,19 @@ function fakeConsoleMessage(type: string, text: string) {
   };
 }
 
+function fakeCdpSession() {
+  return {
+    send: vi.fn(async () => ({ result: {} })),
+    detach: vi.fn(async () => undefined),
+  };
+}
+
 function fakePage() {
+  // jsdom has no FontFaceSet; the fonts section reads the loaded @font-face families from it.
+  Object.defineProperty(document, "fonts", { value: [], configurable: true });
   return Object.assign(Object.create(null), {
     on: vi.fn(),
+    createCDPSession: vi.fn(async () => fakeCdpSession()),
     viewport: () => ({ width: 640, height: 360 }),
     screenshot: vi.fn(async () => "c3R1Yg=="),
     addScriptTag: vi.fn(async ({ content }: { content: string }) => {

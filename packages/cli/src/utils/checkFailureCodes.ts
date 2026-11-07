@@ -12,6 +12,7 @@ export function failureCodes(report: CheckReport): Record<string, number> {
     report.motion,
     report.contrast,
     report.craft,
+    report.fonts,
     report.audio,
   ]) {
     for (const finding of section.findings) {

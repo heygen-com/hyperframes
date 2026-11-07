@@ -1400,6 +1400,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
     craft: { ...emptySection(), enabled: false, step: 0, samples: 0 },
+    fonts: emptySection(),
     audio: emptySection(),
     hdr: { autoPromotion: null, inspection: "available" },
     snapshots: { enabled: false, files: [], times: [], findingFiles: [] },

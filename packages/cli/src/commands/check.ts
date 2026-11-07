@@ -703,6 +703,7 @@ function printHumanReport(report: CheckReport): void {
   printSection("Motion", report.motion);
   printContrastSection(report);
   printCraftSection(report);
+  printSection("Fonts", report.fonts);
   printSection("Audio", report.audio);
   printSnapshotSection(report);
   console.log();
