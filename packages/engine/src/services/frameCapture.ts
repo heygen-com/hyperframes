@@ -981,6 +981,18 @@ async function waitForCloseWithTimeout(promise: Promise<unknown>): Promise<boole
   return !timedOut;
 }
 
+const DE_GATE_MESSAGES: Record<DrawElementGateReason, string> = {
+  swiftshader:
+    "SwiftShader (software rasterizer, no GPU egress to skip, drawElement is " +
+    "parity-or-slower; see fast-capture-limitations.md)",
+  webgl_unavailable:
+    "WebGL is unavailable (no GPU behind this browser, so it rasterizes in software and " +
+    "drawElement has no GPU egress to skip)",
+  beginframe_no_self_verify:
+    "this browser was launched for BeginFrame capture, whose self-verify truth page has no " +
+    "BeginFrame driver, so drawElement frames could not be checked",
+};
+
 /**
  * Post-readiness capture-surface init, shared by the screenshot and BeginFrame
  * init paths (called after the page is fully ready). When `useDrawElement` is
@@ -1318,7 +1330,11 @@ async function initDrawElementOrTransparentBackground(
       await finalizeDrawElementInit(session, page, logInitPhase, { transparent, forceDE });
     }
   } else if (capturesAlpha(session.options)) {
-    await initTransparentBackground(session.page);
+    const hideElementIds = session.options.hiddenElementIds ?? [];
+    await initTransparentBackground(session.page, {
+      clearCompositionRoot: hideElementIds.length > 0,
+      hideElementIds,
+    });
   }
 }
 

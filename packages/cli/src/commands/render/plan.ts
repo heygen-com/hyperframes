@@ -678,6 +678,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     vp9CpuUsed,
     videoBitrate,
     ...delivery,
+    range,
     chromaSubsampling,
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
     pageSideCompositing: args["page-side-compositing"] !== false,

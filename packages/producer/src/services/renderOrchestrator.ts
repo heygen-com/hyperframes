@@ -107,6 +107,7 @@ import {
   getDrawElementVerificationDetails,
   augmentProtocolTimeoutError,
   augmentPageNavigationTimeoutError,
+  displaySize,
   type ChromaSubsampling,
   type MotionBlurOptions,
   type PageMotionBlurSummary,
@@ -143,7 +144,14 @@ import {
   assertChromaSubsamplingSdr,
   validateChromaSubsamplingConfig,
 } from "./render/chromaSubsampling.js";
-import { createMemorySampler, type MemorySampler, updateJobStatus } from "./render/shared.js";
+import {
+  createMemorySampler,
+  describeWorkerPhases,
+  forgetWorkerPhases,
+  type MemorySampler,
+  reportExtractProgress,
+  updateJobStatus,
+} from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
@@ -3782,6 +3790,14 @@ async function executeRenderPipeline(input: {
       height,
       fps: job.config.fps,
       ...captureSurface,
+      ...(videoLayer
+        ? {
+            format: "png",
+            quality: undefined,
+            transparent: true,
+            hiddenElementIds: [videoLayer.videoId],
+          }
+        : {}),
       variables: job.config.variables,
       deviceScaleFactor,
       motionBlur: job.config.motionBlur,
