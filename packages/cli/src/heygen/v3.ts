@@ -259,8 +259,8 @@ export interface RunOptions {
 }
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
- *  image is checked at its estimate plus 10%, which its charge can pass. Every paid call comes through runJob. True
- *  when this call reserved. */
+ *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
+ *  Every paid call comes through runJob. True when this call reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
@@ -286,7 +286,7 @@ function withinLimit(
       `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
       fix,
     );
-  log(limitLog, { key: sent, status: "reserved", credits });
+  log(limitLog, { key: sent, status: "reserved", credits: checked });
   return true;
 }
 
@@ -303,6 +303,8 @@ export async function runJob(
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
   const reserved = withinLimit(opts.log, sent, opts.credits, opts.vendorPriced);
+  const held =
+    opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
   try {
     job = await call(
@@ -321,7 +323,7 @@ export async function runJob(
   }
   const waits = RUNNING.has(job.status.toLowerCase());
   if (opts.log && waits)
-    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: opts.credits });
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held });
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))

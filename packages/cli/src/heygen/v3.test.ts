@@ -123,6 +123,30 @@ describe("runJob", () => {
       await expect(runJob(X, {}, "k2", { log: other, credits: 59 })).rejects.toThrow(/leaves 40/);
     });
 
+    it("holds a running vendor-priced call at its headroom until HeyGen says what it charged", async () => {
+      const log = project(87);
+      vi.stubGlobal("fetch", async () => {
+        throw new Error("socket hang up");
+      });
+      await expect(runJob(X, {}, "k1", { log, credits: 40, vendorPriced: true })).rejects.toThrow();
+      await expect(runJob(X, {}, "k2", { log, credits: 40, vendorPriced: true })).rejects.toThrow(
+        /leaves 43/,
+      );
+      const polled = project(87);
+      const answers = [reply(200, { data: { id: "j", status: "pending" } })];
+      vi.stubGlobal("fetch", async () => {
+        const answer = answers.shift();
+        if (!answer) throw new Error("socket hang up");
+        return answer;
+      });
+      await expect(
+        runJob(X, {}, "k1", { log: polled, credits: 40, vendorPriced: true, intervalMs: 1 }),
+      ).rejects.toThrow();
+      await expect(
+        runJob(X, {}, "k2", { log: polled, credits: 40, vendorPriced: true }),
+      ).rejects.toThrow(/leaves 43/);
+    });
+
     it("refuses a call that cannot be priced ahead", async () => {
       const calls = sent();
       await expect(runJob(X, {}, "k", { log: project(100) })).rejects.toThrow(/cannot be priced/);
