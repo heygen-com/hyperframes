@@ -4,6 +4,7 @@ import {
   evictMediaSyncState,
   HOLD_CAP_MS,
   isActiveAtPlayhead,
+  noteCodecRejected,
   sourceTimeAtPlayhead,
 } from "./media";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
@@ -611,8 +612,12 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   const entry = codecEntryOf(el);
   const canPlay = entry?.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   const playable = canPlay === "probably" || canPlay === "maybe";
-  if (entry?.browserHostile && !playable) swapToProxy(el, entry, "proactive");
-  else if (previewQuality < 1) lightenIfHeavy(el, entry);
+  if (entry?.browserHostile && !playable) {
+    swapToProxy(el, entry, "proactive");
+    return;
+  }
+  if (entry?.representativeMime && canPlay === "") noteCodecRejected(el);
+  if (previewQuality < 1) lightenIfHeavy(el, entry);
 }
 
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {

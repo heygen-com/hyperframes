@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   hasMediaSyncStateForTest,
+  isUnplayable,
   syncRuntimeMedia as syncRuntimeMediaWithDuration,
 } from "./media";
 // Most cases predate the terminal rule and run with no composition end to hold at.
@@ -1417,5 +1418,32 @@ describe("describeVideoSources", () => {
       { codec: "unknown", width: 0, height: 0, bitDepth: 0, count: 1 },
     ]);
     delete window.__HF_MEDIA_SOURCE_FACTS__;
+  });
+});
+
+describe("a source the codec map says this browser can't decode", () => {
+  const VP9: MediaCodecMapEntry = {
+    codecName: "vp9",
+    browserHostile: false,
+    representativeMime: 'video/webm; codecs="vp9"',
+    hasAlpha: true,
+  };
+
+  it("is skipped with one warning naming it, and a decodable one is not", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    window.__HF_MEDIA_CODEC_MAP__ = { "/alpha.webm": VP9, "/other.webm": VP9 };
+    const rejected = createVideo("/alpha.webm");
+    stubCanPlayType(rejected, "");
+    const decodable = createVideo("/other.webm");
+    stubCanPlayType(decodable, "probably");
+    maybeProxyProactively(rejected);
+    maybeProxyProactively(decodable);
+    expect(isUnplayable(rejected)).toBe(true);
+    expect(isUnplayable(rejected)).toBe(true);
+    expect(isUnplayable(decodable)).toBe(false);
+    expect(isProxied(rejected)).toBe(false);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain("/alpha.webm");
   });
 });

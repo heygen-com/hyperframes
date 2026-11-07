@@ -208,6 +208,7 @@ const seekLoadRetried = new WeakSet<HTMLMediaElement>();
 const playRequested = new WeakSet<HTMLMediaElement>();
 const startedEarly = new WeakSet<HTMLMediaElement>();
 function markPlayRequested(el: HTMLMediaElement): void {
+  noteFirstPlayAsk(el);
   if (playRequested.has(el)) return;
   playRequested.add(el);
   const clear = () => playRequested.delete(el);
@@ -229,10 +230,56 @@ export function primeMediaForLaterStarts(els: Iterable<HTMLMediaElement>): void 
 
 // HTMLMediaElement.NETWORK_NO_SOURCE — no usable source (404 / unsupported).
 const MEDIA_NETWORK_NO_SOURCE = 3;
-// An element that errored or has no source can't play; re-issuing play() every
-// tick just floods rejections. Skip it until its state changes (src reload).
+const MEDIA_NETWORK_IDLE = 1;
+const MEDIA_HAVE_METADATA = 1;
+const STOPPED_AT_METADATA_MS = 5000;
+const codecRejectedSrc = new WeakMap<HTMLMediaElement, string>();
+const firstPlayAskedAt = new WeakMap<HTMLMediaElement, number | null>();
+const watchedForFirstFrame = new WeakSet<HTMLMediaElement>();
+const warnedSkipped = new WeakSet<HTMLMediaElement>();
+
+const sourceOf = (el: HTMLMediaElement): string => el.currentSrc || el.src;
+
+export function noteCodecRejected(el: HTMLMediaElement): void {
+  codecRejectedSrc.set(el, sourceOf(el));
+}
+
+function noteFirstPlayAsk(el: HTMLMediaElement): void {
+  if (!watchedForFirstFrame.has(el)) {
+    watchedForFirstFrame.add(el);
+    el.addEventListener("loadeddata", () => firstPlayAskedAt.set(el, null));
+    el.addEventListener("emptied", () => firstPlayAskedAt.delete(el));
+  }
+  if (!firstPlayAskedAt.has(el)) {
+    firstPlayAskedAt.set(el, el.readyState > MEDIA_HAVE_METADATA ? null : performance.now());
+  }
+}
+
+function stoppedAtMetadata(el: HTMLMediaElement): boolean {
+  const askedAt = firstPlayAskedAt.get(el);
+  return (
+    askedAt != null &&
+    performance.now() - askedAt >= STOPPED_AT_METADATA_MS &&
+    el.readyState === MEDIA_HAVE_METADATA &&
+    el.networkState === MEDIA_NETWORK_IDLE
+  );
+}
+
+// Errored, sourceless, codec-rejected, or stopped loading at its header since first asked to play: it can't play, and
+// re-issuing play() every tick just floods rejections. Skip it until its state changes (src reload).
 export function isUnplayable(el: HTMLMediaElement): boolean {
-  return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
+  if (el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE) return true;
+  const reason =
+    codecRejectedSrc.get(el) === sourceOf(el)
+      ? "this browser can't decode its codec"
+      : stoppedAtMetadata(el)
+        ? "the browser stopped loading it after its header"
+        : null;
+  if (reason !== null && !warnedSkipped.has(el)) {
+    warnedSkipped.add(el);
+    console.warn(`[hyperframes] skipping "${sourceOf(el)}": ${reason}; the rest plays`);
+  }
+  return reason !== null;
 }
 
 const lastRuntimeAppliedVolume = new WeakMap<HTMLMediaElement, number>();
