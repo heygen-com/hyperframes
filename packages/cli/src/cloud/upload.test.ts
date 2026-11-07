@@ -380,9 +380,8 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
 const BIG_BYTES = 32 * 1024 * 1024;
 
 describe("a PUT that stalls or fails on the network is sent again", () => {
-  /** A server that answers its Nth request as `plan[n]` ("hang" never answers; "cut" drains slowly and drops the
-   * connection at 400 ms; "slow" drains slowly and answers 200; a number is the status) and keeps the last answer
-   * for any later one. */
+  /** Answers its Nth request as `plan[n]`, the last one for any later: "hang" never answers, "cut" drops the
+   * connection at 400 ms, "slow" drains slowly and answers 200, a number is the status. */
   async function withPlan(
     plan: Array<"hang" | "cut" | "slow" | number>,
     run: (url: string, requests: () => number) => Promise<void>,
