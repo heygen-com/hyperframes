@@ -1,5 +1,5 @@
 import { envProxyEnabled } from "@hyperframes/core/env-proxy";
-import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   closeSync,
   existsSync,
@@ -467,7 +467,7 @@ function tryResolveExternal(
   referrerAbsDir: string,
   requireOnDisk = false,
 ): string | null {
-  const filesystemPath = rawPath.startsWith("/") && !rawPath.startsWith("//");
+  const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
   const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
   const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
