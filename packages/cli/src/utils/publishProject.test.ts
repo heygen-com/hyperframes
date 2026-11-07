@@ -1504,3 +1504,59 @@ describe("readStaged", () => {
     expect(() => readStaged(staged)).toThrow(/changed on disk/);
   });
 });
+
+describe("createPublishArchive referenced dot-paths", () => {
+  const clip = ".hyperframes/prepared-assets/clip.mp4";
+
+  function projectWith(html: string, files: Record<string, string>): string {
+    const dir = makeProjectDir();
+    writeFileSync(join(dir, "index.html"), html, "utf-8");
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), body, "utf-8");
+    }
+    return dir;
+  }
+
+  const names = (dir: string) =>
+    new AdmZip(createPublishArchive(dir).buffer).getEntries().map((e) => e.entryName);
+
+  it("carries a referenced file under a dot-folder", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v" });
+    expect(names(dir)).toContain(clip);
+  });
+
+  it("fails before upload when a referenced file is missing", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, {});
+    expect(() => createPublishArchive(dir)).toThrow(clip);
+  });
+
+  it("does not fail on a missing href, source fallback, srcset candidate or CSS url", () => {
+    const dir = projectWith(
+      `<link rel="stylesheet" href="s.css"><a href="notes.html">n</a><video><source src="a.webm"><source src="a.mp4"></video>` +
+        `<img src="a.png" srcset="a.png 1x, a@2x.png 2x"><style>.a{background:url(gone.jpg)}</style>`,
+      { "a.mp4": "v", "a.png": "p", "s.css": ".a{background:url(gone.jpg)}" },
+    );
+    expect(() => createPublishArchive(dir)).not.toThrow();
+    expect(names(dir)).not.toContain("notes.html");
+  });
+
+  it("fails on a missing video, audio, img src or poster, naming the file", () => {
+    for (const tag of [
+      'video src="gone.mp4"',
+      'audio src="gone.mp3"',
+      'img src="gone.png"',
+      'video poster="gone.jpg"',
+    ]) {
+      const name = /"(gone\.[a-z0-9]+)"/.exec(tag)![1]!;
+      expect(() =>
+        createPublishArchive(projectWith(`<${tag}></${tag.split(" ")[0]}>`, {})),
+      ).toThrow(name);
+    }
+  });
+
+  it("leaves out an unreferenced .env", () => {
+    const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v", ".env": "SECRET=1" });
+    expect(names(dir)).not.toContain(".env");
+  });
+});
