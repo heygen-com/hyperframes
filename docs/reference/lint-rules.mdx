@@ -102,6 +102,18 @@ Source: `packages/lint/src/rules/composition.ts`.
 
 **Fix:** Replace it with `data-track-index`, the canonical name the browser editor and the linter read.
 
+### `invalid_data_duration`
+
+**Error.** A `data-duration` value is not a valid number of seconds, so the clip gets a different duration than written.
+
+**Fix:** Use a plain number of seconds, e.g. `data-duration="2"`.
+
+### `invalid_data_track_index`
+
+**Error.** A `data-track-index` value is not a whole number, so the clip lands on track 0 instead of the track written.
+
+**Fix:** Use a whole number, e.g. `data-track-index="1"`.
+
 ### `duplicate_composition_id`
 
 **Error.** The same `data-composition-id` appears on several elements in one file — often a `<meta>` tag carrying the same id as the root `<div>`.
