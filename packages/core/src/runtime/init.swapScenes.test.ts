@@ -1964,7 +1964,7 @@ describe("the preview's scene window", () => {
   it("lays out a scene the visibility pass hid by display, unseen, while its script builds its timeline", async () => {
     const seen =
       `var h = document.querySelector('[data-hf-scene="s2"]:not(style):not(script)');` +
-      `document.body.setAttribute("data-s2-seen", getComputedStyle(h).display + " " + h.style.opacity);`;
+      `document.body.setAttribute("data-s2-seen", [getComputedStyle(h).display, h.style.opacity, h.hasAttribute("inert")].join(" "));`;
     const leaf: Scene = {
       ...S2,
       body: "<p>two</p>",
@@ -1976,9 +1976,10 @@ describe("the preview's scene window", () => {
     // Paused in the middle scene, the last one mounts as next, hidden until it plays.
     await seekAndSettle(2.5);
     for (let i = 0; i < 5; i++) await tick();
-    expect(document.body.getAttribute("data-s2-seen")).toBe("block 0");
+    expect(document.body.getAttribute("data-s2-seen")).toBe("block 0 true");
     expect(sceneHost("s2").getAttribute("style")).toContain("display: none");
     expect(sceneHost("s2").getAttribute("style")).not.toContain("opacity");
+    expect(sceneHost("s2").hasAttribute("inert")).toBe(false);
   });
 
   it("mounts a scene Studio holds for editing and keeps it until Studio lets go", async () => {

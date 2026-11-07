@@ -4324,7 +4324,7 @@ export function initSandboxRuntimeModular(): void {
     }
   };
   // GSAP reads the transform of an element it cannot lay out by moving it out and back before its next
-  // element, past the text between; a host the visibility pass hid by display is laid out, unseen, meanwhile.
+  // element, past the text between; a host the visibility pass hid by display is laid out, unseen and inert, meanwhile.
   const layOutHiddenHosts = (hosts: Element[]): (() => void) => {
     const hidden = hosts.filter((host): host is StylableElement =>
       displayBeforeHide.has(host as StylableElement),
@@ -4336,8 +4336,10 @@ export function initSandboxRuntimeModular(): void {
       const opacity = {
         value: host.style.getPropertyValue("opacity"),
         priority: host.style.getPropertyPriority("opacity"),
+        inert: host.hasAttribute("inert"),
       };
       host.style.setProperty("opacity", "0", "important");
+      host.setAttribute("inert", "");
       return opacity;
     });
     return () =>
@@ -4345,9 +4347,10 @@ export function initSandboxRuntimeModular(): void {
         const ours =
           host.style.getPropertyValue("opacity") === "0" &&
           host.style.getPropertyPriority("opacity") === "important";
-        const { value, priority } = opacities[i]!;
+        const { value, priority, inert } = opacities[i]!;
         if (ours && value) host.style.setProperty("opacity", value, priority);
         else if (ours) host.style.removeProperty("opacity");
+        if (!inert) host.removeAttribute("inert");
         if (displayBeforeHide.has(host)) host.style.display = "none";
       });
   };
