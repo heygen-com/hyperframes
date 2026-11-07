@@ -93,7 +93,7 @@ function isConnectionCut(err: unknown): boolean {
 }
 
 /** The same cut twice: a connection that dies at the same age with the same bytes sent dies the same way again. */
-function isSameCut(before: PutTry & { ageMs: number }, now: PutTry & { ageMs: number }): boolean {
+function isSameCut(before: EndedTry, now: EndedTry): boolean {
   const near = (a: number, b: number) => Math.abs(a - b) <= 0.2 * Math.max(a, b);
   return before.sent > 0 && near(before.ageMs, now.ageMs) && near(before.sent, now.sent);
 }
@@ -132,32 +132,37 @@ function isFinal(err: unknown): boolean {
   );
 }
 
+type EndedTry = PutTry & { ageMs: number; cut: boolean };
+
+function repeatedCut(before: EndedTry | undefined, now: EndedTry, err: unknown, total: number) {
+  if (!before?.cut || !now.cut || !isSameCut(before, now)) return undefined;
+  const code = (err as { code?: string }).code;
+  return Object.assign(
+    new Error(
+      `The connection was cut at ${seconds(now.ageMs)} on two tries in a row, after ${Math.floor((100 * now.sent) / total)}% of the file was sent (${code ?? "connection reset"}). Every try restarts the file, so this link cannot finish it before the cut: use a faster connection or send less media.`,
+      { cause: err },
+    ),
+    { code },
+  );
+}
+
 async function putWithRetry(
   attempt: (tried: PutTry) => Promise<void>,
   total: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  let before: (PutTry & { ageMs: number }) | undefined;
-  let cutBefore = false;
+  let before: EndedTry | undefined;
   for (let tried = 0; ; tried++) {
     const current: PutTry = { attempt: tried + 1, startedAt: Date.now(), sent: 0 };
     try {
       return await attempt(current);
     } catch (err) {
       if (isFinal(err) || signal?.aborted) throw err;
-      const now = { ...current, ageMs: Date.now() - current.startedAt };
-      const cut = isConnectionCut(err);
-      if (cut && cutBefore && before && isSameCut(before, now)) {
-        throw Object.assign(
-          new Error(
-            `The connection was cut at ${seconds(now.ageMs)} on two tries in a row, after ${Math.floor((100 * now.sent) / total)}% of the file was sent (${(err as { code?: string }).code ?? "connection reset"}). Every try restarts the file, so this link cannot finish it before the cut: use a faster connection or send less media.`,
-            { cause: err },
-          ),
-          { code: (err as { code?: unknown }).code },
-        );
-      }
+      const now = { ...current, ageMs: Date.now() - current.startedAt, cut: isConnectionCut(err) };
+      const futile = repeatedCut(before, now, err, total);
+      if (futile) throw futile;
       if (tried >= putTimings.retries) throw exhausted(err, tried + 1, now, total);
-      [before, cutBefore] = [now, cut];
+      before = now;
       await sleep(putTimings.backoffMs * 2 ** tried, signal);
     }
   }
