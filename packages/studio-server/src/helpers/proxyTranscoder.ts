@@ -42,6 +42,7 @@ import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
  */
 
 export const PROXY_PARAMS_VERSION = "v7";
+export const SEEK_PROXY_PARAMS_VERSION = "seek-v1";
 
 export const CACHE_DIR_NAME = ".transcode-cache";
 
@@ -184,10 +185,11 @@ function getCanonicalProxyCachePath(
   variant: ProxyVariant,
   box?: PreviewProxyBox,
   limitSeconds?: number,
+  seek = false,
 ): string {
   const key = fastCopyKey(
     source.sourcePath,
-    PROXY_PARAMS_VERSION,
+    seek ? SEEK_PROXY_PARAMS_VERSION : PROXY_PARAMS_VERSION,
     keyVariant(variant, limitSeconds),
     box,
   );
@@ -210,12 +212,14 @@ export function getProxyCachePath(
   variant: ProxyVariant = "h264",
   box?: PreviewProxyBox,
   limitSeconds?: number,
+  seek = false,
 ): string {
   return getCanonicalProxyCachePath(
     canonicalizeProxySource(projectDir, absoluteSourcePath),
     variant,
     box,
     limitSeconds,
+    seek,
   );
 }
 
@@ -726,6 +730,7 @@ async function runFfmpeg(
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
   limitSeconds: number | undefined,
+  seek: boolean,
   signal: AbortSignal,
   onProgress: (progress: ProxyProgress) => void,
   isBackground: () => boolean = () => false,
@@ -766,7 +771,7 @@ async function runFfmpeg(
         ...lengthArgs(range?.lengthSeconds ?? limitSeconds),
         "-vf",
         videoFilter,
-        ...KEYFRAME_EVERY_SECOND_ARGS,
+        ...(seek ? ["-g", "1", ...(keepsAlpha ? [] : ["-bf", "0"])] : KEYFRAME_EVERY_SECOND_ARGS),
         ...(keepsAlpha ? [...VP8_ARGS, ...vp8Threads(range ? gate.size : 1)] : H264_ARGS),
         target,
       ],
@@ -916,6 +921,7 @@ async function transcodeToCache(
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
   limitSeconds: number | undefined,
+  seek: boolean,
 ): Promise<string> {
   await acquireSlot(job);
   try {
@@ -928,7 +934,7 @@ async function transcodeToCache(
       cacheDir,
       await contentCopyKey(
         absoluteSourcePath,
-        PROXY_PARAMS_VERSION,
+        seek ? SEEK_PROXY_PARAMS_VERSION : PROXY_PARAMS_VERSION,
         keyVariant(variant, limitSeconds),
         box,
         job.abandoned.signal,
@@ -962,6 +968,7 @@ async function transcodeToCache(
         variant,
         box,
         limitSeconds,
+        seek,
         job.abandoned.signal,
         (progress) => reportProgress(job, progress),
         () => job.background && !job.priority,
@@ -986,9 +993,11 @@ export function proxyCopyProgress(
   absoluteSourcePath: string,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
+  seek = false,
 ): number | undefined {
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const progress = inFlight.get(getCanonicalProxyCachePath(source, variant, box))?.job.lastProgress;
+  const progress = inFlight.get(getCanonicalProxyCachePath(source, variant, box, undefined, seek))
+    ?.job.lastProgress;
   return progress?.totalSeconds
     ? Math.min(1, progress.doneSeconds / progress.totalSeconds)
     : undefined;
@@ -999,9 +1008,10 @@ export function retryProxyCopy(
   absoluteSourcePath: string,
   variant: ProxyVariant,
   box?: PreviewProxyBox,
+  seek = false,
 ): void {
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  failedTranscodes.delete(getCanonicalProxyCachePath(source, variant, box));
+  failedTranscodes.delete(getCanonicalProxyCachePath(source, variant, box, undefined, seek));
 }
 
 let proxyActivity = 0;
@@ -1035,7 +1045,13 @@ export async function resolveProxy(
 ): Promise<string> {
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
-  const cachePath = getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
+  const cachePath = getCanonicalProxyCachePath(
+    source,
+    variant,
+    box,
+    options.limitSeconds,
+    options.seek,
+  );
   if (existsSync(cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
@@ -1070,6 +1086,7 @@ export async function resolveProxy(
       variant,
       box,
       options.limitSeconds,
+      options.seek === true,
     )
       .catch((err: unknown) => {
         if (!(err instanceof ProxyDroppedError) && !job.abandoned.signal.aborted) {
@@ -1194,6 +1211,8 @@ async function makeStill(
 }
 
 export interface ResolveProxyOptions {
+  /** All-intra decoder input, isolated from ordinary authoring proxies. */
+  seek?: boolean;
   limitSeconds?: number;
   priority?: boolean;
   background?: boolean;

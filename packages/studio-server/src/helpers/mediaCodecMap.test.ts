@@ -370,6 +370,22 @@ describe("a lighter copy of a file Chrome can play", () => {
     ).toEqual({ eligible: false, reason: "browser_safe_codec" });
   });
 
+  it("allows a seekable copy at the shown size without requiring a heavy source", () => {
+    const box = { width: 4096, height: 2436 };
+    expect(decideMediaProxyEligibility(playable, box, true)).toEqual({ eligible: true });
+    expect(
+      decideMediaProxyEligibility({ ...playable, codecName: "vp8", hasAlpha: true }, box, true),
+    ).toEqual({ eligible: true });
+    expect(decideMediaProxyEligibility(playable, undefined, true)).toEqual({
+      eligible: false,
+      reason: "browser_safe_codec",
+    });
+    expect(decideMediaProxyEligibility(null, box, true)).toEqual({
+      eligible: false,
+      reason: "unknown_codec",
+    });
+  });
+
   it("reads the size, bit depth and bitrate off the probe, and keeps them with the codec facts", async () => {
     const project = tmpProject();
     const videoPath = join(project, "cam.mov");

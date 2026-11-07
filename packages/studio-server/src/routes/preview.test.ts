@@ -1533,6 +1533,8 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
 
   async function loadPreviewModule(opts: {
     copyProgress?: number;
+    copyProgressImpl?: (...args: unknown[]) => number | undefined;
+    retryProxyCopyImpl?: (...args: unknown[]) => void;
     retried?: string[];
     resolveProxyImpl?: (
       projectDir: string,
@@ -1579,11 +1581,13 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       waitForProxy,
       ProxyWaitTimeoutError,
       PROXY_PENDING_RETRY_AFTER_SECONDS,
-      proxyCopyProgress: () => opts.copyProgress,
-      retryProxyCopy: (_dir: string, file: string) => void opts.retried?.push(file),
+      proxyCopyProgress: opts.copyProgressImpl ?? (() => opts.copyProgress),
+      retryProxyCopy:
+        opts.retryProxyCopyImpl ?? ((_dir: string, file: string) => void opts.retried?.push(file)),
       ProxyTranscodeError: FakeProxyTranscodeError,
       ProxyCapacityError: FakeProxyCapacityError,
       PROXY_PARAMS_VERSION: "v1",
+      SEEK_PROXY_PARAMS_VERSION: "seek-v1",
       getProxyCachePath: () => "",
     }));
     // Spread the real module first so the pre-warm gate (`shouldPrewarmProxy`
@@ -1625,6 +1629,71 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     }));
     return import("./preview.js");
   }
+
+  it.each(["bundled", "disk after null bundle", "disk after failed bundle"])(
+    "installs preview hooks before authored head consumers with flags, facts and error capture already present (%s)",
+    async (path) => {
+      const projectDir = createProjectDir();
+      const authored = `<!doctype html><html><head>
+        <script data-hf-accel-tracker>window.TRACKER_KEPT = true;</script>
+        <script data-hyperframes-preview-runtime="1" src="/stale-runtime.js"></script>
+        <script id="head-consumer">window.HEAD_CONSUMER = document.createElement("video").requestVideoFrameCallback;</script>
+        <script id="head-library" src="assets/head-library.js"></script>
+      </head><body><main data-composition-id="main" data-duration="2" data-motion-blur="on"></main>
+        <script id="body-consumer">window.BODY_CONSUMER = true;</script>
+      </body></html>`;
+      writeFileSync(join(projectDir, "index.html"), authored);
+      writeFileSync(
+        join(projectDir, "scene.html"),
+        `<template><main data-composition-id="scene" data-duration="2"></main><script id="body-consumer">window.BODY_CONSUMER = true;</script></template>`,
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({
+          "/clip.webm": {
+            codecName: "vp9",
+            browserHostile: true,
+            representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+          },
+        }),
+      });
+      const app = new Hono();
+      register(
+        app,
+        createAdapter(projectDir, {
+          bundle: async () => {
+            if (path === "disk after failed bundle") throw new Error("bundler unavailable");
+            return path === "bundled" ? authored : null;
+          },
+        }),
+      );
+      for (const suffix of ["", "/comp/scene.html"]) {
+        const response = await app.request("http://localhost/projects/demo/preview" + suffix);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        const runtime = html.indexOf('src="/api/runtime.js"');
+        expect(runtime).toBeGreaterThan(-1);
+        for (const early of [
+          `name="${STUDIO_PREVIEW_MARK_META}"`,
+          `window.${STUDIO_PREVIEW_ERRORS}=`,
+          "window.__HF_MEDIA_CODEC_MAP__=",
+          "window.__HF_MEDIA_SOURCE_FACTS__=",
+        ]) {
+          expect(html.indexOf(early)).toBeGreaterThan(-1);
+          expect(html.indexOf(early)).toBeLessThan(runtime);
+        }
+        for (const authoredId of ["head-consumer", "head-library", "body-consumer"])
+          expect(runtime).toBeLessThan(html.indexOf(`id="${authoredId}"`));
+        expect(html).not.toContain("stale-runtime.js");
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hyperframes-preview-runtime]"),
+        ).toHaveLength(1);
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hf-accel-tracker]"),
+        ).toHaveLength(1);
+        expect(html).toContain("window.TRACKER_KEPT = true;");
+      }
+    },
+  );
 
   describe("?hf-proxy=h264 on the static asset route", () => {
     it("serves proxy bytes with Accept-Ranges on a full request, and a 206 range slice on a Range request", async () => {
@@ -1789,6 +1858,42 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveProxyMock).toHaveBeenCalledTimes(1);
     });
 
+    it("never revalidates a seek copy against the ordinary boxed copy's ETag", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      pastSettleWindow();
+      const proxy = join(projectDir, "proxy.mp4");
+      writeFileSync(proxy, "copy");
+      const resolveProxyMock = vi.fn(async () => proxy);
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const normalUrl =
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-light=1&hf-proxy-box=1024x724";
+      const normal = await app.request(normalUrl);
+      const normalTag = normal.headers.get("ETag")!;
+      expect(normalTag).toContain(":h264:v1:1024x724");
+      const seekUrl = normalUrl + "&hf-proxy-seek=1";
+      const seek = await app.request(seekUrl, { headers: { "If-None-Match": normalTag } });
+      expect(seek.status).toBe(200);
+      expect(seek.headers.get("ETag")).not.toBe(normalTag);
+      expect(seek.headers.get("ETag")).toContain(":h264:seek-v1:1024x724");
+      expect(resolveProxyMock).toHaveBeenLastCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        { width: 1024, height: 724 },
+        { priority: false, seek: true },
+      );
+      const again = await app.request(seekUrl, {
+        headers: { "If-None-Match": seek.headers.get("ETag")! },
+      });
+      expect(again.status).toBe(304);
+      expect(resolveProxyMock).toHaveBeenCalledTimes(2);
+    });
+
     it("makes the copy for the shown size, under its own tag", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -1890,12 +1995,98 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         expect(unasked.status).toBe(422);
         expect(resolveProxyMock).not.toHaveBeenCalled();
       });
+
+      it("serves a seekable copy at the shown size after a slow seek", async () => {
+        const projectDir = createProjectDir();
+        writeFileSync(join(projectDir, "clip.mp4"), "original-bytes");
+        const resolveProxyMock = vi.fn(async () => {
+          const proxyPath = join(projectDir, "seek.mp4");
+          writeFileSync(proxyPath, "seek-bytes");
+          return proxyPath;
+        });
+        const { registerPreviewRoutes: register } = await loadPreviewModule({
+          resolveProxyImpl: resolveProxyMock,
+          probeAssetCodecImpl: playable(1920, 1080),
+        });
+        const app = new Hono();
+        register(app, createAdapter(projectDir));
+
+        const res = await app.request(
+          "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-light=1&hf-proxy-seek=1&hf-proxy-box=2048x1218",
+        );
+
+        expect(res.status).toBe(200);
+        expect(await res.text()).toBe("seek-bytes");
+        expect(resolveProxyMock).toHaveBeenCalledWith(
+          projectDir,
+          join(projectDir, "clip.mp4"),
+          "h264",
+          { width: 2048, height: 1218 },
+          { priority: false, seek: true },
+        );
+      });
+
+      it("keeps the alpha variant guard for seekable copies", async () => {
+        const projectDir = createProjectDir();
+        writeFileSync(join(projectDir, "clip.webm"), "original-alpha-bytes");
+        const resolveProxyMock = vi.fn(async () => {
+          const proxyPath = join(projectDir, "seek.webm");
+          writeFileSync(proxyPath, "seek-alpha-bytes");
+          return proxyPath;
+        });
+        const { registerPreviewRoutes: register } = await loadPreviewModule({
+          resolveProxyImpl: resolveProxyMock,
+          probeAssetCodecImpl: async () => ({
+            ...(await playable(1920, 1080)()),
+            codecName: "vp8",
+            hasAlpha: true,
+          }),
+        });
+        const app = new Hono();
+        register(app, createAdapter(projectDir));
+        const query = "hf-proxy-light=1&hf-proxy-seek=1&hf-proxy-box=2048x1218";
+        const url = "http://localhost/projects/demo/preview/clip.webm";
+
+        expect((await app.request(`${url}?hf-proxy=h264&${query}`)).status).toBe(422);
+        expect(resolveProxyMock).not.toHaveBeenCalled();
+        const res = await app.request(`${url}?hf-proxy=vp8&${query}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Content-Type")).toBe("video/webm");
+        expect(await res.text()).toBe("seek-alpha-bytes");
+      });
+
+      it("does not make seek copies when auto-proxy is disabled", async () => {
+        const projectDir = createProjectDir();
+        writeFileSync(join(projectDir, "clip.mp4"), "original-bytes");
+        const resolveProxyMock = vi.fn(async () => "should-not-be-called");
+        const { registerPreviewRoutes: register } = await loadPreviewModule({
+          resolveProxyImpl: resolveProxyMock,
+          probeAssetCodecImpl: playable(1920, 1080),
+        });
+        const app = new Hono();
+        register(app, { ...createAdapter(projectDir), autoProxy: false });
+
+        const res = await app.request(
+          "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-light=1&hf-proxy-seek=1&hf-proxy-box=2048x1218",
+        );
+        expect(res.status).toBe(404);
+        expect(resolveProxyMock).not.toHaveBeenCalled();
+      });
     });
 
     it.each([
       ["a size off the ladder", "?hf-proxy=h264&hf-proxy-box=1000x2000"],
       ["a size without a copy", "?hf-proxy-box=1448x2048"],
       ["a lighter copy without a size", "?hf-proxy=h264&hf-proxy-light=1"],
+      ["a seek copy without a size", "?hf-proxy=h264&hf-proxy-light=1&hf-proxy-seek=1"],
+      [
+        "a seek copy without the light marker",
+        "?hf-proxy=h264&hf-proxy-seek=1&hf-proxy-box=724x362",
+      ],
+      [
+        "an invalid seek marker",
+        "?hf-proxy=h264&hf-proxy-light=1&hf-proxy-seek=0&hf-proxy-box=724x362",
+      ],
     ])("refuses %s before making anything", async (_name, query) => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -2179,6 +2370,45 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
 
       await app.request(`${url}&hf-proxy-box=1448x2048&hf-proxy-retry=1`);
       expect(retried).toEqual([join(projectDir, "clip.mp4")]);
+    });
+
+    it("uses the seek recipe for progress and retry requests without touching the ordinary copy", async () => {
+      const projectDir = createProjectDir();
+      const source = join(projectDir, "clip.mp4");
+      writeFileSync(source, "source");
+      const progress = vi.fn(() => 0.5);
+      const retry = vi.fn();
+      const resolveProxyMock = vi.fn(() => new Promise<string>(() => {}));
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+        copyProgressImpl: progress,
+        retryProxyCopyImpl: retry,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url =
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-light=1&hf-proxy-box=1024x724";
+      for (const seek of [false, true]) {
+        const response = await app.request(
+          url + "&hf-proxy-retry=1" + (seek ? "&hf-proxy-seek=1" : ""),
+        );
+        expect(response.status).toBe(202);
+        expect(response.headers.get("X-HF-Proxy-Progress")).toBe("0.500");
+        expect(progress).toHaveBeenLastCalledWith(
+          projectDir,
+          source,
+          "h264",
+          { width: 1024, height: 724 },
+          seek,
+        );
+        expect(retry).toHaveBeenLastCalledWith(
+          projectDir,
+          source,
+          "h264",
+          { width: 1024, height: 724 },
+          seek,
+        );
+      }
     });
 
     it("rejects a path-traversal attempt through the proxied path (404, no transcode)", async () => {

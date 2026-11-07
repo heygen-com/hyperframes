@@ -11,6 +11,7 @@ import type { PlayerAPI } from "../core.types";
 import type { ClipTree } from "./clipTree";
 import type { CompositionLengthSource } from "./compositionLength";
 import type { SvgSelectorAliases } from "../compiler/svgSelectorAliases";
+import type { PausedVideoFrameProvider } from "./pausedVideoFrames";
 
 type ThreeClockLike = {
   elapsedTime: number;
@@ -79,6 +80,7 @@ declare global {
        *  runtime's paused-side enforcement leaves it alone. Always release. */
       leasePausedMedia?: (el: HTMLMediaElement) => void;
       releasePausedMedia?: (el: HTMLMediaElement) => void;
+      setPausedVideoFrameProvider?: (provider: PausedVideoFrameProvider | null) => void;
       /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
       setLoopStart?: (seconds: number | null) => void;
       /** Read-only level taps for the Studio meters: nothing exists until

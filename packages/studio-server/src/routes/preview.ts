@@ -10,7 +10,6 @@ import {
   addScenePartsManifest,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
-  insertRuntimeTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
@@ -23,6 +22,7 @@ import {
 import {
   PREVIEW_PROXY_BOX_PARAM,
   PREVIEW_PROXY_LIGHT_PARAM,
+  PREVIEW_PROXY_SEEK_PARAM,
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
   PREVIEW_PROXY_RETRY_PARAM,
@@ -150,10 +150,10 @@ function parseStudioMotionManifestContent(content: string): {
   }
 }
 
-/** Swaps any runtime already in the page for the preview runtime, placed as the bundler places it. */
+/** Preview hooks must install before authored head scripts register media consumers. */
 function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag);
+  return injectTagsAtHeadStart(stripEmbeddedRuntimeScripts(html), tag);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -488,6 +488,8 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     "Cache-Control": "private, no-cache",
     ETag: etag,
   });
+  const notModifiedPreview = (etag: string) =>
+    new Response(null, { status: 304, headers: previewCacheHeaders(etag) });
 
   // One probe cache per server instance (this function runs once per
   // registered API), reused across every preview request so the mtime-cache
@@ -602,13 +604,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
     const etag = `"preview:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    if (c.req.header("If-None-Match") === etag) return notModifiedPreview(etag);
     const builtKey = `${project.id}\n${etag}`;
     const cached = builtPreviews.get(builtKey) ?? adapter.previewDocuments?.read(builtKey);
     if (cached) {
@@ -664,13 +660,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const compPathHash = createHash("sha1").update(compPath).digest("hex");
     const capture = c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
     const etag = `"comp:v2:${compPathHash}:${signature}${gsapEtagSalt}${variablesEtagSalt(vars.raw)}${capture ? ":capture" : ""}"`;
-    const ifNoneMatch = c.req.header("If-None-Match");
-    if (ifNoneMatch === etag) {
-      return new Response(null, {
-        status: 304,
-        headers: previewCacheHeaders(etag),
-      });
-    }
+    if (c.req.header("If-None-Match") === etag) return notModifiedPreview(etag);
 
     const stamped = pinSubCompHfIds(compFile, compPath);
     if (stamped === null) return c.text("not found", 404); // file removed between stat and read
@@ -685,7 +675,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       gsapBaseUrl,
     );
     if (!html) return c.text("not found", 404);
-    html = withRootImportMap(html, baseHref);
+    html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
@@ -729,10 +719,12 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
     const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
     const lightRequested = c.req.query(PREVIEW_PROXY_LIGHT_PARAM) !== undefined;
+    const seekParam = c.req.query(PREVIEW_PROXY_SEEK_PARAM);
     if (
       proxyBox === null ||
       (proxyBox && proxyParam === undefined) ||
-      (lightRequested && !proxyBox)
+      (lightRequested && !proxyBox) ||
+      (seekParam !== undefined && (seekParam !== "1" || !lightRequested || !proxyBox))
     ) {
       return c.text("not found", 404);
     }
@@ -746,7 +738,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         return c.text("not found", 404);
       }
       const facts = await probeAssetCodec(file, undefined, mediaCodecProbeCache);
-      const eligibility = decideMediaProxyEligibility(facts, lightRequested ? proxyBox : undefined);
+      const eligibility = decideMediaProxyEligibility(
+        facts,
+        lightRequested ? proxyBox : undefined,
+        seekParam === "1",
+      );
       if (!eligibility.eligible) {
         return c.text(`media proxy unavailable: ${eligibility.reason}`, 422);
       }
@@ -776,7 +772,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     }
 
     const tag = settledFileTag(stat);
-    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox)}"`;
+    const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox, seekParam === "1")}"`;
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : { "Cache-Control": "private, no-cache", ...(etag && { ETag: etag }) };
@@ -798,17 +794,26 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         // A cached copy settles before any timer; a transcode never holds one of
         // the browser's few connections to this host. 202 until the copy lands.
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
-          retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
+          retryProxyCopy(project.dir, file, proxyVariant, proxyBox, seekParam === "1");
         }
         const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
         const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
         servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, {
+            ...urgency,
+            ...(seekParam === "1" && { seek: true }),
+          }),
           0,
         );
       } catch (err) {
         if (err instanceof ProxyWaitTimeoutError) {
-          const progress = proxyCopyProgress(project.dir, file, proxyVariant, proxyBox);
+          const progress = proxyCopyProgress(
+            project.dir,
+            file,
+            proxyVariant,
+            proxyBox,
+            seekParam === "1",
+          );
           return c.text("media proxy is being made", 202, {
             "Retry-After": progress === undefined ? String(PROXY_PENDING_RETRY_AFTER_SECONDS) : "1",
             "Cache-Control": "no-store",

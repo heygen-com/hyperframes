@@ -17,6 +17,7 @@ import {
 import { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { hdrToSdrToneMapFilter } from "@hyperframes/core";
+import { fastCopyKey } from "./proxyCacheKey.js";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -511,21 +512,176 @@ describe("resolveProxy", () => {
     await expect(resultPromise).resolves.toBe(vp8Path);
   });
 
-  it("puts a keyframe every second into a copy, so scrubbing lands close", async () => {
+  it.each(["h264", "vp8"] as const)(
+    "preserves the ordinary %s one-second recipe and uses all-intra only for seek copies",
+    async (variant) => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "clip.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const box = { width: 1024, height: 724 };
+      const normalPath = getProxyCachePath(projectDir, sourcePath, variant, box);
+      expect(normalPath).toBe(
+        join(
+          realpathSync(projectDir),
+          ".transcode-cache",
+          `${fastCopyKey(realpathSync(sourcePath), "v7", variant, box)}${variant === "h264" ? ".mp4" : ".webm"}`,
+        ),
+      );
+      const normal = resolveProxy(projectDir, sourcePath, variant, box);
+      await flush();
+      const args = calls[0]!.args;
+      expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:gte(t,n_forced*1)");
+      expect(args).not.toContain("-g");
+      expect(args).not.toContain("-bf");
+      succeed(calls[0]!);
+      expect(await normal).toBe(normalPath);
+
+      const seekPath = getProxyCachePath(projectDir, sourcePath, variant, box, undefined, true);
+      const seek = resolveProxy(projectDir, sourcePath, variant, box, { seek: true });
+      await flush();
+      expect(calls).toHaveLength(2);
+      const seekArgs = calls[1]!.args;
+      expect(seekArgs[seekArgs.indexOf("-g") + 1]).toBe("1");
+      expect(seekArgs).not.toContain("-force_key_frames");
+      if (variant === "h264") expect(seekArgs[seekArgs.indexOf("-bf") + 1]).toBe("0");
+      succeed(calls[1]!);
+      expect(await seek).toBe(seekPath);
+      expect(seekPath).not.toBe(normalPath);
+      // Content-addressed lookup after a touch must also keep the two recipes separate.
+      utimesSync(sourcePath, new Date(), new Date(Date.now() + 5000));
+      expect(await resolveProxy(projectDir, sourcePath, variant, box)).toBe(normalPath);
+      expect(await resolveProxy(projectDir, sourcePath, variant, box, { seek: true })).toBe(
+        seekPath,
+      );
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  it("isolates seek in-flight work, progress and failure retries from ordinary copies", async () => {
     const { spawn, calls } = createSpawnSpy();
-    const { resolveProxy } = await loadModule(spawn, FFMPEG_PATH);
+    const { resolveProxy, proxyCopyProgress, retryProxyCopy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      8,
+    );
     const projectDir = tmpProject();
     const sourcePath = join(projectDir, "clip.mov");
-    writeFileSync(sourcePath, "source-bytes");
-
-    const result = resolveProxy(projectDir, sourcePath);
+    const box = { width: 1024, height: 724 };
+    writeFileSync(sourcePath, "same-source");
+    const normal = resolveProxy(projectDir, sourcePath, "h264", box).catch(
+      (error: unknown) => error,
+    );
+    const seek = resolveProxy(projectDir, sourcePath, "h264", box, { seek: true }).catch(
+      (error: unknown) => error,
+    );
+    const sameSeek = resolveProxy(projectDir, sourcePath, "h264", box, { seek: true }).catch(
+      (error: unknown) => error,
+    );
     await flush();
-
-    const args = calls[0]!.args;
-    expect(args[args.indexOf("-force_key_frames") + 1]).toBe("expr:gte(t,n_forced*1)");
-    succeed(calls[0]!);
-    await result;
+    expect(calls).toHaveLength(2);
+    calls[0]!.proc.stdout.emit("data", Buffer.from("out_time_us=2000000\n"));
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264", box)).toBe(0.25);
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264", box, true)).toBeUndefined();
+    calls[1]!.proc.stdout.emit("data", Buffer.from("out_time_us=4000000\n"));
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264", box, true)).toBe(0.5);
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264", box)).toBe(0.25);
+    fail(calls[0]!, 1, "normal failed");
+    fail(calls[1]!, 1, "seek failed");
+    const [normalFailure, seekFailure, sharedFailure] = await Promise.all([normal, seek, sameSeek]);
+    expect(seekFailure).toBe(sharedFailure);
+    expect(normalFailure).not.toBe(seekFailure);
+    retryProxyCopy(projectDir, sourcePath, "h264", box, true);
+    await expect(resolveProxy(projectDir, sourcePath, "h264", box)).rejects.toBe(normalFailure);
+    const retry = resolveProxy(projectDir, sourcePath, "h264", box, { seek: true });
+    await flush();
+    expect(calls).toHaveLength(3);
+    succeed(calls[2]!);
+    await retry;
+    expect(proxyCopyProgress(projectDir, sourcePath, "h264", box, true)).toBeUndefined();
   });
+
+  it.skipIf(!canEncodeVpxAlphaForReal)(
+    "makes every frame independently decodable in a real opaque and alpha seek pair",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const plate = join(projectDir, "plate.mp4");
+      const alpha = join(projectDir, "alpha.webm");
+      execFileSync(realFfmpeg!, [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=64x64:r=30:d=0.3",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        plate,
+      ]);
+      execFileSync(realFfmpeg!, [
+        "-v",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=s=64x64:r=30:d=0.3,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,32),0,255)'",
+        "-c:v",
+        "libvpx-vp9",
+        "-pix_fmt",
+        "yuva420p",
+        "-auto-alt-ref",
+        "0",
+        "-metadata:s:v:0",
+        "alpha_mode=1",
+        alpha,
+      ]);
+      const box = { width: 512, height: 512 };
+      const pair = await Promise.all([
+        resolveProxy(projectDir, plate, "h264", box, { seek: true }),
+        resolveProxy(projectDir, alpha, "vp8", box, { seek: true }),
+      ]);
+      for (const file of pair) {
+        const probe = JSON.parse(
+          execFileSync(
+            findFfBinary("ffprobe")!,
+            [
+              "-v",
+              "error",
+              "-select_streams",
+              "v:0",
+              "-show_frames",
+              "-show_entries",
+              "frame=key_frame,pict_type",
+              "-of",
+              "json",
+              file,
+            ],
+            { encoding: "utf8" },
+          ),
+        );
+        expect(probe.frames).toHaveLength(9);
+        expect(
+          probe.frames.every(
+            (frame: { key_frame: number; pict_type: string }) =>
+              frame.key_frame === 1 && frame.pict_type === "I",
+          ),
+        ).toBe(true);
+      }
+      expect(
+        Math.abs(meanLuma(pair[1]!, "alphaextract,", ["-c:v", "libvpx"]) - 127.5),
+      ).toBeLessThan(8);
+    },
+    60_000,
+  );
 
   it("decodes a VP9 alpha source with libvpx-vp9 so the VP8 proxy keeps its alpha", async () => {
     const { spawn, calls } = createSpawnSpy();

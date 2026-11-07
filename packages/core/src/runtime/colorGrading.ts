@@ -48,6 +48,7 @@ import { mediaElementTime } from "./mediaClock";
 import { swallow } from "./diagnostics";
 import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
+import { getPausedVideoFrame } from "./pausedVideoFrames";
 import {
   isCanvasElement,
   isElementNode,
@@ -2806,6 +2807,8 @@ function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | 
   if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
     if (renderFrame) return renderFrame;
+    const previewFrame = getPausedVideoFrame(element);
+    if (previewFrame) return previewFrame;
   }
   return isDrawableSource(element) ? element : null;
 }
@@ -3541,7 +3544,7 @@ function placeCanvas(
   layout: { width: number; height: number };
   uv: ReturnType<typeof calculateObjectFitUv>;
 } | null {
-  const styleSource = isHtmlElement(source) ? source : entry.element;
+  const styleSource = isRenderFrameImage(source) ? source : entry.element;
   const layout = updateCanvasLayout(entry, styleSource);
   if (!layout) return null;
   const style = window.getComputedStyle(styleSource);
