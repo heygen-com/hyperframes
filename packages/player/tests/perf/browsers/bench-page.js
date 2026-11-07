@@ -116,7 +116,14 @@ export async function bench(cfg) {
   const idle = await recordFrames(1000);
 
   host.play();
-  await until(() => runtime.isPlaying(), 5_000, "isPlaying");
+  await until(() => runtime.isPlaying(), 5_000, "isPlaying").catch((e) => {
+    // Safari sometimes reports a source as loading and never requests it; a reload does not help.
+    const unstarted = videos()
+      .filter((v) => v.readyState === 0 && v.networkState === 2)
+      .map((v) => v.currentSrc.split("/").pop());
+    if (unstarted.length === 0) throw e;
+    throw new Error(`${e.message}: the browser never started loading ${unstarted.join(", ")}`);
+  });
   countOps = true;
   const decodedBefore = decoded();
   const droppedTimeline = [];
