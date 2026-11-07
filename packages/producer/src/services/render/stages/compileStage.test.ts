@@ -566,6 +566,18 @@ describe("resolveEntryHtmlPath", () => {
       expect(readFileSync(wrapper, "utf-8")).toContain('data-duration="3"');
     });
 
+    it("isolates the first scene template when a file holds two and no live root", () => {
+      fixture = setupFixture(INDEX);
+      writeScene(
+        `<template>${SCENE_ROOT}</template><template><div data-composition-id="other" data-duration="5"></div></template>`,
+      );
+      const wrapper = resolve("compositions/scene.html");
+      expect(wrapper).toBe(join(fixture.workDir, "standalone-entry.html"));
+      const html = readFileSync(wrapper, "utf-8");
+      expect(html).toContain('data-duration="3"');
+      expect(html).not.toContain('id="other"');
+    });
+
     it("leaves a full document with a live root outside its template untouched", () => {
       fixture = setupFixture(INDEX);
       writeScene(`<!doctype html>

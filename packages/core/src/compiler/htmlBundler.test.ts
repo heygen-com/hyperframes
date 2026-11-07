@@ -285,6 +285,23 @@ describe("bundleToSingleHtml", () => {
     },
   );
 
+  it("bundles the first scene template of a file with two scene templates and no live root", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="6">
+          <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-duration="6"><h1>first scene</h1></div></template>
+        <template><div data-composition-id="other"><h1>second scene</h1></div></template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("first scene");
+    expect(bundled).not.toContain("second scene");
+  });
+
   it("rebases direct-entry authored asset paths before inlining", async () => {
     const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
     const bgSvg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';

@@ -4,6 +4,32 @@ import { lintHyperframeHtml } from "../hyperframeLinter.js";
 import { parseCompositionVariables } from "@hyperframes/parsers/composition";
 
 describe("composition rules", () => {
+  describe("multiple_scene_templates", () => {
+    const scene = (id: string) =>
+      `<div data-composition-id="${id}" data-width="320" data-height="180"></div>`;
+    const find = async (html: string) =>
+      (await lintHyperframeHtml(html, { isSubComposition: true })).findings.find(
+        (f) => f.code === "multiple_scene_templates",
+      );
+
+    it("warns, naming each scene template", async () => {
+      const finding = await find(
+        `<template id="intro">${scene("a")}</template><template>${scene("b")}</template>`,
+      );
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toContain('template #1 (id="intro") holding composition "a"');
+      expect(finding?.message).toContain('template #2 holding composition "b"');
+    });
+
+    it.each([
+      `<template>${scene("a")}</template>`,
+      `<template><svg></svg></template><template>${scene("a")}</template>`,
+      `<template>${scene("a")}</template><template>${scene("b")}</template>${scene("live")}`,
+    ])("is quiet for %s", async (html) => {
+      expect(await find(html)).toBeUndefined();
+    });
+  });
+
   describe("canonical timing contract", () => {
     it("rejects deprecated attributes even when canonical attributes are also present", async () => {
       const result = await lintHyperframeHtml(`<!doctype html><html><body>
