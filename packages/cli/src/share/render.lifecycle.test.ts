@@ -5,7 +5,10 @@ import { join } from "node:path";
 import type { RenderExecutionDependencies } from "../commands/render/execute.js";
 import type { RenderOptions } from "../commands/render.js";
 const mocks = vi.hoisted(() => ({ render: vi.fn(), plan: vi.fn(), execute: vi.fn() }));
-vi.mock("@hyperframes/share", () => ({ projectFingerprint: async () => "unchanged" }));
+vi.mock("@hyperframes/share", () => ({
+  projectFingerprint: async () => "unchanged",
+  shareSourceFingerprint: async () => "unchanged-content",
+}));
 vi.mock("../commands/render/plan.js", () => ({ createRenderPlan: mocks.plan }));
 vi.mock("../commands/render/execute.js", () => ({ executeRenderPlan: mocks.execute }));
 vi.mock("../commands/render.js", () => ({
