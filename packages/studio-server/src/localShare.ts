@@ -13,6 +13,7 @@ export interface LocalShareState {
   url: string | null;
   manageUrl: string;
   changed: boolean | null;
+  hasReadyVersion?: boolean;
   audience: LocalShareAudience | null;
   spaceId: string | null;
   source: "not_checked" | "ready" | "video_only";

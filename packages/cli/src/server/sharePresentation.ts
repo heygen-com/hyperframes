@@ -17,6 +17,7 @@ export function presentShare(value: ShareState): LocalShareState {
             ? "ready"
             : "processing",
     url: held ? null : value.url,
+    hasReadyVersion: value.ready || Boolean(value.previousUrl),
     manageUrl: value.manageUrl,
     // Desktop's watcher does not cover every portable render input.
     changed: knownChanges(value),

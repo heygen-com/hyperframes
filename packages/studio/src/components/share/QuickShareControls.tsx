@@ -60,7 +60,7 @@ export function ShareNotices({ model, snapshot }: Props) {
         ? "Changes after your last upload aren’t shared automatically. Update to share the current project."
         : null,
     share.state === "link_off" ? "The link is off. Updating the video keeps it off." : null,
-    share.state === "processing" && !model.busy
+    share.state === "processing" && !model.busy && snapshot.job?.state !== "failed"
       ? "The shared video is still being prepared. Reopen sharing to check its status."
       : null,
     share.state === "unavailable" ? "Sharing is paused. Open Manage sharing for details." : null,
@@ -86,7 +86,9 @@ export function ShareActions({ model, snapshot, url }: Props & { url: string | n
       {url ? <CopyShare model={model} snapshot={snapshot} url={url} /> : null}
       {snapshot.versionSharing && snapshot.share.state !== "unavailable" ? (
         <Button disabled={model.busy} onClick={() => void model.run({ action: "update" })}>
-          Update shared version
+          {snapshot.job?.state === "failed" && snapshot.share.hasReadyVersion === false
+            ? "Create share link"
+            : "Update shared version"}
         </Button>
       ) : null}
       <ManageShare model={model} snapshot={snapshot} url={url} />

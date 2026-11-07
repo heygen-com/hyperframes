@@ -449,3 +449,24 @@ it("displays an existing private share without converting its audience", async (
   expect(host.textContent).toContain("Only you");
   expect(calls).toEqual([]);
 });
+
+it("resumes a failed first creation without presenting an uploaded version", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "processing",
+    audience: "public",
+    spaceId: "team1",
+    hasReadyVersion: false,
+  };
+  snapshot.job = {
+    ...job,
+    state: "failed",
+    error: { code: "source_unavailable", message: "Project files could not upload" },
+  };
+  await mount();
+  expect(button("Create share link")?.disabled).toBe(false);
+  expect(button("Update shared version")).toBeUndefined();
+  expect(host.textContent).not.toContain("still being prepared");
+  await act(async () => button("Create share link")?.click());
+  expect(calls).toEqual([{ action: "update" }]);
+});
