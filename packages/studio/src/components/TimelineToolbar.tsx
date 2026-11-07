@@ -162,6 +162,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
 }: TimelineToolbarProps) {
   const keys = useStudioKeys();
   const kf = keyHint("addKeyframe", keys);
+  const splitKey = splitShortcut ?? keyHint("split", keys);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
@@ -232,11 +233,8 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <LinkedSelectionToggle />
           <Tooltip
-            label={
-              timelineSnapEnabled
-                ? `Snapping on (${keyHint("timelineSnap", keys)})`
-                : `Snapping off (${keyHint("timelineSnap", keys)})`
-            }
+            label={timelineSnapEnabled ? "Snapping on" : "Snapping off"}
+            shortcut={keyHint("timelineSnap", keys)}
           >
             <button
               type="button"
@@ -290,18 +288,19 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                       ? "Select an animated element to add keyframes"
                       : keyframeIsMotionPath
                         ? keyframeWillExtend
-                          ? `Extend motion path to playhead (${kf})`
+                          ? "Extend motion path to playhead"
                           : keyframeState === "active"
-                            ? `Remove waypoint from motion path (${kf})`
-                            : `Add waypoint to motion path (${kf})`
+                            ? "Remove waypoint from motion path"
+                            : "Add waypoint to motion path"
                         : keyframeState === "active"
-                          ? `Remove keyframe at playhead (${kf})`
+                          ? "Remove keyframe at playhead"
                           : keyframeState === "inactive"
                             ? keyframeWillExtend
-                              ? `Add keyframe at playhead, extends animation (${kf})`
-                              : `Add keyframe at playhead (${kf})`
-                            : `Add keyframe (${kf})`
+                              ? "Add keyframe at playhead, extends animation"
+                              : "Add keyframe at playhead"
+                            : "Add keyframe"
                 }
+                shortcut={keyframePathEndpoint || !onToggleKeyframe ? undefined : kf}
               >
                 <button
                   type="button"
@@ -397,11 +396,12 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                 <Tooltip
                   label={
                     canSplit
-                      ? `Split at playhead (${splitShortcut ?? keyHint("split", keys)})`
+                      ? "Split at playhead"
                       : splittable
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
                   }
+                  shortcut={canSplit ? splitKey : undefined}
                 >
                   <button
                     type="button"
@@ -505,10 +505,9 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           </Tooltip>
           <Tooltip
             label={
-              canZoomSelection
-                ? `Zoom to selected clips (${keyHint("zoomSelection", keys)})`
-                : "Select a clip to zoom the timeline"
+              canZoomSelection ? "Zoom to selected clips" : "Select a clip to zoom the timeline"
             }
+            shortcut={canZoomSelection ? keyHint("zoomSelection", keys) : undefined}
           >
             <button
               type="button"

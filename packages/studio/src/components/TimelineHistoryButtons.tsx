@@ -1,7 +1,7 @@
 import { useStudioShellContextOptional } from "../contexts/StudioContext";
 import { RotateCcw, RotateCw } from "../icons/SystemIcons";
 import { trackStudioEvent } from "../utils/studioTelemetry";
-import { historyTooltipLabel } from "../utils/studioHelpers";
+import { getHistoryShortcutLabel, historyTooltipLabel } from "../utils/studioHelpers";
 import { flatDisabled, flatIdle } from "./timelineToolbarStyles";
 import { Tooltip } from "./ui";
 
@@ -16,7 +16,7 @@ function HistoryButton({ action, can, label, onClick }: HistoryButtonProps) {
   const Icon = action === "undo" ? RotateCcw : RotateCw;
   const enabled = Boolean(onClick) && can;
   return (
-    <Tooltip label={historyTooltipLabel(action, label)}>
+    <Tooltip label={historyTooltipLabel(action, label)} shortcut={getHistoryShortcutLabel(action)}>
       <button
         type="button"
         aria-label={action === "undo" ? "Undo" : "Redo"}
