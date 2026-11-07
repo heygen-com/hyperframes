@@ -68,6 +68,7 @@ export interface RenderRequestOptions {
   variables?: Record<string, unknown>;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
+  provenance?: string | boolean;
   engineConfig: EngineConfig;
   distributed?: DistributedRenderOptions;
 }
@@ -205,6 +206,13 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   if (options.outputResolution !== undefined && !isCanvasResolution(options.outputResolution)) {
     throw new Error("Render request outputResolution is invalid");
   }
+  assertProvenanceOption(options.provenance);
+}
+
+function assertProvenanceOption(provenance: unknown): void {
+  if (provenance === undefined || typeof provenance === "boolean") return;
+  if (typeof provenance === "string" && provenance.trim() !== "") return;
+  throw new Error("Render request provenance must be a boolean or a non-empty sidecar path string");
 }
 
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
