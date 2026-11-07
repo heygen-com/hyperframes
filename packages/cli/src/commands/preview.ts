@@ -373,6 +373,7 @@ export default defineCommand({
           return;
         }
         printStudioSummary(project.name, previewBaseUrl(status.port), project.dir, {
+          preview: status.logPath ? "background" : "foreground",
           details: [
             `${status.logPath ? "Background preview" : "Preview"} running${status.pid === null ? "" : ` (PID ${status.pid})`}.`,
             ...(status.logPath ? [`Log: ${status.logPath}`] : []),
@@ -556,6 +557,7 @@ export default defineCommand({
       } else {
         clack.intro(c.bold("hyperframes preview"));
         printStudioSummary(projectName, url, dir, {
+          preview: "background",
           details: [
             background.type === "reused"
               ? "Reusing the background server already running for this project."
@@ -1323,14 +1325,14 @@ function printStudioSummary(
   projectName: string,
   serverUrl: string,
   projectDir: string,
-  opts: { details?: string[]; footer?: string } = {},
+  opts: { details?: string[]; footer?: string; preview?: "background" | "foreground" } = {},
 ): void {
   const urls = studioSummaryUrls(projectName, serverUrl);
   console.log();
   console.log(`  ${c.dim("Project")}   ${c.accent(projectName)}`);
   console.log(`  ${c.dim("Studio")}    ${c.accent(urls.studioUrl)}`);
   console.log(`  ${c.dim("Server")}    ${c.accent(urls.serverUrl)}`);
-  const hint = desktopHint(projectDir);
+  const hint = desktopHint(projectDir, { preview: opts.preview });
   if (hint) console.log(`  ${c.dim("Desktop")}   ${hint}`);
   console.log();
   for (const detail of opts.details ?? []) {
@@ -1439,6 +1441,7 @@ function attachStudioReadyHandler(
     } else {
       spinner.stop(c.success("Studio running"));
       printStudioSummary(projectName, url, projectDir, {
+        preview: "foreground",
         footer: "Press Ctrl+C to stop",
       });
     }
@@ -1695,6 +1698,7 @@ export async function runEmbeddedMode(
       console.log();
     }
     printStudioSummary(pName, url, dir, {
+      preview: "foreground",
       details: [
         "Edit with your AI agent — it has HyperFrames skills installed.",
         "Changes reload automatically in the studio.",

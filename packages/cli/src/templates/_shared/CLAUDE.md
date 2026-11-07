@@ -53,7 +53,9 @@ npx hyperframes docs <topic> # reference docs in terminal
 > **Agents must use `npx hyperframes preview --background` for Studio handoff.** Do not rely
 > on a shell/tool `run_in_background` wrapper around `npm run dev`: that foreground process
 > remains owned by the invoking session and can disappear while the browser stays open,
-> leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`, keep it
+> leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`. The desktop
+> app can't edit the project while this preview runs, so `npx hyperframes open` stops it first.
+> If you hand the project to the app another way, run `preview --stop` before you do. Otherwise keep it
 > alive through review, and stop it explicitly with `preview --stop` afterward.
 
 > **Back from the desktop app.** Once this project was opened in the HyperFrames desktop app, run `npx hyperframes catch-up` before your next change here: it lists what the person asked Framey in the app and which files changed since.
