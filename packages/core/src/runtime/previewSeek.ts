@@ -2,6 +2,7 @@ import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import { isUnplayable, mediaSourceTimeAt, notePlaybackIntent } from "./media";
 import type { RuntimeMediaClip } from "./types";
+import { isVideoElement } from "./domRealm";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { getPausedVideoFrame, type PreparedPausedVideoFrames } from "./pausedVideoFrames";
 
@@ -127,7 +128,7 @@ export function createPreviewSeek(host: SeekHost) {
       native
         ? new Set(
             clips.flatMap(({ el }) =>
-              el instanceof HTMLVideoElement && el.readyState < 2 && isUnplayable(el) ? [el] : [],
+              isVideoElement(el) && el.readyState < 2 && isUnplayable(el) ? [el] : [],
             ),
           )
         : undefined,
