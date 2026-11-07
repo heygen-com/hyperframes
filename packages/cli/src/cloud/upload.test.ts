@@ -377,9 +377,12 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
   });
 });
 
+// Large enough that the kernel cannot hold it all: a loopback socket buffers several MB before the server reads.
+const BIG_BYTES = 32 * 1024 * 1024;
+
 describe("a PUT that stalls or fails on the network is sent again", () => {
   /** A server that answers its Nth request as `plan[n]` ("hang" never answers; "cut" drains slowly and drops the
-   * connection at 600 ms; "slow" drains slowly and answers 200; a number is the status) and keeps the last answer
+   * connection at 400 ms; "slow" drains slowly and answers 200; a number is the status) and keeps the last answer
    * for any later one. */
   async function withPlan(
     plan: Array<"hang" | "cut" | "slow" | number>,
@@ -393,8 +396,8 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
       for await (const _ of req) {
         void _;
         if (answer !== "cut" && answer !== "slow") continue;
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        if (answer === "cut" && Date.now() - born >= 600) return void req.socket.destroy();
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        if (answer === "cut" && Date.now() - born >= 400) return void req.socket.destroy();
       }
       if (answer === "hang") return void open.push(() => res.destroy());
       if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
@@ -416,7 +419,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
   ) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-upload-retry-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    const content = big ? Buffer.alloc(5 * 1024 * 1024, 1) : Buffer.from("bytes");
+    const content = big ? Buffer.alloc(BIG_BYTES, 1) : Buffer.from("bytes");
     writeFileSync(join(dir, "clip.mp4"), content);
     const was = { ...putTimings };
     Object.assign(putTimings, { stallMs: 150, backoffMs: 5, progressMs: 50 });
@@ -490,7 +493,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const live = sent.filter((e) => (e.sentBytes ?? 0) > 0);
     expect(live.length).toBeGreaterThan(1);
     expect(live.map((e) => e.sentBytes)).toEqual([...live.map((e) => e.sentBytes)].sort((a, b) => a! - b!));
-    expect(live.every((e) => e.totalBytes === 5 * 1024 * 1024)).toBe(true);
+    expect(live.every((e) => e.totalBytes === BIG_BYTES)).toBe(true);
     expect(events.some((e) => e.phase === "upload" && e.attempt === 2 && e.sentBytes === 0)).toBe(true);
   });
 
