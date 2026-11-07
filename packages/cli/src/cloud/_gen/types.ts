@@ -105,7 +105,7 @@ export interface CreateAssetUploadRequest {
   content_type: string;
   size_bytes: number;
   checksum_sha256?: string | null;
-  multipart?: boolean;
+  multipart?: boolean | null;
 }
 
 export interface CreateAssetUploadResponse {
