@@ -21,6 +21,7 @@ import { createShareAccess, shareSite } from "./auth.js";
 import { assertReviewUploadStorage, bindCliShareProject } from "./host.js";
 import { prepareShareRender } from "./render.js";
 import { prepareCliShareSource, uncheckedSource, type PreparedShareSource } from "./sources.js";
+import { observeShareMutation, type ShareAttempt, type ShareSurface } from "./telemetry.js";
 
 export interface ShareAction {
   action: "share" | "update" | "status" | "manage";
@@ -34,10 +35,25 @@ function linkState(share: ReviewShare | null, ready: boolean): string {
   if (!share.url) return "link_off";
   return ready ? "ready" : "processing";
 }
-async function readStatus(dir: string, client: ReviewClient, expectedProjectId?: string) {
+async function refreshShare(
+  dir: string,
+  client: ReviewClient,
+  expectedProjectId?: string,
+  onRecovery?: (pending: boolean) => void,
+) {
   const share = await reviewStatus({ projectPath: dir, client });
   if (expectedProjectId) assertUploadProject(share, expectedProjectId);
+  if (onRecovery) onRecovery(isProcessing(await pendingReviewExport(dir), share));
   if (share) await refreshReviewExport(dir, client);
+  return share;
+}
+async function readStatus(
+  dir: string,
+  client: ReviewClient,
+  expectedProjectId?: string,
+  onRecovery?: (pending: boolean) => void,
+) {
+  const share = await refreshShare(dir, client, expectedProjectId, onRecovery);
   const project = await readProject(share, client);
   const latest = project?.latest_ready_version_id ?? null;
   const version = await reviewVersion(dir, { latestReadyVersionId: latest });
@@ -142,6 +158,7 @@ function assertResumeSource(current: ShareState, input: ShareAction) {
 export function createShareService(
   projectPath: string,
   progress: (value: ReviewExportProgress | null) => void = () => {},
+  options: { surface?: ShareSurface } = {},
 ) {
   const dir = bindCliShareProject(projectPath);
   const auth = createShareAccess();
@@ -150,7 +167,12 @@ export function createShareService(
     await auth.access();
     return readStatus(dir, client, expectedProjectId);
   };
-  const upload = async (input: ShareAction, projectId: string, sources: PreparedShareSource) => {
+  const upload = async (
+    input: ShareAction,
+    projectId: string,
+    sources: PreparedShareSource,
+    attempt: ShareAttempt,
+  ) => {
     const end = Date.now() + (input.waitSeconds ?? 300) * 1000;
     let added = false;
     const failure = await addVersion({
@@ -158,7 +180,10 @@ export function createShareService(
       projectId,
       title: basename(dir),
       client,
-      onProgress: progress,
+      onProgress: (value) => {
+        attempt.progress(value);
+        progress(value);
+      },
       allowPending: true,
       ...(sources.filesForExport && { filesForExport: sources.filesForExport }),
       requireSource: sources.requireSource,
@@ -171,8 +196,11 @@ export function createShareService(
     if (failure) throw new Error(failure);
     const result = { ...(await status(projectId)), source: sources.source };
     if (result.version.failure) throw new Error(result.version.failure);
-    if (!added && !result.version.last?.current)
+    if (!added && !result.version.last?.current) {
+      attempt.complete(false, added);
       return { ...result, state: "processing", ready: false, url: null };
+    }
+    attempt.complete(result.ready, added);
     return result;
   };
   const uploadTarget = async (current: ReviewShare | null, input: ShareAction, space?: string) => {
@@ -204,11 +232,15 @@ export function createShareService(
       audience: target.audience,
     });
   };
-  const run = async (input: ShareAction) => {
-    const current = await status();
-    if (input.action === "status" || input.action === "manage") return current;
+  const mutate = async (input: ShareAction, attempt: ShareAttempt) => {
+    await auth.access();
+    attempt.authenticated();
+    const current = await readStatus(dir, client, undefined, attempt.recover);
     assertExistingIntent(current.share, input);
-    if (retrievesExisting(current, input)) return current;
+    if (retrievesExisting(current, input)) {
+      attempt.retrieved();
+      return current;
+    }
     const flags = await client.reviewFlags();
     if (!flags.versionSharing) throw new ReviewFailed(403, "feature_unavailable");
     const space = current.share
@@ -223,11 +255,16 @@ export function createShareService(
       shareFiles: flags.shareFiles,
     });
     if (sources.requireSource) await checkPreparedTarget(target);
-    return upload(input, target.projectId, sources);
+    return upload(input, target.projectId, sources, attempt);
   };
   return {
     status,
-    run,
+    run: (input: ShareAction) =>
+      input.action === "status" || input.action === "manage"
+        ? status()
+        : observeShareMutation(input.action, options.surface ?? "cli", (attempt) =>
+            mutate(input, attempt),
+          ),
     capabilities: () => client.reviewFlags(),
     spaces: () => client.spaces(),
     setAccess: async (access: AccessMode) => {
@@ -239,6 +276,7 @@ export function createShareService(
       return status();
     },
     linkOn: async () => {
+      if (!(await status()).share) throw new ReviewFailed(404, "not_shared");
       await shareForReview({ projectPath: dir, title: basename(dir), client });
       return status();
     },
