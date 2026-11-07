@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   add: vi.fn(),
   pending: vi.fn(),
   refresh: vi.fn(),
+  event: vi.fn(),
+  access: vi.fn(),
 }));
 vi.mock("@hyperframes/share", () => ({
   reviewClient: () => ({ project: mocks.project, spaces: mocks.spaces, reviewFlags: mocks.flags }),
@@ -33,7 +35,7 @@ vi.mock("@hyperframes/share", () => ({
   },
 }));
 vi.mock("./auth.js", () => ({
-  createShareAccess: () => ({ access: vi.fn() }),
+  createShareAccess: () => ({ access: mocks.access }),
   shareSite: () => "https://hyperframes.dev",
 }));
 vi.mock("./host.js", () => ({
@@ -41,6 +43,11 @@ vi.mock("./host.js", () => ({
   bindCliShareProject: (path: string) => path,
 }));
 vi.mock("./render.js", () => ({ prepareShareRender: mocks.render }));
+vi.mock("../telemetry/client.js", () => ({
+  trackEvent: mocks.event,
+  resetTelemetryPostureCache: vi.fn(),
+}));
+vi.mock("../telemetry/config.js", () => ({ readConfigFresh: vi.fn() }));
 import { createShareService } from "./service.js";
 const shared = {
   projectId: "project",
@@ -268,4 +275,116 @@ describe("asynchronous share recovery", () => {
       url: null,
     });
   });
+});
+describe("share rollout signals", () => {
+  const events = () => mocks.event.mock.calls.map(([name]) => name);
+  it("records a completed video even when its review link is disabled", async () => {
+    mocks.status.mockResolvedValue({ ...shared, url: null });
+    mocks.add.mockImplementation(async (request) => request.onAdded());
+    const result = await createShareService("/secret").run({ action: "update" });
+    expect(result.state).toBe("link_off");
+    expect(events()).toContain("share_video_ready");
+    expect(events()).not.toContain("share_mutation_processing");
+  });
+  it("records the allowlisted missing-audience usage reason", async () => {
+    await expect(createShareService("/secret").run({ action: "share" })).rejects.toMatchObject({
+      code: "audience_required",
+    });
+    expect(mocks.event.mock.lastCall?.[1]).toMatchObject({ reason: "audience_required" });
+  });
+  it("records recovery before refreshing a completed pending upload clears its state", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.pending.mockResolvedValue({ projectId: "project", videoId: "pending" });
+    mocks.refresh.mockImplementation(async () => mocks.pending.mockResolvedValue(null));
+    await createShareService("/secret").run({ action: "share" });
+    expect(events()).toContain("share_recovery_attempted");
+    expect(mocks.event.mock.lastCall?.[1]).toMatchObject({ recovery: true });
+    expect(events()).not.toContain("share_video_ready");
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("records only verified upload admission and ready, attributed to local Studio", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.add.mockImplementation(async (request) => {
+      request.onProgress({ step: "preparing", sent: 0, total: 0 });
+      request.onProgress({ step: "uploading", sent: 1, total: 2 });
+      request.onProgress({ step: "processing", sent: 2, total: 2 });
+      request.onAdded();
+    });
+    await createShareService("/private/project", undefined, { surface: "local_studio" }).run({
+      action: "update",
+    });
+    expect(events()).toEqual([
+      "share_mutation_attempted",
+      "share_mutation_authenticated",
+      "share_mutation_admitted",
+      "share_video_ready",
+    ]);
+    expect(mocks.event.mock.calls.every(([, data]) => data.client_surface === "local_studio")).toBe(
+      true,
+    );
+    expect(new Set(mocks.event.mock.calls.map(([, data]) => data.attempt_id)).size).toBe(1);
+  });
+  it("counts quota refusal without admission, rendering, or raw error details", async () => {
+    mocks.spaces.mockResolvedValue([
+      {
+        space_id: "space",
+        bound: true,
+        can_create_review: true,
+        review_entitlements: { can_register_project: false },
+      },
+    ]);
+    await expect(
+      createShareService("/secret").run({ action: "share", audience: "public" }),
+    ).rejects.toBeDefined();
+    expect(events()).toEqual([
+      "share_mutation_attempted",
+      "share_mutation_authenticated",
+      "share_mutation_failed",
+    ]);
+    expect(mocks.event.mock.lastCall?.[1]).toMatchObject({
+      reason: "review_project_limit_reached",
+    });
+    expect(mocks.render).not.toHaveBeenCalled();
+  });
+  it("records pending recovery without labeling the prior ready version new", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.pending.mockResolvedValue({ projectId: "project", videoId: "pending" });
+    mocks.add.mockResolvedValue(null);
+    mocks.version.mockResolvedValue({ last: { current: false }, source: "ready" });
+    await createShareService("/secret").run({ action: "update" });
+    expect(events()).toContain("share_recovery_attempted");
+    expect(events()).toContain("share_mutation_processing");
+    expect(events()).not.toContain("share_video_ready");
+    expect(mocks.event.mock.lastCall?.[1]).toMatchObject({ recovery: true });
+  });
+  it("existing-link retrieval and polling never count as a new video or copied link", async () => {
+    mocks.status.mockResolvedValue(shared);
+    const service = createShareService("/secret");
+    await service.run({ action: "status" });
+    expect(events()).toEqual([]);
+    await service.run({ action: "share" });
+    expect(events()).toEqual([
+      "share_mutation_attempted",
+      "share_mutation_authenticated",
+      "share_existing_link_returned",
+    ]);
+  });
+  it("stops entry creation on authoritative rollback while keeping existing links readable", async () => {
+    mocks.flags.mockResolvedValue({ versionSharing: false });
+    await expect(
+      createShareService("/secret").run({ action: "share", audience: "public" }),
+    ).rejects.toMatchObject({ reason: "feature_unavailable" });
+    expect(mocks.render).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    mocks.status.mockResolvedValue(shared);
+    expect((await createShareService("/secret").run({ action: "share" })).ready).toBe(true);
+  });
+});
+
+it("link reactivation cannot bypass the first-share rollout gate", async () => {
+  mocks.flags.mockResolvedValue({ versionSharing: false });
+  await expect(createShareService("/secret").linkOn()).rejects.toMatchObject({
+    reason: "not_shared",
+  });
+  expect(mocks.create).not.toHaveBeenCalled();
 });
