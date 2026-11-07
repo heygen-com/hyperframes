@@ -215,27 +215,27 @@ it("labels files as included only after a ready upload result", async () => {
   await mount();
   expect(host.textContent).toContain("Last Studio upload: project files included.");
 });
-it("starts browser login only after an explicit press and recovers signed-out polling", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith("/actions")) {
-        calls.push(JSON.parse(String(init?.body)));
-        return Response.json({ ...job, step: "signing_in" });
-      }
-      return Response.json(
-        { code: "unauthenticated", message: "Sign in to share.", job: null },
-        { status: 400 },
-      );
-    }),
-  );
-  await mount();
-  expect(calls).toEqual([]);
-  expect(button("Sign in in browser")).toBeDefined();
-  await act(async () => button("Sign in in browser")?.click());
-  expect(calls).toEqual([{ action: "login" }]);
-  expect(host.textContent).toContain("Finish signing in in your browser");
-});
+it.each(["unauthenticated", "login_expired"])(
+  "offers explicit browser login for %s and recovers signed-out polling",
+  async (code) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/actions")) {
+          calls.push(JSON.parse(String(init?.body)));
+          return Response.json({ ...job, step: "signing_in" });
+        }
+        return Response.json({ code, message: "Sign in to share.", job: null }, { status: 400 });
+      }),
+    );
+    await mount();
+    expect(calls).toEqual([]);
+    expect(button("Sign in in browser")).toBeDefined();
+    await act(async () => button("Sign in in browser")?.click());
+    expect(calls).toEqual([{ action: "login" }]);
+    expect(host.textContent).toContain("Finish signing in in your browser");
+  },
+);
 
 it("records a copy only after the clipboard succeeds and opening once per panel", async () => {
   snapshot.share = {

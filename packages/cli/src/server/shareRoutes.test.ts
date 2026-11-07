@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import type { ShareService, ShareState } from "../share/service.js";
 import { mountShareRoutes } from "./shareRoutes.js";
+import { ReviewFailed } from "@hyperframes/share";
 import { AuthError } from "../auth/errors.js";
 import { createShareCsrf, localShareRequestAllowed } from "./shareBoundary.js";
 
@@ -360,4 +361,35 @@ it("withholds an in-flight result when the account changes before completion", a
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ code: "login_changed", message: "Login changed" });
   });
+});
+
+it.each(["login_required", "", "invalid_token"])(
+  "exposes browser sign-in recovery for a review 401 (%s)",
+  async (reason) => {
+    const { app, service, login } = fixture();
+    const csrf = await token(app);
+    vi.mocked(service.status).mockRejectedValue(new ReviewFailed(401, reason));
+    const response = await request(app, "snapshot", csrf);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "login_expired",
+      message: expect.stringContaining("Sign in again"),
+    });
+    expect(login).not.toHaveBeenCalled();
+    vi.mocked(service.status).mockResolvedValue(state);
+    const started = await (await request(app, "actions", csrf, { action: "login" })).json();
+    await vi.waitFor(async () =>
+      expect((await (await request(app, `jobs/${started.id}`, csrf)).json()).state).toBe("done"),
+    );
+    expect(login).toHaveBeenCalledOnce();
+  },
+);
+
+it("preserves admission failures instead of offering an expired-session retry", async () => {
+  const { app, service, login } = fixture();
+  const csrf = await token(app);
+  vi.mocked(service.status).mockRejectedValue(new ReviewFailed(403, "feature_unavailable"));
+  const response = await request(app, "snapshot", csrf);
+  expect(await response.json()).toMatchObject({ code: "feature_unavailable" });
+  expect(login).not.toHaveBeenCalled();
 });
