@@ -233,7 +233,7 @@ export function getInstallInstructions(): string {
     return "brew install whisper-cpp";
   }
   if (platform() === "linux") {
-    return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
+    return "sudo apt-get install -y git cmake build-essential (Debian/Ubuntu; other distros: git, cmake and a C compiler, see https://github.com/ggml-org/whisper.cpp#building), then re-run";
   }
   if (platform() === "win32") {
     return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
@@ -269,6 +269,10 @@ export async function ensureWhisper(options?: {
     );
   }
 
+  // What each attempt hit, so the final error names the real cause instead of a bare install hint.
+  const causes: string[] = [];
+  const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).trim();
+
   // 2. Try brew (macOS, fastest — pre-built bottle)
   if (platform() === "darwin" && hasBrew()) {
     options?.onProgress?.("Installing whisper-cpp via Homebrew...");
@@ -280,8 +284,8 @@ export async function ensureWhisper(options?: {
       });
       const installed = findFromSystem();
       if (installed) return { ...installed, source: "brew" };
-    } catch {
-      // brew failed — fall through
+    } catch (err) {
+      causes.push(`brew install whisper-cpp failed: ${why(err)}`);
     }
     signal?.throwIfAborted();
   }
@@ -290,14 +294,19 @@ export async function ensureWhisper(options?: {
   if (hasGit() && hasCmake()) {
     try {
       return await buildFromSource(options?.onProgress, signal);
-    } catch {
-      // build failed — fall through
+    } catch (err) {
+      causes.push(why(err));
     }
     signal?.throwIfAborted();
+  } else {
+    const missing = [!hasGit() && "git", !hasCmake() && "cmake"].filter(Boolean).join(" and ");
+    causes.push(`cannot build whisper.cpp: ${missing} not found on PATH`);
   }
 
-  // 4. Give up — tell the user how
-  throw new WhisperUnavailableError(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
+  // 4. Give up — tell the user why and how
+  throw new WhisperUnavailableError(
+    `whisper-cpp not found (${causes.join("; ")}). Install: ${getInstallInstructions()}`,
+  );
 }
 
 export async function ensureModel(

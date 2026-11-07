@@ -63,3 +63,26 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
     rmSync(cache, { recursive: true, force: true });
   }
 });
+
+it("names the missing build tool when whisper.cpp cannot be built", async () => {
+  vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
+  vi.resetModules();
+  const { ensureWhisper: ensure } = await import("./manager.js");
+  calls.exec.mockImplementation((command: string, args: string[]) => {
+    if ((command === "which" || command === "where") && args[0] !== "git")
+      throw new Error("not available");
+    return `/bin/${args[0]}\n`;
+  });
+  await expect(ensure()).rejects.toThrow(/cannot build whisper\.cpp: cmake not found on PATH/);
+});
+
+it("gives a Linux user one runnable line to get a working engine", async () => {
+  vi.resetModules();
+  vi.doMock("node:os", async (original) => ({
+    ...(await original<typeof import("node:os")>()),
+    platform: () => "linux",
+  }));
+  const { getInstallInstructions } = await import("./manager.js");
+  expect(getInstallInstructions()).toContain("sudo apt-get install -y git cmake build-essential");
+  vi.doUnmock("node:os");
+});
