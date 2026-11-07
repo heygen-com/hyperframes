@@ -149,9 +149,12 @@ const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 
 function findBuiltBinary(): WhisperResult | undefined {
+  // Windows (Visual Studio generator) writes bin/Release/whisper-cli.exe, not bin/whisper-cli.
+  const exe = platform() === "win32" ? ".exe" : "";
   for (const p of [
-    join(BUILD_DIR, "build", "bin", "whisper-cli"),
-    join(BUILD_DIR, "build", "whisper-cli"),
+    join(BUILD_DIR, "build", "bin", "Release", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
     if (existsSync(p)) return { executablePath: p, source: "build" };
   }
@@ -236,7 +239,7 @@ export function getInstallInstructions(): string {
     return "sudo apt-get install -y git cmake build-essential (Debian/Ubuntu; other distros: git, cmake and a C compiler, see https://github.com/ggml-org/whisper.cpp#building), then re-run";
   }
   if (platform() === "win32") {
-    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
+    return 'winget install -e --id Git.Git && winget install -e --id Kitware.CMake && winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools", then re-run in a new terminal (or set HYPERFRAMES_WHISPER_PATH to the whisper-cli.exe in whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases)';
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
