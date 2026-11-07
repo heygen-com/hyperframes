@@ -954,9 +954,8 @@ export function parseImageElements(html: string): ImageElement[] {
 
 const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
 
-/** A source's SPS transfers, so a PQ or SDR keyframe keeps an HLG one at 100 nits; null when the read failed. */
+/** A source's SPS transfers, read as the trace streams (a run keeps only stderr's tail); null when the read failed. */
 function readKeyframeTransfers(videoPath: string, codec: string) {
-  // Read as the trace streams: the result keeps only stderr's tail, and a header SEI after the SPS can outgrow it.
   let traced = "";
   let rest = "";
   const onStderr = (chunk: string) => {
