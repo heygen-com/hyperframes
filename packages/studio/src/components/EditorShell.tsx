@@ -1,5 +1,7 @@
 import { memo, useCallback, type ReactNode } from "react";
+import { matchesKey } from "../player/components/studioShortcuts";
 import { PreviewPane } from "./nle/PreviewPane";
+import { PreviewStage } from "./storyboard/PreviewStage";
 import { TimelinePane } from "./nle/TimelinePane";
 import { PreviewOverlays } from "./nle/PreviewOverlays";
 import { PreviewReadOnlyProvider } from "./editor/previewReadOnlyContext";
@@ -293,7 +295,7 @@ function EditorShellBody({
   // Keyboard: Escape to pop composition level
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape" && compositionStack.length > 1) {
+      if (matchesKey(e, "cancel") && compositionStack.length > 1) {
         updateCompositionStack((prev) => prev.slice(0, -1));
       }
     },
@@ -312,13 +314,15 @@ function EditorShellBody({
       <StudioAgentTools />
       <Dock.Root projectId={projectId}>
         <Dock.Panel id="preview">
-          <div className="relative flex h-full w-full min-w-0 flex-col">
-            <PreviewPane
-              previewOverlay={previewOverlay}
-              onSelectTimelineElement={onSelectTimelineElement}
-              onPreviewBlockDrop={onPreviewBlockDrop}
-            />
-          </div>
+          <PreviewStage projectId={projectId}>
+            <div className="relative flex h-full w-full min-w-0 flex-col">
+              <PreviewPane
+                previewOverlay={previewOverlay}
+                onSelectTimelineElement={onSelectTimelineElement}
+                onPreviewBlockDrop={onPreviewBlockDrop}
+              />
+            </div>
+          </PreviewStage>
         </Dock.Panel>
         <Dock.Panel id="timeline">
           <TimelinePane

@@ -114,6 +114,7 @@ describe("levelOf and patchForLevel", () => {
   const on = (shutterDeg: number, enabled = true) => ({
     enabled,
     shutterDeg,
+    phaseDeg: null,
     samples: null,
     events: false,
     tier: "auto" as const,

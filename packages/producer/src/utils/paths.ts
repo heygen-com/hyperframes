@@ -9,7 +9,9 @@ import {
   relative as nodeRelative,
   isAbsolute as nodeIsAbsolute,
 } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -133,4 +135,13 @@ export function resolveRenderPaths(
   const absoluteOutputPath = nodeResolve(resolvedOutputPath);
 
   return { absoluteProjectDir, absoluteOutputPath };
+}
+
+/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
+export function resolveCompositionSrc(projectDir: string, src: string): string | null {
+  const rooted = (value: string) => nodeResolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
+  const decoded = rooted(decodedUrlPath(src));
+  if (!isPathInside(decoded, projectDir)) return null;
+  const raw = rooted(src);
+  return !existsSync(decoded) && isPathInside(raw, projectDir) && existsSync(raw) ? raw : decoded;
 }

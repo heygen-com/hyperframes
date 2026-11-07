@@ -35,6 +35,7 @@ import {
 } from "./compositionScoping";
 import {
   namespaceCollidingSvgIds,
+  sceneClipRoots,
   rewriteSvgIdReferencesInCss,
   type SvgIdScope,
 } from "./svgIdNamespacing";
@@ -224,8 +225,8 @@ export interface InlineSubCompositionsOptions {
 
   /**
    * Identity map produced by `assignBundledRuntimeCompositionIds`.
-   * When provided, authoredCompositionId and runtimeCompositionId are read
-   * from this map instead of from the host element's attributes directly.
+   * When provided, a host's ids are read from this map; a host it lacks (one
+   * inside a scene) is read from its own attributes, as without a map.
    * The bundler uses this; the producer can omit it.
    */
   hostIdentityMap?: Map<
@@ -471,10 +472,10 @@ export function inlineSubCompositions(
     // Determine composition IDs
     let compId: string | null;
     let runtimeCompId: string;
-    if (hostIdentityMap) {
-      const identity = hostIdentityMap.get(hostEl);
-      compId = identity?.authoredCompositionId || null;
-      runtimeCompId = identity?.runtimeCompositionId || compId || "";
+    const identity = hostIdentityMap?.get(hostEl);
+    if (identity) {
+      compId = identity.authoredCompositionId || null;
+      runtimeCompId = identity.runtimeCompositionId || compId || "";
     } else {
       compId = hostEl.getAttribute("data-composition-id") || null;
       runtimeCompId = compId || "";
@@ -778,6 +779,8 @@ export function inlineSubCompositions(
   // `<style>` text gets the same substitution its DOM just received. See
   // svgIdNamespacing.ts for why this is a rename, unlike the sibling
   // getElementById/media-id fixes.
+  const hostRoots = svgIdScopes.map(({ root }) => root);
+  const clips = sceneClipRoots(document, hostRoots);
   const svgIdMaps = namespaceCollidingSvgIds(document, [
     ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
       root,
@@ -789,9 +792,14 @@ export function inlineSubCompositions(
       root: document.documentElement,
       namespace: "",
       referenceTarget: "document",
-      exclude: svgIdScopes.map(({ root }) => root),
+      exclude: [...hostRoots, ...clips],
       cssTexts: rootStyles.map((style) => style.textContent ?? ""),
     },
+    ...clips.map((root, index) => ({
+      root,
+      namespace: `clip-${index}`,
+      exclude: hostRoots.filter((host) => root.contains(host)),
+    })),
   ]);
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;

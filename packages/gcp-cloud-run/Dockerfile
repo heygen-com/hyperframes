@@ -105,6 +105,10 @@ ENV PATH="/root/.bun/bin:$PATH"
 
 # Install workspace dependencies. Copy manifests first for layer caching.
 COPY package.json bun.lock ./
+COPY packages/share/package.json packages/share/package.json
+COPY packages/share/tsconfig.json packages/share/tsconfig.json
+COPY packages/share/src/ packages/share/src/
+COPY packages/share/scripts/ packages/share/scripts/
 COPY packages/core/package.json packages/core/package.json
 COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json

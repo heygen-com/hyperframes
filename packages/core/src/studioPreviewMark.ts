@@ -1,8 +1,22 @@
+import { isWebKit } from "./runtime/mediaClock.js";
+
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
+export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
+
+export function inPlayerFrame(doc: Document): boolean {
+  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+}
+
+export function defersMediaIn(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
+  );
+}
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
+export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
 
 export const refusedPreviewMessage = (status: number) =>
   `The preview page could not be loaded (HTTP ${status}).`;

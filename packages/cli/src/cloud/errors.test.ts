@@ -109,6 +109,21 @@ describe("cloud/errors reportApiError", () => {
     );
   });
 
+  it("names the refused parameter next to the server's message", () => {
+    const err = new HyperframesApiError({
+      status: 400,
+      message: "Stored file type not supported",
+      code: "invalid_parameter",
+      param: "content_type",
+    });
+    expect(() => reportApiError("Media upload failed", err)).toThrow(CliRuntimeError);
+    expect(errorBox).toHaveBeenCalledWith(
+      "Media upload failed (HTTP 400)",
+      "Stored file type not supported (parameter: content_type)",
+      expect.any(String),
+    );
+  });
+
   it("omits the third line when there is no code, hint, or suggestion", () => {
     const err = new HyperframesApiError({ status: 503, message: "unavailable" });
     expect(() => reportApiError("Get failed", err)).toThrow(CliRuntimeError);
@@ -151,5 +166,18 @@ describe("cloud/errors reportApiError", () => {
   it("stringifies a non-Error thrown value", () => {
     expect(() => reportApiError("Weird failure", "just a string")).toThrow(CliRuntimeError);
     expect(errorBox).toHaveBeenCalledWith("Weird failure", "just a string", undefined);
+  });
+
+  it("names the network cause of a failed fetch on the third line, and nothing for a free-text cause", () => {
+    const cause = Object.assign(new Error("connect ETIMEDOUT 1.2.3.4:443"), { code: "ETIMEDOUT" });
+    expect(() => reportApiError("Upload failed", new TypeError("fetch failed", { cause }))).toThrow(
+      CliRuntimeError,
+    );
+    expect(errorBox).toHaveBeenLastCalledWith("Upload failed", "fetch failed", "code: ETIMEDOUT");
+    const odd = Object.assign(new Error("x"), { code: "see /Users/me/file.mp4" });
+    expect(() =>
+      reportApiError("Upload failed", new TypeError("fetch failed", { cause: odd })),
+    ).toThrow(CliRuntimeError);
+    expect(errorBox).toHaveBeenLastCalledWith("Upload failed", "fetch failed", undefined);
   });
 });

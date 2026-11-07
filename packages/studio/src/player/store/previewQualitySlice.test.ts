@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { usePlayerStore } from "./playerStore";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { parsePreviewCopies } from "./previewQualitySlice";
+import { parsePlaybackHealth, parsePreviewCopies } from "./previewQualitySlice";
 
 describe("preview quality in the player store", () => {
   it("starts at full quality with no copies, and counts retries", () => {
@@ -68,5 +68,23 @@ describe("preview quality in the player store", () => {
     expect(parsePreviewCopies(null)).toBeNull();
     expect(parsePreviewCopies({ total: "2", ready: 1, failed: 0, progress: 0 })).toBeNull();
     expect(parsePreviewCopies({ total: 2, ready: 1, failed: 0 })).toBeNull();
+  });
+
+  it("keeps the clock the runtime names, and only a clock it knows", () => {
+    const health = {
+      droppedShare: 0.4,
+      seconds: 3,
+      choppy: true,
+      fps: 40,
+      worstFrameMs: 90,
+      mode: "play",
+    };
+    expect(parsePlaybackHealth({ ...health, clockSource: "webaudio" })?.clockSource).toBe(
+      "webaudio",
+    );
+    expect(
+      parsePlaybackHealth({ ...health, clockSource: "/Users/a/film.mp3" })?.clockSource,
+    ).toBeUndefined();
+    expect(parsePlaybackHealth(health)?.clockSource).toBeUndefined();
   });
 });

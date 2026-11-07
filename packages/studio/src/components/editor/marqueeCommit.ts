@@ -1,4 +1,5 @@
 import type { DomSelectionResult } from "../../hooks/useDomSelectionTypes";
+import { matchesKey } from "../../player/components/studioShortcuts";
 import { trackPreviewFeatureUsed } from "../../utils/previewFeatureUsage";
 // fallow-ignore-file code-duplication
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,7 +7,13 @@ import type { DomEditSelection } from "./domEditing";
 import { collectDomEditLayerItems, resolveDomEditSelection } from "./domEditingLayers";
 import { isElementComputedVisible } from "./domEditingElement";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
-import { rectsOverlap, type Rect } from "../../utils/marqueeGeometry";
+import {
+  rectsOverlap,
+  resolveMarqueeMode,
+  type MarqueeBand,
+  type MarqueeSelectionMode,
+  type Rect,
+} from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
 import { movesGesture } from "./domEditOverlayGestures";
 
@@ -116,11 +123,12 @@ export interface MarqueeGesturesDeps<T = DomEditSelection> {
   overlayRef: React.RefObject<HTMLDivElement | null>;
   activeCompositionPathRef: React.RefObject<string | null>;
   onMarqueeSelectRef: React.RefObject<
-    ((selections: T[], additive: boolean) => DomSelectionResult | void) | undefined
+    ((selections: T[], mode: MarqueeSelectionMode) => DomSelectionResult | void) | undefined
   >;
   /** Turns the elements a drag touched into picks; without it, Studio's edit selections. */
   resolveHits?: (elements: HTMLElement[]) => T[] | Promise<T[]>;
   selectionRef?: React.RefObject<DomEditSelection | null>;
+  groupSelectionsRef?: React.RefObject<DomEditSelection[]>;
   /** Studio's pointer handling, for the events that are not part of a marquee. */
   gestures?: {
     onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -130,7 +138,7 @@ export interface MarqueeGesturesDeps<T = DomEditSelection> {
 }
 
 export interface MarqueeGestures {
-  marqueeRect: Rect | null;
+  marqueeRect: MarqueeBand | null;
   candidateRects: Rect[];
   /** Starts a marquee at this press; the host has decided it landed on empty canvas. */
   begin: (event: React.PointerEvent<HTMLElement>) => void;
@@ -160,7 +168,7 @@ export function useMarqueeGestures<T>(
 // fallow-ignore-next-line complexity
 export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGestures {
   const marqueeRef = useRef<MarqueeState | null>(null);
-  const [marqueeRect, setMarqueeRect] = useState<Rect | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeBand | null>(null);
   // Live "candidate" highlight: the elements the marquee currently touches,
   // shown before mouse-up so you can see what you're about to select. The
   // iframe DOM doesn't mutate during a drag, so a sync intersection per move
@@ -170,10 +178,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
   const candidatesRef = useRef<MarqueeHit[] | null>(null);
 
   const commitMarquee = useCallback(
-    async (
-      rect: { left: number; top: number; width: number; height: number },
-      additive: boolean,
-    ) => {
+    async (rect: Rect, mode: MarqueeSelectionMode) => {
       const iframe = deps.iframeRef.current;
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
@@ -186,7 +191,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
         : ((await resolveDomEditSelections(elements, acp)) as T[]);
       const applySelection = deps.onMarqueeSelectRef.current;
       if (!applySelection) return;
-      const result = applySelection(picks, additive);
+      const result = applySelection(picks, mode);
       trackMarqueeSelection(result);
     },
     [
@@ -233,7 +238,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
 
   useEffect(() => {
     const cancelBandBeforeHostEscape = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || !marqueeRef.current) return;
+      if (!matchesKey(e, "cancel") || !marqueeRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       cancel();
@@ -243,16 +248,25 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       window.removeEventListener("keydown", cancelBandBeforeHostEscape, { capture: true });
   }, [cancel]);
 
+  const isSelectedElement = useCallback(
+    (element: HTMLElement) =>
+      deps.selectionRef?.current?.element === element ||
+      (deps.groupSelectionsRef?.current ?? []).some((s) => s.element === element),
+    [deps.selectionRef, deps.groupSelectionsRef],
+  );
+
   const showCandidates = useCallback(
-    (rect: Rect) => {
+    (rect: Rect, mode: MarqueeSelectionMode) => {
       const iframe = deps.iframeRef.current;
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
       candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
-      setCandidateRects(hitsWithin(rect, candidatesRef.current).map((h) => h.rect));
+      let hits = hitsWithin(rect, candidatesRef.current);
+      if (mode === "subtract") hits = hits.filter((h) => isSelectedElement(h.element));
+      setCandidateRects(hits.map((h) => h.rect));
     },
-    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef],
+    [deps.overlayRef, deps.iframeRef, deps.activeCompositionPathRef, isSelectedElement],
   );
 
   const onPointerMove = useCallback(
@@ -277,8 +291,9 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
           width: Math.abs(m.currentX - m.startX),
           height: Math.abs(m.currentY - m.startY),
         };
-        setMarqueeRect(rect);
-        showCandidates(rect);
+        const mode = resolveMarqueeMode(event);
+        setMarqueeRect({ ...rect, mode });
+        showCandidates(rect, mode);
         return;
       }
       deps.gestures?.onPointerMove(event);
@@ -299,10 +314,10 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
               width: Math.abs(m.currentX - m.startX),
               height: Math.abs(m.currentY - m.startY),
             },
-            event.shiftKey,
+            resolveMarqueeMode(event),
           );
         } else {
-          deps.onMarqueeSelectRef.current?.([], false);
+          deps.onMarqueeSelectRef.current?.([], "replace");
         }
         reset();
         return;

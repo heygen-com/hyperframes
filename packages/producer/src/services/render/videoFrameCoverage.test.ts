@@ -229,6 +229,18 @@ describe("computeVideoFrameCoverage", () => {
     });
   });
 
+  it("coverage does not report a deferred video as uncovered", () => {
+    const video = makeVideo({ id: "long", start: 0, end: 10 });
+    const deferred: ExtractedFrames = {
+      ...makeExtracted("long", 0, { durationSeconds: 10 }),
+      totalFrames: 300,
+      deferredRange: { startTime: 0, durationSeconds: 10, format: "jpg" },
+    };
+    const [report] = computeVideoFrameCoverage([video], [deferred], 30);
+    expect(report).toMatchObject({ capturedFrames: 300, expectedFrames: 300, ratio: 1 });
+    expect(() => assertVideoFrameCoverage([report!], 0.95)).not.toThrow();
+  });
+
   it("uses delivered framePaths.size, not the possibly-stale totalFrames field", () => {
     const videos = [makeVideo({ id: "a", start: 0, end: 1 })];
     // Simulate an extractor whose totalFrames reports 30 but only 5 frames

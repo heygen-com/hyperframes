@@ -11,7 +11,7 @@ import {
   RUNTIME_BOOTSTRAP_ATTR,
   stripEmbeddedRuntimeScripts,
 } from "@hyperframes/core/compiler";
-import { isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
+import { findStartTags, isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
@@ -381,5 +381,5 @@ ${rewrittenContent}
 
 /** True for a real `<base>` element; the text "<base" inside a script or comment does not count. */
 export function hasBaseElement(html: string): boolean {
-  return parseHTML(html).document.querySelector("base") !== null;
+  return findStartTags(html, "base").length > 0;
 }

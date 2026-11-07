@@ -1,3 +1,4 @@
+import type { ReferenceBackgroundResult } from "@hyperframes/producer";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
 import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
@@ -14,6 +15,7 @@ import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { deliveryFlagArgs } from "../utils/deliveryFlags.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { presentRenderPlan } from "./render/present.js";
+import { acquireRenderSlot } from "./render/renderSlot.js";
 import { executeRenderPlan, renderLintContinuationHint, runRenderLint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
 export { resolveBrowserGpuForCli, renderLintContinuationHint, runRenderLint };
@@ -91,6 +93,7 @@ import {
   type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderMotionBlurTelemetryPayload } from "../telemetry/renderMotionBlur.js";
 import {
   readConfigFresh,
   releaseDeParallelRouterLatch,
@@ -137,6 +140,7 @@ import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.j
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
+import { audioLoweredWarning } from "../utils/audioLoweredWarning.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
@@ -317,6 +321,15 @@ export default defineCommand({
         "Allow output with structured capture-readiness warnings (default). Use --no-best-effort to fail on missing or unready media.",
       default: true,
     },
+    wait: {
+      type: "boolean",
+      description:
+        "Wait while another render of this user account runs, then start (default): renders side by " +
+        "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
+        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
+        "across user accounts.",
+      default: true,
+    },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
@@ -477,6 +490,7 @@ export default defineCommand({
           renderDocker,
           renderLocal,
           checkResolution: checkRenderResolutionPreflight,
+          acquireRenderSlot,
         },
         cancellation,
       );
@@ -494,7 +508,7 @@ export default defineCommand({
   },
 });
 
-export interface SingleRenderResult {
+export interface SingleRenderResult extends Partial<ReferenceBackgroundResult> {
   durationMs?: number;
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
@@ -1254,6 +1268,8 @@ async function executeLocalRender(
       console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
     }
   }
+  const audioLowered = audioLoweredWarning(job.audioLoweredDb);
+  if (audioLowered) console.warn(c.warn(`  [${audioLowered.code}] ${audioLowered.message}`));
   runPostRenderStep("trackRenderMetrics", () =>
     trackRenderMetrics(job, elapsed, options, false, cpuUsage),
   );
@@ -1287,10 +1303,14 @@ async function executeLocalRender(
   const outcome =
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
+    ...producer.referenceBackgroundResult(job[producer.REFERENCE_BACKGROUND_FIELD]),
     renderTimeMs: elapsed,
     durationMs,
     outcome,
-    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+    warnings: [
+      ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+      ...(audioLowered ? [audioLowered] : []),
+    ],
   };
 }
 
@@ -1308,17 +1328,20 @@ async function renderRange(input: {
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
+  let reference = producer.referenceBackgroundResult(undefined);
   try {
     const config = producer.distributedConfigFromRequest(input.request, {
       logger: input.logger,
       abortSignal: input.signal,
     });
-    ({ framesEncoded } = await producer.renderSpan(
+    const spanResult = await producer.renderSpan(
       input.projectDir,
       config,
       input.range,
       input.outputPath,
-    ));
+    );
+    framesEncoded = spanResult.framesEncoded;
+    reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
   } catch (error: unknown) {
     handleRenderError(error, options, input.startTime, input.cpu, false, "");
   }
@@ -1336,6 +1359,7 @@ async function renderRange(input: {
   if (options.exitAfterComplete) scheduleCliExit();
   return {
     renderTimeMs: elapsed,
+    ...reference,
     durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
     outcome: "completed",
     warnings: [],
@@ -1830,7 +1854,7 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 };
 
 // Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
-const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+|\d+ of \d+/g;
 
 export function normalizeStageCode(stage: string): string {
   const base = stage.replace(STAGE_COUNTS, "").trim();
@@ -1968,6 +1992,7 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    ...renderMotionBlurTelemetryPayload(perf?.motionBlur),
     chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
     chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
     chromeRssLastMb: perf?.chromeMemory?.rssLastMb,

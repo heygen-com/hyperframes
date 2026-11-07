@@ -32,13 +32,18 @@ const ZERO_BBOX: CheckBbox = { x: 0, y: 0, width: 0, height: 0 };
 const WORD_RUNS = /[\p{L}\p{M}\p{N}%$]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu;
 // Chinese and Japanese have no spaces; a dictionary segmenter counts their words like an English line's.
 const WORD_SEGMENTER = new Intl.Segmenter("ja", { granularity: "word" });
+const UNSPACED_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 /** Words a viewer reads: letter/number runs, with CJK runs split into dictionary words. */
 export function readingWords(text: string): number {
   const runs = text.toLowerCase().normalize("NFC").match(WORD_RUNS) ?? [];
   return runs.reduce(
     (count, run) =>
-      count + Math.max(1, [...WORD_SEGMENTER.segment(run)].filter((s) => s.isWordLike).length),
+      count +
+      (UNSPACED_SCRIPT.test(run)
+        ? Math.max(1, [...WORD_SEGMENTER.segment(run)].filter((s) => s.isWordLike).length)
+        : 1),
     0,
   );
 }
@@ -301,6 +306,7 @@ interface LineCandidate {
   floor: number;
   window: LineWindow;
   firstIndex: number;
+  lastIndex: number;
 }
 
 /** A run that reaches the last sample lasts to the film's end; one at sample 0 starts exactly there. */
@@ -348,7 +354,16 @@ function lineCandidates(frames: CraftFrame[], duration: number, canvas: Canvas):
     const floor = lineFloorSec(words, finalLine);
     // Clearly long enough even at the shortest the grid allows.
     if (window.endIn - window.startIn >= floor) continue;
-    candidates.push({ track, words, text, finalLine, floor, window, firstIndex: run[0] });
+    candidates.push({
+      track,
+      words,
+      text,
+      finalLine,
+      floor,
+      window,
+      firstIndex: run[0],
+      lastIndex: run[1],
+    });
   }
   return candidates;
 }
@@ -393,7 +408,7 @@ export async function detectLineUnread(
     const held = windowSeconds(window);
     if (held >= candidate.floor - T.measureToleranceSec) continue;
     const error = Math.max(window.startIn - window.startOut, window.endOut - window.endIn) / 2;
-    findings.push(lineUnreadFinding(candidate, window, held, error));
+    findings.push(lineUnreadFinding(candidate, window, held, error, frames));
   }
   return findings;
 }
@@ -403,6 +418,7 @@ function lineUnreadFinding(
   window: LineWindow,
   held: number,
   error: number,
+  frames: CraftFrame[],
 ): CraftFinding {
   const { track, words, text, finalLine, floor } = candidate;
   const quoted = quote(text, 60);
@@ -429,7 +445,41 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
+    measured: measuredAround(frames, track.key, candidate.firstIndex, candidate.lastIndex),
   };
+}
+
+const MEASURED_SPAN = 3;
+
+/** The samples at both ends of the line's run, as the sampler measured them. */
+function measuredAround(
+  frames: CraftFrame[],
+  key: number,
+  first: number,
+  last: number,
+): NonNullable<CraftFinding["measured"]> {
+  const indices = new Set<number>();
+  for (const edge of [first, last]) {
+    for (let at = edge - MEASURED_SPAN; at <= edge + MEASURED_SPAN; at += 1) indices.add(at);
+  }
+  const out: NonNullable<CraftFinding["measured"]> = [];
+  for (const index of [...indices].sort((a, b) => a - b)) {
+    const frame = frames[index];
+    if (!frame) continue;
+    const parts = frame.parts.filter((part) => part.block === key && !part.captions);
+    if (parts.length === 0) {
+      out.push({ time: round(frame.time), opacity: null, heightPx: null });
+      continue;
+    }
+    const top = Math.min(...parts.map((part) => part.rect.top));
+    const bottom = Math.max(...parts.map((part) => part.rect.top + part.rect.height));
+    out.push({
+      time: round(frame.time),
+      opacity: round(Math.max(...parts.map((part) => part.opacity))),
+      heightPx: Math.round(bottom - top),
+    });
+  }
+  return out;
 }
 
 // ---------- text_below_floor ----------

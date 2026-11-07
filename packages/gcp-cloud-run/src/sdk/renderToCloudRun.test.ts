@@ -57,6 +57,17 @@ function opts(executions: ExecutionsClientLike) {
 }
 
 describe("renderToCloudRun", () => {
+  it("rejects a stale v1 SDK option before any GCP work", async () => {
+    const fake = new FakeExecutions();
+    const staleOptions = { ...opts(fake), planProtocol: "v1" };
+
+    await expect(renderToCloudRun(staleOptions)).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+    });
+    expect(fake.lastArgument).toBeNull();
+    expect(fake.lastParent).toBeNull();
+  });
+
   it("starts an execution and returns a handle", async () => {
     const fake = new FakeExecutions();
     const handle = await renderToCloudRun(opts(fake));
@@ -93,21 +104,6 @@ describe("renderToCloudRun", () => {
     expect(fake.lastParent).toBe(
       "projects/proj/locations/us-central1/workflows/hyperframes-render",
     );
-  });
-
-  it("preserves explicit plan protocol v1 compatibility", async () => {
-    const fake = new FakeExecutions();
-    await renderToCloudRun({ ...opts(fake), planProtocol: "v1" });
-    const arg = JSON.parse(fake.lastArgument ?? "{}");
-    expect(arg).toEqual({
-      RenderId: "hf-render-fixed",
-      ProjectGcsUri: "gs://b/sites/abc/project.tar.gz",
-      PlanOutputGcsPrefix: "gs://b/renders/hf-render-fixed/",
-      OutputGcsUri: "gs://b/renders/hf-render-fixed/output.mp4",
-      ServiceUrl: "https://render-abc.run.app",
-      Config: config,
-      PlanProtocol: "v1",
-    });
   });
 
   it("derives the output extension from the format", async () => {

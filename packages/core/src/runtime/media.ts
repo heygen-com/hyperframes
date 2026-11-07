@@ -1,6 +1,6 @@
 import { swallow } from "./diagnostics";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
-import { mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
+import { isWebKit, mediaElementTime, startsSoundOnlyInsideATap } from "./mediaClock";
 import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
@@ -22,7 +22,7 @@ import {
   MEDIA_SYNC_TOLERANCE_SECONDS,
   steerMedia,
 } from "./mediaSteer.js";
-export { MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
+export { MEDIA_HARD_SYNC_SECONDS, MEDIA_SYNC_TOLERANCE_SECONDS } from "./mediaSteer.js";
 export type { RuntimeMediaClip } from "./types.js";
 export {
   readElementPlaybackRate,
@@ -36,6 +36,18 @@ export function readElementPlaybackStart(el: Element): number {
 
 const HOLD_END_EVENTS = ["seeked", "loadeddata", "error", "emptied", "abort"] as const;
 export const HOLD_CAP_MS = 5000;
+const WEBKIT_STUCK_AUDIO_SECONDS = 1;
+// A playing WebKit audio element that has not moved for this long is frozen, not starting (it starts ~150 ms late).
+const WEBKIT_FROZEN_AUDIO_SECONDS = 0.4;
+const lastMoved = new WeakMap<HTMLMediaElement, { ct: number; at: number }>();
+function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
+  const m = lastMoved.get(el);
+  if (!m || m.ct !== ct || el.paused || el.seeking || el.readyState < 3) {
+    lastMoved.set(el, { ct, at: now });
+    return 0;
+  }
+  return now - m.at;
+}
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -196,6 +208,7 @@ const seekLoadRetried = new WeakSet<HTMLMediaElement>();
 const playRequested = new WeakSet<HTMLMediaElement>();
 const startedEarly = new WeakSet<HTMLMediaElement>();
 function markPlayRequested(el: HTMLMediaElement): void {
+  noteFirstPlayAsk(el);
   if (playRequested.has(el)) return;
   playRequested.add(el);
   const clear = () => playRequested.delete(el);
@@ -217,10 +230,48 @@ export function primeMediaForLaterStarts(els: Iterable<HTMLMediaElement>): void 
 
 // HTMLMediaElement.NETWORK_NO_SOURCE — no usable source (404 / unsupported).
 const MEDIA_NETWORK_NO_SOURCE = 3;
-// An element that errored or has no source can't play; re-issuing play() every
-// tick just floods rejections. Skip it until its state changes (src reload).
+const MEDIA_NETWORK_IDLE = 1;
+const MEDIA_HAVE_METADATA = 1;
+const STOPPED_AT_METADATA_MS = 5000;
+const firstPlayAskedAt = new WeakMap<HTMLMediaElement, number | null>();
+const watchedForFirstFrame = new WeakSet<HTMLMediaElement>();
+const warnedSkipped = new WeakSet<HTMLMediaElement>();
+
+const sourceOf = (el: HTMLMediaElement): string => el.currentSrc || el.src;
+
+function noteFirstPlayAsk(el: HTMLMediaElement): void {
+  if (!watchedForFirstFrame.has(el)) {
+    watchedForFirstFrame.add(el);
+    el.addEventListener("loadeddata", () => firstPlayAskedAt.set(el, null));
+    el.addEventListener("emptied", () => firstPlayAskedAt.delete(el));
+  }
+  if (!firstPlayAskedAt.has(el)) {
+    firstPlayAskedAt.set(el, el.readyState > MEDIA_HAVE_METADATA ? null : performance.now());
+  }
+}
+
+function stoppedAtMetadata(el: HTMLMediaElement): boolean {
+  const askedAt = firstPlayAskedAt.get(el);
+  return (
+    askedAt != null &&
+    performance.now() - askedAt >= STOPPED_AT_METADATA_MS &&
+    el.readyState === MEDIA_HAVE_METADATA &&
+    el.networkState === MEDIA_NETWORK_IDLE
+  );
+}
+
+// Errored, sourceless, or stopped loading at its header since first asked to play: it can't play, and
+// re-issuing play() every tick just floods rejections. Skip it until its state changes (src reload).
 export function isUnplayable(el: HTMLMediaElement): boolean {
-  return el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE;
+  if (el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE) return true;
+  if (!stoppedAtMetadata(el)) return false;
+  if (!warnedSkipped.has(el)) {
+    warnedSkipped.add(el);
+    console.warn(
+      `[hyperframes] skipping "${sourceOf(el)}": the browser stopped loading it after its header; the rest plays`,
+    );
+  }
+  return true;
 }
 
 const lastRuntimeAppliedVolume = new WeakMap<HTMLMediaElement, number>();
@@ -241,6 +292,7 @@ function clampVolume(volume: number): number {
  * element at a different file without ever leaving its active window.
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
+  lastMoved.delete(el);
   lastOffset.delete(el);
   lastRelativeTime.delete(el);
   strictDriftSamples.delete(el);
@@ -249,12 +301,16 @@ export function evictMediaSyncState(el: HTMLMediaElement): void {
   forgetSteering(el);
   heldAhead.delete(el);
   forgetOutPoint(el);
-  videoStarts.delete(el);
 }
 
 /** Whether the clip is inside its window at the playhead right now: the sync tick keeps its time while it is. */
 export function isActiveAtPlayhead(el: HTMLMediaElement): boolean {
   return lastRelativeTime.has(el);
+}
+
+/** The source time the clip shows at the playhead, while it is inside its window. */
+export function sourceTimeAtPlayhead(el: HTMLMediaElement): number | undefined {
+  return lastRelativeTime.get(el);
 }
 
 /** Test-only seam: whether any per-source sync state is still tracked for `el`. */
@@ -376,30 +432,12 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
   return last?.outPoint === outPoint ? last.at : outPoint;
 }
 
-// A muted video's clock is its audio track, which starts tens of ms after play(), so an upcoming
-// video starts that early, hidden, by the delay learned from earlier starts.
-let videoStartLatency: number | null = null;
-const videoStarts = new WeakMap<
-  HTMLMediaElement,
-  { offset: number; lead: number; at: number; weight: number }
->();
-let playheadWasRunning = false;
+const VIDEO_PREROLL_SECONDS = 1;
+const VIDEO_MIN_LEAD_SECONDS = VIDEO_LEAD_HOLD_SECONDS / 2;
 
-/** Test-only seam. */
-export function resetVideoStartLatency(): void {
-  videoStartLatency = null;
-  playheadWasRunning = false;
-}
-
-/** A quarter second in: its lag plus how early it started, capped at 0.1 s. */
-function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: number, rate: number) {
-  const start = videoStarts.get(el);
-  if (!start || time < start.at) return;
-  videoStarts.delete(el);
-  const sample = ((offset - start.offset) / rate + start.lead) * start.weight;
-  const averaged = videoStartLatency === null ? sample : (videoStartLatency + sample) / 2;
-  videoStartLatency = Math.min(0.1, Math.max(0, averaged));
-}
+const isRenderDriven = (el: HTMLMediaElement): boolean =>
+  !!findInjectedRenderFrame(el) ||
+  ("__HF_EXPORT_RENDER_SEEK_CONFIG" in window && !!window.__HF_EXPORT_RENDER_SEEK_CONFIG);
 
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
@@ -444,6 +482,7 @@ export function syncRuntimeMedia(params: {
    * unity; do not mistake that transport write for an authored volume edit. */
   isWebAudioRouted?: (el: HTMLMediaElement) => boolean;
   forceSync?: boolean;
+  keepLateMedia?: boolean;
   /** False while the playhead is not moving (audio output has not started): a paused video waits for it. */
   clockAdvancing?: boolean;
   /** How far the next tick will move the playhead: an audio clip due within it starts now. */
@@ -455,9 +494,6 @@ export function syncRuntimeMedia(params: {
   getCompositionDuration: () => number;
 }): void {
   const forceMuteAll = !!(params.outputMuted || params.userMuted);
-  // A start at Play also waits on the playhead's start, so it counts half.
-  const startWeight = playheadWasRunning ? 1 : 0.5;
-  playheadWasRunning = params.playing && params.clockAdvancing !== false;
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
@@ -469,9 +505,11 @@ export function syncRuntimeMedia(params: {
     const cueAhead =
       el.tagName === "AUDIO"
         ? (params.cueAheadSeconds ?? 0)
-        : params.playing && videoStartLatency !== null
-          ? // Half a tick: it starts on the tick nearest its lead.
-            videoStartLatency * params.playbackRate + (params.cueAheadSeconds ?? 0) / 2
+        : params.playing && (el.paused || startedEarly.has(el)) && !isRenderDriven(el)
+          ? Math.min(
+              VIDEO_PREROLL_SECONDS,
+              Math.max(VIDEO_MIN_LEAD_SECONDS, clip.mediaStart / rateAt(clipRate, 0)),
+            ) * params.playbackRate
           : 0;
     const startsEarly =
       !inWindow &&
@@ -487,7 +525,10 @@ export function syncRuntimeMedia(params: {
       !inWindow &&
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
-    const relTime = mediaSourceTimeAt(clip, params.timeSeconds);
+    const relTime =
+      startsEarly && isNonLoopVideo
+        ? Math.max(0, clip.mediaStart - dueIn * rateAt(clipRate, 0))
+        : mediaSourceTimeAt(clip, params.timeSeconds);
     const isHeldVideoTail =
       isTerminalVideo ||
       (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);
@@ -643,7 +684,11 @@ export function syncRuntimeMedia(params: {
       lastOffset.set(el, offset);
       const firstTickOfClip = prevOffset === undefined;
       const offsetJumped = !firstTickOfClip && Math.abs(offset - prevOffset!) > 0.5;
-      const catastrophicDrift = drift > 3;
+      const webkitAudio = el.tagName === "AUDIO" && isWebKit();
+      const frozenFor = webkitAudio ? frozenAudioFor(el, currentElTime, params.timeSeconds) : 0;
+      const catastrophicDrift =
+        drift > (webkitAudio ? WEBKIT_STUCK_AUDIO_SECONDS : 3) ||
+        frozenFor >= WEBKIT_FROZEN_AUDIO_SECONDS;
       // A short audio clip can leave its native element paused just before EOF.
       // When the timeline re-enters the clip, rewind stale forward state at the
       // strict threshold; do not force cold audio forward while it buffers.
@@ -675,7 +720,7 @@ export function syncRuntimeMedia(params: {
         // A loop's playhead wraps before its element, so its offset jumps by a lap: steering owns loops.
         const ahead =
           !clip.loop &&
-          (offset < -VIDEO_LEAD_HOLD_SECONDS ||
+          ((offset < -VIDEO_LEAD_HOLD_SECONDS && !startedEarly.has(el)) ||
             atOutPoint ||
             currentElTime >= outPointHoldTime(el, outPoint, watched));
         if (!playing || (!ahead && offset >= -MEDIA_SYNC_TOLERANCE_SECONDS)) heldAhead.delete(el);
@@ -686,7 +731,6 @@ export function syncRuntimeMedia(params: {
       }
       const holdingAhead = heldAhead.has(el);
       const isPlayingMedia = !el.paused && playing;
-      if (isPlayingMedia) learnVideoStartLatency(el, params.timeSeconds, offset, baseRate);
       // Only apply strict sync when offset has stabilized (not growing).
       // During initial buffering, offset grows ~16ms/tick as the timeline
       // advances while media stays at 0. Accumulated drift from pause/play
@@ -697,6 +741,7 @@ export function syncRuntimeMedia(params: {
       let strictSync = false;
       if (
         !isPlayingMedia &&
+        !params.keepLateMedia &&
         !holdingAhead &&
         !hardSync &&
         !firstTickOfClip &&
@@ -713,8 +758,11 @@ export function syncRuntimeMedia(params: {
         strictDriftSamples.set(el, 0);
       }
       const forceSync = !isPlayingMedia && !holdingAhead && params.forceSync && drift > 0.02;
+      const isHiddenPreRoll = el.tagName === "VIDEO" && startedEarly.has(el);
       const steered =
-        isPlayingMedia && !hardSync ? steerMedia(el, offset, baseRate, offsetStabilized) : null;
+        isPlayingMedia && !hardSync
+          ? steerMedia(el, offset, baseRate, offsetStabilized, undefined, isHiddenPreRoll)
+          : null;
       const steerSeeks = steered?.seek === true;
       const dipped = steerSeeks && params.seekUnderDip?.(el, relTime) === true;
       try {
@@ -727,7 +775,13 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      if (hardSync || strictSync || forceSync || (steerSeeks && !dipped)) {
+      const prerollSeek =
+        startsEarly &&
+        isNonLoopVideo &&
+        el.paused &&
+        !playRequested.has(el) &&
+        drift > MEDIA_SYNC_TOLERANCE_SECONDS;
+      if (hardSync || strictSync || forceSync || prerollSeek || (steerSeeks && !dipped)) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
         // `<img id="__render_frame_<id>__">`. The sibling is created only
@@ -761,7 +815,6 @@ export function syncRuntimeMedia(params: {
         playRequested.delete(el);
         heldAhead.delete(el);
         forgetOutPoint(el);
-        videoStarts.delete(el);
       } else if (!playing) {
         holdSeekBarrierUntilVideoLands(el);
       }
@@ -788,14 +841,6 @@ export function syncRuntimeMedia(params: {
         // the element waiting for a callback that never came.
         markPlayRequested(el);
         markMediaRestarted(el);
-        // Offset read after any seek above; a loop could wrap a lap before the sample.
-        if (isNonLoopVideo)
-          videoStarts.set(el, {
-            weight: startWeight,
-            offset: relTime - (el.currentTime || 0),
-            lead: Math.max(0, clip.start - params.timeSeconds) / params.playbackRate,
-            at: Math.max(params.timeSeconds, clip.start) + 0.25 * params.playbackRate,
-          });
         void el.play().catch((err: unknown) => {
           // If play() rejects — e.g. autoplay blocked, element removed
           // mid-flight — drop the in-flight flag so a future sync tick can
@@ -809,7 +854,10 @@ export function syncRuntimeMedia(params: {
             err && typeof err === "object" && "name" in err
               ? String((err as { name?: unknown }).name ?? "")
               : "";
-          if (name === "NotAllowedError") params.onAutoplayBlocked?.();
+          if (name === "NotAllowedError") {
+            firstPlayAskedAt.delete(el);
+            params.onAutoplayBlocked?.();
+          }
         });
       } else if (!playing && !el.paused) {
         el.pause();

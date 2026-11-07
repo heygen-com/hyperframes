@@ -32,6 +32,7 @@ import {
 } from "@hyperframes/core/audio-automation";
 import { clampNumber } from "../utils/studioHelpers";
 import { isTypingTarget } from "../utils/typingTarget";
+import { matchesKey } from "../player/components/studioShortcuts";
 import type { AutomationSelection } from "../player/store/automationSelectionSlice";
 import type {
   AutomationLaneBinding,
@@ -39,17 +40,6 @@ import type {
 } from "../player/components/useAutomationLanes";
 
 type PlayerState = ReturnType<typeof usePlayerStore.getState>;
-
-/**
- * A Cmd/Ctrl+<letter> chord. `e.key` is normalised because CapsLock makes it
- * "V"/"C", and useAppHotkeys already lowercases — a raw `e.key === "v"` test
- * would silently drop the keystroke here while that dispatcher still acted on
- * it. Shift and Alt are excluded for the same parity reason (useAppHotkeys
- * gates its own copy/paste on `!shiftKey && !altKey`).
- */
-function isChord(e: KeyboardEvent, letter: string): boolean {
-  return (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === letter;
-}
 
 /** A `TimelineElement`'s identity as the selection and lane bindings key by. */
 function elementKeyOf(element: TimelineElement): string {
@@ -221,7 +211,7 @@ function handlePaste(
   state: PlayerState,
   lanes: UseAutomationLanesResult,
 ): boolean {
-  if (!isChord(e, "v")) return false;
+  if (!matchesKey(e, "paste")) return false;
   const clip = readClipboard(state.timelineProjectId);
   if (!clip) return false;
   const sel = state.automationSelection;
@@ -271,7 +261,7 @@ function handleCopy(
   lanes: UseAutomationLanesResult,
   sel: AutomationSelection,
 ): boolean {
-  if (!isChord(e, "c")) return false;
+  if (!matchesKey(e, "copy")) return false;
   const ctx = resolveSelectionContext(state, lanes, sel);
   if (!ctx) return false;
   if (!copyRange(state.timelineProjectId, ctx.lane, ctx.range, sel.t0, sel.t1)) return false;
@@ -298,8 +288,8 @@ function handleCopy(
 export function automationOwnsKey(e: KeyboardEvent): boolean {
   if (isTypingTarget(document.activeElement)) return false;
   const state = usePlayerStore.getState();
-  if (isChord(e, "c")) return state.automationSelection !== null;
-  if (!isChord(e, "v")) return false;
+  if (matchesKey(e, "copy")) return state.automationSelection !== null;
+  if (!matchesKey(e, "paste")) return false;
   const clip = readClipboard(state.timelineProjectId);
   if (!clip) return false;
   const element = findElement(state.elements, state.selectedElementId);
@@ -317,8 +307,7 @@ function handleDelete(
   lanes: UseAutomationLanesResult,
   sel: AutomationSelection,
 ): boolean {
-  const isDeleteKey = e.key === "Delete" || e.key === "Backspace";
-  if (!isDeleteKey || e.metaKey || e.ctrlKey) return false;
+  if (!matchesKey(e, "deleteSelected") && !matchesKey(e, "deleteSelectedAlt")) return false;
   const write = resolveDeleteWrite(state, lanes, sel);
   if (!write) return false;
   e.preventDefault();
@@ -348,7 +337,7 @@ export function useAutomationSelectionKeyboard({
       const sel = state.automationSelection;
       if (!sel) return;
 
-      if (e.key === "Escape") {
+      if (matchesKey(e, "cancel")) {
         state.clearAutomationSelection();
         return;
       }

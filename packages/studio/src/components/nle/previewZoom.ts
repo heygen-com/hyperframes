@@ -5,7 +5,8 @@ export interface PreviewZoomState {
 }
 
 export const MIN_PREVIEW_ZOOM_PERCENT = 25;
-export const MAX_PREVIEW_ZOOM_PERCENT = 400;
+export const MAX_PREVIEW_ZOOM_PERCENT = 1600;
+export const PREVIEW_PIXEL_GRID_MIN_ZOOM_PERCENT = 800;
 export const PREVIEW_PAN_SURFACE_SELECTOR = '[data-preview-pan-surface="true"]';
 export const PREVIEW_PAN_OVERSCROLL_PX = 48;
 export const DEFAULT_PREVIEW_ZOOM: PreviewZoomState = {
@@ -30,6 +31,16 @@ export function toDomPrecision(value: number): number {
 export function clampPreviewZoomPercent(percent: number): number {
   if (!Number.isFinite(percent)) return 100;
   return Math.min(MAX_PREVIEW_ZOOM_PERCENT, Math.max(MIN_PREVIEW_ZOOM_PERCENT, percent));
+}
+
+export function parsePreviewZoomInput(text: string): number | null {
+  const match = /^\s*(\d+(?:\.\d*)?|\.\d+)\s*%?\s*$/.exec(text);
+  if (!match) return null;
+  return clampPreviewZoomPercent(Number(match[1]));
+}
+
+export function showsPreviewPixelGrid(zoomPercent: number): boolean {
+  return zoomPercent > PREVIEW_PIXEL_GRID_MIN_ZOOM_PERCENT;
 }
 
 export function canStartPreviewPan(button: number): boolean {
@@ -144,6 +155,29 @@ export function resolvePreviewWheelZoom(input: {
   };
 }
 
+export function resolvePreviewTypedZoom(input: {
+  state: PreviewZoomState;
+  zoomPercent: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  contentWidth?: number;
+  contentHeight?: number;
+}): PreviewZoomState {
+  const oldZoom = clampPreviewZoomPercent(input.state.zoomPercent);
+  const nextZoomPercent = clampPreviewZoomPercent(input.zoomPercent);
+  const ratio = nextZoomPercent / oldZoom;
+  const pan = clampPreviewPanForZoom(
+    input.state.panX * ratio,
+    input.state.panY * ratio,
+    nextZoomPercent,
+    input.viewportWidth,
+    input.viewportHeight,
+    input.contentWidth ?? input.viewportWidth,
+    input.contentHeight ?? input.viewportHeight,
+  );
+  return { zoomPercent: nextZoomPercent, ...pan };
+}
+
 export function resolvePreviewWheelPan(input: {
   state: PreviewZoomState;
   deltaX: number;
@@ -166,6 +200,36 @@ export function resolvePreviewWheelPan(input: {
   return {
     zoomPercent: clampPreviewZoomPercent(input.state.zoomPercent),
     ...pan,
+  };
+}
+
+export interface PreviewPixelGridBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  cellPx: number;
+}
+
+export function resolvePreviewPixelGrid(input: {
+  state: PreviewZoomState;
+  rect: { width: number; height: number };
+  stage: { width: number; height: number };
+  width: number;
+}): PreviewPixelGridBox | null {
+  const zoomPercent = clampPreviewZoomPercent(input.state.zoomPercent);
+  if (!showsPreviewPixelGrid(zoomPercent) || !(input.width > 0) || !(input.stage.width > 0)) {
+    return null;
+  }
+  const scale = zoomPercent / 100;
+  const width = input.stage.width * scale;
+  const height = input.stage.height * scale;
+  return {
+    left: toDomPrecision((input.rect.width - width) / 2 + input.state.panX),
+    top: toDomPrecision((input.rect.height - height) / 2 + input.state.panY),
+    width: toDomPrecision(width),
+    height: toDomPrecision(height),
+    cellPx: toDomPrecision(width / input.width),
   };
 }
 

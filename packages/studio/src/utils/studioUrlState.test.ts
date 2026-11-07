@@ -218,7 +218,7 @@ describe("studio url state", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(applyMarqueeSelection).toHaveBeenCalledWith([primary, member], false);
+    expect(applyMarqueeSelection).toHaveBeenCalledWith([primary, member], "replace");
     harness.unmount();
   });
 

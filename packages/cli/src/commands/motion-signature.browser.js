@@ -171,7 +171,14 @@
     const values = STROKE_EDGES.map((edge) => drawnColor(ctx.style, edge));
     return values.some(Boolean) ? hashFields(values) : "";
   }
-  const contentPaintChannel = paintChannel(["color", "textShadow", "fill", "stroke"]);
+  const contentPaintChannel = paintChannel([
+    "color",
+    "textShadow",
+    "fill",
+    "stroke",
+    "strokeDashoffset",
+    "strokeDasharray",
+  ]);
 
   // Direct text nodes only: descendants are signed separately, and a hidden
   // descendant's text mutation must not masquerade as visible motion.

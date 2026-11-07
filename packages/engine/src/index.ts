@@ -30,6 +30,15 @@
  *
  */
 
+export {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  createReferenceBackgroundRecorder,
+  readReferenceBackground,
+  type ReferenceBackground,
+  type ReferenceBackgroundResult,
+} from "./services/referenceBackground.js";
+
 // ── Protocol types ─────────────────────────────────────────────────────────────
 export type {
   HfProtocol,
@@ -146,9 +155,11 @@ export {
   type DiscardWarmupInnerCapture,
   type StaticVerificationOutcome,
   VfxFailureError,
+  ImageMissingFromFrameError,
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
+  applyVideoMetadataHints,
 } from "./services/frameCapture.js";
 export {
   CaptureFailure,
@@ -164,6 +175,7 @@ export {
 
 // ── Screenshot (BeginFrame) ─────────────────────────────────────────────────────
 export { installMediaRenderIdBridge } from "./services/mediaRenderIdBridge.js";
+export { holdRenderFrameVideos } from "./services/renderFrameVideoHold.js";
 export {
   beginFrameCapture,
   pageScreenshotCapture,
@@ -217,6 +229,18 @@ export {
   type StreamingEncoderResult,
   type FrameReorderBuffer,
 } from "./services/streamingEncoder.js";
+export {
+  spawnChunkStreamingEncoder,
+  buildChunkStreamingArgs,
+  BT709_LIMITED,
+  type ChunkColour,
+  type ChunkStreamingOptions,
+} from "./services/chunkStreamingEncoder.js";
+export {
+  resolveInPageEncode,
+  type InPageEncodeDecision,
+  type InPageEncodeInput,
+} from "./services/inPageEncodeEligibility.js";
 
 // ── Media processing ───────────────────────────────────────────────────────────
 export {
@@ -267,7 +291,10 @@ export {
   isVideoFrameFormat,
   EXTRACT_CACHE_MIN_AGE_MS,
   sdrCanvasColourFilters,
+  buildVideoLayerInput,
+  type VideoLayerInput,
 } from "./services/videoFrameExtractor.js";
+export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
 export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
 
@@ -336,7 +363,7 @@ export { frameFileExtension } from "./services/frameCapture.js";
 export { appendSoftwareEncoderThreadsArg } from "./services/softwareEncoderThreads.js";
 export { frameSequencePath } from "./services/extractedFrameIndex.js";
 export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
-export type { PageMotionBlurOff } from "./types.js";
+export type { PageMotionBlurOff, PageMotionBlurSummary } from "./types.js";
 
 export {
   assertSwiftShader,
@@ -355,6 +382,7 @@ export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCa
 
 export {
   extractMediaMetadata,
+  displaySize,
   extractVideoMetadata,
   extractFinalVideoFrameTimestamp,
   extractAudioMetadata,
@@ -402,6 +430,7 @@ export {
   type RunFfmpegResult,
 } from "./utils/runFfmpeg.js";
 export { aacSegmentCount, encodeAac } from "./services/aacEncode.js";
+export { applyAudioFxChain } from "./services/audioFxRender.js";
 export {
   ManagedChildProcess,
   type ManagedChildProcessOptions,

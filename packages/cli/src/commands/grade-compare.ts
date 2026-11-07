@@ -1,12 +1,12 @@
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -447,7 +447,7 @@ export async function prepareGradeCompareTempProject(opts: {
       }
       const lutText = readFileSync(sourcePath, "utf-8");
       try {
-        parseCubeLut(lutText, { maxSize: 64 });
+        parseCubeLut(lutText);
       } catch (err) {
         throw new Error(
           `LUT for "${cell.label}" is not a valid .cube: ${normalizeErrorMessage(err)}`,
@@ -670,7 +670,7 @@ export default defineCommand({
         prepared.tempDir,
         parsed.timeoutMs,
       );
-      mkdirSync(dirname(parsed.outPath), { recursive: true });
+      makeOutputFolder(dirname(parsed.outPath));
       copyFileSync(tempSheet, parsed.outPath);
       trackCompareSheet({
         command: "grade-compare",

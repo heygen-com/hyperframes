@@ -19,15 +19,14 @@ kind of project.
   loop
 />
 
-<Note>
-  HyperFrames is free. Your AI agent bills its own plan, and HeyGen media such as avatars and generated clips uses
-  HeyGen credits only when you ask for it.
-</Note>
+<Card title="Download the HyperFrames Studio app" icon="download" href="https://hyperframes.studio/studio/download?src=docs-quickstart-top">
+  Free for Mac, Windows and Linux. The link picks the right file for your computer.
+</Card>
 
 ## In the Studio app
 
 The easiest way: the app runs your agent beside a live preview, and you change the video by typing, pointing or
-drawing. For Mac (Apple Silicon or Intel), Windows (64-bit Intel and AMD; not Windows on Arm yet) and Linux.
+drawing. For Mac (Apple Silicon or Intel), Windows (including Windows on Arm) and Linux.
 
 <Steps>
   <Step title="Download and install">
@@ -55,13 +54,19 @@ system.
 
 ### The short way
 
-If you already have a coding agent open in a folder, paste this. It installs the skills, makes the video, and opens
-the preview. You only change the URL.
+Unless the HyperFrames plugin is installed, install the skills once from a terminal in your project folder, then
+open or restart your coding agent there:
+
+```bash
+npx hyperframes skills update
+```
+
+Paste this into the agent. It makes the video and opens the preview. You only change the URL.
 
 ```text
 Set this folder up for HyperFrames and make me a video.
 
-1. If the HyperFrames plugin is installed, use its bundled skills and launcher. Otherwise run: npx hyperframes skills update
+1. If the HyperFrames plugin is installed, use its bundled skills and launcher. If the HyperFrames skills are missing, stop and tell me: I install them with npx hyperframes skills update
 2. Then, using /hyperframes, make a 10-second product intro for https://example.com
 3. Open the local preview when it is done and tell me the project folder.
 ```

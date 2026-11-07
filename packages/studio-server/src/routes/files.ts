@@ -104,6 +104,7 @@ import {
   isHTMLElement,
   type PatchOperation,
   type ElementRebase,
+  type SplitRefusal,
 } from "../helpers/sourceMutation.js";
 import { ensureStudioFontFaceCss, isStudioFontFaceCss } from "../helpers/studioFontFace.js";
 import { parseHTML } from "linkedom";
@@ -2564,6 +2565,14 @@ interface FoldedAtomicCutFile {
 }
 
 /** Fold every split and optional GSAP retarget for one file without touching disk. */
+const CUT_REFUSALS: Record<SplitRefusal, string> = {
+  "target-not-found": "Cut target was not found",
+  "reference-without-range":
+    "Cut target starts after another clip and the cut sent no range for it",
+  "no-duration": "Cut target has no duration",
+  "outside-clip": "Cut point was outside the clip's start and end",
+};
+
 async function foldAtomicCutFile(
   c: RouteContext,
   file: AtomicCutFileRequest,
@@ -2609,7 +2618,7 @@ async function foldAtomicCutFile(
     });
     if (!split.matched || !split.newId) {
       return c.json(
-        { error: `Cut target was not found or was outside its authored bounds in ${file.path}` },
+        { error: `${CUT_REFUSALS[split.refusal ?? "target-not-found"]} in ${file.path}` },
         400,
       );
     }

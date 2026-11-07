@@ -35,11 +35,18 @@ export function installAcceleratedCanvasTracker(): void {
     Object.defineProperty(tracked, "__hfAccelTracked", { value: true });
     Object.defineProperty(proto, name, { value: tracked, writable: true, configurable: true });
   };
+  const ownWindowSet = (canvas: object): WeakSet<object> => {
+    const view = (canvas as Node).ownerDocument?.defaultView;
+    const own: unknown = view ? Reflect.get(view, key) : undefined;
+    return own && typeof (own as WeakSet<object>).add === "function"
+      ? (own as WeakSet<object>)
+      : seen;
+  };
   wrap("getContext", (canvas, args, ctx) => {
-    if (ctx && accelerated.includes(String(args[0]))) seen.add(canvas);
+    if (ctx && accelerated.includes(String(args[0]))) ownWindowSet(canvas).add(canvas);
   });
   wrap("transferControlToOffscreen", (canvas) => {
-    seen.add(canvas);
+    ownWindowSet(canvas).add(canvas);
   });
 }
 

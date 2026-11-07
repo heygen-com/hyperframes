@@ -97,6 +97,7 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   onProgress?: ProgressCallback;
 }
@@ -214,6 +215,8 @@ export function resolveVideoExtractionPolicy(
   return { failureMode, maxTransientRetries };
 }
 
+const MAX_NAMED_SOURCES = 5;
+
 /**
  * Producer-safe terminal error for per-source extraction failures.
  *
@@ -241,29 +244,44 @@ export class VideoExtractionStageError extends Error {
       })),
     ),
     ffmpegReason?: string,
+    sources: readonly string[] = [],
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
     const reason = ffmpegReason ? `: ffmpeg said: ${ffmpegReason}` : "";
-    super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${reason}`);
+    const shown = sources.slice(0, MAX_NAMED_SOURCES).join(", ");
+    const more =
+      sources.length > MAX_NAMED_SOURCES ? ` and ${sources.length - MAX_NAMED_SOURCES} more` : "";
+    const files = sources.length > 0 ? ` (${shown}${more})` : "";
+    super(
+      `Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${files}${reason}`,
+    );
     this.name = "VideoExtractionStageError";
     this.publicMetadata = { extractionFailure };
   }
 }
 
 export function assertVideoExtractionSucceeded(result: ExtractionResult): void {
-  throwIfEncoderInterrupted(result);
+  throwIfHostFailure(result);
   const error = buildVideoExtractionStageError(result);
   if (error) throw error;
 }
 
-function throwIfEncoderInterrupted(result: ExtractionResult): void {
+/** Failures of the machine, not of a source: an interrupted encoder, or a disk that filled up. */
+function throwIfHostFailure(result: ExtractionResult): void {
   const interrupted = result.errors.find((failure) => failure.kind === "external_interruption");
-  if (!interrupted) return;
-  throw encoderFailureError("Video frame extraction failed", {
-    error: String(interrupted.error),
-    failureReason: "external_interruption",
-  });
+  if (interrupted) {
+    throw encoderFailureError("Video frame extraction failed", {
+      error: String(interrupted.error),
+      failureReason: "external_interruption",
+    });
+  }
+  const full = result.errors.filter((failure) => failure.kind === "disk_full").length;
+  if (full === 0) return;
+  throw Object.assign(
+    new Error(`ENOSPC: no space left on device, extracting the frames of ${full} video source(s)`),
+    { code: "ENOSPC" },
+  );
 }
 
 function buildVideoExtractionStageError(
@@ -286,6 +304,9 @@ function buildVideoExtractionStageError(
     failures,
     extractionFailureMetadataFromResult(result),
     result.errors.find((failure) => failure.ffmpegReason)?.ffmpegReason,
+    [
+      ...new Set(result.errors.flatMap((failure) => (failure.source ? [failure.source] : []))),
+    ].sort(),
   );
 }
 
@@ -403,6 +424,7 @@ export async function runExtractVideosStage(
     materializeSymlinks,
     deferRangeExtraction,
     urlByAbsentLocalPath,
+    skipFrameExtractionIds = [],
   } = input;
 
   const stage2Start = Date.now();
@@ -503,7 +525,10 @@ export async function runExtractVideosStage(
     imageColorSpaces.push(...probed);
   }
 
-  if (composition.videos.length > 0) {
+  if (skipFrameExtractionIds.length > 0) {
+    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    videoReadinessSkipIds = [...skipFrameExtractionIds];
+  } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
     for (let i = 0; i < totalVideos; i++) {
       const v = composition.videos[i]!;
@@ -544,7 +569,7 @@ export async function runExtractVideosStage(
     extractionResult.phaseBreakdown.transientRetries =
       (extractionResult.phaseBreakdown.transientRetries ?? 0) + hdrProbeTransientRetries;
     assertNotAborted();
-    throwIfEncoderInterrupted(extractionResult);
+    throwIfHostFailure(extractionResult);
     failureToEnforce = applyVideoExtractionFailurePolicy(extractionResult, extractionPolicy, log);
 
     materializeExtractedFramesForCompiledDir(extractionResult.extracted, compiledDir, {

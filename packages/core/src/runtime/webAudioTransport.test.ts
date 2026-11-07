@@ -195,6 +195,33 @@ describe("WebAudioTransport", () => {
       expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
     });
 
+    it("keeps a routed element silent once a decoded buffer plays in its place", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      node.connect.mockClear();
+      node.disconnect.mockClear();
+
+      transport.releaseRouted(mockEl);
+
+      expect(node.disconnect).toHaveBeenCalled();
+      expect(node.connect).not.toHaveBeenCalled();
+    });
+
+    it("sounds a handed-over element through the output again once playback stops", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.releaseRouted(mockEl);
+      node.connect.mockClear();
+
+      transport.stopAll();
+
+      expect(node.connect).toHaveBeenCalledWith(mock.ctx.destination);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -1764,6 +1791,44 @@ describe("WebAudioTransport", () => {
         expect(transport.readLevels().groups).toEqual({});
         expect(mock.analysers).toHaveLength(4);
       });
+    });
+  });
+
+  describe("decode budget", () => {
+    const audio = (src: string, duration: number) =>
+      ({
+        tagName: "AUDIO",
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+        duration,
+      }) as unknown as HTMLMediaElement;
+    const transport = () => {
+      const t = new WebAudioTransport();
+      (t as unknown as { _ctx: unknown })._ctx = { sampleRate: 48000, decodeAudioData: vi.fn() };
+      return t;
+    };
+
+    it("takes a ten minute source and refuses a one hour one", () => {
+      const t = transport();
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 3600))).toBe(false);
+    });
+
+    it("counts a source that is decoding against the next one", async () => {
+      const t = transport();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      void t.decodeAudioElement(audio("a.mp4", 600));
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
+      expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it("leaves a clip that has not loaded to its source", () => {
+      expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
     });
   });
 

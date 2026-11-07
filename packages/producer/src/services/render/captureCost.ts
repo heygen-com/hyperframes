@@ -343,6 +343,8 @@ export interface CaptureCalibrationOutcome {
   probeSession: CaptureSession | null;
   /** Buffer of whichever session was active last; the sequencer uses it for the error-path tail. */
   lastBrowserConsole: string[];
+  /** The final calibration failure was a `Runtime.evaluate` timeout: the page never answered. */
+  calibrationEvaluateTimedOut: boolean;
 }
 
 /**
@@ -381,6 +383,7 @@ export async function runCaptureCalibration(input: {
   let probeSession = input.probeSession;
   let forceScreenshot = input.forceScreenshot;
   let lastBrowserConsole: string[] = [];
+  let calibrationEvaluateTimedOut = false;
 
   const fps = fpsToNumber(job.config.fps);
   // Holds whichever calibration session is currently open. The closure
@@ -440,6 +443,7 @@ export async function runCaptureCalibration(input: {
       !forceScreenshot && shouldFallbackToScreenshotAfterCalibrationError(error);
     if (!shouldFallback) {
       calibration = createFailedCaptureCalibrationEstimate("calibration-failed");
+      calibrationEvaluateTimedOut = isEvaluateTimeout(error);
       log.warn("[Render] Auto-worker calibration failed; using conservative worker budget.", {
         protocolTimeout: calibrationCfg.protocolTimeout,
         error: error instanceof Error ? error.message : String(error),
@@ -481,6 +485,7 @@ export async function runCaptureCalibration(input: {
         );
       } catch (fallbackError) {
         calibration = createFailedCaptureCalibrationEstimate("calibration-screenshot-failed");
+        calibrationEvaluateTimedOut = isEvaluateTimeout(fallbackError);
         log.warn(
           "[Render] Screenshot auto-worker calibration failed after BeginFrame fallback; using conservative worker budget.",
           {
@@ -497,7 +502,17 @@ export async function runCaptureCalibration(input: {
     }
   }
 
-  return { calibration, forceScreenshot, probeSession, lastBrowserConsole };
+  return {
+    calibration,
+    forceScreenshot,
+    probeSession,
+    lastBrowserConsole,
+    calibrationEvaluateTimedOut,
+  };
+}
+
+export function isEvaluateTimeout(error: unknown): boolean {
+  return /Runtime\.evaluate timed out/i.test(normalizeErrorMessage(error));
 }
 
 /**

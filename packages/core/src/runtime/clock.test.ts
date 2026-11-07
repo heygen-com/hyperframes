@@ -284,6 +284,25 @@ describe("TransportClock", () => {
       expect(clock.getSource()).toBe("audio");
     });
 
+    it("names the clock it follows: an audio element, WebAudio, or neither", () => {
+      const { clock } = createClock({ duration: 10 });
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.play();
+      expect(clock.followedClock()).toBe("monotonic");
+      clock.attachAudioSource({
+        el: createMockAudioEl(3.5, false),
+        compositionStart: 0,
+        mediaStart: 0,
+      });
+      expect(clock.followedClock()).toBe("audio");
+      clock.attachAudioSource({ currentTimeSeconds: 2, webAudio: true });
+      expect(clock.followedClock()).toBe("webaudio");
+      clock.attachAudioSource({ currentTimeSeconds: 2 });
+      expect(clock.followedClock()).toBe("audio");
+      clock.detachAudioSource();
+      expect(clock.followedClock()).toBe("monotonic");
+    });
+
     it("falls back to monotonic when audio is paused", () => {
       const { clock, advance } = createClock({ duration: 10 });
       const audioEl = createMockAudioEl(3.5, true);
@@ -404,6 +423,24 @@ describe("TransportClock", () => {
       expect(clock.now()).toBe(5);
       advance(16);
       bed.currentTime = 1; // wrapped to its loop start
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+    });
+
+    it("a Play waits for audio that has not started where it began, but never pulls back to audio far behind", () => {
+      const { clock, advance } = createClock({ duration: 30 });
+      clock.seek(5);
+      clock.play();
+      advance(16);
+      expect(clock.now()).toBeCloseTo(5.016, 5);
+      const voice = createMockAudioEl(5, false);
+      clock.attachAudioSource({ el: voice, compositionStart: 0, mediaStart: 0 });
+      advance(100);
+      expect(clock.now()).toBe(5);
+
+      clock.pause();
+      clock.play();
+      advance(16);
+      voice.currentTime = 1;
       expect(clock.now()).toBeCloseTo(5.016, 5);
     });
 

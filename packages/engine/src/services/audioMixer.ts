@@ -5,7 +5,12 @@ import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
-import { extractAudioMetadata, ffmpegSeekSeconds, type AudioMetadata } from "../utils/ffprobe.js";
+import {
+  extractAudioMetadata,
+  ffmpegSeekSeconds,
+  formatFfmpegSeconds,
+  type AudioMetadata,
+} from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
@@ -739,7 +744,7 @@ async function extractAudioSegment(
           "-stream_loop",
           "-1",
           "-t",
-          String(sourceDuration),
+          formatFfmpegSeconds(sourceDuration),
           "-i",
           cyclePath,
           "-vn",
@@ -749,7 +754,7 @@ async function extractAudioSegment(
           "48000",
           ...outputArgs,
           "-t",
-          String(duration),
+          formatFfmpegSeconds(duration),
           "-y",
           outputPath,
         ],
@@ -795,13 +800,19 @@ async function extractAudioSegment(
     ...(readsUrl ? FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE : []),
     ...urlInputArgs(readFrom),
     ...(inputSeek
-      ? ["-ss", String(ffmpegStart - warmUp), "-t", String(sourceDuration + warmUp)]
+      ? [
+          "-ss",
+          formatFfmpegSeconds(ffmpegStart - warmUp),
+          "-t",
+          formatFfmpegSeconds(sourceDuration + warmUp),
+        ]
       : []),
     "-i",
     readFrom,
   ];
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
-  if (normalizedPlaybackRate !== 1 || options?.padToDuration) args.push("-t", String(duration));
+  if (normalizedPlaybackRate !== 1 || options?.padToDuration)
+    args.push("-t", formatFfmpegSeconds(duration));
   args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
@@ -870,7 +881,7 @@ async function generateSilence(
     "-i",
     "anullsrc=r=48000:cl=stereo",
     "-t",
-    String(duration),
+    formatFfmpegSeconds(duration),
     "-acodec",
     "pcm_s16le",
     "-y",
@@ -983,7 +994,7 @@ async function mixAudioTracksFlat(
       "-ar",
       "48000",
       "-t",
-      String(totalDuration),
+      formatFfmpegSeconds(totalDuration),
       "-y",
       outputPath,
     ];
@@ -1168,7 +1179,7 @@ async function mixGroupMembersFlat(
         "-ar",
         "48000",
         "-t",
-        String(totalDuration),
+        formatFfmpegSeconds(totalDuration),
         "-y",
         outputPath,
       ];

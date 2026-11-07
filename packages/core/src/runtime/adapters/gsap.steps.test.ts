@@ -9,6 +9,7 @@ import {
   seekGsapTimeline,
 } from "./gsap";
 import type { GsapStructureKey } from "./gsap";
+import { producerStandIn } from "./gsapStandIn.test-helpers";
 import type { RuntimeTimelineLike } from "../types";
 
 // Every 0.1 s: hide all three frames, then show one, as frame-by-frame films do.
@@ -646,18 +647,24 @@ describe("seekGsapTimeline", () => {
     expect(scene.field.style.visibility).toBe("visible");
   });
 
-  it("shows two steps on one later time in authored order after the playhead comes back onto it", () => {
-    const word = document.body.appendChild(document.createElement("span"));
-    const timeline = gsap.timeline({ paused: true });
-    timeline.set(word, { visibility: "hidden" }, 1).set(word, { visibility: "visible" }, 1);
-    timeline.to({}, { duration: 3 }, 0);
-    const scene = timeline as unknown as RuntimeTimelineLike;
-    sceneSeek(scene, 2);
-    sceneSeek(scene, 1);
-    expect(word.style.visibility).toBe("visible");
-    sceneSeek(scene, 1.2);
-    expect(word.style.visibility).toBe("visible");
-  });
+  it.each([
+    ["a timeline", (timeline: gsap.core.Timeline) => timeline as unknown as RuntimeTimelineLike],
+    ["the producer's stand-in for a timeline", producerStandIn],
+  ])(
+    "shows two steps on one later time in authored order after the playhead comes back onto %s",
+    (_, seekable) => {
+      const word = document.body.appendChild(document.createElement("span"));
+      const timeline = gsap.timeline({ paused: true });
+      timeline.set(word, { visibility: "hidden" }, 1).set(word, { visibility: "visible" }, 1);
+      timeline.to({}, { duration: 3 }, 0);
+      const scene = seekable(timeline);
+      sceneSeek(scene, 2);
+      sceneSeek(scene, 1);
+      expect(word.style.visibility).toBe("visible");
+      sceneSeek(scene, 1.2);
+      expect(word.style.visibility).toBe("visible");
+    },
+  );
 
   it("keeps a scene's steps at 0 through the root's redraw at 0 on every seek", () => {
     const scene = revealedAtZero();

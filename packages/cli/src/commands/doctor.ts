@@ -17,6 +17,11 @@ import { hasPythonModules, describeRejectedPythonOverride } from "../tts/python.
 import { VERSION } from "../version.js";
 import { getUpdateMeta, withMeta } from "../utils/updateCheck.js";
 import {
+  installChannelLabel,
+  runningInstall,
+  updateCommandFor,
+} from "../utils/installerDetection.js";
+import {
   OPTIONAL_PACKAGES,
   installedOptionalPackageVersion,
   type OptionalPackage,
@@ -82,16 +87,24 @@ function checkDockerRunning(): CheckResult {
   }
 }
 
-function checkVersion(): CheckResult {
+export function checkVersion(): CheckResult {
   const meta = getUpdateMeta();
   if (meta.updateAvailable && meta.latestVersion) {
     return {
       ok: false,
       detail: `${VERSION} \u2192 ${meta.latestVersion} available`,
-      hint: "Run: hyperframes upgrade",
+      hint: `Run: ${updateCommandFor(runningInstall(), meta.latestVersion)}`,
     };
   }
+  if (!meta.latestVersion) return { ok: true, detail: `${VERSION} (not checked yet)` };
   return { ok: true, detail: `${VERSION} (latest)` };
+}
+
+/** Which binary is running and from where: a global install per manager, project-local, npx or a plugin. */
+export function checkInstall(): CheckResult {
+  const install = runningInstall();
+  const where = install.path ?? "entry path unknown";
+  return { ok: true, detail: `${installChannelLabel(install.channel)} \u00B7 ${where}` };
 }
 
 function checkNode(): CheckResult {
@@ -380,6 +393,7 @@ export default defineCommand({
     const environment = await runEnvironmentChecks({ includeBrowser: true });
     const checks: Check[] = [
       { name: "Version", run: checkVersion },
+      { name: "CLI binary", run: checkInstall },
       { name: "Node.js", run: checkNode },
       { name: "CPU", run: checkCPU },
       { name: "Memory", run: checkMemory },

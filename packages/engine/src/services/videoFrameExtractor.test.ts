@@ -24,6 +24,7 @@ import {
   createFrameLookupTable,
   FrameLookupTable,
   rebaseVideoToWindow,
+  alignClipStartToFirstOutputFrame,
   resolveFrameFormat,
   codecMayHaveAlpha,
   decoderForCodec,
@@ -32,6 +33,7 @@ import {
   getFrameAtTime,
   analyzeClipMediaFit,
   classifyVideoExtractionError,
+  videoExtractionSourceLabel,
   runVideoExtractionWithRetry,
   VideoSourceExtractionError,
   type VideoElement,
@@ -191,6 +193,14 @@ describe("resolveVideoExtractionDuration", () => {
     // composition second 2 is 3s into the authored lane: source 4.6586
     const seconds = clip.mediaStart + sourceTimeAt(clip.playbackRate ?? 1, 2 - clip.start);
     expect(seconds).toBeCloseTo(4.6586, 3);
+  });
+
+  it("leaves media start untouched for a nested clip whose start sums to a frame boundary with float dust", () => {
+    // 3.3 + 1.3666666666666667 = 4.666666666666666, frame 140 at 30 fps
+    const clip = video({ start: 3.3 + 1.3666666666666667, end: 8, mediaStart: 1.35 });
+    alignClipStartToFirstOutputFrame(clip, 30);
+    expect(clip.mediaStart).toBe(1.35);
+    expect(clip.start).toBe(140 / 30);
   });
 
   it("snaps a float-noise composition start to the timeline origin so the first frame is kept", () => {
@@ -618,6 +628,54 @@ describe("video extraction failure taxonomy and bounded retry", () => {
       ),
     ).rejects.toMatchObject({ kind: "ffmpeg_timeout", retryable: true });
     expect(attempts).toBe(1);
+  });
+
+  it("names a failed clip by its project-relative file, never a host, query or absolute path", () => {
+    expect(videoExtractionSourceLabel("assets/clips/a.mp4", "/proj")).toBe("assets/clips/a.mp4");
+    expect(videoExtractionSourceLabel("/proj/assets/a.mp4?x=1", "/proj")).toBe("assets/a.mp4");
+    expect(videoExtractionSourceLabel("/elsewhere/private/b.mp4", "/proj")).toBe("b.mp4");
+    expect(videoExtractionSourceLabel("https://cdn.example/v/c%201.mp4?Signature=s", "/proj")).toBe(
+      "c 1.mp4",
+    );
+    expect(videoExtractionSourceLabel("HTTPS://cdn.example/v/d.mp4?Signature=s", "/proj")).toBe(
+      "d.mp4",
+    );
+  });
+
+  it("never prints a scheme payload, username or drive path for a source that is not a project file", () => {
+    expect(videoExtractionSourceLabel("file:///Users/me/private/a.mp4", "/proj")).toBe("a.mp4");
+    expect(videoExtractionSourceLabel("data:video/mp4;base64,AAAA", "/proj")).toBe("inline video");
+    expect(videoExtractionSourceLabel("blob:https://cdn.example/1f3a", "/proj")).toBe(
+      "inline video",
+    );
+    expect(videoExtractionSourceLabel("ftp://host.example/pub/e.mp4", "/proj")).toBe("e.mp4");
+    expect(videoExtractionSourceLabel("C:\\Users\\me\\private\\f.mp4", "/proj")).toBe("f.mp4");
+    expect(videoExtractionSourceLabel("C:\\proj\\assets\\g.mp4", "C:\\proj")).toBe("assets/g.mp4");
+  });
+
+  it("reports which clip failed when a source file is missing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-names-"));
+    try {
+      const result = await extractAllVideoFrames(
+        [
+          {
+            id: "v1",
+            src: "assets/missing.mp4",
+            start: 0,
+            end: 1,
+            mediaStart: 0,
+            loop: false,
+            hasAudio: false,
+          },
+        ],
+        dir,
+        { fps: 30, outputDir: join(dir, "out") },
+      );
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0]).toMatchObject({ videoId: "v1", source: "assets/missing.mp4" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -3800,6 +3858,26 @@ const FFPROBE_READS_CONTAINER_TRANSFER =
   (FFPROBE_RELEASE !== undefined &&
     (FFPROBE_RELEASE[0]! > 8 || (FFPROBE_RELEASE[0] === 8 && FFPROBE_RELEASE[1]! >= 1)));
 
+/** The colour probes run so far: first-frame reads, and SPS transfer reads of an HLG source. */
+function colourProbeRuns() {
+  const runs = vi
+    .mocked(runFfmpeg)
+    .mock.calls.map(([args]) => args)
+    .filter((args) => args.some((arg) => /showinfo|trace_headers/.test(arg)));
+  return {
+    firstFrame: runs.filter((args) => args.includes("-frames:v")).length,
+    keyframes: runs.filter((args) => args.includes("nokey")).length,
+  };
+}
+
+function colourProbesSince(before: ReturnType<typeof colourProbeRuns>) {
+  const now = colourProbeRuns();
+  return {
+    firstFrame: now.firstFrame - before.firstFrame,
+    keyframes: now.keyframes - before.keyframes,
+  };
+}
+
 describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   let fixtureDir = "";
 
@@ -3919,8 +3997,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   it("probes each source's first frame once, however many cuts of it extract together", async () => {
     const sources = ["a", "b"].map((name) => join(fixtureDir, `cuts-${name}.mp4`));
     for (const source of sources) await synthesizeHlgClip(source);
-    const probes = () =>
-      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const probes = colourProbeRuns;
     const before = probes();
     await Promise.all(
       Array.from({ length: 12 }, (_, cut) =>
@@ -3932,14 +4009,13 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
         }),
       ),
     );
-    expect(probes() - before).toBe(2);
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 2 });
   }, 60_000);
 
   it("probes a source again after its first-frame probe failed", async () => {
     const source = join(fixtureDir, "probe-retry.mp4");
     await synthesizeHlgClip(source);
-    const probes = () =>
-      vi.mocked(runFfmpeg).mock.calls.filter(([args]) => args.includes("showinfo")).length;
+    const probes = colourProbeRuns;
     const { runFfmpeg: real } =
       await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
     vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
@@ -3967,7 +4043,40 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
       vi.mocked(runFfmpeg).mockImplementation(real);
     }
     await extract("retry-again");
-    expect(probes() - before).toBe(2);
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 1 });
+  }, 60_000);
+
+  it("reads an HLG source's keyframes again after that read failed", async () => {
+    const source = join(fixtureDir, "keyframe-retry.mp4");
+    await synthesizeHlgClip(source);
+    const { runFfmpeg: real } =
+      await vi.importActual<typeof import("../utils/runFfmpeg.js")>("../utils/runFfmpeg.js");
+    vi.mocked(runFfmpeg).mockImplementation((args, opts) =>
+      args.includes("nokey")
+        ? Promise.resolve({
+            success: false,
+            exitCode: 1,
+            stderr: "",
+            durationMs: 0,
+            terminationReason: "exit",
+          })
+        : real(args, opts),
+    );
+    const extract = (id: string) =>
+      extractVideoFramesRange(source, id, 0, 1, {
+        fps: 1,
+        outputDir: join(fixtureDir, "keyframe-retry"),
+        format: "png",
+        toneMapHdrToSdr: true,
+      });
+    const before = colourProbeRuns();
+    try {
+      await extract("keyframes-failed");
+    } finally {
+      vi.mocked(runFfmpeg).mockImplementation(real);
+    }
+    await extract("keyframes-again");
+    expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 2 });
   }, 60_000);
 
   // One stream with HLG frames, then PQ frames: each is tone-mapped with its own transfer.
@@ -4090,7 +4199,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
       "-t",
       "1",
       "-vf",
-      "fps=1,zscale=t=linear:npl=100,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
+      "fps=1,zscale=t=linear:npl=203,tonemap=hable:desat=0,zscale=p=bt709:t=bt709:m=bt709:r=tv",
       "-q:v",
       "0",
       "-compression_level",

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,7 @@ vi.stubEnv("HEYGEN_API_KEY", "k");
 const { transcribeWithHeygen, wordsOf } = await import("./transcribe.js");
 const ffmpeg = findFFmpeg();
 const dir = mkdtempSync(join(tmpdir(), "hf-heygen-asr-test-"));
+writeFileSync(join(dir, "index.html"), "");
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,5 +69,61 @@ describe("HeyGen transcription", () => {
       speechOnsetSeconds: 0.1,
     });
     expect(JSON.parse(readFileSync(out, "utf8"))).toHaveLength(2);
+  });
+
+  it.skipIf(!ffmpeg)("logs the job in the project, wherever the transcript goes", async () => {
+    const audio = join(dir, "a.wav");
+    execFileSync(ffmpeg!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=1.5", audio]);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ data: job })));
+    mkdirSync(join(dir, "work"));
+    await transcribeWithHeygen(audio, join(dir, "work", "transcript.json"));
+    const rows = readFileSync(join(dir, ".hyperframes/heygen-jobs.jsonl"), "utf8");
+    expect(JSON.parse(rows.trim().split("\n")[0]!).what).toBe(`transcribe ${audio}`);
+  });
+
+  it.skipIf(!ffmpeg)("keys the request and polls a pending transcription to the end", async () => {
+    const audio = join(dir, "b.wav");
+    execFileSync(ffmpeg!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=200:d=1", audio]);
+    const calls: { url: string; method?: string; key: string | null }[] = [];
+    const answers = [{ id: "t1", status: "pending" }, job];
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      calls.push({
+        url,
+        method: init.method,
+        key: new Headers(init.headers).get("Idempotency-Key"),
+      });
+      return new Response(JSON.stringify({ data: answers.shift() }), { status: 200 });
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    let done = false;
+    const pending = transcribeWithHeygen(audio, join(dir, "b.json")).finally(() => (done = true));
+    while (!done) {
+      await new Promise((r) => setImmediate(r));
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    const r = await pending;
+    vi.useRealTimers();
+    expect(calls).toEqual([
+      {
+        url: "https://api.test/v3/audio/transcriptions",
+        method: "POST",
+        key: expect.stringMatching(/^hf-[0-9a-f]{40}$/),
+      },
+      { url: "https://api.test/v3/audio/transcriptions/t1", method: "GET", key: null },
+    ]);
+    expect(r.detectedLanguage).toBe("en");
+  });
+
+  it.skipIf(!ffmpeg)("turns a refusal into what to do next", async () => {
+    const audio = join(dir, "c.wav");
+    execFileSync(ffmpeg!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=250:d=1", audio]);
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: { code: "api_key_required" } }), { status: 403 }),
+    );
+    await expect(transcribeWithHeygen(audio, join(dir, "c.json"))).rejects.toMatchObject({
+      fix: "continue without this step",
+    });
   });
 });

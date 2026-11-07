@@ -64,7 +64,9 @@ const GROUPS: Group[] = [
         "measure",
         "Measure a video file: clock, cuts, events, frames, motion, crops, boxes, eases, look",
       ],
+      ["reverse", "Open a reverse-any-video run: note it with HeyGen, then probe the video"],
       ["billing", "Open the HyperFrames plans or credits page and wait until it is done"],
+      ["templates", "Pull a style template into this project (HyperFrames Pro)"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],
       ["timeline", "Print the project's tracks and clips"],
@@ -83,6 +85,7 @@ const GROUPS: Group[] = [
       ["doctor", "Check system dependencies and environment"],
       ["clean", "Find and remove what HyperFrames left on disk"],
       ["upgrade", "Check for updates and show upgrade instructions"],
+      ["update", "Check the CLI and the skills for updates in one call, and install them"],
     ],
   },
   {

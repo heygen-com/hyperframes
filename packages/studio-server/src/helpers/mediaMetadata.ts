@@ -2,9 +2,12 @@ import { execFile } from "node:child_process";
 import { extname } from "node:path";
 import {
   firstFrameColourArgs,
+  keyframeTransferArgs,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
+  parseKeyframeTransfers,
   type PreviewSourceFacts,
-  type ToneMapSourceColour,
+  type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
@@ -188,8 +191,9 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
 /** The first shown frame's colour tags, which zscale reads per frame. Empty when unread. */
 export async function probeFirstFrameColour(
   filePath: string,
+  codec?: string,
   runner: FfprobeRunner = execFileRunner,
-): Promise<ToneMapSourceColour> {
+): Promise<ToneMapFrameColour> {
   const ffmpegPath =
     findFfBinary("ffmpeg", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffmpeg");
@@ -198,7 +202,15 @@ export async function probeFirstFrameColour(
     timeout: 15_000,
     maxBuffer: 1024 * 1024,
   });
-  return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
+  const first = result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
+  if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
+  const keyframes = await runner(ffmpegPath, keyframeTransferArgs(filePath, codec), {
+    timeout: 30_000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const keyframeTransfers =
+    keyframes.status === 0 ? parseKeyframeTransfers(String(keyframes.stderr)) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function bitDepthOf(stream: FfprobeStream): number {

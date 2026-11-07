@@ -280,6 +280,23 @@ test("missing bundled SFX install returns a typed recovery command", () => {
   assert.equal(parsed.fix, "npx hyperframes skills update media-use");
   assert.match(parsed.error, /bundled SFX assets are missing or incomplete/);
   assert.match(parsed.error, /manifest not found/);
+  // Repairing a skill is the person's step: the message names it for them, not the agent.
+  assert.match(parsed.error, /For the user: `npx hyperframes skills update media-use` repairs/);
+  assert.doesNotMatch(parsed.error, /Repair the installed/);
+  cleanup();
+});
+
+test("--doctor addresses the bundled SFX repair to the person", () => {
+  setup();
+  const result = spawnResolve(["--doctor"], {
+    env: {
+      HOME: tmp,
+      PATH: tmp,
+      HYPERFRAMES_MEDIA_USE_SFX_DIR: join(tmp, "missing-sfx-library"),
+    },
+  });
+  assert.match(result.stdout, /For the user: `npx hyperframes skills update media-use` repairs it/);
+  assert.doesNotMatch(result.stdout, /fix: npx hyperframes skills/);
   cleanup();
 });
 
@@ -378,11 +395,70 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
     assert.equal(result.status, 1, result.stderr);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.code, undefined);
-    assert.equal(parsed.error, 'no provider could resolve sfx: "dog barking"');
+    assert.match(
+      parsed.error,
+      /^no sound effect matched "dog barking": HeyGen sound search \(min score 0\.4\)/,
+    );
   } finally {
     server.close();
     cleanup();
   }
+});
+
+test("a HeyGen sound effect under the confident score is flagged with its score, not returned silently", () => {
+  setup();
+  const sound = { id: "s1", audio_url: "https://cdn.openverse.test/crumple.mp3", score: 0.43 };
+  const binDir = writeFakeHeygen(`echo '${JSON.stringify({ data: [sound] })}'`);
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.provenance.provider, "heygen.audio.sounds");
+  assert.deepEqual(parsed.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(result.stderr, /low-confidence match for "rubber stamp".*search score 0\.43/);
+
+  const again = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: binDir }, nodeArgs: openverseImport([]) },
+  );
+  assert.equal(again.status, 0, again.stderr);
+  const reused = JSON.parse(again.stdout);
+  assert.equal(reused._source, "cached", "a second identical resolve reuses the first sound");
+  assert.deepEqual(reused.match, { score: 0.43, min_score: 0.4, low_confidence: true });
+  assert.match(again.stderr, /low-confidence match for "rubber stamp"/);
+  cleanup();
+});
+
+test("a HeyGen sound search with no match says so with the min score it used", () => {
+  setup();
+  const binDir = writeFakeHeygen(`echo '{"data":[]}'`);
+  const result = spawnResolve(["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json"], {
+    env: { HOME: tmp, PATH: binDir },
+    nodeArgs: openverseImport([]),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).provenance.provider, "bundled.sfx");
+  assert.match(result.stderr, /HeyGen sound search matched nothing for "whoosh" at min score 0\.4/);
+  cleanup();
+});
+
+test("a project sound found by one shared word of its file name is flagged, not handed back as a match", () => {
+  setup();
+  mkdirSync(join(tmp, "assets/sfx"), { recursive: true });
+  writeFileSync(join(tmp, "assets/sfx/paper-crumple-sound.mp3"), "crumple");
+  const result = spawnResolve(
+    ["--type", "sfx", "--intent", "rubber stamp sound", "--project", tmp, "--json"],
+    { env: { HOME: tmp, PATH: tmp } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(parsed.path, "assets/sfx/paper-crumple-sound.mp3");
+  assert.equal(parsed.match.low_confidence, true);
+  assert.deepEqual(parsed.match.matched_words, ["sound"]);
+  assert.match(result.stderr, /low-confidence match for "rubber stamp sound"/);
+  cleanup();
 });
 
 test("music with an outdated HeyGen CLI fails naming the update", () => {
@@ -1314,7 +1390,7 @@ test("--from rejects invalid lut cube without registering or leaving a frozen fi
   assert.equal(proc.status, 1, proc.stderr);
   const parsed = JSON.parse(proc.stdout);
   assert.equal(parsed.ok, false);
-  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 64/);
+  assert.match(parsed.error, /^ingested LUT is invalid: LUT_3D_SIZE 999 exceeds max 65/);
   assert.equal(readManifest(tmp).length, 0);
   const lutDir = join(tmp, ".media/luts");
   assert.deepEqual(existsSync(lutDir) ? readdirSync(lutDir) : [], []);
@@ -1533,3 +1609,40 @@ async function main() {
 }
 
 main();
+
+// A variant's file must never answer a later default request for the same intent or entity.
+test("a logo variant is not reused for the default logo, in the project or the global cache", () => {
+  setup();
+  const icons = [
+    {
+      slug: "slack",
+      title: "Slack",
+      aliases: [],
+      collection: "brands",
+      license: "MIT",
+      variants: { default: "/icons/slack/default.svg", wordmark: "/icons/slack/wordmark.svg" },
+    },
+  ];
+  const stub = `const real = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  const u = String(url);
+  if (u.endsWith("/src/data/icons.json")) return Response.json(${JSON.stringify(icons)});
+  if (u.includes("/public/icons/slack/")) return new Response("<svg xmlns='http://www.w3.org/2000/svg'/>");
+  return real(url, init);
+};`;
+  const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
+  const base = ["--type", "logo", "--intent", "Slack logo", "--entity", "Slack", "--json"];
+  const variant = JSON.parse(
+    spawnResolve([...base, "--variant", "wordmark", "--project", tmp], { nodeArgs }).stdout.trim(),
+  );
+  assert.equal(variant.provenance.variant, "wordmark");
+  const otherProject = mkdtempSync(join(tmpdir(), "mu-resolve-other-"));
+  for (const project of [tmp, otherProject]) {
+    const plain = JSON.parse(
+      spawnResolve([...base, "--project", project], { nodeArgs }).stdout.trim(),
+    );
+    assert.equal(plain.provenance.variant, "default", `default logo in ${project}`);
+  }
+  rmSync(otherProject, { recursive: true, force: true });
+  cleanup();
+});

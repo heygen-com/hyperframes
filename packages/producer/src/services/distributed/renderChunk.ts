@@ -117,7 +117,7 @@ import {
   MISSING_RUNTIME_ENV_SNAPSHOT,
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
-  shownDeferredFrameIndexes,
+  shownPlanFrameIndexes,
 } from "./chunkFrames.js";
 
 export {
@@ -383,12 +383,24 @@ export async function runCaptureWithScreenshotFallback<T>(input: {
   try {
     return await input.run(input.forceScreenshot);
   } catch (error) {
-    if (input.forceScreenshot || (await input.canRetry?.()) === false) throw error;
-    if (!shouldRetryChunkCaptureWithScreenshot(error)) throw error;
+    if (input.forceScreenshot || (await input.canRetry?.()) === false)
+      throw imageMissingIn(error) ?? error;
+    if (!shouldRetryChunkCaptureWithScreenshot(error)) throw imageMissingIn(error) ?? error;
     input.onFallback?.(error);
     await input.resetForScreenshotRetry();
-    return await input.run(true);
+    return await input.run(true).catch((retryError: unknown) => {
+      throw imageMissingIn(retryError) ?? retryError;
+    });
   }
+}
+
+function imageMissingIn(error: unknown): unknown {
+  let e = error;
+  for (let depth = 0; depth < 5 && typeof e === "object" && e !== null; depth++) {
+    if ((e as { name?: unknown }).name === "ImageMissingFromFrameError") return e;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 /**
@@ -697,7 +709,7 @@ export async function renderChunk(
     const chunkFps = { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen };
     const deferredVideos = planVideos?.extracted.filter((video) => video.deferredRange) ?? [];
     const shownFrames = planVideos
-      ? shownDeferredFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
+      ? shownPlanFrameIndexes(planVideos, chunkFrameNumbers, chunkFps)
       : new Map<string, Set<number>>();
     // The browser cannot load a source read by URL; size its <video> from the plan instead.
     const remoteVideoIds = new Set(

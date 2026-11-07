@@ -46,6 +46,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -64,17 +65,19 @@ interface WebGlProbeInfo {
   renderer: string;
 }
 
+export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
+  "swiftshader",
+  "llvmpipe",
+  "lavapipe",
+  "softpipe",
+  "mesa offscreen",
+  "microsoft basic render driver",
+  "software rasterizer",
+];
+
 function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
   const renderer = rendererInfo.trim().toLowerCase();
-  return (
-    renderer.includes("swiftshader") ||
-    renderer.includes("llvmpipe") ||
-    renderer.includes("lavapipe") ||
-    renderer.includes("softpipe") ||
-    renderer.includes("mesa offscreen") ||
-    renderer.includes("microsoft basic render driver") ||
-    renderer.includes("software rasterizer")
-  );
+  return SOFTWARE_WEBGL_RENDERER_TOKENS.some((token) => renderer.includes(token));
 }
 
 async function getPuppeteer(): Promise<PuppeteerNode> {
@@ -271,7 +274,7 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
     findManagedHeadlessShell(ours) ??

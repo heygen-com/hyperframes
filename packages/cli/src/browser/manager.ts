@@ -24,6 +24,7 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -39,8 +40,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = join(homedir(), ".cache", "hyperframes");
-const CACHE_DIR = join(homedir(), ".cache", "hyperframes", "chrome");
+const CACHE_ROOT_DIR = hyperframesCacheDir();
+const CACHE_DIR = hyperframesCacheDir("chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -708,28 +709,23 @@ export async function installWithCorruptArchiveRecovery<T>(
  * chrome-headless-shell download is broken. Sibling failure mode: #2078
  * (SIGTRAP at launch), same remediation, different trigger.
  */
-function browserPathHintForPlatform(): string {
-  if (process.platform === "darwin") {
-    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  }
-  if (process.platform === "win32") {
-    return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-  }
-  return "/usr/bin/google-chrome";
-}
-
 function wrapDownloadFailureWithBrowserPathHint(
   cause: unknown,
   unzipLog: readonly string[],
 ): Error {
   const original = normalizeErrorMessage(cause);
   const unzipErrors = unzipLog.length > 0 ? ` Unzip errors: ${unzipLog.join("; ")}` : "";
-  const example = browserPathHintForPlatform();
+  const installed = findSystemBrowser()?.executablePath;
+  const pointAt = installed
+    ? `Point hyperframes at the Chrome already installed here instead:\n\n` +
+      `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
+      `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
+    : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
+      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
-    `Point hyperframes at an already-installed Chrome/Chromium instead:\n\n` +
-    `  export HYPERFRAMES_BROWSER_PATH="${example}"\n\n` +
-    `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. Any Chrome build works for the screenshot ` +
+    pointAt +
+    `Any Chrome build works for the screenshot ` +
     `capture path; install a real chrome-headless-shell later if you need the ` +
     `perf-optimized BeginFrame path. Alternatively, run inside the hyperframes ` +
     `Docker image which ships a compatible headless-shell.`;
@@ -751,6 +747,34 @@ export async function retryOnStall<T>(
       if (!(err instanceof BrowserDownloadStalledError) || attempt >= attempts) throw err;
       console.warn(`[hyperframes] ${err.message} Retrying (${attempt}/${attempts - 1}).`);
       clear();
+    }
+  }
+}
+
+const LOCK_ATTEMPTS = 5;
+const LOCK_FIRST_WAIT_MS = 250;
+
+/** Windows refuses to rename or unlink a file a scanner has open, for a moment.
+ * A real permission error is retried too, then thrown. */
+function isLockedFileError(err: unknown): boolean {
+  if (process.platform !== "win32") return false;
+  const said = `${(err as NodeJS.ErrnoException | undefined)?.code ?? ""} ${normalizeErrorMessage(err)}`;
+  return /\b(EBUSY|EPERM|EACCES)\b/.test(said);
+}
+
+export async function retryWhileLocked<T>(
+  run: () => Promise<T> | T,
+  onRetry: () => void = () => {},
+  attempts = LOCK_ATTEMPTS,
+  wait: (ms: number) => Promise<void> = sleep,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      if (!isLockedFileError(err) || attempt >= attempts) throw err;
+      await wait(LOCK_FIRST_WAIT_MS * 2 ** (attempt - 1));
+      onRetry();
     }
   }
 }
@@ -834,25 +858,33 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
 
   // Same filesystem as CACHE_DIR so the final rename is atomic.
   const stagingDir = join(CACHE_ROOT_DIR, `${STAGING_PREFIX}${randomUUID()}`);
-  const clearStaging = () => rmSync(stagingDir, { recursive: true, force: true });
+  const clearStaging = () =>
+    rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
   const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
 
   try {
-    const staged = await retryOnStall(
+    const staged = await retryWhileLocked(
       () =>
-        installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
-          console.warn(
-            `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
-          ),
+        retryOnStall(
+          () =>
+            installWithCorruptArchiveRecovery(runInstall, clearStaging, (err) =>
+              console.warn(
+                `[hyperframes] Downloaded browser archive was corrupt (${normalizeErrorMessage(err)}); re-downloading.`,
+              ),
+            ),
+          clearStaging,
+          options?.downloadAttempts,
         ),
       clearStaging,
-      options?.downloadAttempts,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
     unzipLog.lines = [];
-    return { executablePath: moveStagedInstallIntoCache(stagingDir, staged), source: "download" };
+    const executablePath = await retryWhileLocked(() =>
+      moveStagedInstallIntoCache(stagingDir, staged),
+    );
+    return { executablePath, source: "download" };
   } catch (err) {
     throw wrapDownloadFailureWithBrowserPathHint(err, unzipLog.lines);
   } finally {

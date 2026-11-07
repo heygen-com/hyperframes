@@ -34,6 +34,7 @@ import {
 } from "../colorGradingCurves";
 import {
   DEFAULT_MAX_CUBE_LUT_SIZE,
+  fitCubeLutToTexture,
   packCubeLutToRgba8,
   parseCubeLut,
   unitFloatToByte,
@@ -2057,13 +2058,14 @@ function uploadEntryLut(
   lut: CubeLut3D,
 ): RuntimeLutTexture | null {
   if (entry.lut?.src === src) return entry.lut;
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = entry;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   try {
     uploadLutTexture(gl, program.lutTexture, packed);
     entry.lut = {
       src,
-      size: lut.size,
+      size: fitted.size,
       domainMin: lut.domainMin,
       domainMax: lut.domainMax,
       textureWidth: packed.width,
@@ -2114,12 +2116,13 @@ function uploadPreviewLut(
   src: string,
   lut: CubeLut3D,
 ): RuntimeLutTexture {
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = renderer;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   uploadLutTexture(gl, program.lutTexture, packed);
   return {
     src,
-    size: lut.size,
+    size: fitted.size,
     domainMin: lut.domainMin,
     domainMax: lut.domainMax,
     textureWidth: packed.width,
@@ -3344,11 +3347,19 @@ function readAnimatedGrading(entry: ColorGradingEntry): ResolvedHfColorGrading {
   return animated;
 }
 
+const CLI_SEEK_DRAW_GATE = Symbol.for("hyperframes.webglDrawGate");
+
+function drawsGated(): boolean {
+  const gate: unknown = Reflect.get(window, CLI_SEEK_DRAW_GATE);
+  return typeof gate === "object" && gate !== null && Reflect.get(gate, "skip") === true;
+}
+
 function uploadSourceTexture(
   gl: WebGLRenderingContext,
   texture: WebGLTexture,
   source: TexImageSource,
 ): void {
+  if (drawsGated()) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);

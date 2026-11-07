@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { isMainModule } from "./main-module.mjs";
 
-export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
+export const DEFAULT_MAX_CUBE_LUT_SIZE = 65;
 
 const DEFAULT_DOMAIN_MIN = [0, 0, 0];
 const DEFAULT_DOMAIN_MAX = [1, 1, 1];

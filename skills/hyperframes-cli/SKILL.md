@@ -3,17 +3,21 @@ name: hyperframes-cli
 description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
+
+**Usage beacon:** run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # HyperFrames CLI
 
 Run `npx hyperframes <command>` unless the project gives a wrapper; then use the wrapper. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
 
+A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is out. Pass it to the person once per conversation, in your own words, at a natural pause; updating is theirs to decide.
+
 ## Commands by job
 
 | Job | Commands |
 | --- | --- |
-| Start | `init <dir>` (blank; `--example <name>` only when asked), `capture <url>` |
+| Start | `init <dir> --skip-skills` (blank; `--example <name>` only when asked), `capture <url>` |
 | Read a project | `info`, `compositions`, `timeline --json`, `docs <topic>` |
 | Check it | `lint` while writing; `check --json` as the gate (lint, runtime, layout, contrast) |
 | Look at it | `snapshot` (`--at <t,…>`, `--range START,END`, `--composition <id>`, `--zoom`, `--angle`, `--against <video>`), `keyframes`, `compare`, `audio` |
@@ -22,9 +26,11 @@ Run `npx hyperframes <command>` unless the project gives a wrapper; then use the
 | Media and sound | `media-treatment`, `grade-compare`, `remove-background`, `tts`, `transcribe`, `beats`, `normalize-audio` (`/media-use`) |
 | Show and ship | `preview`, `present` (`/slideshow`), `render`, `publish`, `cloud`, `lambda`, `cloudrun` |
 | Desktop app | `open`, `catch-up` |
-| Upkeep | `doctor`, `browser`, `upgrade`, `skills`, `usage`, `clean`, `feedback` |
+| Upkeep | `doctor`, `browser`, `upgrade`, `usage`, `clean`, `feedback` |
 
-`validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is telemetry for skills' own scripts. Don't run them.
+`captions` is not a command: run `transcribe`, then read ../hyperframes/references/captions.md.
+
+`validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is skills' own telemetry. Don't run them.
 
 ## The loop
 

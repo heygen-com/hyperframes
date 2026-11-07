@@ -4,9 +4,12 @@ import {
   downloadToTemp,
   evaluateHfDiagnostic,
   extractMediaMetadata,
+  applyVideoMetadataHints,
+  holdRenderFrameVideos,
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
 import { reportArtifacts } from "../utils/toolContext.js";
@@ -31,7 +34,12 @@ import {
 } from "@hyperframes/studio-server/history";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
-import { CliRuntimeError, CliUsageError, failCommand } from "../utils/commandResult.js";
+import {
+  CliRuntimeError,
+  CliUsageError,
+  failCommand,
+  scheduleCliExit,
+} from "../utils/commandResult.js";
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
 import {
@@ -45,6 +53,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
   DEFAULT_ZOOM_SCALE,
@@ -61,15 +70,23 @@ import {
 } from "../capture/captureCompositionFrame.js";
 import {
   firstFrameColourArgs,
+  exportClipWindow,
   hdrToSdrToneMapFilter,
-  isClipVisibleAt,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
+  isClipOnScreenAt,
   isInClipWindow,
+  parseFpsWithDefault,
+  MEDIA_RENDER_ID_ATTR,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
   readElementRateSpec,
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
 } from "@hyperframes/core";
+import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
 import {
   definitiveEntryMismatchComposition,
@@ -86,6 +103,14 @@ import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { parseAngle, type Camera } from "./motionShotLayout.js";
 import { createFrameBank, type FrameWant, type PlannedFrame } from "./snapshotFrameBank.js";
+import {
+  heldVideoHints,
+  localVideoRenderIds,
+  localVideos,
+  probeHeldVideo,
+  projectLocalFile,
+  type HeldVideoProbe,
+} from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
 import { loadInstalledSharp, loadOptionalPackage } from "../utils/optionalPackages.js";
 import { resolveLocalBrowserGpuMode, type BrowserGpuMode } from "../browser/gpuPolicy.js";
@@ -228,15 +253,18 @@ export function resolveSnapshotVideoFrameTime(input: {
   relativeTime: number;
   sourceDuration: number;
   compositionDuration: number;
+  fps?: number;
 }): number | null {
   const { globalTime, clipStart, clipDuration, sourceDuration, compositionDuration } = input;
+  const fps = input.fps ?? 30;
   const clipEnd = clipStart + clipDuration;
-  if (!isClipVisibleAt(globalTime, clipStart, clipEnd, compositionDuration)) return null;
+  if (!isClipOnScreenAt(globalTime, clipStart, clipEnd, fps, compositionDuration)) return null;
+  const onFrames = exportClipWindow(clipStart, clipEnd, fps);
   const relativeTime =
     globalTime < clipStart ? Math.max(0, input.relativeTime) : input.relativeTime;
   if (relativeTime < 0) return null;
   const pastSource = sourceDuration > 0 && relativeTime >= sourceDuration;
-  if (isInClipWindow(globalTime, clipStart, clipEnd) && !pastSource) return relativeTime;
+  if (isInClipWindow(globalTime, onFrames.start, onFrames.end) && !pastSource) return relativeTime;
 
   const sourceEnd = sourceDuration > 0 ? sourceDuration : relativeTime;
   return Math.max(0, Math.min(relativeTime, sourceEnd - 1 / 30));
@@ -290,6 +318,7 @@ export function activeVideoAt(
   candidate: SnapshotVideoCandidate,
   time: number,
   compositionDuration: number,
+  fps: number,
 ) {
   const start = resolveSnapshotVideoClipStart(candidate);
   const playbackRate = resolveSnapshotVideoRateSpec(candidate);
@@ -315,6 +344,7 @@ export function activeVideoAt(
     relativeTime: relTime,
     sourceDuration: candidate.srcDuration,
     compositionDuration,
+    fps,
   });
   return frameTime === null
     ? null
@@ -602,18 +632,24 @@ async function videoColour(ffmpegPath: string, videoPath: string) {
     metadata && isHdrColorSpace(metadata.colorSpace)
       ? hdrToSdrToneMapFilter(
           metadata.colorSpace ?? {},
-          parseFirstFrameColour(
-            (
-              await runFfmpegOnce(
-                ffmpegPath,
-                firstFrameColourArgs(videoPath),
-                FFMPEG_EXTRACT_TIMEOUT_MS,
-              )
-            ).stderr,
-          ),
+          await frameColour(ffmpegPath, videoPath, metadata.videoCodec),
         )
       : null;
   return { metadata, toneMap };
+}
+
+async function frameColour(
+  ffmpegPath: string,
+  videoPath: string,
+  codec: string,
+): Promise<ToneMapFrameColour> {
+  const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+  const probe = await read(firstFrameColourArgs(videoPath));
+  const first = parseFirstFrameColour(probe.stderr);
+  if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
+  const keyframes = await read(keyframeTransferArgs(videoPath, codec));
+  const keyframeTransfers = keyframes.code === 0 ? parseKeyframeTransfers(keyframes.stderr) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function frameFilters(
@@ -693,7 +729,7 @@ export async function extractVideoFrameToBuffer(
 export function selectFirstFrameAfterEach(offsets: number[]): string {
   const sinceLast = "if(isnan(prev_selected_t)\\,-1\\,prev_selected_t-start_t)";
   const open = offsets.map((offset) => `gte(t-start_t\\,${offset})*gt(${offset}\\,${sinceLast})`);
-  return `select=gt(${open.join("+")}\\,0)`;
+  return `select=gt(${sumOf(open)}\\,0)`;
 }
 
 /** One ffmpeg pass that writes every planned frame of a video: the source decodes from the earliest keyframe once.
@@ -873,6 +909,12 @@ export function computeSnapshotTimes(
   return { times: times.map(round), appendedTail: false };
 }
 
+function compositionFps(html: string): number {
+  const root = parseHTML(html).document.querySelector("[data-composition-id]");
+  const declared = parseFpsWithDefault(root?.getAttribute("data-fps") ?? undefined);
+  return declared.ok ? declared.value.num / declared.value.den : 30;
+}
+
 export function serveCapturePage(projectDir: string, html: string, proxy: boolean | undefined) {
   return serveStaticProjectHtml(projectDir, html, undefined, [], proxy === true);
 }
@@ -924,6 +966,7 @@ export async function captureSnapshots(
   }> = [];
   const replaced: string[] = [];
   const warnings: string[] = [];
+  let unreadVideoFrames = 0;
   let completed = false;
   const numFrames = opts.frames ?? 5;
   let review: ReviewPlan | undefined;
@@ -933,7 +976,19 @@ export async function captureSnapshots(
   // Localize fonts (embed remote @font-face as data URIs, matching the render
   // path) so snapshots render the real font instead of a fallback sans.
   const html = await bundleWithLocalizedFonts(projectDir);
+  const entry = join(projectDir, "index.html");
+  const swallowed = existsSync(entry)
+    ? await selfClosedMediaWarning(readFileSync(entry, "utf8"))
+    : null;
+  if (swallowed) {
+    warnings.push(swallowed);
+    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+  }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
+  const fps = compositionFps(html);
+  const heldVideoIds = localVideoRenderIds(html);
+  const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
+  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
@@ -947,6 +1002,15 @@ export async function captureSnapshots(
       renderReadyTimeoutMs: opts.timeout ?? RENDER_READY_TIMEOUT_MS,
       renderReadyWarningSuffix: "snapshots may be inaccurate",
       browserGpuMode: opts.browserGpuMode,
+      beforeNavigate: async (target) => {
+        if (heldVideoIds.length > 0)
+          await target.evaluateOnNewDocument(
+            holdRenderFrameVideos,
+            heldVideoIds,
+            MEDIA_RENDER_ID_ATTR,
+          );
+      },
+      onLoaded: (target) => applyVideoMetadataHints(target, heldHints),
     });
 
     try {
@@ -1001,7 +1065,7 @@ export async function captureSnapshots(
       });
 
       if (duration <= 0 && !opts.at?.length) {
-        return { paths: [], cleared: [], warnings, pairSheetsSkipped: false };
+        return { paths: [], cleared: [], warnings, unreadVideoFrames, pairSheetsSkipped: false };
       }
 
       const readTiming = () =>
@@ -1152,6 +1216,7 @@ export async function captureSnapshots(
           ),
       });
       const plannedClips = new Set<string>();
+      const heldVideos = new Set(heldVideoIds);
       const loopStartedAt = performance.now();
       let seekMs = 0;
       let videoMs = 0;
@@ -1160,7 +1225,11 @@ export async function captureSnapshots(
         const time = positions[i]!;
         console.error(`[hyperframes] snapshot: frame ${i + 1}/${positions.length} at ${time}s`);
 
-        const seekOptions = { exactTime: true, waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS };
+        const seekOptions = {
+          exactTime: true,
+          waitForImagesMs: SCREENSHOT_IMAGE_WAIT_MS,
+          seekSettleTimeoutMs: opts.timeout ?? RENDER_READY_TIMEOUT_MS,
+        };
         const seekStartedAt = performance.now();
         await atStep(`seeking to ${time}s, frame ${i + 1} of ${positions.length}`, () =>
           seekCompositionTimelineOnly(page, time, seekOptions),
@@ -1170,7 +1239,7 @@ export async function captureSnapshots(
         if (cameraExpr) await page.evaluate(cameraExpr);
 
         if (injectVideoFramesBatch && syncVideoFrameVisibility) {
-          const candidates = await page.evaluate(() => {
+          const pageVideos = await page.evaluate(() => {
             const runtimeWindow = window as Window & {
               __hfResolveMediaStartSeconds?: (element: Element) => number;
             };
@@ -1204,9 +1273,19 @@ export async function captureSnapshots(
               };
             });
           });
+          const candidates = await Promise.all(
+            pageVideos.map(async (video) => {
+              const file = heldVideos.has(video.id)
+                ? projectLocalFile(projectDir, video.src)
+                : null;
+              return video.srcDuration > 0 || !file
+                ? video
+                : { ...video, srcDuration: (await probeHeldVideo(file, heldProbes)).duration };
+            }),
+          );
           let unreadable = 0;
           const active = candidates.flatMap((candidate) => {
-            const video = activeVideoAt(candidate, time, duration);
+            const video = activeVideoAt(candidate, time, duration, fps);
             if (!video) return [];
             if (!candidate.id || !candidate.src) {
               unreadable += 1;
@@ -1224,20 +1303,20 @@ export async function captureSnapshots(
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              try {
-                const url = new URL(v.src);
-                const decodedPath = decodeURIComponent(url.pathname).replace(/^\//, "");
-                const candidate = resolve(projectDir, decodedPath);
-                const rel = relative(projectDir, candidate);
-                if (!rel.startsWith("..") && !isAbsolute(rel) && existsSync(candidate)) {
-                  ffmpegInput = candidate;
-                  inputIsLocal = true;
-                } else if (url.protocol === "http:" || url.protocol === "https:") {
-                  ffmpegInput = await localCopy(url.href);
-                  inputIsLocal = ffmpegInput !== url.href;
+              const projectFile = projectLocalFile(projectDir, v.src);
+              if (projectFile) {
+                ffmpegInput = projectFile;
+                inputIsLocal = true;
+              } else {
+                try {
+                  const url = new URL(v.src);
+                  if (url.protocol === "http:" || url.protocol === "https:") {
+                    ffmpegInput = await localCopy(url.href);
+                    inputIsLocal = ffmpegInput !== url.href;
+                  }
+                } catch {
+                  /* unresolvable src (e.g. blob:, data:) — skip */
                 }
-              } catch {
-                /* unresolvable src (e.g. blob:, data:) — skip */
               }
               if (!ffmpegInput) return null;
               // The VP9-alpha probe has no timeout, so only local files get it;
@@ -1250,7 +1329,7 @@ export async function captureSnapshots(
                   (opts.zoom ? (opts.zoomScale ?? DEFAULT_ZOOM_SCALE) : v.devicePixelRatio),
               );
               const wantAt = (t: number): FrameWant | null => {
-                const shown = activeVideoAt(v, t, duration);
+                const shown = activeVideoAt(v, t, duration, fps);
                 if (!shown) return null;
                 const holdLastFrame =
                   shown.srcDuration > 0 && shown.relTime >= shown.srcDuration - 1;
@@ -1267,6 +1346,7 @@ export async function captureSnapshots(
               }
               const want = wantAt(time)!;
               const banked = await frameBank.take(ffmpegInput, want);
+              const warned = warnings.length;
               const png = await frameOrWarn(
                 warnings,
                 async () =>
@@ -1279,7 +1359,10 @@ export async function captureSnapshots(
                     want.displayedPixels,
                   ),
               );
-              if (!png) return null;
+              if (!png) {
+                if (warnings.length > warned) unreadVideoFrames += 1;
+                return null;
+              }
               return { videoId: v.id, dataUri: `data:image/png;base64,${png.toString("base64")}` };
             },
           );
@@ -1354,7 +1437,7 @@ export async function captureSnapshots(
           writeCaptureFileSync(
             framePath,
             await atStep(`capturing the frame at ${time}s`, () =>
-              page.screenshot({ type: "png", omitBackground: true }),
+              screenshotOnceMore(() => page.screenshot({ type: "png", omitBackground: true })),
             ),
           );
         }
@@ -1457,6 +1540,7 @@ export async function captureSnapshots(
     paths: savedPaths,
     cleared: replaced,
     warnings,
+    unreadVideoFrames,
     pairSheetsSkipped: pairSheetFailure !== null,
     ...(review && reviewList
       ? {
@@ -1479,6 +1563,7 @@ interface CapturedSnapshots {
   cleared: string[];
   /** Why a frame may differ from the composition: shown on the console and in `--json`. */
   warnings: string[];
+  unreadVideoFrames: number;
   /** --against wrote no pair sheets because sharp could not load. */
   pairSheetsSkipped: boolean;
   review?: { plan: ReviewPlan; frames: Array<ReviewFrame & { path: string }> };
@@ -1495,6 +1580,20 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
     warnings.push(message);
     console.warn(`   ${c.warn("⚠")} ${message}`);
   }
+}
+
+/** What the project's own lint says about self-closed clips, which hide the rest of the page and blank every still. */
+export async function selfClosedMediaWarning(source: string): Promise<string | null> {
+  const { lintHyperframeHtml } = await import("@hyperframes/lint");
+  const found = (await lintHyperframeHtml(source)).findings.filter(
+    (finding) => finding.code === "self_closing_media_tag",
+  );
+  if (found.length === 0) return null;
+  const ids = found.flatMap((finding) => (finding.elementId ? [`#${finding.elementId}`] : []));
+  return (
+    `index.html has ${found.length} self-closed <audio>/<video> tags${ids.length ? ` (${ids.slice(0, 3).join(", ")})` : ""}: ` +
+    "HTML leaves them open, so everything after the first one is hidden and stills come out blank. Write <audio ...></audio>."
+  );
 }
 
 function warnSnapshotsNotRecorded(error: unknown): undefined {
@@ -1624,7 +1723,7 @@ export default defineCommand({
     },
     output: {
       type: "string",
-      alias: "o",
+      alias: ["o", "out", "output-dir"],
       description:
         "Directory to write snapshots into (default: unique directory under <project>/.hyperframes/artifacts/snapshots)",
     },
@@ -1650,7 +1749,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1793,6 +1892,7 @@ export default defineCommand({
     log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
 
     let managedSnapshotDir: string | undefined;
+    let exitCode = 0;
     try {
       const snapshotDir = args.output
         ? resolve(String(args.output))
@@ -1838,6 +1938,11 @@ export default defineCommand({
           const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
           fail(
             `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+          );
+        }
+        if (captured.unreadVideoFrames > 0) {
+          fail(
+            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${snapshotDir}.`,
           );
         }
         if (against) {
@@ -1989,6 +2094,7 @@ export default defineCommand({
         }
       });
     } catch (err) {
+      exitCode = 1;
       // Already reported where it happened (fail() above).
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
@@ -1998,6 +2104,7 @@ export default defineCommand({
     } finally {
       if (managedSnapshotDir)
         await finishSnapshotRun(project.dir, managedSnapshotDir).catch(warnSnapshotsNotRecorded);
+      scheduleCliExit(exitCode);
     }
   },
 });

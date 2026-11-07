@@ -1,6 +1,7 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { projectIgnore } from "./projectIgnore.js";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { spansOverlap } from "@hyperframes/parsers/time-spans";
@@ -32,6 +33,7 @@ import {
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
+  readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { encodeUrlPath } from "@hyperframes/parsers";
 import {
@@ -138,7 +140,7 @@ function collectLocalStylesheets(
   return styles;
 }
 
-export function collectExternalStyles(
+function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
@@ -156,6 +158,17 @@ export function collectExternalStyles(
 }
 
 const MAX_EXTERNAL_SCRIPT_BYTES = 1_000_000;
+
+export function linkedSources(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): Pick<HyperframeLinterOptions, "externalStyles" | "externalScripts"> {
+  return {
+    externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+    externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
+  };
+}
 
 function collectExternalScripts(
   projectDir: string,
@@ -293,7 +306,7 @@ export async function lintProject(
   let totalWarnings = 0;
   let totalInfos = 0;
 
-  const rootHtml = readFileSync(indexPath, "utf-8");
+  const rootHtml = readTextFile(indexPath);
   const projectFontFamilies = declaredProjectFontFamilies(
     projectDir,
     mountedSources(projectDir, rootHtml, rootCompSrcPath),
@@ -302,9 +315,8 @@ export async function lintProject(
     ...hostOptions,
     filePath: indexPath,
     compSrcPath: rootFile,
-    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
+    ...linkedSources(projectDir, rootHtml, rootCompSrcPath),
     projectFontFamilies,
-    externalScripts: collectExternalScripts(projectDir, rootHtml, rootCompSrcPath),
   });
   results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
   totalErrors += rootResult.errorCount;
@@ -314,10 +326,12 @@ export async function lintProject(
   const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const compositionsDir = resolve(projectDir, "compositions");
   if (!entryFile && existsSync(compositionsDir)) {
+    const ignored = projectIgnore(projectDir);
     const collectHtmlFiles = (dir: string, rel: string): string[] => {
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+        if (ignored.ignores(`compositions/${relPath}${entry.isDirectory() ? "/" : ""}`)) continue;
         if (entry.isDirectory()) {
           // Registry components are source snippets, not independently mounted
           // sub-compositions. Linting every installed template here makes an
@@ -333,7 +347,7 @@ export async function lintProject(
     const files = collectHtmlFiles(compositionsDir, "").sort();
     for (const file of files) {
       const filePath = join(compositionsDir, file);
-      const html = readFileSync(filePath, "utf-8");
+      const html = readTextFile(filePath);
       const compSrcPath = `compositions/${file}`;
       allHtmlSources.push({ html, compSrcPath });
       // Mountable fragments (figma component imports, registry snippets) are
@@ -346,9 +360,8 @@ export async function lintProject(
         filePath,
         isSubComposition: true,
         compSrcPath,
-        externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+        ...linkedSources(projectDir, html, compSrcPath),
         projectFontFamilies,
-        externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
       });
       results.push({
         file: `compositions/${file}`,
@@ -740,7 +753,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
       if (PAGES_OPENED_BESIDE_INDEX.has(file)) continue;
-      const content = readFileSync(join(projectDir, file), "utf-8");
+      const content = readTextFile(join(projectDir, file));
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);
       }

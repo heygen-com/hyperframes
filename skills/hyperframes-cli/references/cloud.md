@@ -32,7 +32,7 @@ npx hyperframes auth refresh            # force-refresh an OAuth token before a 
 npx hyperframes auth logout             # clear the stored credential
 ```
 
-Credential resolution order (first match wins): `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then `~/.hyperframes/credentials`. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
+Credential resolution order (first match wins): `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved), then the `hyperframes auth login` session in `~/.hyperframes/credentials` (refreshed when expired), then `HEYGEN_API_KEY`, then `HYPERFRAMES_API_KEY`, then a key saved with `auth login --api-key`. A signed-in session wins over an env key; the env key is used if HeyGen refuses to refresh the session or `HEYGEN_API_URL` points at a host app's gateway. `auth status` shows which one is in use; `auth logout` makes the env key win. `HYPERFRAMES_ENV=dev` selects the dev client, OAuth/API hosts and `~/.hyperframes/dev/credentials` together. `HYPERFRAMES_CONFIG_DIR` overrides the credentials root. `HEYGEN_API_URL` overrides the API host.
 
 ## The render pipeline
 
@@ -82,16 +82,16 @@ Rules support comments, globs, and negation. A later rule can override a default
 
 ## Render options
 
-| Flag                   | Default                     | Meaning                                                                                                                        |
-| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `--fps`                | `30`                        | Frames per second, 1–240.                                                                                                      |
-| `--quality`            | `standard`                  | `draft`, `standard`, or `high`.                                                                                                |
-| `--format`             | `mp4`                       | `mp4`, `webm`, or `mov` (webm/mov carry alpha).                                                                                |
-| `--resolution`         | `1080p`                     | `1080p` or `4k` (4k billed at 1.5×).                                                                                           |
-| `--aspect-ratio`       | auto                        | `16:9`, `9:16`, or `1:1`. Auto from a local project's `data-width`/`data-height`; defaults to `16:9` for `--asset-id`/`--url`. |
-| `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip.                                                                                                |
-| `--output` / `-o`      | `renders/<render_id>.<ext>` | Local download destination.                                                                                                    |
-| `--dry-run`            | off                         | Build and inspect a local project zip without authenticating, uploading, or rendering.                                         |
+| Flag                   | Default                     | Meaning                                                                                                                                                                                    |
+| ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--fps`                | `30`                        | Frames per second, 1–240.                                                                                                                                                                  |
+| `--quality`            | `standard`                  | `draft`, `standard`, or `high`.                                                                                                                                                            |
+| `--format`             | `mp4`                       | `mp4`, `webm`, or `mov` (webm/mov carry alpha).                                                                                                                                            |
+| `--resolution`         | `1080p`                     | `1080p` or `4k` (4k billed at 1.5×).                                                                                                                                                       |
+| `--aspect-ratio`       | auto                        | Any `W:H`, auto from a local project's `data-width`/`data-height`. At `1080p` the output keeps the composition's size at any ratio (2:1 stays 2:1); `4k` takes only `16:9`, `9:16`, `1:1`. |
+| `--composition` / `-c` | `index.html`                | Entry HTML file inside the zip.                                                                                                                                                            |
+| `--output` / `-o`      | `renders/<render_id>.<ext>` | Local download destination.                                                                                                                                                                |
+| `--dry-run`            | off                         | Build and inspect a local project zip without authenticating, uploading, or rendering.                                                                                                     |
 
 ```bash
 npx hyperframes cloud render . \

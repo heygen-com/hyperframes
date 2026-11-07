@@ -40,10 +40,7 @@ import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
 import { isTypingTarget } from "../utils/typingTarget";
-import {
-  SPLIT_SHORTCUT_HINT,
-  ZOOM_SELECTION_SHORTCUT_HINT,
-} from "../player/components/studioShortcuts";
+import { keyHint, matchesKey, useStudioKeys } from "../player/components/studioShortcuts";
 import type { TimelineProps } from "../player/components/TimelineTypes";
 
 interface DomEditSessionSlice extends EnableKeyframesSession {
@@ -155,7 +152,7 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
 export const TimelineToolbar = memo(function TimelineToolbar({
   domEditSession,
   onSplitElement,
-  splitShortcut = SPLIT_SHORTCUT_HINT,
+  splitShortcut,
   history,
   showHistory = true,
   showSelectAroundPlayhead = true,
@@ -163,6 +160,8 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   showKeyframes = true,
   rightActions,
 }: TimelineToolbarProps) {
+  const keys = useStudioKeys();
+  const kf = keyHint("addKeyframe", keys);
   const timelineSnapEnabled = usePlayerStore((s) => s.timelineSnapEnabled);
   const setTimelineSnapEnabled = usePlayerStore((s) => s.setTimelineSnapEnabled);
   const rippleEditEnabled = usePlayerStore((s) => s.rippleEditEnabled);
@@ -199,7 +198,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
     onToggle: onToggleKeyframe,
   } = useKeyframeToggle(domEditSession);
 
-  // Wire the "Add keyframe (K)" shortcut the toolbar advertises. Active only when
+  // Wire the Add keyframe shortcut the toolbar advertises. Active only when
   // there's a keyframeable selection; otherwise K stays JKL-pause in playback.
   useKeyframeKeyboard({
     enabled: showKeyframes && Boolean(onToggleKeyframe),
@@ -214,8 +213,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
   // Skip when typing in an input/contenteditable.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "n" && e.key !== "N") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!matchesKey(e, "timelineSnap")) return;
       if (isTypingTarget(e.target)) return;
       const store = usePlayerStore.getState();
       store.setTimelineSnapEnabled(!store.timelineSnapEnabled);
@@ -233,7 +231,10 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           {/* Divider: tool-mode | editing-actions */}
           <div aria-hidden="true" className="mx-1 h-4 w-px bg-neutral-800" />
           <LinkedSelectionToggle />
-          <Tooltip label={timelineSnapEnabled ? "Snapping on" : "Snapping off"} shortcut="N">
+          <Tooltip
+            label={timelineSnapEnabled ? "Snapping on" : "Snapping off"}
+            shortcut={keyHint("timelineSnap", keys)}
+          >
             <button
               type="button"
               onClick={() => setTimelineSnapEnabled(!timelineSnapEnabled)}
@@ -298,7 +299,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                               : "Add keyframe at playhead"
                             : "Add keyframe"
                 }
-                shortcut={keyframePathEndpoint || !onToggleKeyframe ? undefined : "K"}
+                shortcut={keyframePathEndpoint || !onToggleKeyframe ? undefined : kf}
               >
                 <button
                   type="button"
@@ -399,7 +400,7 @@ export const TimelineToolbar = memo(function TimelineToolbar({
                         ? "Move the playhead inside the clip to split"
                         : "Select a clip to split"
                   }
-                  shortcut={canSplit ? splitShortcut : undefined}
+                  shortcut={canSplit ? (splitShortcut ?? keyHint("split", keys)) : undefined}
                 >
                   <button
                     type="button"
@@ -503,10 +504,9 @@ export const TimelineToolbar = memo(function TimelineToolbar({
           </Tooltip>
           <Tooltip
             label={
-              canZoomSelection
-                ? `Zoom to selected clips (${ZOOM_SELECTION_SHORTCUT_HINT})`
-                : "Select a clip to zoom the timeline"
+              canZoomSelection ? "Zoom to selected clips" : "Select a clip to zoom the timeline"
             }
+            shortcut={canZoomSelection ? keyHint("zoomSelection", keys) : undefined}
           >
             <button
               type="button"

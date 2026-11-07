@@ -1,7 +1,7 @@
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, runMeasure, videoArg, window } from "../../measure/command.js";
-import { findCuts, signatures } from "../../measure/cuts.js";
+import { classifiedCuts, signatures } from "../../measure/cuts.js";
 import { probeVideo, round, videoClip } from "../../measure/media.js";
 
 export const examples: Example[] = [
@@ -13,7 +13,7 @@ export default defineCommand({
   meta: {
     name: "cuts",
     description:
-      "Hard cuts from the frame-to-frame difference (scene scores miss some), and the shots between them",
+      "Hard cuts from the frame-to-frame difference (scene scores miss some), and the shots between them; light flashes, whips and fast moves are listed apart as not_cuts",
   },
   args: {
     video: videoArg,
@@ -26,8 +26,12 @@ export default defineCommand({
       const info = probeVideo(String(args.video));
       const [start, end] = window(info, args.start, args.end);
       const clip = videoClip(info.path, start, end - start, info);
-      const found = findCuts(signatures(clip.input, clip.filters).frames);
+      const all = classifiedCuts(signatures(clip.input, clip.filters).frames);
+      const found = all.filter((c) => !c.kind);
       const f0 = Math.ceil(start * info.fps - 1e-6);
+      const not_cuts = all.flatMap((c) =>
+        c.kind ? [{ t: round((f0 + c.frame) / info.fps, 3), kind: c.kind }] : [],
+      );
       const cuts = found.map((c) => ({
         t: round((f0 + c.frame) / info.fps, 3),
         frame: f0 + c.frame,
@@ -41,6 +45,7 @@ export default defineCommand({
         end: round(end, 3),
         fps: round(info.fps, 3),
         cuts,
+        not_cuts,
         shots: edges.slice(1).map((e, i) => ({
           start: round(edges[i]!, 3),
           end: round(e, 3),
