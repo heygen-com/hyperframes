@@ -451,7 +451,7 @@
     return match ? Number.parseFloat(match[1]) : 1;
   }
 
-  // Gradient stops as [offset 0-1, alpha]; missing offsets are spread as CSS spreads them.
+  // Gradient stops as [offset 0-1, alpha]; missing offsets are spread evenly, as the browser does.
   function gradientStops(parts, length, scale) {
     const stops = [];
     for (const part of parts) {
