@@ -68,15 +68,15 @@ function docsDir(): string {
 }
 
 function formatInline(line: string): string {
-  // Replace inline backtick spans with accented text
-  const withCode = line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
-  // Render **bold** spans (#7277 — compositions.md bolds attribute names). When
-  // colors are off (no TTY / NO_COLOR), c.bold returns the text unchanged,
-  // which strips the markers exactly like the other markup.
-  return withCode.replace(/\*\*([^*]+)\*\*/g, (_match, text: string) => c.bold(text));
+  return line.replace(
+    /`([^`]+)`|\*\*((?:`[^`]+`|[^*`])+)\*\*/g,
+    (_match, code: string | undefined, bold: string) =>
+      code === undefined
+        ? c.bold(bold.replace(/`([^`]+)`/g, (_span, innerCode: string) => c.accent(innerCode)))
+        : c.accent(code),
+  );
 }
 
-/** Renders a docs topic the way the terminal prints it: headings, bullets, inline markup. */
 export function renderMarkdown(content: string): string {
   const lines = content.split("\n");
   const out: string[] = [];

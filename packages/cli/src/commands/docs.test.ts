@@ -65,6 +65,14 @@ describe("docs topics", () => {
 });
 
 describe("docs renderer", () => {
+  it("preserves literal asterisks inside inline code", async () => {
+    const { renderMarkdown } = await import("./docs.js");
+    const line = renderMarkdown("Use `**literal**` with **nested `**code**`**");
+    expect(line).toContain("**literal**");
+    expect(line).toContain("**code**");
+    expect(line).not.toContain("**nested");
+  });
+
   it("renders **bold** spans without leaving the markers behind (#7277)", async () => {
     const { renderMarkdown } = await import("./docs.js");
     const topic = readFileSync(
