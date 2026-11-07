@@ -1635,6 +1635,28 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
   });
 
+  it("names the saved report file on stderr after a --json run", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const saved = {
+      id: "r1",
+      revision: "rev",
+      report: "/p/.hyperframes/artifacts/checks/r1.json",
+      attribution: "recorded-revision" as const,
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => ({ ...report, saved })),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(err).toHaveBeenCalledWith(`[hyperframes] check: report saved to ${saved.report}`);
+  });
+
   it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
