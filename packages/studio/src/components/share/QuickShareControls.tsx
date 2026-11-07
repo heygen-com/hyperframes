@@ -63,7 +63,9 @@ export function ShareNotices({ model, snapshot }: Props) {
     model.audience === "invite" ? "Add people from Manage sharing after creating the link." : null,
     share.changed
       ? "Local changes aren’t shared yet. Update the shared version when you’re ready."
-      : null,
+      : share.changed === null
+        ? "Changes after your last upload aren’t shared automatically. Update to share the current project."
+        : null,
     share.state === "link_off" ? "The link is off. Updating the video keeps it off." : null,
     share.state === "processing" && !model.busy
       ? "The shared video is still being prepared. Refresh to check again."
@@ -124,7 +126,7 @@ function CreateShare({ model, snapshot }: Props) {
 function CopyShare({ model, snapshot, url }: Props & { url: string }) {
   const label = model.copied
     ? "Copied"
-    : snapshot.share.changed
+    : snapshot.share.changed !== false
       ? "Copy current shared link"
       : "Copy link";
   return (

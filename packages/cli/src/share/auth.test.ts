@@ -61,3 +61,15 @@ describe("share OAuth identity", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 });
+
+it("pins a Studio session across account switches but permits same-account token rotation", async () => {
+  const auth = createShareAccess(true);
+  mocks.resolve.mockResolvedValue(oauth("first"));
+  await auth.access();
+  mocks.resolve.mockResolvedValue(oauth("refreshed"));
+  await expect(auth.access()).resolves.toMatchObject({ owner: "owner", token: "refreshed" });
+  mocks.resolve.mockResolvedValue(oauth("other"));
+  mocks.user.mockResolvedValue({ username: "other" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+});

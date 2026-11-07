@@ -12,7 +12,7 @@ export interface LocalShareState {
   state: "not_shared" | "link_off" | "ready" | "processing" | "unavailable";
   url: string | null;
   manageUrl: string;
-  changed: boolean;
+  changed: boolean | null;
   audience: LocalShareAudience | null;
   spaceId: string | null;
   source: "not_checked" | "ready" | "video_only";

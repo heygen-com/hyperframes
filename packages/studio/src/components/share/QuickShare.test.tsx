@@ -259,3 +259,36 @@ it("records a copy only after the clipboard succeeds and opening once per panel"
   expect(calls).toEqual([]);
   copy.mockRestore();
 });
+
+it("clears account-specific links and workspace controls after an identity failure", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/r/private",
+    audience: "private",
+    spaceId: "team1",
+  };
+  await mount();
+  expect(button("Copy link")).toBeDefined();
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json({ code: "login_changed", message: "Your login changed" }, { status: 400 }),
+  );
+  await act(async () => button("Refresh")?.click());
+  expect(button("Copy link")).toBeUndefined();
+  expect(button("Update shared version")).toBeUndefined();
+  expect(host.querySelector('[aria-label="Sharing workspace"]')).toBeNull();
+  expect(host.textContent).not.toContain("Design team");
+  expect(button("Sign in in browser")).toBeDefined();
+});
+
+it("does not claim an older upload is current when its portable content identity is unknown", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    changed: null,
+    url: "https://hyperframes.dev/r/live",
+  };
+  await mount();
+  expect(button("Copy current shared link")).toBeDefined();
+  expect(host.textContent).toContain("Changes after your last upload aren’t shared automatically");
+});

@@ -10,10 +10,14 @@ import type {
 import type { ReviewExportProgress } from "@hyperframes/share";
 import type { ShareService } from "../share/service.js";
 import { shareError } from "../share/errors.js";
-import { createShareCsrf, localShareRequestAllowed } from "./shareBoundary.js";
+import { localShareRequestAllowed } from "./shareBoundary.js";
 import { trackShareInteraction } from "../share/telemetry.js";
 import { shareEventInput } from "./shareEvents.js";
-import { presentShare, presentSpaces } from "./sharePresentation.js";
+import { presentSpaces } from "./sharePresentation.js";
+
+import { createShareSessions, shareSessionKey } from "./shareSessions.js";
+
+import { presentPortableShare } from "./shareFreshness.js";
 
 const AUDIENCES: readonly LocalShareAudience[] = ["public", "team", "invite", "private"];
 function actionInput(value: unknown): LocalShareAction | null {
@@ -66,6 +70,7 @@ type CreateService = (
 const defaultCreate: CreateService = async (path, progress) =>
   (await import("../share/service.js")).createShareService(path, progress, {
     surface: "local_studio",
+    pinIdentity: true,
   });
 
 async function defaultLogin(): Promise<void> {
@@ -81,26 +86,34 @@ export function mountShareRoutes(
   track: typeof trackShareInteraction = trackShareInteraction,
 ): void {
   const routes = new Hono();
-  const csrf = createShareCsrf();
   let job: LocalShareJob | null = null;
-  let service: Promise<ShareService> | null = null;
-  const getService = () =>
-    (service ??= create(projectDir, (progress) => {
+  let jobOwner: string | null = null;
+  let loginToken: string | null = null;
+  const sessions = createShareSessions(() =>
+    create(projectDir, (progress) => {
       if (job?.state === "running" && progress) job.step = progress.step;
-    }));
+    }),
+  );
+  const visibleJob = async (token: string) => {
+    if (loginToken === token && job?.state === "running") return job;
+    const session = sessions.get(token);
+    if (!session) return null;
+    const key = shareSessionKey(await (await session.get()).checkSession());
+    return key === jobOwner ? job : null;
+  };
   routes.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
     if (!localShareRequestAllowed(c.req.raw))
       return c.json({ code: "forbidden", message: "Open sharing from this local Studio." }, 403);
     if (
       c.req.path !== "/api/share/bootstrap" &&
-      !csrf.accepts(c.req.header("x-hyperframes-share-csrf") ?? null)
+      !sessions.get(c.req.header("x-hyperframes-share-csrf") ?? "")
     )
       return c.json({ code: "forbidden", message: "Refresh Studio to reconnect sharing." }, 403);
     return next();
   });
   routes.use("*", bodyLimit({ maxSize: 4096 }));
-  routes.get("/bootstrap", (c) => c.json({ csrf: csrf.token }));
+  routes.get("/bootstrap", (c) => c.json({ csrf: sessions.open() }));
   routes.post("/events", async (c) => {
     const event = shareEventInput(await c.req.json().catch(() => null));
     if (!event) return c.json({ code: "invalid_event", message: "Unknown sharing event." }, 400);
@@ -109,7 +122,7 @@ export function mountShareRoutes(
   });
   routes.get("/snapshot", async (c) => {
     try {
-      const sharing = await getService();
+      const sharing = await sessions.get(c.req.header("x-hyperframes-share-csrf")!)!.get();
       const [state, spaces, capabilities] = await Promise.all([
         sharing.status(),
         sharing.spaces(),
@@ -117,22 +130,36 @@ export function mountShareRoutes(
       ]);
       return c.json({
         versionSharing: capabilities.versionSharing,
-        share: presentShare(state),
+        share: await presentPortableShare(projectDir, state),
         spaces: presentSpaces(spaces),
-        job,
+        job: await visibleJob(c.req.header("x-hyperframes-share-csrf")!),
       } satisfies LocalShareSnapshot);
     } catch (error) {
-      return c.json({ ...shareError(error), job }, 400);
+      return c.json(
+        {
+          ...shareError(error),
+          job:
+            loginToken === c.req.header("x-hyperframes-share-csrf") && job?.state === "running"
+              ? job
+              : null,
+        },
+        400,
+      );
     }
   });
-  routes.get("/jobs/:id", (c) =>
-    job?.id === c.req.param("id")
-      ? c.json(job)
-      : c.json(
-          { code: "job_not_found", message: "Refresh sharing to see the current state." },
-          404,
-        ),
-  );
+  routes.get("/jobs/:id", async (c) => {
+    try {
+      const current = await visibleJob(c.req.header("x-hyperframes-share-csrf")!);
+      return current?.id === c.req.param("id")
+        ? c.json(current)
+        : c.json(
+            { code: "job_not_found", message: "Refresh sharing to see the current state." },
+            404,
+          );
+    } catch (error) {
+      return c.json(shareError(error), 400);
+    }
+  });
   routes.post("/actions", async (c) => {
     const input = actionInput(await c.req.json().catch(() => null));
     if (!input)
@@ -140,33 +167,60 @@ export function mountShareRoutes(
         { code: "invalid_action", message: "Choose a valid sharing action and audience." },
         400,
       );
+    const token = c.req.header("x-hyperframes-share-csrf")!;
+    const session = sessions.get(token)!;
     if (job?.state === "running")
-      return c.json({ code: "share_busy", message: "Sharing is already in progress.", job }, 409);
+      return c.json(
+        {
+          code: "share_busy",
+          message: "Sharing is already in progress.",
+          job: await visibleJob(token).catch(() => null),
+        },
+        409,
+      );
+    let owner: string | null = null;
+    if (input.action !== "login") {
+      try {
+        owner = await sessionOwner(session);
+      } catch (error) {
+        return c.json(shareError(error), 400);
+      }
+    }
+    if (job?.state === "running")
+      return c.json({ code: "share_busy", message: "Sharing is already in progress." }, 409);
+    jobOwner = owner;
+    loginToken = input.action === "login" ? token : null;
     const current: LocalShareJob = {
       id: randomUUID(),
       state: "running",
-      step: input.action === "login" ? "signing_in" : "preparing",
+      step: actionStep(input),
       result: null,
       error: null,
     };
     job = current;
-    void (async () => {
-      try {
-        if (input.action === "login") {
-          await login();
-          service = null;
-        }
-        const sharing = await getService();
-        const result = await executeAction(sharing, input);
-        current.result = presentShare(result);
-        current.state = "done";
-      } catch (error) {
-        current.error = shareError(error);
-        current.state = "failed";
-      }
-    })();
+    void runJob(current, input, session);
     return c.json(current, 202);
   });
+  async function runJob(
+    current: LocalShareJob,
+    input: LocalShareAction,
+    session: NonNullable<ReturnType<typeof sessions.get>>,
+  ) {
+    try {
+      if (input.action === "login") {
+        await login();
+        session.reset();
+      }
+      const sharing = await session.get();
+      const result = await executeAction(sharing, input);
+      jobOwner = shareSessionKey(await sharing.checkSession());
+      current.result = await presentPortableShare(projectDir, result);
+      current.state = "done";
+    } catch (error) {
+      current.error = shareError(error);
+      current.state = "failed";
+    }
+  }
   app.route("/api/share", routes);
 }
 
@@ -181,4 +235,11 @@ function executeAction(sharing: ShareService, input: LocalShareAction) {
     space: input.space,
     videoOnly: input.videoOnly,
   });
+}
+
+function actionStep(input: LocalShareAction) {
+  return input.action === "login" ? "signing_in" : "preparing";
+}
+async function sessionOwner(session: { get: () => Promise<ShareService> }) {
+  return shareSessionKey(await (await session.get()).checkSession());
 }

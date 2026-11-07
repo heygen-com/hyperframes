@@ -42,11 +42,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
         void shareJob(token, job.id, signal)
           .then((next) => poll(next, signal))
           .catch((cause) => {
-            if (!signal.aborted) {
-              recordOpen(null);
-              setError(failure(cause));
-              setBusy(false);
-            }
+            reportFailure(cause, signal);
           });
       }, 1000);
       return;
@@ -68,7 +64,10 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       recordOpen(next);
       setSnapshot(next);
       resetSelection(next);
-      if (next.job?.error) setError(next.job.error.message);
+      if (next.job?.error) {
+        setError(next.job.error.message);
+        setErrorCode(next.job.error.code);
+      }
       if (next.job?.state === "running") await poll(next.job, signal);
       else setBusy(false);
     } catch (cause) {
@@ -113,6 +112,8 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   function reportFailure(cause: unknown, signal: AbortSignal) {
     if (signal.aborted) return;
     recordOpen(null);
+    setSnapshot(null);
+    setCopied(false);
     setError(failure(cause));
     setErrorCode(cause instanceof LocalShareError ? cause.code : null);
     if (cause instanceof LocalShareError && cause.job?.state === "running") {

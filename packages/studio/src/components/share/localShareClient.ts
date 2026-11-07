@@ -13,6 +13,8 @@ const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === "string";
 const nullableText = (value: unknown): value is string | null => value === null || text(value);
+const nullableBoolean = (value: unknown): value is boolean | null =>
+  value === null || typeof value === "boolean";
 const nullableNumber = (value: unknown): value is number | null =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 export const isAudience = (value: unknown): value is LocalShareAudience =>
@@ -25,7 +27,7 @@ function isState(value: unknown): value is LocalShareState {
     ) &&
     nullableText(value.url) &&
     text(value.manageUrl) &&
-    typeof value.changed === "boolean" &&
+    nullableBoolean(value.changed) &&
     (value.audience === null || isAudience(value.audience)) &&
     nullableText(value.spaceId) &&
     ["not_checked", "ready", "video_only"].includes(String(value.source))

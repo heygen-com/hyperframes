@@ -18,6 +18,12 @@ const state: ShareState = {
 };
 function fixture() {
   const service: ShareService = {
+    checkSession: vi.fn(async () => ({
+      token: "secret",
+      owner: "owner",
+      heygen: "https://heygen.com",
+      heygenApi: "https://api.heygen.com",
+    })),
     status: vi.fn(async () => state),
     run: vi.fn(async () => state),
     spaces: vi.fn(async () => []),
@@ -252,4 +258,106 @@ it("requires the same boundary for events and never forwards arbitrary propertie
     { event: "share_opened", link: "changed" },
     "local_studio",
   );
+});
+
+it("rejects stale actions and job reads after logout without returning the previous result", async () => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  const started = await (await request(app, "actions", csrf, { action: "update" })).json();
+  await vi.waitFor(async () =>
+    expect((await (await request(app, `jobs/${started.id}`, csrf)).json()).state).toBe("done"),
+  );
+  const signedOut = new AuthError("UNAUTHENTICATED", "Sign in first");
+  vi.mocked(service.checkSession).mockRejectedValue(signedOut);
+  vi.mocked(service.status).mockRejectedValue(signedOut);
+  for (const [path, action] of [
+    [`jobs/${started.id}`, undefined],
+    ["snapshot", undefined],
+    ["actions", { action: "off" }],
+  ] as const) {
+    const response = await request(app, path, csrf, action);
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.code).toBe("unauthenticated");
+    expect(body.result).toBeUndefined();
+    expect(body.job ?? null).toBeNull();
+  }
+  expect(service.linkOff).not.toHaveBeenCalled();
+});
+
+it("does not reveal another account's completed job to a newly opened panel", async () => {
+  const { app, service } = fixture();
+  const first = await token(app);
+  const started = await (await request(app, "actions", first, { action: "update" })).json();
+  await vi.waitFor(async () =>
+    expect((await (await request(app, `jobs/${started.id}`, first)).json()).state).toBe("done"),
+  );
+  vi.mocked(service.checkSession).mockResolvedValue({
+    token: "other-secret",
+    owner: "other",
+    heygen: "https://heygen.com",
+    heygenApi: "https://api.heygen.com",
+  });
+  const second = await token(app);
+  expect(second).not.toBe(first);
+  expect((await request(app, `jobs/${started.id}`, second)).status).toBe(404);
+  expect((await (await request(app, "snapshot", second)).json()).job).toBeNull();
+});
+
+it("serializes actions even when concurrent requests await identity verification", async () => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  let verify = () => {};
+  const barrier = new Promise<void>((resolve) => {
+    verify = resolve;
+  });
+  vi.mocked(service.checkSession).mockImplementation(async () => {
+    await barrier;
+    return {
+      token: "secret",
+      owner: "owner",
+      heygen: "https://heygen.com",
+      heygenApi: "https://api.heygen.com",
+    };
+  });
+  let finish = () => {};
+  vi.mocked(service.run).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve(state);
+      }),
+  );
+  const requests = [
+    request(app, "actions", csrf, { action: "update" }),
+    request(app, "actions", csrf, { action: "update" }),
+  ];
+  await vi.waitFor(() => expect(service.checkSession).toHaveBeenCalledTimes(2));
+  verify();
+  expect((await Promise.all(requests)).map((response) => response.status).sort()).toEqual([
+    202, 409,
+  ]);
+  expect(service.run).toHaveBeenCalledOnce();
+  finish();
+});
+
+it("withholds an in-flight result when the account changes before completion", async () => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  let finish = () => {};
+  vi.mocked(service.run).mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve(state);
+      }),
+  );
+  const started = await (await request(app, "actions", csrf, { action: "update" })).json();
+  vi.mocked(service.checkSession).mockRejectedValue(
+    new AuthError("LOGIN_CHANGED", "Login changed"),
+  );
+  finish();
+  await vi.waitFor(async () => {
+    const response = await request(app, `jobs/${started.id}`, csrf);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ code: "login_changed", message: "Login changed" });
+  });
 });

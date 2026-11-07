@@ -167,7 +167,8 @@ editor or its render queue.
 Open a project with `hyperframes preview`, then choose **Share** beside **Export**.
 Choose **Sign in in browser** if prompted. You can also run
 `hyperframes auth login` in your terminal, then refresh sharing. Credentials stay
-in the local CLI process.
+in the local CLI process. If you switch accounts in the terminal, reload Studio
+or sign in from the panel before retrying.
 
 Choose the workspace and who can access the project, then choose **Create share
 link**. Studio finishes saving pending edits before it renders and uploads the
@@ -192,3 +193,4 @@ settings. Existing published project URLs continue to open separately.
 
 The local sharing bridge is available only from the same-origin loopback Studio
 page. It does not expose CLI credentials or accept a different project path.
+As with local preview, open projects whose scripts you trust.

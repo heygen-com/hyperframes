@@ -1,6 +1,6 @@
 import { apiBaseUrl, AuthClient } from "../auth/client.js";
 import { tokenEndpoint, oauthEnvironment } from "../auth/config.js";
-import { AuthError } from "../auth/errors.js";
+import { AuthError, ErrLoginChanged } from "../auth/errors.js";
 import { refreshTokens } from "../auth/oauth.js";
 import { resolveCredential } from "../auth/resolver.js";
 
@@ -8,25 +8,31 @@ export function shareSite(): string {
   return oauthEnvironment() === "dev" ? "https://dev.hyperframes.dev" : "https://hyperframes.dev";
 }
 
-export function createShareAccess() {
+export function createShareAccess(pinIdentity = false) {
+  let bound: string | undefined;
   let identity: { token: string; owner: string; email: string | null } | undefined;
   const userClient = new AuthClient();
   const access = async (refused?: string) => {
     const credential = await shareCredential(refused);
-    if (identity?.token !== credential.access_token) {
+    let account = identity;
+    if (account?.token !== credential.access_token) {
       const user = await userClient.getCurrentUser(credential);
       if (!user.username) throw loginRequired();
-      identity = {
+      account = {
         token: credential.access_token,
         owner: user.username,
         email: user.email ?? null,
       };
     }
+    const key = JSON.stringify([account.owner, new URL(tokenEndpoint()).origin, apiBaseUrl()]);
+    if (pinIdentity && bound !== undefined && bound !== key) throw ErrLoginChanged();
+    bound = key;
+    identity = account;
     return {
       token: credential.access_token,
       heygen: new URL(tokenEndpoint()).origin,
       heygenApi: apiBaseUrl(),
-      owner: identity.owner,
+      owner: account.owner,
     };
   };
   return {

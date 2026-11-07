@@ -18,7 +18,8 @@ export function presentShare(value: ShareState): LocalShareState {
             : "processing",
     url: held ? null : value.url,
     manageUrl: value.manageUrl,
-    changed: Boolean(value.share && value.version.last && !value.version.last.current),
+    // Desktop's watcher does not cover every portable render input.
+    changed: knownChanges(value),
     audience: value.share?.access ?? null,
     spaceId: value.share?.space?.id ?? null,
     source: value.source.at,
@@ -40,4 +41,9 @@ export function presentSpaces(
     used: space.review_entitlements?.projects_used_up_to_limit ?? null,
     limit: space.review_entitlements?.project_limit ?? null,
   }));
+}
+
+function knownChanges(value: ShareState): boolean | null {
+  if (!value.share) return false;
+  return value.version.last && !value.version.last.current ? true : null;
 }
