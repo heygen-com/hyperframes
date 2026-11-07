@@ -64,11 +64,18 @@ describe("silenceCuts", () => {
     const samples = loud(150);
     samples.fill(0, 5830, 5840);
     samples.fill(0, 12195, 12205);
-    expect(silenceCuts(samples, rate)).toEqual([0, 5835, 12200, 15000]);
+    expect(silenceCuts(samples, rate, 60)).toEqual([0, 5835, 12200, 15000]);
+  });
+
+  it("cuts about every 30 s by default", () => {
+    const samples = loud(70);
+    samples.fill(0, 3190, 3200);
+    samples.fill(0, 5995, 6005);
+    expect(silenceCuts(samples, rate)).toEqual([0, 3195, 6000, 7000]);
   });
 
   it("leaves audio shorter than one window whole", () => {
-    expect(silenceCuts(loud(42), rate)).toEqual([0, 4200]);
+    expect(silenceCuts(loud(28), rate)).toEqual([0, 2800]);
   });
 
   it("makes no window for empty audio", () => {
