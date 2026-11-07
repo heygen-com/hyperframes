@@ -78,7 +78,6 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
 
-/** Codecs every mainstream browser decodes in a project's containers; any other is treated as browser-hostile. */
 const BROWSER_PLAYABLE_CODECS: ReadonlySet<string> = new Set(["h264", "vp8"]);
 
 const UNLISTED_HOSTILE: BrowserHostileCodec = { representativeMime: null, prewarm: true };
