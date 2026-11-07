@@ -42,6 +42,7 @@ type Reader = {
   height: number;
   lead: number;
   ticks: number;
+  transparent: boolean;
   tail: Promise<void>;
   iterator: AsyncGenerator<VideoSample, void, unknown> | null;
   iteratorEnd: number;
@@ -121,7 +122,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     try {
       const track = await input.getPrimaryVideoTrack();
       if (!track || disposed) throw new Error("Preview video unavailable");
-      const [width, height, lead, ticks, squareWidth, squareHeight, rotation, flip] =
+      const [width, height, lead, ticks, squareWidth, squareHeight, rotation, flip, transparent] =
         await Promise.all([
           track.getDisplayWidth(),
           track.getDisplayHeight(),
@@ -131,6 +132,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
           track.getSquarePixelHeight(),
           track.getRotation(),
           track.getFlip(),
+          track.canBeTransparent(),
         ]);
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.ceil(width));
@@ -148,6 +150,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
         height,
         lead,
         ticks,
+        transparent,
         tail: Promise.resolve(),
         iterator: null,
         iteratorEnd: 0,
@@ -279,6 +282,9 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     return entry;
   };
   const nearbyForward = (reader: Reader, time: number, timing: PreviewVideoTiming) =>
+    // Mediabunny 1.65.2 can orphan alpha samples when a range is cancelled.
+    // Finite queries drain the merger before closing it.
+    !reader.transparent &&
     !timing.variableFrameRate &&
     (timing.frameRate ?? 0) > 0 &&
     time > reader.lastTime + 1e-6 &&

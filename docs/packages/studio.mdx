@@ -111,12 +111,15 @@ advancing the composition's animations. Completed frames appear during a drag,
 with newer pointer positions coalesced into the next decode. Canvas and GPU
 effects consume the same staged pixels. Continuous playback uses native video;
 Studio keeps the paused picture visible while those videos catch up before Play.
-A slow native handoff stays buffered instead of revealing an unready video; Pause
-or a new seek cancels it. If the browser stops loading a clip, the rest can play
-while its last decoded picture remains visible until native frames recover.
-A paused fallback that outlasts its wait still publishes when the video becomes
-ready. Studio releases paused decoding sessions before native
-playback and reopens them when paused scrubbing resumes.
+A native handoff waits for ready frames for up to ten seconds; Pause or a new
+seek cancels it. At the deadline, the rest plays while each unready video keeps
+its last full-quality picture. Recovery seeks to the current playback time
+before revealing native video. A skipped source keeps its picture on subsequent
+Play requests until it recovers.
+A paused fallback that outlasts its wait retains the presented clock and picture,
+while paused sync continues. It can still publish when the video becomes ready;
+a new gesture cancels that recovery. Studio requests paused-decoder release
+before preparing native playback and reopens readers when paused scrubbing resumes.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,
 and the frame decoder does not substitute re-encoded seek copies. Playback

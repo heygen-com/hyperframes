@@ -1,12 +1,14 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createPreviewSeek } from "./previewSeek";
 import type { PreparedPausedVideoFrames } from "./pausedVideoFrames";
+import { isUnplayable, syncRuntimeMedia } from "./media";
 import type { RuntimeMediaClip } from "./types";
 
 const jobs: ReturnType<typeof createPreviewSeek>[] = [];
 afterEach(() => {
   for (const job of jobs.splice(0)) job.cancel();
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -40,16 +42,23 @@ function fixture() {
     (_clips: RuntimeMediaClip[], _time: number, signal: AbortSignal) =>
       new Promise<PreparedPausedVideoFrames | null>((resolve) => pending.push({ signal, resolve })),
   );
-  const job = createPreviewSeek({
+  const host = {
     clipsAt: () => [clip],
-    videosToHold: () => [],
+    videosToHold: (): HTMLVideoElement[] => [],
     scenesReadyAt: () => true,
     prepare: native,
     commit,
-    frames: { available: () => true, prepare, prepareNative: vi.fn(), clear: vi.fn() },
-  });
+    frames: {
+      active: () => false,
+      available: () => true,
+      prepare,
+      prepareNative: vi.fn(),
+      clear: vi.fn(),
+    },
+  };
+  const job = createPreviewSeek(host);
   jobs.push(job);
-  return { job, commit, native, prepare, pending };
+  return { job, commit, native, prepare, pending, video, clip, host };
 }
 
 it("presents coherent intermediate work while retaining the latest requested destination", async () => {
@@ -137,4 +146,81 @@ it("does not erase a seek requested synchronously while publishing the previous 
   pending[1]!.resolve(batch());
   await Promise.resolve();
   expect(commit.mock.calls.map(([time]) => time)).toEqual([1, 4]);
+});
+
+it("keeps a request-wide hard deadline through refresh and same-clip retarget", async () => {
+  vi.useFakeTimers();
+  const { job, commit } = fixture();
+  const done = job.handoff(3);
+  await vi.advanceTimersByTimeAsync(4900);
+  job.refresh();
+  await vi.advanceTimersByTimeAsync(4100);
+  job.seek(4, true);
+  expect(commit).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1000);
+  await done;
+  expect(commit.mock.calls.map(([time]) => time)).toEqual([4]);
+  expect(job.time).toBeUndefined();
+});
+
+it("does not reset a source already known to be unplayable on another Play", async () => {
+  vi.useFakeTimers();
+  const { job, commit, video, clip } = fixture();
+  video.src = "/stopped.mp4";
+  Object.defineProperties(video, {
+    readyState: { value: 1, configurable: true },
+    networkState: { value: 1, configurable: true },
+  });
+  video.play = vi.fn(async () => {});
+  video.pause = vi.fn();
+  syncRuntimeMedia({
+    clips: [clip],
+    timeSeconds: 0,
+    playing: true,
+    playbackRate: 1,
+    getCompositionDuration: () => 10,
+  });
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(isUnplayable(video)).toBe(true);
+  const done = job.handoff(3);
+  await Promise.resolve();
+  await done;
+  expect(commit).toHaveBeenLastCalledWith(3);
+  expect(job.time).toBeUndefined();
+});
+
+it("preserves the held native picture when a new gesture cancels expired background work", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  const { job, video, native, pending, prepare, host } = fixture();
+  let ready = 4;
+  let time = 0;
+  Object.defineProperties(video, {
+    readyState: { get: () => ready },
+    networkState: { value: 2 },
+    videoWidth: { value: 64 },
+    videoHeight: { value: 36 },
+    currentTime: { get: () => time },
+  });
+  host.videosToHold = () => [video];
+  host.frames.active = () => true;
+  native.mockImplementation((_clips, target) => {
+    ready = 1;
+    time = target;
+  });
+  prepare.mockResolvedValueOnce(null);
+  const expired = job.seek(3);
+  await vi.advanceTimersByTimeAsync(5000);
+  await expired;
+  expect(job.time).toBeUndefined();
+  expect(job.targetTime).toBe(3);
+  const picture = document.querySelector("canvas");
+  expect(picture).not.toBeNull();
+  const next = job.seek(4);
+  expect(document.querySelector("canvas")).toBe(picture);
+  pending[0]!.resolve(batch());
+  await next;
+  expect(document.querySelector("canvas")).toBeNull();
 });

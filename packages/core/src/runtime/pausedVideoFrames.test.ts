@@ -191,3 +191,18 @@ it("keeps the displayed surface in sync with paused editing without releasing de
   expect(canvas.style.width).toBe("80px");
   expect(video.currentTime).toBe(3);
 });
+
+it("holds a full-size native snapshot through original-source provider replacement", async () => {
+  const { session, video, request } = fixture();
+  Object.defineProperty(video, "readyState", { value: 4 });
+  session.holdNative([video]);
+  const snapshot = getPausedVideoFrame(video)!;
+  expect([snapshot.width, snapshot.height]).toEqual([64, 36]);
+  expect(snapshot.hasAttribute("data-hyperframes-picker-ignore")).toBe(true);
+  expect(ownsPausedVideoTime(video)).toBe(false);
+  const decoded = await session.prepare(request, new AbortController().signal);
+  expect(decoded!.present()).toBe(true);
+  expect(getPausedVideoFrame(video)).toBe(snapshot);
+  expect(ownsPausedVideoTime(video)).toBe(true);
+  expect(video.currentTime).toBe(3);
+});

@@ -3712,7 +3712,8 @@ export function initSandboxRuntimeModular(): void {
   window.__hf.releasePausedMedia = releasePausedMedia;
   window.__hf.setPausedVideoFrameProvider = (provider) => {
     const resumePlay = nativePlayTime !== undefined;
-    const destination = previewSeek?.time ?? (pausedFrames.active ? state.currentTime : undefined);
+    const destination =
+      previewSeek?.targetTime ?? (pausedFrames.active ? state.currentTime : undefined);
     nativePlayGeneration++;
     nativePlayTime = undefined;
     wallClearTimeout(nativeWarmTimer);
@@ -3731,7 +3732,11 @@ export function initSandboxRuntimeModular(): void {
   // Clips the transport may move now (not a paused lease); null while the host drives media.
   const transportMovableClips = (clips: RuntimeMediaClip[]): RuntimeMediaClip[] | null => {
     if (state.nativeMediaSyncDisabled) return null;
-    return state.isPlaying ? clips : clips.filter((clip) => !pausedMediaLeases.has(clip.el));
+    return state.isPlaying
+      ? clips
+      : clips.filter(
+          (clip) => !pausedMediaLeases.has(clip.el) && !previewSeek?.ownsRecovery(clip.el),
+        );
   };
   window.__hf.setLoopStart = (seconds) => {
     loopStartSeconds = seconds != null && Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
@@ -4526,7 +4531,7 @@ export function initSandboxRuntimeModular(): void {
     // Redraw the current frame as a seek does; a playing film cut to end at or before it stops there, as at its end.
     const cutShort = clock.isPlaying() && duration > 0 && state.currentTime >= duration;
     if (joining && clock.isPlaying() && !cutShort) joinPlayback(swappedHosts);
-    else if (previewSeek?.time !== undefined) previewSeek.refresh();
+    else if (previewSeek?.targetTime !== undefined) previewSeek.refresh();
     else transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
     if (previewSeek?.time === undefined) syncTimedElementVisibility(state.currentTime);
     postTimeline();
@@ -4836,7 +4841,7 @@ export function initSandboxRuntimeModular(): void {
       .sort((a, b) => Math.abs(a.start - time) - Math.abs(b.start - time))[0];
     const toMount = landed ?? neighbour;
     const toRetire =
-      toMount || previewSeek?.time !== undefined
+      toMount || previewSeek?.targetTime !== undefined
         ? []
         : windowScenes.filter(({ name }) => !near.has(name) && !parked(name));
     if (!toMount && toRetire.length === 0) {
@@ -4845,9 +4850,11 @@ export function initSandboxRuntimeModular(): void {
     }
     const wantedNow = (name: string) =>
       heldScenes.has(name) ||
-      scenesWanted(windowScenes, previewSeek?.time ?? state.currentTime, clock.isPlaying()).has(
-        name,
-      );
+      scenesWanted(
+        windowScenes,
+        previewSeek?.targetTime ?? state.currentTime,
+        clock.isPlaying(),
+      ).has(name);
     const parkedBeforeStep = parkedNames.size;
     windowWork = (async () => {
       if (landed) await mountScene(landed.name);
@@ -4860,7 +4867,7 @@ export function initSandboxRuntimeModular(): void {
       windowWork = null;
       const stuckStepKeepsItsPlan = parkedNames.size === parkedBeforeStep;
       windowNear = stuckStepKeepsItsPlan ? key : "";
-      moveSceneWindow(previewSeek?.time ?? state.currentTime);
+      moveSceneWindow(previewSeek?.targetTime ?? state.currentTime);
     });
     // A seek is not done until the scene it lands in is mounted.
     if (landed) registerSeekCompletion(windowWork, "scene-window");
@@ -5022,6 +5029,10 @@ export function initSandboxRuntimeModular(): void {
     frames: {
       available: pausedFrames.available,
       active: () => pausedFrames.active,
+      skipped: pausedFrames.skipped,
+      hold: (videos) => {
+        if (pausedFrames.available()) pausedFrames.holdNative(videos);
+      },
       prepare: (clips, time, signal, settled) => {
         moveSceneWindow(time);
         for (const { el } of clips) {
@@ -5045,7 +5056,16 @@ export function initSandboxRuntimeModular(): void {
       },
       suspend: pausedFrames.suspendProvider,
       prepareNative: pausedFrames.prepareNative,
-      clear: pausedFrames.clear,
+      clear: (keep) =>
+        pausedFrames.clear(keep, (video) => {
+          const time = clock.now();
+          const clip = previewVideoClipsAt(time).find(({ el }) => el === video);
+          if (!clip) return true;
+          const expected = mediaSourceTimeAt(clip, time);
+          if (Math.abs(video.currentTime - expected) < 0.02) return true;
+          video.currentTime = mediaElementTime(expected);
+          return false;
+        }),
     },
     videosToHold: () =>
       withTimingResolver(() =>
@@ -5143,7 +5163,8 @@ export function initSandboxRuntimeModular(): void {
         const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
         if (duration > 0) clock.setDuration(duration);
         nativePlayTime =
-          previewSeek?.time ?? (clock.reachedEnd() ? clock.getPlayStart() : state.currentTime);
+          previewSeek?.targetTime ??
+          (clock.reachedEnd() ? clock.getPlayStart() : state.currentTime);
         const landed = previewSeek?.handoff(nativePlayTime);
         if (landed) {
           bufferingFor = withTimingResolver(() =>
@@ -5197,7 +5218,7 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     pause: () => {
-      const destination = previewSeek?.time ?? nativePlayTime;
+      const destination = previewSeek?.targetTime ?? nativePlayTime;
       nativePlayGeneration++;
       nativePlayTime = undefined;
       previewSeek?.cancel();
@@ -6114,6 +6135,7 @@ export function initSandboxRuntimeModular(): void {
               !ready(el) &&
               isPlayableTrack(el) &&
               !stillStandsIn(el) &&
+              !pausedFrames.retained(el) &&
               !webAudio.ownsElement(el),
           )
           .map(({ el }) => el);

@@ -256,11 +256,6 @@ function noteFirstPlayAsk(el: HTMLMediaElement): void {
   }
 }
 
-export function notePlaybackIntent(el: HTMLMediaElement): void {
-  if (el.readyState <= MEDIA_HAVE_METADATA) firstPlayAskedAt.delete(el);
-  noteFirstPlayAsk(el);
-}
-
 type Stall = "after its header" | "never started";
 
 // Safari can leave a video "loading" with no request ever sent; a slow fetch still delivers bytes (progress).

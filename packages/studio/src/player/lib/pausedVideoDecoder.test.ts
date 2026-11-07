@@ -92,6 +92,7 @@ const track = (source: string) => ({
   },
   getRotation: async () => 0,
   getFlip: async () => false,
+  canBeTransparent: async () => false,
 });
 
 beforeEach(() => {
@@ -524,4 +525,28 @@ it("does not poison a reopened source when an older suspended input settles late
   expect(inputs).toHaveLength(2);
   expect(inputs[1]!.dispose).not.toHaveBeenCalled();
   cached!.release();
+});
+
+it("uses finite queries for alpha tracks while preserving original dimensions and closing samples", async () => {
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    canBeTransparent: async () => true,
+  }));
+  const samples = [sample(0), sample(0.1), sample(0.2)];
+  getSample.mockImplementation(async () => samples[getSample.mock.calls.length - 1]);
+  iterateSamples.mockImplementation(async function* () {
+    yield sample(0.1);
+    yield sample(0.2);
+  });
+  const owner = provider(cfrFacts),
+    item = request("a");
+  for (const time of [0, 0.1, 0.2]) {
+    const [frame] = await owner.decode([{ ...item, time }], signal());
+    expect([frame!.width, frame!.height]).toEqual([100, 100]);
+    frame!.release();
+  }
+  expect(iterateSamples).not.toHaveBeenCalled();
+  expect(getSample).toHaveBeenCalledTimes(3);
+  for (const frame of samples) expect(frame.close).toHaveBeenCalledOnce();
+  await owner.suspend!();
 });

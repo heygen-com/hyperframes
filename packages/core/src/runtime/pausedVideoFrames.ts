@@ -51,6 +51,8 @@ type Presented = {
   restoreTime: () => void;
   gpuFrame?: VideoFrame;
   stopWaiting?: () => void;
+  // Paused frame replacement does not retry a source native playback already skipped.
+  nativeSkipped?: boolean;
 };
 const presented = new Map<HTMLMediaElement, Presented>();
 const authoredSeeks = new WeakSet<HTMLVideoElement>();
@@ -68,6 +70,30 @@ export function getPausedExternalVideoFrame(video: HTMLVideoElement): VideoFrame
   if (!entry || typeof VideoFrame === "undefined") return null;
   entry.gpuFrame ??= new VideoFrame(entry.canvas, { timestamp: Math.round(entry.time * 1e6) });
   return entry.gpuFrame;
+}
+
+export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  try {
+    context.drawImage(video, 0, 0);
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
+export function nativeSnapshotStyle(video: HTMLVideoElement): CSSStyleDeclaration | null {
+  if (getPausedVideoFrame(video)) return null;
+  // Its grading canvas already holds the picture; hiding the source would retire that canvas on refresh.
+  if (video.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) return null;
+  const css = getComputedStyle(video);
+  if (css.display === "none" || css.visibility === "hidden" || video.readyState < 2) return null;
+  if (!video.videoWidth || !video.videoHeight) return null;
+  return css;
 }
 
 function virtualTime(entry: Presented): void {
@@ -138,6 +164,15 @@ function refresh(entry: Presented): void {
 
 type ReusablePresentation = { entry: Presented; context: CanvasRenderingContext2D };
 
+function markFrameCanvas(canvas: HTMLCanvasElement): void {
+  canvas.setAttribute(PREVIEW_VIDEO_CANVAS_ATTR, "");
+  canvas.setAttribute("data-layout-ignore", "");
+  canvas.setAttribute("data-hyperframes-ignore", "");
+  canvas.setAttribute("data-hyperframes-picker-ignore", "");
+  canvas.setAttribute("data-hf-ignore", "");
+  canvas.setAttribute("aria-hidden", "true");
+}
+
 function adoptStagedFrame(next: Presented, existing?: ReusablePresentation): void {
   if (existing) {
     const { entry, context } = existing;
@@ -155,12 +190,7 @@ function adoptStagedFrame(next: Presented, existing?: ReusablePresentation): voi
   }
   const { video, canvas } = next;
   releasePausedVideoFrame(video);
-  canvas.setAttribute(PREVIEW_VIDEO_CANVAS_ATTR, "");
-  canvas.setAttribute("data-layout-ignore", "");
-  canvas.setAttribute("data-hyperframes-ignore", "");
-  canvas.setAttribute("data-hyperframes-picker-ignore", "");
-  canvas.setAttribute("data-hf-ignore", "");
-  canvas.setAttribute("aria-hidden", "true");
+  markFrameCanvas(canvas);
   presented.set(video, next);
   video.setAttribute(PREVIEW_VIDEO_SOURCE_ATTR, "");
   virtualTime(next);
@@ -195,14 +225,20 @@ export function createPausedVideoFrames() {
     attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
   });
 
-  const clear = (keep?: Set<HTMLVideoElement>) => {
+  const clear = (keep?: Set<HTMLVideoElement>, current?: (video: HTMLVideoElement) => boolean) => {
     for (const entry of [...presented.values()]) {
       if (!keep?.has(entry.video)) {
         remove(entry);
         continue;
       }
+      entry.nativeSkipped = true;
       const ready = () => {
-        if (entry.video.readyState >= 2 && !entry.video.seeking) remove(entry);
+        if (
+          entry.video.readyState >= 2 &&
+          !entry.video.seeking &&
+          (!current || current(entry.video))
+        )
+          remove(entry);
       };
       const events = ["loadeddata", "canplay", "seeked"];
       entry.stopWaiting?.();
@@ -218,6 +254,27 @@ export function createPausedVideoFrames() {
       // A skipped native clip may keep a fallback picture without owning paused playback.
       return [...presented.values()].some((entry) => !entry.stopWaiting);
     },
+    holdNative(videos: HTMLVideoElement[]) {
+      for (const video of videos) {
+        if (!nativeSnapshotStyle(video)) continue;
+        const canvas = captureNativeVideoFrame(video);
+        if (!canvas) continue;
+        const entry: Presented = {
+          video,
+          canvas,
+          time: video.currentTime,
+          driving: false,
+          restoreTime: () => {},
+        };
+        markFrameCanvas(canvas);
+        presented.set(video, entry);
+        video.setAttribute(PREVIEW_VIDEO_SOURCE_ATTR, "");
+        if (!style.isConnected) document.head.append(style);
+        refresh(entry);
+      }
+    },
+    skipped: (el: HTMLMediaElement) => presented.get(el)?.nativeSkipped === true,
+    retained: (el: HTMLMediaElement) => presented.get(el)?.stopWaiting !== undefined,
     available: () => provider !== null,
     setProvider(next: PausedVideoFrameProvider | null) {
       if (provider === next) return;
