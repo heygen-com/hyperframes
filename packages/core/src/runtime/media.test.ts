@@ -1053,7 +1053,11 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
-    function askedToPlayAtHeader(networkState: number, play?: () => Promise<void>) {
+    function askedToPlayAtHeader(
+      networkState: number,
+      play?: () => Promise<void>,
+      readyState: number = HTMLMediaElement.HAVE_METADATA,
+    ) {
       vi.useFakeTimers({ toFake: ["performance"] });
       onTestFinished(() => vi.useRealTimers());
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -1061,7 +1065,7 @@ describe("syncRuntimeMedia", () => {
       const clip = createMockClip({ start: 0, end: 10 });
       clip.el.src = "/alpha.webm";
       if (play) clip.el.play = vi.fn(play);
-      Object.defineProperty(clip.el, "readyState", { value: 1, configurable: true });
+      Object.defineProperty(clip.el, "readyState", { value: readyState, configurable: true });
       Object.defineProperty(clip.el, "networkState", { value: networkState, configurable: true });
       syncRuntimeMedia({ clips: [clip], timeSeconds: 1, playing: true, playbackRate: 1 });
       expect(clip.el.play).toHaveBeenCalledTimes(1);
@@ -1081,6 +1085,34 @@ describe("syncRuntimeMedia", () => {
 
     it("keeps waiting on a clip still loading at its header 5 s after it was asked to play", () => {
       const { el, warn } = askedToPlayAtHeader(HTMLMediaElement.NETWORK_LOADING);
+      vi.advanceTimersByTime(60_000);
+      expect(isUnplayable(el)).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("skips and names a clip the browser never started loading 5 s after it was asked to play", () => {
+      const { el, warn } = askedToPlayAtHeader(
+        HTMLMediaElement.NETWORK_LOADING,
+        undefined,
+        HTMLMediaElement.HAVE_NOTHING,
+      );
+      vi.advanceTimersByTime(4999);
+      expect(isUnplayable(el)).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(isUnplayable(el)).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain(
+        'alpha.webm": the browser never started loading it',
+      );
+    });
+
+    it("keeps waiting on a clip with no data yet whose bytes are arriving", () => {
+      const { el, warn } = askedToPlayAtHeader(
+        HTMLMediaElement.NETWORK_LOADING,
+        undefined,
+        HTMLMediaElement.HAVE_NOTHING,
+      );
+      el.dispatchEvent(new Event("progress"));
       vi.advanceTimersByTime(60_000);
       expect(isUnplayable(el)).toBe(false);
       expect(warn).not.toHaveBeenCalled();
