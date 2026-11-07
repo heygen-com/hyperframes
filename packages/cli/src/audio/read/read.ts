@@ -44,7 +44,6 @@ export interface ReadOptions {
   /** A transcript of the recording; `<file>.transcript.json` next to it is used when absent. */
   transcript?: string;
   quality?: AnalysisQuality;
-  /** The one layer the file holds: it is read whole, with no stems and nothing uploaded. */
   layer?: Layer;
 }
 
@@ -388,7 +387,6 @@ async function analyze(
   return { ...about, voice, effects, music: null, ambience: null, warnings };
 }
 
-/** A file declared to hold one layer: the whole file is that layer's signal, so nothing is separated. */
 async function analyzeLayer(
   path: string,
   file: string,
