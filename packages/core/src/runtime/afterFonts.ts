@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { AFTER_FONTS_CLAIM, DEFERRED_FILE, typeAfterFonts } from "../compiler/scriptRuns";
 import { postRuntimeMessage } from "./bridge";
 import { applyTextBindings } from "./applyVariableBindings";
@@ -19,9 +20,11 @@ export async function waitForFonts(): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = await Promise.race([
     fonts.ready.then(() => false),
-    new Promise<boolean>((resolve) => (timer = setTimeout(resolve, FONT_WAIT_TIMEOUT_MS, true))),
+    new Promise<boolean>(
+      (resolve) => (timer = wallSetTimeout(resolve, FONT_WAIT_TIMEOUT_MS, true)),
+    ),
   ]);
-  clearTimeout(timer);
+  wallClearTimeout(timer);
   if (!timedOut) return;
   const loadingFamilies = [
     ...new Set(

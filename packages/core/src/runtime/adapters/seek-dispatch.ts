@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "../wallClock";
 import { swallow } from "../diagnostics";
 
 /**
@@ -132,12 +133,12 @@ async function settledBy(
   if (deadline === undefined) return Promise.all(pending);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
+    timer = wallSetTimeout(() => resolve(null), Math.max(0, deadline - Date.now()));
   });
   try {
     return await Promise.race([Promise.all(pending), late]);
   } finally {
-    clearTimeout(timer);
+    wallClearTimeout(timer);
   }
 }
 
