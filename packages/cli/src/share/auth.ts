@@ -12,10 +12,10 @@ export function createShareAccess(pinIdentity = false) {
   let bound: string | undefined;
   let identity: { token: string; owner: string; email: string | null } | undefined;
   const userClient = new AuthClient();
-  const access = async (refused?: string) => {
+  const access = async (refused?: string, verifyIdentity = false) => {
     const credential = await shareCredential(refused);
     let account = identity;
-    if (account?.token !== credential.access_token) {
+    if (verifyIdentity || account?.token !== credential.access_token) {
       const user = await userClient.getCurrentUser(credential);
       if (!user.username) throw loginRequired();
       account = {

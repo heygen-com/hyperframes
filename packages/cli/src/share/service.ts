@@ -258,7 +258,7 @@ export function createShareService(
     return upload(input, target.projectId, sources, attempt);
   };
   return {
-    checkSession: auth.access,
+    checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
     status,
     run: (input: ShareAction) =>
       input.action === "status" || input.action === "manage"

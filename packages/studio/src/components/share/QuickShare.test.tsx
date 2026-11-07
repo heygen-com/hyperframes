@@ -105,10 +105,10 @@ it("requires explicit audience, uses the bound workspace and permits server-auth
   expect(host.textContent).toContain("5 of 5 free shared projects used");
   expect(button("Create share link")?.disabled).toBe(true);
   expect(calls).toEqual([]);
-  await choose("private");
+  await choose("public");
   expect(button("Create share link")?.disabled).toBe(false);
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([{ action: "share", audience: "private", space: "team1" }]);
+  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
 });
 it("drains pending editor saves before creating or uploading", async () => {
   let resolveSave = () => {};
@@ -130,7 +130,7 @@ it("does not publish when saving fails", async () => {
   await mount(async () => {
     throw new Error("write failed");
   });
-  await choose("private");
+  await choose("public");
   await act(async () => button("Create share link")?.click());
   expect(calls).toEqual([]);
   expect(host.querySelector('[role="alert"]')).not.toBeNull();
@@ -230,8 +230,8 @@ it.each(["unauthenticated", "login_expired"])(
     );
     await mount();
     expect(calls).toEqual([]);
-    expect(button("Sign in in browser")).toBeDefined();
-    await act(async () => button("Sign in in browser")?.click());
+    expect(button("Sign in")).toBeDefined();
+    await act(async () => button("Sign in")?.click());
     expect(calls).toEqual([{ action: "login" }]);
     expect(host.textContent).toContain("Finish signing in in your browser");
   },
@@ -273,12 +273,12 @@ it("clears account-specific links and workspace controls after an identity failu
   vi.mocked(fetch).mockResolvedValue(
     Response.json({ code: "login_changed", message: "Your login changed" }, { status: 400 }),
   );
-  await act(async () => button("Refresh")?.click());
+  await act(async () => button("Update shared version")?.click());
   expect(button("Copy link")).toBeUndefined();
   expect(button("Update shared version")).toBeUndefined();
   expect(host.querySelector('[aria-label="Sharing workspace"]')).toBeNull();
   expect(host.textContent).not.toContain("Design team");
-  expect(button("Sign in in browser")).toBeDefined();
+  expect(button("Sign in")).toBeDefined();
 });
 
 it("does not claim an older upload is current when its portable content identity is unknown", async () => {
@@ -312,13 +312,13 @@ it("continues from a running browser login to fresh controls without refreshing 
       : Response.json({ code: "login_expired", message: "Sign in again." }, { status: 400 });
   });
   await mount();
-  await act(async () => button("Sign in in browser")?.click());
+  await act(async () => button("Sign in")?.click());
   await act(async () => vi.advanceTimersByTime(1000));
   expect(host.textContent).toContain("Finish signing in");
   signedIn = true;
   await act(async () => vi.advanceTimersByTime(1000));
-  expect(button("Sign in in browser")).toBeUndefined();
-  expect(host.querySelector('[aria-label="Sharing workspace"]')).not.toBeNull();
+  expect(button("Sign in")).toBeUndefined();
+  expect(host.querySelector('[aria-label="Who can access"]')).not.toBeNull();
   expect(button("Create share link")?.disabled).toBe(true);
   expect(calls).toEqual([{ action: "login" }]);
 });
@@ -340,7 +340,7 @@ it.each(["snapshot", "poll"])(
     if (failureAt === "poll") await act(async () => vi.advanceTimersByTime(1000));
     restored = true;
     await act(async () => window.dispatchEvent(new Event("focus")));
-    expect(host.querySelector('[aria-label="Sharing workspace"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Who can access"]')).not.toBeNull();
     expect(button("Create share link")?.disabled).toBe(true);
     expect(calls).toEqual([]);
   },
@@ -356,5 +356,81 @@ it("keeps audience choices when a healthy panel regains focus", async () => {
     "invite",
   );
   expect(vi.mocked(fetch).mock.calls.length).toBe(requests);
+  expect(calls).toEqual([]);
+});
+
+it("does not send an authenticated sharing-admission refusal into another login loop", async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json(
+      {
+        code: "sharing_not_admitted",
+        message:
+          "You're signed in, but sharing isn't accepting this sign-in. Try again later or contact support.",
+      },
+      { status: 400 },
+    ),
+  );
+  await mount();
+  expect(host.textContent).toContain("You're signed in");
+  expect(button("Sign in")).toBeUndefined();
+  expect(button("Create share link")).toBeUndefined();
+  expect(calls).toEqual([]);
+});
+
+it("shows retry only for recoverable errors, never a permanent refresh footer", async () => {
+  await mount();
+  expect(button("Refresh")).toBeUndefined();
+  expect(button("Try again")).toBeUndefined();
+});
+
+it.each(["login_expired", "sharing_not_admitted", "review_upload_origins_required"])(
+  "does not offer a misleading retry for %s",
+  async (code) => {
+    vi.mocked(fetch).mockResolvedValue(
+      Response.json({ code, message: "Unavailable" }, { status: 400 }),
+    );
+    await mount();
+    expect(button("Try again")).toBeUndefined();
+  },
+);
+
+it("retries loading after a temporary request failure without publishing", async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({ code: "unavailable", message: "Temporarily unavailable" }, { status: 503 }),
+  );
+  await mount();
+  expect(button("Try again")).toBeDefined();
+  await act(async () => button("Try again")?.click());
+  expect(host.querySelector('[aria-label="Who can access"]')).not.toBeNull();
+  expect(calls).toEqual([]);
+});
+
+it("uses the OAuth-selected workspace among several without a dropdown", async () => {
+  snapshot.spaces.unshift({ ...snapshot.spaces[0]!, id: "other", name: "Other", bound: false });
+  await mount();
+  expect(host.querySelector('[aria-label="Sharing workspace"]')).toBeNull();
+  await choose("public");
+  await act(async () => button("Create share link")?.click());
+  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
+});
+it("refuses to substitute another workspace when the OAuth selection is missing", async () => {
+  snapshot.spaces[0]!.bound = false;
+  await mount();
+  expect(button("Create share link")?.disabled).toBe(true);
+  expect(host.textContent).toContain("workspace selected at sign-in");
+  expect(calls).toEqual([]);
+});
+
+it("omits Only you for new shares but preserves an existing private audience", async () => {
+  await mount();
+  expect(host.querySelector('option[value="private"]')).toBeNull();
+});
+it("displays an existing private share without converting its audience", async () => {
+  snapshot.share = { ...snapshot.share, state: "ready", audience: "private", spaceId: "team1" };
+  await mount();
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Who can access"]')?.value).toBe(
+    "private",
+  );
+  expect(host.textContent).toContain("Only you");
   expect(calls).toEqual([]);
 });

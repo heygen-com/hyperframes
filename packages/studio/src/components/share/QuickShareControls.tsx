@@ -11,25 +11,11 @@ const LABELS: Record<LocalShareAudience, string> = {
   private: "Only you",
 };
 export function ShareSettings({ model, snapshot }: Props) {
-  const { audience, setAudience, spaceId, setSpaceId, busy } = model;
+  const { audience, setAudience, spaceId, busy } = model;
   const state = snapshot.share;
   const space = snapshot.spaces.find((item) => item.id === spaceId);
   return (
     <>
-      <label className="flex flex-col gap-1 text-text-3">
-        Workspace
-        <Select
-          label="Sharing workspace"
-          value={spaceId}
-          disabled={busy || state.state !== "not_shared"}
-          onCommit={setSpaceId}
-          options={snapshot.spaces.map((item) => ({
-            value: item.id,
-            label: item.name,
-            disabled: !item.canCreate && item.id !== state.spaceId,
-          }))}
-        />
-      </label>
       {space && space.limit !== null && space.used !== null ? (
         <p className="text-step-11 text-text-3">
           {space.used} of {space.limit} free shared projects used
@@ -46,7 +32,14 @@ export function ShareSettings({ model, snapshot }: Props) {
           }}
           options={[
             { value: "", label: "Choose access…", disabled: true },
-            ...(["public", "team", "invite", "private"] as const).map((value) => ({
+            ...(
+              [
+                "public",
+                "team",
+                "invite",
+                ...(state.audience === "private" ? ["private" as const] : []),
+              ] as const
+            ).map((value) => ({
               value,
               label: LABELS[value],
               disabled: !space?.audiences.includes(value) && value !== state.audience,
@@ -68,7 +61,7 @@ export function ShareNotices({ model, snapshot }: Props) {
         : null,
     share.state === "link_off" ? "The link is off. Updating the video keeps it off." : null,
     share.state === "processing" && !model.busy
-      ? "The shared video is still being prepared. Refresh to check again."
+      ? "The shared video is still being prepared. Reopen sharing to check its status."
       : null,
     share.state === "unavailable" ? "Sharing is paused. Open Manage sharing for details." : null,
     !snapshot.versionSharing && share.state === "not_shared"
@@ -105,9 +98,10 @@ function CreateShare({ model, snapshot }: Props) {
   const canCreate = snapshot.versionSharing && space?.canCreate && model.audience !== "";
   return (
     <>
-      {space && !space.canCreate ? (
+      {!space || !space.canCreate ? (
         <p className="text-step-11 text-text-3">
-          Sharing isn’t available in this workspace. Choose another workspace.
+          Sharing isn’t available in the workspace selected at sign-in. Sign in with an accessible
+          workspace to continue.
         </p>
       ) : null}
       <Button
@@ -218,7 +212,7 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
         disabled={model.busy}
         onClick={() => void model.run({ action: "login" })}
       >
-        Sign in in browser
+        Sign in
       </Button>
       <p className="text-step-11 text-text-3">
         Or run <code>hyperframes auth login</code> in your terminal, then return to Studio. Sharing

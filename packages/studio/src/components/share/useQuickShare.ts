@@ -18,7 +18,7 @@ const STEP_LABELS: Record<string, string> = {
 const failure = (error: unknown) =>
   error instanceof LocalShareError
     ? error.message
-    : "Sharing couldn’t finish. Refresh to check its status.";
+    : "Sharing couldn’t finish. Try again to check its status.";
 
 export function useQuickShare(token: string, beforeShare?: () => Promise<void>) {
   const [snapshot, setSnapshot] = useState<LocalShareSnapshot | null>(null);
@@ -157,7 +157,6 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     audience,
     setAudience,
     spaceId,
-    setSpaceId,
     busy,
     error,
     errorCode,

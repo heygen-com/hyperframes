@@ -7,7 +7,7 @@ import type {
   LocalShareJob,
   LocalShareSnapshot,
 } from "@hyperframes/studio-server";
-import type { ReviewExportProgress } from "@hyperframes/share";
+import { ReviewFailed, type ReviewExportProgress } from "@hyperframes/share";
 import type { ShareService } from "../share/service.js";
 import { shareError } from "../share/errors.js";
 import { localShareRequestAllowed } from "./shareBoundary.js";
@@ -96,7 +96,7 @@ export function mountShareRoutes(
     }),
   );
   const visibleJob = async (token: string) => {
-    if (loginToken === token && job?.state === "running") return job;
+    if (loginToken === token && job && job.state !== "done") return job;
     const session = sessions.get(token);
     if (!session) return null;
     const key = shareSessionKey(await (await session.get()).checkSession());
@@ -138,9 +138,9 @@ export function mountShareRoutes(
     } catch (error) {
       return c.json(
         {
-          ...shareError(error),
+          ...(await presentError(error, c.req.header("x-hyperframes-share-csrf")!)),
           job:
-            loginToken === c.req.header("x-hyperframes-share-csrf") && job?.state === "running"
+            loginToken === c.req.header("x-hyperframes-share-csrf") && job && job.state !== "done"
               ? job
               : null,
         },
@@ -158,7 +158,7 @@ export function mountShareRoutes(
             404,
           );
     } catch (error) {
-      return c.json(shareError(error), 400);
+      return c.json(await presentError(error, c.req.header("x-hyperframes-share-csrf")!), 400);
     }
   });
   routes.post("/actions", async (c) => {
@@ -184,7 +184,7 @@ export function mountShareRoutes(
       try {
         owner = await sessionOwner(session);
       } catch (error) {
-        return c.json(shareError(error), 400);
+        return c.json(await presentError(error, c.req.header("x-hyperframes-share-csrf")!), 400);
       }
     }
     if (hasRunningJob())
@@ -199,13 +199,14 @@ export function mountShareRoutes(
       error: null,
     };
     job = current;
-    void runJob(current, input, session);
+    void runJob(current, input, session, token);
     return c.json(current, 202);
   });
   async function runJob(
     current: LocalShareJob,
     input: LocalShareAction,
     session: NonNullable<ReturnType<typeof sessions.get>>,
+    token: string,
   ) {
     try {
       if (input.action === "login") {
@@ -218,8 +219,23 @@ export function mountShareRoutes(
       current.result = await presentPortableShare(projectDir, result);
       current.state = "done";
     } catch (error) {
-      current.error = shareError(error);
+      current.error = await presentError(error, token);
       current.state = "failed";
+    }
+  }
+  async function presentError(error: unknown, token: string) {
+    if (!(error instanceof ReviewFailed) || error.status !== 401) return shareError(error);
+    const session = sessions.get(token);
+    if (!session) return shareError(error);
+    try {
+      await (await session.get()).checkSession(true);
+      return {
+        code: "sharing_not_admitted",
+        message:
+          "You're signed in, but sharing isn't accepting this sign-in. Try again later or contact support.",
+      };
+    } catch (verificationError) {
+      return shareError(verificationError);
     }
   }
   app.route("/api/share", routes);

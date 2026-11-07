@@ -369,6 +369,9 @@ it.each(["login_required", "", "invalid_token"])(
     const { app, service, login } = fixture();
     const csrf = await token(app);
     vi.mocked(service.status).mockRejectedValue(new ReviewFailed(401, reason));
+    vi.mocked(service.checkSession).mockRejectedValueOnce(
+      new AuthError("LOGIN_EXPIRED", "Your sign-in has expired. Sign in again."),
+    );
     const response = await request(app, "snapshot", csrf);
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
@@ -392,4 +395,33 @@ it("preserves admission failures instead of offering an expired-session retry", 
   const response = await request(app, "snapshot", csrf);
   expect(await response.json()).toMatchObject({ code: "feature_unavailable" });
   expect(login).not.toHaveBeenCalled();
+});
+
+it("distinguishes review admission refusal only after fresh account validation", async () => {
+  const { app, service, login } = fixture();
+  const csrf = await token(app);
+  vi.mocked(service.status).mockRejectedValue(new ReviewFailed(401, "login_required"));
+  const response = await request(app, "snapshot", csrf);
+  expect(await response.json()).toMatchObject({
+    code: "sharing_not_admitted",
+    message: expect.stringContaining("You're signed in"),
+  });
+  expect(service.checkSession).toHaveBeenCalledWith(true);
+  expect(login).not.toHaveBeenCalled();
+});
+
+it("shows a completed login's admission failure to its initiating panel", async () => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  vi.mocked(service.status).mockRejectedValue(new ReviewFailed(401, "login_required"));
+  const started = await (await request(app, "actions", csrf, { action: "login" })).json();
+  await vi.waitFor(async () => {
+    const response = await request(app, `jobs/${started.id}`, csrf);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      state: "failed",
+      result: null,
+      error: { code: "sharing_not_admitted" },
+    });
+  });
 });

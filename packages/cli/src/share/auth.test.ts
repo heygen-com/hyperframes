@@ -73,3 +73,12 @@ it("pins a Studio session across account switches but permits same-account token
   await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
   await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
 });
+
+it("can revalidate the same token instead of trusting a cached account", async () => {
+  mocks.resolve.mockResolvedValue(oauth("same"));
+  const auth = createShareAccess(true);
+  await auth.access();
+  mocks.user.mockRejectedValue(new Error("account validation refused"));
+  await expect(auth.access(undefined, true)).rejects.toThrow("account validation refused");
+  expect(mocks.user).toHaveBeenCalledTimes(2);
+});
