@@ -1,5 +1,6 @@
 import type { StoreApi } from "zustand";
 import { isPreviewQuality, type PreviewQuality } from "@hyperframes/core/preview-quality";
+import type { PlaybackHeldBy } from "@hyperframes/core";
 import type { MediaLoadFailure } from "@hyperframes/core/runtime/protocol";
 import { readStudioUiPreferences, writeStudioUiPreferences } from "../../utils/studioUiPreferences";
 
@@ -25,6 +26,7 @@ export interface PlaybackHealth {
   gapP50Ms?: number;
   gapP95Ms?: number;
   clockSource?: "audio" | "webaudio" | "monotonic";
+  heldBy?: PlaybackHeldBy | null;
   mode: "play";
 }
 
@@ -118,6 +120,15 @@ export function parsePreviewCopies(value: unknown): PreviewCopies | null {
 const optionalNumber = (n: unknown) => (typeof n === "number" ? n : undefined);
 const CLOCK_SOURCES = ["audio", "webaudio", "monotonic"] as const;
 const optionalClock = (clock: unknown) => CLOCK_SOURCES.find((known) => known === clock);
+function parseHeldBy(value: unknown): PlaybackHealth["heldBy"] {
+  if (value === null) return null;
+  if (typeof value !== "object") return undefined;
+  const { kind, readyState, networkState, fetchMs } = value as Record<string, unknown>;
+  if (kind !== "audio" && kind !== "video") return undefined;
+  if (typeof readyState !== "number" || typeof networkState !== "number") return undefined;
+  if (typeof fetchMs !== "number" && fetchMs !== null) return undefined;
+  return { kind, readyState, networkState, fetchMs };
+}
 
 export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
   if (typeof value !== "object" || value === null) return null;
@@ -137,6 +148,7 @@ export function parsePlaybackHealth(value: unknown): PlaybackHealth | null {
     gapP50Ms: optionalNumber(extra.gapP50Ms),
     gapP95Ms: optionalNumber(extra.gapP95Ms),
     clockSource: optionalClock(extra.clockSource),
+    heldBy: parseHeldBy(extra.heldBy),
     mode: "play",
   };
 }
