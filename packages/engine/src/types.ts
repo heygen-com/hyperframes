@@ -459,5 +459,7 @@ export interface CapturePerfSummary {
 declare global {
   interface Window {
     __hf?: HfProtocol;
+    /** The render's virtual-time shim. Page timers wait for the next seek; its originals keep the wall clock. */
+    __HF_VIRTUAL_TIME__?: { originalSetTimeout?: typeof setTimeout };
   }
 }

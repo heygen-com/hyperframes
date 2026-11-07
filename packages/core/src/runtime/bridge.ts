@@ -1,3 +1,4 @@
+import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
@@ -190,7 +191,7 @@ function flashElements(selectors: string[], duration: number): void {
       const els = document.querySelectorAll(selector);
       els.forEach((el) => {
         el.classList.add("__hf-flash");
-        setTimeout(() => el.classList.remove("__hf-flash"), duration);
+        wallSetTimeout(() => el.classList.remove("__hf-flash"), duration);
       });
     } catch (err) {
       // Invalid selector — skip

@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   attachElementFxChain,
   readElementAutomation,
@@ -318,10 +319,10 @@ export class WebAudioTransport {
   }
 
   private rest(): void {
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
-    this._restTimer = setTimeout(() => {
+    this._restTimer = wallSetTimeout(() => {
       this._restTimer = null;
       this.suspendIfIdle();
     }, IDLE_SUSPEND_MS);
@@ -674,7 +675,7 @@ export class WebAudioTransport {
       ramp(1);
     };
     ramp(0);
-    setTimeout(() => {
+    wallSetTimeout(() => {
       // A stop or a new pass in the meantime owns the element now.
       if (!this._activeSources.includes(source)) return;
       for (const type of DIP_END_EVENTS) el.addEventListener(type, rise);
@@ -1251,7 +1252,7 @@ export class WebAudioTransport {
     this._mediaElementSources = new WeakMap();
     this._playingCaptured.clear();
     this._suspendPending = false;
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (this._ctx) {
       try {

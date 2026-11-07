@@ -578,7 +578,7 @@ export async function captureDrawElementFrame(
           }
           // Encode OUTSIDE the paint handler — heavy canvas work inside the
           // paint event can stall the renderer.
-          setTimeout(() => {
+          (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
             try {
               resolveCapture(
                 fmt === "png"
@@ -611,7 +611,7 @@ export async function captureDrawElementFrame(
         // throttled page), fall back to an unsynchronized draw after 250 ms —
         // worst case one-frame-stale content (the root's alpha may lag its
         // transform by that frame) rather than a hung render.
-        setTimeout(() => {
+        (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndEncode();
         }, 250);
@@ -1003,7 +1003,7 @@ export async function produceDrawElementFrame(
         // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
         // injectDrawElementCanvas.
         usedRequestPaint = aw.__hfDeInvalidate?.() === true;
-        setTimeout(() => {
+        (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndKick();
         }, 250);
@@ -1134,7 +1134,7 @@ export async function produceDrawElementFrameBatch(
           // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
           // injectDrawElementCanvas.
           usedRequestPaint = aw.__hfDeInvalidate?.() === true;
-          setTimeout(settle, 250);
+          (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(settle, 250);
         });
 
       let prevBitmap: Promise<void> = Promise.resolve();
