@@ -342,21 +342,23 @@ async function sendFile(
   const wantParts = size_bytes > PARTS_ABOVE_BYTES;
   const saved = wantParts ? savedUploadFile(checksum_sha256, size_bytes) : undefined;
   const resumed = saved ? await resumable(opts.client, saved) : undefined;
-  const created =
-    resumed ??
-    (await createUpload(opts.client, {
-      filename: opts.filename,
-      contentType: opts.contentType,
-      size_bytes,
-      checksum_sha256,
-      inParts: wantParts,
-      idempotencyKey: opts.idempotencyKey,
-    }));
-  const plan = "plan" in created ? created.plan : (created.multipart ?? undefined);
+  if (resumed) {
+    opts.onProgress?.({ phase: "upload", percent: 0 });
+    return sendInParts(opts, body, size_bytes, resumed.asset_id, resumed.plan, saved);
+  }
+  const created = await createUpload(opts.client, {
+    filename: opts.filename,
+    contentType: opts.contentType,
+    size_bytes,
+    checksum_sha256,
+    inParts: wantParts,
+    idempotencyKey: opts.idempotencyKey,
+  });
 
   opts.onProgress?.({ phase: "upload", percent: 0 });
-  if (plan) return sendInParts(opts, body, size_bytes, created.asset_id, plan, saved);
-  if (!("upload_url" in created)) throw new Error("The cloud gave no way to send this file");
+  if (created.multipart) {
+    return sendInParts(opts, body, size_bytes, created.asset_id, created.multipart, saved);
+  }
   await putBytesToPresignedUrl(
     opts.fetchImpl,
     created.upload_url,
