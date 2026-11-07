@@ -158,10 +158,10 @@ function assertResumeSource(current: ShareState, input: ShareAction) {
 export function createShareService(
   projectPath: string,
   progress: (value: ReviewExportProgress | null) => void = () => {},
-  options: { surface?: ShareSurface } = {},
+  options: { surface?: ShareSurface; pinIdentity?: boolean } = {},
 ) {
   const dir = bindCliShareProject(projectPath);
-  const auth = createShareAccess();
+  const auth = createShareAccess(options.pinIdentity);
   const client = reviewClient(auth);
   const status = async (expectedProjectId?: string) => {
     await auth.access();
@@ -258,6 +258,7 @@ export function createShareService(
     return upload(input, target.projectId, sources, attempt);
   };
   return {
+    checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
     status,
     run: (input: ShareAction) =>
       input.action === "status" || input.action === "manage"

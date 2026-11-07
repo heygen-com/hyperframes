@@ -61,3 +61,24 @@ describe("share OAuth identity", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 });
+
+it("pins a Studio session across account switches but permits same-account token rotation", async () => {
+  const auth = createShareAccess(true);
+  mocks.resolve.mockResolvedValue(oauth("first"));
+  await auth.access();
+  mocks.resolve.mockResolvedValue(oauth("refreshed"));
+  await expect(auth.access()).resolves.toMatchObject({ owner: "owner", token: "refreshed" });
+  mocks.resolve.mockResolvedValue(oauth("other"));
+  mocks.user.mockResolvedValue({ username: "other" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+});
+
+it("can revalidate the same token instead of trusting a cached account", async () => {
+  mocks.resolve.mockResolvedValue(oauth("same"));
+  const auth = createShareAccess(true);
+  await auth.access();
+  mocks.user.mockRejectedValue(new Error("account validation refused"));
+  await expect(auth.access(undefined, true)).rejects.toThrow("account validation refused");
+  expect(mocks.user).toHaveBeenCalledTimes(2);
+});
