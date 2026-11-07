@@ -221,11 +221,11 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * chunks whose per-chunk frame count stays at or below this bound, still
    * capped by `maxParallelChunks`:
    *
-   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), 1, maxParallelChunks)
+   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks, maxParallelChunks)
    *
    * This bounds per-chunk render *time* (which scales with frames-per-chunk) so
    * a single chunk can't exceed a downstream per-chunk timeout on a long video,
-   * while short videos still collapse to few chunks. It is a ceiling, not a
+   * while short videos drop to `minParallelChunks` (default 1). It is a ceiling, not a
    * fixed size: a video short enough to fit in fewer chunks gets fewer. Ignored
    * when `chunkSize` is set (an explicit fixed size already pins per-chunk
    * frames). Mutually exclusive with `chunkSize` in intent; if both are passed,
@@ -769,8 +769,8 @@ function assertPlanSizeWithinLimit(input: {
  * on tiny renders). Explicit numbers, including `240`, take precedence.
  *
  * Optional `targetChunkFrames` caps per-chunk frames in the auto-sized path:
- * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), 1,
- * maxParallelChunks)` chunks, so short videos collapse to fewer chunks and long
+ * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks,
+ * maxParallelChunks)` chunks, so short videos drop to `minParallelChunks` and long
  * videos add chunks (up to the cap) to keep each one under the bound. It is a
  * no-op when omitted, and ignored when `configChunkSize` is set.
  */
