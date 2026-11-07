@@ -7,10 +7,17 @@ import { Button, cn } from "./ui";
 // The desktop-app guide card under OpenInDesktopButton: Framey and three steps (download, install, open), all drawn
 // from one `Progress`.
 
+export type DesktopCtaPlacement = "header" | "storyboard";
+
 export type DesktopRoute = {
   handoff: boolean;
   downloadUrl: string | null;
-  context: { os: string; app_installed: boolean; download_available: boolean };
+  context: {
+    os: string;
+    app_installed: boolean;
+    download_available: boolean;
+    placement: DesktopCtaPlacement;
+  };
 };
 
 /** The OS for the download, and what "this …" calls the machine. */
@@ -145,10 +152,14 @@ export function labelOf(p: Progress): string {
   return isWaiting(p) ? "Finish installing" : "Install the desktop app";
 }
 
+const boardFirst = (p: Progress) => p.route.context.placement === "storyboard";
+
 function subtitleOf(p: Progress): string {
   if (p.failed) return "Almost there: the last step needs another try.";
   if (!isInstalled(p))
-    return "Watch it, click a frame, tell Framey what to change. Three steps, about two minutes.";
+    return boardFirst(p)
+      ? "Comment on a frame, draw on it, then press Build. Three steps, about two minutes."
+      : "Watch it, click a frame, tell Framey what to change. Three steps, about two minutes.";
   return p.route.handoff
     ? "Everything is ready. One press and you're in."
     : "Almost there: one last step.";
@@ -252,7 +263,11 @@ function OpenStep({ progress, projectDir, onOpen }: CardProps) {
     );
   return (
     <Step n={3} state={installed ? NOW : TODO} title={title}>
-      <p className={NOTE}>Same project, same files, in the desktop app.</p>
+      <p className={NOTE}>
+        {boardFirst(progress)
+          ? "Same project, same files. It opens on this storyboard."
+          : "Same project, same files, in the desktop app."}
+      </p>
       <Button
         variant="primary"
         className="mt-2"
@@ -275,7 +290,9 @@ export function GuideCard(props: CardProps) {
         <FrameyGlyph size={46} mood={moodOf(progress)} />
         <div className="min-w-0">
           <p className="text-step-14 font-semibold text-balance text-text-0">
-            Edit this video in the desktop app
+            {boardFirst(progress)
+              ? "Comment on this storyboard in the desktop app"
+              : "Edit this video in the desktop app"}
           </p>
           <p className={NOTE}>
             <Swap value={subtitle}>{subtitle}</Swap>

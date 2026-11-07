@@ -138,7 +138,7 @@ export function useTimelineProviderState({
   const activeTool = usePlayerStore((s) => s.activeTool);
   const [hoveredClip, setHoveredClip] = useState<string | null>(null);
   const isDragging = useRef(false);
-  const shiftHeld = useTimelineShiftModifier();
+  useTimelineShiftModifier(containerRef);
   const [showPopover, setShowPopover] = useState(false);
   const [kfContextMenu, setKfContextMenu] = useState<KeyframeDiamondContextMenuState | null>(null);
   const [clipContextMenu, setClipContextMenu] = useState<ClipContextMenuState | null>(null);
@@ -564,7 +564,6 @@ export function useTimelineProviderState({
     focusProps: timelineFocus.timelineFocusProps,
     elementCount: timelineElements.length,
     activeTool,
-    shiftHeld,
     labelMode,
     contentOrigin,
     zoomMode,

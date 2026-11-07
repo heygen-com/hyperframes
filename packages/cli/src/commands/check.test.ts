@@ -16,7 +16,11 @@ import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
-import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
+import {
+  CheckCopiesUnfinishedError,
+  CheckDeadlineError,
+  CheckStoppedError,
+} from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
 
@@ -1631,6 +1635,28 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
   });
 
+  it("names the saved report file on stderr after a --json run", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const saved = {
+      id: "r1",
+      revision: "rev",
+      report: "/p/.hyperframes/artifacts/checks/r1.json",
+      attribution: "recorded-revision" as const,
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => ({ ...report, saved })),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(err).toHaveBeenCalledWith(`[hyperframes] check: report saved to ${saved.report}`);
+  });
+
   it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
@@ -2439,6 +2465,29 @@ describe("check pipeline", () => {
     }
   });
 
+  it("a Chrome that never becomes ready ends the whole check with a named finding inside its window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps } = dependencies(fakeDriver());
+      deps.runBrowserCheck = (_project, _options, _motion, deadline) => {
+        deadline!.enter("launch");
+        return new Promise<never>((_, reject) =>
+          deadline!.signal.addEventListener("abort", () => reject(deadline!.signal.reason)),
+        );
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(180_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
+      expect(report.ok).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a check given a long --timeout is not ended as idle after 120 s of waiting for its page", async () => {
     vi.useFakeTimers();
     try {
@@ -2561,6 +2610,9 @@ describe("check pipeline", () => {
       );
       expect(reached?.message).toMatch(
         /^Check reached its --budget of 70 s while running the overlap pass .*Seconds per phase: /,
+      );
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_budget_reached" }),
       );
       expect(report.ok).toBe(false);
       expect(report.layout.findings.some((finding) => finding.code === "container_overflow")).toBe(
@@ -3609,6 +3661,22 @@ describe("check report telemetry", () => {
     expect(report.ok).toBe(true);
   });
 
+  it("a check stopped by the copy wait still sends the copy facts and stays browserSkipped", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async (_project, _options, _motion, deadline) => {
+      deadline?.keepPartial(() => ({
+        mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 },
+      }));
+      throw new CheckCopiesUnfinishedError(120_000, ["a.mp4 40%"]);
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.browserSkipped).toBe(true);
+    expect(trackCheckReport).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } }),
+    );
+  });
+
   it("reports one failing contrast run with its section error count", async () => {
     const collectContrast = vi.fn(async (time: number) => ({
       entries: time === 0.5 ? [contrastEntry()] : [],
@@ -3626,6 +3694,7 @@ describe("check report telemetry", () => {
       }),
     );
     expect(report.contrast.errorCount).toBe(1);
+    expect(trackCheckReport.mock.calls[0]?.[0].stopCode).toBeUndefined();
   });
 
   it("reports zero browser samples and timings after a lint short circuit", async () => {

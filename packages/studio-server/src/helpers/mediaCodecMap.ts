@@ -55,8 +55,8 @@ export interface BrowserHostileCodec {
 }
 
 /**
- * Browser-hostile codec table v1. One exported constant so extending it is a
- * one-line change. `ffprobe` cannot emit exact RFC 6381 codec strings, so
+ * Browser-hostile codec table v1: the codecs with a known answer; one not here and not in
+ * `BROWSER_PLAYABLE_CODECS` is hostile too. `ffprobe` cannot emit exact RFC 6381 codec strings, so
  * these `representativeMime` values are deliberately coarse (a false
  * positive costs one proxy transcode, never correctness; a false negative is
  * rescued by the runtime's reactive zero-videoWidth swap).
@@ -68,18 +68,25 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   hevc: { representativeMime: 'video/mp4; codecs="hvc1.1.6.L120.B0"', prewarm: true },
   prores: { representativeMime: null, prewarm: true },
   theora: { representativeMime: 'video/ogg; codecs="theora"', prewarm: true },
+  mpeg4: { representativeMime: null, prewarm: true },
+  mjpeg: { representativeMime: null, prewarm: true },
+  mpeg2video: { representativeMime: null, prewarm: true },
+  dnxhd: { representativeMime: null, prewarm: true },
   // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
   // original and only the rare browser that cannot pays for a transcode.
   av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },
   vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
 
+const BROWSER_PLAYABLE_CODECS: ReadonlySet<string> = new Set(["h264", "vp8"]);
+
+const UNLISTED_HOSTILE: BrowserHostileCodec = { representativeMime: null, prewarm: true };
+
 /** `Object.hasOwn` rather than a bare index: a codec named `constructor` or
  * `toString` would otherwise resolve against `Object.prototype`. */
 function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
-  return Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)
-    ? BROWSER_HOSTILE_CODECS[codecName]
-    : undefined;
+  if (Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)) return BROWSER_HOSTILE_CODECS[codecName];
+  return BROWSER_PLAYABLE_CODECS.has(codecName) ? undefined : UNLISTED_HOSTILE;
 }
 
 /** The pre-warm gate: true only for codecs with no cross-platform browser

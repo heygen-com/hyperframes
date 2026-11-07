@@ -304,7 +304,7 @@ const ALLOWED_STRING_DATA_KEYS = new Set([
   "stagePhase",
   // Full-fidelity fast-capture fallback trigger — the specific reason
   // drawElement gated off ("filter:blur", "filter:drop-shadow",
-  // "backdrop-filter", "clip-path", "at_risk_timeline", "swiftshader", …).
+  // "backdrop-filter", "clip-path", "at_risk_timeline", "swiftshader", "webgl_unavailable", …).
   // Populated on the `capture_fallback_profile` checkpoint emitted by
   // `fallbackCaptureProfile.ts` when the operator opts into
   // `HF_PROFILE_FALLBACK_CAPTURE=true` so downstream metric consumers can

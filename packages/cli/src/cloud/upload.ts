@@ -41,7 +41,15 @@ export interface UploadZipViaDirectResult {
 
 export type UploadProgressEvent =
   | { phase: "initialize" }
-  | { phase: "upload"; percent: number }
+  | {
+      phase: "upload";
+      percent: number;
+      /** Bytes the connection has accepted so far in this try; the very last ones may still be in flight. */
+      sentBytes?: number;
+      totalBytes?: number;
+      /** 1 for the first try; a higher number means the file restarted from its first byte. */
+      attempt?: number;
+    }
   | { phase: "complete" };
 
 /** A file on disk, hashed and uploaded as a stream so it is never held in memory. */
@@ -60,15 +68,55 @@ export interface UploadZipViaDirectOptions {
   signal?: AbortSignal;
 }
 
-// Per api-docs: completeAssetUpload can return 409 "Uploaded object not found
-// yet" if the S3 PUT's write hasn't propagated to the read plane by the time
-// complete runs. Small backoff loop absorbs it.
-const COMPLETE_MAX_RETRIES = 5;
-const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
 /** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
-export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000 };
+export const putTimings = {
+  stallMs: 60_000,
+  retries: 3,
+  backoffMs: 1000,
+  progressMs: 10_000,
+  sampleMs: 1000,
+};
+
+/** What one try of the PUT got through, read by the retry loop and the progress lines. */
+interface PutTry {
+  attempt: number;
+  startedAt: number;
+  sent: number;
+}
+
+const CUT_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNABORTED"]);
+
+function isConnectionCut(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return (typeof code === "string" && CUT_CODES.has(code)) || /socket hang up/.test(String(err));
+}
+
+/** The same cut twice: a connection that dies at the same age dies there again, whatever it got through. */
+function isSameCut(before: EndedTry, now: EndedTry): boolean {
+  return (
+    before.sent > 0 &&
+    now.sent > 0 &&
+    Math.abs(before.ageMs - now.ageMs) <= 0.2 * Math.max(before.ageMs, now.ageMs)
+  );
+}
+
+function seconds(ms: number): string {
+  return `${Math.round(ms / 1000)} s`;
+}
+
+function exhausted(err: unknown, tries: number, last: PutTry & { ageMs: number }, total: number) {
+  const base = err instanceof Error ? err.message : String(err);
+  const percent = total > 0 ? Math.floor((100 * last.sent) / total) : 0;
+  return Object.assign(
+    new Error(
+      `${base} (${tries} tries, each from the first byte; the last got ${percent}% of the file through in ${seconds(last.ageMs)})`,
+      { cause: err },
+    ),
+    { code: (err as { code?: unknown }).code },
+  );
+}
 
 /** S3's answer to a PUT it refused; a refusal below 500 is final (an expired signature stays expired). */
 class PutRefusedError extends Error {
@@ -88,15 +136,62 @@ function isFinal(err: unknown): boolean {
   );
 }
 
-async function putWithRetry(attempt: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+type EndedTry = PutTry & { ageMs: number; cut: boolean };
+
+function repeatedCut(before: EndedTry | undefined, now: EndedTry, err: unknown, total: number) {
+  if (!before?.cut || !now.cut || !isSameCut(before, now)) return undefined;
+  const code = (err as { code?: string }).code;
+  return Object.assign(
+    new Error(
+      `The connection was cut at ${seconds(now.ageMs)} on two tries in a row, after ${Math.floor((100 * now.sent) / total)}% of the file was sent (${code ?? "connection reset"}). Every try restarts the file, so this link cannot finish it before the cut: use a faster connection or send less media.`,
+      { cause: err },
+    ),
+    { code },
+  );
+}
+
+async function putWithRetry(
+  attempt: (tried: PutTry) => Promise<void>,
+  total: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  let before: EndedTry | undefined;
   for (let tried = 0; ; tried++) {
+    const current: PutTry = { attempt: tried + 1, startedAt: Date.now(), sent: 0 };
     try {
-      return await attempt();
+      return await attempt(current);
     } catch (err) {
-      if (isFinal(err) || signal?.aborted || tried >= putTimings.retries) throw err;
+      if (isFinal(err) || signal?.aborted) throw err;
+      const now = { ...current, ageMs: Date.now() - current.startedAt, cut: isConnectionCut(err) };
+      const futile = repeatedCut(before, now, err, total);
+      if (futile) throw futile;
+      if (tried >= putTimings.retries) throw exhausted(err, tried + 1, now, total);
+      before = now;
       await sleep(putTimings.backoffMs * 2 ** tried, signal);
     }
   }
+}
+
+/** Reports the bytes a try has sent at most every progressMs, or when it gains 5 points. */
+function progressReporter(
+  total: number,
+  emit: ((event: UploadProgressEvent) => void) | undefined,
+): (tried: PutTry) => void {
+  let lastAt = Date.now();
+  let lastPercent = 0;
+  return (tried) => {
+    const percent = total > 0 ? Math.min(99, Math.floor((100 * tried.sent) / total)) : 0;
+    const now = Date.now();
+    if (now - lastAt < putTimings.progressMs && percent < lastPercent + 5) return;
+    [lastAt, lastPercent] = [now, percent];
+    emit?.({
+      phase: "upload",
+      percent,
+      sentBytes: Math.min(tried.sent, total),
+      totalBytes: total,
+      attempt: tried.attempt,
+    });
+  };
 }
 
 function sha256Hex(bytes: Uint8Array): string {
@@ -141,16 +236,32 @@ async function putBytesToPresignedUrl(
   body: Uint8Array | UploadFileSource,
   contentType: string,
   signal?: AbortSignal,
+  onProgress?: (event: UploadProgressEvent) => void,
 ): Promise<void> {
+  const total = body instanceof Uint8Array ? body.byteLength : body.size;
+  const report = progressReporter(total, onProgress);
   const headers: Record<string, string> = {
     "content-type": contentType,
     ...normalizeUploadHeaders(uploadHeaders),
   };
   return putWithRetry(
-    () =>
-      fetchImpl && body instanceof Uint8Array
+    (tried) => {
+      if (tried.attempt > 1)
+        onProgress?.({
+          phase: "upload",
+          percent: 0,
+          sentBytes: 0,
+          totalBytes: total,
+          attempt: tried.attempt,
+        });
+      return fetchImpl && body instanceof Uint8Array
         ? putBytesOnce(fetchImpl, uploadUrl, headers, body, signal)
-        : putStreamToPresignedUrl(uploadUrl, headers, body, signal),
+        : putStreamToPresignedUrl(uploadUrl, headers, body, signal, (written) => {
+            tried.sent = written;
+            report(tried);
+          });
+    },
+    total,
     signal,
   );
 }
@@ -198,17 +309,18 @@ function bodyStream(body: Uint8Array | UploadFileSource): Readable {
 
 /** Ends `req` when no byte has been accepted by its socket for stallMs (its buffer is full and the link drains
  * nothing). Returns the function that stops the watch. */
-function watchStall(req: ClientRequest): () => void {
+function watchStall(req: ClientRequest, onSample: (written: number) => void): () => void {
   let written = -1;
   let movedAt = Date.now();
   const watch = setInterval(
     () => {
       const now = req.socket?.bytesWritten ?? 0;
+      onSample(now);
       if (now !== written) [written, movedAt] = [now, Date.now()];
       else if (Date.now() - movedAt >= putTimings.stallMs)
         req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
     },
-    Math.min(1000, putTimings.stallMs / 3),
+    Math.min(putTimings.sampleMs, putTimings.stallMs / 3),
   );
   return () => clearInterval(watch);
 }
@@ -217,7 +329,8 @@ async function putStreamToPresignedUrl(
   uploadUrl: string,
   headers: Record<string, string>,
   body: Uint8Array | UploadFileSource,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  onSample: (written: number) => void,
 ): Promise<void> {
   const size = body instanceof Uint8Array ? body.byteLength : body.size;
   const send = new URL(uploadUrl).protocol === "https:" ? httpsRequest : httpRequest;
@@ -229,7 +342,7 @@ async function putStreamToPresignedUrl(
   const response = new Promise<IncomingMessage>((resolve, reject) => {
     req.once("response", resolve).once("error", reject);
   });
-  const stopWatching = watchStall(req);
+  const stopWatching = watchStall(req, onSample);
   const source = bodyStream(body);
   const sent = pipeline(source, req);
   let res: IncomingMessage;
@@ -264,32 +377,53 @@ async function settle(res: IncomingMessage, sent: Promise<void>): Promise<void> 
   }
 }
 
-// Complete with retry-on-409. Retry ONLY on the documented "PUT not
-// visible yet" race between S3 write consistency and finalize; any other
-// error surfaces immediately. `completeAssetUpload` itself is idempotent,
-// so retrying an already-succeeded call is safe.
-async function completeWithRetry(
+/** A 409 on complete means the cloud is still checking the file. The wait is baseMs plus perMiBMs per MiB, up to maxMs;
+ * polls slow from firstPollMs to maxPollMs. */
+const completeWait = {
+  baseMs: 30_000,
+  perMiBMs: 500,
+  maxMs: 600_000,
+  firstPollMs: 500,
+  maxPollMs: 5_000,
+};
+
+export function completeBudgetMs(sizeBytes: number): number {
+  const scaled = completeWait.baseMs + (sizeBytes / (1024 * 1024)) * completeWait.perMiBMs;
+  return Math.min(completeWait.maxMs, scaled);
+}
+
+// Retry ONLY on the 409 "still checking / PUT not visible yet"; any other error surfaces immediately.
+// `completeAssetUpload` itself is idempotent, so retrying an already-succeeded call is safe.
+export async function completeWithRetry(
   client: HyperframesCloudClient,
   asset_id: string,
   checksum_sha256: string,
+  sizeBytes: number,
+  signal?: AbortSignal,
 ): Promise<{ asset_id: string; url: string }> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < COMPLETE_MAX_RETRIES; attempt++) {
+  const budget = completeBudgetMs(sizeBytes);
+  const startedAt = Date.now();
+  let poll = completeWait.firstPollMs;
+  for (;;) {
     try {
-      return await client.completeAssetUpload({
-        asset_id,
-        body: { checksum_sha256 },
-      });
+      return await client.completeAssetUpload({ asset_id, body: { checksum_sha256 } });
     } catch (err) {
-      const retryable = err instanceof HyperframesApiError && err.status === 409;
-      if (!retryable || attempt === COMPLETE_MAX_RETRIES - 1) {
-        throw err;
+      if (!(err instanceof HyperframesApiError && err.status === 409)) throw err;
+      const left = startedAt + budget - Date.now();
+      if (left <= 0) {
+        throw new Error(
+          `The file was uploaded, but the cloud had not finished checking it after ${Math.round(budget / 1000)} s. Try again in a few minutes.`,
+          { cause: err },
+        );
       }
-      lastErr = err;
-      await sleep(COMPLETE_RETRY_BASE_MS * (attempt + 1));
+      await sleep(Math.min(poll, left), signal);
+      if (signal?.aborted)
+        throw new Error("Stopped waiting for the cloud to finish checking the uploaded file.", {
+          cause: signal.reason,
+        });
+      poll = Math.min(poll * 2, completeWait.maxPollMs);
     }
   }
-  throw lastErr ?? new Error("completeAssetUpload retries exhausted");
 }
 
 // complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
@@ -333,6 +467,7 @@ export async function uploadAssetViaDirectUpload(
     body,
     opts.contentType,
     opts.signal,
+    opts.onProgress,
   );
   opts.onProgress?.({ phase: "upload", percent: 100 });
 
@@ -341,6 +476,8 @@ export async function uploadAssetViaDirectUpload(
     opts.client,
     initialize.asset_id,
     checksum_sha256,
+    size_bytes,
+    opts.signal,
   ).catch((err: unknown) => {
     throw nameRefusedFile(err, filename, opts.contentType);
   });

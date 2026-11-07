@@ -1642,6 +1642,23 @@ describe("probe", () => {
     expect(document.querySelector("canvas")).toBeNull();
   });
 
+  it.each(["capture", "filter"])("counts what the composition holds on the %s tier", (tier) => {
+    installHtmlInCanvas();
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const { root, h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-tier": tier });
+    root.append(document.createElement("video"), document.createElement("video"));
+    initCaptureMotionBlur(h);
+    expect(win.__hfMotionBlur?.report()).toMatchObject({ fingerprint: null, readEvents: false });
+    expect(probe()).toMatchObject({ tier, fingerprint: { video: 2, webgl: 0 }, readEvents: false });
+  });
+
+  it("carries no counts when blur stands down before any scan", () => {
+    win.__HF_PAGE_MOTION_BLUR_OFF__ = "hdr-render";
+    const { h } = movingHost();
+    initCaptureMotionBlur(h);
+    expect(probe()).toMatchObject({ state: "off", fingerprint: null, readEvents: false });
+  });
+
   it("reports no movers for a composition where nothing moves", () => {
     installHtmlInCanvas();
     initCaptureMotionBlur(host(makeRoot()));
@@ -1943,8 +1960,8 @@ describe("filter fallback", () => {
     return { root, el, h: { ...h, seek } };
   }
 
-  it("draws with filters where html-in-canvas is missing, and says why", () => {
-    const { root, el, h } = movingHost();
+  it("draws with filters where html-in-canvas is missing and capture was asked for", () => {
+    const { root, el, h } = movingHost(CAPTURE);
     initCaptureMotionBlur(h);
     expect(win.__hfMotionBlur?.report()).toMatchObject({
       state: "on",
@@ -2045,7 +2062,7 @@ describe("filter fallback", () => {
       });
     });
 
-    it("takes the cheaper filter tier when every mover only translates", () => {
+    it("draws with the filter tier on auto, where capture could run, for a mover that translates", () => {
       installHtmlInCanvas();
       const { root, el, h } = movingHost();
       initCaptureMotionBlur(h);
@@ -2053,15 +2070,28 @@ describe("filter fallback", () => {
       expect(win.__hfMotionBlur?.report()).toMatchObject({
         state: "on",
         tier: "filter",
-        reasonCode: "translation-only",
+        reasonCode: "tier-auto",
       });
       expect(root.parentElement).toBe(document.body);
       expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
     });
 
-    it("keeps capture for a mover that turns", () => {
+    it("draws with the filter tier on auto for a mover that turns", () => {
       installHtmlInCanvas();
-      const { root, h } = turningHost({ "data-motion-blur": "on" });
+      const { root, el, h } = turningHost({ "data-motion-blur": "on" });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report()).toMatchObject({
+        tier: "filter",
+        reasonCode: "tier-auto",
+      });
+      expect(root.parentElement).toBe(document.body);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("keeps capture for a mover that turns when the page asks for it", () => {
+      installHtmlInCanvas();
+      const { root, h } = turningHost(CAPTURE);
       initCaptureMotionBlur(h);
       void paintCaptureMotionBlur(0.5, PLAY);
       expect(win.__hfMotionBlur?.report()).toMatchObject({ tier: "capture", reasonCode: null });
@@ -2105,6 +2135,71 @@ describe("filter fallback", () => {
     expect(el.style.filter).toBe("drop-shadow(0px 0px 4px red)");
   });
 
+  describe("a mover holding a fixed child", () => {
+    /** A mover that slides through `left`, 300 px over the composition, holding a fixed badge. */
+    function leftMoverWithBadge(root: HTMLElement) {
+      const el = root.appendChild(document.createElement("div"));
+      el.id = "card";
+      const badge = el.appendChild(document.createElement("div"));
+      badge.style.position = "fixed";
+      const left = () => parseFloat(el.style.left) || 0;
+      for (const [k, v] of Object.entries({ offsetWidth: 10, offsetHeight: 10, offsetTop: 0 })) {
+        Object.defineProperty(el, k, { value: v, configurable: true });
+      }
+      Object.defineProperty(el, "offsetParent", { value: root, configurable: true });
+      Object.defineProperty(el, "offsetLeft", { get: left, configurable: true });
+      el.getBoundingClientRect = () =>
+        ({
+          left: left(),
+          top: 0,
+          right: left() + 10,
+          bottom: 10,
+          width: 10,
+          height: 10,
+        }) as DOMRect;
+      return el;
+    }
+
+    it("stays sharp when it moves through left, while the other movers blur", () => {
+      const { root, el: other, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report().moverNames).toEqual(["div#slider", "div#card"]);
+      expect(card.style.filter).toBe("");
+      expect(other.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+
+    it("still blurs when a transform already made it the containing block", () => {
+      const { el, h } = movingHost();
+      el.append(Object.assign(document.createElement("div"), { style: "position: fixed" }));
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("blurs on the frames where a transform is set, and not on those where it is none", () => {
+      const { root, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+        card.style.transform = t >= 0.5 ? "matrix(1, 0, 0, 1, 0, 0)" : "";
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.3, PLAY);
+      expect(card.style.filter).toBe("");
+      void paintCaptureMotionBlur(0.7, PLAY);
+      expect(card.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+  });
+
   it("reads poses with callbacks off when callbacks move no mover in the filter tier too", () => {
     const { h } = movingHost({
       "data-motion-blur": "on",
@@ -2118,6 +2213,25 @@ describe("filter fallback", () => {
     void paintCaptureMotionBlur(0.5, PLAY);
     expect(h.seek.mock.calls.length).toBeGreaterThan(0);
     expect(h.seek.mock.calls.every(([, suppress]) => suppress === true)).toBe(true);
+  });
+
+  it("keeps the filter tier's svg out of the root and removes it on teardown", () => {
+    const { root, h } = movingHost();
+    const svgs = () => document.querySelectorAll("svg[data-hf-ignore]").length;
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    initCaptureMotionBlur({ ...h, timeline: () => "tl2" });
+    void paintCaptureMotionBlur(0.6, PLAY);
+    expect(svgs()).toBe(1);
+    const next = movingHost();
+    initCaptureMotionBlur(next.h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(next.root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    resetCaptureMotionBlurForTests();
+    expect(svgs()).toBe(0);
   });
 
   it("removes its filters and its SVG on teardown", () => {

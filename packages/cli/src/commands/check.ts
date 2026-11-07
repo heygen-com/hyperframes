@@ -2,7 +2,7 @@ import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
   type ArtifactCapture,
@@ -67,6 +67,10 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   resolveProject,
   async runPipeline(project, options) {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
+    const id = randomUUID();
+    console.error(
+      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+    );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
     reportArtifacts("check", "frame", images(report.snapshots.files));
@@ -74,7 +78,7 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capture = await capturing;
     if (!capture) return report;
     try {
-      return { ...report, saved: await saveCheckReport(project, options, report, capture) };
+      return { ...report, saved: await saveCheckReport(project, options, report, capture, id) };
     } catch (error) {
       warnNotRecorded(error);
       return report;
@@ -93,16 +97,19 @@ function warnNotRecorded(error: unknown): undefined {
   return undefined;
 }
 
+export function checkReportFile(projectDir: string, id: string): string {
+  return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
+}
+
 async function saveCheckReport(
   project: ProjectDir,
   options: CheckOptions,
   report: CheckReport,
   capture: ArtifactCapture,
+  id: string,
 ): Promise<SavedCheck> {
-  const id = randomUUID();
-  const directory = join(project.dir, ".hyperframes", "artifacts", "checks");
-  mkdirSync(directory, { recursive: true });
-  const path = join(directory, `${id}.json`);
+  const path = checkReportFile(project.dir, id);
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null
@@ -311,6 +318,8 @@ export function createCheckCommand(
         });
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
+          if (report.saved)
+            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
         } else {
           printHumanReport(report);
           if (report.saved) {

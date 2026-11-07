@@ -322,7 +322,14 @@ export interface CheckTimings {
   overlapMs: number;
 }
 
+export interface MediaCopyFacts {
+  total: number;
+  waitedMs: number;
+  unfinished: number;
+}
+
 export interface CheckBrowserResult {
+  mediaCopies?: MediaCopyFacts;
   duration: number;
   layoutSamples: number[];
   transitionSamples: number[];

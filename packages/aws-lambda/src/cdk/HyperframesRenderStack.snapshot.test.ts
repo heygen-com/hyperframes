@@ -234,6 +234,14 @@ describe("HyperframesRenderStack — snapshot", () => {
     }
   });
 
+  it("stops a chunk's retries for an image a frame shows but never got, in SAM and CDK", () => {
+    for (const definition of [SYNTHED.definition, readSamDefinition()]) {
+      const errors = new Set<string>();
+      collectNonRetryableErrors(getV2TaskStates(definition).RenderChunkV2, errors);
+      expect(errors.has("ImageMissingFromFrameError")).toBe(true);
+    }
+  });
+
   it("lists the error the SDK checks for before rendering in every SAM and CDK plan task", () => {
     for (const definition of [SYNTHED.definition, readSamDefinition()]) {
       const errors = new Set<string>();

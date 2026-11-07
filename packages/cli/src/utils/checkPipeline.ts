@@ -1747,7 +1747,8 @@ export async function runCheckPipeline(
         );
       } catch (error) {
         const found = deadline.partialResult();
-        browser = { ...emptyBrowserResult(), ...found, skipped: Object.keys(found).length === 0 };
+        const ran = Object.keys(found).filter((key) => key !== "mediaCopies");
+        browser = { ...emptyBrowserResult(), ...found, skipped: ran.length === 0 };
         browser.runtimeFindings = [...browser.runtimeFindings, runtimeFailure(error)];
       }
 
@@ -2130,6 +2131,10 @@ function buildReport(
     contrastPoints: browser.contrastChecked,
     ok: report.ok,
     exitCode: checkExitCode(report),
+    stopCode: browser.runtimeFindings
+      .map((finding) => finding.code)
+      .find((code): code is StopCode => (STOP_CODES as readonly string[]).includes(code)),
+    mediaCopies: browser.mediaCopies,
     runId: getRunId(),
   });
   return filterComponentReport(report, options);
@@ -2263,6 +2268,13 @@ function emptyBrowserResult(): CheckBrowserResult {
     renderReadyTimedOut: false,
   };
 }
+
+export const STOP_CODES = [
+  "media_copies_unfinished",
+  "check_budget_reached",
+  "check_runtime_failure",
+] as const;
+export type StopCode = (typeof STOP_CODES)[number];
 
 function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(

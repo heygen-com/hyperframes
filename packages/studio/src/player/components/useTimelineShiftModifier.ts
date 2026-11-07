@@ -1,12 +1,13 @@
-import { useState } from "react";
+import type { RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 
-export function useTimelineShiftModifier(): boolean {
-  const [shiftHeld, setShiftHeld] = useState(false);
+export function useTimelineShiftModifier(container: RefObject<HTMLElement | null>): void {
   useMountEffect(() => {
-    const handleKey = (event: KeyboardEvent) =>
-      event.key === "Shift" && setShiftHeld(event.type === "keydown");
-    const handleBlur = () => setShiftHeld(false);
+    const hold = (held: boolean) => container.current?.toggleAttribute("data-shift-held", held);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Shift") hold(event.type === "keydown");
+    };
+    const handleBlur = () => hold(false);
     window.addEventListener("keydown", handleKey);
     window.addEventListener("keyup", handleKey);
     window.addEventListener("blur", handleBlur);
@@ -16,5 +17,4 @@ export function useTimelineShiftModifier(): boolean {
       window.removeEventListener("blur", handleBlur);
     };
   });
-  return shiftHeld;
 }

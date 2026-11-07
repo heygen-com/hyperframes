@@ -349,6 +349,21 @@ function aggregateBeginFrameReuse(
   return { noDamageFrames, hasDamageFrames };
 }
 
+/** The page's blur outcome across sessions: first reported value wins, failed frames sum. */
+function aggregateMotionBlur(perfs: CapturePerfSummary[]): RenderPerfSummary["motionBlur"] {
+  const ran = perfs.flatMap((p) => p.motionBlur ?? []).filter((m) => m.tier || m.failedFrames > 0);
+  const first = ran[0];
+  if (!first) return undefined;
+  return {
+    tier: first.tier ?? ran.find((m) => m.tier)?.tier ?? null,
+    reasonCode: first.reasonCode,
+    movers: first.movers,
+    failedFrames: ran.reduce((sum, m) => sum + m.failedFrames, 0),
+    readEvents: ran.some((m) => m.readEvents),
+    fingerprint: ran.find((m) => m.fingerprint)?.fingerprint ?? null,
+  };
+}
+
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
   workerCount: number;
@@ -446,6 +461,7 @@ export function buildRenderPerfSummary(input: {
     staticDedup: aggregateDedup(input.dedupPerfs),
     chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
+    motionBlur: aggregateMotionBlur(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },

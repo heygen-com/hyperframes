@@ -460,6 +460,7 @@ Resources:
                                 - PlanV2IntegrityError
                                 - PLAN_ARTIFACT_DIGEST_MISMATCH
                                 - ChromeBinaryUnavailableError
+                                - ImageMissingFromFrameError
                               MaxAttempts: 0
                             - ErrorEquals: [Lambda.TooManyRequestsException]
                               IntervalSeconds: 5

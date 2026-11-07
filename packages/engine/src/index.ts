@@ -155,6 +155,7 @@ export {
   type DiscardWarmupInnerCapture,
   type StaticVerificationOutcome,
   VfxFailureError,
+  ImageMissingFromFrameError,
   waitForImagesReady,
   evaluateHfDiagnostic,
   buildZeroDurationDiagnostic,
@@ -362,7 +363,7 @@ export { frameFileExtension } from "./services/frameCapture.js";
 export { appendSoftwareEncoderThreadsArg } from "./services/softwareEncoderThreads.js";
 export { frameSequencePath } from "./services/extractedFrameIndex.js";
 export type { MotionBlurOptions, MotionBlurBlendSpace } from "./services/motionBlur.js";
-export type { PageMotionBlurOff } from "./types.js";
+export type { PageMotionBlurOff, PageMotionBlurSummary } from "./types.js";
 
 export {
   assertSwiftShader,

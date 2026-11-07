@@ -57,7 +57,12 @@ function renderOntoInAuthoredOrder(
   timeline.totalTime(below ? t - REDRAW_STEP : t + REDRAW_STEP, true);
   primeTweensStartingAt(children, t, below ? REDRAW_STEP : 0);
   timeline.totalTime(t, true);
-  if (!below) reapplyStepsInAuthoredOrder(timeline, structure ?? ownStructureOf(children), t);
+  const own = structure ?? ownStructureOf(children);
+  if (!below) {
+    reapplyStepsInAuthoredOrder(timeline, own, t);
+  } else if (own) {
+    settleOverlapsEndedBetween(own.owner as RuntimeTimelineLike, t - REDRAW_STEP, t, own.version);
+  }
 }
 
 function ownStructureOf(children: unknown[]): GsapStructureKey | undefined {
@@ -121,6 +126,7 @@ const NOT_PROPERTIES = new Set([
   "data",
   "inherit",
   "defaults",
+  "parent",
 ]);
 const EVERY_PROPERTY = new Set(["keyframes", "startAt", "transform"]);
 const SAME_PROPERTY: Record<string, string> = {
@@ -136,7 +142,17 @@ type PlacedTween = GsapPlaced & {
 };
 type PropertyWrite = { start: number; end: number; properties: Set<string> | null };
 
-function propertiesWritten(vars: Record<string, unknown>): Set<string> | null {
+function propertiesWritten({ startAt, ...vars }: Record<string, unknown>): Set<string> | null {
+  const to = ownPropertiesWritten(vars);
+  if (startAt === undefined) return to;
+  const from =
+    startAt && typeof startAt === "object"
+      ? ownPropertiesWritten(startAt as Record<string, unknown>)
+      : null;
+  return to && from && new Set([...to, ...from]);
+}
+
+function ownPropertiesWritten(vars: Record<string, unknown>): Set<string> | null {
   const properties = new Set<string>();
   for (const key of Object.keys(vars)) {
     if (EVERY_PROPERTY.has(key)) return null;

@@ -17,7 +17,6 @@ function inputs(overrides: Partial<TimelineMetaBuilderInputs> = {}): TimelineMet
       "data-timeline-element-count": 2,
       isDragOver: false,
       activeTool: "select",
-      shiftHeld: false,
       accentClass: "ring",
       onMouseMove: vi.fn(),
       onMouseLeave: vi.fn(),
@@ -61,11 +60,9 @@ describe("buildTimelineMeta", () => {
     expect(meta.containerProps.className).toContain("cursor-crosshair");
   });
 
-  it("uses the shift branch for the container class", () => {
-    const meta = buildTimelineMeta(
-      inputs({ container: { ...inputs().container, shiftHeld: true } }),
-    );
-    expect(meta.containerProps.className).toContain("cursor-crosshair");
+  it("leaves Shift's cursor to the container's data attribute", () => {
+    const meta = buildTimelineMeta(inputs());
+    expect(meta.containerProps.className).toContain("data-[shift-held]:cursor-crosshair");
   });
 
   it("uses the default container class without an accent", () => {

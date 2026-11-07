@@ -19,7 +19,9 @@ function server(
   place: { platform?: NodeJS.Platform; installed?: () => boolean } = {},
 ) {
   const app = new Hono();
-  const open = vi.fn((_dir: string, _cta?: string): DesktopOpenResult => OPENED);
+  const open = vi.fn(
+    (_dir: string, _cta?: string, _doc?: "storyboard"): DesktopOpenResult => OPENED,
+  );
   mountDesktopRoutes(app, "/films/a", { ready, open, ...place });
   const post = (headers: Record<string, string>, body?: unknown) =>
     app.request("/api/open-in-desktop", {
@@ -118,7 +120,7 @@ describe("open-in-desktop routes", () => {
   it("once live, opens this server's project for Studio's own POST", async () => {
     const { open, post } = server(true);
     expect(await (await post(STUDIO)).json()).toEqual(OPENED);
-    expect(open).toHaveBeenCalledWith("/films/a", undefined);
+    expect(open).toHaveBeenCalledWith("/films/a", undefined, undefined);
   });
 
   it("passes the press's page id on to the hand-off, and drops anything that is not one", async () => {
@@ -128,9 +130,19 @@ describe("open-in-desktop routes", () => {
     await post(STUDIO, { cta: "../../etc/passwd" });
     await post(STUDIO, { cta: 42 });
     expect(open.mock.calls).toEqual([
-      ["/films/a", id],
-      ["/films/a", undefined],
-      ["/films/a", undefined],
+      ["/films/a", id, undefined],
+      ["/films/a", undefined, undefined],
+      ["/films/a", undefined, undefined],
+    ]);
+  });
+
+  it("passes on only the storyboard as the page to open the project on", async () => {
+    const { open, post } = server(true);
+    await post(STUDIO, { doc: "storyboard" });
+    await post(STUDIO, { doc: "../index.html" });
+    expect(open.mock.calls).toEqual([
+      ["/films/a", undefined, "storyboard"],
+      ["/films/a", undefined, undefined],
     ]);
   });
 });

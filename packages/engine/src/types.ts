@@ -6,12 +6,21 @@
  */
 import type { ReferenceBackground } from "./services/referenceBackground.js";
 import type { AudioFailureDiagnostic } from "./services/audioMixer.types.js";
-import type { Fps } from "@hyperframes/core";
+import type { Fps, MotionBlurFingerprint } from "@hyperframes/core";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
 import type { ChromeMemoryStats } from "./services/chromeMemorySampler.js";
 import type { MotionBlurOptions } from "./services/motionBlur.js";
 
 export type PageMotionBlurOff = "off" | "hdr-render" | "layered-composite" | "distributed-render";
+
+export interface PageMotionBlurSummary {
+  tier: "capture" | "filter" | null;
+  reasonCode: string | null;
+  movers: number;
+  failedFrames: number;
+  readEvents: boolean;
+  fingerprint: MotionBlurFingerprint | null;
+}
 
 /**
  * Outcome of waiting for a sub-composition's GSAP timelines to register.
@@ -32,6 +41,7 @@ export interface SubTimelineWaitMemo {
 export type CaptureWarningCode =
   | "media_readiness_timeout"
   | "media_load_failed"
+  | "image_missing_from_frame"
   | "audio_processing_failed"
   | "sub_timeline_readiness_timeout"
   | "sub_timeline_script_failure"
@@ -253,6 +263,7 @@ export interface CaptureOptions {
   deVerifySamples?: number;
   deFrameFallback?: boolean;
   onEffectScanProgress?: (scannedFrames: number, totalFrames: number) => void;
+  onEffectScanEnd?: () => void;
 }
 
 export interface CaptureVideoMetadataHint {
@@ -405,11 +416,12 @@ export interface CapturePerfSummary {
   chromeMemorySamples?: number;
   /**
    * Low-cardinality init-time gate that routed a drawElement-eligible session
-   * to the baseline: `swiftshader` | `css_effect:<fx>` | `at_risk_timeline` |
-   * `3d_init_failed` | `supersampling` | `render_mode_hint`. Undefined when
-   * drawElement ran or was never attempted.
+   * to the baseline: `swiftshader` | `webgl_unavailable` | `beginframe_no_self_verify` |
+   * `css_effect:<fx>` | `at_risk_timeline` | `3d_init_failed` | `supersampling` |
+   * `render_mode_hint`. Undefined when drawElement ran or was never attempted.
    */
   deGateReason?: string;
+  motionBlur?: PageMotionBlurSummary;
   /**
    * Full-fidelity fallback trigger — the specific reason (CSS FX + property,
    * e.g. `filter:blur`, `filter:drop-shadow`, `backdrop-filter`, `clip-path`,
