@@ -23,7 +23,7 @@ function project(files: Record<string, string>) {
 }
 
 async function warnings(root: string) {
-  const report = await lintProject(root);
+  const report = await lintProject(root, undefined, {}, { includeUnmounted: true });
   return report.results
     .flatMap(({ result }) => result.findings)
     .filter((finding) => finding.code === "shader_unbounded_cosine_pow");

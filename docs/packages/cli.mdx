@@ -1209,6 +1209,12 @@ unless you pass `--verbose`, which keeps output clean for agents and CI.
 `--lint-verbose`, which `render`, `preview` and `publish` use for the same wish, works here and on `check` too.
 `--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
 
+Only the compositions the project uses are linted: `index.html` and every file it mounts through
+`data-composition-src`, followed through the files they mount. A file under `compositions/` that
+nothing mounts (an installed block you have not placed yet) is left out, and one line says how
+many were; `--include-unmounted` lints them too. `--json` lists them in `unmountedCompositions`.
+`check` lints the same way and takes the same flag.
+
 The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
 Three.js), and structural problems. [Troubleshooting](/help)
 explains each rule.
@@ -1253,6 +1259,7 @@ cover every finding from the full check.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
 | `--snapshots`                                | Save the five audited frames under `.hyperframes/artifacts/snapshots/`, plus a `finding-NN-<code>.png` crop per finding      |
+| `--include-unmounted`                        | Also lint `compositions/` files that `index.html` never mounts (left out by default, with one line saying how many)          |
 | `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
 | `--at`                                       | Explicit timestamps in seconds, comma-separated                                                                             |
 | `--at-transitions`                           | Also sample every tween start and end, to catch transient overlaps at transition seams                                       |
