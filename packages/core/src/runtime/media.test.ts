@@ -1053,13 +1053,14 @@ describe("syncRuntimeMedia", () => {
       expect(clip.el.play).not.toHaveBeenCalled();
     });
 
-    function askedToPlayAtHeader(networkState: number) {
+    function askedToPlayAtHeader(networkState: number, play?: () => Promise<void>) {
       vi.useFakeTimers({ toFake: ["performance"] });
       onTestFinished(() => vi.useRealTimers());
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       onTestFinished(() => warn.mockRestore());
       const clip = createMockClip({ start: 0, end: 10 });
       clip.el.src = "/alpha.webm";
+      if (play) clip.el.play = vi.fn(play);
       Object.defineProperty(clip.el, "readyState", { value: 1, configurable: true });
       Object.defineProperty(clip.el, "networkState", { value: networkState, configurable: true });
       syncRuntimeMedia({ clips: [clip], timeSeconds: 1, playing: true, playbackRate: 1 });
@@ -1081,6 +1082,15 @@ describe("syncRuntimeMedia", () => {
     it("keeps waiting on a clip still loading at its header 5 s after it was asked to play", () => {
       const { el, warn } = askedToPlayAtHeader(HTMLMediaElement.NETWORK_LOADING);
       vi.advanceTimersByTime(60_000);
+      expect(isUnplayable(el)).toBe(false);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("keeps waiting on a clip at its header whose play() the browser refused", async () => {
+      const refused = () => Promise.reject(new DOMException("needs a tap", "NotAllowedError"));
+      const { el, warn } = askedToPlayAtHeader(HTMLMediaElement.NETWORK_IDLE, refused);
+      await Promise.resolve();
+      vi.advanceTimersByTime(5000);
       expect(isUnplayable(el)).toBe(false);
       expect(warn).not.toHaveBeenCalled();
     });
