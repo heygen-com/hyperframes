@@ -444,7 +444,7 @@ function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
-  requireOnDisk = true,
+  requireOnDisk = false,
 ): string | null {
   if (isNonRelativeUrl(rawPath)) return null;
   for (const path of decodeUrlPathVariants(rawPath)) {

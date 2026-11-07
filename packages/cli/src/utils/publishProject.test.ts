@@ -1533,9 +1533,9 @@ describe("createPublishArchive referenced dot-paths", () => {
 
   it("does not fail on a missing href, source fallback, srcset candidate or CSS url", () => {
     const dir = projectWith(
-      `<a href="notes.html">n</a><video><source src="a.webm"><source src="a.mp4"></video>` +
+      `<link rel="stylesheet" href="s.css"><a href="notes.html">n</a><video><source src="a.webm"><source src="a.mp4"></video>` +
         `<img src="a.png" srcset="a.png 1x, a@2x.png 2x"><style>.a{background:url(gone.jpg)}</style>`,
-      { "a.mp4": "v", "a.png": "p" },
+      { "a.mp4": "v", "a.png": "p", "s.css": ".a{background:url(gone.jpg)}" },
     );
     expect(() => createPublishArchive(dir)).not.toThrow();
     expect(names(dir)).not.toContain("notes.html");
