@@ -120,6 +120,7 @@ test("a recording at speed 2: the file is stretched and the words still land on 
     const voice = meta.voices[0];
     assert.equal(meta.tts_provider, "recording");
     assert.equal(voice.source, "recording");
+    assert.equal(meta.voice_credit, "Voice: your own recording");
     assert.ok(Math.abs(voice.duration_s - 1) < 0.05, `duration ${voice.duration_s}`);
     assert.deepEqual([voice.words[0].start, voice.words[0].end], [0.5, 1]);
     const probe = spawnSync(
