@@ -87,6 +87,7 @@ export function mountShareRoutes(
 ): void {
   const routes = new Hono();
   let job: LocalShareJob | null = null;
+  const hasRunningJob = () => job?.state === "running";
   let jobOwner: string | null = null;
   let loginToken: string | null = null;
   const sessions = createShareSessions(() =>
@@ -169,7 +170,7 @@ export function mountShareRoutes(
       );
     const token = c.req.header("x-hyperframes-share-csrf")!;
     const session = sessions.get(token)!;
-    if (job?.state === "running")
+    if (hasRunningJob())
       return c.json(
         {
           code: "share_busy",
@@ -186,7 +187,7 @@ export function mountShareRoutes(
         return c.json(shareError(error), 400);
       }
     }
-    if (job?.state === "running")
+    if (hasRunningJob())
       return c.json({ code: "share_busy", message: "Sharing is already in progress." }, 409);
     jobOwner = owner;
     loginToken = input.action === "login" ? token : null;

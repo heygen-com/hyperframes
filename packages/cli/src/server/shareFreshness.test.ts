@@ -20,7 +20,10 @@ const state: ShareState = {
     elsewhere: false,
     held: false,
   },
-  source: { at: "ready" },
+  source: {
+    at: "ready",
+    snapshot: { space_id: "space", composition_id: "composition", snapshot_id: "snapshot" },
+  },
   version: {
     last: { exportedAt: "2026-11-06T00:00:00Z", current: true },
     source: "ready",
