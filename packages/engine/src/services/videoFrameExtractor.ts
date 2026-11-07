@@ -954,11 +954,20 @@ export function parseImageElements(html: string): ImageElement[] {
 
 const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
 
-/** A source's SPS transfers, so a PQ or SDR keyframe keeps an HLG one at 100 nits; null when the read failed. */
+/** A source's SPS transfers, read as the trace streams (a run keeps only stderr's tail); null when the read failed. */
 function readKeyframeTransfers(videoPath: string, codec: string) {
+  let traced = "";
+  let rest = "";
+  const onStderr = (chunk: string) => {
+    const lines = (rest + chunk).split("\n");
+    rest = lines.pop() ?? "";
+    for (const line of lines) if (line.includes("transfer_characteristics")) traced += `${line}\n`;
+  };
   return inExtractionSlot(() =>
-    runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)]),
-  ).then((result) => (result.success ? parseKeyframeTransfers(result.stderr) : null));
+    runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)], {
+      onStderr,
+    }),
+  ).then((result) => (result.success ? parseKeyframeTransfers(traced + rest) : null));
 }
 
 /** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
