@@ -5,7 +5,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { LocalShareSnapshot, LocalShareJob } from "@hyperframes/studio-server";
 import type { Button } from "../ui/Button";
 type ButtonProps = React.ComponentProps<typeof Button>;
-import type { SelectProps } from "../ui/Select";
 
 const interaction = vi.hoisted(() => vi.fn());
 vi.mock("./localShareTelemetry", () => ({ shareInteraction: interaction }));
@@ -13,19 +12,29 @@ vi.mock("../ui", () => ({
   Button: ({ children, variant: _variant, ...props }: ButtonProps) => (
     <button {...props}>{children}</button>
   ),
-  Select: ({ label, value, disabled, onCommit, options }: SelectProps) => (
+  Menu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  MenuRadioGroup: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: React.ReactNode;
+    value: string;
+    onValueChange: (value: string) => void;
+  }) => (
     <select
-      aria-label={label}
+      aria-label="Who can access"
       value={value}
-      disabled={disabled}
-      onChange={(event) => onCommit(event.target.value)}
+      onChange={(event) => onValueChange(event.target.value)}
     >
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
+      <option value="">Choose access</option>
+      {children}
     </select>
+  ),
+  MenuRadioItem: ({ value, disabled }: { value: string; disabled?: boolean }) => (
+    <option value={value} disabled={disabled}>
+      {value === "private" ? "Only you" : value}
+    </option>
   ),
   Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -102,7 +111,7 @@ async function choose(value: string) {
 }
 it("requires explicit audience, uses the bound workspace and permits server-authoritative quota retries", async () => {
   await mount();
-  expect(host.textContent).toContain("5 of 5 free shared projects used");
+  expect(host.textContent).toContain("5 of 5 free share links used");
   expect(button("Create share link")?.disabled).toBe(true);
   expect(calls).toEqual([]);
   await choose("public");
@@ -469,4 +478,24 @@ it("resumes a failed first creation without presenting an uploaded version", asy
   expect(host.textContent).not.toContain("still being prepared");
   await act(async () => button("Create share link")?.click());
   expect(calls).toEqual([{ action: "update" }]);
+});
+
+it.each(["free", "subscribed", null] as const)(
+  "shows the Pro CTA only for authoritative free entitlement: %s",
+  async (plan) => {
+    snapshot.spaces[0]!.plan = plan;
+    snapshot.spaces[0]!.upgradeUrl = "https://hyperframes.dev/pricing";
+    await mount();
+    const link = [...host.querySelectorAll("a")].find((a) =>
+      a.textContent?.includes("Upgrade to Pro"),
+    );
+    if (plan === "free") expect(link?.href).toBe("https://hyperframes.dev/pricing");
+    else expect(link).toBeUndefined();
+  },
+);
+it("refuses an upgrade destination outside the public pricing flow", async () => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.upgradeUrl = "https://example.com/checkout";
+  await mount();
+  expect(host.textContent).not.toContain("Upgrade to Pro");
 });

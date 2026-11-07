@@ -4,6 +4,8 @@ export interface LocalShareSpace {
   name: string;
   bound: boolean;
   canCreate: boolean;
+  plan?: "free" | "subscribed" | null;
+  upgradeUrl?: string | null;
   audiences: LocalShareAudience[];
   used: number | null;
   limit: number | null;

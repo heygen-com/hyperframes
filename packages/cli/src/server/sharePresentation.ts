@@ -1,4 +1,5 @@
 import type { LocalShareSpace, LocalShareState } from "@hyperframes/studio-server";
+import { shareSite } from "../share/auth.js";
 import type { ShareService, ShareState } from "../share/service.js";
 
 export function presentShare(value: ShareState): LocalShareState {
@@ -35,6 +36,7 @@ export function presentSpaces(
     name: space.name || (space.kind === "personal" ? "Personal workspace" : space.space_id),
     bound: space.bound === true,
     canCreate: space.can_create_review,
+    ...planOffer(space.review_entitlements),
     audiences: [
       "private",
       ...(space.review_entitlements?.allowed_collaborative_access_modes ?? []),
@@ -47,4 +49,11 @@ export function presentSpaces(
 function knownChanges(value: ShareState): boolean | null {
   if (!value.share) return false;
   return value.version.last && !value.version.last.current ? true : null;
+}
+
+function planOffer(
+  entitlements: Awaited<ReturnType<ShareService["spaces"]>>[number]["review_entitlements"],
+) {
+  const plan = entitlements?.plan ?? null;
+  return { plan, upgradeUrl: plan === "free" ? `${shareSite()}/pricing` : null };
 }

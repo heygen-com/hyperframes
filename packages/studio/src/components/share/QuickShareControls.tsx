@@ -1,54 +1,12 @@
-import type { LocalShareAudience, LocalShareSnapshot } from "@hyperframes/studio-server";
-import { Button, Select } from "../ui";
-import { isAudience } from "./localShareClient";
+import type { LocalShareSnapshot } from "@hyperframes/studio-server";
+import { Button } from "../ui";
+import { ShareAudience } from "./ShareAudience";
+import { Link, ArrowUpRight } from "@phosphor-icons/react";
 import type { QuickShareModel } from "./useQuickShare";
 
 type Props = { model: QuickShareModel; snapshot: LocalShareSnapshot };
-const LABELS: Record<LocalShareAudience, string> = {
-  public: "Anyone with the link",
-  team: "Anyone in this workspace",
-  invite: "Only invited people",
-  private: "Only you",
-};
 export function ShareSettings({ model, snapshot }: Props) {
-  const { audience, setAudience, spaceId, busy } = model;
-  const state = snapshot.share;
-  const space = snapshot.spaces.find((item) => item.id === spaceId);
-  return (
-    <>
-      {space && space.limit !== null && space.used !== null ? (
-        <p className="text-step-11 text-text-3">
-          {space.used} of {space.limit} free shared projects used
-        </p>
-      ) : null}
-      <label className="flex flex-col gap-1 text-text-3">
-        Who can access
-        <Select
-          label="Who can access"
-          value={audience}
-          disabled={busy || state.state === "unavailable"}
-          onCommit={(value) => {
-            if (isAudience(value)) setAudience(value);
-          }}
-          options={[
-            { value: "", label: "Choose access…", disabled: true },
-            ...(
-              [
-                "public",
-                "team",
-                "invite",
-                ...(state.audience === "private" ? ["private" as const] : []),
-              ] as const
-            ).map((value) => ({
-              value,
-              label: LABELS[value],
-              disabled: !space?.audiences.includes(value) && value !== state.audience,
-            })),
-          ]}
-        />
-      </label>
-    </>
-  );
+  return <ShareAudience model={model} snapshot={snapshot} />;
 }
 export function ShareNotices({ model, snapshot }: Props) {
   const { share } = snapshot;
@@ -85,7 +43,12 @@ export function ShareActions({ model, snapshot, url }: Props & { url: string | n
     <>
       {url ? <CopyShare model={model} snapshot={snapshot} url={url} /> : null}
       {snapshot.versionSharing && snapshot.share.state !== "unavailable" ? (
-        <Button disabled={model.busy} onClick={() => void model.run({ action: "update" })}>
+        <Button
+          className="h-9 rounded-lg"
+          variant={snapshot.share.changed !== false ? "primary" : "secondary"}
+          disabled={model.busy}
+          onClick={() => void model.run({ action: "update" })}
+        >
           {snapshot.job?.state === "failed" && snapshot.share.hasReadyVersion === false
             ? "Create share link"
             : "Update shared version"}
@@ -108,6 +71,7 @@ function CreateShare({ model, snapshot }: Props) {
       ) : null}
       <Button
         variant="primary"
+        className="h-9 self-end rounded-lg px-3 text-step-13"
         disabled={model.busy || !canCreate}
         onClick={() => {
           if (model.audience)
@@ -126,16 +90,32 @@ function CopyShare({ model, snapshot, url }: Props & { url: string }) {
       ? "Copy current shared link"
       : "Copy link";
   return (
-    <Button variant="primary" disabled={model.busy} onClick={() => void model.copy(url)}>
-      {label}
-    </Button>
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border p-2.5">
+      <span
+        className="min-w-0 flex-1 truncate rounded-lg bg-press px-2.5 py-2 font-mono text-step-11 text-text-3"
+        title={url}
+      >
+        {url.replace(/^https:\/\//, "")}
+      </span>
+      <Button
+        className="h-9 shrink-0 rounded-lg px-3 text-step-12"
+        variant={snapshot.share.changed !== false ? "secondary" : "primary"}
+        disabled={model.busy}
+        onClick={() => void model.copy(url)}
+      >
+        <Link size={15} aria-hidden="true" />
+        {label}
+      </Button>
+    </div>
   );
 }
 function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
   return (
-    <>
+    <div className="flex flex-wrap items-center justify-end gap-1">
       {model.audience && model.audience !== snapshot.share.audience ? (
         <Button
+          variant="ghost"
+          className="h-8 rounded-full text-step-13"
           disabled={model.busy}
           onClick={() => {
             if (model.audience) void model.run({ action: "access", audience: model.audience });
@@ -151,6 +131,8 @@ function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
       ) : null}
       {url ? (
         <Button
+          variant="ghost"
+          className="h-8 rounded-full text-step-13"
           disabled={model.busy}
           onClick={() => {
             if (
@@ -164,7 +146,7 @@ function ManageShare({ model, snapshot, url }: Props & { url: string | null }) {
           Turn link off
         </Button>
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -184,6 +166,8 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
       <p className="text-step-11 text-text-3">{message}</p>
       {recover ? (
         <Button
+          variant="ghost"
+          className="h-8 rounded-full text-step-13"
           disabled={model.busy}
           onClick={() => void model.run({ action: "update", videoOnly: true })}
         >
@@ -221,5 +205,33 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
         reconnects automatically.
       </p>
     </>
+  );
+}
+
+export function SharePlan({ model, snapshot }: Props) {
+  const space = snapshot.spaces.find((item) => item.id === model.spaceId);
+  const upgrade = space?.upgradeUrl;
+  const allowed =
+    upgrade &&
+    ["https://hyperframes.dev/pricing", "https://dev.hyperframes.dev/pricing"].includes(upgrade);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-step-12">
+      {space && space.limit !== null && space.used !== null ? (
+        <span className="text-text-3 tabular-nums">
+          {space.used} of {space.limit} free share links used
+        </span>
+      ) : null}
+      {space?.plan === "free" && allowed ? (
+        <a
+          href={upgrade}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-8 items-center gap-1 rounded-full px-2 font-semibold text-accent hover:bg-hover"
+        >
+          Upgrade to Pro
+          <ArrowUpRight size={13} aria-hidden="true" />
+        </a>
+      ) : null}
+    </div>
   );
 }

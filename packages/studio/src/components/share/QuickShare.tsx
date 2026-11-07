@@ -9,6 +9,7 @@ import {
   ShareActions,
   ShareSourceStatus,
   ShareLogin,
+  SharePlan,
 } from "./QuickShareControls";
 export function QuickShare({ beforeShare }: { beforeShare?: () => Promise<void> }) {
   const [token, setToken] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export function QuickShare({ beforeShare }: { beforeShare?: () => Promise<void> 
       align="end"
       aria-label="Share project"
       trigger={<Button variant="secondary">Share</Button>}
-      className="w-80 max-w-full"
+      className="w-96 max-w-[calc(100vw-2rem)] rounded-2xl p-4"
     >
       {open ? <QuickShareContent token={token} beforeShare={beforeShare} /> : null}
     </Popover>
@@ -49,9 +50,9 @@ export function QuickShareContent({
   const url = safeShareUrl(snapshot?.share.url ?? "");
   const manageUrl = safeShareUrl(snapshot?.share.manageUrl ?? "");
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 text-step-13">
       <div>
-        <h2 className="text-step-13 font-medium">Share project</h2>
+        <h2 className="text-step-15 font-semibold">Share project</h2>
         <p className="mt-1 text-step-11 text-text-3">Share the latest saved project.</p>
       </div>
       {snapshot ? (
@@ -60,6 +61,7 @@ export function QuickShareContent({
           <ShareNotices model={model} snapshot={snapshot} />
           <ShareSourceStatus model={model} snapshot={snapshot} />
           <ShareActions model={model} snapshot={snapshot} url={url} />
+          <SharePlan model={model} snapshot={snapshot} />
         </>
       ) : null}
       {!snapshot && !error ? <p role="status">Loading sharing…</p> : null}
@@ -72,14 +74,24 @@ export function QuickShareContent({
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
         {manageUrl ? (
-          <a href={manageUrl} target="_blank" rel="noreferrer" className="text-step-11 underline">
+          <a
+            href={manageUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-8 items-center rounded-full px-2 text-step-12 text-text-2 hover:bg-hover"
+          >
             Manage sharing
           </a>
         ) : null}
         {url ? (
-          <a href={url} target="_blank" rel="noreferrer" className="text-step-11 underline">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="flex h-8 items-center rounded-full px-2 text-step-12 text-text-2 hover:bg-hover"
+          >
             Open shared page
           </a>
         ) : null}
