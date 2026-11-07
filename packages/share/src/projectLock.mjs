@@ -80,7 +80,7 @@ async function claim(candidate, lock, owner) {
     }
   }
 }
-/** @template T @param {string} projectPath @param {"review" | "export"} lane @param {() => Promise<T>} run
+/** @template T @param {string} projectPath @param {"review" | "export" | "source"} lane @param {() => Promise<T>} run
  * @param {{ timeoutMs?: number, signal?: AbortSignal }} [options] @returns {Promise<T>} */
 export async function withProjectShareLock(
   projectPath,
@@ -90,7 +90,14 @@ export async function withProjectShareLock(
 ) {
   const root = await realpath(projectPath);
   const folder = await mkdirInside(root, ".hyperframes");
-  const lock = join(folder, lane === "review" ? "review.lock" : "review-export.lock");
+  const lock = join(
+    folder,
+    lane === "review"
+      ? "review.lock"
+      : lane === "source"
+        ? "share-source.lock"
+        : "review-export.lock",
+  );
   const owner = { token: randomUUID(), pid: process.pid, hostname: hostname() };
   const candidate = `${lock}.${owner.token}.tmp`;
   await writeFile(candidate, JSON.stringify(owner), { flag: "wx", mode: 0o600 });
