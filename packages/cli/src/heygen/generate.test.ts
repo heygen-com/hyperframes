@@ -51,7 +51,7 @@ const {
   structureRatio,
   urlOf,
 } = await import("./generate.js");
-const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
+const { checkLimit, creditsOf, isVendorPriced, priceOf } = await import("./pricing.js");
 type GenerateRequest = import("./generate.js").GenerateRequest;
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
@@ -1003,6 +1003,21 @@ describe("generate", () => {
     expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
+  });
+
+  it("keeps 10% headroom under the limit for an image charged at the vendor's cost", () => {
+    const limited = (request: GenerateRequest, limit: number) => () =>
+      checkLimit(creditsOf(priceOf(request)), limit, isVendorPriced(request));
+    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" } as const;
+    expect(creditsOf(priceOf(gpt))).toBe(40);
+    expect(limited(gpt, 40)).toThrow(
+      "about 40 credits, 44 with 10% headroom because it is charged at the vendor's cost, over --max-credits 40",
+    );
+    expect(limited(gpt, 43)).toThrow("44 with 10% headroom");
+    expect(limited(gpt, 44)).not.toThrow();
+    const nano = { type: "image", out: "a.png", model: "nano-banana-2" } as const;
+    expect(isVendorPriced(nano)).toBe(false);
+    expect(limited(nano, 67)).not.toThrow();
   });
 });
 

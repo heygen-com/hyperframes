@@ -11,7 +11,7 @@ import {
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
-import { checkLimit, creditsOf, priceOf } from "../../heygen/pricing.js";
+import { checkLimit, creditsOf, isVendorPriced, priceOf } from "../../heygen/pricing.js";
 
 export const examples: Example[] = [
   [
@@ -141,7 +141,7 @@ export default defineCommand({
     "max-credits": {
       type: "string",
       description:
-        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more",
+        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image call is charged at the vendor's cost, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over",
     },
     plan: {
       type: "boolean",
@@ -195,7 +195,7 @@ export default defineCommand({
           next: "run the same command without --plan to make it",
         };
       }
-      checkLimit(credits, num(args["max-credits"], "--max-credits"));
+      checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
         (status) => console.error(`generate: ${status}…`),

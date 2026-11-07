@@ -32,6 +32,7 @@ const GPT_IMAGE: Record<string, number> = {
 };
 const GPT_REFERENCE = 0.0125;
 const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
+const VENDOR_HEADROOM = 1.1;
 const NANO_IMAGE = 0.067;
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
@@ -144,7 +145,11 @@ export const creditsOf = (p: Price): number | null =>
   p.credits === null ? null : Math.ceil(p.credits - 1e-9);
 
 /** Refuses, before anything is sent, a call that would not fit what is left of the person's credit limit. */
-export function checkLimit(credits: number | null, limit: number | undefined): void {
+export function checkLimit(
+  credits: number | null,
+  limit: number | undefined,
+  vendorPriced = false,
+): void {
   if (limit === undefined) return;
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
@@ -153,9 +158,15 @@ export function checkLimit(credits: number | null, limit: number | undefined): v
       `this call cannot be priced ahead, so it cannot be kept under --max-credits ${limit}; nothing was made`,
       fix,
     );
-  if (credits > limit)
+  const checked = vendorPriced ? Math.ceil(credits * VENDOR_HEADROOM - 1e-9) : credits;
+  if (checked > limit)
     throw new Fix(
-      `this call is about ${credits} credits, over --max-credits ${limit}; nothing was made or charged`,
+      vendorPriced
+        ? `this call is about ${credits} credits, ${checked} with 10% headroom because it is charged at the vendor's cost, over --max-credits ${limit}; nothing was made or charged`
+        : `this call is about ${credits} credits, over --max-credits ${limit}; nothing was made or charged`,
       fix,
     );
 }
+
+export const isVendorPriced = (r: GenerateRequest): boolean =>
+  r.type === "image" && GPT_MODELS.has(r.model ?? "");
