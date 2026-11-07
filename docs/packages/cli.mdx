@@ -1383,6 +1383,10 @@ The check runs alongside the browser pass, up to four files at a time. A clip
 longer than 3 s is first sampled at three 1-second spots and decoded in full
 only if all three are silent.
 
+Overlap is judged on the text a viewer can see: a part of a text block that an
+overflow clip, a `clip-path` or a gradient `mask-image` (on the text or an ancestor)
+keeps from painting does not count.
+
 #### Mark intentional layout choices
 
 When the audit is wrong because the layout is deliberate, say so in the HTML and
