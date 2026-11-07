@@ -26,6 +26,24 @@ export interface Job {
 const RUNNING = new Set(["pending", "processing", "queued", "running", "waiting", "in_progress"]);
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+const VENDOR_HEADROOM = 1.1;
+
+export const chargedCredits = (job: Job): number | undefined =>
+  isRecord(job.charged) &&
+  job.charged.pool === "hyperframes_credits" &&
+  typeof job.charged.amount === "number"
+    ? job.charged.amount
+    : undefined;
+
+export function limitCheck(credits: number, vendorPriced = false) {
+  const checked = vendorPriced ? Math.ceil(credits * VENDOR_HEADROOM - 1e-9) : credits;
+  return {
+    checked,
+    about: vendorPriced
+      ? `about ${credits} credits, ${checked} with 10% headroom because it is charged at the vendor's cost`
+      : `about ${credits} credits`,
+  };
+}
 
 /** The same request always gets the same key: a re-run is a resume, never a second charge. */
 export function idempotencyKey(route: string, parts: readonly (string | Buffer)[]): string {
@@ -237,6 +255,7 @@ export interface RunOptions {
   log?: JobLog;
   /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
   credits?: number;
+  vendorPriced?: boolean;
 }
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits.
@@ -245,6 +264,7 @@ function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
   credits: number | undefined,
+  vendorPriced?: boolean,
 ): boolean {
   if (!limitLog?.projectDir) return false;
   const limit = creditLimit(limitLog.projectDir);
@@ -259,9 +279,10 @@ function withinLimit(
       `this call cannot be priced ahead, so it cannot be kept under the run's credit limit of ${limit}; nothing was made`,
       fix,
     );
-  if (credits > left)
+  const { checked, about } = limitCheck(credits, vendorPriced);
+  if (checked > left)
     throw new Fix(
-      `this call is about ${credits} credits and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
+      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
       fix,
     );
   log(limitLog, { key: sent, status: "reserved", credits });
@@ -280,7 +301,7 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  const reserved = withinLimit(opts.log, sent, opts.credits);
+  const reserved = withinLimit(opts.log, sent, opts.credits, opts.vendorPriced);
   let job: Job;
   try {
     job = await call(
@@ -317,7 +338,13 @@ export async function runJob(
     );
   }
   if (opts.log)
-    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: opts.credits });
+    log(opts.log, {
+      route,
+      id: job.id,
+      key: sent,
+      status: job.status,
+      credits: chargedCredits(job) ?? opts.credits,
+    });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
     throw await refusal(422, {

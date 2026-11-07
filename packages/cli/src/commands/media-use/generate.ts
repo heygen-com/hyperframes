@@ -6,12 +6,13 @@ import {
   GENERATE_TYPES,
   checkRequest,
   generate,
+  isVendorPriced,
   parseMask,
   voiceFor,
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
-import { checkLimit, creditsOf, isVendorPriced, priceOf } from "../../heygen/pricing.js";
+import { checkLimit, creditsOf, priceOf } from "../../heygen/pricing.js";
 
 export const examples: Example[] = [
   [

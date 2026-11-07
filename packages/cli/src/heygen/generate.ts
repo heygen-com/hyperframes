@@ -19,6 +19,7 @@ import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import {
+  chargedCredits,
   idempotencyKey,
   keepVoice,
   keptVoice,
@@ -163,6 +164,13 @@ interface Route extends JobRoute {
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
 const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
+export const VENDOR_PRICED_IMAGES = new Set([
+  "gpt-image-2.5",
+  "gpt-image-2.6",
+  "gpt-image-2.6-flare",
+]);
+export const isVendorPriced = (r: GenerateRequest): boolean =>
+  r.type === "image" && VENDOR_PRICED_IMAGES.has(r.model ?? "");
 const VIDEO_RESOLUTION = "768p";
 /** HeyGen follows at most this many seconds of a guide clip; the rest is not sent. */
 export const GUIDE_MAX_S = 15;
@@ -694,6 +702,7 @@ export async function generate(
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
       credits,
+      vendorPriced: isVendorPriced(r),
     });
     const url = urlOf(job, route.urls);
     if (!url)
@@ -708,10 +717,7 @@ export async function generate(
         "run the same command again; it re-reads the job",
       );
     writeFileSync(out, Buffer.from(await res.arrayBuffer()));
-    const charged =
-      isRecord(job.charged) && typeof job.charged.amount === "number"
-        ? job.charged.amount
-        : undefined;
+    const charged = chargedCredits(job);
     // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
     let cuts: number[] | null | undefined;
     if (r.type === "video")

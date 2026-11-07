@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,13 +45,14 @@ const {
   checkRequest,
   foldShort,
   generate,
+  isVendorPriced,
   parseMask,
   pickVoice,
   ringChange,
   structureRatio,
   urlOf,
 } = await import("./generate.js");
-const { checkLimit, creditsOf, isVendorPriced, priceOf } = await import("./pricing.js");
+const { checkLimit, creditsOf, priceOf } = await import("./pricing.js");
 type GenerateRequest = import("./generate.js").GenerateRequest;
 const ffmpeg = findFFmpeg();
 const project = mkdtempSync(join(tmpdir(), "hf-generate-test-"));
@@ -152,7 +153,7 @@ describe("generate", () => {
               id: "img2",
               status: "completed",
               images: [{ url: "https://files.test/charged.png" }],
-              charged: { amount: 41, pool: "hyperframes" },
+              charged: { amount: 41, pool: "hyperframes_credits" },
             },
           }),
     );
@@ -166,6 +167,63 @@ describe("generate", () => {
     expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
       '"charged_credits":41',
     );
+  });
+
+  it("keeps 10% headroom under the run's credit limit for an image charged at the vendor's cost", async () => {
+    const run = (limit: number) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-generate-limit-"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      const request = {
+        type: "image",
+        out: join(dir, "assets/limited.png"),
+        prompt: "a limited picture",
+        model: "gpt-image-2.5",
+        aspect: "16:9",
+      } as const;
+      return generate(request, undefined, creditsOf(priceOf(request)) ?? undefined);
+    };
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/limited.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img4",
+              status: "completed",
+              images: [{ url: "https://files.test/limited.png" }],
+            },
+          }),
+    );
+    await expect(run(43)).rejects.toThrow(
+      "about 40 credits, 44 with 10% headroom because it is charged at the vendor's cost and the run's credit limit of 43 leaves 43",
+    );
+    await expect(run(44)).resolves.toMatchObject({ job: "img4" });
+  });
+
+  it("reports no charge in HyperFrames credits for a charge to another pool", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/api-charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img5",
+              status: "completed",
+              images: [{ url: "https://files.test/api-charged.png" }],
+              charged: { amount: 2.46, pool: "api_credits" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/api-charged.png"),
+      prompt: "an api-charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
   });
 
   it("reports no charge when HeyGen does not say one", async () => {

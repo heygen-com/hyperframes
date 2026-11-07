@@ -106,6 +106,23 @@ describe("runJob", () => {
       expect(calls).toHaveLength(2);
     });
 
+    it("counts what HeyGen charged in HyperFrames credits, else the estimate", async () => {
+      const done = (charged: unknown) =>
+        vi.stubGlobal("fetch", async () =>
+          reply(200, { data: { id: "j", status: "completed", charged } }),
+        );
+      const log = project(100);
+      done({ amount: 41, pool: "hyperframes_credits" });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      done(null);
+      await runJob(X, {}, "k2", { log, credits: 59 });
+      await expect(runJob(X, {}, "k3", { log, credits: 1 })).rejects.toThrow(/leaves 0/);
+      const other = project(100);
+      done({ amount: 2, pool: "api_credits" });
+      await runJob(X, {}, "k1", { log: other, credits: 60 });
+      await expect(runJob(X, {}, "k2", { log: other, credits: 59 })).rejects.toThrow(/leaves 40/);
+    });
+
     it("refuses a call that cannot be priced ahead", async () => {
       const calls = sent();
       await expect(runJob(X, {}, "k", { log: project(100) })).rejects.toThrow(/cannot be priced/);

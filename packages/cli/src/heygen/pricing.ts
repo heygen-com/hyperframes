@@ -1,7 +1,8 @@
 // Prices before a paid call, from the HyperFrames app's creation pricing. HeyGen charges in units of $1/60, rounded
 // up; the label rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
 import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
-import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
+import { GUIDE_MAX_S, VENDOR_PRICED_IMAGES, type GenerateRequest } from "./generate.js";
+import { limitCheck } from "./v3.js";
 
 export interface Price {
   usd: number | null;
@@ -31,8 +32,6 @@ const GPT_IMAGE: Record<string, number> = {
   "3:4": 0.03612,
 };
 const GPT_REFERENCE = 0.0125;
-const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
-const VENDOR_HEADROOM = 1.1;
 const NANO_IMAGE = 0.067;
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
@@ -69,7 +68,7 @@ export function priceOf(r: GenerateRequest): Price {
           NANO_2_1_IMAGE + refs * NANO_2_1_REFERENCE,
           "nano-banana-2.1, $0.0336 an image and $0.00168 a reference",
         );
-      if (!GPT_MODELS.has(model))
+      if (!VENDOR_PRICED_IMAGES.has(model))
         return { usd: null, list: null, credits: null, basis: `${model}, not priced ahead` };
       const each = GPT_IMAGE[r.aspect ?? "16:9"] ?? GPT_IMAGE["16:9"]!;
       const list = each + refs * GPT_REFERENCE;
@@ -158,15 +157,10 @@ export function checkLimit(
       `this call cannot be priced ahead, so it cannot be kept under --max-credits ${limit}; nothing was made`,
       fix,
     );
-  const checked = vendorPriced ? Math.ceil(credits * VENDOR_HEADROOM - 1e-9) : credits;
+  const { checked, about } = limitCheck(credits, vendorPriced);
   if (checked > limit)
     throw new Fix(
-      vendorPriced
-        ? `this call is about ${credits} credits, ${checked} with 10% headroom because it is charged at the vendor's cost, over --max-credits ${limit}; nothing was made or charged`
-        : `this call is about ${credits} credits, over --max-credits ${limit}; nothing was made or charged`,
+      `this call is ${about}, over --max-credits ${limit}; nothing was made or charged`,
       fix,
     );
 }
-
-export const isVendorPriced = (r: GenerateRequest): boolean =>
-  r.type === "image" && GPT_MODELS.has(r.model ?? "");
