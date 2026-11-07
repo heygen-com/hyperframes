@@ -26,7 +26,7 @@ npm install -g hyperframes
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Start a project          | [`init`](#init), [`add`](#add), [`catalog`](#catalog)                                                                                                                                                                            |
 | Bring in source material | [`capture`](#capture), [`media-use`](#media-use), [`transcribe`](#transcribe), [`tts`](#tts), [`remove-background`](#remove-background), [`media-treatment`](#media-treatment), [`beats`](#beats), [`audio`](#audio), [`normalize-audio`](#normalize-audio), [`models`](#models) |
-| Look at it, or share it  | [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
+| Look at it, or share it  | [`share`](#share), [`preview`](#preview), [`present`](#present-and-play), [`play`](#present-and-play), [`publish`](#publish), [`open`](#open-and-catch-up), [`catch-up`](#open-and-catch-up)                                                        |
 | Find problems            | [`lint`](#lint), [`check`](#check), [`snapshot`](#snapshot), [`keyframes`](#keyframes), [`compare`](#compare-and-grade-compare), [`grade-compare`](#compare-and-grade-compare)                                                   |
 | Rebuild a video          | [`reverse`](#reverse), [`measure`](#measure), [`diff`](#diff)                                                                                                                                                                     |
 | Edit from the terminal   | [`timeline`](#timeline), [`history`](#history)                                                                                                                                                                                   |
@@ -119,9 +119,9 @@ vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HY
 other key in the file is ignored, and one line on stderr names them.
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
-example rather than waiting for input. Two commands are interactive on a TTY:
+example rather than waiting for input. These commands can ask questions on a TTY:
 `init` prompts for a project name and example unless you pass
-`--non-interactive`, and `catalog --human-friendly` opens a picker. Nothing else
+`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience. Nothing else
 prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
 **Unattended runs never prompt.** A run is unattended when stdin or stdout is not
@@ -3034,3 +3034,61 @@ Anything you leave out gets the default, so the file only needs your overrides.
     The capture engine. Use directly for custom frame capture pipelines.
   </Card>
 </CardGroup>
+
+
+## share
+
+Share a rendered MP4 for review, with the same project identity, access controls,
+comments and version history as HyperFrames Desktop. Sign in with
+`hyperframes auth login` first; API keys cannot own review projects.
+
+```bash
+hyperframes share --public         # Explicitly allow anyone with the link
+hyperframes share --status --json  # Read status; never upload local edits
+hyperframes share --update         # Render and upload the current project
+hyperframes share --manage         # Open web sharing settings
+```
+
+The first share requires an explicit audience: `--public`, `--team`,
+`--invite-only`, or `--private`. In an attended terminal, `share` asks you to
+choose. `--yes` suppresses questions but does not choose an audience. Available
+audiences follow your workspace plan. `--space <id>` selects the owning workspace
+on first share; later runs preserve it.
+
+Free workspaces retain up to **five shared projects**, across CLI and Desktop.
+Adding versions uses the same project. Turning off its link does not free a slot;
+remove a project in web management or upgrade when the workspace is full.
+The server enforces the limit even when clients create projects simultaneously.
+
+Running `share` again returns the existing link without uploading edits. Use
+`--update` to publish a new rendered version. The previous ready version remains
+visible while an update processes. Interrupted first uploads can resume when
+the source is unchanged; if it changed, explicitly use `--update`. If the
+project's review or audience changes while rendering, check the current share
+with `--status` before retrying.
+
+Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
+space, wait for uploads to finish and close any running share commands, then
+remove that directory and `.hyperframes/share-render.json`. The next share or
+update that needs a render will rebuild the cache.
+
+`--wait-seconds <1–1800>` controls how long the command waits for video
+processing (default 300). A processing result is accepted, not playback-ready:
+check `ready` and `state` in JSON before distributing a URL. `url` is only
+returned for a ready share. Run `--status` to check again. Exit codes are 0
+for an accepted/read operation, 1 for failure, and 2 for invalid arguments.
+A successful local render does not finish sharing: upload failures still return
+a failure exit code.
+
+The standard production CLI includes exact trusted storage origins for review
+videos and editable project sources; no upload configuration is required.
+Development environments, custom API/OAuth endpoints or clients, and custom
+storage setups must set `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` to the
+comma-separated HTTPS origins provided by their deployment. Use exact origins
+without paths or wildcards. This setting replaces the production defaults;
+setting it to an empty string disables uploads. Defaults apply only with the
+production environment and standard production API, OAuth token endpoint, and
+OAuth client. Storage URLs outside the selected origins are rejected.
+
+Existing `/p/...` publications remain separate and reachable. Sharing does not
+convert a legacy publication or change its URL, visibility or ownership.
