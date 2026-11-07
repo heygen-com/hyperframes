@@ -802,6 +802,7 @@ interface AudioSpan {
   start: number;
   end: number;
   src: string;
+  runsToWindowEnd: boolean;
 }
 
 /** One parsed file: reference starts resolve within it, memoised. */
@@ -893,7 +894,12 @@ function audioSpanOf(
   const duration = parseNumeric(el.getAttribute("data-duration")) ?? localDuration(file, el);
   const kept = cutToHostSlots({ start, end: start + (duration ?? Infinity) }, slots);
   if (kept.end <= kept.start) return null;
-  return { trackIndex: parseInt(trackStr, 10), ...kept, src: el.getAttribute("src") || "unknown" };
+  return {
+    trackIndex: parseInt(trackStr, 10),
+    ...kept,
+    src: el.getAttribute("src") || "unknown",
+    runsToWindowEnd: duration === null,
+  };
 }
 
 const formatSeconds = (t: number) => (Number.isFinite(t) ? String(Number(t.toFixed(2))) : "end");
@@ -907,11 +913,17 @@ function lintDuplicateAudioTracks(projectDir: string, rootHtml: string): Hyperfr
       const b = tracks[j]!;
       if (a.trackIndex !== b.trackIndex) continue;
       if (spansOverlap(a.start, a.end, b.start, b.end)) {
+        const withoutDuration = [a, b]
+          .filter((span) => span.runsToWindowEnd)
+          .map((span) => span.src);
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
           message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s, ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s). This causes layered audio playback.`,
-          fixHint: "Use non-overlapping time windows or different track indices.",
+          fixHint:
+            withoutDuration.length > 0
+              ? `${withoutDuration.join(" and ")} ${withoutDuration.length > 1 ? "have no data-duration, so lint counts them" : "has no data-duration, so lint counts it"} until the composition ends. Set data-duration to the file's length, or use different track indices.`
+              : "Use non-overlapping time windows or different track indices.",
         });
       }
     }
