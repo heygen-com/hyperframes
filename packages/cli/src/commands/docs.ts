@@ -60,6 +60,11 @@ function formatInlineCode(line: string): string {
   return line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
 }
 
+function formatBold(line: string): string {
+  // Replace **bold** with just the text (strip markers for terminal output)
+  return line.replace(/\*\*(.+?)\*\*/g, (_match, bold: string) => bold);
+}
+
 function renderMarkdown(content: string): void {
   const lines = content.split("\n");
 
@@ -87,6 +92,11 @@ function renderMarkdown(content: string): void {
       console.log(`${c.dim("  \u2022")} ${rest}`);
       continue;
     }
+
+    // Bold markup (strip ** markers for terminal output)
+    const rest = formatBold(line);
+    console.log(rest);
+    continue;
 
     // Everything else
     console.log(formatInlineCode(line));
