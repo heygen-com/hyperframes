@@ -1,7 +1,7 @@
 import { describe, it, expect, onTestFinished, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type IncomingHttpHeaders } from "node:http";
+import { createServer, type IncomingHttpHeaders, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -377,7 +377,26 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
   });
 });
 
-const BIG_BYTES = 32 * 1024 * 1024;
+const BIG_BYTES = 16 * 1024 * 1024;
+
+/** Reads the body; "cut" and "slow" take 8 MB/s, and "cut" drops the connection at 400 ms. */
+async function drain(req: IncomingMessage, answer: unknown): Promise<"read" | "dropped"> {
+  const slow = answer === "cut" || answer === "slow";
+  const born = Date.now();
+  try {
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      if (!slow) continue;
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(chunk.length / 8192)));
+      if (answer === "cut" && Date.now() - born >= 400) {
+        req.socket.destroy();
+        return "dropped";
+      }
+    }
+  } catch {
+    return "dropped";
+  }
+  return "read";
+}
 
 describe("a PUT that stalls or fails on the network is sent again", () => {
   /** Answers its Nth request as `plan[n]`, the last one for any later: "hang" never answers, "cut" drops the
@@ -390,17 +409,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const open: Array<() => void> = [];
     const server = createServer(async (req, res) => {
       const answer = plan[Math.min(n++, plan.length - 1)]!;
-      const born = Date.now();
-      try {
-        for await (const _ of req) {
-          void _;
-          if (answer !== "cut" && answer !== "slow") continue;
-          await new Promise((resolve) => setTimeout(resolve, 1));
-          if (answer === "cut" && Date.now() - born >= 400) return void req.socket.destroy();
-        }
-      } catch {
-        return;
-      }
+      if ((await drain(req, answer)) === "dropped") return;
       if (answer === "hang") return void open.push(() => res.destroy());
       if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
       res.writeHead(answer).end(answer === 200 ? "" : "refused");
@@ -424,7 +433,12 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const content = big ? Buffer.alloc(BIG_BYTES, 1) : Buffer.from("bytes");
     writeFileSync(join(dir, "clip.mp4"), content);
     const was = { ...putTimings };
-    Object.assign(putTimings, { stallMs: 150, backoffMs: 5, progressMs: 50 });
+    Object.assign(putTimings, {
+      stallMs: big ? 5000 : 150,
+      backoffMs: 5,
+      progressMs: 50,
+      sampleMs: 50,
+    });
     onTestFinished(() => void Object.assign(putTimings, was));
     return uploadAssetViaDirectUpload({
       client: makeClient({

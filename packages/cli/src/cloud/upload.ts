@@ -76,7 +76,13 @@ const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
 /** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
-export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000, progressMs: 10_000 };
+export const putTimings = {
+  stallMs: 60_000,
+  retries: 3,
+  backoffMs: 1000,
+  progressMs: 10_000,
+  sampleMs: 1000,
+};
 
 /** What one try of the PUT got through, read by the retry loop and the progress lines. */
 interface PutTry {
@@ -92,10 +98,13 @@ function isConnectionCut(err: unknown): boolean {
   return (typeof code === "string" && CUT_CODES.has(code)) || /socket hang up/.test(String(err));
 }
 
-/** The same cut twice: a connection that dies at the same age with the same bytes sent dies the same way again. */
-function isSameCut(before: PutTry & { ageMs: number }, now: PutTry & { ageMs: number }): boolean {
-  const near = (a: number, b: number) => Math.abs(a - b) <= 0.2 * Math.max(a, b);
-  return before.sent > 0 && near(before.ageMs, now.ageMs) && near(before.sent, now.sent);
+/** The same cut twice: a connection that dies at the same age dies there again, whatever it got through. */
+function isSameCut(before: EndedTry, now: EndedTry): boolean {
+  return (
+    before.sent > 0 &&
+    now.sent > 0 &&
+    Math.abs(before.ageMs - now.ageMs) <= 0.2 * Math.max(before.ageMs, now.ageMs)
+  );
 }
 
 function seconds(ms: number): string {
@@ -132,32 +141,37 @@ function isFinal(err: unknown): boolean {
   );
 }
 
+type EndedTry = PutTry & { ageMs: number; cut: boolean };
+
+function repeatedCut(before: EndedTry | undefined, now: EndedTry, err: unknown, total: number) {
+  if (!before?.cut || !now.cut || !isSameCut(before, now)) return undefined;
+  const code = (err as { code?: string }).code;
+  return Object.assign(
+    new Error(
+      `The connection was cut at ${seconds(now.ageMs)} on two tries in a row, after ${Math.floor((100 * now.sent) / total)}% of the file was sent (${code ?? "connection reset"}). Every try restarts the file, so this link cannot finish it before the cut: use a faster connection or send less media.`,
+      { cause: err },
+    ),
+    { code },
+  );
+}
+
 async function putWithRetry(
   attempt: (tried: PutTry) => Promise<void>,
   total: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  let before: (PutTry & { ageMs: number }) | undefined;
-  let cutBefore = false;
+  let before: EndedTry | undefined;
   for (let tried = 0; ; tried++) {
     const current: PutTry = { attempt: tried + 1, startedAt: Date.now(), sent: 0 };
     try {
       return await attempt(current);
     } catch (err) {
       if (isFinal(err) || signal?.aborted) throw err;
-      const now = { ...current, ageMs: Date.now() - current.startedAt };
-      const cut = isConnectionCut(err);
-      if (cut && cutBefore && before && isSameCut(before, now)) {
-        throw Object.assign(
-          new Error(
-            `The connection was cut at ${seconds(now.ageMs)} on two tries in a row, after ${Math.floor((100 * now.sent) / total)}% of the file was sent (${(err as { code?: string }).code ?? "connection reset"}). Every try restarts the file, so this link cannot finish it before the cut: use a faster connection or send less media.`,
-            { cause: err },
-          ),
-          { code: (err as { code?: unknown }).code },
-        );
-      }
+      const now = { ...current, ageMs: Date.now() - current.startedAt, cut: isConnectionCut(err) };
+      const futile = repeatedCut(before, now, err, total);
+      if (futile) throw futile;
       if (tried >= putTimings.retries) throw exhausted(err, tried + 1, now, total);
-      [before, cutBefore] = [now, cut];
+      before = now;
       await sleep(putTimings.backoffMs * 2 ** tried, signal);
     }
   }
@@ -311,7 +325,7 @@ function watchStall(req: ClientRequest, onSample: (written: number) => void): ()
       else if (Date.now() - movedAt >= putTimings.stallMs)
         req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
     },
-    Math.min(1000, putTimings.stallMs / 3),
+    Math.min(putTimings.sampleMs, putTimings.stallMs / 3),
   );
   return () => clearInterval(watch);
 }
