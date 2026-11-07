@@ -7,7 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HyperframesApiError } from "./_gen/client.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
-import { putTimings, uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "./upload.js";
+import {
+  putTimings,
+  uploadAssetViaDirectUpload,
+  uploadZipViaDirectUpload,
+  type UploadProgressEvent,
+} from "./upload.js";
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -373,18 +378,26 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
 });
 
 describe("a PUT that stalls or fails on the network is sent again", () => {
-  /** A server that answers its Nth request as `plan[n]` ("hang" never answers; a number is the status) and keeps
-   * the last answer for any later one. */
+  /** A server that answers its Nth request as `plan[n]` ("hang" never answers; "cut" drains slowly and drops the
+   * connection at 600 ms; "slow" drains slowly and answers 200; a number is the status) and keeps the last answer
+   * for any later one. */
   async function withPlan(
-    plan: Array<"hang" | number>,
+    plan: Array<"hang" | "cut" | "slow" | number>,
     run: (url: string, requests: () => number) => Promise<void>,
   ): Promise<void> {
     let n = 0;
     const open: Array<() => void> = [];
     const server = createServer(async (req, res) => {
       const answer = plan[Math.min(n++, plan.length - 1)]!;
-      for await (const _ of req) void _;
+      const born = Date.now();
+      for await (const _ of req) {
+        void _;
+        if (answer !== "cut" && answer !== "slow") continue;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (answer === "cut" && Date.now() - born >= 600) return void req.socket.destroy();
+      }
       if (answer === "hang") return void open.push(() => res.destroy());
+      if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
       res.writeHead(answer).end(answer === 200 ? "" : "refused");
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -396,12 +409,17 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     }
   }
 
-  const upload = (url: string, asBytes = false) => {
+  const upload = (
+    url: string,
+    asBytes = false,
+    big?: { onProgress: (event: UploadProgressEvent) => void },
+  ) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-upload-retry-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    writeFileSync(join(dir, "clip.mp4"), "bytes");
+    const content = big ? Buffer.alloc(5 * 1024 * 1024, 1) : Buffer.from("bytes");
+    writeFileSync(join(dir, "clip.mp4"), content);
     const was = { ...putTimings };
-    Object.assign(putTimings, { stallMs: 150, backoffMs: 5 });
+    Object.assign(putTimings, { stallMs: 150, backoffMs: 5, progressMs: 50 });
     onTestFinished(() => void Object.assign(putTimings, was));
     return uploadAssetViaDirectUpload({
       client: makeClient({
@@ -414,9 +432,12 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
           status: "pending_upload" as const,
         })),
       } as Partial<HyperframesCloudClient>),
-      ...(asBytes ? { bytes: Buffer.from("bytes") } : { path: join(dir, "clip.mp4"), size: 5 }),
+      ...(asBytes
+        ? { bytes: Buffer.from("bytes") }
+        : { path: join(dir, "clip.mp4"), size: content.byteLength }),
       filename: "clip.mp4",
       contentType: "video/mp4",
+      onProgress: big?.onProgress,
     });
   };
 
@@ -449,6 +470,33 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     await withPlan([403], async (url, requests) => {
       await expect(upload(url)).rejects.toThrow(/PUT failed: 403/);
       expect(requests()).toBe(1);
+    });
+  });
+  it("stops after a second identical cut instead of repeating the doomed try", async () => {
+    await withPlan(["cut"], async (url, requests) => {
+      await expect(upload(url, false, { onProgress: () => undefined })).rejects.toThrow(
+        /cut at \d+ s on two tries in a row.*Every try restarts the file/,
+      );
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("reports the bytes sent while a slow PUT runs, and the restart of a second try", async () => {
+    const events: UploadProgressEvent[] = [];
+    await withPlan([503, "slow"], async (url) => {
+      await upload(url, false, { onProgress: (event) => events.push(event) });
+    });
+    const sent = events.flatMap((e) => (e.phase === "upload" && e.attempt === 2 ? [e] : []));
+    const live = sent.filter((e) => (e.sentBytes ?? 0) > 0);
+    expect(live.length).toBeGreaterThan(1);
+    expect(live.map((e) => e.sentBytes)).toEqual([...live.map((e) => e.sentBytes)].sort((a, b) => a! - b!));
+    expect(live.every((e) => e.totalBytes === 5 * 1024 * 1024)).toBe(true);
+    expect(events.some((e) => e.phase === "upload" && e.attempt === 2 && e.sentBytes === 0)).toBe(true);
+  });
+
+  it("says how many tries it made and how far the last got when the retries run out", async () => {
+    await withPlan([503], async (url) => {
+      await expect(upload(url)).rejects.toThrow(/503.*4 tries, each from the first byte/);
     });
   });
 });
