@@ -29,6 +29,7 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { isContainedIn } from "./registry-target-paths.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(repoRoot, "packages/cli/src/cli.ts");
@@ -68,27 +69,27 @@ const IGNORED = [
   "multiple_root_compositions",
 ];
 
+function readManifestFiles(dir) {
+  const manifest = join(dir, "registry-item.json");
+  if (!isContainedIn(repoRoot, manifest)) return [];
+  try {
+    return JSON.parse(readFileSync(manifest, "utf8")).files ?? [];
+  } catch {
+    return [];
+  }
+}
+
 function discover() {
   const out = [];
   for (const kind of ["blocks", "components"]) {
     const dir = join(repoRoot, "registry", kind);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
-      const html = join(dir, name, `${name}.html`);
-      if (!existsSync(html)) continue;
-      // #7279 — items ship assets their manifest declares (`files[].target`);
-      // the mount has to bring them or the lint fails on files the item itself
-      // provides (`yt-lower-third`'s avatar, `texture-mask-text`'s 67 masks).
-      let files = [];
-      const manifestPath = join(dir, name, "registry-item.json");
-      if (existsSync(manifestPath)) {
-        try {
-          files = JSON.parse(readFileSync(manifestPath, "utf8")).files ?? [];
-        } catch {
-          // an unreadable manifest leaves the item mounted as before
-        }
+      const itemDir = join(dir, name);
+      const html = join(itemDir, `${name}.html`);
+      if (existsSync(html)) {
+        out.push({ name, kind, html, dir: itemDir, files: readManifestFiles(itemDir) });
       }
-      out.push({ name, kind, html, dir: join(dir, name), files });
     }
   }
   return out;
@@ -110,10 +111,13 @@ for (const item of items) {
     mkdirSync(join(proj, "compositions"), { recursive: true });
     writeFileSync(join(proj, "index.html"), HOST);
     copyFileSync(item.html, join(proj, "compositions", `${item.name}.html`));
-    // Install every file the manifest lists at its target path (#7279) so the
-    // lint judges the item as a user receives it — assets included.
-    for (const f of item.files ?? []) {
+    for (const f of item.files) {
       if (!f?.target || !f?.path) continue;
+      if (!isContainedIn(item.dir, f.path) || !isContainedIn(proj, f.target)) {
+        throw new Error(
+          `Registry item ${item.name} declares a path outside its allowed directory.`,
+        );
+      }
       const from = join(item.dir, f.path);
       const to = join(proj, f.target);
       if (!existsSync(from)) continue; // a real missing file stays a real finding

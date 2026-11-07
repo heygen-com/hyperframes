@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
@@ -35,10 +44,39 @@ test("items that ship assets lint clean once the mount installs them (#7279)", (
     timeout: 10 * 60 * 1000,
   });
   const out = `${res.stdout ?? ""}${res.stderr ?? ""}`;
-  assert.equal(
-    res.status,
-    0,
-    `expected the registry lint to pass, got:\n${out.slice(-2000)}`,
-  );
+  assert.equal(res.status, 0, `expected the registry lint to pass, got:\n${out.slice(-2000)}`);
   assert.match(out, /Registry item lint passed — 2 item\(s\), 0 errors\./);
 });
+
+for (const file of [
+  { path: "../../../outside", target: "assets/test.txt" },
+  { path: "sample.html", target: "../outside" },
+]) {
+  test(`rejects an escaping manifest entry ${file.path} → ${file.target}`, (t) => {
+    const root = mkdtempSync(join(tmpdir(), "hf-registry-paths-"));
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const scriptsDir = join(root, "scripts");
+    const itemDir = join(root, "registry", "blocks", "sample");
+    mkdirSync(scriptsDir);
+    mkdirSync(itemDir, { recursive: true });
+    for (const name of ["lint-registry-items.mjs", "registry-target-paths.mjs"]) {
+      copyFileSync(join(here, name), join(scriptsDir, name));
+    }
+    const outside = join(root, "outside");
+    writeFileSync(outside, "sentinel");
+    writeFileSync(join(itemDir, "sample.html"), "<p>Fixture</p>");
+    writeFileSync(join(itemDir, "registry-item.json"), JSON.stringify({ files: [file] }));
+    const res = spawnSync(
+      process.execPath,
+      [join(scriptsDir, "lint-registry-items.mjs"), "sample"],
+      {
+        encoding: "utf-8",
+        env: { ...process.env, TMPDIR: root, TEMP: root, TMP: root },
+        timeout: 10_000,
+      },
+    );
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /declares a path outside its allowed directory/);
+    assert.equal(readFileSync(outside, "utf8"), "sentinel");
+  });
+}
