@@ -22,7 +22,6 @@ export interface SceneRootLookup {
   hasLiveRoot: boolean;
 }
 
-/** The first scene template wins; the `multiple_scene_templates` lint rule reports the rest. */
 export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
   const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
