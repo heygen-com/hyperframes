@@ -266,6 +266,11 @@ const CHECK_COMMAND_ARGS = {
     description: "Save contrast-pass PNGs under .hyperframes/artifacts/snapshots/",
     default: false,
   },
+  "include-unmounted": {
+    type: "boolean",
+    description: "Also lint compositions/ files that index.html never mounts",
+    default: false,
+  },
   "caption-zone": {
     type: "string",
     description:
@@ -456,6 +461,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+    includeUnmounted: args["include-unmounted"] === true,
   };
 }
 

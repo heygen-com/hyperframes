@@ -1,6 +1,6 @@
 // CLI facade: the linter stays reusable without the CLI, while command-specific gates live here.
 export { lintProject, shouldBlockRender } from "@hyperframes/lint";
-export type { ProjectLintResult } from "@hyperframes/lint";
+export type { ProjectLintOptions, ProjectLintResult } from "@hyperframes/lint";
 
 import type { ProjectLintResult } from "@hyperframes/lint";
 
