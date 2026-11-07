@@ -427,6 +427,57 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes.includes("content_overlap")).toBe(overlap);
   });
 
+  // HELLO paints 100-220 px; WORLD sits at 150-270 px, so only its top 60% can touch HELLO.
+  const hello = heading(100, "HELLO");
+  const world = (style: string) => heading(150, "WORLD", style);
+  it.each([
+    { name: "unmasked, the control", html: hello + world(""), overlap: true },
+    {
+      name: "masked transparent where it meets the other text",
+      html: hello + world("mask-image:linear-gradient(to bottom, transparent 62%, #000 62%)"),
+      overlap: false,
+    },
+    {
+      name: "masked by a wrapper whose mask fades out the top",
+      html:
+        hello +
+        '<div style="position:absolute;left:0;top:150px;width:1920px;height:120px;mask-image:linear-gradient(#0000 0 62%, #000 62%)">' +
+        '<h1 style="position:absolute;left:100px;top:0;margin:0;font:120px/1 Arial">WORLD</h1></div>',
+      overlap: false,
+    },
+    {
+      name: "masked by a radial mask that paints only its bottom",
+      html:
+        hello +
+        world(
+          "mask-image:radial-gradient(400px 30px at 50% 100%, #000 0%, #000 90%, transparent 100%)",
+        ),
+      overlap: false,
+    },
+    {
+      name: "masked, but still painted where it meets the other text",
+      html: hello + world("mask-image:linear-gradient(to bottom, #000 62%, transparent 62%)"),
+      overlap: true,
+    },
+    {
+      name: "clipped by an inset clip-path to its bottom",
+      html: hello + world("clip-path:inset(62% 0 0 0)"),
+      overlap: false,
+    },
+    {
+      name: "clipped by an overflow-hidden wrapper to its bottom",
+      html:
+        hello +
+        '<div style="position:absolute;left:0;top:225px;width:1920px;height:60px;overflow:hidden">' +
+        '<h1 style="position:absolute;left:100px;top:-75px;margin:0;font:120px/1 Arial">WORLD</h1></div>',
+      overlap: false,
+    },
+  ])("judges text overlap on what is painted: $name", async ({ html, overlap }) => {
+    const codes = await auditCodes(`
+        <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">${html}</div>`);
+    expect(codes.includes("content_overlap")).toBe(overlap);
+  });
+
   it.each([
     { name: "closed", open: "", overlap: false },
     { name: "open", open: " open", overlap: true },
