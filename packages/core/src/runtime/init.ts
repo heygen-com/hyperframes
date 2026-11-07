@@ -4323,9 +4323,45 @@ export function initSandboxRuntimeModular(): void {
       }
     }
   };
+  // GSAP reads the transform of an element it cannot lay out by moving it out and back before its next
+  // element, past the text between; a host the visibility pass hid by display is laid out, unseen, meanwhile.
+  const layOutHiddenHosts = (hosts: Element[]): (() => void) => {
+    const hidden = hosts.filter((host): host is StylableElement =>
+      displayBeforeHide.has(host as StylableElement),
+    );
+    const opacities = hidden.map((host) => {
+      const before = displayBeforeHide.get(host)!;
+      if (before.value) host.style.setProperty("display", before.value, before.priority);
+      else host.style.removeProperty("display");
+      const opacity = {
+        value: host.style.getPropertyValue("opacity"),
+        priority: host.style.getPropertyPriority("opacity"),
+      };
+      host.style.setProperty("opacity", "0", "important");
+      return opacity;
+    });
+    return () =>
+      hidden.forEach((host, i) => {
+        const ours =
+          host.style.getPropertyValue("opacity") === "0" &&
+          host.style.getPropertyPriority("opacity") === "important";
+        const { value, priority } = opacities[i]!;
+        if (ours && value) host.style.setProperty("opacity", value, priority);
+        else if (ours) host.style.removeProperty("opacity");
+        if (displayBeforeHide.has(host)) host.style.display = "none";
+      });
+  };
+  const runSceneScripts = async (hosts: Element[], scripts: Element[]) => {
+    const putHidesBack = layOutHiddenHosts(hosts);
+    try {
+      await runSceneScriptsLaidOut(hosts, scripts);
+    } finally {
+      putHidesBack();
+    }
+  };
   // Runs a scene's scripts, then records what they started after returning: a script resumed by a font
   // wait builds there, past the recorder that wraps it. With several scenes, a late animation's scene is unknown.
-  const runSceneScripts = async (hosts: Element[], scripts: Element[]) => {
+  const runSceneScriptsLaidOut = async (hosts: Element[], scripts: Element[]) => {
     const globalTimeline = window.gsap?.globalTimeline;
     const before = new Set<unknown>(globalTimeline?.getChildren?.(false, true, true));
     await runScriptsAfterFonts(scripts);
