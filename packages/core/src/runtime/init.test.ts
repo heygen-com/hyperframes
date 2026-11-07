@@ -6583,6 +6583,30 @@ describe("initSandboxRuntimeModular", () => {
       expect(seeks.filter((t) => t > 0.1)).toEqual([]);
     });
   });
+  describe("a video the browser never starts loading", () => {
+    it("moves the film on past it after the wait and names it", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const video = mountAudio("/assets/clip.mp4", { muted: "" }, "video");
+      // What Safari reports for a video it never requested: loading, with no data and no bytes.
+      Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(video, "networkState", { value: 2, configurable: true });
+
+      await startPlayback();
+      for (let frame = 0; frame < 60 * 7; frame++) raf.step(1000 / 60);
+
+      expect(window.__player?.getTime()).toBeGreaterThan(1);
+      expect(
+        warn.mock.calls.some(([line]) =>
+          String(line).includes('clip.mp4": the browser never started loading it'),
+        ),
+      ).toBe(true);
+    });
+  });
   describe("an audible <video> routed through Web Audio", () => {
     const ctx = useMockAudioContext();
 

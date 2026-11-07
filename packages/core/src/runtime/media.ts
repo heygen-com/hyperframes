@@ -231,11 +231,14 @@ export function primeMediaForLaterStarts(els: Iterable<HTMLMediaElement>): void 
 // HTMLMediaElement.NETWORK_NO_SOURCE — no usable source (404 / unsupported).
 const MEDIA_NETWORK_NO_SOURCE = 3;
 const MEDIA_NETWORK_IDLE = 1;
+const MEDIA_NETWORK_LOADING = 2;
+const MEDIA_HAVE_NOTHING = 0;
 const MEDIA_HAVE_METADATA = 1;
 const STOPPED_AT_METADATA_MS = 5000;
 const firstPlayAskedAt = new WeakMap<HTMLMediaElement, number | null>();
 const watchedForFirstFrame = new WeakSet<HTMLMediaElement>();
 const warnedSkipped = new WeakSet<HTMLMediaElement>();
+const receivedBytes = new WeakSet<HTMLMediaElement>();
 
 const sourceOf = (el: HTMLMediaElement): string => el.currentSrc || el.src;
 
@@ -243,33 +246,45 @@ function noteFirstPlayAsk(el: HTMLMediaElement): void {
   if (!watchedForFirstFrame.has(el)) {
     watchedForFirstFrame.add(el);
     el.addEventListener("loadeddata", () => firstPlayAskedAt.set(el, null));
-    el.addEventListener("emptied", () => firstPlayAskedAt.delete(el));
+    el.addEventListener("emptied", () => (firstPlayAskedAt.delete(el), receivedBytes.delete(el)));
+    el.addEventListener("progress", () => receivedBytes.add(el));
   }
   if (!firstPlayAskedAt.has(el)) {
     firstPlayAskedAt.set(el, el.readyState > MEDIA_HAVE_METADATA ? null : performance.now());
   }
 }
 
-function stoppedAtMetadata(el: HTMLMediaElement): boolean {
+type Stall = "after its header" | "never started";
+
+// Safari can leave a video "loading" with no request ever sent; a slow fetch still delivers bytes (progress).
+function stallSinceFirstAsk(el: HTMLMediaElement): Stall | null {
   const askedAt = firstPlayAskedAt.get(el);
-  return (
-    askedAt != null &&
-    performance.now() - askedAt >= STOPPED_AT_METADATA_MS &&
-    el.readyState === MEDIA_HAVE_METADATA &&
-    el.networkState === MEDIA_NETWORK_IDLE
-  );
+  if (askedAt == null || performance.now() - askedAt < STOPPED_AT_METADATA_MS) return null;
+  if (el.readyState === MEDIA_HAVE_METADATA && el.networkState === MEDIA_NETWORK_IDLE)
+    return "after its header";
+  if (
+    el.readyState === MEDIA_HAVE_NOTHING &&
+    el.networkState === MEDIA_NETWORK_LOADING &&
+    !receivedBytes.has(el)
+  )
+    return "never started";
+  return null;
 }
 
-// Errored, sourceless, or stopped loading at its header since first asked to play: it can't play, and
-// re-issuing play() every tick just floods rejections. Skip it until its state changes (src reload).
+const SKIP_REASON: Record<Stall, string> = {
+  "after its header": "the browser stopped loading it after its header",
+  "never started": "the browser never started loading it",
+};
+
+// Errored, sourceless, or stalled since first asked to play: it can't play, and re-issuing play()
+// every tick just floods rejections. Skip it until its state changes (src reload).
 export function isUnplayable(el: HTMLMediaElement): boolean {
   if (el.error != null || el.networkState === MEDIA_NETWORK_NO_SOURCE) return true;
-  if (!stoppedAtMetadata(el)) return false;
+  const stall = stallSinceFirstAsk(el);
+  if (!stall) return false;
   if (!warnedSkipped.has(el)) {
     warnedSkipped.add(el);
-    console.warn(
-      `[hyperframes] skipping "${sourceOf(el)}": the browser stopped loading it after its header; the rest plays`,
-    );
+    console.warn(`[hyperframes] skipping "${sourceOf(el)}": ${SKIP_REASON[stall]}; the rest plays`);
   }
   return true;
 }
