@@ -391,6 +391,34 @@ describe("resolveChunkPlan", () => {
     expect(result.effectiveChunkSize).toBe(240);
   });
 
+  describe("sized in one plan from a frame budget and a fan-out floor", () => {
+    // The workflow's budget is 1600 frames a chunk and its fan-out 4 chunks, up to a tier cap of 16.
+    const size = (totalFrames: number, cap = 16) =>
+      resolveChunkPlan(totalFrames, undefined, cap, 1600, 4).chunkCount;
+
+    it("adds chunks to a long film so each stays inside the budget", () => {
+      expect(size(10929)).toBe(7);
+      expect(
+        resolveChunkPlan(10929, undefined, 16, 1600, 4).effectiveChunkSize,
+      ).toBeLessThanOrEqual(1600);
+    });
+
+    it("keeps a short film at the fan-out instead of collapsing it to the budget", () => {
+      expect(size(1800)).toBe(4);
+      expect(size(6400)).toBe(4);
+    });
+
+    it("rejects a non-positive or non-integer floor", () => {
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 0)).toThrow(/minParallelChunks/);
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 2.5)).toThrow(/minParallelChunks/);
+    });
+
+    it("never goes past the cap, however long the film", () => {
+      expect(size(54000, 9)).toBe(9);
+      expect(size(1800, 2)).toBe(2);
+    });
+  });
+
   it("rejects non-positive totalFrames", () => {
     expect(() => resolveChunkPlan(0, 240, 16)).toThrow();
     expect(() => resolveChunkPlan(-1, 240, 16)).toThrow();

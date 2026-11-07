@@ -221,17 +221,19 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * chunks whose per-chunk frame count stays at or below this bound, still
    * capped by `maxParallelChunks`:
    *
-   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), 1, maxParallelChunks)
+   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks, maxParallelChunks)
    *
    * This bounds per-chunk render *time* (which scales with frames-per-chunk) so
    * a single chunk can't exceed a downstream per-chunk timeout on a long video,
-   * while short videos still collapse to few chunks. It is a ceiling, not a
+   * while short videos drop to `minParallelChunks` (default 1). It is a ceiling, not a
    * fixed size: a video short enough to fit in fewer chunks gets fewer. Ignored
    * when `chunkSize` is set (an explicit fixed size already pins per-chunk
    * frames). Mutually exclusive with `chunkSize` in intent; if both are passed,
    * `chunkSize` wins and `targetChunkFrames` is a no-op.
    */
   targetChunkFrames?: number;
+  /** Fewest chunks a `targetChunkFrames`-sized plan uses, so a short video keeps this fan-out. */
+  minParallelChunks?: number;
   /** Runtime hint; consumed by future per-runtime budget checks. The current implementation records the value but does not enforce. */
   runtimeCap?: "lambda" | "temporal" | "cloud-run-job" | "k8s-job" | "none";
 
@@ -767,8 +769,8 @@ function assertPlanSizeWithinLimit(input: {
  * on tiny renders). Explicit numbers, including `240`, take precedence.
  *
  * Optional `targetChunkFrames` caps per-chunk frames in the auto-sized path:
- * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), 1,
- * maxParallelChunks)` chunks, so short videos collapse to fewer chunks and long
+ * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks,
+ * maxParallelChunks)` chunks, so short videos drop to `minParallelChunks` and long
  * videos add chunks (up to the cap) to keep each one under the bound. It is a
  * no-op when omitted, and ignored when `configChunkSize` is set.
  */
@@ -777,6 +779,7 @@ export function resolveChunkPlan(
   configChunkSize: number | undefined,
   maxParallelChunks: number,
   targetChunkFrames?: number,
+  minParallelChunks = 1,
 ): { chunkCount: number; effectiveChunkSize: number } {
   // Integer-only inputs: a fractional `totalFrames` (e.g. 10.5) would
   // otherwise produce a last chunk with non-integer `endFrame`, and the
@@ -795,6 +798,7 @@ export function resolveChunkPlan(
   if (targetChunkFrames !== undefined) {
     assertPositiveInteger("targetChunkFrames", targetChunkFrames);
   }
+  assertPositiveInteger("minParallelChunks", minParallelChunks);
   // `targetChunkFrames` lowers the auto-sizer's effective parallelism so the
   // chosen chunk count keeps frames-per-chunk at or below the bound, without
   // ever exceeding `maxParallelChunks`. It only affects the auto-sized path
@@ -805,7 +809,10 @@ export function resolveChunkPlan(
   const autoSizeParallel =
     targetChunkFrames === undefined
       ? maxParallelChunks
-      : Math.min(maxParallelChunks, Math.max(1, Math.ceil(totalFrames / targetChunkFrames)));
+      : Math.min(
+          maxParallelChunks,
+          Math.max(minParallelChunks, Math.ceil(totalFrames / targetChunkFrames)),
+        );
   const resolvedChunkSize =
     configChunkSize ?? Math.max(MIN_CHUNK_SIZE, Math.ceil(totalFrames / autoSizeParallel));
   const naiveCount = Math.ceil(totalFrames / resolvedChunkSize);
@@ -1673,6 +1680,7 @@ export async function buildLocalExecutionPlan(
     config.chunkSize,
     maxParallel,
     config.targetChunkFrames,
+    config.minParallelChunks,
   );
   const chunks = buildPlanChunkSlices(
     frameWeights,
