@@ -111,8 +111,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             container-type: size;
             isolation: isolate;
             overflow: hidden;
-            color: var(--fg);
-            font-family: var(--font-body);
+            color: var(--fg, #f4f7fb);
+            font-family: var(--font-body, Inter, system-ui, sans-serif);
           }
 
           .sc-clip {
@@ -121,7 +121,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: grid;
             place-items: center;
             overflow: hidden;
-            background: var(--bg);
+            background: var(--bg, #090d16);
           }
 
           .sc-grid {
@@ -140,10 +140,10 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             display: grid;
             place-items: center;
             overflow: hidden;
-            border: 0.16cqw solid var(--border);
+            border: 0.16cqw solid var(--border, rgba(244, 247, 251, 0.14));
             border-radius: min(2.4cqw, 4cqh);
-            background: color-mix(in srgb, var(--surface) 92%, var(--brand));
-            color: var(--fg);
+            background: color-mix(in srgb, var(--surface, #171e2d) 92%, var(--brand, #79a8ff));
+            color: var(--fg, #f4f7fb);
           }
 
           .sc-tile::after {
@@ -154,17 +154,17 @@ import { InstallCommand } from "/snippets/install-command.jsx";
             bottom: 12%;
             height: min(0.55cqw, 0.95cqh);
             border-radius: 50cqw;
-            background: var(--brand);
+            background: var(--brand, #79a8ff);
             opacity: 0.72;
           }
 
           .sc-tile-index {
             display: block;
-            font-family: var(--font-display);
+            font-family: var(--font-display, Inter, system-ui, sans-serif);
             font-size: min(5cqw, 8cqh);
             font-weight: 700;
             line-height: 1;
-            color: var(--fg);
+            color: var(--fg, #f4f7fb);
           }
         </style>
 
