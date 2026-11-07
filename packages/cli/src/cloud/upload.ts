@@ -68,11 +68,6 @@ export interface UploadZipViaDirectOptions {
   signal?: AbortSignal;
 }
 
-// Per api-docs: completeAssetUpload can return 409 "Uploaded object not found
-// yet" if the S3 PUT's write hasn't propagated to the read plane by the time
-// complete runs. Small backoff loop absorbs it.
-const COMPLETE_MAX_RETRIES = 5;
-const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
 /** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
@@ -382,32 +377,48 @@ async function settle(res: IncomingMessage, sent: Promise<void>): Promise<void> 
   }
 }
 
-// Complete with retry-on-409. Retry ONLY on the documented "PUT not
-// visible yet" race between S3 write consistency and finalize; any other
-// error surfaces immediately. `completeAssetUpload` itself is idempotent,
-// so retrying an already-succeeded call is safe.
-async function completeWithRetry(
+/** A 409 on complete means the cloud is still checking the file. The wait is baseMs plus perMiBMs per MiB, up to maxMs;
+ * polls slow from firstPollMs to maxPollMs. */
+export const completeWait = {
+  baseMs: 30_000,
+  perMiBMs: 500,
+  maxMs: 600_000,
+  firstPollMs: 500,
+  maxPollMs: 5_000,
+};
+
+export function completeBudgetMs(sizeBytes: number): number {
+  const scaled = completeWait.baseMs + (sizeBytes / (1024 * 1024)) * completeWait.perMiBMs;
+  return Math.min(completeWait.maxMs, scaled);
+}
+
+// Retry ONLY on the 409 "still checking / PUT not visible yet"; any other error surfaces immediately.
+// `completeAssetUpload` itself is idempotent, so retrying an already-succeeded call is safe.
+export async function completeWithRetry(
   client: HyperframesCloudClient,
   asset_id: string,
   checksum_sha256: string,
+  sizeBytes: number,
 ): Promise<{ asset_id: string; url: string }> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < COMPLETE_MAX_RETRIES; attempt++) {
+  const budget = completeBudgetMs(sizeBytes);
+  const startedAt = Date.now();
+  let poll = completeWait.firstPollMs;
+  for (;;) {
     try {
-      return await client.completeAssetUpload({
-        asset_id,
-        body: { checksum_sha256 },
-      });
+      return await client.completeAssetUpload({ asset_id, body: { checksum_sha256 } });
     } catch (err) {
-      const retryable = err instanceof HyperframesApiError && err.status === 409;
-      if (!retryable || attempt === COMPLETE_MAX_RETRIES - 1) {
-        throw err;
+      if (!(err instanceof HyperframesApiError && err.status === 409)) throw err;
+      const left = startedAt + budget - Date.now();
+      if (left <= 0) {
+        throw new Error(
+          `The file was uploaded, but the cloud had not finished checking it after ${Math.round(budget / 1000)} s. Try again in a few minutes.`,
+          { cause: err },
+        );
       }
-      lastErr = err;
-      await sleep(COMPLETE_RETRY_BASE_MS * (attempt + 1));
+      await sleep(Math.min(poll, left));
+      poll = Math.min(poll * 2, completeWait.maxPollMs);
     }
   }
-  throw lastErr ?? new Error("completeAssetUpload retries exhausted");
 }
 
 // complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
@@ -460,6 +471,7 @@ export async function uploadAssetViaDirectUpload(
     opts.client,
     initialize.asset_id,
     checksum_sha256,
+    size_bytes,
   ).catch((err: unknown) => {
     throw nameRefusedFile(err, filename, opts.contentType);
   });
