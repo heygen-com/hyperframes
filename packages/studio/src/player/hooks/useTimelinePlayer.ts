@@ -297,7 +297,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean; settled?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();

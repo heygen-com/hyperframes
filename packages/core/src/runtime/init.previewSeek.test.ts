@@ -357,6 +357,21 @@ it("refines the paused frame once after input settles, then warms native playbac
   expect(window.__player!.isPlaying()).toBe(false);
 });
 
+it("decodes frame-step seeks at settled quality immediately without a second refinement", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  const landed = window.__player!.seek(1, { settled: true });
+  expect(vi.mocked(provider.decode).mock.calls[0]![0].every((request) => request.settled)).toBe(
+    true,
+  );
+  pending.shift()!();
+  await landed;
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(provider.decode).toHaveBeenCalledTimes(1);
+  expect(window.__player!.isPlaying()).toBe(false);
+});
+
 it("notifies video-driven effects on the committed clock before animation redraw", async () => {
   const proto = HTMLVideoElement.prototype;
   const request = Object.getOwnPropertyDescriptor(proto, "requestVideoFrameCallback");

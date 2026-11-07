@@ -211,7 +211,7 @@ export function createRuntimePlayer(deps: PlayerDeps): RuntimePlayer {
       deps.onRenderFrameSeek(time);
       deps.onStatePost(true);
     },
-    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => {
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => {
       const timeline = deps.getTimeline();
       if (!timeline) return;
       const safeTime = Math.max(0, Number(timeSeconds) || 0);

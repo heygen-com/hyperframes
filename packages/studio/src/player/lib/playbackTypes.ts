@@ -13,7 +13,7 @@ import type {
 export interface PlaybackAdapter {
   play: () => void;
   pause: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => void;
   getTime: () => number;
   getDuration: () => number;
   isPlaying: () => boolean;

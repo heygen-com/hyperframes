@@ -260,7 +260,7 @@ it("keeps the learned box across visible and hidden cuts of the same original so
   );
 });
 
-it("allows a smaller learned box after viewport scale or quality is lowered", async () => {
+it("updates the learned box for viewport changes without inheriting automatic playback quality", async () => {
   qualityChosenBy = "auto";
   getTrack.mockImplementation(async (source: string) => ({
     ...track(source),
@@ -286,9 +286,9 @@ it("allows a smaller learned box after viewport scale or quality is lowered", as
   expect(previewSource.mock.calls.map(([, box]) => box)).toEqual([
     { width: 1218, height: 1024 },
     { width: 724, height: 512 },
-    { width: 304, height: 256 },
+    { width: 724, height: 512 },
   ]);
-  expect(inputs).toHaveLength(3);
+  expect(inputs).toHaveLength(2);
 });
 
 it("resets the learned box when device pixel ratio is lowered", async () => {
@@ -543,6 +543,22 @@ it("uses a smaller automatic drag raster and restores full quality for the settl
     [512, 256],
     [1000, 500],
   ]);
+});
+
+it("restores full paused resolution after automatic playback quality was lowered", async () => {
+  qualityChosenBy = "app";
+  previewQuality = 0.25;
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    getDisplayWidth: async () => 1000,
+    getDisplayHeight: async () => 500,
+  }));
+  const owner = provider({ "a.webm": { width: 1000, height: 500 } });
+  const item = request("a");
+  vi.spyOn(item.video, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1000, 500));
+  const frame = await owner.decode([{ ...item, settled: true }], signal());
+  frame[0]!.release();
+  expect(createBitmap.mock.calls[0]![0]).toMatchObject({ width: 1000, height: 500 });
 });
 
 it("keeps person-chosen quality unchanged between dragging and settling", async () => {

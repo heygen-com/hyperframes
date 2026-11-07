@@ -772,7 +772,7 @@ export function initSandboxRuntimeModular(): void {
     _timeline: RuntimeTimelineLike | null;
     play: () => void;
     pause: () => void;
-    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => HeldSeek;
     getTime: () => number;
     getDuration: () => number;
     isPlaying: () => boolean;
@@ -5035,7 +5035,7 @@ export function initSandboxRuntimeModular(): void {
     },
   });
 
-  const seekWhenReady = (time: number, options?: { keepPlaying?: boolean }) => {
+  const seekWhenReady = (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => {
     nativePlayGeneration++;
     window.clearTimeout(nativeWarmTimer);
     if (
@@ -5061,7 +5061,7 @@ export function initSandboxRuntimeModular(): void {
     for (const { el } of transportMovableClips(clips) ?? []) {
       if (!el.paused) el.pause();
     }
-    const landed = previewSeek?.seek(time);
+    const landed = options?.settled ? previewSeek?.refine(time) : previewSeek?.seek(time);
     if (landed) registerSeekCompletion(landed, "video-frame");
     postState(true);
     return landed;

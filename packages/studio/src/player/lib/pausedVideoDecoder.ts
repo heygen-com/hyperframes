@@ -175,7 +175,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     const rect = video.getBoundingClientRect();
     const view = viewport();
     const scale = view.scale * view.dpr;
-    const { previewQuality: level, previewQualityChosenBy } = usePlayerStore.getState();
+    const { previewQuality, previewQualityChosenBy } = usePlayerStore.getState();
+    const level = previewQualityChosenBy === "person" ? previewQuality : 1;
     const box = quantizePreviewProxyBox(
       Math.max(rect.width, view.width) * scale * level,
       Math.max(rect.height, view.height) * scale * level,
