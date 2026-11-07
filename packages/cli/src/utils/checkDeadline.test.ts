@@ -220,7 +220,9 @@ it("a check waits as long as the --timeout it was given before it counts as idle
 
 it("names a step once when it is entered again in a loop", () => {
   const lines: string[] = [];
-  const spy = vi.spyOn(console, "error").mockImplementation((line: string) => void lines.push(line));
+  const spy = vi
+    .spyOn(console, "error")
+    .mockImplementation((line: string) => void lines.push(line));
   const deadline = new CheckDeadline();
   try {
     deadline.start();

@@ -318,7 +318,8 @@ export function createCheckCommand(
         });
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
-          if (report.saved) console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
+          if (report.saved)
+            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
         } else {
           printHumanReport(report);
           if (report.saved) {
