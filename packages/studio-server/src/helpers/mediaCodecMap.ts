@@ -70,6 +70,8 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   theora: { representativeMime: 'video/ogg; codecs="theora"', prewarm: true },
   mpeg4: { representativeMime: null, prewarm: true },
   mjpeg: { representativeMime: null, prewarm: true },
+  mpeg2video: { representativeMime: null, prewarm: true },
+  dnxhd: { representativeMime: null, prewarm: true },
   // Every mainstream engine decodes AV1 and VP9, so canPlayType keeps the
   // original and only the rare browser that cannot pays for a transcode.
   av1: { representativeMime: 'video/mp4; codecs="av01.0.08M.08"', prewarm: false },

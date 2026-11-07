@@ -231,7 +231,7 @@ describe("BROWSER_HOSTILE_CODECS representative mimes", () => {
     expect(typeof BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBe("string");
   });
 
-  it.each(["prores", "mpeg4", "mjpeg"])(
+  it.each(["prores", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
     "has no representative mime for %s, which is never decodable",
     (codecName) => {
       expect(BROWSER_HOSTILE_CODECS[codecName]?.representativeMime).toBeNull();
@@ -244,7 +244,7 @@ describe("shouldPrewarmProxy", () => {
     return { codecName, browserHostile: true, representativeMime: null, hasAlpha: false };
   }
 
-  it.each(["hevc", "prores", "theora", "mpeg4", "mjpeg"])(
+  it.each(["hevc", "prores", "theora", "mpeg4", "mjpeg", "mpeg2video", "dnxhd"])(
     "pre-warms %s, which has no cross-platform browser decode",
     (codecName) => {
       expect(shouldPrewarmProxy(facts(codecName))).toBe(true);
