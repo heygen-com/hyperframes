@@ -358,6 +358,22 @@ export interface GptImage25Request {
   reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
 }
 
+export interface GptImage26FlareRequest {
+  model: "gpt-image-2.6-flare";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface GptImage26Request {
+  model: "gpt-image-2.6";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
 export interface HeyGenVoiceEngineSettings {
   engine_type: "heygen_voice" | "orca";
 }
@@ -394,7 +410,12 @@ export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "fa
 
 export type HyperframesResolution = "1080p" | "4k";
 
-export type ImageCreateRequest = GptImage25Request | NanoBanana2Request | NanoBanana21Request;
+export type ImageCreateRequest =
+  | GptImage25Request
+  | GptImage26Request
+  | GptImage26FlareRequest
+  | NanoBanana2Request
+  | NanoBanana21Request;
 
 export interface ImageScene {
   type: "image";
