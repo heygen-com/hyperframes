@@ -1,3 +1,4 @@
+import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
@@ -183,6 +184,11 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   for (const templateEl of Array.from(root.querySelectorAll<HTMLTemplateElement>("template"))) {
     rewriteSubCompositionAssetPaths(templateEl.content, compositionUrl);
   }
+}
+
+function sceneOrFirstTemplate(doc: Document): HTMLTemplateElement | null {
+  const templates = Array.from(doc.querySelectorAll<HTMLTemplateElement>("template"));
+  return findSceneTemplate(templates) ?? templates[0] ?? null;
 }
 
 function uniqueCompositionId(baseId: string, index: number): string {
@@ -800,7 +806,7 @@ async function mountExternalCompositions(
             ? doc.querySelector<HTMLTemplateElement>(
                 `template#${CSS.escape(authoredCompositionId)}-template`,
               )
-            : null) ?? doc.querySelector<HTMLTemplateElement>("template");
+            : null) ?? sceneOrFirstTemplate(doc);
         const sourceNode = template ? template.content : doc.body;
         return await mount({
           host,
