@@ -37,7 +37,7 @@
 
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { EngineConfig } from "@hyperframes/engine";
+import type { ChromaSubsampling, EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
@@ -191,6 +191,25 @@ export function resolveEntryHtmlPath(input: {
   return wrapperPath;
 }
 
+/**
+ * 4:4:4 captures opaque PNG, which drawElement cannot verify or worker-encode (JPEG-only), so it
+ * turns drawElement off. Returns the compile gate that applies after this check.
+ */
+function applyChroma444Gate(
+  cfg: EngineConfig,
+  chromaSubsampling: ChromaSubsampling | undefined,
+  gate: string | undefined,
+  log: ProducerLogger,
+): string | undefined {
+  if (!cfg.useDrawElement || chromaSubsampling !== "444") return gate;
+  cfg.useDrawElement = false;
+  log.info(
+    "[Render] Fast capture: chromaSubsampling 444 captures lossless PNG frames, so disabling " +
+      "drawElementImage for this render. Capture uses the platform's baseline route.",
+  );
+  return "chroma_444";
+}
+
 export async function runCompileStage(input: CompileStageInput): Promise<CompileStageResult> {
   const {
     projectDir,
@@ -307,6 +326,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
         "so page-side compositing stays available.",
     );
   }
+  deCompileGate = applyChroma444Gate(cfg, job.config.chromaSubsampling, deCompileGate, log);
   // Whenever a compile-time gate cleared useDrawElement, restore page-side
   // compositing — but ONLY when resolveConfig auto-disabled it because
   // drawElement was going to run. An explicit enablePageSideCompositing:false

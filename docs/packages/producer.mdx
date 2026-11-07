@@ -68,6 +68,12 @@ const job = createRenderJob({
 HDR output is available for MP4 through `hdrMode`. Transparent formats render
 in SDR because HDR and alpha are not one supported output path.
 
+`chromaSubsampling: "444"` renders an SDR MP4 master with full-resolution
+colour (H.264 yuv444p, lossless PNG capture). It needs the software encoder,
+is rejected with `useGpu`, HDR output, other formats and distributed renders,
+and many players cannot decode it. See
+[4:4:4 masters](/guides/rendering#444-masters).
+
 ```ts
 const job = createRenderJob({
   fps: 30,

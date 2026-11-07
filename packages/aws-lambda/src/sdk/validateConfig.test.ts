@@ -153,6 +153,14 @@ describe("validateDistributedRenderConfig", () => {
       } as unknown as SerializableDistributedRenderConfig,
       "config.hdrMode",
     ],
+    [
+      "chromaSubsampling 444 rejected",
+      {
+        ...VALID,
+        chromaSubsampling: "444",
+      } as unknown as SerializableDistributedRenderConfig,
+      "config.chromaSubsampling",
+    ],
   ])("rejects %s with field=%s", (_label, input, expectedField) => {
     try {
       validateDistributedRenderConfig(input);
