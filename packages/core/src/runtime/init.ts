@@ -5067,7 +5067,7 @@ export function initSandboxRuntimeModular(): void {
         const { el } = clip;
         if (el.preload !== "auto") el.preload = "auto";
         if (el.readyState === 1 && !el.seeking)
-          el.currentTime = mediaSourceTimeAt(clip, time) + 1e-5;
+          el.currentTime = mediaElementTime(mediaSourceTimeAt(clip, time));
       }
       syncRuntimeMedia({
         clips,

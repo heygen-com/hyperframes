@@ -96,7 +96,7 @@ export function createPreviewSeek(host: SeekHost) {
     done: Promise<void>;
     resolve: () => void;
   } | null = null;
-  let releasePicture = () => {};
+  let releasePicture: (() => void) | null = null;
   let stopWaiting = () => {};
   let runningClips: RuntimeMediaClip[] = [];
   let cancelWork = () => {};
@@ -123,8 +123,8 @@ export function createPreviewSeek(host: SeekHost) {
     stopWaiting = () => {};
     cancelWork();
     cancelWork = () => {};
-    releasePicture();
-    releasePicture = () => {};
+    releasePicture?.();
+    releasePicture = null;
     request?.resolve();
   };
 
@@ -149,8 +149,8 @@ export function createPreviewSeek(host: SeekHost) {
     };
 
     const publish = () => {
-      releasePicture();
-      releasePicture = () => {};
+      releasePicture?.();
+      releasePicture = null;
       if (!frame) host.frames?.clear();
       committing = true;
       committingSettled = request.settled;
@@ -249,13 +249,23 @@ export function createPreviewSeek(host: SeekHost) {
           );
       };
     });
-    let cap = wallSetTimeout(() => {
+    const expire = () => {
+      if (!live()) return;
       if (!nativePhase && !frame) {
         native();
-        if (live()) cap = wallSetTimeout(finish, SEEK_CAP_MS);
-      } else if (request.native || host.frames?.active?.()) check();
-      else finish();
-    }, SEEK_CAP_MS);
+        if (live()) cap = wallSetTimeout(expire, SEEK_CAP_MS);
+      } else if (request.native) check();
+      else if (host.frames?.active?.()) {
+        pending = null;
+        runId++;
+        stopWaiting();
+        stopWaiting = () => {};
+        cancelWork();
+        cancelWork = () => {};
+        request.resolve();
+      } else finish();
+    };
+    let cap = wallSetTimeout(expire, SEEK_CAP_MS);
     stopWaiting = () => {
       wallClearTimeout(cap);
       for (const remove of listeners) remove();
@@ -303,7 +313,7 @@ export function createPreviewSeek(host: SeekHost) {
       resolve = settle;
     });
     pending = { time, native, settled, done, resolve };
-    releasePicture = holdVideoFrames(host.videosToHold());
+    releasePicture ??= holdVideoFrames(host.videosToHold());
     run();
     return done;
   };

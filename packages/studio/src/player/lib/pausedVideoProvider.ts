@@ -34,7 +34,7 @@ export function attachPausedVideoProvider(iframe: HTMLIFrameElement, win: Iframe
       return actual.decode(requests, signal);
     },
     async suspend() {
-      const actual = await decoder;
+      const actual = await decoder?.catch(() => null);
       await actual?.suspend?.();
     },
     dispose() {

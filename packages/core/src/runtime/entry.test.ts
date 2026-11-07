@@ -329,6 +329,8 @@ describe("runtime entry", () => {
     let ready = 1;
     Object.defineProperty(video, "readyState", { configurable: true, get: () => ready });
     Object.defineProperty(video, "networkState", { configurable: true, value: 2 });
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 64 });
+    Object.defineProperty(video, "videoHeight", { configurable: true, value: 36 });
     await evaluateRuntime();
     let settled = false;
     const landed = Promise.resolve(window.__player!.seek(5.5)).then(() => {

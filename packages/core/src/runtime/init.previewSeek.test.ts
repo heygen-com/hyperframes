@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
+import { resetSeekDispatchState } from "./adapters/seek-dispatch";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 import { PREVIEW_SEEK_HOLD_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import type {
@@ -383,6 +384,33 @@ it("keeps the complete picture and buffers beyond the handoff cap until native f
   await vi.advanceTimersByTimeAsync(0);
   expect(window.__player!.isPlaying()).toBe(true);
   expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
+});
+
+it("settles a stalled paused fallback while retaining the last complete picture", async () => {
+  resetSeekDispatchState();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { main, old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  vi.mocked(provider.decode).mockRejectedValueOnce(new Error("decoder unavailable"));
+  const stalled = window.__player!.seek(6);
+  const retargeted = window.__player!.seek(7);
+  const wait = window.__hfWaitForSeekCompletion!();
+  await vi.advanceTimersByTimeAsync(5100);
+  await stalled;
+  await retargeted;
+  await wait;
+  expect(main.time?.()).toBe(1);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(true);
+  const retry = window.__player!.seek(8);
+  pending.shift()!();
+  await retry;
+  expect(main.time?.()).toBe(8);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
 });
 
 it("does not wait for a video frame from an audio-only video element", async () => {
