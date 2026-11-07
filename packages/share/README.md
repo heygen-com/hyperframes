@@ -35,7 +35,7 @@ const [current, version] = await Promise.all([
 
 `access(refusedToken?)` returns `{ token, heygen, heygenApi, owner }` or null. It is read for every request. A refused bearer is passed back so the host can refresh it. `heygen` is the review API base. A host can inject its own `signedInRequest` to retain network tracing. `execFile` can likewise be injected to retain native process policy.
 
-Video uploads require exact storage origins from trusted host configuration. Set `reviewUploadOrigins` on the host or supply a comma-separated `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` environment variable. Configure the bucket-specific HTTPS origins used by the signer. Use URL origins without paths, trailing slashes, or wildcards. Local tests can explicitly allow an HTTP origin on `127.0.0.1`. An empty list refuses every video upload.
+Video and source uploads require exact storage origins from trusted host configuration. Set `reviewUploadOrigins` on the host or supply a comma-separated `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` environment variable. Configure the bucket-specific HTTPS origins used by the signer. Use URL origins without paths, trailing slashes, or wildcards. Local tests can explicitly allow an HTTP origin on `127.0.0.1`. An empty list refuses every upload.
 
 Before first registration the host must obtain explicit audience consent and prepare a current MP4. `shareForReview` registers/enables the link; it does not imply playable media. Await `addVersion`, then check the server project/latest ready version before reporting success. `addFirstVersion` starts background work and is for long-lived hosts only. `open: () => boolean` on `addVersion` bounds the polling lifetime without discarding the saved operation. `filesForExport(projectPath, renderedFingerprint)` optionally supplies an already-synced matching snapshot. Omit it for ordinary video sharing.
 
@@ -74,13 +74,16 @@ can use video-only; changed source, conflicts and unexpected upload failures nee
 an explicit choice to omit source. The CLI exposes `--video-only` for that choice.
 `filesForExport` only validates already-prepared source; it does not upload.
 
-The adapter extracts Desktop's portable-source-v4 capture/manifest rules and
+The adapter uses the portable-source-v4 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
-and server manifest vectors travel with the package. Source is captured through
+and manifest test vectors are checked into this repository. Source is captured through
 verified file handles; upload bytes are streamed and checked against their hash.
 Workspace limits, upload receipts and published snapshot identity are checked.
 Pending uploads retain their original idempotency key across retries. A conflict
-or changed pending source is never auto-resolved or cancelled.
+is never auto-resolved. When local source changes, the adapter cancels an older
+pending upload before starting another; uploads under verification are preserved.
+A stalled storage PUT stops after 60 seconds without progress and can retry with
+the same upload identity.
 
 Default state uses `.hyperframes/share-sync.<backend-hash>.json`, with strict
 account/backend/realpath binding, private atomic writes, and a process lock.
@@ -91,4 +94,16 @@ never writes Desktop's binding or starts a second upload on its behalf.
 Source sharing requires an authorized account and a workspace that supports editable project files.
 Source-plan/feature eligibility remains server controlled. Automated fixtures do
 not establish live entitlement, moderation, source download or outside-editor
-acceptance. See [the source guide](../../docs/developers/share-source.mdx).
+acceptance. See [the source guide](https://hyperframes.heygen.com/developers/share-source).
+
+Tests run locally without an account or service credentials:
+
+```bash
+node --test packages/share/tests/*.test.mjs
+bun run --cwd packages/share build
+```
+
+The bundled Unicode data records SHA-256 hashes for its inputs in `sources`.
+Those files are published in the [Unicode 15.1 database](https://www.unicode.org/Public/15.1.0/ucd/).
+Keep the included Unicode license with redistributed data. The pinned version
+keeps path comparison consistent across Node versions and operating systems.

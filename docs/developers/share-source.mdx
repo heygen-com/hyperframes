@@ -23,9 +23,14 @@ through `hyperframes share --manage`.
 ## What travels
 
 Source uses the same portable project policy as Desktop: authored HTML, scripts,
-styles, assets, and supported Studio edit metadata. Credentials, environment
-files, dependency directories, chat history, local sharing state, and recorded
-render outputs stay out. Unsupported symlinks and invalid file names stop source
+styles, assets, and supported Studio edit metadata. Known credential filenames
+(such as `.env`, `.npmrc`, and `*.pem`), dependency directories, chat
+history, local sharing state, and recorded render outputs stay out.
+
+These are filename rules, not a secret scanner. `.gitignore` and
+`.hyperframesignore` do not control source capture. Other regular files can be
+included even if Git ignores them. Keep private material outside the project,
+or use `--video-only` when you do not want to upload project files. Unsupported symlinks and invalid file names stop source
 preparation rather than silently producing an incomplete editable project.
 
 The upload uses the workspace's file-count, per-file, project-size and manifest
@@ -39,7 +44,8 @@ in `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` alongside the video storage origins.
 
 Retry the same command after a network interruption. Its local record preserves
 the composition identity, upload idempotency key and completed file parts.
-The source record lives at `.hyperframes/share-sync.<backend-hash>.json` and
+A storage upload that makes no progress for 60 seconds is stopped and retried
+within the retry limit. The source record lives at `.hyperframes/share-sync.<backend-hash>.json` and
 contains no sign-in token. Do not copy that record into another project or edit
 its account, workspace or path: mismatches stop sharing to avoid overwriting
 another project's source.

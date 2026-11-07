@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { uploadNeeded } from "../src/sources/uploadFiles.mjs";
 import { partDigests, putRange } from "../src/sources/transfer.mjs";
+import fsPromises from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { bindShareHost } from "../src/host.mjs";
 
 bindShareHost({ reviewUploadOrigins: ["https://store.test"] });
@@ -171,5 +173,99 @@ test("source PUT refuses untrusted or redirected targets before it opens a file"
       }),
       { kind: "refused" },
     );
+  }
+});
+
+async function sourcePut(t, overrides = {}) {
+  const root = await folder(t);
+  const file = join(root, "index.html");
+  await writeFile(file, "source");
+  return {
+    file,
+    path: "index.html",
+    start: 0,
+    length: 6,
+    sha256: createHash("sha256").update("source").digest("hex"),
+    signal: signal(),
+    url: "https://store.test/file",
+    headers: {},
+    ...overrides,
+  };
+}
+
+for (const consume of [false, true]) {
+  test(`source PUT times out when ${consume ? "the storage response" : "body consumption"} stalls`, async (t) => {
+    let requestSignal;
+    const put = await sourcePut(t, {
+      stallMs: 20,
+      signal: AbortSignal.timeout(2_000),
+      fetchImpl: async (_url, init) => {
+        requestSignal = init.signal;
+        if (consume) await new Response(init.body).arrayBuffer();
+        init.signal.throwIfAborted();
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => reject(init.signal.reason), { once: true });
+        });
+      },
+    });
+    await assert.rejects(putRange(put), { kind: "transient" });
+    assert.equal(requestSignal.aborted, true);
+  });
+}
+
+test("source PUT preserves caller cancellation instead of retrying it", async (t) => {
+  const controller = new AbortController();
+  const cancelled = new DOMException("Sharing cancelled", "AbortError");
+  await assert.rejects(
+    putRange(
+      await sourcePut(t, {
+        signal: controller.signal,
+        fetchImpl: async (_url, init) => {
+          assert.equal(init.redirect, "error");
+          await new Response(init.body).arrayBuffer();
+          controller.abort(cancelled);
+          throw init.signal.reason;
+        },
+      }),
+    ),
+    (error) => error === cancelled,
+  );
+});
+
+test("successful source PUT clears its stall timer", async (t) => {
+  let requestSignal;
+  await putRange(
+    await sourcePut(t, {
+      stallMs: 200,
+      fetchImpl: async (_url, init) => {
+        requestSignal = init.signal;
+        await new Response(init.body).arrayBuffer();
+        return new Response(null, { status: 200 });
+      },
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(requestSignal.aborted, false);
+});
+
+test("source PUT closes its file when resolving its parent fails", async (t) => {
+  const put = await sourcePut(t, { fetchImpl: async () => assert.fail("Must not send bytes") });
+  const originalOpen = fsPromises.open;
+  let opened;
+  t.mock.method(fsPromises, "open", async (...args) => {
+    opened = await originalOpen(...args);
+    return opened;
+  });
+  t.mock.method(fsPromises, "realpath", async () => {
+    throw Object.assign(new Error("Parent directory disappeared"), { code: "ENOENT" });
+  });
+  syncBuiltinESMExports();
+  try {
+    await assert.rejects(putRange(put), { code: "ENOENT" });
+    assert.equal(opened.fd, -1, "source file handle was left open");
+  } finally {
+    await opened?.close();
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
   }
 });

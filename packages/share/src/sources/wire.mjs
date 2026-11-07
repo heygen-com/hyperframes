@@ -185,9 +185,7 @@ export const grantsOf = (raw) =>
     };
   });
 
-/** The limits route's answer (`CompositionSyncLimitsResponse` in the DTO file above); `plan_name` is not read, nor the
- * `enforced` an older server still sends: every server now enforces the plan.
- * @param {unknown} raw @returns {Extract<SyncLimitsRead, { at: "read" }>} */
+/** @param {unknown} raw @returns {Extract<SyncLimitsRead, { at: "read" }>} */
 export function syncLimitsOf(raw) {
   const o = objectOf(raw, "limits answer");
   const limits = objectOf(o.limits, "limits");

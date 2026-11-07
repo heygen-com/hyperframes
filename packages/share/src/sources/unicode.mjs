@@ -95,7 +95,7 @@ function orderedCodes(value) {
   return ordered;
 }
 
-/** Canonical composition, step for step as the server's `compose_canonical`. @param {number[]} ordered */
+/** Canonical composition under the pinned Unicode table. @param {number[]} ordered */
 function composed(ordered) {
   /** @type {number[]} */
   const result = [];

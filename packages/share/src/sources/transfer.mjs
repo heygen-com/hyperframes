@@ -40,16 +40,23 @@ function refusalOf(status) {
   return new TransferError("refused", { status });
 }
 
-/** The bytes [start, start + length) of `file` as a pull stream that hashes what is taken and counts it; a read
- * failure is kept so the caller can tell a file gone from a network gone.
- * @param {string} file @param {number} start @param {number} length @param {(bytes: number) => void} onBytes */
-async function hashedBody(file, start, length, onBytes) {
+/** @param {string} file */
+async function openSource(file) {
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
-  const stat = await handle.stat();
-  if (!stat.isFile() || (await realpath(dirname(file))) !== dirname(file)) {
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || (await realpath(dirname(file))) !== dirname(file))
+      throw new TransferError("unreadable", { path: file });
+    return handle;
+  } catch (error) {
     await handle.close();
-    throw new TransferError("unreadable", { path: file });
+    throw error;
   }
+}
+
+/** @param {string} file @param {number} start @param {number} length @param {(bytes: number) => void} onBytes */
+async function hashedBody(file, start, length, onBytes) {
+  const handle = await openSource(file);
   const hash = createHash("sha256");
   const seen = { bytes: 0, ended: false, readError: /** @type {unknown} */ (null) };
   const chunks =
@@ -95,12 +102,18 @@ function fileProblem({ seen, digest }, { length, sha256, path }) {
 /** PUTs bytes of `file` to a signed URL with exactly the headers the grant signed. Resolves once storage keeps them;
  * the bytes sent must hash to `sha256`, or it throws `changed` whatever storage answered.
  * @param {{ fetchImpl: typeof fetch, url: string, headers: Record<string, string>, file: string, path: string,
- *   start: number, length: number, sha256: string, signal: AbortSignal, onBytes?: (bytes: number) => void }} put */
+ *   start: number, length: number, sha256: string, signal: AbortSignal, onBytes?: (bytes: number) => void, stallMs?: number }} put */
 export async function putRange(put) {
   const { fetchImpl, url, headers, file, start, length, signal } = put;
   const target = trustedUploadUrl(url);
   if (!target) throw new TransferError("refused", { path: put.path });
-  const sent = await hashedBody(file, start, length, put.onBytes ?? (() => {}));
+  signal.throwIfAborted();
+  const stall = new AbortController();
+  const sent = await hashedBody(file, start, length, (bytes) => {
+    timer.refresh();
+    put.onBytes?.(bytes);
+  });
+  const timer = setTimeout(() => stall.abort(), put.stallMs ?? 60_000);
   // Node's fetch needs `duplex` for a streamed body; lib.dom's RequestInit does not name it.
   const init = {
     method: "PUT",
@@ -108,16 +121,18 @@ export async function putRange(put) {
     body: sent.body,
     duplex: "half",
     redirect: "error",
-    signal,
+    signal: AbortSignal.any([signal, stall.signal]),
   };
   /** @type {Response} */
   let reply;
   try {
     reply = await fetchImpl(target.href, /** @type {RequestInit} */ (init));
   } catch (error) {
-    if (isAbort(error)) throw error;
+    signal.throwIfAborted();
+    if (!stall.signal.aborted && isAbort(error)) throw error;
     throw fileProblem(sent, put) ?? new TransferError("transient", { path: put.path });
   } finally {
+    clearTimeout(timer);
     await sent.close();
   }
   await reply.body?.cancel().catch(() => {});
