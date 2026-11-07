@@ -2,6 +2,72 @@ import { describe, it, expect } from "vitest";
 import { lintHyperframeHtml } from "../hyperframeLinter.js";
 
 describe("media rules", () => {
+  describe("base64_media_prohibited", () => {
+    const payload = "GkXfo59ChoEBQveBAULygQRC8oEIQoKEd2VibQ==";
+
+    it.each([
+      ["plain audio", `data:audio/webm;base64,${payload}`],
+      ["plain video", `data:video/webm;base64,${payload}`],
+      ["audio codecs", `data:audio/webm;codecs=opus;base64,${payload}`],
+      ["video parameters", `data:video/webm;codecs=vp9;profile=0;base64,${payload}`],
+      ["wrapped audio", `data:audio/mpeg;base64,${payload.slice(0, 20)}\n${payload.slice(20)}`],
+      [
+        "parameterized wrapped video",
+        `data:video/webm;codecs=vp9;base64,${payload.slice(0, 20)}\r\n${payload.slice(20)}`,
+      ],
+      [
+        "ASCII whitespace",
+        `data:audio/webm;base64, \t${payload.slice(0, 20)}\f${payload.slice(20)} `,
+      ],
+    ])("reports %s through the HTML linter", async (_name, src) => {
+      const result = await lintHyperframeHtml(
+        `<audio id="a1" src="${src}" data-start="0"></audio>`,
+      );
+      const findings = result.findings.filter(
+        (finding) => finding.code === "base64_media_prohibited",
+      );
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.severity).toBe("error");
+    });
+
+    it.each([
+      "assets/music.mp3",
+      "https://example.com/video.mp4",
+      `data:image/png;base64,${payload}`,
+      "data:audio/webm;base64,AAAA\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    ])("leaves existing non-media or short-payload handling unchanged: %s", async (src) => {
+      const result = await lintHyperframeHtml(
+        `<audio id="a1" src="${src}" data-start="0"></audio>`,
+      );
+
+      expect(
+        result.findings.filter((finding) => finding.code === "base64_media_prohibited"),
+      ).toEqual([]);
+    });
+
+    it("counts encoded bytes without wrapping", async () => {
+      const longPayload = payload.repeat(40);
+      const wrappedPayload = longPayload.match(/.{1,76}/g)?.join("\r\n");
+      const plain = await lintHyperframeHtml(
+        `<audio id="a1" src='data:audio/webm;base64,${longPayload}' data-start="0"></audio>`,
+      );
+      const wrapped = await lintHyperframeHtml(
+        `<audio id="a1" src='data:audio/webm;codecs=opus;base64,${wrappedPayload}' data-start="0"></audio>`,
+      );
+      const plainFindings = plain.findings.filter(
+        (finding) => finding.code === "base64_media_prohibited",
+      );
+      const wrappedFindings = wrapped.findings.filter(
+        (finding) => finding.code === "base64_media_prohibited",
+      );
+
+      expect(plainFindings).toHaveLength(1);
+      expect(wrappedFindings).toHaveLength(1);
+      expect(wrappedFindings[0]?.message).toBe(plainFindings[0]?.message);
+    });
+  });
+
   it("reports a missing real media id even when the title mentions one", async () => {
     const html = `<html><body>
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
