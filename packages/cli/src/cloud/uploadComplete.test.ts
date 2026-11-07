@@ -33,7 +33,7 @@ describe("completeWithRetry waits for the check as long as the file's size allow
     expect(completeBudgetMs(100_000 * MIB)).toBe(600_000);
   });
 
-  it("keeps polling through two minutes of 409s on a big file, then returns the asset", async () => {
+  it("keeps polling through more than a minute of 409s on a big file, then returns the asset", async () => {
     const { client, complete } = clientAnswering(
       ...Array.from({ length: 20 }, () => "409" as const),
       "ok",
@@ -68,5 +68,19 @@ describe("completeWithRetry waits for the check as long as the file's size allow
 
     await expect(completeWithRetry(client, "a1", "sha", 1 * MIB)).rejects.toBe(refused);
     expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("stops waiting when the caller aborts", async () => {
+    const { client, complete } = clientAnswering();
+    const controller = new AbortController();
+
+    const done = completeWithRetry(client, "a1", "sha", 600 * MIB, controller.signal);
+    const aborted = expect(done).rejects.toThrow(/Stopped waiting for the cloud/);
+    await vi.advanceTimersByTimeAsync(1_000);
+    controller.abort(new Error("cancelled"));
+    await vi.advanceTimersByTimeAsync(1);
+
+    await aborted;
+    expect(complete.mock.calls.length).toBeLessThan(6);
   });
 });
