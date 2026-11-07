@@ -414,11 +414,8 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
-/**
- * A reference inside the project must ship even when the ignore rules (dot-paths) skipped it.
- * Sub-compositions are inlined into the root, so a reference may resolve from the
- * referring file's folder or from the project root.
- */
+/** Ships a referenced in-project file the ignore rules skipped; a reference may resolve from the
+ * referring file's folder or the project root. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
   resolvedPath: string,
