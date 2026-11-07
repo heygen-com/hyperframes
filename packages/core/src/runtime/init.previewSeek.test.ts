@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
+import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 import { PREVIEW_SEEK_HOLD_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
@@ -47,7 +48,7 @@ function decoder(video: HTMLVideoElement, initiallyReady: boolean) {
   };
 }
 
-function film() {
+function film(withImage = false) {
   resetRuntimeFixtureDom();
   const meta = document.createElement("meta");
   meta.name = STUDIO_PREVIEW_MARK_META;
@@ -67,12 +68,16 @@ function film() {
         ),
       )
       .join("") +
+    (withImage
+      ? '<div data-start="8" data-duration="2"><img id="later-image" src="/later.png"></div>'
+      : "") +
     "</div>";
   const videos = [...document.querySelectorAll("video")].map((v) =>
     decoder(v, v.dataset.start === "0"),
   );
   const main = createMockTimeline(10);
   window.__timelines = { main };
+  if (withImage) hideTimedClipsUntilFirstPass();
   initSandboxRuntimeModular();
   for (const video of videos.slice(0, 2)) video.land();
   return { main, old: videos.slice(0, 2), next: videos.slice(2), drawImage };
@@ -98,7 +103,7 @@ it("keeps the old picture and page until both destination videos have decoded", 
   expect(next.every(({ video }) => video.style.visibility === "visible")).toBe(true);
 });
 
-it("coalesces requests without restarting the in-flight decoders or painting stale targets", async () => {
+it("coalesces same-clip requests and publishes complete intermediate pictures", async () => {
   const { main, next } = film();
   const landed = window.__player!.seek(5.5);
   const initialSeeks = next.map((v) => v.seeks.length);
@@ -106,11 +111,61 @@ it("coalesces requests without restarting the in-flight decoders or painting sta
   window.__player!.seek(7.5);
   expect(next.map((v) => v.seeks.length)).toEqual(initialSeeks);
   for (const video of next) video.land();
-  expect(main.time?.()).toBe(0);
+  expect(main.time?.()).toBe(5.5);
   expect(next.every((v) => Math.abs(v.video.currentTime - 2.5) < 0.001)).toBe(true);
   for (const video of next) video.land();
   await landed;
   expect(main.time?.()).toBe(7.5);
+});
+
+it("supersedes a stuck run immediately when the destination uses different clips", async () => {
+  const { main, old } = film();
+  const landed = window.__player!.seek(6);
+  window.__player!.seek(1);
+  expect(old.every(({ video }) => Math.abs(video.currentTime - 1) < 0.001)).toBe(true);
+  for (const video of old) video.land();
+  await landed;
+  expect(main.time?.()).toBe(1);
+  expect(document.querySelectorAll("canvas, [data-hf-seek-video]")).toHaveLength(0);
+});
+
+it("settles a failed source without waiting for the decoder cap", async () => {
+  const { main, next } = film();
+  const landed = window.__player!.seek(6);
+  for (const { video } of next) {
+    Object.defineProperties(video, {
+      error: { value: null, configurable: true },
+      networkState: { value: 3, configurable: true },
+    });
+    const source = document.createElement("source");
+    video.append(source);
+    source.dispatchEvent(new Event("error"));
+  }
+  await landed;
+  expect(main.time?.()).toBe(6);
+  expect(document.querySelectorAll("canvas, [data-hf-seek-video]")).toHaveLength(0);
+});
+
+it("keeps a pending video's complete-picture hold while waiting for a later image", async () => {
+  const { main, old, next } = film(true);
+  const image = document.querySelector<HTMLImageElement>("#later-image")!;
+  let decodeImage = () => {};
+  const decode = vi.fn(() => new Promise<void>((resolve) => (decodeImage = resolve)));
+  image.decode = decode;
+  window.__player!.seek(6);
+  const landed = window.__player!.seek(8.5);
+  expect(decode).toHaveBeenCalledOnce();
+  expect(window.__player!.getTime()).toBe(8.5);
+  expect(main.time?.()).toBe(0);
+  expect(old.every(({ video }) => getComputedStyle(video).display === "none")).toBe(true);
+  expect(document.querySelectorAll("canvas")).toHaveLength(2);
+  Object.defineProperty(image, "complete", { value: true, configurable: true });
+  decodeImage();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (const video of next) video.land();
+  for (const video of next) video.land();
+  await landed;
+  expect(main.time?.()).toBe(8.5);
 });
 
 it("holds overlapping same-clip seeks too, and repositions a reloaded source at the requested time", async () => {
@@ -218,6 +273,10 @@ it("caps a stalled decoder without leaving the picture hidden", async () => {
 afterEach(() => {
   window.__hfRuntimeTeardown?.();
   document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.remove();
+  for (const style of document.querySelectorAll(
+    "style[data-hf-skip-hidden-images], style[data-hf-hidden-clip-contents]",
+  ))
+    style.remove();
   vi.restoreAllMocks();
   vi.useRealTimers();
   resetRuntimeFixtureDom();

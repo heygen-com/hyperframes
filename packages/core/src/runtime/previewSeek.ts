@@ -1,12 +1,12 @@
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
-import { mediaSourceTimeAt } from "./media";
+import { isUnplayable, mediaSourceTimeAt } from "./media";
 import type { RuntimeMediaClip } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 
 const HELD_VIDEO_ATTR = "data-hf-seek-video";
 const SEEK_CAP_MS = 5000;
-const EVENTS = ["loadedmetadata", "loadeddata", "seeked", "error"] as const;
+const EVENTS = ["loadedmetadata", "loadeddata", "canplay", "seeked", "error"] as const;
 
 function videoFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
   const canvas = document.createElement("canvas");
@@ -71,6 +71,8 @@ export function createPreviewSeek(host: SeekHost) {
   let pending: { time: number; done: Promise<void>; resolve: () => void } | null = null;
   let releasePicture = () => {};
   let stopWaiting = () => {};
+  let runningClips: RuntimeMediaClip[] = [];
+  let runId = 0;
 
   const ready = (clips: RuntimeMediaClip[], time: number) =>
     host.scenesReadyAt(time) &&
@@ -78,7 +80,7 @@ export function createPreviewSeek(host: SeekHost) {
       const { el } = clip;
       return (
         !el.isConnected ||
-        el.error != null ||
+        isUnplayable(el) ||
         (el.readyState >= 2 &&
           !el.seeking &&
           Math.abs(el.currentTime - mediaSourceTimeAt(clip, time)) < 0.02)
@@ -88,6 +90,7 @@ export function createPreviewSeek(host: SeekHost) {
   const cancel = () => {
     const request = pending;
     pending = null;
+    runId++;
     stopWaiting();
     stopWaiting = () => {};
     releasePicture();
@@ -98,16 +101,23 @@ export function createPreviewSeek(host: SeekHost) {
   const run = () => {
     const request = pending;
     if (!request) return;
+    const id = ++runId;
     const time = request.time;
     const clips = host.clipsAt(time);
+    runningClips = clips;
     let preparing = true;
     let finished = false;
     const finish = () => {
-      if (finished || pending !== request) return;
+      if (finished || pending !== request || id !== runId) return;
       finished = true;
       stopWaiting();
       stopWaiting = () => {};
       if (request.time !== time) {
+        if (ready(host.clipsAt(time), time)) {
+          releasePicture();
+          host.commit(time);
+          releasePicture = holdVideoFrames(host.videosToHold());
+        }
         run();
         return;
       }
@@ -118,7 +128,7 @@ export function createPreviewSeek(host: SeekHost) {
       if (!preparing && ready(host.clipsAt(time), time)) finish();
     };
     const metadata = () => {
-      if (pending !== request || finished) return;
+      if (pending !== request || finished || id !== runId) return;
       // A source/proxy change resets currentTime; the parked clock still describes the old picture.
       preparing = true;
       host.prepare(host.clipsAt(time), time);
@@ -127,10 +137,14 @@ export function createPreviewSeek(host: SeekHost) {
     };
     const listeners = clips.map(({ el }) => {
       for (const type of EVENTS)
-        el.addEventListener(type, type === "loadedmetadata" ? metadata : check);
+        el.addEventListener(type, type === "loadedmetadata" ? metadata : check, type === "error");
       return () => {
         for (const type of EVENTS)
-          el.removeEventListener(type, type === "loadedmetadata" ? metadata : check);
+          el.removeEventListener(
+            type,
+            type === "loadedmetadata" ? metadata : check,
+            type === "error",
+          );
       };
     });
     const cap = wallSetTimeout(finish, SEEK_CAP_MS);
@@ -149,8 +163,17 @@ export function createPreviewSeek(host: SeekHost) {
     },
     seek(time: number): Promise<void> | void {
       if (pending) {
-        pending.time = time;
-        return pending.done;
+        const request = pending;
+        request.time = time;
+        const clips = host.clipsAt(time);
+        if (
+          clips.length !== runningClips.length ||
+          clips.some((clip, index) => clip.el !== runningClips[index]?.el)
+        ) {
+          stopWaiting();
+          run();
+        }
+        return request.done;
       }
       if (ready(host.clipsAt(time), time)) {
         host.commit(time);

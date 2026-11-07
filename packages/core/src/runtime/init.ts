@@ -5090,7 +5090,6 @@ export function initSandboxRuntimeModular(): void {
       if (undecoded.length === 0) {
         return seekWhenReady(quantized, options);
       }
-      previewSeek?.cancel();
       const held = { time: quantized, apply: () => seekWhenReady(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
