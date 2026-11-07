@@ -3024,7 +3024,14 @@ The server enforces the limit even when clients create projects simultaneously.
 Running `share` again returns the existing link without uploading edits. Use
 `--update` to publish a new rendered version. The previous ready version remains
 visible while an update processes. Interrupted first uploads can resume when
-the source is unchanged; if it changed, explicitly use `--update`.
+the source is unchanged; if it changed, explicitly use `--update`. If the
+project's review or audience changes while rendering, check the current share
+with `--status` before retrying.
+
+Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
+space, wait for uploads to finish and close any running share commands, then
+remove that directory and `.hyperframes/share-render.json`. The next share or
+update that needs a render will rebuild the cache.
 
 `--wait-seconds <1–1800>` controls how long the command waits for video
 processing (default 300). A processing result is accepted, not playback-ready:

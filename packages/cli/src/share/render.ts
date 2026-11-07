@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, writeFile, rename } from "node:fs/promises";
+import { mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { projectFingerprint } from "@hyperframes/share";
 
@@ -60,28 +60,33 @@ export async function prepareShareRender(dir: string): Promise<void> {
     import("../commands/render/execute.js"),
     import("../commands/render.js"),
   ]);
-  const plan = createRenderPlan({ dir, output, format: "mp4", quiet: true, strict: true });
-  await executeRenderPlan(plan, {
-    renderLocal: (project, output, options, cancellation) =>
-      render.renderLocal(
-        project,
-        output,
-        { ...options, embedded: true, exitAfterComplete: false },
-        cancellation,
-      ),
-    renderDocker: async () => {
-      throw new Error("Share renders locally.");
-    },
-    checkResolution: render.checkRenderResolutionPreflight,
-  });
-  if (!existsSync(output))
-    throw new Error("The render did not produce a video. Run hyperframes render to diagnose it.");
-  if ((await projectFingerprint(dir)) !== before)
-    throw new Error(
-      "The project changed while rendering. Share again to capture the current project.",
-    );
-  const target = join(dir, ".hyperframes", "share-render.json");
+  const target = join(stateFolder, "share-render.json");
   const temporary = `${target}.${id}.tmp`;
-  await writeFile(temporary, JSON.stringify({ id, path: output, fingerprint: before }));
-  await rename(temporary, target);
+  try {
+    const plan = createRenderPlan({ dir, output, format: "mp4", quiet: true, strict: true });
+    await executeRenderPlan(plan, {
+      renderLocal: (project, output, options, cancellation) =>
+        render.renderLocal(
+          project,
+          output,
+          { ...options, embedded: true, exitAfterComplete: false },
+          cancellation,
+        ),
+      renderDocker: async () => {
+        throw new Error("Share renders locally.");
+      },
+      checkResolution: render.checkRenderResolutionPreflight,
+    });
+    if (!existsSync(output))
+      throw new Error("The render did not produce a video. Run hyperframes render to diagnose it.");
+    if ((await projectFingerprint(dir)) !== before)
+      throw new Error(
+        "The project changed while rendering. Share again to capture the current project.",
+      );
+    await writeFile(temporary, JSON.stringify({ id, path: output, fingerprint: before }));
+    await rename(temporary, target);
+  } catch (error) {
+    await Promise.allSettled([rm(output, { force: true }), rm(temporary, { force: true })]);
+    throw error;
+  }
 }

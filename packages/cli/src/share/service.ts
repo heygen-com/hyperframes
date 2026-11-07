@@ -32,8 +32,9 @@ function linkState(share: ReviewShare | null, ready: boolean): string {
   if (!share.url) return "link_off";
   return ready ? "ready" : "processing";
 }
-async function readStatus(dir: string, client: ReviewClient) {
+async function readStatus(dir: string, client: ReviewClient, expectedProjectId?: string) {
   const share = await reviewStatus({ projectPath: dir, client });
+  if (expectedProjectId) assertUploadProject(share, expectedProjectId);
   if (share) await refreshReviewExport(dir, client);
   const project = await readProject(share, client);
   const latest = project?.latest_ready_version_id ?? null;
@@ -76,14 +77,20 @@ function selectSpace(spaces: Awaited<ReturnType<ReviewClient["spaces"]>>, id?: s
   if (id) return spaces.find((space) => space.space_id === id);
   return spaces.find((space) => space.bound) ?? spaces.find((space) => space.kind === "personal");
 }
-function assertExistingIntent(current: ShareState, input: ShareAction) {
-  if (!current.share) {
+function assertUploadProject(share: ReviewShare | null, expectedId?: string): string {
+  const id = share?.projectId;
+  if (!id || (expectedId && id !== expectedId))
+    throw new ReviewFailed(409, "review_binding_changed");
+  return id;
+}
+function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
+  if (!share) {
     if (input.action === "update") throw new ReviewFailed(404, "not_shared");
     return;
   }
-  if (input.space && current.share.space?.id !== input.space)
+  if (input.space && share.space?.id !== input.space)
     throw new ReviewFailed(409, "workspace_mismatch");
-  if (input.audience && current.share.access !== input.audience)
+  if (input.audience && share.access !== input.audience)
     throw new ReviewFailed(409, "manage_existing_audience");
 }
 function retrievesExisting(current: ShareState, input: ShareAction) {
@@ -96,15 +103,22 @@ async function preflightFirst(dir: string, client: ReviewClient, input: ShareAct
       "Choose an audience with --public, --team, --invite-only or --private. --yes is not audience consent.",
       { code: "audience_required" },
     );
-  const spaces = await client.spaces();
-  const space = selectSpace(spaces, input.space);
+  const [spaces, record] = await Promise.all([client.spaces(), reviewRecord(dir)]);
+  const space = selectSpace(spaces, registrationSpace(record, input.space));
   if (!space || !space.can_create_review) throw new ReviewFailed(403, "workspace_cannot_share");
-  await assertQuota(dir, space);
+  assertQuota(record, space);
   assertAudience(audience, space);
+  return space.space_id;
 }
 type Space = Awaited<ReturnType<ReviewClient["spaces"]>>[number];
-async function assertQuota(dir: string, space: Space) {
-  const record = await reviewRecord(dir);
+type ShareRecord = Awaited<ReturnType<typeof reviewRecord>>;
+function registrationSpace(record: ShareRecord, requested?: string) {
+  if (!record?.spaceId) return requested;
+  if (!requested || requested === record.spaceId) return record.spaceId;
+  if (record.registration || record.projectId) throw new ReviewFailed(409, "workspace_mismatch");
+  return requested;
+}
+function assertQuota(record: ShareRecord, space: Space) {
   if (record?.registration || record?.projectId) return;
   if (space.review_entitlements?.can_register_project === false)
     throw new ReviewFailed(402, "review_project_limit_reached");
@@ -127,15 +141,16 @@ export function createShareService(
   const dir = bindCliShareProject(projectPath);
   const auth = createShareAccess();
   const client = reviewClient(auth);
-  const status = async () => {
+  const status = async (expectedProjectId?: string) => {
     await auth.access();
-    return readStatus(dir, client);
+    return readStatus(dir, client, expectedProjectId);
   };
-  const upload = async (input: ShareAction) => {
+  const upload = async (input: ShareAction, projectId: string) => {
     const end = Date.now() + (input.waitSeconds ?? 300) * 1000;
     let added = false;
     const failure = await addVersion({
       projectPath: dir,
+      projectId,
       title: basename(dir),
       client,
       onProgress: progress,
@@ -146,34 +161,45 @@ export function createShareService(
       open: () => Date.now() < end,
     });
     if (failure) throw new Error(failure);
-    const result = await status();
+    const result = await status(projectId);
     if (result.version.failure) throw new Error(result.version.failure);
     if (!added && !result.version.last?.current)
       return { ...result, state: "processing", ready: false, url: null };
     return result;
   };
+  const uploadTarget = async (current: ReviewShare | null, input: ShareAction, space?: string) => {
+    const share = current
+      ? await reviewStatus({ projectPath: dir, client })
+      : await shareForReview({
+          projectPath: dir,
+          title: basename(dir),
+          client,
+          spaceId: space,
+          audience: input.audience,
+        });
+    const projectId = assertUploadProject(share, current?.projectId);
+    if (share?.takedown) throw new ReviewFailed(409, "moderation_hold");
+    assertExistingIntent(share, {
+      ...input,
+      space: input.space ?? space,
+      audience: input.audience ?? current?.access,
+    });
+    return projectId;
+  };
   const run = async (input: ShareAction) => {
     const current = await status();
     if (input.action === "status" || input.action === "manage") return current;
-    assertExistingIntent(current, input);
+    assertExistingIntent(current.share, input);
     if (retrievesExisting(current, input)) return current;
     if (!(await client.reviewFlags()).versionSharing)
       throw new ReviewFailed(403, "feature_unavailable");
-    if (!current.share) await preflightFirst(dir, client, input);
+    const space = current.share
+      ? current.share.space?.id
+      : await preflightFirst(dir, client, input);
     assertResumeSource(current, input);
     assertReviewUploadStorage();
     await prepareShareRender(dir);
-    const share =
-      current.share ??
-      (await shareForReview({
-        projectPath: dir,
-        title: basename(dir),
-        client,
-        spaceId: input.space,
-        audience: input.audience,
-      }));
-    if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
-    return upload(input);
+    return upload(input, await uploadTarget(current.share, input, space));
   };
   return {
     status,

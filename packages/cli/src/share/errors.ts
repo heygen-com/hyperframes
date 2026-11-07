@@ -11,6 +11,8 @@ const HINTS: Record<string, string> = {
     "That sharing option is not included in this workspace's plan. Choose an available audience explicitly or manage your plan.",
   workspace_mismatch:
     "This folder already shares into another workspace. Manage the existing share instead of changing its identity.",
+  review_binding_changed:
+    "The review linked to this folder changed. Run hyperframes share --status before trying again.",
   manage_existing_audience:
     "Manage this existing share to change its audience. Copying or updating a share preserves its settings.",
   not_shared:

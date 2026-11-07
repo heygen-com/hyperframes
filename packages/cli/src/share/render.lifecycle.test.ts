@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RenderExecutionDependencies } from "../commands/render/execute.js";
@@ -51,7 +51,11 @@ it("keeps rendering embedded even when the command plan asks to exit", async () 
 });
 it("propagates render failures without publishing a successful artifact record", async () => {
   const error = new Error("render failed");
-  mocks.render.mockRejectedValue(error);
+  mocks.render.mockImplementation(async (_dir: string, output: string) => {
+    writeFileSync(output, "partial-video");
+    throw error;
+  });
   await expect(prepareShareRender(project)).rejects.toBe(error);
   expect(existsSync(join(project, ".hyperframes", "share-render.json"))).toBe(false);
+  expect(readdirSync(join(project, ".hyperframes", "share-renders"))).toEqual([]);
 });

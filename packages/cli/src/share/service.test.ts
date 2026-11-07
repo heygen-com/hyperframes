@@ -108,6 +108,94 @@ describe("share operation consent and identity", () => {
     });
     expect(mocks.render).not.toHaveBeenCalled();
   });
+  it("refuses a public share opened while a private first share was rendering", async () => {
+    mocks.render.mockImplementation(async () => {
+      mocks.create.mockResolvedValue(shared);
+    });
+
+    await expect(
+      createShareService("/project").run({ action: "share", audience: "private" }),
+    ).rejects.toMatchObject({ reason: "manage_existing_audience" });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("refuses a first share bound to another workspace during rendering", async () => {
+    mocks.render.mockImplementation(async () => {
+      mocks.create.mockResolvedValue({ ...shared, space: { id: "other" } });
+    });
+
+    await expect(
+      createShareService("/project").run({ action: "share", audience: "public", space: "space" }),
+    ).rejects.toMatchObject({ reason: "workspace_mismatch" });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("refuses an update when the folder changes review projects during rendering", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.render.mockImplementation(async () => {
+      mocks.status.mockResolvedValue({ ...shared, projectId: "different-project" });
+    });
+
+    await expect(createShareService("/project").run({ action: "update" })).rejects.toMatchObject({
+      reason: "review_binding_changed",
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("refuses an update when access changes during rendering", async () => {
+    mocks.status.mockResolvedValue({ ...shared, access: "private" });
+    mocks.render.mockImplementation(async () => {
+      mocks.status.mockResolvedValue(shared);
+    });
+
+    await expect(createShareService("/project").run({ action: "update" })).rejects.toMatchObject({
+      reason: "manage_existing_audience",
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  });
+  it("pins the approved project into a first upload", async () => {
+    mocks.create.mockImplementation(async () => {
+      mocks.status.mockResolvedValue(shared);
+      return shared;
+    });
+    mocks.add.mockResolvedValue(null);
+
+    await createShareService("/project").run({ action: "share", audience: "public" });
+
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ spaceId: "space" }));
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project" }));
+  });
+  it("retries an unfinished first share in its saved workspace", async () => {
+    mocks.record.mockResolvedValue({ spaceId: "saved", projectId: "project" });
+    mocks.spaces.mockResolvedValue([
+      { space_id: "space", bound: true, can_create_review: true },
+      { space_id: "saved", can_create_review: true },
+    ]);
+    mocks.create.mockImplementation(async () => {
+      const saved = { ...shared, space: { id: "saved" }, access: "private" };
+      mocks.status.mockResolvedValue(saved);
+      return saved;
+    });
+    mocks.add.mockResolvedValue(null);
+    const service = createShareService("/project");
+
+    await expect(
+      service.run({ action: "share", audience: "private", space: "space" }),
+    ).rejects.toMatchObject({ reason: "workspace_mismatch" });
+    expect(mocks.render).not.toHaveBeenCalled();
+    await service.run({ action: "share", audience: "private" });
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ spaceId: "saved" }));
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project" }));
+  });
+  it("does not report a different project's link if the folder changes during upload", async () => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.add.mockImplementation(async () => {
+      mocks.status.mockResolvedValue({ ...shared, projectId: "different-project" });
+      return null;
+    });
+
+    await expect(createShareService("/project").run({ action: "update" })).rejects.toMatchObject({
+      reason: "review_binding_changed",
+    });
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ projectId: "project" }));
+  });
   it("does not label an old ready version as a completed update", async () => {
     mocks.status.mockResolvedValue(shared);
     mocks.add.mockResolvedValue(null);
