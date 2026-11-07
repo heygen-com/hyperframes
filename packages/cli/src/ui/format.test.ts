@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatBytes,
+  formatDuration,
   formatRenderPipelineDetail,
   formatRenderSummaryDetail,
   formatScreenshotFallbackHint,
@@ -166,5 +168,32 @@ describe("formatRenderSummaryDetail", () => {
     expect(formatRenderSummaryDetail({ elapsedMs: 1_000, isDirectory: true })).toBe(
       "rendered in 1.0s",
     );
+  });
+});
+
+describe("formatDuration", () => {
+  it("shows seconds with one decimal under a minute", () => {
+    expect(formatDuration(0)).toBe("0.0s");
+    expect(formatDuration(1234)).toBe("1.2s");
+    expect(formatDuration(59_940)).toBe("59.9s");
+  });
+
+  it("carries a rounded-up 60.0 seconds into the next minute", () => {
+    expect(formatDuration(59_960)).toBe("1m 0.0s");
+    expect(formatDuration(119_970)).toBe("2m 0.0s");
+  });
+
+  it("splits minutes and seconds past one minute", () => {
+    expect(formatDuration(60_000)).toBe("1m 0.0s");
+    expect(formatDuration(83_400)).toBe("1m 23.4s");
+  });
+});
+
+describe("formatBytes", () => {
+  it("steps up a unit when rounding reaches the next one", () => {
+    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1536)).toBe("1.5 KB");
+    expect(formatBytes(1_048_575)).toBe("1.0 MB");
+    expect(formatBytes(1_048_576)).toBe("1.0 MB");
   });
 });
