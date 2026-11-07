@@ -7,6 +7,7 @@ const getTrack = vi.fn();
 const getSample = vi.fn();
 const cancelReads = vi.fn();
 const iterateSamples = vi.fn();
+const finiteSamples = vi.fn();
 const canvasContext = vi.fn();
 const createBitmap = vi.fn();
 let qualityChosenBy = "person";
@@ -34,6 +35,9 @@ vi.mock("mediabunny", () => ({
     }
     samples(start: number, end: number) {
       return iterateSamples(this.track.source, start, end);
+    }
+    samplesAtTimestamps(times: Iterable<number>) {
+      return finiteSamples(this.track.source, times);
     }
   },
 }));
@@ -100,6 +104,12 @@ beforeEach(() => {
   getTrack.mockReset().mockImplementation(async (source: string) => track(source));
   getSample.mockReset().mockImplementation(async () => sample());
   iterateSamples.mockReset();
+  finiteSamples.mockReset().mockImplementation(async function* (
+    source: string,
+    times: Iterable<number>,
+  ) {
+    for (const time of times) yield await getSample(source, time);
+  });
   canvasContext.mockReset().mockReturnValue({ clearRect: vi.fn(), imageSmoothingQuality: "low" });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(canvasContext);
   createBitmap.mockReset().mockImplementation(async () => bitmap());
@@ -549,4 +559,86 @@ it("uses finite queries for alpha tracks while preserving original dimensions an
   expect(getSample).toHaveBeenCalledTimes(3);
   for (const frame of samples) expect(frame.close).toHaveBeenCalledOnce();
   await owner.suspend!();
+});
+
+it.each(["suspend", "dispose"] as const)(
+  "drains an in-flight alpha query before %s",
+  async (action) => {
+    getTrack.mockImplementation(async (source: string) => ({
+      ...track(source),
+      canBeTransparent: async () => true,
+    }));
+    let finish: (value: ReturnType<typeof sample>) => void = () => {};
+    getSample.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const owner = provider();
+    const pending = owner.decode([request("a")], signal());
+    await vi.waitFor(() => expect(getSample).toHaveBeenCalledOnce());
+    const rejected = expect(pending).rejects.toThrow("Preview disposed");
+    const suspended = action === "suspend" ? owner.suspend!() : owner.dispose();
+    await Promise.resolve();
+    expect(inputs[0]!.dispose).not.toHaveBeenCalled();
+    expect(cancelReads).not.toHaveBeenCalled();
+    if (action === "suspend") {
+      const [next] = await owner.decode([request("a")], signal());
+      expect(inputs).toHaveLength(2);
+      next!.release();
+    }
+    const final = sample();
+    finish(final);
+    await rejected;
+    await suspended;
+    expect(final.close).toHaveBeenCalledOnce();
+    expect(inputs[0]!.dispose).toHaveBeenCalledOnce();
+    if (action === "suspend") expect(inputs[1]!.dispose).not.toHaveBeenCalled();
+  },
+);
+
+it("finishes the alpha timestamp iterator before publishing its selected sample", async () => {
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    canBeTransparent: async () => true,
+  }));
+  let drain: () => void = () => {};
+  const drained = new Promise<void>((resolve) => {
+    drain = resolve;
+  });
+  const selected = sample();
+  finiteSamples.mockImplementation(async function* () {
+    yield selected;
+    await drained;
+  });
+  const owner = provider();
+  let published = false;
+  const decoding = owner.decode([request("a")], signal()).then((frames) => {
+    published = true;
+    return frames;
+  });
+  await vi.waitFor(() => expect(finiteSamples).toHaveBeenCalledOnce());
+  await Promise.resolve();
+  expect(published).toBe(false);
+  expect(createBitmap).not.toHaveBeenCalled();
+  drain();
+  const [frame] = await decoding;
+  expect(selected.close).toHaveBeenCalledOnce();
+  frame!.release();
+});
+
+it("closes the selected alpha sample when the finite iterator fails while draining", async () => {
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    canBeTransparent: async () => true,
+  }));
+  const selected = sample();
+  finiteSamples.mockImplementation(async function* () {
+    yield selected;
+    throw new Error("Alpha drain failed");
+  });
+  const owner = provider();
+  await expect(owner.decode([request("a")], signal())).rejects.toThrow("Alpha drain failed");
+  expect(selected.close).toHaveBeenCalledOnce();
 });

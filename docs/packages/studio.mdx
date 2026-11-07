@@ -121,6 +121,9 @@ A paused fallback that outlasts its wait retains the presented clock and picture
 while paused sync continues. It can still publish when the video becomes ready;
 a new gesture cancels that recovery. Studio requests paused-decoder release
 before preparing native playback and reopens readers when paused scrubbing resumes.
+Transparent video queries drain their alpha merges before input disposal. If one
+never settles, its cleanup can outlast the Play deadline; the remaining playback
+still starts while that video's last picture stays visible.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,
 and the frame decoder does not substitute re-encoded seek copies. Playback

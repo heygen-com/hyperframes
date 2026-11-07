@@ -53,6 +53,21 @@ type Reader = {
   idleTimer?: ReturnType<typeof setTimeout>;
 };
 
+async function readSingleSample(reader: Reader, query: number): Promise<VideoSample | null> {
+  if (!reader.transparent) return reader.sink.getSample(query);
+  let selected: VideoSample | null = null;
+  try {
+    for await (const next of reader.sink.samplesAtTimestamps([query])) {
+      selected?.close();
+      selected = next;
+    }
+    return selected;
+  } catch (error) {
+    selected?.close();
+    throw error;
+  }
+}
+
 export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideoFrameProvider {
   const readers = new Map<string, Promise<Reader>>();
   const opened = new Map<string, Reader>();
@@ -89,6 +104,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     reader.disposed = true;
     clearTimeout(reader.idleTimer);
     if (opened.get(reader.key) === reader) opened.delete(reader.key);
+    // Input disposal must not cut off an in-flight alpha merger.
+    if (reader.transparent) await reader.tail;
     reader.cancelReads();
     reader.input.dispose();
     await closeIterator(reader).catch(() => {});
@@ -283,7 +300,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   };
   const nearbyForward = (reader: Reader, time: number, timing: PreviewVideoTiming) =>
     // Mediabunny 1.65.2 can orphan alpha samples when a range is cancelled.
-    // Finite queries drain the merger before closing it.
+    // Finite timestamp iterators drain the merger before closing it.
     !reader.transparent &&
     !timing.variableFrameRate &&
     (timing.frameRate ?? 0) > 0 &&
@@ -308,7 +325,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       sample = forward ? await readForward(reader, query, signal) : null;
       if (!sample) {
         await closeIterator(reader);
-        sample = await reader.sink.getSample(query);
+        sample = await readSingleSample(reader, query);
       }
       if (!sample) throw new Error("No preview frame at requested time");
       checkActive(reader, signal);
