@@ -449,7 +449,7 @@ function outPointHoldTime(el: HTMLMediaElement, outPoint: number, watched: boole
   return last?.outPoint === outPoint ? last.at : outPoint;
 }
 
-// A muted video's clock is its audio track, which starts after play(): an upcoming video starts early by the learned delay.
+// A muted video runs on its audio track, which starts after play(): an upcoming one starts early by the learned delay.
 let videoStartLatency: number | null = null;
 const videoStarts = new WeakMap<
   HTMLMediaElement,
