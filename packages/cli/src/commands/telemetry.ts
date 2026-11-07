@@ -7,7 +7,7 @@ import {
 } from "../telemetry/config.js";
 import { effectiveTelemetryStatus, type TelemetryStatusSource } from "../telemetry/policy.js";
 import { c } from "../ui/colors.js";
-import { failCommand, failUsage } from "../utils/commandResult.js";
+import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -53,9 +53,24 @@ function setTelemetryEnabled(enabled: boolean): void {
   console.log();
 }
 
-function runStatus(): void {
+function runStatus(json: boolean): void {
   const config = readConfigFresh();
   const effective = effectiveTelemetryStatus(config.telemetryEnabled);
+  if (json) {
+    console.log(
+      JSON.stringify(
+        {
+          ...effective,
+          configPath: CONFIG_PATH,
+          statePath: STATE_PATH,
+          commandCount: config.commandCount,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
   const status = effective.enabled ? c.success("enabled") : c.dim("disabled");
   console.log();
   console.log(`  ${c.dim("Status:")}     ${status}`);
@@ -76,6 +91,7 @@ function runStatus(): void {
 export default defineCommand({
   meta: { name: "telemetry", description: "Manage usage telemetry" },
   args: {
+    json: { type: "boolean", description: "Output status as JSON", default: false },
     subcommand: {
       type: "positional",
       description: "Subcommand: enable, disable, status",
@@ -84,6 +100,9 @@ export default defineCommand({
   },
   async run({ args }) {
     const subcommand = args.subcommand;
+    if (args.json && subcommand !== "status") {
+      throw new CliUsageError("--json is only supported for telemetry status");
+    }
 
     if (!subcommand || subcommand === "") {
       console.log(`
@@ -119,7 +138,7 @@ ${c.dim("You can also set")} ${c.accent("HYPERFRAMES_NO_TELEMETRY=1")} ${c.dim("
       case "disable":
         return setTelemetryEnabled(false);
       case "status":
-        return runStatus();
+        return runStatus(args.json);
       default:
         console.error(
           `${c.error("Unknown subcommand:")} ${subcommand}\n\nRun ${c.accent("hyperframes telemetry --help")} for usage.`,
