@@ -423,6 +423,7 @@ function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
   resolvedPath: string,
   rawPath: string,
+  requireOnDisk: boolean,
 ): void {
   const fromRoot = resolve(ctx.absProjectDir, rawPath);
   for (const candidate of [resolvedPath, fromRoot]) {
@@ -436,6 +437,7 @@ function includeReferencedProjectFile(
     }
     return;
   }
+  if (!requireOnDisk) return;
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
 
@@ -443,12 +445,14 @@ function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
+  /** False for a link (`href`): shipped when present, never a failure when absent. */
+  requireOnDisk = true,
 ): string | null {
   if (isNonRelativeUrl(rawPath)) return null;
   for (const path of decodeUrlPathVariants(rawPath)) {
     const absPath = resolve(referrerAbsDir, path);
     if (isPathInside(absPath, ctx.absProjectDir)) {
-      includeReferencedProjectFile(ctx, absPath, rawPath);
+      includeReferencedProjectFile(ctx, absPath, rawPath, requireOnDisk);
       return null;
     }
     try {
@@ -463,7 +467,12 @@ function tryResolveExternal(
 
 /** Resolves a raw attribute or CSS `url()` value to the archive path or absolute
  * URL it should point at, or `null` to leave it untouched. */
-export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
+export type HtmlAttributeResolver = (
+  rawValue: string,
+  referrerAbsDir: string,
+  /** The HTML attribute the value came from; absent for CSS and srcset values. */
+  attr?: string,
+) => string | null;
 
 function referenceFrom(entryPath: string, target: string): string {
   return isNonRelativeUrl(target) ? target : posix.relative(posix.dirname(entryPath), target);
@@ -518,7 +527,7 @@ export function rewriteHtmlAttributes(
     for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const target = resolveTarget(val, referrerAbsDir);
+      const target = resolveTarget(val, referrerAbsDir, attr);
       if (!target) continue;
       el.setAttribute(attr, referenceFrom(entryPath, target));
       modified = true;
@@ -579,7 +588,8 @@ function rewriteHtmlSrcsets(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const resolveTarget: HtmlAttributeResolver = (val, dir) => tryResolveExternal(ctx, val, dir);
+  const resolveTarget: HtmlAttributeResolver = (val, dir, attr) =>
+    tryResolveExternal(ctx, val, dir, attr !== "href");
   const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "href", "poster"],
   });

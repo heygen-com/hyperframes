@@ -1528,7 +1528,21 @@ describe("createPublishArchive referenced dot-paths", () => {
 
   it("fails before upload when a referenced file is missing", () => {
     const dir = projectWith(`<video src="${clip}"></video>`, {});
-    expect(() => createPublishArchive(dir)).toThrow(/not in the project folder/);
+    expect(() => createPublishArchive(dir)).toThrow(clip);
+  });
+
+  it("ships nothing and does not fail for a missing href", () => {
+    const dir = projectWith(`<video src="${clip}"></video><a href="notes.html">n</a>`, {
+      [clip]: "v",
+    });
+    expect(names(dir)).toContain(clip);
+  });
+
+  it("fails on a missing poster and a missing CSS url()", () => {
+    const poster = projectWith(`<video poster="gone.png"></video>`, {});
+    expect(() => createPublishArchive(poster)).toThrow("gone.png");
+    const css = projectWith(`<style>.a{background:url(gone.jpg)}</style>`, {});
+    expect(() => createPublishArchive(css)).toThrow("gone.jpg");
   });
 
   it("leaves out an unreferenced .env", () => {
