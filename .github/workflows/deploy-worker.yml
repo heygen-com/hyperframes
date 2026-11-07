@@ -1,0 +1,61 @@
+# Deploy Worker `hyperframes-render` (Cloudflare Workers FREE) lewat GitHub Actions.
+#
+# Manual saja (workflow_dispatch): Actions > "Deploy worker" > Run workflow.
+# Menjalankan `wrangler deploy` dari cloudflare-free/worker (lihat wrangler.jsonc).
+#
+# Secret yang dibutuhkan (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN  izin: Account > Workers Scripts: Edit  +  Workers R2 Storage: Edit
+#   CLOUDFLARE_ACCOUNT_ID
+#
+# Secret RUNTIME Worker (GITHUB_TOKEN, API_KEY) TIDAK di-set di sini: set lewat
+# `wrangler secret put` atau tool worker_secret_put setelah Worker ada.
+# Deploy ulang tidak menghapus secret yang sudah ada.
+name: Deploy worker
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+env:
+  # Versi dipin supaya deploy bisa diulang. Naikkan secara sadar.
+  WRANGLER_VERSION: "4.156.2"
+
+jobs:
+  deploy:
+    # Jangan jalan di repo upstream bila workflow ini ikut ter-merge ke sana.
+    if: github.repository_owner != 'heygen-com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # SHA action dipin, disalin dari workflow bawaan repo ini (ci.yml).
+      - name: Checkout (hanya folder worker)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: cloudflare-free/worker
+          persist-credentials: false
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Deploy dengan wrangler
+        working-directory: cloudflare-free/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ] || [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "::error::Secret CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID belum diset"
+            exit 1
+          fi
+          npx --yes "wrangler@$WRANGLER_VERSION" deploy 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          # Ringkasan: URL workers.dev yang dicetak wrangler.
+          grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1 >> "$GITHUB_STEP_SUMMARY" || true
