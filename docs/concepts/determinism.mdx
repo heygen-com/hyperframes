@@ -61,6 +61,11 @@ write your own, it must follow the
 order, nothing resolves after the frame is committed, and the lifecycle stays
 `init` → `seekFrame` (many times) → `destroy`.
 
+With screenshot capture, Chrome redraws each changed raster tile whole, so a frame's
+pixels don't depend on what the page drew before it. The worker count, chunk boundaries
+and seek order don't change them. [Motion blur](/guides/motion-blur#cost-and-limits) is
+the exception.
+
 ## Rule out your machine as a variable
 
 Fonts and Chrome versions differ between computers, so a local render can shift
