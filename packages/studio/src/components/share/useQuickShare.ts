@@ -24,7 +24,9 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   const [snapshot, setSnapshot] = useState<LocalShareSnapshot | null>(null);
   const [audience, setAudience] = useState<LocalShareAudience | "">("");
   const [spaceId, setSpaceId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const working = useRef(false);
+  const reconnectOnReturn = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -33,10 +35,15 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [progress, setProgress] = useState("");
 
+  function setWorking(value: boolean) {
+    working.current = value;
+    setBusyState(value);
+  }
+
   async function poll(job: LocalShareJob, signal: AbortSignal) {
     if (signal.aborted) return;
     if (job.state === "running") {
-      setBusy(true);
+      setWorking(true);
       setProgress(STEP_LABELS[job.step] ?? "Preparing share…");
       timer.current = setTimeout(() => {
         void shareJob(token, job.id, signal)
@@ -47,7 +54,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       }, 1000);
       return;
     }
-    setBusy(false);
+    setWorking(false);
     setProgress("");
     const result = job.result;
     if (result) setSnapshot((prior) => (prior ? { ...prior, share: result, job } : prior));
@@ -56,12 +63,13 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   async function refresh(signal: AbortSignal) {
     setError(null);
     setErrorCode(null);
-    setBusy(true);
+    setWorking(true);
     if (timer.current) clearTimeout(timer.current);
     try {
       const next = await shareSnapshot(token, signal);
       if (signal.aborted) return;
       recordOpen(next);
+      reconnectOnReturn.current = false;
       setSnapshot(next);
       resetSelection(next);
       if (next.job?.error) {
@@ -69,7 +77,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
         setErrorCode(next.job.error.code);
       }
       if (next.job?.state === "running") await poll(next.job, signal);
-      else setBusy(false);
+      else setWorking(false);
     } catch (cause) {
       reportFailure(cause, signal);
     }
@@ -77,16 +85,24 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   useMountEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
+    const resume = () => {
+      if (document.visibilityState !== "hidden" && reconnectOnReturn.current && !working.current)
+        void refresh(controller.signal);
+    };
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
     void refresh(controller.signal);
     return () => {
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
       controller.abort();
       if (timer.current) clearTimeout(timer.current);
     };
   });
   async function run(action: LocalShareAction) {
     const signal = lifetime.current?.signal;
-    if (!signal || signal.aborted || busy) return;
-    setBusy(true);
+    if (!signal || signal.aborted || working.current) return;
+    setWorking(true);
     setError(null);
     setErrorCode(null);
     setCopied(false);
@@ -112,6 +128,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   function reportFailure(cause: unknown, signal: AbortSignal) {
     if (signal.aborted) return;
     recordOpen(null);
+    reconnectOnReturn.current = true;
     setSnapshot(null);
     setCopied(false);
     setError(failure(cause));
@@ -120,7 +137,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       void poll(cause.job, signal);
       return;
     }
-    setBusy(false);
+    setWorking(false);
     setProgress("");
   }
   function reload() {

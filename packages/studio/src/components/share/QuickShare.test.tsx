@@ -292,3 +292,69 @@ it("does not claim an older upload is current when its portable content identity
   expect(button("Copy current shared link")).toBeDefined();
   expect(host.textContent).toContain("Changes after your last upload aren’t shared automatically");
 });
+
+it("continues from a running browser login to fresh controls without refreshing or publishing", async () => {
+  vi.useFakeTimers();
+  let signedIn = false;
+  const loginJob = { ...job, step: "signing_in" };
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    const path = String(url);
+    if (path.endsWith("/actions")) {
+      calls.push(JSON.parse(String(init?.body)));
+      return Response.json(loginJob, { status: 202 });
+    }
+    if (path.includes("/jobs/"))
+      return Response.json(
+        signedIn ? { ...loginJob, state: "done", result: snapshot.share } : loginJob,
+      );
+    return signedIn
+      ? Response.json({ ...snapshot, job: { ...loginJob, state: "done", result: snapshot.share } })
+      : Response.json({ code: "login_expired", message: "Sign in again." }, { status: 400 });
+  });
+  await mount();
+  await act(async () => button("Sign in in browser")?.click());
+  await act(async () => vi.advanceTimersByTime(1000));
+  expect(host.textContent).toContain("Finish signing in");
+  signedIn = true;
+  await act(async () => vi.advanceTimersByTime(1000));
+  expect(button("Sign in in browser")).toBeUndefined();
+  expect(host.querySelector('[aria-label="Sharing workspace"]')).not.toBeNull();
+  expect(button("Create share link")?.disabled).toBe(true);
+  expect(calls).toEqual([{ action: "login" }]);
+});
+
+it.each(["snapshot", "poll"])(
+  "reconnects on return after a %s error without a refresh press",
+  async (failureAt) => {
+    vi.useFakeTimers();
+    let restored = false;
+    snapshot.job = failureAt === "poll" ? { ...job, step: "signing_in" } : null;
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (restored) return Response.json({ ...snapshot, job: null });
+      if (failureAt === "snapshot")
+        return Response.json({ code: "login_expired", message: "Sign in again." }, { status: 400 });
+      if (String(url).includes("/jobs/")) throw new Error("Connection lost");
+      return Response.json(snapshot);
+    });
+    await mount();
+    if (failureAt === "poll") await act(async () => vi.advanceTimersByTime(1000));
+    restored = true;
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(host.querySelector('[aria-label="Sharing workspace"]')).not.toBeNull();
+    expect(button("Create share link")?.disabled).toBe(true);
+    expect(calls).toEqual([]);
+  },
+);
+
+it("keeps audience choices when a healthy panel regains focus", async () => {
+  await mount();
+  await choose("invite");
+  const requests = vi.mocked(fetch).mock.calls.length;
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Who can access"]')?.value).toBe(
+    "invite",
+  );
+  expect(vi.mocked(fetch).mock.calls.length).toBe(requests);
+  expect(calls).toEqual([]);
+});

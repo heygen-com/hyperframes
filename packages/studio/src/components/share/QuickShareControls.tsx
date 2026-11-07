@@ -221,7 +221,8 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
         Sign in in browser
       </Button>
       <p className="text-step-11 text-text-3">
-        Or run <code>hyperframes auth login</code> in your terminal, then refresh.
+        Or run <code>hyperframes auth login</code> in your terminal, then return to Studio. Sharing
+        reconnects automatically.
       </p>
     </>
   );
