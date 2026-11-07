@@ -460,6 +460,24 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       overlap: true,
     },
     {
+      name: "masked by a mask moved up onto the other text",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-repeat:no-repeat;mask-position:0 -75px",
+        ),
+      overlap: true,
+    },
+    {
+      name: "masked from the content box, which this check does not read",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-origin:content-box;padding:1px",
+        ),
+      overlap: true,
+    },
+    {
       name: "clipped by an inset clip-path to its bottom",
       html: upper + lower("clip-path:inset(62% 0 0 0)"),
       overlap: false,

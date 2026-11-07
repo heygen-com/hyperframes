@@ -566,6 +566,9 @@
     if (!value || value === "none" || topLevelSplit(value, ",").length !== 1) return null;
     const size = style.maskSize || style.webkitMaskSize || "auto";
     if (size !== "auto" && size !== "auto auto") return null;
+    const position = (style.maskPosition || style.webkitMaskPosition || "0% 0%").trim();
+    if (!/^0(%|px)? 0(%|px)?$/.test(position)) return null;
+    if ((style.maskOrigin || style.webkitMaskOrigin || "border-box") !== "border-box") return null;
     const frame = boxFrame(node);
     const linear = insideParens(value, "linear-gradient");
     if (linear !== null) return linearMaskRegion(linear, frame);
