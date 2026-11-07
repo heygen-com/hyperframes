@@ -17,7 +17,10 @@
 //     "provider": "auto",          // auto|heygen|elevenlabs|kokoro|gemini (override: --provider)
 //     "lang": "en", "speed": 1.0,
 //     "lines": [                   // one TTS unit each; id joins back to the caller's model
-//       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] }
+//       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] },
+//       // the person's own recording: `speed` stretches it (pitch kept) and scales `words`;
+//       // without `words` the recording is transcribed
+//       { "id": "02", "audio": "take.m4a", "words": [{ "text": "Hello", "start": 0.1, "end": 0.5 }] }
 //     ],
 //     "bgm": { "mode": "retrieve", // retrieve|generate|none (override: --bgm-mode / --no-bgm)
 //              "query": "calm cinematic underscore",   // mood for retrieval
@@ -52,6 +55,7 @@ import {
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
+import { parseWords, scaleWords, stretchToWav } from "./lib/recording.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
@@ -127,42 +131,63 @@ let voices = prev.voices ?? [];
 let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
-  try {
-    ttsProvider = pickProvider(
-      providerOverride || (request.provider === "auto" ? null : request.provider),
-    );
-  } catch (e) {
-    die(e.message);
+  if (lines.some((l) => !l.audio)) {
+    try {
+      ttsProvider = pickProvider(
+        providerOverride || (request.provider === "auto" ? null : request.provider),
+      );
+    } catch (e) {
+      die(e.message);
+    }
+    voiceId = await resolveVoiceId({
+      provider: ttsProvider,
+      userVoice: voiceOverride || request.voice,
+      lang,
+    });
+  } else {
+    ttsProvider = "recording"; // every line is the person's own recording: no TTS provider to pick
+    voiceId = null;
   }
-  voiceId = await resolveVoiceId({
-    provider: ttsProvider,
-    userVoice: voiceOverride || request.voice,
-    lang,
-  });
   console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
   const paths = voicePaths(hyperframesDir, lines, anomalies);
+  // A line with `audio` is the person's own recording (path relative to the project), with optional
+  // `words`; `speed` applies to it like to a generated voice. Returns synthesizeOne's shape.
+  const useRecording = (line, abs) => {
+    const made = stretchToWav(resolve(hyperframesDir, String(line.audio)), abs, speed);
+    if (!made.ok) return made;
+    try {
+      const given = parseWords(line.words);
+      return { ok: true, words: given && scaleWords(given, speed), source: "recording" };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
   const synthLine = async (line) => {
     const id = String(line.id);
     const text = String(line.text ?? "").trim();
-    if (!text) {
+    if (!text && !line.audio) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
     }
     const rel = paths.get(id);
     const abs = join(hyperframesDir, rel);
-    const { ok, words, error } = await synthesizeOne({
-      provider: ttsProvider,
-      text,
-      voiceId,
-      lang,
-      speed,
-      model: flag("tts-model", request.tts_model),
-      style: flag("style", line.style ?? request.style),
-      wavAbs: abs,
-      hyperframesDir,
-    });
+    const { ok, words, error, source } = line.audio
+      ? useRecording(line, abs)
+      : await synthesizeOne({
+          provider: ttsProvider,
+          text,
+          voiceId,
+          lang,
+          speed,
+          model: flag("tts-model", request.tts_model),
+          style: flag("style", line.style ?? request.style),
+          wavAbs: abs,
+          hyperframesDir,
+        });
     if (!ok) {
-      anomalies.push(`line ${id}: TTS failed — omitted${error ? ` (${error})` : ""}`);
+      anomalies.push(
+        `line ${id}: ${line.audio ? "recording" : "TTS"} failed — omitted${error ? ` (${error})` : ""}`,
+      );
       return null;
     }
     let wordArr = words; // heygen: native; else transcribe
@@ -172,7 +197,13 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: bad voice duration — omitted`);
       return null;
     }
-    return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
+    return {
+      id,
+      path: rel,
+      duration_s: r3(dur),
+      words: withWordIds(wordArr),
+      ...(source && { source }),
+    };
   };
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
   voices = results.filter(Boolean);

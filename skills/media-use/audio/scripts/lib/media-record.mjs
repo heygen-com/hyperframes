@@ -35,7 +35,7 @@ export function agentWritePath(
 export function voicePaths(hyperframesDir, lines, anomalies) {
   const taken = new Set();
   const paths = new Map();
-  for (const line of lines.filter((l) => String(l.text ?? "").trim())) {
+  for (const line of lines.filter((l) => String(l.text ?? "").trim() || l.audio)) {
     const rel = agentWritePath(hyperframesDir, `assets/voice/${line.id}.wav`, { anomalies, taken });
     taken.add(rel);
     paths.set(String(line.id), rel);
@@ -60,9 +60,9 @@ export function writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields
         path: voice.path,
         type: "voice",
         source: "generated",
-        intent: textById.get(voice.id),
+        intent: textById.get(voice.id) || "your own recording",
         duration: voice.duration_s,
-        provider: ttsProvider,
+        provider: voice.source ?? ttsProvider,
       });
     }
   }
