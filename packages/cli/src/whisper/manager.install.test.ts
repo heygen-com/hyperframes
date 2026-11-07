@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { ensureWhisper, findWhisper, WhisperUnavailableError } from "./manager.js";
 const calls = vi.hoisted(() => ({ exec: vi.fn() }));
@@ -60,6 +60,53 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
     expect(args.some((arg) => arg.includes(cache))).toBe(false);
     expect(options.cwd).toBe(join(cache, "whisper", "whisper.cpp"));
   } finally {
+    rmSync(cache, { recursive: true, force: true });
+  }
+});
+
+it("names the missing build tool when whisper.cpp cannot be built", async () => {
+  vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
+  vi.resetModules();
+  const { ensureWhisper: ensure } = await import("./manager.js");
+  calls.exec.mockImplementation((command: string, args: string[]) => {
+    if ((command === "which" || command === "where") && args[0] !== "git")
+      throw new Error("not available");
+    return `/bin/${args[0]}\n`;
+  });
+  await expect(ensure()).rejects.toThrow(/cannot build whisper\.cpp: cmake not found on PATH/);
+});
+
+it("gives a Linux user one runnable line to get a working engine", async () => {
+  vi.resetModules();
+  vi.doMock("node:os", async (original) => ({
+    ...(await original<typeof import("node:os")>()),
+    platform: () => "linux",
+  }));
+  const { getInstallInstructions } = await import("./manager.js");
+  expect(getInstallInstructions()).toContain("sudo apt-get install -y git cmake build-essential");
+  vi.doUnmock("node:os");
+});
+
+it("gives a Windows user one runnable winget line, and finds a Release-built whisper-cli.exe", async () => {
+  const cache = mkdtempSync(join(tmpdir(), "hf-whisper-cache-"));
+  vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+  vi.resetModules();
+  vi.doMock("node:os", async (original) => ({
+    ...(await original<typeof import("node:os")>()),
+    platform: () => "win32",
+  }));
+  try {
+    const { getInstallInstructions, findWhisper } = await import("./manager.js");
+    expect(getInstallInstructions()).toContain("winget install -e --id Kitware.CMake");
+    calls.exec.mockImplementation(() => {
+      throw new Error("not available");
+    });
+    const exe = join(cache, "whisper", "whisper.cpp", "build", "bin", "Release", "whisper-cli.exe");
+    mkdirSync(dirname(exe), { recursive: true });
+    writeFileSync(exe, "binary");
+    expect(findWhisper()?.executablePath).toBe(exe);
+  } finally {
+    vi.doUnmock("node:os");
     rmSync(cache, { recursive: true, force: true });
   }
 });

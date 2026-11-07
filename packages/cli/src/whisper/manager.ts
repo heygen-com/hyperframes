@@ -149,9 +149,12 @@ const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 
 function findBuiltBinary(): WhisperResult | undefined {
+  // Windows (Visual Studio generator) writes bin/Release/whisper-cli.exe, not bin/whisper-cli.
+  const exe = platform() === "win32" ? ".exe" : "";
   for (const p of [
-    join(BUILD_DIR, "build", "bin", "whisper-cli"),
-    join(BUILD_DIR, "build", "whisper-cli"),
+    join(BUILD_DIR, "build", "bin", "Release", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
     if (existsSync(p)) return { executablePath: p, source: "build" };
   }
@@ -233,10 +236,10 @@ export function getInstallInstructions(): string {
     return "brew install whisper-cpp";
   }
   if (platform() === "linux") {
-    return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
+    return "sudo apt-get install -y git cmake build-essential (Debian/Ubuntu; other distros: git, cmake and a C compiler, see https://github.com/ggml-org/whisper.cpp#building), then re-run";
   }
   if (platform() === "win32") {
-    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
+    return 'winget install -e --id Git.Git && winget install -e --id Kitware.CMake && winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools", then re-run in a new terminal (or set HYPERFRAMES_WHISPER_PATH to the whisper-cli.exe in whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases)';
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
@@ -269,6 +272,10 @@ export async function ensureWhisper(options?: {
     );
   }
 
+  // What each attempt hit, so the final error names the real cause instead of a bare install hint.
+  const causes: string[] = [];
+  const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).trim();
+
   // 2. Try brew (macOS, fastest — pre-built bottle)
   if (platform() === "darwin" && hasBrew()) {
     options?.onProgress?.("Installing whisper-cpp via Homebrew...");
@@ -280,8 +287,8 @@ export async function ensureWhisper(options?: {
       });
       const installed = findFromSystem();
       if (installed) return { ...installed, source: "brew" };
-    } catch {
-      // brew failed — fall through
+    } catch (err) {
+      causes.push(`brew install whisper-cpp failed: ${why(err)}`);
     }
     signal?.throwIfAborted();
   }
@@ -290,14 +297,19 @@ export async function ensureWhisper(options?: {
   if (hasGit() && hasCmake()) {
     try {
       return await buildFromSource(options?.onProgress, signal);
-    } catch {
-      // build failed — fall through
+    } catch (err) {
+      causes.push(why(err));
     }
     signal?.throwIfAborted();
+  } else {
+    const missing = [!hasGit() && "git", !hasCmake() && "cmake"].filter(Boolean).join(" and ");
+    causes.push(`cannot build whisper.cpp: ${missing} not found on PATH`);
   }
 
-  // 4. Give up — tell the user how
-  throw new WhisperUnavailableError(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
+  // 4. Give up — tell the user why and how
+  throw new WhisperUnavailableError(
+    `whisper-cpp not found (${causes.join("; ")}). Install: ${getInstallInstructions()}`,
+  );
 }
 
 export async function ensureModel(
