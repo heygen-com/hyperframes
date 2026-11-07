@@ -5,7 +5,11 @@ import { completeBudgetMs, completeWithRetry } from "./upload.js";
 
 const MIB = 1024 * 1024;
 const stillChecking = () =>
-  new HyperframesApiError({ status: 409, code: "resource_not_ready", message: "still being checked" });
+  new HyperframesApiError({
+    status: 409,
+    code: "resource_not_ready",
+    message: "still being checked",
+  });
 
 function clientAnswering(...answers: Array<"409" | Error | "ok">) {
   const complete = vi.fn(async () => {
@@ -13,7 +17,10 @@ function clientAnswering(...answers: Array<"409" | Error | "ok">) {
     if (next === "ok") return { asset_id: "a1", url: "u" };
     throw next === "409" ? stillChecking() : next;
   });
-  return { client: { completeAssetUpload: complete } as unknown as HyperframesCloudClient, complete };
+  return {
+    client: { completeAssetUpload: complete } as unknown as HyperframesCloudClient,
+    complete,
+  };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -27,7 +34,10 @@ describe("completeWithRetry waits for the check as long as the file's size allow
   });
 
   it("keeps polling through two minutes of 409s on a big file, then returns the asset", async () => {
-    const { client, complete } = clientAnswering(...Array.from({ length: 20 }, () => "409" as const), "ok");
+    const { client, complete } = clientAnswering(
+      ...Array.from({ length: 20 }, () => "409" as const),
+      "ok",
+    );
 
     const done = completeWithRetry(client, "a1", "sha", 600 * MIB);
     await vi.advanceTimersByTimeAsync(120_000);
@@ -40,14 +50,20 @@ describe("completeWithRetry waits for the check as long as the file's size allow
     const { client } = clientAnswering();
 
     const done = completeWithRetry(client, "a1", "sha", 1 * MIB);
-    const failed = expect(done).rejects.toThrow(/uploaded, but the cloud had not finished checking it after 31 s/);
+    const failed = expect(done).rejects.toThrow(
+      /uploaded, but the cloud had not finished checking it after 31 s/,
+    );
     await vi.advanceTimersByTimeAsync(40_000);
 
     await failed;
   });
 
   it("stops at once on an answer that is not a 409", async () => {
-    const refused = new HyperframesApiError({ status: 400, code: "invalid_parameter", message: "bad checksum" });
+    const refused = new HyperframesApiError({
+      status: 400,
+      code: "invalid_parameter",
+      message: "bad checksum",
+    });
     const { client, complete } = clientAnswering(refused);
 
     await expect(completeWithRetry(client, "a1", "sha", 1 * MIB)).rejects.toBe(refused);
