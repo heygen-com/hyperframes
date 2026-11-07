@@ -16,7 +16,6 @@ import {
   readSync,
   renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -398,7 +397,7 @@ export async function limitFor(
   segments: PlayedSegment[] | undefined,
   maxBytes = capOf(presetName),
 ): Promise<string[]> {
-  if (mediaOf(presetName) !== "video" || statSync(sourcePath).size <= maxBytes) return [];
+  if (mediaOf(presetName) !== "video") return [];
   const seconds = segments?.length ? playedSeconds(segments) : await durationSeconds(sourcePath);
   const limit = sizeLimitArgs({
     maxBytes,
