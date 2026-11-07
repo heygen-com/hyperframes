@@ -377,7 +377,6 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
   });
 });
 
-// Large enough that the kernel cannot hold it all: a loopback socket buffers several MB before the server reads.
 const BIG_BYTES = 32 * 1024 * 1024;
 
 describe("a PUT that stalls or fails on the network is sent again", () => {
@@ -393,11 +392,15 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const server = createServer(async (req, res) => {
       const answer = plan[Math.min(n++, plan.length - 1)]!;
       const born = Date.now();
-      for await (const _ of req) {
-        void _;
-        if (answer !== "cut" && answer !== "slow") continue;
-        await new Promise((resolve) => setTimeout(resolve, 1));
-        if (answer === "cut" && Date.now() - born >= 400) return void req.socket.destroy();
+      try {
+        for await (const _ of req) {
+          void _;
+          if (answer !== "cut" && answer !== "slow") continue;
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          if (answer === "cut" && Date.now() - born >= 400) return void req.socket.destroy();
+        }
+      } catch {
+        return;
       }
       if (answer === "hang") return void open.push(() => res.destroy());
       if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
@@ -492,9 +495,13 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const sent = events.flatMap((e) => (e.phase === "upload" && e.attempt === 2 ? [e] : []));
     const live = sent.filter((e) => (e.sentBytes ?? 0) > 0);
     expect(live.length).toBeGreaterThan(1);
-    expect(live.map((e) => e.sentBytes)).toEqual([...live.map((e) => e.sentBytes)].sort((a, b) => a! - b!));
+    expect(live.map((e) => e.sentBytes)).toEqual(
+      [...live.map((e) => e.sentBytes)].sort((a, b) => a! - b!),
+    );
     expect(live.every((e) => e.totalBytes === BIG_BYTES)).toBe(true);
-    expect(events.some((e) => e.phase === "upload" && e.attempt === 2 && e.sentBytes === 0)).toBe(true);
+    expect(events.some((e) => e.phase === "upload" && e.attempt === 2 && e.sentBytes === 0)).toBe(
+      true,
+    );
   });
 
   it("says how many tries it made and how far the last got when the retries run out", async () => {
