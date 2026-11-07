@@ -885,6 +885,12 @@ Sentences come from a transcript: `--transcript <file>`, or
 `<recording>.transcript.json` beside the recording. Without one, voice lines
 carry no words.
 
+A file you know holds one layer is read whole with `--layer music|sfx|voice`:
+no stems are fetched and nothing leaves the machine, whatever `--quality` says.
+`music` reads the file as the music bed (sections, tempo, levels), `voice` reads
+words and pauses from it, `sfx` finds its effects. The JSON result records the
+declared `layer`; without the flag the read is unchanged.
+
 Effects and music are read from stems. At `--quality best` the
 recording is separated into vocals, drums, bass, guitar, piano and other by
 HeyGen's `/v3/audio/stems`, with your HeyGen credential (see
