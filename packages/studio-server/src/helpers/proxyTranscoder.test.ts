@@ -663,6 +663,7 @@ describe("resolveProxy", () => {
               "frame=key_frame,pict_type",
               "-of",
               "json",
+              "--",
               file,
             ],
             { encoding: "utf8" },
