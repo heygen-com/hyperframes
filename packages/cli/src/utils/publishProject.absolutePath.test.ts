@@ -44,6 +44,18 @@ describe("a media file referenced by its filesystem path", () => {
     expect(index).toContain('src="media/inside.mp3"');
   });
 
+  it("keeps its #fragment and ?query after the archive path", () => {
+    const inside = stage(
+      (_ext, project) =>
+        `<html><audio id="a" src="${join(project, "media/inside.mp3")}#t=1"></audio></html>`,
+    );
+    expect(inside.index).toContain('src="media/inside.mp3#t=1"');
+    const outside = stage(
+      (ext) => `<html><audio id="a" src="${join(ext, "song.mp3")}?v=2"></audio></html>`,
+    );
+    expect(outside.index).toMatch(/src="_ext\/[^"]*song\.mp3\?v=2"/);
+  });
+
   it("that does not exist is left as written, like any root-relative URL", () => {
     const { index } = stage(() => `<html><img src="/assets/none.png"></html>`);
     expect(index).toContain('src="/assets/none.png"');

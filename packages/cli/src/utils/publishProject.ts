@@ -443,27 +443,40 @@ const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
   encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
 
+function archiveTargetOf(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  rawPath: string,
+  options: { requireOnDisk: boolean; filesystemPath: boolean },
+): string | null | undefined {
+  if (isPathInside(absPath, ctx.absProjectDir)) {
+    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk);
+    return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
+  }
+  try {
+    if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  return encodeUrlPath(addExternalAsset(ctx, absPath));
+}
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
   requireOnDisk = false,
 ): string | null {
-  // A leading "/" is a filesystem path to the local render, and the cloud render host refuses one.
   const filesystemPath = rawPath.startsWith("/") && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
-  for (const path of decodeUrlPathVariants(rawPath)) {
-    const absPath = resolve(referrerAbsDir, path);
-    if (isPathInside(absPath, ctx.absProjectDir)) {
-      includeReferencedProjectFile(ctx, absPath, rawPath, requireOnDisk);
-      return filesystemPath ? relativeToProject(ctx, absPath) : null;
-    }
-    try {
-      if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
-    } catch {
-      continue;
-    }
-    return encodeUrlPath(addExternalAsset(ctx, absPath));
+  const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
+  const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
+  for (const variant of decodeUrlPathVariants(path)) {
+    const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
+      requireOnDisk,
+      filesystemPath,
+    });
+    if (target !== undefined) return target && target + suffix;
   }
   return null;
 }
