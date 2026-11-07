@@ -19,6 +19,7 @@ import {
   desktopInstalled,
   openCommandFor,
   openInDesktop,
+  previewStopCommandFor,
 } from "./desktopApp.js";
 
 const LIVE = { ready: true, platform: "darwin" as const, env: {}, installed: () => true };
@@ -398,6 +399,16 @@ describe("openCommandFor", () => {
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
   });
+
+  it("names the matching `preview --stop` the same way", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(work, 3002, work)).toBe(
+      "hyperframes preview . --stop --port 3002",
+    );
+    expect(previewStopCommandFor(join(work, "my film"), 4567, work)).toBe(
+      'hyperframes preview "my film" --stop --port 4567',
+    );
+  });
 });
 
 describe("desktopInstalled", () => {
@@ -480,6 +491,19 @@ describe("desktopHint", () => {
   it("points an installed app to `hyperframes open` once the app takes handed-over projects", () => {
     expect(desktopHint(process.cwd(), { ...mac, ready: true, installed: true })).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
+    );
+  });
+
+  it("tells a preview's reader that the app can't edit while the preview runs", () => {
+    const installed = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installed, preview: "background" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open . (this stops the background preview)",
+    );
+    expect(desktopHint(process.cwd(), { ...installed, preview: "foreground" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: stop this preview, then run hyperframes open .",
+    );
+    expect(desktopHint(process.cwd(), { ...mac, installed: false, preview: "background" })).toBe(
+      MAC_HINT,
     );
   });
 
