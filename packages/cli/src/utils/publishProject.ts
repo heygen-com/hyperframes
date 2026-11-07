@@ -1,5 +1,5 @@
 import { envProxyEnabled } from "@hyperframes/core/env-proxy";
-import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   closeSync,
   existsSync,
@@ -440,25 +440,43 @@ function includeReferencedProjectFile(
 /** References with no fallback: a missing file here cannot render. */
 const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
 
+const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
+  encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
+
+function archiveTargetOf(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  rawPath: string,
+  options: { requireOnDisk: boolean; filesystemPath: boolean },
+): string | null | undefined {
+  if (isPathInside(absPath, ctx.absProjectDir)) {
+    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk);
+    return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
+  }
+  try {
+    if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  return encodeUrlPath(addExternalAsset(ctx, absPath));
+}
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
   requireOnDisk = false,
 ): string | null {
-  if (isNonRelativeUrl(rawPath)) return null;
-  for (const path of decodeUrlPathVariants(rawPath)) {
-    const absPath = resolve(referrerAbsDir, path);
-    if (isPathInside(absPath, ctx.absProjectDir)) {
-      includeReferencedProjectFile(ctx, absPath, rawPath, requireOnDisk);
-      return null;
-    }
-    try {
-      if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
-    } catch {
-      continue;
-    }
-    return encodeUrlPath(addExternalAsset(ctx, absPath));
+  const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
+  if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
+  const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
+  const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
+  for (const variant of decodeUrlPathVariants(path)) {
+    const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
+      requireOnDisk,
+      filesystemPath,
+    });
+    if (target !== undefined) return target && target + suffix;
   }
   return null;
 }
