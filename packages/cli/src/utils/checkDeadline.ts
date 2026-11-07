@@ -23,7 +23,10 @@ const PHASE_LABELS = {
   frames: "capturing finding frames",
 } as const;
 export type CheckPhase = keyof typeof PHASE_LABELS;
-const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies", "launch"]);
+const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies"]);
+
+/** Starting Chrome is bounded on its own: a first run downloads it, which can outlast the idle window. */
+const CHROME_START_MS = 180_000;
 
 export class CheckDeadlineError extends Error {
   constructor(
@@ -64,7 +67,17 @@ export class CheckStoppedError extends Error {
   }
 }
 
-/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it. */
+export class CheckChromeStartError extends Error {
+  constructor(waitedMs: number, where: string) {
+    super(
+      `Chrome did not start within ${waitedMs / 1000} s${where || "."} ` +
+        "On a first run it may still be downloading: run `hyperframes browser ensure`, then run check again.",
+    );
+  }
+}
+
+/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it.
+ * Starting Chrome has its own longer window, so a Chrome that never becomes ready ends the check too. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();
@@ -120,6 +133,7 @@ export class CheckDeadline {
     if (this.work) this.spend(this.work.phase, now - this.work.since);
     this.work = { phase, since: now, detail };
     this.spend(phase, 0);
+    this.beat();
     this.rearm();
   };
 
@@ -146,9 +160,15 @@ export class CheckDeadline {
     return ` while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
   }
 
+  /** Chrome is ready: the idle clock for the page work starts here. */
   start = (): void => {
     if (this.phase !== "waiting") return;
     this.phase = "started";
+    this.enter("load");
+  };
+
+  private beat(): void {
+    if (this.heartbeat || this.phase === "closed" || this.expired) return;
     this.heartbeat = setInterval(() => {
       if (this.work) {
         const seconds = Math.round((Date.now() - this.work.since) / 1000);
@@ -157,15 +177,22 @@ export class CheckDeadline {
       }
     }, HEARTBEAT_MS);
     this.heartbeat.unref();
-    this.enter("load");
-  };
+  }
 
   private rearm(): void {
-    if (this.phase !== "started" || this.expired) return;
+    if (this.phase === "closed" || this.expired) return;
+    const launching = this.work?.phase === "launch" && this.phase === "waiting";
+    if (this.phase !== "started" && !launching) return;
     clearTimeout(this.timer);
+    const window = launching ? Math.max(CHROME_START_MS, this.idleMs) : this.idleMs;
     this.timer = setTimeout(
-      () => this.expire(new CheckDeadlineError(this.scripts.at(-1), this.describe())),
-      this.idleMs,
+      () =>
+        this.expire(
+          launching
+            ? new CheckChromeStartError(window, this.where())
+            : new CheckDeadlineError(this.scripts.at(-1), this.describe()),
+        ),
+      window,
     );
   }
 

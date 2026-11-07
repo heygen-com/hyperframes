@@ -2465,6 +2465,29 @@ describe("check pipeline", () => {
     }
   });
 
+  it("a Chrome that never becomes ready ends the whole check with a named finding inside its window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps } = dependencies(fakeDriver());
+      deps.runBrowserCheck = (_project, _options, _motion, deadline) => {
+        deadline!.enter("launch");
+        return new Promise<never>((_, reject) =>
+          deadline!.signal.addEventListener("abort", () => reject(deadline!.signal.reason)),
+        );
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(180_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
+      expect(report.ok).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a check given a long --timeout is not ended as idle after 120 s of waiting for its page", async () => {
     vi.useFakeTimers();
     try {

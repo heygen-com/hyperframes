@@ -1275,6 +1275,10 @@ and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_M
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
 
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
+finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
+downloading: run `hyperframes browser ensure` once, then run check again.
+
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
 passes without running.
