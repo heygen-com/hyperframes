@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
-import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
@@ -12,7 +12,11 @@ import {
   type ProjectMediaScan,
   type MediaCodecProbeCache,
 } from "./mediaCodecMap.js";
-import { resolveProxy, PROXY_PARAMS_VERSION } from "./proxyTranscoder.js";
+import {
+  resolveProxy,
+  PROXY_PARAMS_VERSION,
+  SEEK_PROXY_PARAMS_VERSION,
+} from "./proxyTranscoder.js";
 
 /**
  * Transparent-media-proxy wiring shared by `routes/preview.ts`
@@ -63,9 +67,13 @@ export function resolvePreviewMediaCodecProbeCache(
  * or a different proxy variant invalidates cached 304s without needing to
  * touch the proxy file itself.
  */
-export function proxyEtagSalt(raw: string | undefined, box?: PreviewProxyBox): string {
+export function proxyEtagSalt(
+  raw: string | undefined,
+  box?: PreviewProxyBox,
+  seek = false,
+): string {
   if (raw === undefined) return "";
-  return `:proxy:${raw}:${PROXY_PARAMS_VERSION}${box ? `:${formatPreviewProxyBox(box)}` : ""}`;
+  return `:proxy:${raw}:${seek ? SEEK_PROXY_PARAMS_VERSION : PROXY_PARAMS_VERSION}${box ? `:${formatPreviewProxyBox(box)}` : ""}`;
 }
 
 /**
@@ -134,7 +142,7 @@ export async function injectMediaCodecMapIntoHtml(
     `window.__HF_MEDIA_SOURCE_FACTS__=${safeJson(sourceFacts)};`,
   ];
   const tag = `<script data-hf-media-codec-map>${assignments.join("")}</script>`;
-  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
+  return injectTagsAtHeadStart(html, tag);
 }
 
 /**

@@ -293,6 +293,7 @@ export {
   HEAVY_PIXEL_SHARE,
   PREVIEW_PROXY_BOX_PARAM,
   PREVIEW_PROXY_LIGHT_PARAM,
+  PREVIEW_PROXY_SEEK_PARAM,
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
   PREVIEW_PROXY_RETRY_PARAM,
@@ -308,6 +309,11 @@ export {
   type PreviewQuality,
   type PreviewSourceFacts,
 } from "./previewProxyBox";
+export type {
+  PausedVideoFrameProvider,
+  PausedVideoFrameRequest,
+  PausedVideoFrame,
+} from "./runtime/pausedVideoFrames";
 
 // Inline scripts
 export {

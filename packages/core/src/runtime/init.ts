@@ -27,10 +27,12 @@ import {
 } from "./preloadMedia";
 import { notePlaybackFrame, noteDisplayScale } from "./playbackHealth";
 import { hasFrozenPicture } from "./frozenPicture";
+import { createPreviewSeek } from "./previewSeek";
+import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
 import { instantTolerance } from "../clipFacts";
-import { isInClipWindow } from "./clipWindow";
+import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime } from "./mediaClock";
 import {
   CLIP_HIDDEN_ATTR,
@@ -75,6 +77,8 @@ import { createFrameSourceAdapter } from "./frameSources";
 import {
   patchVideoTextureCompat,
   patchWebGLVideoTextureCompat,
+  patchCanvasVideoFrameCompat,
+  patchExternalVideoTextureCompat,
 } from "./adapters/video-texture-compat";
 import {
   forceDispatchSeekEvent,
@@ -527,6 +531,10 @@ function loadPreviewImagesIn(root: Element): void {
 
 export function initSandboxRuntimeModular(): void {
   const state = createRuntimeState();
+  let previewSeek: ReturnType<typeof createPreviewSeek> | undefined;
+  const pausedFrames = createPausedVideoFrames();
+  let nativePlayGeneration = 0;
+  let nativeWarmTimer: number | undefined;
   const stampsForStudio = window.parent !== window;
   // Studio's discovery stamps time a clip for the timeline only; nothing hides it at their end.
   const isDiscoveryStamped = (el: Element) =>
@@ -737,6 +745,12 @@ export function initSandboxRuntimeModular(): void {
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
+  registerRuntimeCleanup(() => {
+    nativePlayGeneration++;
+    window.clearTimeout(nativeWarmTimer);
+    pausedFrames.destroy();
+    delete window.__hf?.setPausedVideoFrameProvider;
+  });
   const postRuntimeDiagnosticOnce = (
     code: string,
     details: Record<string, RuntimeJson>,
@@ -758,7 +772,7 @@ export function initSandboxRuntimeModular(): void {
     _timeline: RuntimeTimelineLike | null;
     play: () => void;
     pause: () => void;
-    seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
+    seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => HeldSeek;
     getTime: () => number;
     getDuration: () => number;
     isPlaying: () => boolean;
@@ -2686,7 +2700,14 @@ export function initSandboxRuntimeModular(): void {
   };
   const onMediaLoadedMetadataForPlayhead = (event: Event) => {
     const el = event.currentTarget;
-    if (state.tornDown || clock.isPlaying() || !isMediaElement(el) || isRenderMode(el)) return;
+    if (
+      state.tornDown ||
+      previewSeek?.time !== undefined ||
+      clock.isPlaying() ||
+      !isMediaElement(el) ||
+      isRenderMode(el)
+    )
+      return;
     lastSyncedMediaTimeSeconds = null;
     state.mediaForceSyncNextTick = true;
     syncMediaForCurrentState();
@@ -3677,6 +3698,7 @@ export function initSandboxRuntimeModular(): void {
    *  exists for. On `window.__hf` because the Studio is across the iframe boundary. */
   const pausedMediaLeases = new WeakSet<HTMLMediaElement>();
   const leasePausedMedia = (el: HTMLMediaElement): void => {
+    if (isVideoElement(el)) releasePausedVideoFrame(el);
     pausedMediaLeases.add(el);
   };
   const releasePausedMedia = (el: HTMLMediaElement): void => {
@@ -3685,6 +3707,14 @@ export function initSandboxRuntimeModular(): void {
   };
   window.__hf.leasePausedMedia = leasePausedMedia;
   window.__hf.releasePausedMedia = releasePausedMedia;
+  window.__hf.setPausedVideoFrameProvider = (provider) => {
+    const destination = previewSeek?.time;
+    nativePlayGeneration++;
+    window.clearTimeout(nativeWarmTimer);
+    previewSeek?.cancel();
+    pausedFrames.setProvider(provider);
+    if (destination !== undefined) void seekWhenReady(destination);
+  };
   // Clips the transport may move now (not a paused lease); null while the host drives media.
   const transportMovableClips = (clips: RuntimeMediaClip[]): RuntimeMediaClip[] | null => {
     if (state.nativeMediaSyncDisabled) return null;
@@ -3774,6 +3804,7 @@ export function initSandboxRuntimeModular(): void {
 
   let lastVisibilityPassSeconds: number | null = null;
   const syncMediaForCurrentState = (timingRevision?: number) => {
+    if (previewSeek?.time !== undefined && !previewSeek.committing) return;
     // Scope 1 of 3 (see `withTimingResolver`). Closes before `syncRuntimeMedia`,
     // which may call `el.load()` and invalidate every cached duration.
     //
@@ -3869,7 +3900,8 @@ export function initSandboxRuntimeModular(): void {
     // wake call bolted onto each mutator (and forgotten on the next one).
     if (force) wakeTransport();
     if (force && timelinePostHeld && !clock.isPlaying()) postTimeline();
-    const frame = Math.max(0, Math.round((state.currentTime || 0) * state.canonicalFps));
+    const currentTime = previewSeek?.time ?? state.currentTime ?? 0;
+    const frame = Math.max(0, Math.round(currentTime * state.canonicalFps));
     const now = Date.now();
     const shouldPost =
       force ||
@@ -3886,7 +3918,7 @@ export function initSandboxRuntimeModular(): void {
       source: "hf-preview",
       type: "state",
       frame,
-      currentTime: state.currentTime || 0,
+      currentTime,
       ended: clock.reachedEnd(),
       isPlaying: state.bridgeLastPostedPlaying,
       buffering: bufferingFor.length > 0,
@@ -4480,8 +4512,9 @@ export function initSandboxRuntimeModular(): void {
     // Redraw the current frame as a seek does; a playing film cut to end at or before it stops there, as at its end.
     const cutShort = clock.isPlaying() && duration > 0 && state.currentTime >= duration;
     if (joining && clock.isPlaying() && !cutShort) joinPlayback(swappedHosts);
+    else if (previewSeek?.time !== undefined) previewSeek.refresh();
     else transport.seek(cutShort ? duration : state.currentTime, { keepPlaying: !cutShort });
-    syncTimedElementVisibility(state.currentTime);
+    if (previewSeek?.time === undefined) syncTimedElementVisibility(state.currentTime);
     postTimeline();
   };
   // Only the rules not here yet: rewriting a loaded rule's style would load its font again.
@@ -4788,16 +4821,19 @@ export function initSandboxRuntimeModular(): void {
       .filter(({ name }) => near.has(name) && parked(name))
       .sort((a, b) => Math.abs(a.start - time) - Math.abs(b.start - time))[0];
     const toMount = landed ?? neighbour;
-    const toRetire = toMount
-      ? []
-      : windowScenes.filter(({ name }) => !near.has(name) && !parked(name));
+    const toRetire =
+      toMount || previewSeek?.time !== undefined
+        ? []
+        : windowScenes.filter(({ name }) => !near.has(name) && !parked(name));
     if (!toMount && toRetire.length === 0) {
       windowNear = key;
       return false;
     }
     const wantedNow = (name: string) =>
       heldScenes.has(name) ||
-      scenesWanted(windowScenes, state.currentTime, clock.isPlaying()).has(name);
+      scenesWanted(windowScenes, previewSeek?.time ?? state.currentTime, clock.isPlaying()).has(
+        name,
+      );
     const parkedBeforeStep = parkedNames.size;
     windowWork = (async () => {
       if (landed) await mountScene(landed.name);
@@ -4810,7 +4846,7 @@ export function initSandboxRuntimeModular(): void {
       windowWork = null;
       const stuckStepKeepsItsPlan = parkedNames.size === parkedBeforeStep;
       windowNear = stuckStepKeepsItsPlan ? key : "";
-      moveSceneWindow(state.currentTime);
+      moveSceneWindow(previewSeek?.time ?? state.currentTime);
     });
     // A seek is not done until the scene it lands in is mounted.
     if (landed) registerSeekCompletion(windowWork, "scene-window");
@@ -4896,11 +4932,11 @@ export function initSandboxRuntimeModular(): void {
   // A paused seek that would reveal undecoded images holds the previous picture until they decode.
   // Capped: a request that never settles must not freeze the preview; measured jumps settle in ~200 ms.
   const SEEK_HOLD_CAP_MS = 1000;
-  let heldSeek: { time: number; apply: () => void } | null = null;
+  let heldSeek: { time: number; apply: () => HeldSeek } | null = null;
   const flushHeldSeek = () => {
     const held = heldSeek;
     heldSeek = null;
-    held?.apply();
+    return held?.apply();
   };
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
     webAudio.stopAll();
@@ -4917,6 +4953,7 @@ export function initSandboxRuntimeModular(): void {
     if (!keepPlaying) syncMediaForCurrentState();
     const tl = state.capturedTimeline;
     pauseTimelineIfPossible(tl);
+    pausedFrames.notify();
     const pageAnimations = seekTimelineAndAdapters(state.currentTime);
     if (!keepPlaying) decideClipsUnderScriptHidden(state.currentTime);
     runAdapters("pause", 0, pageAnimations);
@@ -4951,9 +4988,150 @@ export function initSandboxRuntimeModular(): void {
     postState(true);
   };
 
+  const previewVideoClipsAt = (time: number) =>
+    withTimingResolver(() => {
+      const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
+      const visibleAt = timedVisibilityAt();
+      const root = resolveRootCompositionElement();
+      return (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? []).filter(
+        (clip) =>
+          isVideoElement(clip.el) &&
+          !isSilencedByHidden(clip.el) &&
+          (clip.el.hasAttribute("src") || clip.el.querySelector("source[src]") !== null) &&
+          isClipVisibleAt(time, clip.start, clip.end, duration) &&
+          clipChainVisibleAt(clip.el.parentElement, time, visibleAt, root),
+      );
+    });
+
+  previewSeek = createPreviewSeek({
+    frames: {
+      available: pausedFrames.available,
+      prepare: (clips, time, signal, settled) => {
+        moveSceneWindow(time);
+        for (const { el } of clips) {
+          if (!isVideoElement(el) || el.videoWidth > 0) continue;
+          if (el.preload === "none") el.preload = "metadata";
+          if (el.networkState !== 2) el.load();
+        }
+        const requests = clips.flatMap((clip) =>
+          isVideoElement(clip.el)
+            ? [
+                {
+                  video: clip.el,
+                  source: clip.el.src || clip.el.currentSrc,
+                  time: mediaSourceTimeAt(clip, time),
+                  settled,
+                },
+              ]
+            : [],
+        );
+        return pausedFrames.prepare(requests, signal);
+      },
+      prepareNative: pausedFrames.prepareNative,
+      clear: pausedFrames.clear,
+    },
+    videosToHold: () =>
+      withTimingResolver(() =>
+        (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? [])
+          .map(({ el }) => el)
+          .filter(isVideoElement),
+      ),
+    scenesReadyAt: (time) =>
+      !windowScenes.some(
+        ({ name, start, end }) => start <= time && time <= end && parkedNames.has(name),
+      ) &&
+      previewVideoClipsAt(time).every(
+        ({ el }) => !isVideoElement(el) || el.videoWidth > 0 || el.error !== null,
+      ),
+    clipsAt: previewVideoClipsAt,
+    prepare: (clips, time) => {
+      moveSceneWindow(time);
+      syncRuntimeMedia({
+        clips,
+        timeSeconds: time,
+        playing: false,
+        playbackRate: state.playbackRate,
+        forceSync: true,
+        getCompositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
+      });
+    },
+    commit: (time) => {
+      applySeek(time);
+      window.clearTimeout(nativeWarmTimer);
+      const refined = previewSeek?.refining;
+      if (pausedFrames.active)
+        nativeWarmTimer = window.setTimeout(() => {
+          if (state.tornDown || clock.isPlaying() || previewSeek?.time !== undefined) return;
+          if (!refined) {
+            const landed = previewSeek?.refine(time);
+            if (landed) registerSeekCompletion(landed, "video-frame");
+            return;
+          }
+          pausedFrames.prepareNative();
+          state.mediaForceSyncNextTick = true;
+          syncMediaForCurrentState();
+        }, 120);
+    },
+  });
+
+  const seekWhenReady = (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => {
+    nativePlayGeneration++;
+    window.clearTimeout(nativeWarmTimer);
+    if (
+      !mediaDeferred ||
+      state.nativeMediaSyncDisabled ||
+      isExportRenderDrivingFrames() ||
+      window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
+      (options?.keepPlaying && clock.isPlaying())
+    ) {
+      previewSeek?.cancel();
+      pausedFrames.clear();
+      applySeek(time, options);
+      return;
+    }
+    webAudio.stopAll();
+    clock.detachAudioSource();
+    clock.pause();
+    state.isPlaying = false;
+    bufferingFor = [];
+    pauseTimelineIfPossible(state.capturedTimeline);
+    runAdapters("pause");
+    const clips = withTimingResolver(() => buildRuntimeMediaCache().mediaClips);
+    for (const { el } of transportMovableClips(clips) ?? []) {
+      if (!el.paused) el.pause();
+    }
+    const landed = options?.settled ? previewSeek?.refine(time) : previewSeek?.seek(time);
+    if (landed) registerSeekCompletion(landed, "video-frame");
+    postState(true);
+    return landed;
+  };
+
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
+      if (
+        (pausedFrames.active || (pausedFrames.available() && previewSeek?.time !== undefined)) &&
+        !clock.isPlaying()
+      ) {
+        window.clearTimeout(nativeWarmTimer);
+        const generation = ++nativePlayGeneration;
+        const landed = previewSeek?.handoff(previewSeek.time ?? state.currentTime);
+        if (landed) {
+          bufferingFor = withTimingResolver(() =>
+            (transportMovableClips(buildRuntimeMediaCache().mediaClips) ?? []).map(({ el }) => el),
+          );
+          postState(true);
+          void landed.then(() => {
+            if (state.tornDown || generation !== nativePlayGeneration) return;
+            bufferingFor = [];
+            transport.play();
+          });
+          return;
+        }
+      }
+      const destination = previewSeek?.time;
+      previewSeek?.cancel();
+      if (destination !== undefined) applySeek(destination);
       const resumingStarved = bufferingFor.length > 0;
       bufferingFor = [];
       const tl = state.capturedTimeline;
@@ -4988,12 +5166,26 @@ export function initSandboxRuntimeModular(): void {
       postState(true);
     },
     pause: () => {
+      nativePlayGeneration++;
+      const destination = previewSeek?.time;
+      previewSeek?.cancel();
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
-      if (clock.isPlaying()) haltPlayback();
+      if (clock.isPlaying()) {
+        if (
+          mediaDeferred &&
+          pausedFrames.available() &&
+          !state.nativeMediaSyncDisabled &&
+          !isExportRenderDrivingFrames()
+        )
+          void seekWhenReady(clock.now());
+        else haltPlayback();
+      } else if (destination !== undefined) void seekWhenReady(destination);
       else if (wasBuffering) postState(true);
     },
     seek: (timeSeconds, options) => {
+      nativePlayGeneration++;
+      window.clearTimeout(nativeWarmTimer);
       const quantized = quantizeTimeToFrame(
         Math.max(0, Number(timeSeconds) || 0),
         state.canonicalFps,
@@ -5001,10 +5193,10 @@ export function initSandboxRuntimeModular(): void {
       heldSeek = null;
       const undecoded = clock.isPlaying() ? [] : undecodedImagesShownAt(quantized);
       if (undecoded.length === 0) {
-        applySeek(quantized, options);
-        return;
+        return seekWhenReady(quantized, options);
       }
-      const held = { time: quantized, apply: () => applySeek(quantized, options) };
+      previewSeek?.cancel();
+      const held = { time: quantized, apply: () => seekWhenReady(quantized, options) };
       heldSeek = held;
       for (const img of undecoded) {
         loadPreviewImagesIn(img);
@@ -5023,13 +5215,17 @@ export function initSandboxRuntimeModular(): void {
       );
       const landed = Promise.race([decoded, capped]).then(() => {
         window.clearTimeout(capTimer);
-        if (heldSeek === held) flushHeldSeek();
+        if (heldSeek === held) return flushHeldSeek();
       });
       registerSeekCompletion(landed, "image-decode");
       return landed;
     },
     renderSeek: (timeSeconds, options) => {
+      nativePlayGeneration++;
+      window.clearTimeout(nativeWarmTimer);
+      pausedFrames.clear();
       heldSeek = null;
+      previewSeek?.cancel();
       renderCaptureSeekStarted = true;
       const seekTime = resolveRenderSeekTime(
         Math.max(0, Number(timeSeconds) || 0),
@@ -5054,7 +5250,8 @@ export function initSandboxRuntimeModular(): void {
       if (blurred) registerSeekCompletion(blurred, "motion-blur");
       postState(true);
     },
-    getTime: () => heldSeek?.time ?? clock.now(),
+    getTime: () =>
+      previewSeek?.committing ? clock.now() : (heldSeek?.time ?? previewSeek?.time ?? clock.now()),
     getDuration: () => {
       const dur = clock.getDuration();
       return Number.isFinite(dur) ? dur : 0;
@@ -5151,6 +5348,8 @@ export function initSandboxRuntimeModular(): void {
   ] as RuntimeDeterministicAdapter[];
   patchVideoTextureCompat();
   patchWebGLVideoTextureCompat();
+  patchCanvasVideoFrameCompat();
+  patchExternalVideoTextureCompat();
   // Lets the engine re-render GPU compositions after it injects decoded video
   // frames, so video-textured WebGL/WebGPU scenes sample the correct frame.
   window.__hfReseekGpu = (time: number) => {
@@ -5889,6 +6088,10 @@ export function initSandboxRuntimeModular(): void {
     if (state.tornDown || inTransportTick) return;
     inTransportTick = true;
     try {
+      if (previewSeek?.time !== undefined) {
+        postState(false);
+        return;
+      }
       transportTickCount += 1;
 
       // The jobs below run when the composition revision moves (rate-limited). What no
@@ -6296,6 +6499,10 @@ export function initSandboxRuntimeModular(): void {
       emitAnalyticsEvent("composition_paused", { time: player.getTime() });
     },
     onStopMedia: () => {
+      nativePlayGeneration++;
+      window.clearTimeout(nativeWarmTimer);
+      previewSeek?.cancel();
+      bufferingFor = [];
       webAudio.stopAll();
       const mediaEls = document.querySelectorAll("video, audio");
       for (const el of mediaEls) {
@@ -6347,6 +6554,13 @@ export function initSandboxRuntimeModular(): void {
       }
     },
     onSetNativeMediaSyncDisabled: (disabled) => {
+      if (disabled) {
+        nativePlayGeneration++;
+        window.clearTimeout(nativeWarmTimer);
+        previewSeek?.cancel();
+        pausedFrames.clear();
+        bufferingFor = [];
+      }
       if (state.nativeMediaSyncDisabled === disabled) return;
       state.nativeMediaSyncDisabled = disabled;
       state.mediaForceSyncNextTick = true;
@@ -6449,6 +6663,7 @@ export function initSandboxRuntimeModular(): void {
   const teardown = () => {
     if (state.tornDown) return;
     state.tornDown = true;
+    previewSeek?.cancel();
     cancelTransportTick();
     document.removeEventListener("visibilitychange", onTransportVisibilityChange);
     if (transportParkTimerId != null) {

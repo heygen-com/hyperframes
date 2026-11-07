@@ -3,6 +3,8 @@ export const PREVIEW_PROXY_BOX_PARAM = "hf-proxy-box";
 
 export const PREVIEW_PROXY_LIGHT_PARAM = "hf-proxy-light";
 
+export const PREVIEW_PROXY_SEEK_PARAM = "hf-proxy-seek";
+
 export const PREVIEW_PROXY_RETRY_PARAM = "hf-proxy-retry";
 
 export const PREVIEW_PROXY_STILL_PARAM = "hf-proxy-still";
@@ -55,6 +57,8 @@ export type PreviewSourceFacts = {
   bitDepth: number;
   bitrate: number;
   codec?: string;
+  frameRate?: number;
+  variableFrameRate?: boolean;
 };
 
 export const HEAVY_PIXEL_SHARE = 0.5;

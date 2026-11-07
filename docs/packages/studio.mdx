@@ -106,6 +106,24 @@ depends on the browser playing in real time, while render captures frames one at
 time. A heavy project can therefore stutter during preview and still render every
 frame.
 
+Paused video scrubbing decodes and stages the visible video layers before
+advancing the composition's animations. Completed frames appear during a drag,
+with newer pointer positions coalesced into the next decode. Canvas and GPU
+effects consume the same staged pixels. Continuous playback uses native video;
+Studio keeps the paused picture visible while those videos catch up before Play.
+With automatic quality, moving seeks use a smaller preview and refine the same
+position at full preview quality once input stops. Frame-by-frame keyboard steps
+request full-quality frames immediately. Automatic playback quality reductions do
+not lower the settled paused image. An explicit quality choice keeps that
+resolution throughout.
+
+For slow local sources, the preview server can prepare copies with more frequent
+keyframes in the background. Their resolution follows the preview size and device
+pixel ratio. An explicit preview-quality choice takes precedence. These copies
+are decoder inputs: authored video URLs and export sources stay intact. Browsers
+or media that cannot use the frame decoder fall back to native seeking. A first
+seek can still take longer while media loads or preview copies are prepared.
+
 ## Tailwind preset
 
 ```typescript

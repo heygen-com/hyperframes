@@ -11,6 +11,7 @@ import type { RuntimeMediaClip } from "./types.js";
 import { clampAudioGain, clipGain, gainTimesLane } from "../audioGain.js";
 import { isMemberGroupHidden } from "../audioGroups.js";
 import { findInjectedRenderFrame } from "./renderFrameSibling.js";
+import { ownsPausedVideoTime } from "./pausedVideoFrames";
 import { isRenderFrameVideo } from "./preloadMedia.js";
 import { registerSeekCompletion } from "./adapters/seek-dispatch.js";
 import { cutToHostSlots, type HostSlot } from "../mediaTiming.js";
@@ -607,6 +608,10 @@ export function syncRuntimeMedia(params: {
       // Mute only when force-muted or the transport owns this element; an unclaimed
       // track stays audible via the HTMLMedia fallback.
       if ((forceMuteAll || params.isWebAudioOwned?.(el)) && !el.muted) el.muted = true;
+      if (!params.playing && ownsPausedVideoTime(el)) {
+        if (!el.paused) el.pause();
+        continue;
+      }
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only
       // buffers the first few seconds and causes seeks to silently fail

@@ -193,15 +193,16 @@ export type MediaProxyEligibility =
 
 /**
  * Single policy gate shared by proactive scans and on-demand proxy routes. A file Chrome can play is
- * eligible only for a lighter copy (`lightBox`, the box that request asks for) and only when it is heavy there.
+ * eligible for a boxed copy when it is heavy there, or when a measured slow seek asks for a seekable copy.
  */
 export function decideMediaProxyEligibility(
   facts: AssetCodecFacts | null,
   lightBox?: PreviewProxyBox,
+  seekRequested = false,
 ): MediaProxyEligibility {
   if (!facts) return { eligible: false, reason: "unknown_codec" };
   if (facts.browserHostile) return { eligible: true };
-  if (lightBox && facts.source && isHeavyForPreview(facts.source, lightBox)) {
+  if (lightBox && (seekRequested || (facts.source && isHeavyForPreview(facts.source, lightBox)))) {
     return { eligible: true };
   }
   return { eligible: false, reason: "browser_safe_codec" };

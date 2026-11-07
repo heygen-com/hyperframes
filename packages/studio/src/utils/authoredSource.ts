@@ -1,6 +1,7 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import {
   PREVIEW_ONLY_ATTRS,
+  PREVIEW_VIDEO_CANVAS_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
 } from "@hyperframes/core/studio-preview-mark";
 
@@ -97,6 +98,7 @@ export function authoredMarkup(authored: Element, live: Element, sourceFile: str
 
 export function liveMarkupWithoutPreviewMarks(live: Element): string {
   const copy = live.cloneNode(true) as Element;
+  for (const canvas of copy.querySelectorAll(`[${PREVIEW_VIDEO_CANVAS_ATTR}]`)) canvas.remove();
   for (const el of [copy, ...Array.from(copy.querySelectorAll("*"))]) {
     if (el.hasAttribute(STUDIO_PREVIEW_LAZY_ATTR)) el.removeAttribute("loading");
     for (const attr of PREVIEW_ONLY_ATTRS) el.removeAttribute(attr);
