@@ -23,14 +23,15 @@ export function checkDocsCliCommands(cliSource, docsText) {
   const end = start === -1 ? -1 : cliSource.indexOf("\n};", start);
   if (start === -1 || end === -1) throw new Error(NO_LOADERS);
 
-  const commands = [
-    ...cliSource.slice(start, end).matchAll(/^ {2}"?([a-z][a-z-]*)"?:/gm),
-  ].map((match) => match[1]);
+  const commands = [...cliSource.slice(start, end).matchAll(/^ {2}"?([a-z][a-z-]*)"?:/gm)].map(
+    (match) => match[1],
+  );
   if (commands.length === 0) throw new Error(NO_LOADERS);
 
   const from = docsText.indexOf("## Find your command");
   const sectionEnd = from === -1 ? -1 : docsText.indexOf("\n## ", from + 1);
-  const finder = from === -1 ? "" : docsText.slice(from, sectionEnd === -1 ? undefined : sectionEnd);
+  const finder =
+    from === -1 ? "" : docsText.slice(from, sectionEnd === -1 ? undefined : sectionEnd);
   const missing = commands.filter((command) => !finder.includes(`\`${command}\``));
 
   return { commands, missing };
