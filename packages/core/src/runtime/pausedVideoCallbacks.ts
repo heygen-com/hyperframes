@@ -129,3 +129,43 @@ export function releasePausedVideoCallbacks(video: HTMLVideoElement): void {
       pending.native = requestNative(owner, video, state, pending, () => id);
   }
 }
+
+/** Recovery must observe native frames even while authored callbacks still see staged pixels. */
+export function observeNativeVideoFrames(
+  video: HTMLVideoElement,
+  onFrame: () => boolean,
+): () => void {
+  const owner = registry();
+  const request = owner?.request ?? video.requestVideoFrameCallback;
+  const cancel = owner?.cancel ?? video.cancelVideoFrameCallback;
+  let handle: number | null = null;
+  let stopped = false;
+  let playingAt: number | null = video.paused ? null : video.currentTime;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    if (handle !== null && typeof cancel === "function") cancel.call(video, handle);
+    video.removeEventListener("playing", playing);
+    video.removeEventListener("timeupdate", progress);
+  };
+  const arm = () => {
+    if (!stopped && typeof request === "function") handle = request.call(video, presented);
+  };
+  const presented = () => {
+    handle = null;
+    if (stopped) return;
+    if (onFrame()) stop();
+    else arm();
+  };
+  const playing = () => {
+    playingAt = video.currentTime;
+  };
+  const progress = () => {
+    if (stopped || playingAt === null || video.paused || video.currentTime === playingAt) return;
+    if (onFrame()) stop();
+  };
+  video.addEventListener("playing", playing);
+  video.addEventListener("timeupdate", progress);
+  arm();
+  return stop;
+}

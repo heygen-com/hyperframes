@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   flushPausedVideoCallbacks,
   installPausedVideoCallbacks,
+  observeNativeVideoFrames,
   releasePausedVideoCallbacks,
   stagePausedVideoCallbacks,
 } from "./pausedVideoCallbacks";
@@ -261,5 +262,68 @@ it("invalidates the actual vendored Three VideoTexture before redraw and continu
   deliverNative(resumedId, metadata(4.033, 121));
   expect(texture.version).toBe(3);
   texture.dispose();
+  expect(pending.size).toBe(0);
+});
+
+it("observes native frames independently of staged authored callbacks", () => {
+  const video = document.createElement("video");
+  const authored = vi.fn();
+  video.requestVideoFrameCallback(authored);
+  stagePausedVideoCallbacks(video, frame(3));
+  const recovered = vi.fn(() => true);
+  const stop = observeNativeVideoFrames(video, recovered);
+  deliverNative(102, metadata(3.05, 2));
+  expect(recovered).toHaveBeenCalledOnce();
+  expect(authored).not.toHaveBeenCalled();
+  flushPausedVideoCallbacks(video);
+  expect(authored).toHaveBeenCalledOnce();
+  expect(authored.mock.lastCall?.[1].mediaTime).toBe(3);
+  stop();
+});
+
+it("cancels a re-armed native observer and ignores an already queued callback", () => {
+  const video = document.createElement("video");
+  const recovered = vi.fn(() => false);
+  const stop = observeNativeVideoFrames(video, recovered);
+  deliverNative(101, metadata(3, 1));
+  const queued = pending.get(102)!;
+  stop();
+  expect(pending.has(102)).toBe(false);
+  queued.callback(130, metadata(3.05, 2));
+  expect(recovered).toHaveBeenCalledOnce();
+  expect(pending.size).toBe(0);
+});
+
+it("uses playing and progressing time when opacity defers a native callback", () => {
+  const video = document.createElement("video");
+  let paused = true;
+  let time = 3;
+  Object.defineProperties(video, {
+    paused: { get: () => paused },
+    currentTime: { get: () => time },
+  });
+  const recovered = vi.fn(() => true);
+  const stop = observeNativeVideoFrames(video, recovered);
+  video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).not.toHaveBeenCalled();
+  paused = false;
+  video.dispatchEvent(new Event("playing"));
+  video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).not.toHaveBeenCalled();
+  time += 1 / 30;
+  video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).toHaveBeenCalledOnce();
+  expect(pending.size).toBe(0);
+  stop();
+});
+
+it("keeps waiting when no native frame or playback progress arrives", () => {
+  const video = document.createElement("video");
+  const recovered = vi.fn(() => true);
+  const stop = observeNativeVideoFrames(video, recovered);
+  for (let i = 0; i < 3; i++) video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).not.toHaveBeenCalled();
+  expect(pending.size).toBe(1);
+  stop();
   expect(pending.size).toBe(0);
 });

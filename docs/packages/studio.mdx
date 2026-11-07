@@ -113,9 +113,10 @@ effects consume the same staged pixels. Continuous playback uses native video;
 Studio keeps the paused picture visible while those videos catch up before Play.
 A native handoff waits for ready frames for up to ten seconds; Pause or a new
 seek cancels it. At the deadline, the rest plays while each unready video keeps
-its last full-quality picture. Recovery seeks to the current playback time
-before revealing native video. A skipped source keeps its picture on subsequent
-Play requests until it recovers.
+its last full-quality picture. During playback, native frame presentation or
+playback progress releases that picture; normal transport sync corrects drift.
+Paused recovery still waits for its requested frame. A skipped source keeps its
+picture on subsequent Play requests until it recovers.
 A paused fallback that outlasts its wait retains the presented clock and picture,
 while paused sync continues. It can still publish when the video becomes ready;
 a new gesture cancels that recovery. Studio requests paused-decoder release

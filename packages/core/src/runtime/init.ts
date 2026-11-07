@@ -3717,7 +3717,7 @@ export function initSandboxRuntimeModular(): void {
     nativePlayGeneration++;
     nativePlayTime = undefined;
     wallClearTimeout(nativeWarmTimer);
-    previewSeek?.cancel();
+    previewSeek?.cancel(true);
     pausedFrames.setProvider(provider);
     if (!provider) pausedFrames.prepareNative();
     if (destination !== undefined) {
@@ -5031,7 +5031,7 @@ export function initSandboxRuntimeModular(): void {
       active: () => pausedFrames.active,
       skipped: pausedFrames.skipped,
       hold: (videos) => {
-        if (pausedFrames.available()) pausedFrames.holdNative(videos);
+        if (pausedFrames.available()) return pausedFrames.holdNative(videos);
       },
       prepare: (clips, time, signal, settled) => {
         moveSceneWindow(time);
@@ -5057,7 +5057,8 @@ export function initSandboxRuntimeModular(): void {
       suspend: pausedFrames.suspendProvider,
       prepareNative: pausedFrames.prepareNative,
       clear: (keep) =>
-        pausedFrames.clear(keep, (video) => {
+        pausedFrames.clear(keep, (video, presented) => {
+          if (clock.isPlaying()) return presented;
           const time = clock.now();
           const clip = previewVideoClipsAt(time).find(({ el }) => el === video);
           if (!clip) return true;
@@ -5221,7 +5222,7 @@ export function initSandboxRuntimeModular(): void {
       const destination = previewSeek?.targetTime ?? nativePlayTime;
       nativePlayGeneration++;
       nativePlayTime = undefined;
-      previewSeek?.cancel();
+      previewSeek?.cancel(true);
       const wasBuffering = bufferingFor.length > 0;
       bufferingFor = [];
       if (clock.isPlaying()) {

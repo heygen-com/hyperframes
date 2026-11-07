@@ -206,3 +206,51 @@ it("holds a full-size native snapshot through original-source provider replaceme
   expect(ownsPausedVideoTime(video)).toBe(true);
   expect(video.currentTime).toBe(3);
 });
+
+it("cancels a retained native observer when a new paused picture replaces it", async () => {
+  const proto = HTMLVideoElement.prototype;
+  const original = Object.getOwnPropertyDescriptor(proto, "requestVideoFrameCallback");
+  const originalCancel = Object.getOwnPropertyDescriptor(proto, "cancelVideoFrameCallback");
+  let queued: VideoFrameRequestCallback = () => {};
+  const cancel = vi.fn();
+  Object.defineProperty(proto, "requestVideoFrameCallback", {
+    configurable: true,
+    writable: true,
+    value: (callback: VideoFrameRequestCallback) => {
+      queued = callback;
+      return 123;
+    },
+  });
+  Object.defineProperty(proto, "cancelVideoFrameCallback", {
+    configurable: true,
+    writable: true,
+    value: cancel,
+  });
+  try {
+    const { session, video, request } = fixture();
+    const first = await session.prepare(request, new AbortController().signal);
+    first!.present();
+    session.prepareNative();
+    session.clear(new Set([video]), () => false);
+    const replacement = await session.prepare(request, new AbortController().signal);
+    replacement!.present();
+    const picture = getPausedVideoFrame(video);
+    expect(cancel).toHaveBeenCalledWith(123);
+    queued(0, {
+      mediaTime: 3,
+      width: 64,
+      height: 36,
+      presentedFrames: 1,
+      presentationTime: 0,
+      expectedDisplayTime: 0,
+      processingDuration: 0,
+    });
+    expect(getPausedVideoFrame(video)).toBe(picture);
+    expect(ownsPausedVideoTime(video)).toBe(true);
+  } finally {
+    if (original) Object.defineProperty(proto, "requestVideoFrameCallback", original);
+    else Reflect.deleteProperty(proto, "requestVideoFrameCallback");
+    if (originalCancel) Object.defineProperty(proto, "cancelVideoFrameCallback", originalCancel);
+    else Reflect.deleteProperty(proto, "cancelVideoFrameCallback");
+  }
+});

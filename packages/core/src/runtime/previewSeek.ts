@@ -56,7 +56,7 @@ type SeekHost = {
     available(): boolean;
     active?(): boolean;
     skipped?(el: HTMLMediaElement): boolean;
-    hold?(videos: HTMLVideoElement[]): void;
+    hold?(videos: HTMLVideoElement[]): (() => void) | undefined;
     prepare(
       clips: RuntimeMediaClip[],
       time: number,
@@ -85,6 +85,7 @@ export function createPreviewSeek(host: SeekHost) {
   // Recovery keeps its listeners without blocking paused transport work.
   let recovery: SeekRequest | null = null;
   let releasePicture: (() => void) | null = null;
+  const frameHolds: Array<() => void> = [];
   let stopWaiting = () => {};
   let runningClips: RuntimeMediaClip[] = [];
   let cancelWork = () => {};
@@ -127,7 +128,8 @@ export function createPreviewSeek(host: SeekHost) {
   };
   const holdPicture = () => {
     const videos = host.videosToHold();
-    host.frames?.hold?.(videos);
+    const release = host.frames?.hold?.(videos);
+    if (release) frameHolds.push(release);
     releasePicture ??= holdVideoFrames(videos);
   };
   const cancel = (keepPicture = false) => {
@@ -140,6 +142,7 @@ export function createPreviewSeek(host: SeekHost) {
     cancelWork = () => {};
     if (!keepPicture) {
       releaseHeldPicture();
+      for (const release of frameHolds.splice(0)) release();
     }
     request?.resolve();
   };
@@ -177,6 +180,7 @@ export function createPreviewSeek(host: SeekHost) {
     };
 
     const publish = () => {
+      frameHolds.length = 0;
       releaseHeldPicture();
       if (!frame) clearFrames(host.clipsAt(time), request.native, time);
       committing = true;
@@ -335,7 +339,7 @@ export function createPreviewSeek(host: SeekHost) {
   };
   const seek = (time: number, native = false, settled = false): Promise<void> | void => {
     if (recovery) cancel(true);
-    if (pending && (pending.native !== native || pending.settled !== settled)) cancel();
+    if (pending && (pending.native !== native || pending.settled !== settled)) cancel(true);
     if (pending) return retarget(time);
     if (!needsPreparation(native) && ready(host.clipsAt(time), time)) {
       releaseHeldPicture();

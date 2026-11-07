@@ -5,6 +5,7 @@ import {
   stagePausedVideoCallbacks,
   flushPausedVideoCallbacks,
   releasePausedVideoCallbacks,
+  observeNativeVideoFrames,
 } from "./pausedVideoCallbacks";
 import {
   PREVIEW_VIDEO_FRAME_ATTR as FRAME_ATTR,
@@ -225,26 +226,37 @@ export function createPausedVideoFrames() {
     attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
   });
 
-  const clear = (keep?: Set<HTMLVideoElement>, current?: (video: HTMLVideoElement) => boolean) => {
+  const clear = (
+    keep?: Set<HTMLVideoElement>,
+    current?: (video: HTMLVideoElement, presented: boolean) => boolean,
+  ) => {
     for (const entry of [...presented.values()]) {
       if (!keep?.has(entry.video)) {
         remove(entry);
         continue;
       }
       entry.nativeSkipped = true;
-      const ready = () => {
+      const reveal = (nativeFrame: boolean) => {
+        if (presented.get(entry.video) !== entry) return true;
         if (
-          entry.video.readyState >= 2 &&
-          !entry.video.seeking &&
-          (!current || current(entry.video))
+          entry.video.readyState < 2 ||
+          entry.video.seeking ||
+          (current && !current(entry.video, nativeFrame))
         )
-          remove(entry);
+          return false;
+        remove(entry);
+        return true;
+      };
+      const ready = () => {
+        reveal(false);
       };
       const events = ["loadeddata", "canplay", "seeked"];
       entry.stopWaiting?.();
       for (const event of events) entry.video.addEventListener(event, ready);
+      const stopFrames = observeNativeVideoFrames(entry.video, () => reveal(true));
       entry.stopWaiting = () => {
         for (const event of events) entry.video.removeEventListener(event, ready);
+        stopFrames();
       };
     }
     if (presented.size === 0) style.remove();
@@ -255,6 +267,7 @@ export function createPausedVideoFrames() {
       return [...presented.values()].some((entry) => !entry.stopWaiting);
     },
     holdNative(videos: HTMLVideoElement[]) {
+      const held: Presented[] = [];
       for (const video of videos) {
         if (!nativeSnapshotStyle(video)) continue;
         const canvas = captureNativeVideoFrame(video);
@@ -266,12 +279,17 @@ export function createPausedVideoFrames() {
           driving: false,
           restoreTime: () => {},
         };
+        held.push(entry);
         markFrameCanvas(canvas);
         presented.set(video, entry);
         video.setAttribute(PREVIEW_VIDEO_SOURCE_ATTR, "");
         if (!style.isConnected) document.head.append(style);
         refresh(entry);
       }
+      return () => {
+        for (const entry of held)
+          if (presented.get(entry.video) === entry && !entry.driving) remove(entry);
+      };
     },
     skipped: (el: HTMLMediaElement) => presented.get(el)?.nativeSkipped === true,
     retained: (el: HTMLMediaElement) => presented.get(el)?.stopWaiting !== undefined,
