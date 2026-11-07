@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { initSandboxRuntimeModular } from "./init";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { resetSeekDispatchState } from "./adapters/seek-dispatch";
+import { notePlaybackIntent } from "./media";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
 import { PREVIEW_SEEK_HOLD_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import type {
@@ -411,6 +412,91 @@ it("settles a stalled paused fallback while retaining the last complete picture"
   expect(main.time?.()).toBe(8);
   expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
   expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
+});
+
+it("plays the rest after native loading stops at metadata, retaining the stalled picture until recovery", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  const { main, old, next } = film();
+  const { pending } = frameProvider([...old, ...next]);
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  const stalled = old[0]!;
+  stalled.land();
+  notePlaybackIntent(stalled.video);
+  stalled.metadataAt(1);
+  Object.defineProperty(stalled.video, "networkState", { value: 1, configurable: true });
+  window.__player!.play();
+  old[1]!.land();
+  await vi.advanceTimersByTimeAsync(5100);
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(main.time?.()).toBeGreaterThanOrEqual(1);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(1);
+  expect(stalled.video.previousElementSibling?.hasAttribute("data-hf-preview-video-canvas")).toBe(
+    true,
+  );
+  stalled.land();
+  await Promise.resolve();
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
+});
+
+it("publishes a late native recovery after a paused fallback wait has settled", async () => {
+  resetSeekDispatchState();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { main, old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  vi.mocked(provider.decode).mockRejectedValueOnce(new Error("decoder unavailable"));
+  const stalled = window.__player!.seek(6);
+  await vi.advanceTimersByTimeAsync(5100);
+  await stalled;
+  expect(main.time?.()).toBe(1);
+  expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(true);
+  for (const video of next) video.land();
+  await Promise.resolve();
+  expect(main.time?.()).toBe(6);
+  expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
+  expect(document.querySelectorAll("canvas, [data-hf-seek-video]")).toHaveLength(0);
+});
+
+it("keeps a hold-only snapshot visible while Play awaits decoder suspension", async () => {
+  const { next, old } = film();
+  const { provider } = frameProvider([...old, ...next]);
+  let suspended = () => {};
+  provider.suspend = () =>
+    new Promise<void>((resolve) => {
+      suspended = resolve;
+    });
+  const seek = window.__player!.seek(6);
+  expect(document.querySelectorAll("[data-hf-seek-video]")).toHaveLength(2);
+  window.__player!.play();
+  await seek;
+  expect(document.querySelectorAll("[data-hf-seek-video]")).toHaveLength(2);
+  expect(document.querySelectorAll("canvas")).toHaveLength(2);
+  suspended();
+  await Promise.resolve();
+  for (const video of next) video.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(document.querySelectorAll("canvas, [data-hf-seek-video]")).toHaveLength(0);
+});
+
+it("resumes a pending Play after its frame provider is replaced", async () => {
+  const { old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  window.__player!.play();
+  window.__hf!.setPausedVideoFrameProvider!({ decode: provider.decode, dispose: vi.fn() });
+  pending.shift()!();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (const video of old) video.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
 });
 
 it("does not wait for a video frame from an audio-only video element", async () => {

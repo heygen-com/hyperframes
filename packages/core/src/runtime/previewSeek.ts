@@ -1,6 +1,6 @@
 import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
-import { isUnplayable, mediaSourceTimeAt } from "./media";
+import { isUnplayable, mediaSourceTimeAt, notePlaybackIntent } from "./media";
 import type { RuntimeMediaClip } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { getPausedVideoFrame, type PreparedPausedVideoFrames } from "./pausedVideoFrames";
@@ -83,7 +83,7 @@ type SeekHost = {
     ): Promise<PreparedPausedVideoFrames | null>;
     suspend?(): Promise<void> | undefined;
     prepareNative(): void;
-    clear(): void;
+    clear(keep?: Set<HTMLVideoElement>): void;
   };
 };
 
@@ -93,6 +93,7 @@ export function createPreviewSeek(host: SeekHost) {
     time: number;
     native: boolean;
     settled: boolean;
+    expired: boolean;
     done: Promise<void>;
     resolve: () => void;
   } | null = null;
@@ -103,6 +104,8 @@ export function createPreviewSeek(host: SeekHost) {
   let committing = false;
   let committingSettled = false;
   let runId = 0;
+
+  const usesProvider = (native: boolean) => !native && host.frames?.available();
 
   const ready = (clips: RuntimeMediaClip[], time: number) =>
     host.scenesReadyAt(time) &&
@@ -115,7 +118,22 @@ export function createPreviewSeek(host: SeekHost) {
           Math.abs(el.currentTime - mediaSourceTimeAt({ el, ...clip }, time)) < 0.02),
     );
 
-  const cancel = () => {
+  const releaseHeldPicture = () => {
+    releasePicture?.();
+    releasePicture = null;
+  };
+  const clearFrames = (clips: RuntimeMediaClip[], native: boolean) =>
+    host.frames?.clear(
+      native
+        ? new Set(
+            clips.flatMap(({ el }) =>
+              el instanceof HTMLVideoElement && el.readyState < 2 && isUnplayable(el) ? [el] : [],
+            ),
+          )
+        : undefined,
+    );
+
+  const cancel = (keepPicture = false) => {
     const request = pending;
     pending = null;
     runId++;
@@ -123,8 +141,9 @@ export function createPreviewSeek(host: SeekHost) {
     stopWaiting = () => {};
     cancelWork();
     cancelWork = () => {};
-    releasePicture?.();
-    releasePicture = null;
+    if (!keepPicture) {
+      releaseHeldPicture();
+    }
     request?.resolve();
   };
 
@@ -135,6 +154,7 @@ export function createPreviewSeek(host: SeekHost) {
     const id = ++runId;
     const time = request.time;
     const clips = host.clipsAt(time);
+    if (request.native) for (const { el } of clips) notePlaybackIntent(el);
     runningClips = clips;
     const selection = clips.map((clip) => ({ el: clip.el, time: mediaSourceTimeAt(clip, time) }));
     const controller = new AbortController();
@@ -149,9 +169,8 @@ export function createPreviewSeek(host: SeekHost) {
     };
 
     const publish = () => {
-      releasePicture?.();
-      releasePicture = null;
-      if (!frame) host.frames?.clear();
+      releaseHeldPicture();
+      if (!frame) clearFrames(clips, request.native);
       committing = true;
       committingSettled = request.settled;
       try {
@@ -254,14 +273,11 @@ export function createPreviewSeek(host: SeekHost) {
       if (!nativePhase && !frame) {
         native();
         if (live()) cap = wallSetTimeout(expire, SEEK_CAP_MS);
-      } else if (request.native) check();
-      else if (host.frames?.active?.()) {
-        pending = null;
-        runId++;
-        stopWaiting();
-        stopWaiting = () => {};
-        cancelWork();
-        cancelWork = () => {};
+      } else if (request.native) {
+        check();
+        if (live()) cap = wallSetTimeout(expire, SEEK_CAP_MS);
+      } else if (host.frames?.active?.()) {
+        request.expired = true;
         request.resolve();
       } else finish();
     };
@@ -270,7 +286,7 @@ export function createPreviewSeek(host: SeekHost) {
       wallClearTimeout(cap);
       for (const remove of listeners) remove();
     };
-    if (!request.native && host.frames?.available()) {
+    if (host.frames && usesProvider(request.native)) {
       void host.frames
         .prepare(clips, time, controller.signal, request.settled)
         .then((decoded) => {
@@ -301,10 +317,12 @@ export function createPreviewSeek(host: SeekHost) {
     return request.done;
   };
   const seek = (time: number, native = false, settled = false): Promise<void> | void => {
-    if (pending && (pending.native !== native || pending.settled !== settled)) cancel();
+    if (pending && (pending.expired || pending.native !== native || pending.settled !== settled))
+      cancel(pending.expired);
     if (pending) return retarget(time);
-    if ((native || !host.frames?.available()) && ready(host.clipsAt(time), time)) {
-      host.frames?.clear();
+    if (!usesProvider(native) && ready(host.clipsAt(time), time)) {
+      releaseHeldPicture();
+      clearFrames(host.clipsAt(time), native);
       host.commit(time);
       return;
     }
@@ -312,7 +330,7 @@ export function createPreviewSeek(host: SeekHost) {
     const done = new Promise<void>((settle) => {
       resolve = settle;
     });
-    pending = { time, native, settled, done, resolve };
+    pending = { time, native, settled, expired: false, done, resolve };
     releasePicture ??= holdVideoFrames(host.videosToHold());
     run();
     return done;
@@ -338,15 +356,19 @@ export function createPreviewSeek(host: SeekHost) {
       }
     },
     handoff(time: number) {
-      cancel();
+      cancel(true);
       host.frames?.prepareNative();
       const generation = runId;
+      const startNative = () => {
+        for (const { el } of host.clipsAt(time)) notePlaybackIntent(el);
+        return seek(time, true);
+      };
       const suspended = host.frames?.suspend?.();
       if (suspended)
         return suspended.then(() => {
-          if (generation === runId) return seek(time, true);
+          if (generation === runId) return startNative();
         });
-      return seek(time, true);
+      return startNative();
     },
     cancel,
   };

@@ -50,6 +50,7 @@ type Presented = {
   driving: boolean;
   restoreTime: () => void;
   gpuFrame?: VideoFrame;
+  stopWaiting?: () => void;
 };
 const presented = new Map<HTMLMediaElement, Presented>();
 const authoredSeeks = new WeakSet<HTMLVideoElement>();
@@ -93,6 +94,7 @@ function virtualTime(entry: Presented): void {
 }
 
 function remove(entry: Presented): void {
+  entry.stopWaiting?.();
   entry.restoreTime();
   releasePausedVideoCallbacks(entry.video);
   entry.gpuFrame?.close();
@@ -139,6 +141,8 @@ type ReusablePresentation = { entry: Presented; context: CanvasRenderingContext2
 function adoptStagedFrame(next: Presented, existing?: ReusablePresentation): void {
   if (existing) {
     const { entry, context } = existing;
+    entry.stopWaiting?.();
+    entry.stopWaiting = undefined;
     entry.gpuFrame?.close();
     entry.gpuFrame = undefined;
     context.clearRect(0, 0, entry.canvas.width, entry.canvas.height);
@@ -191,13 +195,28 @@ export function createPausedVideoFrames() {
     attributeFilter: ["src", "style", "class", "hidden", "data-hidden"],
   });
 
-  const clear = () => {
-    for (const entry of [...presented.values()]) remove(entry);
-    style.remove();
+  const clear = (keep?: Set<HTMLVideoElement>) => {
+    for (const entry of [...presented.values()]) {
+      if (!keep?.has(entry.video)) {
+        remove(entry);
+        continue;
+      }
+      const ready = () => {
+        if (entry.video.readyState >= 2 && !entry.video.seeking) remove(entry);
+      };
+      const events = ["loadeddata", "canplay", "seeked"];
+      entry.stopWaiting?.();
+      for (const event of events) entry.video.addEventListener(event, ready);
+      entry.stopWaiting = () => {
+        for (const event of events) entry.video.removeEventListener(event, ready);
+      };
+    }
+    if (presented.size === 0) style.remove();
   };
   return {
     get active() {
-      return presented.size > 0;
+      // A skipped native clip may keep a fallback picture without owning paused playback.
+      return [...presented.values()].some((entry) => !entry.stopWaiting);
     },
     available: () => provider !== null,
     setProvider(next: PausedVideoFrameProvider | null) {

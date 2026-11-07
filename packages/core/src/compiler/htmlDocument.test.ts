@@ -469,6 +469,14 @@ describe("insertRuntimeTag", () => {
     expect(out.indexOf("window.author")).toBeLessThan(out.indexOf(runtime));
   });
 
+  it("keeps the tracker and runtime ahead of author scripts for Studio previews", () => {
+    const out = insertRuntimeTag(page('data-motion-blur="on"'), runtime, true);
+    const tracker = out.indexOf("data-hf-accel-tracker");
+    expect(tracker).toBeGreaterThan(-1);
+    expect(tracker).toBeLessThan(out.indexOf(runtime));
+    expect(out.indexOf(runtime)).toBeLessThan(out.indexOf("window.author"));
+  });
+
   it("adds the tracker once, however many times the runtime is placed", () => {
     const once = insertRuntimeTag(page('data-motion-blur="on"'), runtime);
     const twice = insertRuntimeTag(once, runtime);

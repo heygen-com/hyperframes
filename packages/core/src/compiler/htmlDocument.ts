@@ -393,8 +393,8 @@ function insertTagInHead(html: string, tag: string): string {
 const ACCEL_TRACKER_ATTR = "data-hf-accel-tracker";
 const OPTS_INTO_MOTION_BLUR = /\sdata-motion-blur\s*=\s*["']?on[\s"'>]/i;
 
-export function insertRuntimeTag(html: string, tag: string): string {
-  const withRuntime = insertTagInHead(html, tag);
+export function insertRuntimeTag(html: string, tag: string, atHeadStart = false): string {
+  const withRuntime = atHeadStart ? injectTagsAtHeadStart(html, tag) : insertTagInHead(html, tag);
   if (!OPTS_INTO_MOTION_BLUR.test(html) || html.includes(ACCEL_TRACKER_ATTR)) return withRuntime;
   const tracker = `<script ${ACCEL_TRACKER_ATTR}>${acceleratedCanvasTrackerSource()}</script>`;
   return injectTagsAtHeadStart(withRuntime, tracker);

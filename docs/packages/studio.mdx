@@ -112,7 +112,10 @@ with newer pointer positions coalesced into the next decode. Canvas and GPU
 effects consume the same staged pixels. Continuous playback uses native video;
 Studio keeps the paused picture visible while those videos catch up before Play.
 A slow native handoff stays buffered instead of revealing an unready video; Pause
-or a new seek cancels it. Studio releases paused decoding sessions before native
+or a new seek cancels it. If the browser stops loading a clip, the rest can play
+while its last decoded picture remains visible until native frames recover.
+A paused fallback that outlasts its wait still publishes when the video becomes
+ready. Studio releases paused decoding sessions before native
 playback and reopens them when paused scrubbing resumes.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,

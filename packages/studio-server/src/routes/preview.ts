@@ -10,6 +10,7 @@ import {
   addScenePartsManifest,
   RUNTIME_BOOTSTRAP_ATTR,
   insertBeforeCloseTag,
+  insertRuntimeTag,
   stripEmbeddedRuntimeScripts,
   type BundleOptions,
 } from "@hyperframes/core/compiler";
@@ -152,7 +153,7 @@ function parseStudioMotionManifestContent(content: string): {
 /** Preview hooks must install before authored head scripts register media consumers. */
 function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return injectTagsAtHeadStart(stripEmbeddedRuntimeScripts(html), tag);
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {

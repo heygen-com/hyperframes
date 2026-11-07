@@ -282,6 +282,24 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("window.AUTHOR_SEEN = 1");
   });
 
+  it("keeps the accelerated-canvas tracker before authored scripts in blur previews", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><script>window.AUTHOR_CANVAS = 1</script></head><body data-motion-blur="on"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.indexOf("data-hf-accel-tracker")).toBeGreaterThan(-1);
+    expect(html.indexOf("data-hf-accel-tracker")).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+    expect(html.indexOf('src="/api/runtime.js"')).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+  });
+
   it("serves one preview runtime when the page on disk already links one", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
