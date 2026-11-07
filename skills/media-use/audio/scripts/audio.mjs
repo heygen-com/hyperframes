@@ -17,10 +17,7 @@
 //     "provider": "auto",          // auto|heygen|elevenlabs|kokoro|gemini (override: --provider)
 //     "lang": "en", "speed": 1.0,
 //     "lines": [                   // one TTS unit each; id joins back to the caller's model
-//       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] },
-//       // the person's own recording: `speed` stretches it (pitch kept) and scales `words`;
-//       // without `words` the recording is transcribed
-//       { "id": "02", "audio": "take.m4a", "words": [{ "text": "Hello", "start": 0.1, "end": 0.5 }] }
+//       { "id": "01", "text": "...", "sfx": ["whoosh", "ui click"] }
 //     ],
 //     "bgm": { "mode": "retrieve", // retrieve|generate|none (override: --bgm-mode / --no-bgm)
 //              "query": "calm cinematic underscore",   // mood for retrieval
