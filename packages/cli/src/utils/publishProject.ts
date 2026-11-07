@@ -414,8 +414,7 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
-/** Ships a referenced in-project file the ignore rules skipped; a reference may resolve from the
- * referring file's folder or the project root. */
+/** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
   resolvedPath: string,
@@ -424,7 +423,7 @@ function includeReferencedProjectFile(
 ): void {
   const fromRoot = resolve(ctx.absProjectDir, rawPath);
   for (const candidate of [resolvedPath, fromRoot]) {
-    const absPath = candidate.replace(/[?#].*$/, ""); // media fragments and cache-busting queries
+    const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
     if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return;
@@ -438,11 +437,13 @@ function includeReferencedProjectFile(
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
 
+/** References with no fallback: a missing file here cannot render. */
+const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
-  /** False for a link (`href`): shipped when present, never a failure when absent. */
   requireOnDisk = true,
 ): string | null {
   if (isNonRelativeUrl(rawPath)) return null;
@@ -467,8 +468,7 @@ function tryResolveExternal(
 export type HtmlAttributeResolver = (
   rawValue: string,
   referrerAbsDir: string,
-  /** The HTML attribute the value came from; absent for CSS and srcset values. */
-  attr?: string,
+  ref?: { attr: string; tag: string },
 ) => string | null;
 
 function referenceFrom(entryPath: string, target: string): string {
@@ -524,7 +524,7 @@ export function rewriteHtmlAttributes(
     for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const target = resolveTarget(val, referrerAbsDir, attr);
+      const target = resolveTarget(val, referrerAbsDir, { attr, tag: el.localName });
       if (!target) continue;
       el.setAttribute(attr, referenceFrom(entryPath, target));
       modified = true;
@@ -585,8 +585,13 @@ function rewriteHtmlSrcsets(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const resolveTarget: HtmlAttributeResolver = (val, dir, attr) =>
-    tryResolveExternal(ctx, val, dir, attr !== "href");
+  const resolveTarget: HtmlAttributeResolver = (val, dir, ref) =>
+    tryResolveExternal(
+      ctx,
+      val,
+      dir,
+      ref !== undefined && HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
+    );
   const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "href", "poster"],
   });

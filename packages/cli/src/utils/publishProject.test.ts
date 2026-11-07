@@ -1531,18 +1531,28 @@ describe("createPublishArchive referenced dot-paths", () => {
     expect(() => createPublishArchive(dir)).toThrow(clip);
   });
 
-  it("ships nothing and does not fail for a missing href", () => {
-    const dir = projectWith(`<video src="${clip}"></video><a href="notes.html">n</a>`, {
-      [clip]: "v",
-    });
-    expect(names(dir)).toContain(clip);
+  it("does not fail on a missing href, source fallback, srcset candidate or CSS url", () => {
+    const dir = projectWith(
+      `<a href="notes.html">n</a><video><source src="a.webm"><source src="a.mp4"></video>` +
+        `<img src="a.png" srcset="a.png 1x, a@2x.png 2x"><style>.a{background:url(gone.jpg)}</style>`,
+      { "a.mp4": "v", "a.png": "p" },
+    );
+    expect(() => createPublishArchive(dir)).not.toThrow();
+    expect(names(dir)).not.toContain("notes.html");
   });
 
-  it("fails on a missing poster and a missing CSS url()", () => {
-    const poster = projectWith(`<video poster="gone.png"></video>`, {});
-    expect(() => createPublishArchive(poster)).toThrow("gone.png");
-    const css = projectWith(`<style>.a{background:url(gone.jpg)}</style>`, {});
-    expect(() => createPublishArchive(css)).toThrow("gone.jpg");
+  it("fails on a missing video, audio, img src or poster, naming the file", () => {
+    for (const tag of [
+      'video src="gone.mp4"',
+      'audio src="gone.mp3"',
+      'img src="gone.png"',
+      'video poster="gone.jpg"',
+    ]) {
+      const name = /"(gone\.[a-z0-9]+)"/.exec(tag)![1]!;
+      expect(() =>
+        createPublishArchive(projectWith(`<${tag}></${tag.split(" ")[0]}>`, {})),
+      ).toThrow(name);
+    }
   });
 
   it("leaves out an unreferenced .env", () => {
