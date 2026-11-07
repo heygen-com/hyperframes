@@ -69,7 +69,7 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
     const id = randomUUID();
     console.error(
-      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a "not recorded" warning follows`,
+      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
     );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
