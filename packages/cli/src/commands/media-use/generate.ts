@@ -142,7 +142,7 @@ export default defineCommand({
     "max-credits": {
       type: "string",
       description:
-        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image call is charged at the vendor's cost, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over",
+        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image call is charged at the vendor's cost, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over. The project's credit-limit.json follows the same rule",
     },
     plan: {
       type: "boolean",

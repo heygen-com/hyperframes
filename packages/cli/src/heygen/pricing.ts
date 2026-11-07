@@ -143,7 +143,7 @@ export function priceOf(r: GenerateRequest): Price {
 export const creditsOf = (p: Price): number | null =>
   p.credits === null ? null : Math.ceil(p.credits - 1e-9);
 
-/** Refuses, before anything is sent, a call that would not fit what is left of the person's credit limit. */
+/** Refuses, before anything is sent, a call past the limit; a vendor-priced image is checked at its estimate + 10%. */
 export function checkLimit(
   credits: number | null,
   limit: number | undefined,

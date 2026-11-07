@@ -258,8 +258,9 @@ export interface RunOptions {
   vendorPriced?: boolean;
 }
 
-/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits.
- *  Every paid call comes through runJob. True when this call reserved. */
+/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
+ *  image is checked at its estimate plus 10%, which its charge can pass. Every paid call comes through runJob. True
+ *  when this call reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
