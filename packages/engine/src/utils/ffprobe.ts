@@ -17,6 +17,7 @@ import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 const FFPROBE_STDERR_MAX_BYTES = 8 * 1024;
 /** Bound on collected stdout. Generous — real -show_streams JSON is well
@@ -57,7 +58,18 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
-export async function runFfprobe(
+export function runFfprobe(
+  filePath: string,
+  argsWithoutInput: string[],
+  signal?: AbortSignal,
+  stdoutOptions?: { retainTail?: boolean; maxChars?: number },
+): Promise<string> {
+  return retrySpawnWhileLocked(getFfprobeBinary(), () =>
+    runFfprobeOnce(filePath, argsWithoutInput, signal, stdoutOptions),
+  );
+}
+
+async function runFfprobeOnce(
   filePath: string,
   argsWithoutInput: string[],
   signal?: AbortSignal,
@@ -477,10 +489,18 @@ let runtimeFfprobeMajor: Promise<number | undefined> | undefined;
 
 /** The major version of the ffprobe this process runs; undefined when it cannot be read. */
 function ffprobeMajor(): Promise<number | undefined> {
-  runtimeFfprobeMajor ??= new Promise((resolve) => {
+  runtimeFfprobeMajor ??= retrySpawnWhileLocked(getFfprobeBinary(), readFfprobeMajor).catch(() => {
+    // A lock that outlasted the retries says nothing about the version, so the next call asks again.
+    runtimeFfprobeMajor = undefined;
+    return undefined;
+  });
+  return runtimeFfprobeMajor;
+}
+
+function readFfprobeMajor(): Promise<number | undefined> {
+  return new Promise((resolve) => {
     let out = "";
-    const binary = getFfprobeBinary();
-    const proc = spawn(binary, ["-version"], {
+    const proc = spawn(getFfprobeBinary(), ["-version"], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
     });
@@ -488,7 +508,6 @@ function ffprobeMajor(): Promise<number | undefined> {
     proc.on("error", () => resolve(undefined));
     proc.on("close", () => resolve(Number(/version n?(\d+)/.exec(out)?.[1]) || undefined));
   });
-  return runtimeFfprobeMajor;
 }
 
 /** What a site stores beside a video: its ffprobe JSON and the final-frame facts a plan would otherwise probe for. */

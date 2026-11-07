@@ -10,6 +10,7 @@ import { spawn } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
 import { trackChildProcess } from "./processTracker.js";
+import { retrySpawnWhileLocked } from "./spawnLockRetry.js";
 
 export type ConcreteGpuEncoder = "nvenc" | "videotoolbox" | "vaapi" | "qsv" | "amf";
 export type GpuEncoder = ConcreteGpuEncoder | null;
@@ -62,7 +63,17 @@ export async function selectUsableGpuEncoder(
 }
 
 /** ffmpeg's stdout, or null when it did not exit cleanly within the deadline. */
-async function ffmpegStdout(
+function ffmpegStdout(
+  args: string[],
+  deadlineMs: number,
+  terminationGraceMs?: number,
+): Promise<string | null> {
+  return retrySpawnWhileLocked(getFfmpegBinary(), () =>
+    ffmpegStdoutOnce(args, deadlineMs, terminationGraceMs),
+  );
+}
+
+async function ffmpegStdoutOnce(
   args: string[],
   deadlineMs: number,
   terminationGraceMs?: number,
@@ -94,7 +105,11 @@ export async function detectGpuEncoder(): Promise<GpuEncoder> {
 let cachedGpuEncoder: Promise<GpuEncoder> | undefined = undefined;
 
 export function getCachedGpuEncoder(): Promise<GpuEncoder> {
-  cachedGpuEncoder ??= detectGpuEncoder();
+  cachedGpuEncoder ??= detectGpuEncoder().catch((error: unknown) => {
+    // A lock that outlasted the retries says nothing about the GPU, so the next render asks again.
+    cachedGpuEncoder = undefined;
+    throw error;
+  });
   return cachedGpuEncoder;
 }
 
@@ -189,7 +204,11 @@ export function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
   return args;
 }
 
-async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
+function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
+  return retrySpawnWhileLocked(getFfmpegBinary(), () => canUseGpuEncoderOnce(encoder));
+}
+
+async function canUseGpuEncoderOnce(encoder: ConcreteGpuEncoder): Promise<boolean> {
   const ffmpeg = spawn(getFfmpegBinary(), getProbeArgs(encoder), {
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
