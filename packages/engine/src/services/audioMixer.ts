@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity code-duplication
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
+import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
@@ -73,6 +73,7 @@ import {
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -716,7 +717,7 @@ async function extractAudioSegment(
       });
   const loopDuration = (metadata?.durationSeconds ?? 0) - mediaStart;
   if (options?.loop && loopDuration > 0 && sourceDuration > loopDuration) {
-    const cycleDir = mkdtempSync(join(outputDir, ".audio-loop-"));
+    const cycleDir = createStagingDir(outputDir, ".audio-loop-");
     const cyclePath = join(cycleDir, "cycle.wav");
     try {
       const cycle = await extractAudioSegment(
@@ -975,7 +976,7 @@ async function mixAudioTracksFlat(
   const runMix = async (ignoreAutomation: boolean, useNormalize: boolean) => {
     const inputs: string[] = [];
     tracks.forEach((track) => inputs.push("-i", track.srcPath));
-    const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -1150,7 +1151,7 @@ async function mixGroupMembersFlat(
         // global track count.
         `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0[mixed];[mixed]volume=${formatFilterNumber(memberTracks.length)}[out]`;
     const filterComplex = [...inputFilters, mixFilter].join(";");
-    const scriptDir = mkdtempSync(join(outputDir, ".group-filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".group-filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -1297,7 +1298,7 @@ async function mixGroupMembers(
     return mixGroupMembersFlat(memberTracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(memberTracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) return summed;
@@ -1319,7 +1320,7 @@ async function mixAudioTracks(
     return mixAudioTracksFlat(tracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(tracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) {

@@ -1,18 +1,11 @@
 // @ts-expect-error -- wawoff2 ships no type declarations
 import wawoff2 from "wawoff2";
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { hyperframesCacheDir } from "../cacheDir.js";
+import { createStagingDir } from "../atomicFile.js";
 
 const { compress } = wawoff2 as {
   compress: (input: Buffer | Uint8Array) => Promise<Uint8Array>;
@@ -72,7 +65,7 @@ function cacheCompression(path: string, compressed: Buffer): void {
     mkdirSync(dirname(path), { recursive: true });
     // Keep the write on the cache filesystem for an atomic rename, inside a
     // private directory that this invocation owns.
-    tempDir = mkdtempSync(join(dirname(path), ".compression-"));
+    tempDir = createStagingDir(dirname(path), ".compression-");
     const tmpPath = join(tempDir, "font.woff2");
     writeFileSync(tmpPath, compressed, { flag: "wx", mode: 0o644 });
     renameSync(tmpPath, path);

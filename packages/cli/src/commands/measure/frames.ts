@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
@@ -28,6 +28,7 @@ import {
   type Roi,
   type VideoInfo,
 } from "../../measure/media.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export const examples: Example[] = [
   ["An overview sheet, one frame a second", "hyperframes measure frames ref.mp4 --every 1"],
@@ -84,7 +85,7 @@ function writeFrames(
   prefix: string,
 ): string[] {
   // Beside the output, so the move below stays on one filesystem (a container's /tmp often is not the project's).
-  const work = mkdtempSync(join(dir, ".frames-"));
+  const work = createStagingDir(dir, ".frames-");
   try {
     const raw = Buffer.concat(
       f.frames

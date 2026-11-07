@@ -6,7 +6,6 @@ import {
   existsSync,
   fstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -25,6 +24,7 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -190,7 +190,7 @@ function removeAbandonedParts(dest: string): void {
 async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
   makeOutputFolder(dirname(dest));
   removeAbandonedParts(dest);
-  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  const work = createStagingDir(dirname(dest), `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
   try {
     writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
