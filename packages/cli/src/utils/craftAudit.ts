@@ -32,7 +32,8 @@ const ZERO_BBOX: CheckBbox = { x: 0, y: 0, width: 0, height: 0 };
 const WORD_RUNS = /[\p{L}\p{M}\p{N}%$]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu;
 // Chinese and Japanese have no spaces; a dictionary segmenter counts their words like an English line's.
 const WORD_SEGMENTER = new Intl.Segmenter("ja", { granularity: "word" });
-const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const UNSPACED_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 /** Words a viewer reads: letter/number runs, with CJK runs split into dictionary words. */
 export function readingWords(text: string): number {

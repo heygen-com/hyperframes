@@ -92,6 +92,13 @@ describe("readingWords", () => {
     expect(readingWords("커피12잔")).toBe(1);
   });
 
+  it("still segments scripts written without spaces", () => {
+    expect(readingWords("ฉันรักภาษาไทยมาก")).toBeGreaterThan(1);
+    expect(readingWords("ខ្ញុំស្រលាញ់ភាសាខ្មែរ")).toBeGreaterThan(1);
+    expect(readingWords("ຂ້ອຍຮັກພາສາລາວຫຼາຍ")).toBeGreaterThan(1);
+    expect(readingWords("ကျွန်တော်မြန်မာစကားကိုချစ်တယ်")).toBeGreaterThan(1);
+  });
+
   it("keeps counting a Japanese number and its counter as two", () => {
     expect(readingWords("12回")).toBe(2);
     expect(readingWords("実行12回失敗")).toBe(4);
