@@ -399,6 +399,7 @@ export async function completeWithRetry(
   asset_id: string,
   checksum_sha256: string,
   sizeBytes: number,
+  signal?: AbortSignal,
 ): Promise<{ asset_id: string; url: string }> {
   const budget = completeBudgetMs(sizeBytes);
   const startedAt = Date.now();
@@ -415,7 +416,11 @@ export async function completeWithRetry(
           { cause: err },
         );
       }
-      await sleep(Math.min(poll, left));
+      await sleep(Math.min(poll, left), signal);
+      if (signal?.aborted)
+        throw new Error("Stopped waiting for the cloud to finish checking the uploaded file.", {
+          cause: signal.reason,
+        });
       poll = Math.min(poll * 2, completeWait.maxPollMs);
     }
   }
@@ -472,6 +477,7 @@ export async function uploadAssetViaDirectUpload(
     initialize.asset_id,
     checksum_sha256,
     size_bytes,
+    opts.signal,
   ).catch((err: unknown) => {
     throw nameRefusedFile(err, filename, opts.contentType);
   });
