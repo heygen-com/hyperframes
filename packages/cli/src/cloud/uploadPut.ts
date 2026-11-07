@@ -125,7 +125,6 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // same way, in slices, so a stalled link ends its try the same way (a plain fetch has no progress to watch).
 const SLICE_BYTES = 64 * 1024;
 
-/** The bytes of one part: `length` bytes from `start`. */
 export interface ByteRange {
   start: number;
   length: number;

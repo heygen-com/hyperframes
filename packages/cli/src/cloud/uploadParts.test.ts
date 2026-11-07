@@ -129,6 +129,20 @@ describe("a big file goes up in parts", () => {
     expect(body.parts).toEqual([1, 2, 3, 4, 5].map((n) => ({ part_number: n, etag: `"e${n}"` })));
   }, 30_000);
 
+  it("the same link cannot deliver the file in one PUT", async () => {
+    cutAfterMs = 1200;
+    const { client } = cloud({ multipart: false });
+
+    await expect(
+      uploadAssetViaDirectUpload({
+        client,
+        ...bigFile(FILE_BYTES),
+        filename: "big.mp4",
+        contentType: "video/mp4",
+      }),
+    ).rejects.toThrow(/cut at .* on two tries in a row/);
+  }, 30_000);
+
   it("sends again only the part that was cut, from its own start", async () => {
     cutOnce.add(3);
     const { client } = cloud();
