@@ -55,8 +55,8 @@ type Reader = {
 export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideoFrameProvider {
   const readers = new Map<string, Promise<Reader>>();
   const opened = new Map<string, Reader>();
+  const opening = new Map<Input, () => void>();
   const failed = new Map<string, number>();
-  const dimensions = new Map<string, { width: number; height: number; lead: number }>();
   const cacheOrder = new Map<Cached, Reader>();
   let bytes = 0;
   let disposed = false;
@@ -117,6 +117,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   const open = async (source: string): Promise<Reader> => {
     const options = mediaUrlSourceOptions("thumbnail");
     const input = new Input({ source: new UrlSource(source, options), formats: ALL_FORMATS });
+    opening.set(input, options.cancelReads);
     try {
       const track = await input.getPrimaryVideoTrack();
       if (!track || disposed) throw new Error("Preview video unavailable");
@@ -159,6 +160,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       input.dispose();
       options.cancelReads();
       throw error;
+    } finally {
+      opening.delete(input);
     }
   };
   const reserveReader = () => {
@@ -187,8 +190,10 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     try {
       reader = await promise;
     } catch (error) {
-      if (readers.get(key) === promise) readers.delete(key);
-      failed.set(key, performance.now() + 5000);
+      if (readers.get(key) === promise) {
+        readers.delete(key);
+        failed.set(key, performance.now() + 5000);
+      }
       throw error;
     }
     if (disposed || reader.disposed) throw new DOMException("Preview disposed", "AbortError");
@@ -246,7 +251,7 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     context.imageSmoothingQuality = "high";
     sample.drawWithFit(context, { fit: "fill", rotation: reader.rotation, flip: reader.flip });
     const image = await createImageBitmap(reader.canvas);
-    if (signal.aborted || disposed) {
+    if (signal.aborted || disposed || reader.disposed) {
       image.close();
       signal.throwIfAborted();
       throw new Error("Preview disposed");
@@ -308,28 +313,14 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       if (signal.aborted || disposed) await closeIterator(reader).catch(() => {});
     }
   };
-  const sourceTiming = (request: PausedVideoFrameRequest, source: string, reader: Reader) => {
-    if (source === request.source)
-      dimensions.set(request.source, {
-        width: reader.width,
-        height: reader.height,
-        lead: reader.lead,
-      });
+  const sourceTiming = (request: PausedVideoFrameRequest, reader: Reader) => {
     const facts = sourceFacts(request.source);
-    const natural = dimensions.get(request.source) ?? {
-      width: reader.width,
-      height: reader.height,
-      lead: reader.lead,
-    };
     return {
-      natural,
-      timing: {
-        frameRate: facts?.frameRate,
-        variableFrameRate: facts?.variableFrameRate,
-        sourceLead: natural.lead,
-        inputLead: reader.lead,
-        timeResolution: reader.ticks,
-      },
+      frameRate: facts?.frameRate,
+      variableFrameRate: facts?.variableFrameRate,
+      sourceLead: reader.lead,
+      inputLead: reader.lead,
+      timeResolution: reader.ticks,
     };
   };
   const decodeOne = async (
@@ -338,9 +329,10 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
   ): Promise<PausedVideoFrame> => {
     signal.throwIfAborted();
     const source = request.source;
+    if (!source) throw new Error("Preview source unavailable");
     const reader = await readerFor(source);
     try {
-      const { natural, timing } = sourceTiming(request, source, reader);
+      const timing = sourceTiming(request, reader);
       const job = reader.tail.then(() => readFrame(reader, request.time, timing, signal));
       reader.tail = job.then(
         () => {},
@@ -353,8 +345,8 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
         source: entry.image,
         timestamp: entry.timestamp,
         duration: entry.duration,
-        width: natural.width,
-        height: natural.height,
+        width: reader.width,
+        height: reader.height,
         release() {
           if (released) return;
           released = true;
@@ -387,12 +379,26 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
       }
       return frames;
     },
+    async suspend() {
+      const closing = [...readers.values()].map((promise) =>
+        promise.then(disposeReader).catch(() => {}),
+      );
+      readers.clear();
+      for (const [input, cancel] of opening) {
+        cancel();
+        input.dispose();
+      }
+      await Promise.all(closing);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const [input, cancel] of opening) {
+        cancel();
+        input.dispose();
+      }
       for (const promise of readers.values()) void promise.then(disposeReader).catch(() => {});
       readers.clear();
-      dimensions.clear();
       failed.clear();
     },
   };

@@ -1,3 +1,4 @@
+import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
 import {
   installPausedVideoCallbacks,
@@ -30,6 +31,7 @@ export interface PausedVideoFrame {
 /** Decoding lives in the host; core owns composition timing and presentation. */
 export interface PausedVideoFrameProvider {
   decode(requests: PausedVideoFrameRequest[], signal: AbortSignal): Promise<PausedVideoFrame[]>;
+  suspend?(): Promise<void>;
   dispose(): void;
 }
 
@@ -79,7 +81,7 @@ function virtualTime(entry: Presented): void {
     configurable: true,
     get: () => entry.time,
     set: (value: number) => {
-      if (Math.abs(value - entry.time) < 1e-8) return;
+      if (Math.abs(value - entry.time) <= MEDIA_ELEMENT_LEAD_SECONDS * 2) return;
       authoredSeeks.add(entry.video);
       remove(entry);
       nativeSet?.call(entry.video, value);
@@ -202,7 +204,6 @@ export function createPausedVideoFrames() {
       if (provider === next) return;
       provider?.dispose();
       provider = next;
-      clear();
     },
     async prepare(requests: PausedVideoFrameRequest[], signal: AbortSignal) {
       if (
@@ -307,6 +308,7 @@ export function createPausedVideoFrames() {
         release,
       };
     },
+    suspendProvider: () => provider?.suspend?.(),
     prepareNative() {
       for (const entry of presented.values()) {
         entry.driving = false;

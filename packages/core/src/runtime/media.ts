@@ -677,10 +677,6 @@ export function syncRuntimeMedia(params: {
       // Mute only when force-muted or the transport owns this element; an unclaimed
       // track stays audible via the HTMLMedia fallback.
       if ((forceMuteAll || params.isWebAudioOwned?.(el)) && !el.muted) el.muted = true;
-      if (!params.playing && ownsPausedVideoTime(el)) {
-        if (!el.paused) el.pause();
-        continue;
-      }
       // Ensure full preload for every active media element. Streaming
       // formats (MP3) may arrive with preload="metadata", which only
       // buffers the first few seconds and causes seeks to silently fail
@@ -688,6 +684,10 @@ export function syncRuntimeMedia(params: {
       // (no-op when already "auto") and catches elements whose preload
       // was overridden after init.ts set it.
       if (el.preload !== "auto" && !isRenderFrameVideo(el)) el.preload = "auto";
+      if (!params.playing && ownsPausedVideoTime(el)) {
+        if (!el.paused) el.pause();
+        continue;
+      }
       // Per-element rate × global transport rate
       const baseRate = rateAt(clipRate, params.timeSeconds - origin) * params.playbackRate;
       // Too slow for the browser to play: kept paused and stepped onto the playhead by seeks.

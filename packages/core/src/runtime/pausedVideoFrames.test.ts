@@ -91,6 +91,18 @@ it("releases a late decode when its request is aborted or its source changes", a
   expect(getPausedVideoFrame(video)).toBeNull();
 });
 
+it("does not surrender decoded presentation for the runtime's native seek padding", async () => {
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  const canvas = getPausedVideoFrame(video);
+  video.currentTime = 3.00001;
+  expect(ownsPausedVideoTime(video)).toBe(true);
+  expect(getPausedVideoFrame(video)).toBe(canvas);
+  expect(video.currentTime).toBe(3);
+});
+
 it("gives an authored seek back to native media and preserves an existing currentTime override", async () => {
   const { session, video, request } = fixture();
   const batch = await session.prepare(request, new AbortController().signal);

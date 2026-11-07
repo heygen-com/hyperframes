@@ -111,6 +111,9 @@ advancing the composition's animations. Completed frames appear during a drag,
 with newer pointer positions coalesced into the next decode. Canvas and GPU
 effects consume the same staged pixels. Continuous playback uses native video;
 Studio keeps the paused picture visible while those videos catch up before Play.
+A slow native handoff stays buffered instead of revealing an unready video; Pause
+or a new seek cancels it. Studio releases paused decoding sessions before native
+playback and reopens them when paused scrubbing resumes.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,
 and the frame decoder does not substitute re-encoded seek copies. Playback

@@ -74,12 +74,14 @@ type SeekHost = {
   commit: (time: number) => void;
   frames?: {
     available(): boolean;
+    active?(): boolean;
     prepare(
       clips: RuntimeMediaClip[],
       time: number,
       signal: AbortSignal,
       settled?: boolean,
     ): Promise<PreparedPausedVideoFrames | null>;
+    suspend?(): Promise<void> | undefined;
     prepareNative(): void;
     clear(): void;
   };
@@ -240,14 +242,19 @@ export function createPreviewSeek(host: SeekHost) {
         el.addEventListener(type, type === "loadedmetadata" ? metadata : check, type === "error");
       return () => {
         for (const type of EVENTS)
-          el.removeEventListener(type, type === "loadedmetadata" ? metadata : check, type === "error");
+          el.removeEventListener(
+            type,
+            type === "loadedmetadata" ? metadata : check,
+            type === "error",
+          );
       };
     });
     let cap = wallSetTimeout(() => {
       if (!nativePhase && !frame) {
         native();
         if (live()) cap = wallSetTimeout(finish, SEEK_CAP_MS);
-      } else finish();
+      } else if (request.native || host.frames?.active?.()) check();
+      else finish();
     }, SEEK_CAP_MS);
     stopWaiting = () => {
       wallClearTimeout(cap);
@@ -270,21 +277,22 @@ export function createPreviewSeek(host: SeekHost) {
     } else native();
   };
 
+  const retarget = (time: number) => {
+    const request = pending!;
+    request.time = time;
+    const clips = host.clipsAt(time);
+    if (
+      clips.length !== runningClips.length ||
+      clips.some((clip, index) => clip.el !== runningClips[index]?.el)
+    ) {
+      stopWaiting();
+      run();
+    }
+    return request.done;
+  };
   const seek = (time: number, native = false, settled = false): Promise<void> | void => {
     if (pending && (pending.native !== native || pending.settled !== settled)) cancel();
-    if (pending) {
-      const request = pending;
-      request.time = time;
-      const clips = host.clipsAt(time);
-      if (
-        clips.length !== runningClips.length ||
-        clips.some((clip, index) => clip.el !== runningClips[index]?.el)
-      ) {
-        stopWaiting();
-        run();
-      }
-      return request.done;
-    }
+    if (pending) return retarget(time);
     if ((native || !host.frames?.available()) && ready(host.clipsAt(time), time)) {
       host.frames?.clear();
       host.commit(time);
@@ -322,6 +330,12 @@ export function createPreviewSeek(host: SeekHost) {
     handoff(time: number) {
       cancel();
       host.frames?.prepareNative();
+      const generation = runId;
+      const suspended = host.frames?.suspend?.();
+      if (suspended)
+        return suspended.then(() => {
+          if (generation === runId) return seek(time, true);
+        });
       return seek(time, true);
     },
     cancel,

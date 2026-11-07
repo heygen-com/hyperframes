@@ -450,3 +450,78 @@ it.each([
     frame!.release();
   },
 );
+
+it("releases sequential decoders before native playback and lazily recreates them", async () => {
+  const returned = vi.fn();
+  iterateSamples.mockImplementation(async function* () {
+    try {
+      yield sample(0.1);
+      yield sample(0.2);
+    } finally {
+      returned();
+    }
+  });
+  getSample.mockImplementation(async (_source: string, time: number) =>
+    sample(Math.floor(time * 30) / 30),
+  );
+  const owner = provider(cfrFacts),
+    item = request("a");
+  for (const time of [0, 0.1]) {
+    const [frame] = await owner.decode([{ ...item, time }], signal());
+    frame!.release();
+  }
+  expect(returned).not.toHaveBeenCalled();
+  await owner.suspend!();
+  expect(returned).toHaveBeenCalledOnce();
+  expect(inputs[0]!.dispose).toHaveBeenCalledOnce();
+  expect(cancelReads).toHaveBeenCalledOnce();
+  const [next] = await owner.decode([{ ...item, time: 0.2 }], signal());
+  expect(inputs).toHaveLength(2);
+  expect([next!.width, next!.height]).toEqual([100, 100]);
+  next!.release();
+});
+
+it("closes a bitmap copied after native-play suspension without retaining its decoder", async () => {
+  let finish: ((image: ReturnType<typeof bitmap>) => void) | undefined;
+  createBitmap.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const owner = provider();
+  const pending = owner.decode([request("a")], signal());
+  await vi.waitFor(() => expect(createBitmap).toHaveBeenCalledOnce());
+  await owner.suspend!();
+  const image = bitmap();
+  finish!(image);
+  await expect(pending).rejects.toThrow("Preview disposed");
+  expect(image.close).toHaveBeenCalledOnce();
+  const [next] = await owner.decode([request("a")], signal());
+  expect(inputs).toHaveLength(2);
+  next!.release();
+});
+
+it("does not poison a reopened source when an older suspended input settles late", async () => {
+  let rejectOpen: (error: Error) => void = () => {};
+  getTrack.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectOpen = reject;
+      }),
+  );
+  const owner = provider();
+  const old = owner.decode([request("a")], signal());
+  await vi.waitFor(() => expect(inputs).toHaveLength(1));
+  const suspended = owner.suspend!();
+  expect(inputs[0]!.dispose).toHaveBeenCalled();
+  const [current] = await owner.decode([request("a")], signal());
+  current!.release();
+  rejectOpen(new DOMException("Suspended", "AbortError"));
+  await expect(old).rejects.toMatchObject({ name: "AbortError" });
+  await suspended;
+  const [cached] = await owner.decode([request("a")], signal());
+  expect(inputs).toHaveLength(2);
+  expect(inputs[1]!.dispose).not.toHaveBeenCalled();
+  cached!.release();
+});

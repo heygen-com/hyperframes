@@ -39,6 +39,11 @@ function decoder(video: HTMLVideoElement, initiallyReady: boolean) {
   return {
     video,
     seeks,
+    metadataAt: (position: number) => {
+      time = position;
+      ready = 1;
+      seeking = false;
+    },
     land: () => {
       ready = 4;
       seeking = false;
@@ -358,6 +363,128 @@ it.each(["stop-media", "set-native-media-sync-disabled"])(
     expect(window.__player!.isPlaying()).toBe(false);
   },
 );
+
+it("keeps the complete picture and buffers beyond the handoff cap until native frames are ready", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { main, old, next } = film();
+  const { pending } = frameProvider([...old, ...next]);
+  const landed = window.__player!.seek(1);
+  pending.shift()!();
+  await landed;
+  for (const video of old) video.metadataAt(1);
+  window.__player!.play();
+  expect(old.every(({ video }) => video.preload === "auto")).toBe(true);
+  await vi.advanceTimersByTimeAsync(5100);
+  expect(window.__player!.isPlaying()).toBe(false);
+  expect(main.time?.()).toBe(1);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  window.__player!.seek(1);
+  for (const video of old) video.land();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
+});
+
+it("does not wait for a video frame from an audio-only video element", async () => {
+  const { main, next } = film();
+  for (const { video } of next)
+    Object.defineProperties(video, {
+      readyState: { value: 1, configurable: true },
+      videoWidth: { value: 0, configurable: true },
+      error: { value: null, configurable: true },
+    });
+  expect(window.__player!.seek(6)).toBeUndefined();
+  expect(main.time?.()).toBe(6);
+  window.__player!.play();
+  expect(window.__player!.isPlaying()).toBe(true);
+});
+
+it("waits for paused decoder suspension before preparing native playback", async () => {
+  const { old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  let releaseDecoders = () => {};
+  provider.suspend = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        releaseDecoders = resolve;
+      }),
+  );
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  const seeks = old.map((v) => v.seeks.length);
+  window.__player!.play();
+  expect(provider.suspend).toHaveBeenCalledOnce();
+  expect(old.map((v) => v.seeks.length)).toEqual(seeks);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  releaseDecoders();
+  await Promise.resolve();
+  for (const video of old) video.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(true);
+});
+
+it("restores paused ownership when Pause cancels an unfinished decoder suspension", async () => {
+  const { old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  let releaseDecoders = () => {};
+  provider.suspend = () =>
+    new Promise<void>((resolve) => {
+      releaseDecoders = resolve;
+    });
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  window.__player!.play();
+  window.__player!.pause();
+  expect(pending).toHaveLength(1);
+  pending.shift()!();
+  releaseDecoders();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(false);
+  expect(
+    old.every(({ video }) => Object.hasOwn(video, "currentTime") && video.currentTime === 1),
+  ).toBe(true);
+});
+
+it("warms the restart destination before Play when paused at the end", async () => {
+  const { main, old, next } = film();
+  const { pending } = frameProvider([...old, ...next]);
+  const landed = window.__player!.seek(10, { settled: true });
+  pending.shift()!();
+  await landed;
+  expect(main.time?.()).toBe(10);
+  for (const video of old) video.metadataAt(0);
+  const seeks = old.map((v) => v.seeks.length);
+  window.__player!.play();
+  expect(old.map((v) => v.seeks.length)).toEqual(seeks.map((n) => n + 1));
+  expect(window.__player!.isPlaying()).toBe(false);
+  for (const video of old) video.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(window.__player!.getTime()).toBeLessThan(1);
+  expect(old.every(({ video }) => video.style.visibility === "visible")).toBe(true);
+});
+
+it("retains a complete paused picture while replacing or removing its frame provider", async () => {
+  const { main, old, next } = film();
+  const { provider, pending } = frameProvider([...old, ...next]);
+  const initial = window.__player!.seek(1);
+  pending.shift()!();
+  await initial;
+  const replacement = { decode: provider.decode, dispose: vi.fn() };
+  window.__hf!.setPausedVideoFrameProvider!(replacement);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  pending.shift()!();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(main.time?.()).toBe(1);
+  window.__hf!.setPausedVideoFrameProvider!(null);
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(2);
+  for (const video of old) video.land();
+  await Promise.resolve();
+  expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
+});
 
 it("retains an in-flight destination when the host replaces its frame provider", async () => {
   const { main, old, next } = film();
