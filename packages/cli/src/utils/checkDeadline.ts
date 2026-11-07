@@ -25,8 +25,7 @@ const PHASE_LABELS = {
 export type CheckPhase = keyof typeof PHASE_LABELS;
 const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies"]);
 
-/** Starting Chrome is bounded on its own: a first run downloads it, which can outlast the idle window. */
-const CHROME_START_MS = 180_000;
+const CHROME_START_WINDOW_MS = 180_000;
 
 export class CheckDeadlineError extends Error {
   constructor(
@@ -76,8 +75,7 @@ export class CheckChromeStartError extends Error {
   }
 }
 
-/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it.
- * Starting Chrome has its own longer window, so a Chrome that never becomes ready ends the check too. */
+/** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
   private readonly operations = new Set<Promise<unknown>>();
@@ -160,7 +158,6 @@ export class CheckDeadline {
     return ` while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
   }
 
-  /** Chrome is ready: the idle clock for the page work starts here. */
   start = (): void => {
     if (this.phase !== "waiting") return;
     this.phase = "started";
@@ -184,7 +181,7 @@ export class CheckDeadline {
     const launching = this.work?.phase === "launch" && this.phase === "waiting";
     if (this.phase !== "started" && !launching) return;
     clearTimeout(this.timer);
-    const window = launching ? Math.max(CHROME_START_MS, this.idleMs) : this.idleMs;
+    const window = launching ? Math.max(CHROME_START_WINDOW_MS, this.idleMs) : this.idleMs;
     this.timer = setTimeout(
       () =>
         this.expire(
