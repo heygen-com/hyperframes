@@ -3,7 +3,7 @@ import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useElementPicker } from "./useElementPicker";
 
 // As the host leaves it on disk: hf-ids pinned, no element ids.
@@ -17,6 +17,7 @@ afterEach(() => {
   act(() => root?.unmount());
   root = null;
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 // The runtime's element-picked message, posted by `from`.
@@ -34,6 +35,33 @@ const picked = (from: Window | null, selector: string) =>
       }),
     );
   });
+
+const pickerMessage = (from: Window | null, data: Record<string, unknown>) =>
+  act(() => {
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        source: from,
+        data: {
+          source: "hf-preview",
+          ...data,
+          ...runtimeProtocolMetadata(30),
+        },
+      }),
+    );
+  });
+
+const hoverInfo = (overrides: Record<string, unknown> = {}) => ({
+  id: null,
+  className: "title",
+  tagName: "div",
+  selector: "div.title",
+  label: "Title",
+  boundingBox: { x: 20, y: 30, width: 100, height: 40 },
+  textContent: "Title",
+  src: null,
+  dataAttributes: {},
+  ...overrides,
+});
 
 // The preview page: the saved markup plus what the runtime adds to it.
 function mountPreview(mounted = ""): HTMLIFrameElement {
@@ -80,11 +108,149 @@ function mountPicker(
   picked(iframe.contentWindow, selector);
   const picker = () => api as ReturnType<typeof useElementPicker>;
   return {
+    iframe,
     picker,
     synced,
     setHostFiles: (next: Record<string, string>) => act(() => setHostFiles(next)),
   };
 }
+
+describe("pick mode cancellation and hover feedback", () => {
+  it("cancels pick mode when Escape is pressed with Studio focus", () => {
+    const { picker } = mountPicker({ "index.html": SAVED });
+    act(() => picker().enablePick());
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+
+    expect(picker().isPickMode).toBe(false);
+  });
+
+  it("shows the hovered element identifier beside the preview", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    act(() => picker().enablePick());
+
+    pickerMessage(iframe.contentWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo(),
+    });
+
+    expect(document.querySelector("[data-hf-picker-hover-label]")?.textContent).toBe("div.title");
+  });
+
+  it("restores the element selected before pick mode began when cancelled", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    expect(picker().pickedElement?.selector).toBe("h1");
+    act(() => picker().enablePick());
+    pickerMessage(iframe.contentWindow, {
+      type: "element-pick-candidates",
+      candidates: [{ selector: "div.candidate", tagName: "div" }],
+      selectedIndex: 0,
+      point: { x: 1, y: 1 },
+    });
+    expect(picker().pickedElement?.selector).toBe("div.candidate");
+
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+
+    expect(picker().pickedElement?.selector).toBe("h1");
+  });
+
+  it("restores the previous selection when Escape comes from the preview runtime", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    act(() => picker().enablePick());
+    pickerMessage(iframe.contentWindow, {
+      type: "element-pick-candidates",
+      candidates: [{ selector: "div.candidate", tagName: "div" }],
+      selectedIndex: 0,
+      point: { x: 1, y: 1 },
+    });
+
+    pickerMessage(iframe.contentWindow, { type: "pick-mode-cancelled" });
+
+    expect(picker().isPickMode).toBe(false);
+    expect(picker().pickedElement?.selector).toBe("h1");
+  });
+
+  it("ignores Escape while inactive and where an editor owns it", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    const frameWindow = iframe.contentWindow;
+    if (!frameWindow) throw new Error("preview iframe has no content window");
+    const postMessage = vi.spyOn(frameWindow, "postMessage");
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(postMessage).not.toHaveBeenCalled();
+
+    const editor = document.body.appendChild(document.createElement("textarea"));
+    act(() => picker().enablePick());
+    act(() => editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
+    expect(picker().isPickMode).toBe(true);
+  });
+
+  it("survives repeated enable and cancellation cycles", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      act(() => picker().enablePick());
+      expect(picker().isPickMode).toBe(true);
+      pickerMessage(iframe.contentWindow, { type: "pick-mode-cancelled" });
+      expect(picker().isPickMode).toBe(false);
+      expect(picker().pickedElement?.selector).toBe("h1");
+    }
+  });
+
+  it("removes its Studio key listener and disables the runtime on unmount", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    const frameWindow = iframe.contentWindow;
+    if (!frameWindow) throw new Error("preview iframe has no content window");
+    const removeEventListener = vi.spyOn(window, "removeEventListener");
+    const postMessage = vi.spyOn(frameWindow, "postMessage");
+    act(() => picker().enablePick());
+
+    act(() => root?.unmount());
+    root = null;
+
+    expect(removeEventListener.mock.calls.some(([type]) => type === "keydown")).toBe(true);
+    expect(
+      postMessage.mock.calls.some(
+        ([message]) =>
+          typeof message === "object" &&
+          message !== null &&
+          "action" in message &&
+          message.action === "disable-pick-mode",
+      ),
+    ).toBe(true);
+    expect(document.querySelector("[data-hf-picker-hover-label]")).toBeNull();
+  });
+
+  it("commits a normal pick and clears hover state", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    act(() => picker().enablePick());
+    pickerMessage(iframe.contentWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo(),
+    });
+
+    picked(iframe.contentWindow, "div.final");
+
+    expect(picker().isPickMode).toBe(false);
+    expect(picker().pickedElement?.selector).toBe("div.final");
+    expect(document.querySelector("[data-hf-picker-hover-label]")).toBeNull();
+  });
+
+  it("clears the label after cancellation", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    act(() => picker().enablePick());
+    pickerMessage(iframe.contentWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo({ id: "hero-title", tagName: "h1" }),
+    });
+    expect(document.querySelector("[data-hf-picker-hover-label]")?.textContent).toBe(
+      "h1#hero-title",
+    );
+
+    pickerMessage(iframe.contentWindow, { type: "pick-mode-cancelled" });
+
+    expect(document.querySelector("[data-hf-picker-hover-label]")).toBeNull();
+  });
+});
 
 describe("an edit to a picked element without an id", () => {
   it("writes only that edit into the saved file", () => {
@@ -185,8 +351,9 @@ describe("a pick across a reload that swaps the preview frame", () => {
       return null;
     }
     root = createRoot(document.createElement("div"));
-    act(() => root?.render(React.createElement(Harness)));
-    return { live, ref, picker: () => api as ReturnType<typeof useElementPicker> };
+    const rerender = () => act(() => root?.render(React.createElement(Harness)));
+    rerender();
+    return { live, ref, rerender, picker: () => api as ReturnType<typeof useElementPicker> };
   }
 
   it("keeps a pick posted by the frame it was made in after a new frame took its place", () => {
@@ -210,6 +377,90 @@ describe("a pick across a reload that swaps the preview frame", () => {
     act(() => picker().setActiveIframe(null));
     picked(zoom.contentWindow, "h1.late");
     expect(picker().pickedElement?.selector).toBe("h1");
+  });
+
+  it("drops hover messages from a primary iframe after it is replaced", () => {
+    const { live, ref, rerender, picker } = mountSwapping();
+    const liveWindow = live.contentWindow;
+    if (!liveWindow) throw new Error("preview iframe has no content window");
+    const oldPostMessage = vi.spyOn(liveWindow, "postMessage");
+    act(() => picker().enablePick());
+    pickerMessage(liveWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo(),
+    });
+    expect(document.querySelector("[data-hf-picker-hover-label]")).not.toBeNull();
+
+    const replacement = mountPreview();
+    const replacementWindow = replacement.contentWindow;
+    if (!replacementWindow) throw new Error("replacement iframe has no content window");
+    const replacementPostMessage = vi.spyOn(replacementWindow, "postMessage");
+    ref.current = replacement;
+    rerender();
+    expect(document.querySelector("[data-hf-picker-hover-label]")).toBeNull();
+    expect(
+      oldPostMessage.mock.calls.some(
+        ([message]) =>
+          typeof message === "object" &&
+          message !== null &&
+          "action" in message &&
+          message.action === "disable-pick-mode",
+      ),
+    ).toBe(true);
+    expect(
+      replacementPostMessage.mock.calls.some(
+        ([message]) =>
+          typeof message === "object" &&
+          message !== null &&
+          "action" in message &&
+          message.action === "enable-pick-mode",
+      ),
+    ).toBe(true);
+    pickerMessage(liveWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo({ id: "stale" }),
+    });
+
+    expect(document.querySelector("[data-hf-picker-hover-label]")).toBeNull();
+  });
+
+  it("moves active pick mode to a zoomed iframe without losing the original selection", () => {
+    const { live, picker } = mountSwapping();
+    picked(live.contentWindow, "h1");
+    const zoom = mountPreview();
+    const zoomWindow = zoom.contentWindow;
+    if (!zoomWindow) throw new Error("zoom iframe has no content window");
+    const zoomPostMessage = vi.spyOn(zoomWindow, "postMessage");
+    act(() => picker().enablePick());
+
+    act(() => picker().setActiveIframe(zoom));
+    pickerMessage(zoomWindow, {
+      type: "element-hovered",
+      elementInfo: hoverInfo({ id: "zoomed" }),
+    });
+    pickerMessage(zoomWindow, {
+      type: "element-pick-candidates",
+      candidates: [{ selector: "div.zoomed", tagName: "div" }],
+      selectedIndex: 0,
+      point: { x: 1, y: 1 },
+    });
+
+    expect(picker().activeIframeRef.current).toBe(zoom);
+    expect(
+      zoomPostMessage.mock.calls.some(
+        ([message]) =>
+          typeof message === "object" &&
+          message !== null &&
+          "action" in message &&
+          message.action === "enable-pick-mode",
+      ),
+    ).toBe(true);
+    expect(document.querySelector("[data-hf-picker-hover-label]")?.textContent).toBe("div#zoomed");
+
+    act(() => picker().setActiveIframe(null));
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(picker().pickedElement?.selector).toBe("h1");
+    expect(picker().activeIframeRef.current).toBe(live);
   });
 
   it("still ignores a frame it never showed", () => {
