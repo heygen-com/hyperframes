@@ -486,12 +486,6 @@ function innermostTimedWrapper(
   return found;
 }
 
-/**
- * `data-volume` is a linear gain documented as 0..3.98 (0..+12 dB). Core
- * clamps out-of-range values silently and non-numbers fall back to 1, so an
- * author writing a percent (`"80"`) gets +12 dB and a typo (`"loud"`) gets
- * unity — neither is visible anywhere except here.
- */
 const MAX_DATA_VOLUME = 3.98;
 
 function findInvalidDataVolumeFindings(ctx: LintContext): HyperframeLintFinding[] {
