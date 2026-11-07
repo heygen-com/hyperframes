@@ -593,7 +593,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     lintProject: (dir: string) =>
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
-        { projectDir: dir, host: "studio" },
+        { projectDir: dir, host: "studio", background: true },
         { maxBufferBytes: 8 * 1024 * 1024 },
       ),
 

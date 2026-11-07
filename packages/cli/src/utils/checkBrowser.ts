@@ -63,7 +63,7 @@ import {
   resolveProxies,
   type ProxyProgress,
 } from "@hyperframes/studio-server/proxy-transcoder";
-import { rectToBbox } from "./checkTypes.js";
+import { rectToBbox, type MediaCopyFacts } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
   CheckAnchor,
@@ -245,6 +245,7 @@ export async function preResolveHostileMediaProxies(
   html: string,
   autoProxyOverride?: boolean,
   budgetMs?: number,
+  record?: (facts: MediaCopyFacts) => void,
 ): Promise<ProxyPreResolution> {
   const none: ProxyPreResolution = {
     findings: [],
@@ -333,6 +334,11 @@ export async function preResolveHostileMediaProxies(
   const unfinished = sources.flatMap(({ file }, index) =>
     results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
   );
+  record?.({
+    total,
+    waitedMs: Date.now() - startedAt,
+    unfinished: overBudget === undefined ? 0 : unfinished.length,
+  });
   if (overBudget !== undefined && unfinished.length > 0) {
     throw new CheckCopiesUnfinishedError(overBudget, unfinished);
   }
@@ -439,11 +445,21 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const html = await loadCheckHtmlWithDeferredMedia(project.dir);
   deadline?.enter("copies");
+  let mediaCopies: MediaCopyFacts | undefined;
+  deadline?.keepPartial(() => (mediaCopies ? { mediaCopies } : {}));
   const {
     findings: drafts,
     failedPaths,
     limits,
-  } = await preResolveHostileMediaProxies(project.dir, html, options.autoProxy, COPY_BUDGET_MS);
+  } = await preResolveHostileMediaProxies(
+    project.dir,
+    html,
+    options.autoProxy,
+    Math.min(COPY_BUDGET_MS, deadline?.remainingMs() ?? COPY_BUDGET_MS),
+    (facts) => {
+      mediaCopies = facts;
+    },
+  );
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
     project.dir,
@@ -528,6 +544,7 @@ export async function runBrowserCheck(
     const unreachable = await networkChangesStillFailing(merged);
     return {
       ...result,
+      ...(mediaCopies && { mediaCopies }),
       timings: { ...result.timings, launchSettleMs },
       renderReadyTimedOut: session.renderReadyTimedOut,
       runtimeFindings: dropFailedProxyEchoes(

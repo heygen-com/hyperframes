@@ -1007,8 +1007,9 @@ npx hyperframes normalize-audio --reference target-audio --target user-audio --j
 `--reference` and `--target` are `<audio>` element ids, with or without `#`.
 The reference stays unchanged; the command accounts for both clips' current
 `data-volume` and writes the target's absolute matched gain. It measures
-`data-media-start` and `data-duration`, rejects remote or out-of-project sources,
-and refuses a result that exceeds Studio's +12 dB ceiling or would clip. Dry-run
+`data-media-start` and `data-duration` and rejects remote or out-of-project sources.
+Where a full match would pass Studio's +12 dB ceiling or -1.5 dBTP, it applies the
+most that fits and says how far under the reference that leaves the target. Dry-run
 is deliberate: inspect the measurement before passing `--write`. Use
 `--tolerance <LU>` to change the default 0.5 LU no-op threshold.
 
@@ -1249,6 +1250,7 @@ cover every finding from the full check.
 | `--collapse-static` / `--no-collapse-static` | Fold a repeated static finding into one row (default: on)                                                                    |
 | `--tolerance`                                | Allowed overflow in px before reporting (default 2)                                                                         |
 | `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 45000, as snapshot and render)                                   |
+| `--budget <ms\|90s\|8m>`                      | Stop the whole check this long after it starts (at least 30s) and report what it found, with `check_budget_reached` naming the phase it was in. For hosts with their own time limit. |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
@@ -1927,12 +1929,29 @@ mismatched encodes. The directory is deleted after a successful render unless
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
 
+By default every frame of every source video is extracted before capture
+starts. With `HF_VIDEO_FRAME_WINDOW=true`, each segment instead extracts only
+the source frames it shows and deletes them when it closes. Things to know
+before switching it on:
+
+- Segment files are deleted as soon as they are joined, unless `--keep-segments`
+  is set. A failure after the join therefore recaptures everything on `--resume`.
+- Only mp4 and mov renders that segment honour the flag. Motion blur, variable
+  frame rate sources and HDR-transformed sources stay fully extracted. The
+  render log says when the flag was declined and how many videos stayed fully
+  extracted.
+- Source-frame disk use is bounded by roughly workers x `HF_SEGMENT_FRAMES`
+  frames, and only for videos that can be windowed.
+- A windowed render skips the extraction cache, so a re-export gets no
+  warm-cache speedup.
+
 | Environment variable           | Default    | Effect                                                                                   |
 | ------------------------------ | ---------- | ------------------------------------------------------------------------------------------ |
 | `HF_SEGMENTED_CAPTURE`         | unset      | `true` segments any eligible render; `false` is the kill switch                          |
 | `HF_SEGMENTED_MIN_SECONDS`     | off        | Segment renders at least this long. Unset means duration never routes on its own          |
 | `HF_SEGMENT_FRAMES`            | `3000`     | Frames per segment (~100 s at 30 fps); minimum 30                                        |
 | `HF_SEGMENT_BROWSER_RECYCLE`   | `3`        | Restart the browser every N segments; `0` keeps one session for the whole render          |
+| `HF_VIDEO_FRAME_WINDOW`        | unset      | `true` extracts each segment's source frames when it starts and deletes them when it closes |
 
 #### Render the same composition with different content
 
@@ -2243,12 +2262,20 @@ telemetry disabled it prints
 npx hyperframes telemetry enable
 npx hyperframes telemetry disable
 npx hyperframes telemetry status
+npx hyperframes telemetry status --json
 ```
+
+Use `telemetry status --json` to check telemetry from an agent or script. It
+returns `enabled`, `source`, `configPath`, `statePath`, and `commandCount`.
+`enabled` reflects the effective state after environment
+and build overrides, and `source` names the setting or override that determines it.
+`--json` is supported only by `status`.
 
 Telemetry collects command names, render performance, render checkpoint and
 error names, aggregate browser diagnostic counts, browser initialization
 duration and tween count, aggregate video-extraction workload counts (extracted
-frames, VFR preflights), example choices, the names of registry items `add` or
+frames, VFR preflights), aggregate counts of what a motion-blur render's composition holds
+(movers, videos, iframes, canvases, custom elements, and similar), example choices, the names of registry items `add` or
 Studio installs and which of the two installed them, and system info — including a coarse
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the

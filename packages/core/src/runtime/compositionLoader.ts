@@ -17,6 +17,7 @@ import { parseImportMap } from "../compiler/importMaps";
 import { hasSameLink } from "../compiler/scriptRuns";
 import {
   namespaceCollidingSvgIds,
+  sceneClipRoots,
   rewriteSvgIdReferencesInCss,
 } from "../compiler/svgIdNamespacing";
 import { waitForFonts } from "./afterFonts";
@@ -888,9 +889,20 @@ export async function loadCompositions(params: LoadCompositionsParams): Promise<
 
 /** Reuse one finalization set across authored mounting and initial-script discovery. */
 function namespaceMountedSvgIds(
-  mounted: readonly MountedSvgScope[],
+  composed: readonly MountedSvgScope[],
   finalizedIds: Set<Element>,
 ): void {
+  const hosts = composed
+    .filter((scope) => scope.referenceTarget !== "document")
+    .map(({ host }) => host);
+  const mounted: MountedSvgScope[] = [
+    ...composed,
+    ...sceneClipRoots(document, hosts).map((host, index) => ({
+      host,
+      namespace: `clip-${index}`,
+      styles: [],
+    })),
+  ];
   for (const { styles } of mounted) {
     for (const style of styles) {
       const current = style.element.textContent ?? "";

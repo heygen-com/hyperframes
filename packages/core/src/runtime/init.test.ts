@@ -6076,6 +6076,11 @@ describe("initSandboxRuntimeModular", () => {
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
     });
 
+    it("hands a 650 s source to a decoded buffer, past the old 600 s limit", async () => {
+      const { audio, release } = await startRouted(SAFARI, 650);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
     it("leaves an hour-long source on its element", async () => {
       const { schedule, release } = await startRouted(SAFARI, 3600);
       await Promise.resolve();
@@ -6084,7 +6089,7 @@ describe("initSandboxRuntimeModular", () => {
     });
 
     it("gives a clip that has not loaded its source's verdict", async () => {
-      vi.spyOn(WebAudioTransport.prototype, "isDecodedOrDecoding").mockReturnValue(true);
+      vi.spyOn(WebAudioTransport.prototype, "fitsDecodeBudget").mockReturnValue(true);
       const { audio, release } = await startRouted(SAFARI, Number.NaN);
       await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
     });

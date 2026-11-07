@@ -13,7 +13,7 @@ export interface BlurFixture {
   checkpoints: readonly number[];
   /** Times while a mover moves. */
   moving: readonly number[];
-  html(blur: "on" | "off"): string;
+  html(blur: "on" | "off", tier?: "capture" | "filter"): string;
   expectOn: {
     state: "on" | "off";
     tier: "capture" | "filter" | null;
@@ -43,7 +43,7 @@ interface Spec {
   checkpoints?: readonly number[];
   moving?: readonly number[];
   expectOn?: Partial<BlurFixture["expectOn"]>;
-  /** Pins the capture tier; left out for fixtures that exist to be handed to the filter tier. */
+  /** Pins the capture tier; false leaves the tier to auto, which draws with the filter tier. */
   captureTier?: boolean;
   cardLeft?: number;
   cardTop?: number;
@@ -73,10 +73,11 @@ function cssSlide(width: number, duration: number): string {
   #card { animation: slide ${duration}s linear both }`;
 }
 
-const rootAttrs = (spec: Spec, blur: "on" | "off"): string => {
+const rootAttrs = (spec: Spec, blur: "on" | "off", tier?: "capture" | "filter"): string => {
   if (blur === "off") return 'data-motion-blur="off"';
-  const tier = spec.captureTier === false ? "" : ' data-motion-blur-tier="capture"';
-  return `data-motion-blur="on" data-motion-blur-events="on" data-motion-blur-shutter="240"${tier}`;
+  const pinned = tier ?? (spec.captureTier === false ? undefined : "capture");
+  const attribute = pinned ? ` data-motion-blur-tier="${pinned}"` : "";
+  return `data-motion-blur="on" data-motion-blur-events="on" data-motion-blur-shutter="240"${attribute}`;
 };
 
 const rootBody = (spec: Spec): string => {
@@ -95,7 +96,7 @@ const pageScript = (spec: Spec, width: number, duration: number): string =>
       window.__timelines.root = tl;
     </script>`;
 
-function compose(spec: Spec, blur: "on" | "off"): string {
+function compose(spec: Spec, blur: "on" | "off", tier?: "capture" | "filter"): string {
   const width = spec.width ?? 320;
   const height = spec.height ?? 180;
   const duration = spec.duration ?? 2;
@@ -107,7 +108,7 @@ function compose(spec: Spec, blur: "on" | "off"): string {
     ${spec.cssMotion ? cssSlide(width, duration) : ""}
     ${spec.style ?? ""}
   </style></head><body>
-    <div id="root" data-composition-id="root" data-start="0" data-duration="${duration}" data-width="${width}" data-height="${height}" ${rootAttrs(spec, blur)}
+    <div id="root" data-composition-id="root" data-start="0" data-duration="${duration}" data-width="${width}" data-height="${height}" ${rootAttrs(spec, blur, tier)}
       style="position:relative;width:${width}px;height:${height}px;background:#10131a;overflow:hidden">${rootBody(spec)}</div>
     ${pageScript(spec, width, duration)}
   </body></html>`;
@@ -123,7 +124,7 @@ function fixture(spec: Spec): BlurFixture {
     fps: 30,
     checkpoints: spec.checkpoints ?? frames(15, 30, 45),
     moving: spec.moving ?? frames(6, 54),
-    html: (blur) => compose(spec, blur),
+    html: (blur, tier) => compose(spec, blur, tier),
     expectOn: { state: "on", tier: "capture", reasonCode: null, ...spec.expectOn },
   };
 }
@@ -184,6 +185,14 @@ export const FIXTURES: readonly BlurFixture[] = [
         .call(write("first"), null, 1).call(write("second"), null, 1);`,
   }),
   fixture({
+    name: "once-guard-label",
+    checkpoints: frames(21, 24, 36),
+    extra: `<div id="label" style="position:absolute;left:10px;top:10px;font:700 24px monospace;color:#fff">A</div>`,
+    script: `const label = document.getElementById("label");
+      let done = false;
+      tl.call(() => { if (done) return; done = true; label.textContent = "B" }, null, ${frame(16)});`,
+  }),
+  fixture({
     name: "stateful-callback",
     extra: `<div id="count" style="position:absolute;left:10px;top:10px;font:700 24px monospace;color:#fff">0</div>`,
     script: `const count = document.getElementById("count");
@@ -204,7 +213,7 @@ export const FIXTURES: readonly BlurFixture[] = [
     over: true,
     extra: WEBGL_TINT,
     checkpoints: frames(24, 30, 45),
-    expectOn: { tier: "filter", reasonCode: "accelerated-canvas" },
+    expectOn: { tier: "filter", reasonCode: "tier-auto" },
   }),
   // The flip tile stays sharp beside the blurred card: no time in the trail matches an average of its poses.
   fixture({
@@ -214,7 +223,7 @@ export const FIXTURES: readonly BlurFixture[] = [
     extra: FLIP,
     style: "@keyframes flip { to { transform: rotateY(180deg) } }",
     checkpoints: HOLD_AFTER_FLIP,
-    expectOn: { tier: "filter", reasonCode: "backface-visibility" },
+    expectOn: { tier: "filter", reasonCode: "tier-auto" },
   }),
   fixture({
     name: "overflow-wordmark",
@@ -234,7 +243,7 @@ export const FIXTURES: readonly BlurFixture[] = [
     moving: [],
     captureTier: false,
     extra: `<iframe id="frame" srcdoc='<body style="margin:0;background:#a33;color:#fff">framed</body>' style="position:absolute;left:10px;top:10px;width:120px;height:60px;border:0"></iframe>`,
-    expectOn: { tier: "filter", reasonCode: "iframe-in-root" },
+    expectOn: { tier: "filter", reasonCode: "tier-auto" },
   }),
   // The custom element stays sharp beside the blurred card: no time in the trail matches an average of its poses.
   fixture({
@@ -247,8 +256,14 @@ export const FIXTURES: readonly BlurFixture[] = [
           connectedCallback() { this.style.background = "#357"; this.textContent = "badge" }
         });
       </script>`,
-    expectOn: { tier: "filter", reasonCode: "iframe-in-root" },
+    expectOn: { tier: "filter", reasonCode: "tier-auto" },
   }),
   fixture({ name: "dpr2-mover", dpr: 2 }),
   fixture({ name: "portrait-mover", width: 180, height: 320 }),
 ];
+
+export const ROTATING_CARD: BlurFixture = fixture({
+  name: "rotating-card",
+  captureTier: false,
+  script: 'tl.fromTo("#card",{rotation:0},{rotation:540,duration:2,ease:"none"},0);',
+});

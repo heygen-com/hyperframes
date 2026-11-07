@@ -109,6 +109,7 @@ import {
   augmentPageNavigationTimeoutError,
   displaySize,
   type MotionBlurOptions,
+  type PageMotionBlurSummary,
 } from "@hyperframes/engine";
 import {
   referenceBackgroundResult,
@@ -143,6 +144,7 @@ import {
   describeWorkerPhases,
   forgetWorkerPhases,
   type MemorySampler,
+  reportExtractProgress,
   updateJobStatus,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
@@ -173,6 +175,9 @@ import {
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
+import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
+import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
+import { shouldWindowVideoFrames, trackSegmentFramePeak } from "./render/videoFrameWindow.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
 import {
   computeSegmentPlanHash,
@@ -202,6 +207,7 @@ import {
   buildHeapAdvisoryWarning,
   resolveRenderWorkerCount,
   runCaptureCalibration,
+  selectCaptureCalibrationFrames,
 } from "./render/captureCost.js";
 import {
   computeCompositionObservabilityHash,
@@ -227,7 +233,10 @@ import {
 import { runCompileStage } from "./render/stages/compileStage.js";
 import { runProbeStage } from "./render/stages/probeStage.js";
 import { validateRenderDuration } from "./render/planValidation.js";
-import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import {
+  resolveVideoExtractionPolicy,
+  runExtractVideosStage,
+} from "./render/stages/extractVideosStage.js";
 import { rendersSdrOnly } from "./render/hdrMode.js";
 import {
   planVideoLayerPassthrough,
@@ -615,6 +624,7 @@ export interface RenderPerfSummary {
     noDamageFrames: number;
     hasDamageFrames: number;
   };
+  motionBlur?: PageMotionBlurSummary;
   /**
    * drawElement fast-capture outcome for this render (default-on release
    * visibility). Undefined when no capture session ran.
@@ -664,7 +674,7 @@ export interface RenderPerfSummary {
     parallelRouter?: string;
     /** Worker count the auto-resolution chose BEFORE the router pinned it to 3 — the single-worker-inversion counterfactual. Only set when the router fired. */
     preRouterWorkers?: number;
-    /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
+    /** Engine init-time gate: swiftshader | webgl_unavailable | beginframe_no_self_verify | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Low-cardinality GPU bucket from DE session init (`<backend>/<vendor>`, e.g. `d3d11/nvidia`); |-joined across parallel sessions (bounded: one bucket per distinct backend on the host). */
     gpuRenderer?: string;
@@ -3522,6 +3532,34 @@ async function executeRenderPipeline(input: {
     });
 
     const compiledDir = join(workDir, "compiled");
+    // Settled before extraction, from what is known then. HDR content, which turns a
+    // segmented render into a layered one, only shows up once the videos are probed;
+    // the final plan is checked against this below.
+    const segmentsCapture = (layeredOrEffectRoute: boolean): boolean =>
+      shouldSegmentCapture({
+        env: process.env,
+        durationSeconds: probeResult.duration,
+        outputFormat,
+        layeredOrEffectRoute,
+        streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, probeResult.duration),
+      });
+    // A blur sample at a clip's edge shows a source frame the output frames do not, and a window
+    // holds only the frames the output frames show (videoFrameInjector.ts, `heldVideoTime`).
+    const segmentedForWindow = segmentsCapture(compiled.hasShaderTransitions);
+    const windowVideoFrames =
+      job.config.motionBlur === undefined &&
+      shouldWindowVideoFrames({ env: process.env, segmented: segmentedForWindow });
+    if (!windowVideoFrames && shouldWindowVideoFrames({ env: process.env, segmented: true })) {
+      const reason =
+        job.config.motionBlur !== undefined
+          ? "motion blur"
+          : outputFormat !== "mp4" && outputFormat !== "mov"
+            ? `${outputFormat} output`
+            : "capture is not segmented";
+      log.info("[Render] HF_VIDEO_FRAME_WINDOW is set but this render extracts every frame", {
+        reason,
+      });
+    }
     const extractResult = await observeRenderStage(
       observability,
       "video_extract",
@@ -3539,6 +3577,7 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
+          deferRangeExtraction: windowVideoFrames ? true : undefined,
           onProgress,
         }),
     );
@@ -3650,9 +3689,12 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
-    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
-      code: "start_browsers",
-    });
+    const EFFECT_SCAN_STAGE = "Checking effects";
+    const startingFrameCapture = () =>
+      updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
+        code: "start_browsers",
+      });
+    startingFrameCapture();
 
     // Start file server (may already be running from duration discovery).
     // The page-side compositing stub is injected later (after hasHdrContent
@@ -3691,6 +3733,7 @@ async function executeRenderPipeline(input: {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
     // downstream strategy + telemetry code reads the corrected value.
@@ -3768,10 +3811,13 @@ async function executeRenderPipeline(input: {
         updateJobStatus(
           job,
           "rendering",
-          `Checking effects, ${scanned} of ${total} frames`,
+          `${EFFECT_SCAN_STAGE}, ${scanned} of ${total} frames`,
           25,
           onProgress,
         ),
+      onEffectScanEnd: () => {
+        if (job.currentStage.startsWith(EFFECT_SCAN_STAGE)) startingFrameCapture();
+      },
       requiresWebGpu: compositionRequiresWebGpu(compiled.html),
       // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
       // through CapturePerfSummary only exists on success; a mid-capture
@@ -3795,8 +3841,58 @@ async function executeRenderPipeline(input: {
     // can occupy all HTTP connections during native-video drift recovery.
     // The byte ceiling bounds the Node LRU; Chrome receives short URLs so
     // its resource cache does not retain the corresponding inline strings.
+    // True while some video's frames are still to be read per segment.
+    let videoFrameWindow =
+      windowVideoFrames &&
+      (extractionResult?.extracted.some((video) => video.deferredRange) ?? false);
+    if (windowVideoFrames) {
+      const extracted = extractionResult?.extracted ?? [];
+      log.info("[Render] Video frame window", {
+        windowed: extracted.filter((video) => video.deferredRange).length,
+        fullyExtracted: extracted.filter((video) => !video.deferredRange).length,
+      });
+    }
+    const buildSegmentVideoFrames = () =>
+      trackSegmentFramePeak(
+        createSegmentVideoFrames({
+          videos: composition.videos,
+          extracted: extractionResult?.extracted ?? [],
+          fps: job.config.fps,
+          rootDir: workDir,
+          cfg,
+          injectorOptions: frameCacheOptions(cfg, workerCount),
+          abortSignal: executionSignal,
+        }),
+        workDir,
+        (bytes) => updateCaptureObservability({ videoFrameWindowPeakBytes: bytes }),
+      );
     const createRenderVideoFrameInjector = (): BeforeCaptureHook | null =>
       createVideoFrameInjector(frameLookup, frameCacheOptions(cfg, workerCount));
+    // Every route but the segmented one reads whole videos, so it needs the frames a window would have held back.
+    const extractDeferredVideoFrames = async (): Promise<void> => {
+      videoFrameWindow = false;
+      updateCaptureObservability({ videoFrameWindow: "off" });
+      const extracted = extractionResult?.extracted ?? [];
+      const videoCount = extracted.filter((video) => video.deferredRange).length;
+      const startedAt = Date.now();
+      log.info("[Render] Extracting the frames of the videos a window would have held back", {
+        videoCount,
+      });
+      await observeRenderStage(observability, "video_extract_deferred", { videoCount }, () =>
+        extractAllDeferredFrames(extracted, {
+          fps: job.config.fps,
+          cfg,
+          signal: executionSignal,
+          maxTransientRetries: resolveVideoExtractionPolicy().maxTransientRetries,
+          onProgress: (done, total) => reportExtractProgress(job, done, total, onProgress),
+        }),
+      );
+      assertNotAborted();
+      log.info("[Render] Extracted the deferred video frames", {
+        videoCount,
+        elapsedMs: Date.now() - startedAt,
+      });
+    };
 
     let captureCalibration:
       | {
@@ -4106,33 +4202,49 @@ async function executeRenderPipeline(input: {
       updateJobStatus(job, "rendering", "Measuring capture speed", 25, onProgress, {
         code: "start_browsers",
       });
-      const outcome = await observeRenderStage(
-        observability,
-        "capture_calibration",
-        captureStageObservationData({
-          forceScreenshot: captureForceScreenshot,
-          // Override the default `capturing` — calibration writes probe
-          // frames only, not `job.framesRendered`, so heartbeats reporting
-          // `framesCompleted: 0` misread as broken. Field signal
-          // ts=1784019503.
-          stagePhase: "calibrating",
-        }),
-        () =>
-          runCaptureCalibration({
-            cfg: calibrationCaptureConfig(cfg),
-            fileServer: activeFileServer,
-            workDir,
-            log,
-            job,
-            totalFrames,
+      // Calibration samples fixed frames, so the windowed videos it shows are extracted for just
+      // those here, outside its timing, and removed when it ends however it ends.
+      const calibrationFrames = videoFrameWindow
+        ? await buildSegmentVideoFrames().forFrames(
+            selectCaptureCalibrationFrames(totalFrames),
+            "calibration",
+          )
+        : undefined;
+      let outcome: Awaited<ReturnType<typeof runCaptureCalibration>>;
+      try {
+        outcome = await observeRenderStage(
+          observability,
+          "capture_calibration",
+          captureStageObservationData({
             forceScreenshot: captureForceScreenshot,
-            probeSession,
-            buildCaptureOptions: buildPrepCaptureOptions,
-            createRenderVideoFrameInjector,
-            assertNotAborted,
+            // Override the default `capturing` — calibration writes probe
+            // frames only, not `job.framesRendered`, so heartbeats reporting
+            // `framesCompleted: 0` misread as broken. Field signal
+            // ts=1784019503.
+            stagePhase: "calibrating",
           }),
-        { heartbeatMessage: "browser calibrating (frames not started)" },
-      );
+          () =>
+            runCaptureCalibration({
+              cfg: calibrationCaptureConfig(cfg),
+              fileServer: activeFileServer,
+              workDir,
+              log,
+              job,
+              totalFrames,
+              forceScreenshot: captureForceScreenshot,
+              probeSession,
+              buildCaptureOptions: buildPrepCaptureOptions,
+              createRenderVideoFrameInjector: calibrationFrames
+                ? calibrationFrames.injector
+                : createRenderVideoFrameInjector,
+              assertNotAborted,
+            }),
+          { heartbeatMessage: "browser calibrating (frames not started)" },
+        );
+      } finally {
+        calibrationFrames?.release();
+      }
+      startingFrameCapture();
       captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
@@ -4596,13 +4708,7 @@ async function executeRenderPipeline(input: {
       // excluded routes are the ones whose concat-copy or capture loop the
       // segment contract does not cover (webm VP9 concat is fragile, HDR and
       // shader transitions run their own compositor).
-      useSegmentedCapture: shouldSegmentCapture({
-        env: process.env,
-        durationSeconds: job.duration,
-        outputFormat,
-        layeredOrEffectRoute: hasHdrContent || compiled.hasShaderTransitions,
-        streamingOk: shouldUseStreamingEncode(cfg, outputFormat, 1, job.duration),
-      }),
+      useSegmentedCapture: segmentsCapture(hasHdrContent || compiled.hasShaderTransitions),
       useLayeredComposite,
       usePageSideCompositing: usePageSideCompositingForTransitions,
       hasHdrContent,
@@ -4648,10 +4754,14 @@ async function executeRenderPipeline(input: {
       deWorkerInversion,
       deParallelRouter,
     });
+    if (videoFrameWindow && capturePlan.kind !== "sdr_segmented")
+      await extractDeferredVideoFrames();
+    updateCaptureObservability({ videoFrameWindow: videoFrameWindow ? "on" : "off" });
     observability.checkpoint("capture_strategy", "resolved", {
       plan: capturePlan.kind,
       workerCount: capturePlan.workerCount,
       forceScreenshot: capturePlan.forceScreenshot,
+      videoFrameWindow: videoFrameWindow ? "on" : "off",
       captureBeyondViewport: resolvedCaptureBeyondViewport ?? null,
       useStreamingEncode: capturePlan.kind === "sdr_streaming",
       useLayeredComposite: capturePlan.kind === "hdr_layered",
@@ -4904,6 +5014,7 @@ async function executeRenderPipeline(input: {
                 },
                 buildCaptureOptions: buildWorkerCaptureOptions,
                 createRenderVideoFrameInjector,
+                segmentVideoFrames: videoFrameWindow ? buildSegmentVideoFrames() : undefined,
                 abortSignal: executionSignal,
                 assertNotAborted,
                 onProgress,
@@ -5019,6 +5130,7 @@ async function executeRenderPipeline(input: {
           // the branch below run the render normally.
           capturePlan = replanAfterFailure(capturePlan, { kind: "streaming_unavailable" });
           syncCapturePlan();
+          if (videoFrameWindow) await extractDeferredVideoFrames();
           // The stage closed every session it opened in its own finally,
           // including a reused probe. Drop the reference so the streaming
           // branch below opens a fresh session instead of re-initialising a

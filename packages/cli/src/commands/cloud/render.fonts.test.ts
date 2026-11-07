@@ -11,7 +11,7 @@ vi.mock("../../cloud/fontPreflight.js", async (importOriginal) => ({
 
 import render from "./render.js";
 import { errorBox } from "../../ui/format.js";
-import { CliRuntimeError, consumeCommandResult } from "../../utils/commandResult.js";
+import { consumeCommandResult } from "../../utils/commandResult.js";
 
 vi.mock("../../ui/format.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../ui/format.js")>()),
@@ -40,17 +40,16 @@ afterEach(() => {
 });
 
 describe("cloud render font preflight", () => {
-  it("stops before any upload and names the font that is not on this computer", async () => {
-    await expect(runCommand(render, { rawArgs: [project, "--no-wait", "--json"] })).rejects.toThrow(
-      CliRuntimeError,
-    );
+  it("does not stop for a font that is not on this computer: the dry run names it and carries on", async () => {
+    const lines: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((line) => void lines.push(String(line)));
+    await runCommand(render, { rawArgs: [project, "--dry-run", "--json"] });
+    log.mockRestore();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorBox).toHaveBeenCalledWith(
-      "Fonts not on this computer",
-      expect.stringContaining(
-        "HyperFrames couldn't find a font file for PingFang SC on this computer, so the cloud can't have it: use Noto Sans SC",
-      ),
-    );
+    expect(errorBox).not.toHaveBeenCalled();
+    expect(JSON.parse(lines.join("")).archive.swapped_fonts).toEqual(["PingFang SC"]);
   });
 });

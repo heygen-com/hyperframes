@@ -1,3 +1,4 @@
+import postcss from "postcss";
 import { gsapCallOffset, containingCallOffset } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
@@ -1017,6 +1018,27 @@ function indexInsideNonIifeRange(
 // opacity to EXACTLY zero. The declaration regex is boundary-anchored so
 // `opacity: 0.98` never matches; it ends at `;` or end of input, which also
 // catches a final declaration without a trailing semicolon.
+function cssRuleSubjects(
+  styles: LintContext["styles"],
+): Array<{ declarations: string[]; subjects: string[] }> {
+  const rules: Array<{ declarations: string[]; subjects: string[] }> = [];
+  for (const style of styles) {
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(style.content);
+    } catch {
+      continue;
+    }
+    root.walkRules((rule) => {
+      const subjects = rule.selectors.flatMap(
+        (selector) => /[#.][a-zA-Z0-9_-]+$/.exec(selector.trim())?.[0] ?? [],
+      );
+      if (subjects.length) rules.push({ declarations: rule.nodes.map(String), subjects });
+    });
+  }
+  return rules;
+}
+
 function collectCssOpacityZeroSelectors(
   styles: LintContext["styles"],
   tags: OpenTag[],
@@ -1024,14 +1046,9 @@ function collectCssOpacityZeroSelectors(
   const selectors = new Set<string>();
   const opacityExactlyZero = /opacity\s*:\s*0(?:\.0+)?\s*(?:;|$)/;
 
-  for (const style of styles) {
-    for (const [, selector, body] of style.content.matchAll(
-      /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-    )) {
-      if (body && opacityExactlyZero.test(body)) {
-        selectors.add((selector ?? "").trim());
-      }
-    }
+  for (const { declarations, subjects } of cssRuleSubjects(styles)) {
+    if (!declarations.some((declaration) => opacityExactlyZero.test(declaration))) continue;
+    for (const subject of subjects) selectors.add(subject);
   }
 
   for (const tag of tags) {
@@ -1320,17 +1337,13 @@ export const gsapRules: LintRule<LintContext>[] = [
     const cssScaleSelectors = new Map<string, string>();
 
     // Check <style> blocks for transform rules
-    for (const style of styles) {
-      for (const [, selector, body] of style.content.matchAll(
-        /([#.][a-zA-Z0-9_-]+)\s*\{([^}]+)\}/g,
-      )) {
-        const tMatch = body?.match(/transform\s*:\s*([^;]+)/);
-        if (!tMatch || !tMatch[1]) continue;
-        const transformVal = tMatch[1].trim();
-        if (/translate/i.test(transformVal))
-          cssTranslateSelectors.set((selector ?? "").trim(), transformVal);
-        if (/scale/i.test(transformVal))
-          cssScaleSelectors.set((selector ?? "").trim(), transformVal);
+    for (const { declarations, subjects } of cssRuleSubjects(styles)) {
+      const tMatch = declarations.join(";").match(/transform\s*:\s*([^;]+)/);
+      if (!tMatch || !tMatch[1]) continue;
+      const transformVal = tMatch[1].trim();
+      for (const subject of subjects) {
+        if (/translate/i.test(transformVal)) cssTranslateSelectors.set(subject, transformVal);
+        if (/scale/i.test(transformVal)) cssScaleSelectors.set(subject, transformVal);
       }
     }
 

@@ -13,7 +13,7 @@ import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
-import { join, dirname, resolve, basename, relative } from "path";
+import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import {
   COMPOSITION_SOURCE_URL,
@@ -74,7 +74,7 @@ import {
   readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import { isPathInside, resolveCompositionSrc, toExternalAssetKey } from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -213,6 +213,16 @@ class EmptyCompositionError extends Error {
   }
 }
 
+/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /). */
+function normalizeCompositionSrcs(html: string, projectDir: string): string {
+  return html.replace(/(\bdata-composition-src=)(["'])([^"']*)\2/g, (whole, name, quote, value) => {
+    if (!value.includes("%") && !value.startsWith("/")) return whole;
+    const file = resolveCompositionSrc(projectDir, value);
+    if (file === null) return whole;
+    return `${name}${quote}${relative(projectDir, file).split(sep).join("/")}${quote}`;
+  });
+}
+
 /**
  * Recursively walk every `data-composition-src` reference reachable from
  * `html` (including nested sub-compositions) and verify each resolves to a
@@ -242,7 +252,11 @@ function assertSubCompositionsUsable(
     if (!srcPath) continue;
     if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
-    const filePath = resolve(projectDir, srcPath);
+    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    if (filePath === null) {
+      problems.push({ srcPath, detail: "it is outside the project folder" });
+      continue;
+    }
     // Circular reference guard. parseSubCompositions (below) silently
     // `continue`s on a repeat visit with no reporting at all — mirror that
     // silence here rather than pretend it surfaces an error somewhere else.
@@ -779,7 +793,8 @@ async function parseSubCompositions(
     const srcPath = el.getAttribute("data-composition-src");
     if (!srcPath) continue;
 
-    const filePath = resolve(projectDir, srcPath);
+    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    if (filePath === null) continue;
 
     // Circular reference guard
     if (visited.has(filePath)) {
@@ -791,7 +806,7 @@ async function parseSubCompositions(
       continue;
     }
 
-    const rawSubHtml = read.text;
+    const rawSubHtml = normalizeCompositionSrcs(read.text, projectDir);
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
 
@@ -1072,8 +1087,9 @@ function inlineSubCompositions(
       resolveHtml: (srcPath: string) => {
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
-          const read = readProjectFile(resolve(projectDir, srcPath));
-          if (read.kind === "file") {
+          const filePath = resolveCompositionSrc(projectDir, srcPath);
+          const read = filePath ? readProjectFile(filePath) : null;
+          if (read?.kind === "file") {
             compHtml = rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath);
           }
         }
@@ -2067,7 +2083,10 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
-  const rawHtml = rewriteUnresolvableGsapToCdn(entryHtml, projectDir);
+  const rawHtml = normalizeCompositionSrcs(
+    rewriteUnresolvableGsapToCdn(entryHtml, projectDir),
+    projectDir,
+  );
 
   // Pre-flight: every data-composition-src reference must resolve to a
   // usable file before we spend any time compiling, launching a browser, or

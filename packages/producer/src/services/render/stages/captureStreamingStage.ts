@@ -189,9 +189,9 @@ function captureModeLabel(mode: CaptureSession["captureMode"]): string {
   return "screenshot";
 }
 
-type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
+export type StalledSession = { captureMode: CaptureSession["captureMode"]; captureStep?: string };
 
-const OPENING_CAPTURE_SESSION: StalledSession = {
+export const OPENING_CAPTURE_SESSION: StalledSession = {
   captureMode: "screenshot",
   captureStep: "opening the capture session",
 };
@@ -269,6 +269,31 @@ export function raceAgainstStall<T>(
       },
     );
   });
+}
+
+/**
+ * The setup budget for opening a session, initializing it, and the deferred drawElement init.
+ * It bounds each step, not setup as a whole: the clock drops a step longer than its suspend gap.
+ */
+export function createSessionInitBudget(input: {
+  frameIndex: number;
+  totalFrames: number;
+  abortSignal: AbortSignal | undefined;
+}): <T>(work: Promise<T>, stalled: StalledSession) => Promise<T> {
+  const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
+  const setup = createStallClock();
+  return (work, stalled) =>
+    raceAgainstStall(
+      work,
+      initStallMs - setup.idle(0),
+      {
+        session: stalled,
+        frameIndex: input.frameIndex,
+        totalFrames: input.totalFrames,
+        stallTimeoutMs: initStallMs,
+      },
+      input.abortSignal,
+    );
 }
 
 /**
@@ -462,43 +487,60 @@ function createDrainFrameGuard(args: {
       sizes.push(buf.length);
       if (sizes.length > 60) sizes.shift();
     }
-    const truth = session.deVerifyFrames?.get(idx);
-    if (truth) {
-      let db: number;
-      try {
-        db = await psnrDb(buf, truth);
-      } catch (err) {
-        // Infrastructure failure (ffmpeg spawn/parse/tmpdir), not evidence of
-        // damage — skip this sample rather than failing or falling back.
-        log.warn("[Render] drawElement self-verify sample skipped (psnr infrastructure)", {
-          frame: idx,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return buf;
-      }
-      if (db < verifyMinDb) {
-        // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
-        const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
-        if (dumpDir) {
-          await Promise.all([
-            writeFile(join(dumpDir, `frame-${idx}-de.jpg`), buf),
-            writeFile(join(dumpDir, `frame-${idx}-truth.jpg`), truth),
-          ]).catch(() => {});
-        }
-        throw new DrawElementVerificationError(
-          `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
-          { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
-        );
-      }
-      stats.verifyChecked += 1;
-      stats.verifyMinDb = stats.verifyMinDb === undefined ? db : Math.min(stats.verifyMinDb, db);
-      log.info("[Render] drawElement self-verify passed", {
-        frame: idx,
-        psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
-      });
-    }
+    await verifyDrawElementSample(session, idx, buf, { log, stats, verifyMinDb });
     return buf;
   };
+}
+
+/** At an armed sample index, a frame below the PSNR floor vs its pre-injection screenshot throws. */
+export async function verifyDrawElementSample(
+  session: CaptureSession,
+  idx: number,
+  buf: Buffer,
+  ctx: {
+    log: CaptureStreamingStageInput["log"];
+    /** Telemetry counters; the stages that report none pass nothing. */
+    stats?: Pick<DeDrainStats, "verifyChecked" | "verifyMinDb">;
+    verifyMinDb: number;
+  },
+): Promise<void> {
+  const { log, stats, verifyMinDb } = ctx;
+  const truth = session.deVerifyFrames?.get(idx);
+  if (!truth) return;
+  let db: number;
+  try {
+    db = await psnrDb(buf, truth);
+  } catch (err) {
+    // Infrastructure failure (ffmpeg spawn/parse/tmpdir), not evidence of
+    // damage — skip this sample rather than failing or falling back.
+    log.warn("[Render] drawElement self-verify sample skipped (psnr infrastructure)", {
+      frame: idx,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
+  if (db < verifyMinDb) {
+    // Keep the mismatched pair for diagnosis (tmpdir; OS-reaped).
+    const dumpDir = await mkdtemp(join(tmpdir(), "hf-de-verify-fail-")).catch(() => null);
+    if (dumpDir) {
+      await Promise.all([
+        writeFile(join(dumpDir, `frame-${idx}-de.jpg`), buf),
+        writeFile(join(dumpDir, `frame-${idx}-truth.jpg`), truth),
+      ]).catch(() => {});
+    }
+    throw new DrawElementVerificationError(
+      `drawElement self-verify failed at frame ${idx}: ${db.toFixed(1)}dB < ${verifyMinDb}dB vs pre-injection screenshot${dumpDir ? ` (pair: ${dumpDir})` : ""}`,
+      { kind: "psnr", frameIndex: idx, failedDb: db, verifyThresholdDb: verifyMinDb },
+    );
+  }
+  if (stats) {
+    stats.verifyChecked += 1;
+    stats.verifyMinDb = stats.verifyMinDb === undefined ? db : Math.min(stats.verifyMinDb, db);
+  }
+  log.info("[Render] drawElement self-verify passed", {
+    frame: idx,
+    psnrDb: db === Infinity ? "inf" : Number(db.toFixed(1)),
+  });
 }
 
 /** Frames drawElement cannot reproduce, and how to capture one by screenshot. */
@@ -1020,15 +1062,11 @@ export async function runCaptureStreamingStage(
       let resumes = 0;
       for (;;) {
         const videoInjector = createRenderVideoFrameInjector();
-        const initStallMs = Math.max(SESSION_INIT_STALL_MS, resolveCaptureStallTimeoutMs());
-        const setup = createStallClock();
-        const withinInitBudget = <T>(work: Promise<T>, stalled: StalledSession) =>
-          raceAgainstStall(
-            work,
-            initStallMs - setup.idle(0),
-            { session: stalled, frameIndex: resume.from, totalFrames, stallTimeoutMs: initStallMs },
-            abortSignal,
-          );
+        const withinInitBudget = createSessionInitBudget({
+          frameIndex: resume.from,
+          totalFrames,
+          abortSignal,
+        });
         const openSession = async (): Promise<CaptureSession> => {
           const opening = createCaptureSession(
             fileServer.url,
@@ -1126,6 +1164,7 @@ export async function runCaptureStreamingStage(
             );
           } else {
             const stallTimeoutMs = resolveCaptureStallTimeoutMs();
+            const verifyMinDb = resolveDeVerifyMinDb();
             let lastProgressAt = Date.now();
             for (let i = resume.from; i < totalFrames; i++) {
               assertNotAborted();
@@ -1142,6 +1181,7 @@ export async function runCaptureStreamingStage(
                 { session, frameIndex: i, totalFrames, stallTimeoutMs: budget },
                 abortSignal,
               );
+              await verifyDrawElementSample(session, i, buffer, { log, verifyMinDb });
               await reorderBuffer.waitForFrame(i);
               ensureFrameWritten(await currentEncoder.writeFrame(buffer), i, currentEncoder);
               reorderBuffer.advanceTo(i + 1);

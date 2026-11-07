@@ -116,7 +116,8 @@ export default defineCommand({
     script: { type: "string", description: "avatar, voice: the words spoken" },
     voice: {
       type: "string",
-      description: "avatar, voice: a HeyGen voice id, or a language for its first voice in it",
+      description:
+        "avatar, voice: a HeyGen voice id, or a language (English, Chinese, en, zh-CN) for its first voice in it",
     },
     seconds: {
       type: "string",
@@ -126,7 +127,11 @@ export default defineCommand({
       type: "string",
       description: "Aspect ratio, e.g. 9:16 (image, video without a first frame, avatar)",
     },
-    model: { type: "string", description: "image: nano-banana-2 (default) or gpt-image-2.5" },
+    model: {
+      type: "string",
+      description:
+        "image: nano-banana-2 (default), nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare",
+    },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
       type: "boolean",

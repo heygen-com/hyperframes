@@ -11,7 +11,7 @@ export {
   LINT_RULE_COUNT,
   LINT_RULE_GROUP_COUNTS,
 } from "./hyperframeLinter.js";
-export { collectExternalStyles, lintProject, shouldBlockRender } from "./project.js";
+export { linkedSources, lintProject, shouldBlockRender } from "./project.js";
 export type { ProjectLintResult } from "./project.js";
 export { projectIgnore } from "./projectIgnore.js";
 export { audioAttributeShapeError, type AudioAttribute } from "./rules/audioAttributes.js";

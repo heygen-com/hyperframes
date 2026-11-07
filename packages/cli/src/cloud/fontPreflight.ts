@@ -71,9 +71,19 @@ async function unresolvedCloudFonts(
   }
 }
 
+const faceFamily = (face: string) =>
+  /font-family\s*:\s*(?:"([^"]+)"|'([^']+)'|([^;}"']+))/i
+    .exec(face)
+    ?.slice(1)
+    .find(Boolean)
+    ?.trim();
+
+const placeholderFace = (family: string) =>
+  `@font-face{font-family:"${family}";src:local("hyperframes-font-not-installed ${family}")}`;
+
 /**
  * Adds the system fonts the project uses to its entry page as inline @font-face rules, so the zip carries them.
- * Returns the families whose font file is not on this machine; those cannot render in the cloud.
+ * A family with no font file here gets an empty face (the local fallback) and is returned for the caller to name.
  */
 export async function embedSystemFonts(
   opts: { dir: string; entryFile?: string; entryPath: string; fileMap: Map<string, StagedFile> },
@@ -84,23 +94,25 @@ export async function embedSystemFonts(
   if (wanted.length === 0) return [];
   const css = wanted.map((f, i) => `.f${i}{font-family:"${f}"}`).join("");
   const probe = `<!doctype html><html><head><style>${css}</style></head><body></body></html>`;
-  let out: string;
-  try {
-    out = await run(probe, {
-      failClosedFontFetch: true,
-      allowSystemFontCapture: true,
-      systemFontsByInnerName: true,
-      logger: QUIET,
-    });
-  } catch (err) {
-    return namedFamilies(err) ?? wanted;
-  }
-  const faces = [...out.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
+  const out = await run(probe, {
+    failClosedFontFetch: false,
+    allowSystemFontCapture: true,
+    systemFontsByInnerName: true,
+    logger: QUIET,
+  });
+  const captured = [...out.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
     .map((m) => m[1] ?? "")
     .filter((css) => css.includes("@font-face"))
     .join("\n");
+  const found = new Set(
+    [...captured.matchAll(/@font-face\s*{[^}]*}/gi)]
+      .map((m) => faceFamily(m[0])?.toLowerCase())
+      .filter((f): f is string => f !== undefined),
+  );
+  const missing = wanted.filter((family) => !found.has(family.toLowerCase()));
+  const faces = [captured, ...missing.map(placeholderFace)].filter(Boolean).join("\n");
   const entry = opts.fileMap.get(opts.entryPath);
-  if (!faces || !entry) return wanted;
+  if (!entry) return missing;
   const html = readStaged(entry).toString("utf-8");
   const tag = `<style data-hf-system-fonts>${faces}</style>`;
   const at = html.search(/<\/head>/i);
@@ -108,17 +120,17 @@ export async function embedSystemFonts(
     opts.entryPath,
     Buffer.from(at < 0 ? tag + html : html.slice(0, at) + tag + html.slice(at), "utf-8"),
   );
-  return [];
+  return missing;
 }
 
-/** One line per font, with the swap when there is one. */
-export function describeUnresolvedFonts(families: readonly string[]): string {
+/** One line per font that is not on this computer: the cloud renders it with the same fallback a local render uses. */
+export function describeSwappedFonts(families: readonly string[]): string {
   return families
     .map((family) => {
       const swap = lookAlikeFor(family);
-      return `HyperFrames couldn't find a font file for ${family} on this computer, so the cloud can't have it: ${
-        swap ? `use ${swap}, ` : ""
-      }switch to a font in your project or render on this computer.`;
+      return `${family} is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does${
+        swap ? `; ${swap} is a free look-alike you can use instead` : ""
+      }.`;
     })
     .join("\n");
 }

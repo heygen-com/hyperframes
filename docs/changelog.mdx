@@ -9,6 +9,78 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.19"
+  description="Released - 2026-11-06"
+  tags={["Release", "CLI", "Core"]}
+>
+A render now matches preview when a `set` interrupts a running tween, so it no longer comes out blank. `cloud render` also keeps going when a project uses a font with no file on this computer. It falls back to the next font in the stack, as a local render does, and names the missing font.
+
+## Fixes
+
+- **CLI:** A font missing from this computer no longer stops a cloud render, and is named ([b56e2c036](https://github.com/heygen-com/hyperframes/commit/b56e2c03669cc0515209b0f886594b36867eab02), [#7287](https://github.com/heygen-com/hyperframes/pull/7287)).
+- **Core:** A render lands where preview does when a set interrupts a tween ([6abc62a17](https://github.com/heygen-com/hyperframes/commit/6abc62a1796f7ebafd001dd13869a049f1f87dc5), [#7283](https://github.com/heygen-com/hyperframes/pull/7283)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.18...v0.9.19).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.18"
+  description="Released - 2026-11-05"
+  tags={["Release", "CLI", "Core"]}
+>
+A render on a busy Windows PC no longer stalls behind its own lint. Under heavy CPU load in our test, the wait before the browser check fell from over 30 seconds to about 3. `check` also stops piling up GPU memory on graded images, and `normalize-audio` now reports the level a held clip actually stays at.
+
+## Fixes
+
+- **CLI:** A render's lint runs at normal priority, so a busy Windows PC no longer stalls it ([72326a3ac](https://github.com/heygen-com/hyperframes/commit/72326a3ac7abb650b7bb4bbd33b2b855bc790cac), [#7268](https://github.com/heygen-com/hyperframes/pull/7268)).
+- **CLI:** Normalize-audio says where the target stays when a limit holds its gain ([4935d6736](https://github.com/heygen-com/hyperframes/commit/4935d6736b64ed3dd68524c1cb2c7f011171baef), [#7267](https://github.com/heygen-com/hyperframes/pull/7267)).
+- **Core:** Check's no-draw seeks no longer upload graded images to the GPU ([256b84a41](https://github.com/heygen-com/hyperframes/commit/256b84a41bc32913870953c06e05f4ab25e963f8), [#7264](https://github.com/heygen-com/hyperframes/pull/7264)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.17...v0.9.18).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.17"
+  description="Released - 2026-11-05"
+  tags={["Release", "Producer", "CLI", "Engine"]}
+>
+Set `HF_VIDEO_FRAME_WINDOW=true` with segmented capture and a long render holds far less on disk. Each segment extracts only the frames it shows, then deletes them. Segmented capture also checks drawElement frames against their reference samples now, and `check --budget` stops a whole check in time.
+
+## Features
+
+- **Producer:** Render long videos with windowed source frames behind a flag ([968f97fe9](https://github.com/heygen-com/hyperframes/commit/968f97fe954f733d8610ab86a09ded1e78fec23c), [#7242](https://github.com/heygen-com/hyperframes/pull/7242)).
+- **Producer:** A capture segment extracts the frames it shows and deletes them ([599eaad2b](https://github.com/heygen-com/hyperframes/commit/599eaad2ba6a908b6da9de724bc04474c79fa019), [#7241](https://github.com/heygen-com/hyperframes/pull/7241)).
+- **CLI:** Check --budget stops the whole check in time and reports what it found ([b7d72c947](https://github.com/heygen-com/hyperframes/commit/b7d72c9478bf0717458ced2d8ab35b5807b45f3c), [#7245](https://github.com/heygen-com/hyperframes/pull/7245)).
+- **CLI:** Info --media lists every clip the render hears, on the film's clock ([df54f380c](https://github.com/heygen-com/hyperframes/commit/df54f380cbcada23c56019972441b98160f2adb8), [#7235](https://github.com/heygen-com/hyperframes/pull/7235)).
+
+## Fixes
+
+- **CLI:** Check judges SVG gradient text by its gradient stops, not as black ([478ef2f26](https://github.com/heygen-com/hyperframes/commit/478ef2f26e8b2811383d6e0e31b69efebf508148), [#7258](https://github.com/heygen-com/hyperframes/pull/7258)).
+- **Engine:** Name a failed script's origin and error before the free text of its warning ([7290ee68c](https://github.com/heygen-com/hyperframes/commit/7290ee68c3e1607b8cead5bb8394e39c679204c3), [#7256](https://github.com/heygen-com/hyperframes/pull/7256)).
+- **CLI:** Normalize-audio --reference stops short of the peak ceiling instead of refusing ([2f2195515](https://github.com/heygen-com/hyperframes/commit/2f2195515b6cb693909ddd46e6c6ced43965e287), [#7254](https://github.com/heygen-com/hyperframes/pull/7254)).
+- **Producer:** Segmented and sequential capture check drawElement samples ([8df4f21c2](https://github.com/heygen-com/hyperframes/commit/8df4f21c20679fc92ae338ad647da5f5d9a69d76), [#7255](https://github.com/heygen-com/hyperframes/pull/7255)).
+- **Core:** Two scenes drawing SVGs with the same ids each show their own ([b108f8512](https://github.com/heygen-com/hyperframes/commit/b108f851201dc22f5d4974ee7f1c9d19b472cc1e), [#7251](https://github.com/heygen-com/hyperframes/pull/7251)).
+- **CLI:** End a stalled cloud upload and send it again ([f98218a22](https://github.com/heygen-com/hyperframes/commit/f98218a224ba5b3ad0591485d9b1b9344ba0ce11), [#7237](https://github.com/heygen-com/hyperframes/pull/7237)).
+- **Core:** Decode WebKit sources by memory budget, not by length ([600bfa451](https://github.com/heygen-com/hyperframes/commit/600bfa451bd69a6101666f46d03a22e970af972b), [#7232](https://github.com/heygen-com/hyperframes/pull/7232)).
+- **Core:** Snapshot and preview show a clip on the frame render shows it ([5377b756b](https://github.com/heygen-com/hyperframes/commit/5377b756b5d1fcf06171a133b715003f05ff71c7), [#7238](https://github.com/heygen-com/hyperframes/pull/7238)).
+- **Producer:** An export over the peak ceiling loses only what it must ([d40d0b251](https://github.com/heygen-com/hyperframes/commit/d40d0b251f6dc5d97dff472cc99d528a46cab9db), [#7246](https://github.com/heygen-com/hyperframes/pull/7246)).
+- **Lint:** Every selector in a comma list counts as hidden by authored CSS ([a664f99ec](https://github.com/heygen-com/hyperframes/commit/a664f99ec86162411e726bb5ae7fb0cc250b819e), [#7252](https://github.com/heygen-com/hyperframes/pull/7252)).
+- **Core:** The bundle's contract check reads a timeline registered in a local script ([0b3559824](https://github.com/heygen-com/hyperframes/commit/0b355982460e0ca66b6f762da7732d4990c6ddc1), [#7248](https://github.com/heygen-com/hyperframes/pull/7248)).
+- **CLI:** Check sees an SVG stroke drawing on, so it no longer calls it a dead stretch ([644b166e7](https://github.com/heygen-com/hyperframes/commit/644b166e78c40fa527715cb843adf1c0ddf9182c), [#7250](https://github.com/heygen-com/hyperframes/pull/7250)).
+- **CLI:** An unknown command answers in a few lines and says what to run instead ([0a6746e1d](https://github.com/heygen-com/hyperframes/commit/0a6746e1d6fabab6178ef8ead0e6da1593a1e59a), [#7247](https://github.com/heygen-com/hyperframes/pull/7247)).
+- **CLI:** Lint says nothing when the OS refuses to lower its priority ([c1977fab3](https://github.com/heygen-com/hyperframes/commit/c1977fab3e632aa559636ab28bdedd764fdb7dc6), [#7244](https://github.com/heygen-com/hyperframes/pull/7244)).
+- **Lint:** Compositions in .hyperframesignore no longer count as the project's ([80e02e74a](https://github.com/heygen-com/hyperframes/commit/80e02e74a0af8bc6be30cb4c671b03b064c667b6), [#7239](https://github.com/heygen-com/hyperframes/pull/7239)).
+- **CLI:** Name the network cause of a failed fetch in the error box ([f55990ebc](https://github.com/heygen-com/hyperframes/commit/f55990ebca68780a680af4080df88e114537739c), [#7236](https://github.com/heygen-com/hyperframes/pull/7236)).
+- **Core:** Hlg footage tone-maps to sdr at the bt.2408 reference white ([5ee9e928d](https://github.com/heygen-com/hyperframes/commit/5ee9e928d5d1377826dd025a73bb5ec22666bcee), [#7234](https://github.com/heygen-com/hyperframes/pull/7234)).
+
+## Internal
+
+- **Producer:** Deferred frame extraction moves out of the distributed code ([35cbca992](https://github.com/heygen-com/hyperframes/commit/35cbca99274907c914e4e083f30684060e3b4c58), [#7240](https://github.com/heygen-com/hyperframes/pull/7240)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.16...v0.9.17).
+</Update>
+
+<Update
   label="HyperFrames v0.9.16"
   description="Released - 2026-11-05"
   tags={["Release", "CLI", "Skills", "Studio Server"]}

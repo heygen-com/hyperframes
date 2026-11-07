@@ -226,7 +226,7 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
   it("blurs with filters where capture cannot run, over a page that has a WebGL canvas", async (ctx) => {
     if (!supported) ctx.skip();
     const gl = `<canvas id="gl" width="64" height="36" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px"></canvas><script>document.getElementById("gl").getContext("webgl")</script>`;
-    const blurred = await frameOf(gl + BOX, true, FRAME);
+    const blurred = await frameOf(gl + BOX, true, FRAME, "capture");
     const sharp = await frameOf(gl + BOX, false, FRAME);
     expect(blurred.report).toMatchObject({
       state: "on",
@@ -326,7 +326,7 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
 
   it("blocks a backface-hidden card in a 3D flip and renders the plain frame", async (ctx) => {
     if (!supported) ctx.skip();
-    const blurred = await frameOf(FLIP, true, 0.4);
+    const blurred = await frameOf(FLIP, true, 0.4, "capture");
     const sharp = await frameOf(FLIP, false, 0.4);
     expect(blurred.report).toMatchObject({ tier: "filter", reasonCode: "backface-visibility" });
     expect(Buffer.from(blurred.frame.data).equals(Buffer.from(sharp.frame.data))).toBe(true);
@@ -336,7 +336,7 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
     if (!supported) ctx.skip();
     const sharp = await frameOf(BOX + card(""), false, 0.4);
     for (const body of [BOX + card("animation: hide 1s both"), BOX + card("") + WAAPI]) {
-      const blurred = await frameOf(body, true, 0.4);
+      const blurred = await frameOf(body, true, 0.4, "capture");
       expect(blurred.report).toMatchObject({ tier: "filter", reasonCode: "backface-visibility" });
       // The 3D card is not a mover for either tier: it is drawn as the sharp frame has it.
       let differing = 0;
@@ -369,7 +369,12 @@ describe.skipIf(!hasBrowser)("capture motion blur pixels in Chrome", () => {
 
   it("leaves a flat animated backface-visibility hack blurred", async (ctx) => {
     if (!supported) ctx.skip();
-    const { report } = await frameOf(BOX + card("animation: hide 1s both", ""), true, 0.4);
+    const { report } = await frameOf(
+      BOX + card("animation: hide 1s both", ""),
+      true,
+      0.4,
+      "capture",
+    );
     expect(report).toMatchObject({ state: "on", movers: 1 });
   });
 });

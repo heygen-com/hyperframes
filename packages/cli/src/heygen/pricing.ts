@@ -30,7 +30,11 @@ const GPT_IMAGE: Record<string, number> = {
   "4:3": 0.03612,
   "3:4": 0.03612,
 };
+const GPT_REFERENCE = 0.0125;
+const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
 const NANO_IMAGE = 0.067;
+const NANO_2_1_IMAGE = 0.0336;
+const NANO_2_1_REFERENCE = 0.00168;
 const VIDEO_768P_PER_S = 0.018;
 // A reference shot (pictures, voice or guide clip) bills more, and its guide clip's seconds bill too: measured
 // 2026-10-23 from the wallet, 5 s with a picture $0.25, 10 s $0.50, 5 s with a 1 s guide $0.30, with a 3 s guide $0.40.
@@ -57,12 +61,19 @@ export function priceOf(r: GenerateRequest): Price {
   switch (r.type) {
     case "image": {
       const refs = r.references?.length ?? 0;
-      if ((r.model ?? "nano-banana-2") === "nano-banana-2")
-        return at(NANO_IMAGE, "nano-banana-2, $0.067 an image");
+      const model = r.model ?? "nano-banana-2";
+      if (model === "nano-banana-2") return at(NANO_IMAGE, "nano-banana-2, $0.067 an image");
+      if (model === "nano-banana-2.1")
+        return at(
+          NANO_2_1_IMAGE + refs * NANO_2_1_REFERENCE,
+          "nano-banana-2.1, $0.0336 an image and $0.00168 a reference",
+        );
+      if (!GPT_MODELS.has(model))
+        return { usd: null, list: null, credits: null, basis: `${model}, not priced ahead` };
       const each = GPT_IMAGE[r.aspect ?? "16:9"] ?? GPT_IMAGE["16:9"]!;
       return at(
-        each + Math.max(0, refs - 1) * 0.0082,
-        `gpt-image-2.5 at ${r.aspect ?? "16:9"}, $0.0082 a reference after the first`,
+        each + refs * GPT_REFERENCE,
+        `${model} at ${r.aspect ?? "16:9"}, about $0.0125 a reference`,
       );
     }
     case "video": {

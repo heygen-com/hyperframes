@@ -95,6 +95,10 @@ describe("MotionBlurPanel", () => {
     ).toHaveLength(0);
   });
 
+  it("labels itself Motion blur (Beta)", async () => {
+    expect((await mount()).textContent).toContain("Motion blur (Beta)");
+  });
+
   it("shows the level the root is at", async () => {
     expect(checked(await mount())).toEqual(["Off"]);
     cleanup();

@@ -28,7 +28,9 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 | Desktop app | `open`, `catch-up` |
 | Upkeep | `doctor`, `browser`, `upgrade`, `usage`, `clean`, `feedback` |
 
-`validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is telemetry for skills' own scripts. Don't run them.
+`captions` is not a command: run `transcribe`, then read ../hyperframes/references/captions.md.
+
+`validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is skills' own telemetry. Don't run them.
 
 ## The loop
 

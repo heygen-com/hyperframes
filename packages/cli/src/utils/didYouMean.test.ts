@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { closestMatch, fileHint } from "./didYouMean.js";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { closestMatch, fileHint, REDIRECTS_WITH_NEXT_STEP, redirectLine } from "./didYouMean.js";
 
 describe("closestMatch", () => {
   const commands = ["render", "preview", "publish", "lint", "check", "help"];
@@ -36,5 +39,24 @@ describe("fileHint", () => {
     expect(fileHint("package.json", [], ops)).toBeUndefined();
     expect(fileHint("no-such-file.mp4", ["measure"], ops)).toBeUndefined();
     expect(fileHint("package.json", ["measure"], [])).toBeUndefined();
+  });
+});
+
+describe("redirectLine", () => {
+  it("is the line the hyperframes-cli skill carries for every redirect with a next step", () => {
+    const skill = readFileSync(
+      new URL("../../../../skills/hyperframes-cli/SKILL.md", import.meta.url),
+      "utf8",
+    );
+    expect(REDIRECTS_WITH_NEXT_STEP).toContain("captions");
+    for (const word of REDIRECTS_WITH_NEXT_STEP) {
+      const line = redirectLine(word);
+      expect(skill).toContain(line);
+      const guide = /\.\.\/\S+\.md/.exec(line)?.[0] ?? "";
+      const skillDir = dirname(
+        fileURLToPath(new URL("../../../../skills/hyperframes-cli/SKILL.md", import.meta.url)),
+      );
+      expect(existsSync(resolve(skillDir, guide)), `${word} points at ${guide}`).toBe(true);
+    }
   });
 });

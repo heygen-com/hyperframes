@@ -1918,4 +1918,23 @@ describe("namespaceMountedSvgIds", () => {
     const outerClip = clipTarget(outerG);
     expect(host("outer").contains(outerClip) && !inner.contains(outerClip)).toBe(true);
   });
+
+  // fails without the fix: the second scene's clip-path resolved to the first scene's clipPath.
+  it("resolves each top-level scene clip to its own clipPath, and a shared page-level one for both", async () => {
+    const scene = (start: number) =>
+      `<div class="scene" data-start="${start}" data-duration="10">${CLIPPED("c")}` +
+      `<svg><rect class="shared" clip-path="url(#page)"/></svg></div>`;
+    await mountAll(
+      {},
+      `<svg><clipPath id="page"><rect width="1" height="1"/></clipPath></svg>` +
+        `<div data-composition-id="main" data-start="0">${scene(0)}${scene(10)}</div>`,
+    );
+
+    const scenes = [...document.querySelectorAll(".scene")];
+    for (const each of scenes)
+      expect(each.contains(clipTarget(each.querySelector("g")))).toBe(true);
+    expect(scenes[0]!.querySelector("clipPath")!.id).toBe("c");
+    for (const rect of document.querySelectorAll(".shared"))
+      expect(clipTarget(rect)).toBe(document.getElementById("page"));
+  });
 });

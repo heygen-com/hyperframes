@@ -11,6 +11,7 @@ import type { CanvasResolution, Fps } from "@hyperframes/core";
 import { fpsToNumber } from "@hyperframes/core";
 import type { RenderJob, RenderPerfSummary } from "@hyperframes/producer";
 import { trackRenderComplete, trackRenderError } from "../telemetry/events.js";
+import { renderMotionBlurTelemetryPayload } from "../telemetry/renderMotionBlur.js";
 import {
   renderJobObservabilityTelemetryPayload,
   renderObservabilityTelemetryPayload,
@@ -109,6 +110,7 @@ function perfPayload(
     ...stagesPayload(perf.stages),
     ...extractPayload(perf.videoExtractBreakdown),
     ...renderObservabilityTelemetryPayload(perf.observability),
+    ...renderMotionBlurTelemetryPayload(perf.motionBlur),
   };
 }
 

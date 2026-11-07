@@ -103,6 +103,84 @@ describe("openInDesktop", () => {
       expect(existsSync(record)).toBe(false);
       openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
       expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({ cta: "page-1" });
+      expect(JSON.parse(readFileSync(record, "utf8"))).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the app to open on the storyboard when the press came from the Storyboard tab", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-doc-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({
+        cta: "page-1",
+        doc: "storyboard",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("has the storyboard ask in place when the app is handed the folder, not after", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-order-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      let seen: unknown = null;
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-1",
+        doc: "storyboard",
+        open: () => {
+          seen = JSON.parse(readFileSync(record, "utf8"));
+          return true;
+        },
+      });
+      expect(seen).toMatchObject({ cta: "page-1", doc: "storyboard" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("doesn't reuse an earlier storyboard ask on a later header or plain open", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-later-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    const read = () => JSON.parse(readFileSync(record, "utf8"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      let seen: unknown = null;
+      openInDesktop(dir, { ...LIVE, cta: "page-2", open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-2" });
+      expect(seen).not.toHaveProperty("doc");
+
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      openInDesktop(dir, { ...LIVE, open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-1" });
+      expect(seen).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts the earlier record back when the app didn't take the folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-undo-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
+      const earlier = readFileSync(record, "utf8");
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-2",
+        doc: "storyboard",
+        open: () => false,
+        installed: () => true,
+      });
+      expect(readFileSync(record, "utf8")).toBe(earlier);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

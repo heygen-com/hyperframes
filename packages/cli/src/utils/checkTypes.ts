@@ -23,6 +23,7 @@ export interface CheckOptions {
   collapseStatic: boolean;
   tolerance: number;
   timeout: number;
+  budget?: { ms: number; stopAt: number };
   contrast: boolean;
   skipContrastInMotion?: boolean;
   strict: boolean;
@@ -321,7 +322,14 @@ export interface CheckTimings {
   overlapMs: number;
 }
 
+export interface MediaCopyFacts {
+  total: number;
+  waitedMs: number;
+  unfinished: number;
+}
+
 export interface CheckBrowserResult {
+  mediaCopies?: MediaCopyFacts;
   duration: number;
   layoutSamples: number[];
   transitionSamples: number[];
@@ -349,6 +357,7 @@ export interface CraftFinding extends CheckFinding {
   fontPx?: number;
   floorPx?: number;
   until?: number;
+  measured?: { time: number; opacity: number | null; heightPx: number | null }[];
   elements?: { selector: string; text: string; fontPx: number; time: number; seconds: number }[];
 }
 

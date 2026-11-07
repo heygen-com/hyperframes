@@ -36,10 +36,12 @@ import {
 import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
-import { landThenUndoDom, scanMovers } from "./discover";
+import { scanMovers, whileCallbacksMuted } from "./discover";
 import { createFilterTier } from "./filterTier";
+import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
+import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import {
   type CaptureMotionBlurHost,
   type Config,
@@ -193,10 +195,10 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
   const timings: number[] = [];
   let sampleMs = 0;
   let scanMs = 0;
+  let fingerprint: MotionBlurFingerprint | null = null;
   let scannedTimeline: unknown = undefined;
   let scanDefect: CaptureDefect | null = null;
   let faceNow: () => boolean = () => false;
-  let translationOnly = false;
   const loggedBackstops = new Set<string>();
   let wrapped = false;
   // Once the engine drives frames, paused-style requests come from the transport, not a user.
@@ -257,44 +259,40 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     scannedTimeline = host.timeline();
     const duration = host.durationSeconds();
     const defects = createDefectScan(root, isAccelerated);
+    const coverage = coverageSampler(root);
     const s0 = performance.now();
-    const landing = config.events ? landThenUndoDom(seek, document) : null;
-    let found: ReturnType<typeof scanMovers>;
-    try {
-      found = scanMovers({
+    const found = whileCallbacksMuted(host, config.events, () => {
+      const scan = scanMovers({
         scene: root,
         durationSeconds: duration,
         fps: host.fps,
         seek: host.seek,
         events: config.events,
-        onStep: (i, steps) => {
-          landing?.flush();
-          defects.sample(i, steps, (i / steps) * duration);
-        },
+        onStep: (i, steps) => defects.sample(i, steps, (i / steps) * duration),
+        onFast: coverage.sample,
       });
-      (landing?.land ?? seek)(restoreTo);
-    } finally {
-      landing?.stop();
-    }
+      seek(restoreTo);
+      return scan;
+    });
     readEvents = found.readEvents;
     scanDefect = defects.result();
     faceNow = defects.facesNow;
     movers = found.movers;
     pads = found.pads;
-    translationOnly = found.translationOnly;
+    fingerprint = compositionFingerprint(root, movers, coverage.covered);
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
   }
 
   function frames(t: number, reads: number): { els: HTMLElement[]; frames: MoverFrame[] } {
     if (!reader) return { els: [], frames: [] };
-    const landing = readEvents ? landThenUndoDom(readSeek, document) : null;
-    try {
-      return readMoverFrames({
+    const poseReader = reader;
+    return whileCallbacksMuted(host, readEvents, () =>
+      readMoverFrames({
         movers,
-        reader,
+        reader: poseReader,
         seek: readSeek,
-        restore: landing?.land ?? host.holdFrame?.(),
+        restore: readEvents ? undefined : host.holdFrame?.(),
         t,
         reads,
         ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
@@ -303,10 +301,8 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
         frameW: width,
         scene: root,
         frameH: height,
-      });
-    } finally {
-      landing?.stop();
-    }
+      }),
+    );
   }
 
   const capture = (): void => {
@@ -490,15 +486,9 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
     compositor = createCompositor(width, height, dpr);
   }
 
-  /** Who should draw instead of capture: it turned itself off, or the filter tier does as well for less. */
+  /** Who should draw instead of capture: it turned itself off. */
   function handOff(): CaptureDefect | null {
     if (disabled) return { code: disabledCode ?? "capture-failures", reason: disabled };
-    if (config.tier === "auto" && reader && translationOnly && filterTierAllowed()) {
-      return {
-        code: "translation-only",
-        reason: "every mover only translates, which the filter tier draws as well and far cheaper",
-      };
-    }
     return null;
   }
 
@@ -587,6 +577,8 @@ function createInstance(host: CaptureMotionBlurHost, config: Config, form: HtmlI
       meanMs: Math.round(mean * 10) / 10,
       failures,
       failedFrames,
+      fingerprint,
+      readEvents,
     };
   }
 
@@ -637,7 +629,6 @@ let activeConfig: Config | null = null;
 /** The filter tier stands in for capture; a scene re-init tries capture again. */
 let onFallback = false;
 let fallbackEnabled = true;
-const filterTierAllowed = (): boolean => fallbackEnabled;
 let suspended = false;
 let priorResolver: (() => boolean) | null = null;
 let ourResolver: (() => boolean) | null = null;
@@ -675,6 +666,17 @@ const TIER_ATTRIBUTE: CaptureDefect = {
   reason: 'data-motion-blur-tier="filter"',
 };
 
+const TIER_AUTO: CaptureDefect = {
+  code: "tier-auto",
+  reason:
+    'auto draws with the filter tier; data-motion-blur-tier="capture" streaks turns and zooms',
+};
+
+function filterReason(tier: Config["tier"], why: CaptureDefect | null): CaptureDefect | null {
+  if (tier === "auto") return TIER_AUTO;
+  return tier === "filter" ? TIER_ATTRIBUTE : why;
+}
+
 function selectTier(host: CaptureMotionBlurHost, config: Config, w: CompositeWindow): void {
   const form = htmlInCanvasForm();
   const why = unsupported(host.root);
@@ -684,8 +686,7 @@ function selectTier(host: CaptureMotionBlurHost, config: Config, w: CompositeWin
     defect: why,
     fallback: fallbackEnabled,
   });
-  if (choice === "filter")
-    startFallback(host, config, config.tier === "filter" ? TIER_ATTRIBUTE : why);
+  if (choice === "filter") startFallback(host, config, filterReason(config.tier, why));
   else if (choice === "capture" && form) instance = createInstance(host, config, form);
   else standDown(w, config, why);
 }
@@ -728,6 +729,8 @@ function offReport(config: Config, why: CaptureDefect | null): Report {
     meanMs: 0,
     failures: 0,
     failedFrames: 0,
+    fingerprint: null,
+    readEvents: false,
   };
 }
 

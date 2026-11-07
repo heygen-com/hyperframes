@@ -229,14 +229,18 @@ const FOLLOWED_EVENTS = ["playing", "seeked", "ratechange"] as const;
 // A pause to scrub or a reschedule mid-play keeps the output awake; a real idle lets it sleep.
 const IDLE_SUSPEND_MS = 10000;
 const SHORT_DECODE_SECONDS = 0.25;
+const DECODE_BUDGET_BYTES = 256 * 1024 * 1024;
+const ASSUMED_CHANNELS = 2;
+const BYTES_PER_SAMPLE = 4;
 
 export class WebAudioTransport {
   private _ctx: AudioContext | null = null;
   private _bufferCache = new Map<string, AudioBuffer>();
   private _decoding = new Map<string, Promise<AudioBuffer | null>>();
+  private _pendingDecodeBytes = new Map<string, number>();
   private _failedSrcs = new Set<string>();
   private _mediaElementSources = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
-  private _handedOver = new WeakSet<HTMLMediaElement>();
+  private _handedOver = new Set<HTMLMediaElement>();
   private _activeSources: ScheduledSource[] = [];
   private _masterGain: GainNode | null = null;
   /** Where the master bus chain lands; the program meter taps here. */
@@ -358,15 +362,35 @@ export class WebAudioTransport {
     if (!src) return Promise.resolve(null);
     const pending = this._decoding.get(src);
     if (pending) return pending;
-    const decoding = this.fetchAndDecode(src, el).finally(() => this._decoding.delete(src));
+    this._pendingDecodeBytes.set(src, this.estimateDecodedBytes(el.duration));
+    const decoding = this.fetchAndDecode(src, el).finally(() => {
+      this._decoding.delete(src);
+      this._pendingDecodeBytes.delete(src);
+    });
     this._decoding.set(src, decoding);
     return decoding;
   }
 
-  /** True once the source of `el` is decoded or decoding. */
-  isDecodedOrDecoding(el: HTMLMediaElement): boolean {
+  fitsDecodeBudget(el: HTMLMediaElement): boolean {
     const src = decodeKey(el);
-    return !!src && (this._bufferCache.has(src) || this._decoding.has(src));
+    if (!src) return false;
+    if (this._bufferCache.has(src) || this._decoding.has(src)) return true;
+    if (!Number.isFinite(el.duration)) return false;
+    return this.decodedBytes() + this.estimateDecodedBytes(el.duration) <= DECODE_BUDGET_BYTES;
+  }
+
+  private estimateDecodedBytes(seconds: number): number {
+    const rate = this._ctx?.sampleRate ?? 48000;
+    if (!Number.isFinite(seconds)) return 0;
+    return seconds * rate * ASSUMED_CHANNELS * BYTES_PER_SAMPLE;
+  }
+
+  private decodedBytes(): number {
+    let bytes = 0;
+    for (const buffer of this._bufferCache.values())
+      bytes += buffer.length * buffer.numberOfChannels * BYTES_PER_SAMPLE;
+    for (const pending of this._pendingDecodeBytes.values()) bytes += pending;
+    return bytes;
   }
 
   private async fetchAndDecode(src: string, el: HTMLMediaElement): Promise<AudioBuffer | null> {
@@ -1028,12 +1052,12 @@ export class WebAudioTransport {
     }
   }
 
-  /** Drops the routed element's source once a decoded buffer plays in its place; the element then sounds natively. */
+  /** Drops the routed element's source once a decoded buffer plays in its place; it stays silent until a stop. */
   releaseRouted(el: HTMLMediaElement): void {
     const routed = this._activeSources.find((s) => s.el === el && s.sourceKind === "media-element");
     if (!routed) return;
     this._activeSources.splice(this._activeSources.indexOf(routed), 1);
-    this.dispose(routed);
+    this.dispose(routed, false);
     this._handedOver.add(el);
   }
 
@@ -1108,9 +1132,21 @@ export class WebAudioTransport {
   stopAll(): void {
     for (const source of this._activeSources) this.dispose(source);
     this._activeSources = [];
+    this.reconnectHandedOver();
     this._paused = true;
     this._playGeneration += 1;
     this.rest();
+  }
+
+  private reconnectHandedOver(): void {
+    for (const el of this._handedOver) {
+      try {
+        if (this._ctx) this._mediaElementSources.get(el)?.connect(this._ctx.destination);
+      } catch (err) {
+        swallow("webAudioTransport.reconnectHandedOver", err);
+      }
+    }
+    this._handedOver.clear();
   }
 
   /** Stops what plays from media gone from the page, without sending it to the destination as a stop does. */

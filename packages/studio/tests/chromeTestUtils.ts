@@ -28,8 +28,10 @@ export async function launchTestChrome(
     console.info(
       `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS}: ${executablePath} (${version})`,
     );
+    const killStuckLaunch = new AbortController();
+    const deadline = setTimeout(() => killStuckLaunch.abort(), LAUNCH_TIMEOUT_MS);
     try {
-      const browser = await launch(options);
+      const browser = await launch({ ...options, signal: killStuckLaunch.signal });
       console.info(
         `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} ready after ${Date.now() - startedAt} ms`,
       );
@@ -42,6 +44,8 @@ export async function launchTestChrome(
       );
       const stuck = error instanceof TimeoutError || elapsed >= LAUNCH_TIMEOUT_MS;
       if (!stuck || attempt === LAUNCH_ATTEMPTS) throw error;
+    } finally {
+      clearTimeout(deadline);
     }
   }
   throw new Error("Chrome launch attempts exhausted");

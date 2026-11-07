@@ -93,6 +93,7 @@ import {
   type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderMotionBlurTelemetryPayload } from "../telemetry/renderMotionBlur.js";
 import {
   readConfigFresh,
   releaseDeParallelRouterLatch,
@@ -1853,7 +1854,7 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 };
 
 // Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
-const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+|\d+ of \d+/g;
 
 export function normalizeStageCode(stage: string): string {
   const base = stage.replace(STAGE_COUNTS, "").trim();
@@ -1991,6 +1992,7 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    ...renderMotionBlurTelemetryPayload(perf?.motionBlur),
     chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
     chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
     chromeRssLastMb: perf?.chromeMemory?.rssLastMb,

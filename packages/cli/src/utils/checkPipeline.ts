@@ -2,6 +2,7 @@ import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
 import {
+  CheckBudgetError,
   CheckDeadline,
   CheckCopiesUnfinishedError,
   CheckDeadlineError,
@@ -1734,7 +1735,7 @@ export async function runCheckPipeline(
           ]
         : [];
 
-    const deadline = new CheckDeadline(idleWindow(options.timeout));
+    const deadline = new CheckDeadline(idleWindow(options.timeout), options.budget);
     const forgetStop = onStopSignal(deadline.stop);
     let outcome: { kind: "report"; report: CheckReport } | { kind: "failed"; error: unknown };
     try {
@@ -1746,7 +1747,8 @@ export async function runCheckPipeline(
         );
       } catch (error) {
         const found = deadline.partialResult();
-        browser = { ...emptyBrowserResult(), ...found, skipped: Object.keys(found).length === 0 };
+        const ran = Object.keys(found).filter((key) => key !== "mediaCopies");
+        browser = { ...emptyBrowserResult(), ...found, skipped: ran.length === 0 };
         browser.runtimeFindings = [...browser.runtimeFindings, runtimeFailure(error)];
       }
 
@@ -1839,7 +1841,7 @@ async function withFindingCrops(
   deadline: CheckDeadline,
 ): Promise<CheckReport> {
   const cropRequests = selectFindingCropRequests(report);
-  if (cropRequests.length === 0) return report;
+  if (cropRequests.length === 0 || deadline.signal.aborted) return report;
   try {
     deadline.enter("crops");
     const findingFiles = await deadline.run(() =>
@@ -1847,7 +1849,7 @@ async function withFindingCrops(
     );
     return { ...report, snapshots: { ...report.snapshots, findingFiles } };
   } catch (error) {
-    if (error instanceof CheckDeadlineError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1881,7 +1883,7 @@ async function withOptionalFindingFrames(
     const captured = await deadline.run(() => capture(project, options, requests, deadline));
     return withFindingFrameFields(report, plan, captured);
   } catch (error) {
-    if (error instanceof CheckDeadlineError || error instanceof CheckStoppedError) {
+    if (isCheckExpiry(error)) {
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
@@ -1890,6 +1892,11 @@ async function withOptionalFindingFrames(
     return report;
   }
 }
+
+const isCheckExpiry = (error: unknown): boolean =>
+  error instanceof CheckDeadlineError ||
+  error instanceof CheckStoppedError ||
+  error instanceof CheckBudgetError;
 
 const MAX_FINDING_CROPS = 12;
 
@@ -2124,6 +2131,10 @@ function buildReport(
     contrastPoints: browser.contrastChecked,
     ok: report.ok,
     exitCode: checkExitCode(report),
+    stopCode: browser.runtimeFindings
+      .map((finding) => finding.code)
+      .find((code): code is StopCode => (STOP_CODES as readonly string[]).includes(code)),
+    mediaCopies: browser.mediaCopies,
     runId: getRunId(),
   });
   return filterComponentReport(report, options);
@@ -2258,12 +2269,21 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
+export const STOP_CODES = [
+  "media_copies_unfinished",
+  "check_budget_reached",
+  "check_runtime_failure",
+] as const;
+export type StopCode = (typeof STOP_CODES)[number];
+
 function runtimeFailure(error: unknown, code?: string): CheckFinding {
   return findingAtRoot(
     code ??
       (error instanceof CheckCopiesUnfinishedError
         ? "media_copies_unfinished"
-        : "check_runtime_failure"),
+        : error instanceof CheckBudgetError
+          ? "check_budget_reached"
+          : "check_runtime_failure"),
     "error",
     normalizeErrorMessage(error),
     error instanceof CheckDeadlineError ? (error.sourceFile ?? "index.html") : "index.html",

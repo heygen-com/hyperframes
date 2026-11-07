@@ -16,7 +16,11 @@ import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
-import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
+import {
+  CheckCopiesUnfinishedError,
+  CheckDeadlineError,
+  CheckStoppedError,
+} from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
 
@@ -516,6 +520,28 @@ it("waits for the composition as long as snapshot and render do unless --timeout
 
   expect(runPipeline.mock.calls[0]?.[1].timeout).toBe(DEFAULT_CONFIG.playerReadyTimeout);
   expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
+});
+
+it("--budget sets when the whole check stops, its report time kept back, counted from the command's start", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  const startedAt = Date.now();
+  await runCommand(command, { rawArgs: ["--json", "--budget", "8m"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  const budget = runPipeline.mock.calls[0]?.[1].budget;
+  expect(budget?.ms).toBe(480_000);
+  expect(budget?.stopAt).toBeGreaterThanOrEqual(startedAt + 470_000);
+  expect(budget?.stopAt).toBeLessThanOrEqual(Date.now() + 470_000);
+  expect(runPipeline.mock.calls[1]?.[1].budget).toBeUndefined();
 });
 
 it("parses the caption-zone grammar and enables the frame gate", async () => {
@@ -2497,6 +2523,61 @@ describe("check pipeline", () => {
     }
   });
 
+  it("--budget ends a check that is still within its idle window and keeps what its finished samples found", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted!: AbortSignal;
+      const driver = fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          layoutIssue("warning", { time, code: "container_overflow" }),
+        ]),
+        collectOverlapGrid: vi.fn(
+          () =>
+            new Promise<never>((_, reject) =>
+              aborted.addEventListener("abort", () => reject(aborted.reason)),
+            ),
+        ),
+      });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        aborted = deadline!.signal;
+        deadline!.start();
+        return runAuditGrid(
+          driver,
+          options,
+          motion,
+          undefined,
+          deadline!.enter,
+          undefined,
+          deadline!.keepPartial,
+        );
+      };
+      const budget = { ms: 70_000, stopAt: Date.now() + 60_000 };
+      const pending = runCheckPipeline(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, timeout: 400_000, budget },
+        deps,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      const report = await pending;
+      const reached = report.runtime.findings.find(
+        (finding) => finding.code === "check_budget_reached",
+      );
+      expect(reached?.message).toMatch(
+        /^Check reached its --budget of 70 s while running the overlap pass .*Seconds per phase: /,
+      );
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_budget_reached" }),
+      );
+      expect(report.ok).toBe(false);
+      expect(report.layout.findings.some((finding) => finding.code === "container_overflow")).toBe(
+        true,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("--strict flips a warnings-only result from exit 0 to exit 1", async () => {
     const warningDriver = () =>
       fakeDriver({
@@ -3535,6 +3616,22 @@ describe("check report telemetry", () => {
     expect(report.ok).toBe(true);
   });
 
+  it("a check stopped by the copy wait still sends the copy facts and stays browserSkipped", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async (_project, _options, _motion, deadline) => {
+      deadline?.keepPartial(() => ({
+        mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 },
+      }));
+      throw new CheckCopiesUnfinishedError(120_000, ["a.mp4 40%"]);
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.browserSkipped).toBe(true);
+    expect(trackCheckReport).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } }),
+    );
+  });
+
   it("reports one failing contrast run with its section error count", async () => {
     const collectContrast = vi.fn(async (time: number) => ({
       entries: time === 0.5 ? [contrastEntry()] : [],
@@ -3552,6 +3649,7 @@ describe("check report telemetry", () => {
       }),
     );
     expect(report.contrast.errorCount).toBe(1);
+    expect(trackCheckReport.mock.calls[0]?.[0].stopCode).toBeUndefined();
   });
 
   it("reports zero browser samples and timings after a lint short circuit", async () => {

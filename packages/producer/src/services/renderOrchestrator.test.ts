@@ -73,6 +73,7 @@ import {
   createRenderJob,
   RenderQualityError,
 } from "./renderOrchestrator.js";
+import { shouldWindowVideoFrames } from "./render/videoFrameWindow.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -3597,6 +3598,33 @@ describe("resolveParallelCaptureMode", () => {
     expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: undefined })).toBe(
       "beginframe",
     );
+  });
+});
+
+describe("shouldWindowVideoFrames", () => {
+  const segmentsAt = (env: Record<string, string | undefined>, outputFormat: string) =>
+    shouldSegmentCapture({
+      env: { HF_SEGMENTED_CAPTURE: "true", ...env },
+      durationSeconds: 900,
+      outputFormat,
+      layeredOrEffectRoute: false,
+      streamingOk: true,
+    });
+  const windows = (env: Record<string, string | undefined>, outputFormat = "mp4") =>
+    shouldWindowVideoFrames({ env, segmented: segmentsAt(env, outputFormat) });
+
+  it("windows only when the flag is true and the render segments", () => {
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" })).toBe(true);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: " TRUE " }, "mov")).toBe(true);
+    for (const off of ["false", "0", "off", "no", "", "1", "yes", undefined]) {
+      expect(windows({ HF_VIDEO_FRAME_WINDOW: off })).toBe(false);
+    }
+    // Excluded outputs never segment, so the flag has nothing to window.
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "webm")).toBe(false);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "png-sequence")).toBe(false);
+    expect(
+      shouldWindowVideoFrames({ env: { HF_VIDEO_FRAME_WINDOW: "true" }, segmented: false }),
+    ).toBe(false);
   });
 });
 

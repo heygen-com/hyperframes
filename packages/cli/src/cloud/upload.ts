@@ -25,8 +25,9 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { type IncomingMessage, request as httpRequest } from "node:http";
+import { type ClientRequest, type IncomingMessage, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { HyperframesCloudClient } from "./_gen/client.js";
 import { HyperframesApiError } from "./_gen/client.js";
@@ -66,6 +67,38 @@ const COMPLETE_MAX_RETRIES = 5;
 const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
+/** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
+export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000 };
+
+/** S3's answer to a PUT it refused; a refusal below 500 is final (an expired signature stays expired). */
+class PutRefusedError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** An error no second try can change: a refusal below 500, or a file that is missing or unreadable. */
+function isFinal(err: unknown): boolean {
+  const code = (err as { code?: unknown }).code;
+  return (
+    (err instanceof PutRefusedError && err.status < 500) || code === "ENOENT" || code === "EACCES"
+  );
+}
+
+async function putWithRetry(attempt: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+  for (let tried = 0; ; tried++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (isFinal(err) || signal?.aborted || tried >= putTimings.retries) throw err;
+      await sleep(putTimings.backoffMs * 2 ** tried, signal);
+    }
+  }
+}
+
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -76,8 +109,11 @@ async function sha256OfFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+  });
 }
 
 // upload_headers is generated as `Record<string, unknown>` from the
@@ -99,7 +135,7 @@ function normalizeUploadHeaders(raw: Record<string, unknown>): Record<string, st
 // the signature (S3 returns 403). Content-Type must match the declared
 // content_type from step 1 (also signed).
 async function putBytesToPresignedUrl(
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch | undefined,
   uploadUrl: string,
   uploadHeaders: Record<string, unknown>,
   body: Uint8Array | UploadFileSource,
@@ -110,7 +146,22 @@ async function putBytesToPresignedUrl(
     "content-type": contentType,
     ...normalizeUploadHeaders(uploadHeaders),
   };
-  if (!(body instanceof Uint8Array)) return putFileToPresignedUrl(uploadUrl, headers, body, signal);
+  return putWithRetry(
+    () =>
+      fetchImpl && body instanceof Uint8Array
+        ? putBytesOnce(fetchImpl, uploadUrl, headers, body, signal)
+        : putStreamToPresignedUrl(uploadUrl, headers, body, signal),
+    signal,
+  );
+}
+
+async function putBytesOnce(
+  fetchImpl: typeof fetch,
+  uploadUrl: string,
+  headers: Record<string, string>,
+  body: Uint8Array,
+  signal?: AbortSignal,
+): Promise<void> {
   // `Uint8Array<ArrayBufferLike>` is a valid `BodyInit` at runtime but
   // not strictly assignable per lib.dom.d.ts — cast rather than copy,
   // since a 200MB buffer copy would be wasteful.
@@ -122,7 +173,8 @@ async function putBytesToPresignedUrl(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
+    throw new PutRefusedError(
+      res.status,
       `Direct upload PUT failed: ${res.status} ${res.statusText}${
         detail ? ` — ${detail.slice(0, 300)}` : ""
       }`,
@@ -130,40 +182,81 @@ async function putBytesToPresignedUrl(
   }
 }
 
-// fetch holds a streamed request body in memory whole, so a file is piped through node:http(s).
-async function putFileToPresignedUrl(
+// fetch holds a streamed request body in memory whole, so a file is piped through node:http(s). A buffer goes the
+// same way, in slices, so a stalled link ends its try the same way (a plain fetch has no progress to watch).
+const SLICE_BYTES = 64 * 1024;
+
+function bodyStream(body: Uint8Array | UploadFileSource): Readable {
+  if (!(body instanceof Uint8Array)) return createReadStream(body.path);
+  return Readable.from(
+    (function* () {
+      for (let at = 0; at < body.byteLength; at += SLICE_BYTES)
+        yield body.subarray(at, at + SLICE_BYTES);
+    })(),
+  );
+}
+
+/** Ends `req` when no byte has been accepted by its socket for stallMs (its buffer is full and the link drains
+ * nothing). Returns the function that stops the watch. */
+function watchStall(req: ClientRequest): () => void {
+  let written = -1;
+  let movedAt = Date.now();
+  const watch = setInterval(
+    () => {
+      const now = req.socket?.bytesWritten ?? 0;
+      if (now !== written) [written, movedAt] = [now, Date.now()];
+      else if (Date.now() - movedAt >= putTimings.stallMs)
+        req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
+    },
+    Math.min(1000, putTimings.stallMs / 3),
+  );
+  return () => clearInterval(watch);
+}
+
+async function putStreamToPresignedUrl(
   uploadUrl: string,
   headers: Record<string, string>,
-  file: UploadFileSource,
+  body: Uint8Array | UploadFileSource,
   signal?: AbortSignal,
 ): Promise<void> {
+  const size = body instanceof Uint8Array ? body.byteLength : body.size;
   const send = new URL(uploadUrl).protocol === "https:" ? httpsRequest : httpRequest;
   const req = send(uploadUrl, {
     method: "PUT",
     signal,
-    headers: { ...headers, "content-length": String(file.size) },
+    headers: { ...headers, "content-length": String(size) },
   });
   const response = new Promise<IncomingMessage>((resolve, reject) => {
     req.once("response", resolve).once("error", reject);
   });
-  const sent = pipeline(createReadStream(file.path), req);
+  const stopWatching = watchStall(req);
+  const source = bodyStream(body);
+  const sent = pipeline(source, req);
   let res: IncomingMessage;
   try {
     res = await response;
   } catch (err) {
     await sent.catch(() => undefined);
     throw err;
+  } finally {
+    stopWatching();
   }
+  await settle(res, sent);
+}
+
+/** Reads S3's answer: a refusal is thrown with its words; a refused upload can close the connection mid-body, so the
+ * write error is the status's to explain. */
+async function settle(res: IncomingMessage, sent: Promise<void>): Promise<void> {
   const status = res.statusCode ?? 0;
   const ok = status >= 200 && status < 300;
-  // A refused upload can close the connection mid-body; its status explains that write error.
   await sent.catch((err: unknown) => {
     if (ok) throw err;
   });
   let detail = "";
   for await (const chunk of res) detail += String(chunk);
   if (!ok) {
-    throw new Error(
+    throw new PutRefusedError(
+      status,
       `Direct upload PUT failed: ${status} ${res.statusMessage ?? ""}${
         detail ? ` — ${detail.slice(0, 300)}` : ""
       }`,
@@ -224,7 +317,7 @@ export async function uploadAssetViaDirectUpload(
   const size_bytes = body instanceof Uint8Array ? body.byteLength : body.size;
   const checksum_sha256 =
     body instanceof Uint8Array ? sha256Hex(body) : await sha256OfFile(body.path);
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl;
 
   opts.onProgress?.({ phase: "initialize" });
   const initialize = await opts.client.createAssetUpload({

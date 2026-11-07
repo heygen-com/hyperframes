@@ -1,0 +1,45 @@
+name: Stale
+
+# Nudges, then closes, PRs and needs-info issues nobody has touched in two weeks.
+# Any push, comment or label change resets the clock. Rules: TRIAGE.md, "Stale PRs and issues".
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # v11.0.0
+        with:
+          days-before-pr-stale: 14
+          days-before-pr-close: 7
+          stale-pr-label: stale
+          stale-pr-message: >-
+            This PR has had no activity for 14 days, so it is marked stale and will close in 7 days.
+            Push a commit or leave a comment to keep it open. A maintainer can add `keep-open` to exempt it.
+          close-pr-message: >-
+            Closed after 21 days without activity. Reopen it, or open a new PR, whenever you pick it back up.
+          exempt-draft-pr: true
+          # Renovate labels its PRs; closing one would make it skip that update.
+          exempt-pr-labels: keep-open,dependencies,security
+          # Issues: only the ones waiting on the reporter for information.
+          only-issue-labels: triage/needs-info
+          days-before-issue-stale: 14
+          days-before-issue-close: 7
+          stale-issue-label: stale
+          stale-issue-message: >-
+            This issue is waiting on the information requested above and has had no activity for 14 days.
+            It will close in 7 days unless someone adds a comment.
+          close-issue-message: >-
+            Closed because the requested information didn't arrive. Comment with the details and we'll reopen it.
+          close-issue-reason: not_planned
+          exempt-issue-labels: keep-open
+          operations-per-run: 100

@@ -29,7 +29,7 @@ describe("classifyScriptLoadCause", () => {
 });
 
 describe("the script-failure warning", () => {
-  it("ends with the closed origin and code of each failed script, and never their URL", () => {
+  it("names the closed origin and code of each failed script before the free text, so a cut message keeps them", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const session = {
       subTimelineWaitOutcome: "script_failure",
@@ -38,13 +38,15 @@ describe("the script-failure warning", () => {
         { origin: "local", code: "net::ERR_CONNECTION_RESET" },
         { origin: "cdn", code: "http-503" },
       ],
-      pageErrors: [],
+      pageErrors: ["runtime-error:TypeError: " + "x".repeat(600)],
       warnings: [],
     } as unknown as CaptureSession;
     recordSubTimelineWarning(session, 45_000);
     const [warning] = session.warnings;
     expect(
-      warning.message.endsWith(" [script_load: local/net::ERR_CONNECTION_RESET, cdn/http-503]"),
+      warning.message.startsWith(
+        "A sub-composition timeline script failed to load [script_load: local/net::ERR_CONNECTION_RESET, cdn/http-503] (",
+      ),
     ).toBe(true);
   });
 });

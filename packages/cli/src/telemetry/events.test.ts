@@ -167,6 +167,90 @@ describe("trackCheckReport", () => {
     });
   });
 
+  it("names the finding that stopped the check, and omits it when none did", () => {
+    const props = {
+      contrastGate: false,
+      motionGate: false,
+      captionZoneGate: false,
+      frameCheckGate: false,
+      snapshotsGate: false,
+      lintErrors: 0,
+      lintWarnings: 0,
+      runtimeErrors: 1,
+      runtimeWarnings: 0,
+      layoutErrors: 0,
+      layoutWarnings: 0,
+      motionErrors: 0,
+      motionWarnings: 0,
+      contrastErrors: 0,
+      contrastWarnings: 0,
+      craftWarnings: 0,
+      launchSettleMs: 0,
+      renderReadyTimedOut: false,
+      seekLoopMs: 0,
+      contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
+      gridPoints: 0,
+      contrastPoints: 0,
+      ok: false,
+      exitCode: 1,
+    };
+    trackCheckReport({ ...props, stopCode: "media_copies_unfinished" });
+    expect(trackEvent).toHaveBeenLastCalledWith(
+      "check_report",
+      expect.objectContaining({ stop_code: "media_copies_unfinished" }),
+    );
+    trackCheckReport(props);
+    expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("stop_code");
+  });
+
+  it("sends what making browser-playable copies cost as counts and milliseconds, and omits it without videos", () => {
+    const props = {
+      contrastGate: false,
+      motionGate: false,
+      captionZoneGate: false,
+      frameCheckGate: false,
+      snapshotsGate: false,
+      lintErrors: 0,
+      lintWarnings: 0,
+      runtimeErrors: 0,
+      runtimeWarnings: 0,
+      layoutErrors: 0,
+      layoutWarnings: 0,
+      motionErrors: 0,
+      motionWarnings: 0,
+      contrastErrors: 0,
+      contrastWarnings: 0,
+      craftWarnings: 0,
+      launchSettleMs: 0,
+      renderReadyTimedOut: false,
+      seekLoopMs: 0,
+      contrastMs: 0,
+      gridMs: 0,
+      craftMs: 0,
+      overlapMs: 0,
+      durationSec: 0,
+      gridPoints: 0,
+      contrastPoints: 0,
+      ok: true,
+      exitCode: 0,
+    };
+    trackCheckReport({ ...props, mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } });
+    expect(trackEvent).toHaveBeenLastCalledWith(
+      "check_report",
+      expect.objectContaining({
+        copies_total: 47,
+        copies_waited_ms: 120_000,
+        copies_unfinished: 12,
+      }),
+    );
+    trackCheckReport(props);
+    expect(trackEvent.mock.calls.at(-1)?.[1]).not.toHaveProperty("copies_total");
+  });
+
   it("omits run_id when no run ID is provided", () => {
     trackCheckReport({
       contrastGate: false,

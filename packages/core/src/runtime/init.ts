@@ -56,6 +56,7 @@ import { createCssAdapter } from "./adapters/css";
 import {
   createGsapAdapter,
   holdFrameMarks,
+  muteDiscreteCallbacks,
   rerenderGsapTimelineAt,
   gsapTimelineOf,
   seekGsapTimeline,
@@ -499,18 +500,14 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
       masterChain: readMasterFxChain(el.ownerDocument),
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
-const DECODE_FIRST_MAX_SECONDS = 600;
 
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
-  const shortEnough = Number.isFinite(el.duration)
-    ? el.duration <= DECODE_FIRST_MAX_SECONDS
-    : webAudio.isDecodedOrDecoding(el);
   return (
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
-    shortEnough &&
+    webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
   );
@@ -2941,7 +2938,6 @@ export function initSandboxRuntimeModular(): void {
         currentTime: time,
         compositionDuration,
         canonicalFps: state.canonicalFps,
-        exportRenderSeek: Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
         timelineRegistry: window.__timelines ?? {},
         resolver: timingResolverFor(true),
       });
@@ -4146,6 +4142,11 @@ export function initSandboxRuntimeModular(): void {
             seekRootChildrenAndAdapters(state.capturedTimeline, t, { suppressEvents: true }),
           );
       },
+      muteCallbacks: () =>
+        muteDiscreteCallbacks([
+          ...sceneTimelines().map(([, timeline]) => timeline),
+          ...(state.capturedTimeline ? [state.capturedTimeline] : []),
+        ]),
       ignoreMutations: withoutOwnCompositionRecords,
     });
   }
@@ -5091,7 +5092,6 @@ export function initSandboxRuntimeModular(): void {
       duration: (element) => resolveDurationForElement(element),
       compositionDuration: () => getSafeTimelineDurationSeconds(state.capturedTimeline, 0),
       canonicalFps: () => state.canonicalFps,
-      exportRenderSeek: () => Boolean(window.__HF_EXPORT_RENDER_SEEK_CONFIG),
     }),
     createWaapiAdapter(),
     createCssAdapter({

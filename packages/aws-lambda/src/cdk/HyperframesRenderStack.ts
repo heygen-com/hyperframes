@@ -250,6 +250,7 @@ export class HyperframesRenderStack extends Construct {
       "PlanV2IntegrityError",
       "PLAN_ARTIFACT_DIGEST_MISMATCH",
       "ChromeBinaryUnavailableError",
+      "ImageMissingFromFrameError",
     ];
     const NON_RETRYABLE_ASSEMBLE = [
       "FFMPEG_VERSION_MISMATCH",

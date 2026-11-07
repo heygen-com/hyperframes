@@ -88,7 +88,7 @@ import {
   markCommandDelivered,
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
-import { closestMatch, fileHint, synonymMatch } from "./utils/didYouMean.js";
+import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import {
@@ -536,26 +536,35 @@ async function showUsage<T extends ArgsDef>(
   return impl(cmd as CommandDef, parent as CommandDef | undefined, print);
 }
 
-// Prints the suggestion and the group's usage on stderr; the caller throws the returned error.
+// Prints the suggestion and where to list every command on stderr; the caller throws the returned error.
 async function unknownCommandError(requested: ResolvedCommandUsage): Promise<CliUsageError> {
   const word = requested.unknownSubcommand ?? "";
   const group = ["hyperframes", ...requested.path].join(" ");
   const declared = requested.command.subCommands;
   const subCommands = typeof declared === "function" ? await declared() : await declared;
   const names = Object.keys(subCommands ?? {});
-  const match =
-    (requested.path.length === 0 ? synonymMatch(word, names) : undefined) ??
-    closestMatch(word, names);
-  const hint = match ? `Did you mean '${group} ${match}'?` : fileHint(word, requested.path, names);
+  const hint = unknownCommandHint(word, requested.path, names);
   console.error(`Unknown command: ${word}`);
   if (hint) console.error(hint);
-  console.error("");
-  await showUsage(requested.command, requested.parent, console.error);
+  console.error(`Run '${group} --help' to list every command.`);
   return new CliUsageError(`Unknown command: ${word}`, {
     presented: true,
     code: "unknown_command",
     hint,
   });
+}
+
+/** What to say after "Unknown command": the command that does that job, the closest spelling, or a file's fix. */
+function unknownCommandHint(word: string, path: string[], names: string[]): string | undefined {
+  const group = ["hyperframes", ...path].join(" ");
+  const redirect = path.length === 0 ? commandRedirect(word, names) : undefined;
+  if (redirect?.then) return `Run '${group} ${redirect.command}', ${redirect.then}.`;
+  const match = redirect?.command ?? closestMatch(word, names);
+  if (match) return `Did you mean '${group} ${match}'?`;
+  const close = closestNames(word, names, 3);
+  return (
+    fileHint(word, path, names) ?? (close.length ? `Closest: ${close.join(", ")}.` : undefined)
+  );
 }
 
 // A group like `timeline` also takes a project directory, so a word it does not know may be one.

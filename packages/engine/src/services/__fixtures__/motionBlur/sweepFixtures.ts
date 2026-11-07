@@ -105,6 +105,10 @@ const SWEEP_FIXTURES = [
     name: "pseudo-after",
     css: ".m::after { content: ''; position: absolute; left: 130px; top: 10px; width: 60px; height: 60px; background: #ffd166; border-radius: 50% }",
   }),
+  sweepFixture({
+    name: "pseudo-before",
+    css: ".m::before { content: ''; position: absolute; left: -90px; top: 10px; width: 60px; height: 60px; background: #ffd166; border-radius: 50% }",
+  }),
   // E: the mover's own clip-path.
   sweepFixture({
     name: "own-clip-polygon",

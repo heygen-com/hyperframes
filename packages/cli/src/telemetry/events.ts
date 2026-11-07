@@ -1,4 +1,5 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
+import type { StopCode } from "../utils/checkPipeline.js";
 import type { OutputResolutionIssueKind } from "@hyperframes/core";
 import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
@@ -8,6 +9,10 @@ import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
 import type { RenderCpuTelemetryPayload } from "./renderCpu.js";
+import {
+  type RenderMotionBlurTelemetryPayload,
+  renderMotionBlurEventProperties,
+} from "./renderMotionBlur.js";
 import { CliRuntimeError } from "../utils/commandResult.js";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
@@ -488,7 +493,8 @@ export function trackRenderComplete(
   } & RenderObservabilityTelemetryPayload &
     RenderOutputShapeTelemetryPayload &
     RenderEnvironmentTelemetryPayload &
-    RenderCpuTelemetryPayload,
+    RenderCpuTelemetryPayload &
+    RenderMotionBlurTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -614,6 +620,7 @@ export function trackRenderComplete(
       ...renderOutputShapeEventProperties(props),
       ...renderEnvironmentEventProperties(props),
       ...renderCpuEventProperties(props),
+      ...renderMotionBlurEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
@@ -1193,6 +1200,9 @@ export function trackCheckReport(props: {
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
+  stopCode?: StopCode;
+  /** Present when the project had videos Chrome cannot decode: counts and milliseconds only. */
+  mediaCopies?: { total: number; waitedMs: number; unfinished: number };
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1224,6 +1234,12 @@ export function trackCheckReport(props: {
     contrast_points: props.contrastPoints,
     ok: props.ok,
     exit_code: props.exitCode,
+    ...(props.stopCode && { stop_code: props.stopCode }),
+    ...(props.mediaCopies && {
+      copies_total: props.mediaCopies.total,
+      copies_waited_ms: props.mediaCopies.waitedMs,
+      copies_unfinished: props.mediaCopies.unfinished,
+    }),
     ...runIdField(props.runId),
   });
 }

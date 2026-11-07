@@ -57,7 +57,12 @@ function renderOntoInAuthoredOrder(
   timeline.totalTime(below ? t - REDRAW_STEP : t + REDRAW_STEP, true);
   primeTweensStartingAt(children, t, below ? REDRAW_STEP : 0);
   timeline.totalTime(t, true);
-  if (!below) reapplyStepsInAuthoredOrder(timeline, structure ?? ownStructureOf(children), t);
+  const own = structure ?? ownStructureOf(children);
+  if (!below) {
+    reapplyStepsInAuthoredOrder(timeline, own, t);
+  } else if (own) {
+    settleOverlapsEndedBetween(own.owner as RuntimeTimelineLike, t - REDRAW_STEP, t, own.version);
+  }
 }
 
 function ownStructureOf(children: unknown[]): GsapStructureKey | undefined {
@@ -121,6 +126,7 @@ const NOT_PROPERTIES = new Set([
   "data",
   "inherit",
   "defaults",
+  "parent",
 ]);
 const EVERY_PROPERTY = new Set(["keyframes", "startAt", "transform"]);
 const SAME_PROPERTY: Record<string, string> = {
@@ -136,7 +142,17 @@ type PlacedTween = GsapPlaced & {
 };
 type PropertyWrite = { start: number; end: number; properties: Set<string> | null };
 
-function propertiesWritten(vars: Record<string, unknown>): Set<string> | null {
+function propertiesWritten({ startAt, ...vars }: Record<string, unknown>): Set<string> | null {
+  const to = ownPropertiesWritten(vars);
+  if (startAt === undefined) return to;
+  const from =
+    startAt && typeof startAt === "object"
+      ? ownPropertiesWritten(startAt as Record<string, unknown>)
+      : null;
+  return to && from && new Set([...to, ...from]);
+}
+
+function ownPropertiesWritten(vars: Record<string, unknown>): Set<string> | null {
   const properties = new Set<string>();
   for (const key of Object.keys(vars)) {
     if (EVERY_PROPERTY.has(key)) return null;
@@ -260,6 +276,18 @@ function framesSkippedSinceLastSeek(
   return [...replay].sort((x, y) => y - x).map((back) => t - back / fps);
 }
 
+function landOn(
+  timeline: RuntimeTimelineLike,
+  t: number,
+  suppressEvents: boolean,
+  version: string,
+): number {
+  const from = Number(timeline.totalTime?.());
+  timeline.totalTime?.(t, suppressEvents);
+  settleOverlapsEndedBetween(timeline, from, t, version);
+  return from;
+}
+
 export function seekGsapTimeline(
   timeline: RuntimeTimelineLike,
   t: number,
@@ -271,14 +299,13 @@ export function seekGsapTimeline(
     if (typeof timeline.seek === "function") timeline.seek(t, suppressEvents);
     return false;
   }
+  const version = structure?.version ?? "";
   if (renderFps) {
-    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, structure?.version)) {
-      timeline.totalTime(time, suppressEvents);
+    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, version)) {
+      landOn(timeline, time, suppressEvents, version);
     }
   }
-  const from = Number(timeline.totalTime());
-  timeline.totalTime(t, suppressEvents);
-  if (!renderFps) settleOverlapsEndedBetween(timeline, from, t, structure?.version ?? "");
+  const from = landOn(timeline, t, suppressEvents, version);
   if (t < from && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
   if (from !== t || !gsapNeverRendered(timeline)) return false;
   rerenderGsapTimelineAt(
@@ -468,6 +495,43 @@ export function holdFrameMarks({
       }
     }
     for (const put of marks) put();
+  };
+}
+
+type GsapCallbackHolder = {
+  vars?: Record<string, unknown>;
+  timeline?: { getChildren?: RuntimeTimelineLike["getChildren"] };
+  getChildren?: RuntimeTimelineLike["getChildren"];
+};
+
+const DISCRETE_CALLBACKS = ["onStart", "onComplete", "onReverseComplete", "onRepeat"] as const;
+
+const noOpInPlaceOfCallback = (): void => {};
+
+function eachAnimationIn(
+  animation: GsapCallbackHolder,
+  visit: (a: GsapCallbackHolder) => void,
+): void {
+  visit(animation);
+  for (const child of (animation.getChildren?.(false, true, true) ?? []) as GsapCallbackHolder[])
+    eachAnimationIn(child, visit);
+  if (animation.timeline) eachAnimationIn(animation.timeline as GsapCallbackHolder, visit);
+}
+
+export function muteDiscreteCallbacks(timelines: RuntimeTimelineLike[]): () => void {
+  const held: Array<[Record<string, unknown>, string, unknown]> = [];
+  for (const timeline of timelines) {
+    eachAnimationIn(gsapTimelineOf(timeline) as GsapCallbackHolder, ({ vars }) => {
+      if (!vars) return;
+      for (const name of DISCRETE_CALLBACKS) {
+        if (typeof vars[name] !== "function" || vars[name] === noOpInPlaceOfCallback) continue;
+        held.push([vars, name, vars[name]]);
+        vars[name] = noOpInPlaceOfCallback;
+      }
+    });
+  }
+  return () => {
+    for (const [vars, name, callback] of held) vars[name] = callback;
   };
 }
 

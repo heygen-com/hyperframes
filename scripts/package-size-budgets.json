@@ -4,7 +4,7 @@
     "unpacked": 290508
   },
   "@hyperframes/cli": {
-    "packed": 7902966,
+    "packed": 7982002,
     "unpacked": 25159107
   },
   "@hyperframes/core": {
@@ -21,7 +21,7 @@
   },
   "@hyperframes/inspector": {
     "packed": 858046,
-    "unpacked": 3650000
+    "unpacked": 3684092
   },
   "@hyperframes/lint": {
     "packed": 191022,
@@ -32,12 +32,12 @@
     "unpacked": 885314
   },
   "@hyperframes/player": {
-    "packed": 157145,
+    "packed": 158800,
     "unpacked": 541601
   },
   "@hyperframes/producer": {
-    "packed": 845000,
-    "unpacked": 3081613
+    "packed": 857000,
+    "unpacked": 3130000
   },
   "@hyperframes/sdk": {
     "packed": 90662,
@@ -46,6 +46,10 @@
   "@hyperframes/shader-transitions": {
     "packed": 212864,
     "unpacked": 825937
+  },
+  "@hyperframes/share": {
+    "packed": 60820,
+    "unpacked": 240537
   },
   "@hyperframes/studio": {
     "packed": 5998328,
