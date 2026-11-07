@@ -336,8 +336,9 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
     create: async (injector = input.createRenderVideoFrameInjector) => {
       const probeCannotCaptureEveryFrame = Boolean(probeSession?.deRiskFrames?.size);
       if (probeSession && probeCannotCaptureEveryFrame) {
-        await closeCaptureSession(probeSession).catch(() => {});
+        const riskyProbe = probeSession;
         probeSession = null;
+        await closeCaptureSession(riskyProbe).catch(() => {});
       }
       const withinInitBudget = createSessionInitBudget({
         frameIndex: input.job.framesRendered ?? 0,
