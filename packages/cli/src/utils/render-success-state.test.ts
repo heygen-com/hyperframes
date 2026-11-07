@@ -40,6 +40,7 @@ describe("runPostRenderStep", () => {
   const originalExitCode = process.exitCode;
 
   beforeEach(() => {
+    markRenderSucceeded();
     registerRootExitCodeSanitizer(() => {
       process.exitCode = 0;
     });
@@ -126,6 +127,7 @@ describe("runPostRenderStepAsync", () => {
   const originalExitCode = process.exitCode;
 
   beforeEach(() => {
+    markRenderSucceeded();
     registerRootExitCodeSanitizer(() => {
       process.exitCode = 0;
     });
@@ -163,4 +165,31 @@ describe("runPostRenderStepAsync", () => {
     );
     expect(process.exitCode).toBe(0);
   });
+});
+
+it("does not sanitize the host exit code after embedded-render cleanup fails", async () => {
+  _resetRenderSuccessForTests();
+  const sanitize = vi.fn();
+  registerRootExitCodeSanitizer(sanitize);
+  try {
+    runPostRenderStep(
+      "metrics",
+      () => {
+        throw new Error("metrics failed");
+      },
+      vi.fn(),
+    );
+    await runPostRenderStepAsync(
+      "history",
+      async () => {
+        throw new Error("history failed");
+      },
+      vi.fn(),
+    );
+    expect(sanitize).not.toHaveBeenCalled();
+    expect(isRenderSucceeded()).toBe(false);
+  } finally {
+    registerRootExitCodeSanitizer(() => {});
+    _resetRenderSuccessForTests();
+  }
 });

@@ -585,6 +585,7 @@ export interface RenderOptions {
   variables?: Record<string, unknown>;
   entryFile?: string;
   exitAfterComplete?: boolean;
+  embedded?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
   /** Whether the resolution names a tier without fixing an orientation. */
@@ -958,7 +959,7 @@ async function renderDocker(
   // AND committed the artifact. Mirror renderLocal's post-success guarantee
   // so any late throw here (telemetry flush, feedback prompt) cannot flip
   // the exit code.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(projectDir, outputPath, "completed", capture).then(() => {}),
   );
@@ -1000,7 +1001,7 @@ async function renderDocker(
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return { renderTimeMs: elapsed };
 }
 
@@ -1269,7 +1270,7 @@ async function executeLocalRender(
   // point on, ANY thrown teardown error must not be allowed to override
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(
       projectDir,
@@ -1315,7 +1316,7 @@ async function executeLocalRender(
       }),
     );
   }
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
@@ -1365,7 +1366,7 @@ async function renderRange(input: {
   } catch (error: unknown) {
     handleRenderError(error, options, input.startTime, input.cpu, false, "");
   }
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   const elapsed = Date.now() - input.startTime;
   input.cpu.stop();
   printRenderComplete({
@@ -1376,7 +1377,7 @@ async function renderRange(input: {
     quiet: options.quiet,
     format: options.format,
   });
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return {
     renderTimeMs: elapsed,
     ...reference,

@@ -1437,6 +1437,35 @@ describe("renderLocal browser GPU config", () => {
     expect(consumeCommandResult().exitCode).toBe(0);
   });
 
+  it("does not finalize the host command or mask a later upload failure when embedded", async () => {
+    const success = await import("../utils/render-success-state.js");
+    const lifecycle = await import("../utils/commandResult.js");
+    const exit = vi.spyOn(lifecycle, "scheduleCliExit");
+    success._resetRenderSuccessForTests();
+    const uploadFailure = new Error("upload failed after render");
+    try {
+      const share = async () => {
+        await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+          embedded: true,
+          exitAfterComplete: true,
+        });
+        throw uploadFailure;
+      };
+      await expect(share()).rejects.toBe(uploadFailure);
+      expect(exit).not.toHaveBeenCalled();
+      expect(success.isRunDelivered()).toBe(false);
+    } finally {
+      success._resetRenderSuccessForTests();
+    }
+  });
+
   it("still completes the render when the output registry cannot be written", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-render-unrecorded-"));
     mkdirSync(join(project, ".hyperframes"));

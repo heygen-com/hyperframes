@@ -49,10 +49,11 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
 
 /** `projectId` overrides the recorded review project; `open`: a held video is watched only while the project is open.
  * `filesForExport`: the synced snapshot a new version carries, null for
- * none.
+ * none. `allowPending` lets a host treat accepted processing or screening as a successful return.
  * @typedef {VersionHooks & { projectPath: string, title: string, client: ReviewClient, put?: typeof putFile,
  *   sleep?: (ms: number) => Promise<void>, probe?: (file: string) => Promise<VideoFacts | null>, now?: () => number,
- *   projectId?: string | null, filesForExport?: FilesForRender, fromReview?: FromReview | null }} VersionRequest */
+ *   projectId?: string | null, filesForExport?: FilesForRender, fromReview?: FromReview | null,
+ *   allowPending?: boolean }} VersionRequest */
 
 /** The snapshot of `rendered`, the project as the export was rendered; null when the folder is not that render.
  * @typedef {(projectPath: string, rendered: string | null) => Promise<import("./types/reviewWire.js").SnapshotRef | null>}
@@ -653,7 +654,7 @@ async function failedSend(dir, state, error) {
 /** @param {Required<VersionRequest>} r @param {VersionRecord} state
  * @param {NonNullable<VersionRecord["pending"]>} pending @param {string} id @param {ExportDTO} done @param {boolean} first */
 async function finishRun(r, state, pending, id, done, first) {
-  if (going(done)) return stillGoing(done);
+  if (going(done)) return r.allowPending ? null : stillGoing(done);
   const failed = await finish(r.projectPath, state, pending, id, done, r.fromReview);
   if (!failed) {
     const fromReview = pending.reviewSent?.value;
@@ -676,6 +677,7 @@ export async function addVersion(request) {
     now: () => Date.now(),
     onProgress: () => {},
     open: () => true,
+    allowPending: false,
     filesForExport: async () => null,
     fromReview: null,
     onAdded: () => {},
@@ -768,7 +770,7 @@ async function settleSavedExport(dir, client, fromReview) {
   const id = await reviewProjectId(dir);
   if (!pending?.videoId || !id || pending.projectId !== id) return;
   const done = await client.readExport(id, pending.videoId);
-  if (going(done)) return;
+  if (done.status === "upload_pending" || going(done)) return;
   const failure = await finish(dir, state, pending, id, done, fromReview);
   const key = normalize(dir);
   if (failure) failures.set(key, { ...failure, exportKey: exportKeyOf(dir) });
