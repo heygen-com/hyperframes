@@ -76,7 +76,7 @@ const COMPLETE_RETRY_BASE_MS = 500;
 const CONTENT_TYPE_ZIP = "application/zip";
 
 /** A failed or stalled PUT is sent again to the same presigned URL (it stays valid and a PUT replaces the object). */
-export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000, progressMs: 10_000 };
+export const putTimings = { stallMs: 60_000, retries: 3, backoffMs: 1000, progressMs: 10_000, sampleMs: 1000 };
 
 /** What one try of the PUT got through, read by the retry loop and the progress lines. */
 interface PutTry {
@@ -319,7 +319,7 @@ function watchStall(req: ClientRequest, onSample: (written: number) => void): ()
       else if (Date.now() - movedAt >= putTimings.stallMs)
         req.destroy(new Error(`Upload stalled: no data sent for ${putTimings.stallMs / 1000} s`));
     },
-    Math.min(1000, putTimings.stallMs / 3),
+    Math.min(putTimings.sampleMs, putTimings.stallMs / 3),
   );
   return () => clearInterval(watch);
 }
