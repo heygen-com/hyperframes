@@ -1,7 +1,7 @@
 // @ts-check
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { uploadNeeded } from "./uploadFiles.mjs";
+import { NotWritable, uploadNeeded } from "./uploadFiles.mjs";
 import { parseStoredManifest } from "./manifest.mjs";
 import { SyncApiError } from "./errors.mjs";
 
@@ -159,7 +159,18 @@ const terminalFailure = (receipt) => receipt.status === "failed" || receipt.stat
  * @param {SourceRun} run @returns {Promise<import("./adapterTypes.js").SourceResult>} */
 export async function uploadSource(run) {
   const receipt = await begin(run);
-  let status = receipt.status === "pending" ? await sendFiles(run, receipt) : receipt;
+  let status;
+  try {
+    status = receipt.status === "pending" ? await sendFiles(run, receipt) : receipt;
+  } catch (error) {
+    if (!(error instanceof NotWritable)) throw error;
+    return (
+      (await recoverSourceUpload(run)) ?? {
+        at: "unavailable",
+        reason: "source_upload_not_writable",
+      }
+    );
+  }
   const deadline = Date.now() + run.timeoutMs;
   while (status.status === "verifying") {
     run.signal.throwIfAborted();

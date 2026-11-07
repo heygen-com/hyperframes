@@ -14,6 +14,12 @@ import { recoverSourceUpload, uploadSource } from "./sources/upload.mjs";
  * @typedef {import("./sources/types.js").Binding} Binding */
 /** @param {string} reason @returns {SourceResult} */
 const unavailable = (reason) => ({ at: "unavailable", reason });
+/** Content identity for sharing, including portable hidden render inputs. The Desktop watch inventory stays separate.
+ * @param {string} projectPath @returns {Promise<string | null>} */
+export async function shareSourceFingerprint(projectPath) {
+  const capture = await captureProject(await realpath(projectPath));
+  return capture.at === "captured" && !captureRefusal(capture) ? capture.manifest.sha256 : null;
+}
 /** @param {Binding} binding @param {string} space */
 function bindingRefusal(binding, space) {
   if (binding.ownerSpaceId !== space) return "source_other_workspace";

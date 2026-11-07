@@ -2,10 +2,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdir, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { projectFingerprint } from "@hyperframes/share";
+import { projectFingerprint, shareSourceFingerprint } from "@hyperframes/share";
 
-export const shareContentFingerprint = (dir: string) =>
-  projectFingerprint(dir, { byContent: true });
+export const shareContentFingerprint = shareSourceFingerprint;
 
 export interface ShareRender {
   path: string;
@@ -58,7 +57,8 @@ export async function prepareShareRender(dir: string): Promise<void> {
     shareContentFingerprint(dir),
   ]);
   const previous = latestShareRender(dir);
-  if (previous?.fingerprint === before && previous.contentFingerprint === content) return;
+  if (content && previous?.fingerprint === before && previous.contentFingerprint === content)
+    return;
   const stateFolder = join(dir, ".hyperframes");
   if (existsSync(stateFolder) && realpathSync(stateFolder) !== stateFolder)
     throw new Error("Sharing state must stay inside this project, without symlinks.");

@@ -26,8 +26,8 @@ const ATTEMPTS = 5;
 const URL_MARGIN_MS = 60_000;
 
 /** The file's multipart upload can take no more parts (`hyperframes_composition_upload_file_not_writable`): this
- * upload cannot finish, so the send cancels it and begins a new one. */
-class NotWritable extends Error {
+ * upload cannot finish, so its owner must resolve it before a retry can begin a new one. */
+export class NotWritable extends Error {
   constructor() {
     super("composition sync: a file's multipart upload can no longer take parts");
     this.name = "NotWritable";

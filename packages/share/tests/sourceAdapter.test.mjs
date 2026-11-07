@@ -2,12 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, readFile, symlink, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
-import { shareSources, createProjectShareSourceStore } from "../src/shareSources.mjs";
+import {
+  shareSources,
+  shareSourceFingerprint,
+  createProjectShareSourceStore,
+} from "../src/shareSources.mjs";
 import { projectFingerprint } from "../src/projectSnapshot.mjs";
 import { captureProject } from "../src/sources/capture.mjs";
 import { sourceApi } from "../src/sources/api.mjs";
+import { SyncApiError } from "../src/sources/errors.mjs";
 import { V1_LIMITS } from "../src/sources/limits.mjs";
 import { bindShareHost } from "../src/host.mjs";
 
@@ -112,6 +117,35 @@ function fakeServer(overrides = {}) {
   return { api, calls, fetchImpl, receipt };
 }
 
+for (const path of [".media/voice.mp3", ".hyperframes/studio-manual-edits.json"]) {
+  test(`changing ${path} refuses source preparation and final attachment to the old render`, async (t) => {
+    const f = await fixture(t);
+    await writeFile(join(f.root, "index.html"), '<audio src=".media/voice.mp3"></audio>');
+    await mkdir(dirname(join(f.root, path)), { recursive: true });
+    await writeFile(join(f.root, path), "original");
+    const rendered = await projectFingerprint(f.root);
+    const content = await shareSourceFingerprint(f.root);
+    const server = fakeServer();
+    const source = shareSources({
+      access: async () => signed,
+      spaceId: "personal",
+      ...server,
+      fingerprint: async (root) =>
+        content === (await shareSourceFingerprint(root)) ? projectFingerprint(root) : null,
+    });
+    await writeFile(join(f.root, path), "changed");
+    assert.equal(await projectFingerprint(f.root), rendered);
+    assert.equal((await source.prepare(f.root, rendered)).reason, "source_render_changed");
+    assert.equal(server.calls.begin.length, 0);
+    assert.equal(await source.filesForExport(f.root, rendered), null);
+    await writeFile(join(f.root, path), "original");
+    assert.equal((await source.prepare(f.root, rendered)).at, "ready");
+    assert.ok(await source.filesForExport(f.root, rendered));
+    await writeFile(join(f.root, path), "changed after preparation");
+    assert.equal(await source.filesForExport(f.root, rendered), null);
+  });
+}
+
 test("source upload verifies before attachment and a fresh adapter reuses the exact published snapshot", async (t) => {
   const f = await fixture(t);
   const server = fakeServer();
@@ -205,6 +239,54 @@ test("confirmed expired upload clears its intent so a retry starts with a new ke
   assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
   assert.notEqual(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
 });
+
+test("an unwritable pending upload is cancelled so unchanged files can retry with a new key", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const grants = server.api.uploadUrls;
+  server.api.uploadUrls = async () => {
+    throw new SyncApiError("file-not-writable");
+  };
+  server.api.status = async () => server.receipt("pending");
+  let cancelled = 0;
+  server.api.cancel = async () => {
+    cancelled++;
+    return { ...server.receipt("failed"), errorCode: "cancelled" };
+  };
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+  assert.equal((await source.prepare(f.root, f.rendered)).reason, "source_upload_not_writable");
+  assert.equal(cancelled, 1);
+  assert.equal((await f.store.read(f.key)).inflight, null);
+  server.api.uploadUrls = grants;
+  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+  assert.notEqual(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
+});
+
+for (const status of ["verifying", "completed"]) {
+  test(`unwritable recovery retains an upload that raced cancellation into ${status}`, async (t) => {
+    const f = await fixture(t);
+    const server = fakeServer();
+    server.api.uploadUrls = async () => {
+      throw new SyncApiError("file-not-writable");
+    };
+    let reads = 0;
+    server.api.status = async () => {
+      const receipt = server.receipt(++reads === 1 ? "pending" : status);
+      if (receipt.result) receipt.result.publicationOutcome = "conflict_saved";
+      return receipt;
+    };
+    server.api.cancel = async () => {
+      throw new SyncApiError("upload-not-pending");
+    };
+    const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+    assert.equal(
+      (await source.prepare(f.root, f.rendered)).reason,
+      status === "verifying" ? "source_verification_pending" : "source_conflict",
+    );
+    assert.equal((await f.store.read(f.key)).inflight.uploadId, "upload");
+    assert.equal(server.calls.begin.length, 1);
+  });
+}
 
 test("changed source cancels the previous pending upload before using a new key", async (t) => {
   const f = await fixture(t);
