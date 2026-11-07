@@ -1299,10 +1299,13 @@ export async function assertWebGpuAdapterAvailable(
         return await Promise.race([
           probe(),
           new Promise<false>((resolve) => {
-            timer = setTimeout(() => {
-              expired = true;
-              resolve(false);
-            }, timeoutMs);
+            timer = (globalThis.window?.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(
+              () => {
+                expired = true;
+                resolve(false);
+              },
+              timeoutMs,
+            );
           }),
         ]);
       } catch {
