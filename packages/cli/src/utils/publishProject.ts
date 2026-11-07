@@ -440,18 +440,23 @@ function includeReferencedProjectFile(
 /** References with no fallback: a missing file here cannot render. */
 const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
 
+const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
+  encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
   requireOnDisk = false,
 ): string | null {
-  if (isNonRelativeUrl(rawPath)) return null;
+  // A leading "/" is a filesystem path to the local render, and the cloud render host refuses one.
+  const filesystemPath = rawPath.startsWith("/") && !rawPath.startsWith("//");
+  if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
   for (const path of decodeUrlPathVariants(rawPath)) {
     const absPath = resolve(referrerAbsDir, path);
     if (isPathInside(absPath, ctx.absProjectDir)) {
       includeReferencedProjectFile(ctx, absPath, rawPath, requireOnDisk);
-      return null;
+      return filesystemPath ? relativeToProject(ctx, absPath) : null;
     }
     try {
       if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
