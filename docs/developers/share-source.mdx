@@ -30,7 +30,10 @@ preparation rather than silently producing an incomplete editable project.
 
 The upload uses the workspace's file-count, per-file, project-size and manifest
 limits. Large media uploads in parts. Only a verified published snapshot that
-still matches the rendered project can be attached to the video version.
+still matches the rendered project can be attached to the video version. The CLI
+checks the contents of rendered assets, including changes that preserve file
+sizes and timestamps. Deployments must include the exact source storage origins
+in `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` alongside the video storage origins.
 
 ## Interrupted uploads and unavailable source
 
@@ -44,7 +47,16 @@ another project's source.
 If source changed, conflicts with another snapshot, or remains under verification,
 the command explains why it stopped. Retry after resolving the problem, or pass
 `--video-only` to share just the rendered video. An unexpected source upload
-failure never silently turns an eligible source share into video-only.
+failure never silently turns an eligible source share into video-only. If the
+server confirms an upload expired or failed, a retry starts a new upload. If
+the files changed while an earlier upload was still pending, the CLI cancels
+that upload before starting a new one. It waits for uploads already under
+verification and preserves conflicts for explicit resolution.
+
+A video-only retry does not resume an interrupted video upload that already
+includes source. Check its status before retrying. To publish the same render as
+a new video-only version after the earlier upload finishes, use
+`hyperframes share --update --video-only`. Previous versions retain their files.
 
 `--status` reads the review without uploading anything. Its source state is
 `not_checked`; it does not promise that local files match the shared version.
@@ -57,7 +69,8 @@ preparation; video readiness remains the separate top-level `ready` field.
 `createProjectShareSourceStore`. Call `prepare(projectPath, renderedFingerprint)`
 before `addVersion`, then pass `filesForExport` and `requireSource: true` for a
 ready source result. `requireSource` prevents a later mismatch from degrading to
-a video-only version.
+a video-only version. Pass `omitSource: true` for a video-only operation that
+must not reuse a source-bearing version or pending upload.
 
 A host may inject its existing binding store, or supply a read-only
 `existingBinding` resolver for Desktop bindings. Exact snapshots can be reused

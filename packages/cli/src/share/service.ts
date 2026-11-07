@@ -80,11 +80,13 @@ function selectSpace(spaces: Awaited<ReturnType<ReviewClient["spaces"]>>, id?: s
   if (id) return spaces.find((space) => space.space_id === id);
   return spaces.find((space) => space.bound) ?? spaces.find((space) => space.kind === "personal");
 }
-function assertUploadProject(share: ReviewShare | null, expectedId?: string): string {
+function assertUploadProject(
+  share: ReviewShare | null,
+  expectedId?: string,
+): asserts share is ReviewShare & { projectId: string } {
   const id = share?.projectId;
   if (!id || (expectedId && id !== expectedId))
     throw new ReviewFailed(409, "review_binding_changed");
-  return id;
 }
 function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
   if (!share) {
@@ -160,6 +162,7 @@ export function createShareService(
       allowPending: true,
       ...(sources.filesForExport && { filesForExport: sources.filesForExport }),
       requireSource: sources.requireSource,
+      omitSource: sources.source.at === "video_only",
       onAdded: () => {
         added = true;
       },
@@ -182,14 +185,24 @@ export function createShareService(
           spaceId: space,
           audience: input.audience,
         });
-    const projectId = assertUploadProject(share, current?.projectId);
-    if (share?.takedown) throw new ReviewFailed(409, "moderation_hold");
+    assertUploadProject(share, current?.projectId);
+    if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
     assertExistingIntent(share, {
       ...input,
       space: input.space ?? space,
       audience: input.audience ?? current?.access,
     });
-    return { projectId, spaceId: share?.space?.id };
+    return { projectId: share.projectId, spaceId: share.space?.id, audience: share.access };
+  };
+  const checkPreparedTarget = async (target: Awaited<ReturnType<typeof uploadTarget>>) => {
+    const share = await reviewStatus({ projectPath: dir, client });
+    assertUploadProject(share, target.projectId);
+    if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
+    assertExistingIntent(share, {
+      action: "update",
+      space: target.spaceId,
+      audience: target.audience,
+    });
   };
   const run = async (input: ShareAction) => {
     const current = await status();
@@ -209,6 +222,7 @@ export function createShareService(
       videoOnly: input.videoOnly,
       shareFiles: flags.shareFiles,
     });
+    if (sources.requireSource) await checkPreparedTarget(target);
     return upload(input, target.projectId, sources);
   };
   return {

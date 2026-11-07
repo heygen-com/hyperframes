@@ -1,6 +1,6 @@
-import { shareSources, type VersionRequest } from "@hyperframes/share";
+import { projectFingerprint, shareSources, type VersionRequest } from "@hyperframes/share";
 import type { createShareAccess } from "./auth.js";
-import { latestShareRender } from "./render.js";
+import { latestShareRender, shareContentFingerprint } from "./render.js";
 
 export class ShareSourceError extends Error {}
 
@@ -31,8 +31,16 @@ export async function prepareCliShareSource(
   if (!options.shareFiles) return videoOnly("source_disabled");
   if (!spaceId) throw new Error("The owning workspace could not be verified. Retry sharing.");
   try {
-    const source = shareSources({ access, spaceId });
-    const prepared = await source.prepare(dir, latestShareRender(dir)?.fingerprint ?? null);
+    const render = latestShareRender(dir);
+    const source = shareSources({
+      access,
+      spaceId,
+      fingerprint: async (path) =>
+        render?.contentFingerprint === (await shareContentFingerprint(path))
+          ? projectFingerprint(path)
+          : null,
+    });
+    const prepared = await source.prepare(dir, render?.fingerprint ?? null);
     if (prepared.at === "ready")
       return { source: prepared, filesForExport: source.filesForExport, requireSource: true };
     if (unavailablePlans.has(prepared.reason)) return videoOnly(prepared.reason);

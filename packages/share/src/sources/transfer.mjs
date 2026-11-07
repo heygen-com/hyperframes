@@ -6,6 +6,7 @@ import { constants, createReadStream } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import { dirname } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { trustedUploadUrl } from "../reviewUpload.mjs";
 
 /** Why a transfer stopped. `expired`: the signed URL no longer works (ask for a new one). `exists`: a create-only PUT
  * found the object already written. `changed`: the file's bytes are not the ones captured. `unreadable`: the file
@@ -97,6 +98,8 @@ function fileProblem({ seen, digest }, { length, sha256, path }) {
  *   start: number, length: number, sha256: string, signal: AbortSignal, onBytes?: (bytes: number) => void }} put */
 export async function putRange(put) {
   const { fetchImpl, url, headers, file, start, length, signal } = put;
+  const target = trustedUploadUrl(url);
+  if (!target) throw new TransferError("refused", { path: put.path });
   const sent = await hashedBody(file, start, length, put.onBytes ?? (() => {}));
   // Node's fetch needs `duplex` for a streamed body; lib.dom's RequestInit does not name it.
   const init = {
@@ -110,7 +113,7 @@ export async function putRange(put) {
   /** @type {Response} */
   let reply;
   try {
-    reply = await fetchImpl(url, /** @type {RequestInit} */ (init));
+    reply = await fetchImpl(target.href, /** @type {RequestInit} */ (init));
   } catch (error) {
     if (isAbort(error)) throw error;
     throw fileProblem(sent, put) ?? new TransferError("transient", { path: put.path });

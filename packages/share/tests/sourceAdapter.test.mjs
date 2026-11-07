@@ -9,6 +9,9 @@ import { projectFingerprint } from "../src/projectSnapshot.mjs";
 import { captureProject } from "../src/sources/capture.mjs";
 import { sourceApi } from "../src/sources/api.mjs";
 import { V1_LIMITS } from "../src/sources/limits.mjs";
+import { bindShareHost } from "../src/host.mjs";
+
+bindShareHost({ reviewUploadOrigins: ["https://storage.test"] });
 
 const signed = {
   token: "test-token",
@@ -185,6 +188,45 @@ test("lost Begin response retries the durable idempotency key, without creating 
   assert.equal((await shareSources(opts).prepare(f.root, f.rendered)).at, "ready");
   assert.equal(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
   assert.deepEqual(server.calls.begin[0].manifest, server.calls.begin[1].manifest);
+});
+
+test("confirmed expired upload clears its intent so a retry starts with a new key", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const begin = server.api.begin;
+  server.api.begin = async (...args) => {
+    const answer = await begin(...args);
+    return server.calls.begin.length === 1 ? { ...answer, status: "expired" } : answer;
+  };
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+
+  assert.equal((await source.prepare(f.root, f.rendered)).reason, "source_upload_expired");
+  assert.equal((await f.store.read(f.key)).inflight, null);
+  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+  assert.notEqual(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
+});
+
+test("changed source cancels the previous pending upload before using a new key", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const submit = server.api.submit;
+  server.api.submit = async () => {
+    throw new Error("lost connection");
+  };
+  server.api.status = async () => server.receipt("pending");
+  let cancelled = 0;
+  server.api.cancel = async () => {
+    cancelled++;
+    return { ...server.receipt("failed"), errorCode: "cancelled" };
+  };
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+
+  await assert.rejects(source.prepare(f.root, f.rendered), /lost connection/);
+  await writeFile(join(f.root, "index.html"), "<html>updated</html>");
+  server.api.submit = submit;
+  assert.equal((await source.prepare(f.root, await projectFingerprint(f.root))).at, "ready");
+  assert.equal(cancelled, 1);
+  assert.notEqual(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
 });
 
 test("conflict and pending verification cannot be attached and keep recovery intent", async (t) => {

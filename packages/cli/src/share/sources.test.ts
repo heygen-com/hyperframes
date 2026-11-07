@@ -1,7 +1,18 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ prepare: vi.fn(), filesForExport: vi.fn(), factory: vi.fn() }));
-vi.mock("@hyperframes/share", () => ({ shareSources: mocks.factory }));
-vi.mock("./render.js", () => ({ latestShareRender: () => ({ fingerprint: "rendered" }) }));
+const mocks = vi.hoisted(() => ({
+  prepare: vi.fn(),
+  filesForExport: vi.fn(),
+  factory: vi.fn(),
+  content: vi.fn(),
+}));
+vi.mock("@hyperframes/share", () => ({
+  shareSources: mocks.factory,
+  projectFingerprint: async () => "rendered",
+}));
+vi.mock("./render.js", () => ({
+  latestShareRender: () => ({ fingerprint: "rendered", contentFingerprint: "original-content" }),
+  shareContentFingerprint: mocks.content,
+}));
 import { prepareCliShareSource, ShareSourceError } from "./sources.js";
 import { shareError } from "./errors.js";
 const access = async () => ({
@@ -12,6 +23,7 @@ const access = async () => ({
 });
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.content.mockResolvedValue("original-content");
   mocks.factory.mockReturnValue({ prepare: mocks.prepare, filesForExport: mocks.filesForExport });
 });
 it("eligible source requires attachment on the version", async () => {
@@ -23,6 +35,18 @@ it("eligible source requires attachment on the version", async () => {
     filesForExport: mocks.filesForExport,
   });
   expect(mocks.prepare).toHaveBeenCalledWith("/project", "rendered");
+});
+it("refuses source bytes that differ from the rendered assets even when metadata matches", async () => {
+  mocks.prepare.mockImplementation(async (dir: string) => {
+    const fingerprint = mocks.factory.mock.calls[0]?.[0].fingerprint;
+    expect(await fingerprint(dir)).toBe("rendered");
+    mocks.content.mockResolvedValue("changed-content");
+    expect(await fingerprint(dir)).toBeNull();
+    return { at: "unavailable", reason: "source_render_changed" };
+  });
+  await expect(
+    prepareCliShareSource("/project", access, "space", { shareFiles: true }),
+  ).rejects.toThrow("source_render_changed");
 });
 it("free plan ineligibility preserves video sharing and reports source unavailable", async () => {
   mocks.prepare.mockResolvedValue({ at: "unavailable", reason: "source_plan_required" });

@@ -40,7 +40,8 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  * known; `last`: the newest version.
  * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string | null,
  *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean, reviewSent?: ReviewSent } | null,
- *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean, checksum?: string }
+ *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean,
+ *     snapshot?: ExportRequest["snapshot"], checksum?: string }
  *   | null }} VersionRecord */
 
 /** `onAdded`: a version went ready, with whether it carries files and whether it is the page's first from here.
@@ -53,7 +54,7 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  * @typedef {VersionHooks & { projectPath: string, title: string, client: ReviewClient, put?: typeof putFile,
  *   sleep?: (ms: number) => Promise<void>, probe?: (file: string) => Promise<VideoFacts | null>, now?: () => number,
  *   projectId?: string | null, filesForExport?: FilesForRender, fromReview?: FromReview | null,
- *   allowPending?: boolean, requireSource?: boolean }} VersionRequest */
+ *   allowPending?: boolean, requireSource?: boolean, omitSource?: boolean }} VersionRequest */
 
 /** The snapshot of `rendered`, the project as the export was rendered; null when the folder is not that render.
  * @typedef {(projectPath: string, rendered: string | null) => Promise<import("./types/reviewWire.js").SnapshotRef | null>}
@@ -178,7 +179,15 @@ function isLast(value) {
     isSavedId(value.versionId) &&
     isSavedId(value.exportedAt) &&
     isSavedId(value.projectId) &&
+    isLastMetadata(value)
+  );
+}
+
+/** @param {Record<string, unknown>} value */
+function isLastMetadata(value) {
+  return (
     isOptionalBoolean(value.files) &&
+    isOptionalSnapshot(value.snapshot) &&
     (value.checksum === undefined || isSavedId(value.checksum))
   );
 }
@@ -587,6 +596,7 @@ async function finish(dir, state, pending, id, done, fromReview) {
     exportedAt: done.exported_at,
     projectId: id,
     files: Boolean(pending.body.snapshot),
+    ...(pending.body.snapshot && { snapshot: pending.body.snapshot }),
     checksum: pending.body.local_upload.checksum_sha256,
   };
   await writeState(dir, { pending: null, last: ready ? last : state.last });
@@ -603,19 +613,28 @@ async function run(r, report) {
     r.projectPath,
     r.title,
     r.probe,
-    r.filesForExport,
+    r.omitSource ? noSource : r.filesForExport,
     r.requireSource,
   );
   if ("failure" in source) return source.failure ?? null;
   const id = r.projectId ?? (await reviewProjectId(r.projectPath));
   if (!id) return local("Share the project first, then add a version.");
   if (
-    (!r.requireSource || state.last?.files) &&
+    sameSourceMode(r, state.last, source.body.snapshot) &&
     (await alreadyUploaded(r.client, id, state, source.body))
   )
     return null;
   return sendVersion(r, report, source, id, state);
 }
+const noSource = async () => null;
+
+/** @param {Required<VersionRequest>} r @param {VersionRecord["last"]} last @param {ExportRequest["snapshot"]} snapshot */
+function sameSourceMode(r, last, snapshot) {
+  if (r.requireSource) return sameSnapshot(last?.snapshot, snapshot);
+  if (r.omitSource) return last?.files !== true;
+  return true;
+}
+
 /** @param {ReviewClient} client @param {string} id @param {VersionRecord} state @param {ExportRequest} body */
 async function alreadyUploaded(client, id, state, body) {
   const last = state.last;
@@ -632,10 +651,8 @@ async function alreadyUploaded(client, id, state, body) {
 async function sendVersion(r, report, source, id, state) {
   const first = state.last?.projectId !== id;
   let pending = bodyToSend(state, source.body, id);
-  if (sourceMissing(r, pending))
-    return local(
-      "A pending video-only upload must finish before attaching source. Retry with video-only, then share source again.",
-    );
+  const sourceConflict = pendingSourceConflict(r, pending, source.body);
+  if (sourceConflict) return local(sourceConflict);
   await writeState(r.projectPath, (state = { ...state, pending }));
   try {
     const answer = await createdExport(r, id, pending, (next) =>
@@ -668,8 +685,16 @@ async function sendVersion(r, report, source, id, state) {
   }
 }
 
-/** @param {Required<VersionRequest>} r @param {NonNullable<VersionRecord["pending"]>} pending */
-const sourceMissing = (r, pending) => r.requireSource && !pending.body.snapshot;
+/** @param {Required<VersionRequest>} r @param {NonNullable<VersionRecord["pending"]>} pending @param {ExportRequest} fresh */
+function pendingSourceConflict(r, pending, fresh) {
+  if (r.requireSource && !pending.body.snapshot)
+    return "A pending video-only upload must finish before attaching source. Retry with --video-only, then share source again.";
+  if (r.omitSource && pending.body.snapshot)
+    return "A pending upload includes source. Check its status or retry with source before creating a video-only version.";
+  if (r.requireSource && !sameSnapshot(pending.body.snapshot, fresh.snapshot))
+    return "A pending upload includes a different source snapshot. Check its status before sharing again.";
+  return null;
+}
 
 /** @param {Required<VersionRequest>} r @param {VersionRecord} state
  * @param {NonNullable<VersionRecord["pending"]>} pending @param {string} id @param {ExportDTO} done @param {boolean} first */
@@ -698,9 +723,10 @@ export async function addVersion(request) {
     onProgress: () => {},
     open: () => true,
     allowPending: false,
-    filesForExport: async () => null,
+    filesForExport: noSource,
     fromReview: null,
     requireSource: false,
+    omitSource: false,
     onAdded: () => {},
     ...request,
     projectId: request.projectId ?? null,

@@ -94,6 +94,14 @@ export function sourceApi({ access, fetchImpl = fetch }) {
         await send("GET", `${path(space, composition)}/uploads/${encodeURIComponent(upload)}`),
       ),
     /** @param {string} space @param {string} composition @param {string} upload */
+    cancel: async (space, composition, upload) =>
+      uploadOf(
+        await send(
+          "POST",
+          `${path(space, composition)}/uploads/${encodeURIComponent(upload)}/cancel`,
+        ),
+      ),
+    /** @param {string} space @param {string} composition @param {string} upload */
     submit: async (space, composition, upload) =>
       uploadOf(
         await send(

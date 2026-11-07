@@ -224,6 +224,7 @@ describe("share operation consent and identity", () => {
     expect(result.source).toEqual({ at: "video_only", reason: "requested" });
     expect(mocks.add).toHaveBeenCalledOnce();
     expect(mocks.add.mock.calls[0]?.[0]).not.toHaveProperty("filesForExport");
+    expect(mocks.add).toHaveBeenCalledWith(expect.objectContaining({ omitSource: true }));
   });
   it("does not silently upload changed edits while resuming first share", async () => {
     mocks.status.mockResolvedValue(shared);

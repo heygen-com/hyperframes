@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { uploadNeeded } from "../src/sources/uploadFiles.mjs";
 import { partDigests, putRange } from "../src/sources/transfer.mjs";
+import { bindShareHost } from "../src/host.mjs";
+
+bindShareHost({ reviewUploadOrigins: ["https://store.test"] });
 
 async function folder(t) {
   const root = await realpath(await mkdtemp(join(tmpdir(), "hf-source-upload-")));
@@ -145,4 +148,28 @@ test("storage PUT refuses a file swapped for a symlink before reading bytes", as
     }),
   );
   assert.equal(sent, false);
+});
+
+test("source PUT refuses untrusted or redirected targets before it opens a file", async () => {
+  for (const url of [
+    "https://untrusted.test/source",
+    "http://127.0.0.1:18080/source",
+    "https://store.test.untrusted.test/source",
+    "https://user:secret@store.test/source",
+  ]) {
+    await assert.rejects(
+      putRange({
+        file: "/missing-source",
+        path: "index.html",
+        start: 0,
+        length: 6,
+        sha256: "unused",
+        signal: signal(),
+        url,
+        headers: {},
+        fetchImpl: async () => assert.fail("Must not send bytes"),
+      }),
+      { kind: "refused" },
+    );
+  }
 });

@@ -31,13 +31,20 @@ async function snapshotKey(full, byContent) {
     const stat = await handle.stat();
     if (!stat.isFile()) return undefined;
     if (full.endsWith(".html")) return contentKey(await handle.readFile("utf8"));
-    if (byContent) return sha256(await handle.readFile());
+    if (byContent) return await hashFile(handle);
     return `${stat.mtimeMs}:${stat.size}`;
   } catch {
     return undefined;
   } finally {
     await handle.close();
   }
+}
+
+/** @param {import("node:fs/promises").FileHandle} handle */
+async function hashFile(handle) {
+  const hash = createHash("sha256");
+  for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 /** @param {import("node:fs").Dirent} entry @param {string} full @param {boolean} followSymlinks */
@@ -115,6 +122,6 @@ export function diffChangedFiles(before, after) {
   return changed;
 }
 
-/** @param {string} projectPath */
-export const projectFingerprint = async (projectPath) =>
-  snapshotFingerprint(await snapshotProject(projectPath, { followSymlinks: true }));
+/** @param {string} projectPath @param {{ byContent?: boolean }} [options] */
+export const projectFingerprint = async (projectPath, options) =>
+  snapshotFingerprint(await snapshotProject(projectPath, { ...options, followSymlinks: true }));

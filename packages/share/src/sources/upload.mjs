@@ -2,9 +2,13 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { uploadNeeded } from "./uploadFiles.mjs";
+import { parseStoredManifest } from "./manifest.mjs";
+import { SyncApiError } from "./errors.mjs";
 
-/** @typedef {import("./adapterTypes.js").SourceRun} SourceRun */
-/** @param {SourceRun} run */
+/** @typedef {import("./adapterTypes.js").SourceRun} SourceRun
+ * @typedef {Pick<SourceRun, "binding" | "api" | "store">} SourceUpload
+ * @typedef {import("./types.js").UploadReceipt} UploadReceipt */
+/** @param {SourceUpload & Pick<SourceRun, "manifest">} run */
 async function begin(run) {
   const { binding, manifest, api, store } = run;
   if (!binding.inflight) {
@@ -30,8 +34,7 @@ async function begin(run) {
     ...inflight,
     manifest,
   });
-  if (receipt.manifestSha256 !== manifest.sha256 || receipt.compositionId !== binding.compositionId)
-    throw new Error("Source upload receipt does not match the captured project.");
+  assertReceipt(binding, receipt);
   Object.assign(inflight, {
     uploadId: receipt.uploadId,
     snapshotId: receipt.snapshotId,
@@ -76,10 +79,86 @@ async function sendFiles(run, receipt) {
   }).finally(() => persisted);
   return run.api.submit(binding.ownerSpaceId, binding.compositionId, receipt.uploadId);
 }
+/** @param {SourceUpload["binding"]} binding @param {UploadReceipt} receipt */
+function assertReceipt(binding, receipt) {
+  const saved = binding.inflight;
+  if (!saved || receipt.manifestSha256 !== saved.manifestSha256)
+    throw new Error("Source upload receipt does not match the captured project.");
+  if (receipt.compositionId !== binding.compositionId)
+    throw new Error("Source upload receipt does not match the composition.");
+  if (saved.uploadId !== null && receipt.uploadId !== saved.uploadId)
+    throw new Error("Source upload receipt identity changed.");
+  if (saved.snapshotId !== null && receipt.snapshotId !== saved.snapshotId)
+    throw new Error("Source snapshot identity changed.");
+}
+
+/** @param {SourceUpload} job @param {UploadReceipt} receipt */
+async function storePublished({ binding, store }, receipt) {
+  const saved = binding.inflight;
+  const result = receipt.result;
+  if (!saved || !result || result.snapshotId !== receipt.snapshotId)
+    throw new Error("Source snapshot identity changed.");
+  binding.base = {
+    snapshotId: result.snapshotId,
+    manifest: saved.manifest,
+    manifestSha256: saved.manifestSha256,
+  };
+  await clearIntent({ binding, store });
+}
+
+/** @param {Pick<SourceUpload, "binding" | "store">} job */
+async function clearIntent({ binding, store }) {
+  binding.inflight = null;
+  await store.write(binding);
+}
+
+/** @param {SourceUpload} job @param {UploadReceipt} receipt */
+async function cancelPending({ binding, api }, receipt) {
+  const { ownerSpaceId, compositionId } = binding;
+  try {
+    return await api.cancel(ownerSpaceId, compositionId, receipt.uploadId);
+  } catch (error) {
+    if (!(error instanceof SyncApiError) || error.kind !== "upload-not-pending") throw error;
+    return api.status(ownerSpaceId, compositionId, receipt.uploadId);
+  }
+}
+
+/** Resolve an older capture before starting an upload for the current files.
+ * @param {SourceUpload} job @returns {Promise<import("./adapterTypes.js").SourceResult | null>} */
+export async function recoverSourceUpload(job) {
+  const { binding, api } = job;
+  const saved = binding.inflight;
+  if (!saved) return null;
+  const manifest = parseStoredManifest(saved.manifest);
+  if (manifest.sha256 !== saved.manifestSha256)
+    throw new Error("Saved source upload manifest does not match its checksum.");
+  let receipt = saved.uploadId
+    ? await api.status(binding.ownerSpaceId, binding.compositionId, saved.uploadId)
+    : await begin({ ...job, manifest });
+  assertReceipt(binding, receipt);
+  if (receipt.status === "pending") receipt = await cancelPending(job, receipt);
+  assertReceipt(binding, receipt);
+  return recoverReceipt(job, receipt);
+}
+
+/** @param {SourceUpload} job @param {UploadReceipt} receipt */
+async function recoverReceipt(job, receipt) {
+  if (receipt.status === "completed") {
+    if (receipt.result?.publicationOutcome !== "published")
+      return { at: /** @type {const} */ ("unavailable"), reason: "source_conflict" };
+    await storePublished(job, receipt);
+  } else if (terminalFailure(receipt)) await clearIntent(job);
+  else return { at: /** @type {const} */ ("unavailable"), reason: "source_verification_pending" };
+  return null;
+}
+
+/** @param {UploadReceipt} receipt */
+const terminalFailure = (receipt) => receipt.status === "failed" || receipt.status === "expired";
+
 /** Only published verification results can become share source; conflict_saved is preserved for explicit recovery.
  * @param {SourceRun} run @returns {Promise<import("./adapterTypes.js").SourceResult>} */
 export async function uploadSource(run) {
-  let receipt = await begin(run);
+  const receipt = await begin(run);
   let status = receipt.status === "pending" ? await sendFiles(run, receipt) : receipt;
   const deadline = Date.now() + run.timeoutMs;
   while (status.status === "verifying") {
@@ -92,32 +171,20 @@ export async function uploadSource(run) {
       receipt.uploadId,
     );
   }
-  if (
-    status.manifestSha256 !== run.manifest.sha256 ||
-    status.uploadId !== receipt.uploadId ||
-    status.compositionId !== run.binding.compositionId ||
-    status.snapshotId !== receipt.snapshotId
-  )
-    throw new Error("Source verification receipt identity changed.");
-  if (status.status !== "completed" || !status.result)
+  assertReceipt(run.binding, status);
+  if (status.status !== "completed" || !status.result) {
+    if (terminalFailure(status)) await clearIntent(run);
     return { at: "unavailable", reason: status.errorCode ?? `source_upload_${status.status}` };
+  }
   if (status.result.publicationOutcome !== "published")
     return { at: "unavailable", reason: "source_conflict" };
-  if (status.result.snapshotId !== status.snapshotId)
-    throw new Error("Source snapshot identity changed.");
-  run.binding.base = {
-    snapshotId: status.result.snapshotId,
-    manifest: run.manifest.document,
-    manifestSha256: run.manifest.sha256,
-  };
-  run.binding.inflight = null;
-  await run.store.write(run.binding);
+  await storePublished(run, status);
   return {
     at: "ready",
     snapshot: {
       space_id: run.binding.ownerSpaceId,
       composition_id: run.binding.compositionId,
-      snapshot_id: status.result.snapshotId,
+      snapshot_id: status.snapshotId,
     },
   };
 }

@@ -8,7 +8,7 @@ import { captureProject } from "./sources/capture.mjs";
 import { sourceApi } from "./sources/api.mjs";
 import { createProjectShareSourceStore } from "./sources/store.mjs";
 import { realWait } from "./sources/transfer.mjs";
-import { uploadSource } from "./sources/upload.mjs";
+import { recoverSourceUpload, uploadSource } from "./sources/upload.mjs";
 
 /** @typedef {import("./sources/adapterTypes.js").SourceResult} SourceResult
  * @typedef {import("./sources/types.js").Binding} Binding */
@@ -137,11 +137,11 @@ async function prepareBinding(job) {
  * @param {Extract<import("./sources/types.js").SyncLimitsRead, {at: "read"}>} limits @returns {Promise<SourceResult>} */
 async function snapshotFor(job, manifest, limits) {
   const { binding, api, store, options, signal } = job;
+  const blocked = await recoverEarlierCapture(job, manifest.sha256);
+  if (blocked) return blocked;
   if (binding.base?.manifestSha256 === manifest.sha256 && !binding.inflight)
     return reuseSnapshot(api, binding, manifest.sha256);
   if (job.external) return unavailable("source_sync_required");
-  if (binding.inflight && binding.inflight.manifestSha256 !== manifest.sha256)
-    return unavailable("source_pending_other_version");
   if (!job.own && limits.compositions >= limits.maxCompositions)
     return unavailable("source_composition_limit");
   await store.write(binding);
@@ -153,6 +153,13 @@ async function snapshotFor(job, manifest, limits) {
   await store.write(binding);
   return uploadSource({ binding, manifest, api, store, signal, ...uploadOptions(options) });
 }
+/** @param {Preparation} job @param {string} digest */
+function recoverEarlierCapture({ external, binding, api, store }, digest) {
+  const inflight = binding.inflight;
+  if (external || !inflight || inflight.manifestSha256 === digest) return null;
+  return recoverSourceUpload({ binding, api, store });
+}
+
 /** @param {import("./sources/adapterTypes.js").SourceOptions} options */
 function uploadOptions(options) {
   return {

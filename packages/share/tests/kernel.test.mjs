@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink, utimes } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -474,5 +474,51 @@ test("required source never silently degrades after preparation or a server mism
       snapshot_id: "snap",
     }),
   });
+  assert.equal(creates, 1);
+});
+
+test("content fingerprints detect same-size changes with restored timestamps", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "asset.txt");
+  const time = new Date("2026-11-01T00:00:00Z");
+  await writeFile(file, "first");
+  await utimes(file, time, time);
+  const metadata = await projectFingerprint(dir);
+  const content = await projectFingerprint(dir, { byContent: true });
+  await writeFile(file, "other");
+  await utimes(file, time, time);
+  assert.equal(await projectFingerprint(dir), metadata);
+  assert.notEqual(await projectFingerprint(dir, { byContent: true }), content);
+});
+
+test("a video-only retry never replays an unanswered source-bearing export", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let creates = 0;
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: {
+      createExport: async () => {
+        creates++;
+        throw new Error("lost response");
+      },
+    },
+    projectId: "project",
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    filesForExport: async () => ({
+      space_id: "space",
+      composition_id: "composition",
+      snapshot_id: "snapshot",
+    }),
+  };
+  await addVersion({ ...request, requireSource: true });
+  assert.match(
+    await addVersion({ ...request, omitSource: true }),
+    /pending upload includes source/,
+  );
   assert.equal(creates, 1);
 });
