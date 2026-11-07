@@ -377,17 +377,16 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
   });
 });
 
-const BIG_BYTES = 32 * 1024 * 1024;
+const BIG_BYTES = 16 * 1024 * 1024;
 
-/** Reads the body; "cut" and "slow" read it slowly, and "cut" drops the connection at 400 ms. */
+/** Reads the body; "cut" and "slow" take 8 MB/s, and "cut" drops the connection at 400 ms. */
 async function drain(req: IncomingMessage, answer: unknown): Promise<"read" | "dropped"> {
   const slow = answer === "cut" || answer === "slow";
   const born = Date.now();
   try {
-    for await (const _ of req) {
-      void _;
+    for await (const chunk of req as AsyncIterable<Buffer>) {
       if (!slow) continue;
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(chunk.length / 8192)));
       if (answer === "cut" && Date.now() - born >= 400) {
         req.socket.destroy();
         return "dropped";
