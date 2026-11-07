@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink, utimes } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -12,6 +12,7 @@ import {
   shareForReview,
   reviewRecord,
   addVersion,
+  pendingReviewExport,
   reviewVersion,
   refreshReviewExport,
   putFile,
@@ -146,6 +147,45 @@ test("HTML stamps and generated render metadata do not dirty the shared source",
   await writeFile(join(dir, "index.html"), '<div data-hf-id="123">Changed</div>');
   assert.notEqual(await projectFingerprint(dir), before);
 });
+test("a host can accept a version that is still screening when it stops waiting", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let video = {
+    status: "screening",
+    screening_state: "held",
+    video_id: "vid",
+    version_id: "v1",
+    exported_at: "2026-11-04T00:00:00Z",
+  };
+  api.createExport = t.mock.fn(async () => video);
+  api.readExport = async () => video;
+  const onAdded = t.mock.fn();
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: api,
+    probe: async () => ({ width: 1920, height: 1080, duration: 1 }),
+    open: () => false,
+    onAdded,
+  };
+
+  assert.ok(await addVersion(request));
+  assert.equal((await reviewVersion(dir)).held, true);
+  assert.equal(await addVersion({ ...request, allowPending: true }), null);
+  assert.equal((await pendingReviewExport(dir)).videoId, "vid");
+  assert.equal((await reviewVersion(dir)).failure, null);
+  assert.equal(onAdded.mock.callCount(), 0);
+  assert.equal(api.createExport.mock.callCount(), 1);
+
+  video = { ...video, status: "ready" };
+  await refreshReviewExport(dir, api);
+  assert.equal(await pendingReviewExport(dir), null);
+  assert.equal((await reviewVersion(dir)).last.current, true);
+});
 const moduleUrl = new URL("../src/index.mjs", import.meta.url).href;
 function child(script, args) {
   return spawn(process.execPath, ["--input-type=module", "-e", script, ...args], {
@@ -232,13 +272,15 @@ test("status recovery settles distinct video/version IDs without a new upload", 
       },
     }),
   );
+  const saved = await readFile(file, "utf8");
+  let status = "upload_pending";
   let reads = 0;
   api.readExport = async (project, video) => {
     reads++;
     assert.equal(project, "p1");
     assert.equal(video, "video-id");
     return {
-      status: "ready",
+      status,
       video_id: video,
       version_id: "version-id",
       exported_at: "2026-11-04T00:00:00Z",
@@ -248,13 +290,17 @@ test("status recovery settles distinct video/version IDs without a new upload", 
   assert.equal(reads, 0);
   await refreshReviewExport(dir, api);
   assert.equal(reads, 1);
+  assert.equal(await readFile(file, "utf8"), saved);
+  status = "ready";
+  await refreshReviewExport(dir, api);
+  assert.equal(reads, 2);
   assert.equal(JSON.parse(await readFile(file, "utf8")).pending, null);
   assert.equal(
     (await reviewVersion(dir, { latestReadyVersionId: "version-id" })).last.current,
     true,
   );
   await refreshReviewExport(dir, api);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
 });
 test("refuses an unconfigured review upload destination before sending the file", async (t) => {
   const dir = await folder(t);
@@ -391,3 +437,88 @@ for (const name of ["review.json", "review-export.json", "review-switch.json"]) 
     assert.equal(await readFile(file, "utf8"), "");
   });
 }
+test("required source never silently degrades after preparation or a server mismatch", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let creates = 0;
+  const api = {
+    createExport: async () => {
+      creates++;
+      throw new Error("should not send");
+    },
+  };
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: api,
+    projectId: "project",
+    requireSource: true,
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    filesForExport: async () => null,
+  };
+  assert.match(await addVersion(request), /Source changed/);
+  assert.equal(creates, 0);
+  const { ReviewFailed } = await import("../src/reviewClient.mjs");
+  api.createExport = async () => {
+    creates++;
+    throw new ReviewFailed(422, "snapshot_mismatch");
+  };
+  await addVersion({
+    ...request,
+    filesForExport: async () => ({
+      space_id: "space",
+      composition_id: "comp",
+      snapshot_id: "snap",
+    }),
+  });
+  assert.equal(creates, 1);
+});
+
+test("content fingerprints detect same-size changes with restored timestamps", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "asset.txt");
+  const time = new Date("2026-11-01T00:00:00Z");
+  await writeFile(file, "first");
+  await utimes(file, time, time);
+  const metadata = await projectFingerprint(dir);
+  const content = await projectFingerprint(dir, { byContent: true });
+  await writeFile(file, "other");
+  await utimes(file, time, time);
+  assert.equal(await projectFingerprint(dir), metadata);
+  assert.notEqual(await projectFingerprint(dir, { byContent: true }), content);
+});
+
+test("a video-only retry never replays an unanswered source-bearing export", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let creates = 0;
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: {
+      createExport: async () => {
+        creates++;
+        throw new Error("lost response");
+      },
+    },
+    projectId: "project",
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    filesForExport: async () => ({
+      space_id: "space",
+      composition_id: "composition",
+      snapshot_id: "snapshot",
+    }),
+  };
+  await addVersion({ ...request, requireSource: true });
+  assert.match(
+    await addVersion({ ...request, omitSource: true }),
+    /pending upload includes source/,
+  );
+  assert.equal(creates, 1);
+});

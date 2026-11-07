@@ -77,6 +77,7 @@ var __dirname = __hf_dirname(__filename);`,
     "@hyperframes/gcp-cloud-run/terraform",
   ],
   noExternal: [
+    "@hyperframes/share",
     "@hyperframes/core",
     "@hyperframes/parsers",
     "@hyperframes/studio-server",
