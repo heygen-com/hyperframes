@@ -373,7 +373,8 @@ ${seededRandomBlock}
   };
 
   // Timers set once rendering has started run on film time: each seek fires every timer due by then, in
-  // due order. Timers set before the first seek (page setup) keep the wall clock.
+  // due order. Until a seek after the page reports ready, timers keep the wall clock: setup code waits on
+  // them while the renderer may already be seeking.
   var rendering = false;
   var timerQueue = [];
   var nextTimerId = 1000000000;
@@ -442,7 +443,7 @@ ${seededRandomBlock}
     originalCancelAnimationFrame: originalCancelAnimationFrame,
     seekToTime: function(nextTimeMs) {
       var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
-      rendering = true;
+      if (window.__renderReady === true) rendering = true;
       ${seekToTimeReseedCall}fireDueTimers(safeTimeMs);
       virtualNowMs = safeTimeMs;
       flushAnimationFrame();

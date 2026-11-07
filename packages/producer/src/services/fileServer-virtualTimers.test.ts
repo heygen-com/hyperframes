@@ -15,6 +15,7 @@ function page(): Page {
     globalThis.setInterval = (cb, ms) => { realTimers.push(ms); return realTimers.length; };
     globalThis.clearInterval = () => undefined;
     globalThis.performance = { now: () => 0 };
+    globalThis.__renderReady = true;
   `).runInContext(context);
   new Script(buildVirtualTimeShim({ seedRandomFromFrame: false })).runInContext(context);
   return { run: <T>(code: string) => new Script(code).runInContext(context) as T };
@@ -30,6 +31,15 @@ describe("virtual-time shim timers", () => {
     run("window.fired = 0; setTimeout(() => window.fired++, 100);");
     run(seekFrames(1000));
     expect(run("realTimers")).toEqual([100]);
+    expect(run("fired")).toBe(0);
+  });
+
+  it("leaves timers on the wall clock while seeks come before the page reports ready", () => {
+    const { run } = page();
+    run("window.__renderReady = false; window.__HF_VIRTUAL_TIME__.seekToTime(0);");
+    run("window.fired = 0; setTimeout(() => window.fired++, 50);");
+    run(seekFrames(1000));
+    expect(run("realTimers")).toEqual([50]);
     expect(run("fired")).toBe(0);
   });
 
