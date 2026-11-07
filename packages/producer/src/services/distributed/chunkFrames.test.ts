@@ -18,8 +18,8 @@ describe("buildChunkCaptureOptions", () => {
     ).toBe("off");
   });
 
-  it("turns the page's capture motion blur off: a distributed render has no preview to match (R19)", () => {
-    expect(buildChunkCaptureOptions(input).pageMotionBlur).toBe("distributed-render");
+  it("leaves the composition's own data-motion-blur in charge when the planner froze no value", () => {
+    expect(buildChunkCaptureOptions(input).pageMotionBlur).toBeUndefined();
   });
 
   it("asks for no engine motion blur either", () => {
