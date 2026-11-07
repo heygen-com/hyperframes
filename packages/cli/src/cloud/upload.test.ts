@@ -433,7 +433,7 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
     const content = big ? Buffer.alloc(BIG_BYTES, 1) : Buffer.from("bytes");
     writeFileSync(join(dir, "clip.mp4"), content);
     const was = { ...putTimings };
-    Object.assign(putTimings, { stallMs: 150, backoffMs: 5, progressMs: 50 });
+    Object.assign(putTimings, { stallMs: big ? 5000 : 150, backoffMs: 5, progressMs: 50 });
     onTestFinished(() => void Object.assign(putTimings, was));
     return uploadAssetViaDirectUpload({
       client: makeClient({

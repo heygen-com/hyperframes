@@ -92,10 +92,13 @@ function isConnectionCut(err: unknown): boolean {
   return (typeof code === "string" && CUT_CODES.has(code)) || /socket hang up/.test(String(err));
 }
 
-/** The same cut twice: a connection that dies at the same age with the same bytes sent dies the same way again. */
+/** The same cut twice: a connection that dies at the same age dies there again, whatever it got through. */
 function isSameCut(before: EndedTry, now: EndedTry): boolean {
-  const near = (a: number, b: number) => Math.abs(a - b) <= 0.2 * Math.max(a, b);
-  return before.sent > 0 && near(before.ageMs, now.ageMs) && near(before.sent, now.sent);
+  return (
+    before.sent > 0 &&
+    now.sent > 0 &&
+    Math.abs(before.ageMs - now.ageMs) <= 0.2 * Math.max(before.ageMs, now.ageMs)
+  );
 }
 
 function seconds(ms: number): string {
