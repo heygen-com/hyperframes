@@ -125,12 +125,23 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 // same way, in slices, so a stalled link ends its try the same way (a plain fetch has no progress to watch).
 const SLICE_BYTES = 64 * 1024;
 
-function bodyStream(body: Uint8Array | UploadFileSource): Readable {
-  if (!(body instanceof Uint8Array)) return createReadStream(body.path);
+export interface ByteRange {
+  start: number;
+  length: number;
+}
+
+function bodyStream(body: Uint8Array | UploadFileSource, range?: ByteRange): Readable {
+  if (!(body instanceof Uint8Array))
+    return createReadStream(
+      body.path,
+      range && { start: range.start, end: range.start + range.length - 1 },
+    );
+  const from = range?.start ?? 0;
+  const to = from + (range?.length ?? body.byteLength);
   return Readable.from(
     (function* () {
-      for (let at = 0; at < body.byteLength; at += SLICE_BYTES)
-        yield body.subarray(at, at + SLICE_BYTES);
+      for (let at = from; at < to; at += SLICE_BYTES)
+        yield body.subarray(at, Math.min(at + SLICE_BYTES, to));
     })(),
   );
 }
@@ -159,8 +170,9 @@ export async function putStreamToPresignedUrl(
   body: Uint8Array | UploadFileSource,
   signal: AbortSignal | undefined,
   onSample: (written: number) => void,
-): Promise<void> {
-  const size = body instanceof Uint8Array ? body.byteLength : body.size;
+  range?: ByteRange,
+): Promise<string | undefined> {
+  const size = range?.length ?? (body instanceof Uint8Array ? body.byteLength : body.size);
   const send = new URL(uploadUrl).protocol === "https:" ? httpsRequest : httpRequest;
   const req = send(uploadUrl, {
     method: "PUT",
@@ -171,7 +183,7 @@ export async function putStreamToPresignedUrl(
     req.once("response", resolve).once("error", reject);
   });
   const stopWatching = watchStall(req, onSample);
-  const source = bodyStream(body);
+  const source = bodyStream(body, range);
   const sent = pipeline(source, req);
   let res: IncomingMessage;
   try {
@@ -183,6 +195,7 @@ export async function putStreamToPresignedUrl(
     stopWatching();
   }
   await settle(res, sent);
+  return String(res.headers.etag ?? "") || undefined;
 }
 
 /** Reads S3's answer: a refusal is thrown with its words; a refused upload can close the connection mid-body, so the

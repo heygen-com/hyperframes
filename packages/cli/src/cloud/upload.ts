@@ -26,6 +26,11 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import type { HyperframesCloudClient } from "./_gen/client.js";
+import type {
+  CompleteAssetUploadRequest,
+  CreateAssetUploadResponse,
+  MultipartUploadPlan,
+} from "./_gen/types.js";
 import { HyperframesApiError } from "./_gen/client.js";
 import {
   PutRefusedError,
@@ -36,6 +41,14 @@ import {
   type PutTry,
   type UploadFileSource,
 } from "./uploadPut.js";
+import {
+  forgetSaved,
+  PARTS_ABOVE_BYTES,
+  resumable,
+  saveUpload,
+  savedUploadFile,
+  uploadParts,
+} from "./uploadParts.js";
 
 export { putTimings, type UploadFileSource };
 
@@ -137,7 +150,7 @@ async function putBytesToPresignedUrl(
     ...normalizeUploadHeaders(uploadHeaders),
   };
   return putWithRetry(
-    (tried) => {
+    async (tried) => {
       if (tried.attempt > 1)
         onProgress?.({
           phase: "upload",
@@ -146,12 +159,12 @@ async function putBytesToPresignedUrl(
           totalBytes: total,
           attempt: tried.attempt,
         });
-      return fetchImpl && body instanceof Uint8Array
+      await (fetchImpl && body instanceof Uint8Array
         ? putBytesOnce(fetchImpl, uploadUrl, headers, body, signal)
         : putStreamToPresignedUrl(uploadUrl, headers, body, signal, (written) => {
             tried.sent = written;
             report(tried);
-          });
+          }));
     },
     total,
     signal,
@@ -208,13 +221,14 @@ export async function completeWithRetry(
   checksum_sha256: string,
   sizeBytes: number,
   signal?: AbortSignal,
+  inParts: CompleteParts = {},
 ): Promise<{ asset_id: string; url: string }> {
   const budget = completeBudgetMs(sizeBytes);
   const startedAt = Date.now();
   let poll = completeWait.firstPollMs;
   for (;;) {
     try {
-      return await client.completeAssetUpload({ asset_id, body: { checksum_sha256 } });
+      return await client.completeAssetUpload({ asset_id, body: { checksum_sha256, ...inParts } });
     } catch (err) {
       if (!(err instanceof HyperframesApiError && err.status === 409)) throw err;
       const left = startedAt + budget - Date.now();
@@ -237,6 +251,17 @@ export async function completeWithRetry(
 // complete answers invalid_parameter for type, size, checksum and expiry; only type refusals blame the type.
 const TYPE_REFUSAL = /^(Stored file type|content_type not allowed|Stored file does not have a ZIP)/;
 
+const STATUSES_NOT_ABOUT_THE_FILE = new Set([401, 403, 408, 409, 429]);
+
+function refusesTheFile(err: unknown): boolean {
+  return (
+    err instanceof HyperframesApiError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    !STATUSES_NOT_ABOUT_THE_FILE.has(err.status)
+  );
+}
+
 function nameRefusedFile(err: unknown, filename: string, contentType: string): unknown {
   if (!(err instanceof HyperframesApiError) || err.code !== "invalid_parameter") return err;
   const kind = contentType.split("/")[0];
@@ -247,48 +272,131 @@ function nameRefusedFile(err: unknown, filename: string, contentType: string): u
   return new HyperframesApiError({ ...err, message: `${lead} ${err.message}` });
 }
 
-export async function uploadAssetViaDirectUpload(
-  opts: Omit<UploadZipViaDirectOptions, "bytes"> & { contentType: string } & (
-      | { bytes: Uint8Array }
-      | UploadFileSource
-    ),
-): Promise<UploadZipViaDirectResult> {
-  const start = Date.now();
-  const { filename, idempotencyKey } = opts;
-  const body = "bytes" in opts ? opts.bytes : { path: opts.path, size: opts.size };
-  const size_bytes = body instanceof Uint8Array ? body.byteLength : body.size;
-  const checksum_sha256 =
-    body instanceof Uint8Array ? sha256Hex(body) : await sha256OfFile(body.path);
-  const fetchImpl = opts.fetchImpl;
+type CompleteParts = Pick<CompleteAssetUploadRequest, "multipart_upload_id" | "parts">;
 
-  opts.onProgress?.({ phase: "initialize" });
-  const initialize = await opts.client.createAssetUpload({
-    body: { filename, content_type: opts.contentType, size_bytes, checksum_sha256 },
-    idempotencyKey,
+/** Asks for parts on a big file; a server that does not know them answers with the single PUT. */
+async function createUpload(
+  client: HyperframesCloudClient,
+  o: {
+    filename: string;
+    contentType: string;
+    size_bytes: number;
+    checksum_sha256: string;
+    inParts: boolean;
+    idempotencyKey?: string;
+  },
+): Promise<CreateAssetUploadResponse> {
+  const body = {
+    filename: o.filename,
+    content_type: o.contentType,
+    size_bytes: o.size_bytes,
+    checksum_sha256: o.checksum_sha256,
+  };
+  try {
+    return await client.createAssetUpload({
+      body: o.inParts ? { ...body, multipart: true } : body,
+      idempotencyKey: o.idempotencyKey,
+    });
+  } catch (err) {
+    const unknownField =
+      err instanceof HyperframesApiError && (err.status === 400 || err.status === 422);
+    if (!o.inParts || !unknownField) throw err;
+    return await client.createAssetUpload({ body, idempotencyKey: o.idempotencyKey });
+  }
+}
+
+type DirectUploadOptions = Omit<UploadZipViaDirectOptions, "bytes"> & { contentType: string };
+
+/** Sends the file (in parts above PARTS_ABOVE_BYTES, resuming a saved upload) and says what `complete` must be told. */
+async function sendInParts(
+  opts: DirectUploadOptions,
+  body: Uint8Array | UploadFileSource,
+  size_bytes: number,
+  asset_id: string,
+  plan: MultipartUploadPlan,
+  saved: string | undefined,
+): Promise<{ asset_id: string; inParts: CompleteParts; forget?: () => void }> {
+  if (saved) saveUpload(saved, { asset_id, plan });
+  const parts = await uploadParts({
+    client: opts.client,
+    asset_id,
+    plan,
+    body,
+    total: size_bytes,
+    onProgress: opts.onProgress,
+    signal: opts.signal,
+  });
+  return {
+    asset_id,
+    inParts: { multipart_upload_id: plan.multipart_upload_id, parts },
+    forget: saved ? () => forgetSaved(saved) : undefined,
+  };
+}
+
+async function sendFile(
+  opts: DirectUploadOptions,
+  body: Uint8Array | UploadFileSource,
+  size_bytes: number,
+  checksum_sha256: string,
+): Promise<{ asset_id: string; inParts: CompleteParts; forget?: () => void }> {
+  const wantParts = size_bytes > PARTS_ABOVE_BYTES;
+  const saved = wantParts ? savedUploadFile(checksum_sha256, size_bytes) : undefined;
+  const resumed = saved ? await resumable(opts.client, saved) : undefined;
+  if (resumed) {
+    opts.onProgress?.({ phase: "upload", percent: 0 });
+    return sendInParts(opts, body, size_bytes, resumed.asset_id, resumed.plan, saved);
+  }
+  const created = await createUpload(opts.client, {
+    filename: opts.filename,
+    contentType: opts.contentType,
+    size_bytes,
+    checksum_sha256,
+    inParts: wantParts,
+    idempotencyKey: opts.idempotencyKey,
   });
 
   opts.onProgress?.({ phase: "upload", percent: 0 });
+  if (created.multipart) {
+    return sendInParts(opts, body, size_bytes, created.asset_id, created.multipart, saved);
+  }
   await putBytesToPresignedUrl(
-    fetchImpl,
-    initialize.upload_url,
-    initialize.upload_headers,
+    opts.fetchImpl,
+    created.upload_url,
+    created.upload_headers,
     body,
     opts.contentType,
     opts.signal,
     opts.onProgress,
   );
+  return { asset_id: created.asset_id, inParts: {} };
+}
+
+export async function uploadAssetViaDirectUpload(
+  opts: DirectUploadOptions & ({ bytes: Uint8Array } | UploadFileSource),
+): Promise<UploadZipViaDirectResult> {
+  const start = Date.now();
+  const body = "bytes" in opts ? opts.bytes : { path: opts.path, size: opts.size };
+  const size_bytes = body instanceof Uint8Array ? body.byteLength : body.size;
+  const checksum_sha256 =
+    body instanceof Uint8Array ? sha256Hex(body) : await sha256OfFile(body.path);
+
+  opts.onProgress?.({ phase: "initialize" });
+  const sent = await sendFile(opts, body, size_bytes, checksum_sha256);
   opts.onProgress?.({ phase: "upload", percent: 100 });
 
   opts.onProgress?.({ phase: "complete" });
   const completed = await completeWithRetry(
     opts.client,
-    initialize.asset_id,
+    sent.asset_id,
     checksum_sha256,
     size_bytes,
     opts.signal,
+    sent.inParts,
   ).catch((err: unknown) => {
-    throw nameRefusedFile(err, filename, opts.contentType);
+    if (refusesTheFile(err)) sent.forget?.();
+    throw nameRefusedFile(err, opts.filename, opts.contentType);
   });
+  sent.forget?.();
   return {
     asset_id: completed.asset_id,
     url: completed.url,
