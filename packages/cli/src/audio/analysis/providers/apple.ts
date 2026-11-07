@@ -1,3 +1,4 @@
+import { runsWithoutInstallPrompt } from "../../../utils/appleStubs.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
@@ -70,6 +71,7 @@ function helperPath(name: string, source: string): string {
 }
 
 async function hasSwiftCompiler(): Promise<boolean> {
+  if (!runsWithoutInstallPrompt("xcrun")) return false;
   try {
     await runFile("xcrun", ["--find", "swiftc"], { timeout: 30_000 });
     return true;
