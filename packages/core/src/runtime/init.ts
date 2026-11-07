@@ -3826,6 +3826,7 @@ export function initSandboxRuntimeModular(): void {
         forceSync,
         keepLateMedia,
         cueAheadSeconds,
+        clockAhead: (el) => clock.aheadOf(el),
         clockAdvancing:
           clock.getSource() !== "audio" ||
           lastSyncedMediaTimeSeconds === null ||

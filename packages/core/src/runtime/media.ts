@@ -499,6 +499,7 @@ export function syncRuntimeMedia(params: {
    * outbound message; further invocations are suppressed by the caller.
    */
   onAutoplayBlocked?: () => void;
+  clockAhead?: (el: HTMLMediaElement) => number;
   /** `clipGain` is `data-volume` for a routed clip, played ahead of its FX; 1 otherwise. */
   onElementVolume?: (
     el: HTMLMediaElement,
@@ -557,7 +558,7 @@ export function syncRuntimeMedia(params: {
       !inWindow &&
       (params.timeSeconds >= clip.end || sameInstant(params.timeSeconds, clip.end)) &&
       isClipVisibleAt(params.timeSeconds, clip.start, clip.end, params.getCompositionDuration());
-    const relTime = mediaSourceTimeAt(clip, params.timeSeconds);
+    const relTime = mediaSourceTimeAt(clip, params.timeSeconds - (params.clockAhead?.(el) ?? 0));
     const isHeldVideoTail =
       isTerminalVideo ||
       (isNonLoopVideo && clip.sourceDuration != null && relTime >= clip.sourceDuration && inWindow);
