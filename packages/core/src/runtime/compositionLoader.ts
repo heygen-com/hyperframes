@@ -196,7 +196,7 @@ const waitForExternalScriptLoad = (
   new Promise((resolve) => {
     let settled = false;
     const startedAt = Date.now();
-    let timeoutId: number | null = null;
+    let timeoutId: ReturnType<typeof wallSetTimeout> | null = null;
     const settle = (status: "load" | "error" | "timeout") => {
       if (settled) return;
       settled = true;

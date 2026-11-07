@@ -74,7 +74,7 @@ export const TYPEGPU_PRESENT_HEARTBEAT_MS = 250;
 export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
   let forcedTime: number | null = null;
   let lastForcedTime = 0;
-  let presentHeartbeat: number | null = null;
+  let presentHeartbeat: ReturnType<typeof wallSetInterval> | null = null;
 
   const stopPresentHeartbeat = () => {
     if (presentHeartbeat === null) return;

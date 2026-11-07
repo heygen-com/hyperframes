@@ -2600,7 +2600,7 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
-  let metadataRebindDebounceTimerId: number | null = null;
+  let metadataRebindDebounceTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   let metadataRebindApplied = false;
   const metadataBoundMedia = new Set<HTMLMediaElement>();
   const volumeKeyframeCache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
@@ -5012,7 +5012,7 @@ export function initSandboxRuntimeModular(): void {
         for (let clip = img.closest(SKIPPED_CLIP); clip; clip = img.closest(SKIPPED_CLIP))
           clip.setAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, "");
       }
-      let capTimer = 0;
+      let capTimer: ReturnType<typeof wallSetTimeout> | undefined;
       const capped = new Promise<void>((resolve) => {
         capTimer = wallSetTimeout(() => {
           if (heldSeek === held) swallow("runtime.init.seekHoldCap", undecoded);
@@ -5305,7 +5305,7 @@ export function initSandboxRuntimeModular(): void {
   let lastTransportSeekTimeline: RuntimeTimelineLike | null = null;
   let pausedSeekDeferredByManualGesture = false;
   // Set while the transport is parked (see scheduleNextTransportFrame).
-  let transportParkTimerId: number | null = null;
+  let transportParkTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   let slowIdleHeartbeat = false;
   let transportWakeRequested = false;
   let parkedPollWitness = "";
@@ -5715,7 +5715,7 @@ export function initSandboxRuntimeModular(): void {
 
   // Hidden documents run no animation frames but their media plays on, so tick on a timer.
   // Chromium clamps it to ~1 s unless audio is audible: a clip may end up to 1 s late.
-  let transportTickTimerId: number | null = null;
+  let transportTickTimerId: ReturnType<typeof wallSetTimeout> | null = null;
   const transportTickPending = () => state.transportRafId != null || transportTickTimerId != null;
   const requestTransportTick = () => {
     if (document.visibilityState === "hidden") {

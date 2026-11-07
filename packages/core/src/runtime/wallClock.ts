@@ -1,23 +1,44 @@
 // During a render the page's setTimeout and setInterval run on film time and fire only at the next seek.
 // The runtime's own waits and deadlines must not depend on that seek, so they use the browser's timers.
+type TimeoutId = ReturnType<typeof setTimeout>;
+type IntervalId = ReturnType<typeof setInterval>;
+
 interface VirtualTimeTimers {
-  originalSetTimeout?: Window["setTimeout"];
-  originalClearTimeout?: Window["clearTimeout"];
-  originalSetInterval?: Window["setInterval"];
-  originalClearInterval?: Window["clearInterval"];
+  originalSetTimeout?: typeof setTimeout;
+  originalClearTimeout?: typeof clearTimeout;
+  originalSetInterval?: typeof setInterval;
+  originalClearInterval?: typeof clearInterval;
 }
 
 const shim = (): VirtualTimeTimers | undefined =>
   (globalThis as { __HF_VIRTUAL_TIME__?: VirtualTimeTimers }).__HF_VIRTUAL_TIME__;
 
-export const wallSetTimeout: Window["setTimeout"] = (handler, timeout, ...args) =>
-  (shim()?.originalSetTimeout ?? globalThis.setTimeout)(handler, timeout, ...args);
+type Handler = (...args: never[]) => void;
 
-export const wallClearTimeout: Window["clearTimeout"] = (id) =>
-  (shim()?.originalClearTimeout ?? globalThis.clearTimeout)(id);
+export function wallSetTimeout(handler: Handler, timeout?: number, ...args: unknown[]): TimeoutId {
+  return (shim()?.originalSetTimeout ?? setTimeout)(
+    handler as (...a: unknown[]) => void,
+    timeout,
+    ...args,
+  );
+}
 
-export const wallSetInterval: Window["setInterval"] = (handler, timeout, ...args) =>
-  (shim()?.originalSetInterval ?? globalThis.setInterval)(handler, timeout, ...args);
+export function wallClearTimeout(id: TimeoutId | null | undefined): void {
+  (shim()?.originalClearTimeout ?? clearTimeout)(id ?? undefined);
+}
 
-export const wallClearInterval: Window["clearInterval"] = (id) =>
-  (shim()?.originalClearInterval ?? globalThis.clearInterval)(id);
+export function wallSetInterval(
+  handler: Handler,
+  timeout?: number,
+  ...args: unknown[]
+): IntervalId {
+  return (shim()?.originalSetInterval ?? setInterval)(
+    handler as (...a: unknown[]) => void,
+    timeout,
+    ...args,
+  );
+}
+
+export function wallClearInterval(id: IntervalId | null | undefined): void {
+  (shim()?.originalClearInterval ?? clearInterval)(id ?? undefined);
+}
