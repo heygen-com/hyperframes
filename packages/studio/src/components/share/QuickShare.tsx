@@ -45,10 +45,7 @@ export function QuickShareContent({
   beforeShare?: () => Promise<void>;
 }) {
   const model = useQuickShare(token, beforeShare);
-  const { snapshot, busy, progress, error, reload } = model;
-  const canRetry =
-    error &&
-    ["share_failed", "unavailable", "job_not_found"].includes(model.errorCode ?? "share_failed");
+  const { snapshot, progress, error } = model;
   const url = safeShareUrl(snapshot?.share.url ?? "");
   const manageUrl = safeShareUrl(snapshot?.share.manageUrl ?? "");
   return (
@@ -85,11 +82,6 @@ export function QuickShareContent({
           <a href={url} target="_blank" rel="noreferrer" className="text-step-11 underline">
             Open shared page
           </a>
-        ) : null}
-        {canRetry ? (
-          <Button variant="ghost" disabled={busy} onClick={reload}>
-            Try again
-          </Button>
         ) : null}
       </div>
     </div>

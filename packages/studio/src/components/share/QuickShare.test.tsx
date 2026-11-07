@@ -394,16 +394,31 @@ it.each(["login_expired", "sharing_not_admitted", "review_upload_origins_require
   },
 );
 
-it("retries loading after a temporary request failure without publishing", async () => {
-  vi.mocked(fetch).mockResolvedValueOnce(
-    Response.json({ code: "unavailable", message: "Temporarily unavailable" }, { status: 503 }),
-  );
-  await mount();
-  expect(button("Try again")).toBeDefined();
-  await act(async () => button("Try again")?.click());
-  expect(host.querySelector('[aria-label="Who can access"]')).not.toBeNull();
-  expect(calls).toEqual([]);
-});
+it.each(["request", "job"])(
+  "restores the create action and audience after a failed %s",
+  async (failureAt) => {
+    await mount();
+    await choose("public");
+    const failed = {
+      ...job,
+      state: "failed" as const,
+      error: { code: "share_failed", message: "Cannot render" },
+    };
+    if (failureAt === "request")
+      vi.mocked(fetch).mockResolvedValueOnce(Response.json(failed.error, { status: 400 }));
+    else {
+      job = failed;
+      snapshot.job = failed;
+    }
+    await act(async () => button("Create share link")?.click());
+    expect(button("Create share link")?.disabled).toBe(false);
+    expect(host.querySelector<HTMLSelectElement>('[aria-label="Who can access"]')?.value).toBe(
+      "public",
+    );
+    expect(button("Try again")).toBeUndefined();
+    expect(host.textContent).toContain("Cannot render");
+  },
+);
 
 it("uses the OAuth-selected workspace among several without a dropdown", async () => {
   snapshot.spaces.unshift({ ...snapshot.spaces[0]!, id: "other", name: "Other", bound: false });

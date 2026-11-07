@@ -58,9 +58,9 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     setProgress("");
     const result = job.result;
     if (result) setSnapshot((prior) => (prior ? { ...prior, share: result, job } : prior));
-    await refresh(signal);
+    await refresh(signal, job.state === "failed");
   }
-  async function refresh(signal: AbortSignal) {
+  async function refresh(signal: AbortSignal, preserveSelection = false) {
     setError(null);
     setErrorCode(null);
     setWorking(true);
@@ -71,15 +71,17 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       recordOpen(next);
       reconnectOnReturn.current = false;
       setSnapshot(next);
-      resetSelection(next);
+      if (!preserveSelection) resetSelection(next);
       if (next.job?.error) {
         setError(next.job.error.message);
         setErrorCode(next.job.error.code);
       }
       if (next.job?.state === "running") await poll(next.job, signal);
       else setWorking(false);
+      return true;
     } catch (cause) {
       reportFailure(cause, signal);
+      return false;
     }
   }
   useMountEffect(() => {
@@ -111,7 +113,28 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       if (["share", "update"].includes(action.action)) await beforeShare?.();
       if (!signal.aborted) await poll(await shareAction(token, action, signal), signal);
     } catch (cause) {
+      await recoverActionFailure(cause, signal);
+    }
+  }
+  async function recoverActionFailure(cause: unknown, signal: AbortSignal) {
+    if (
+      cause instanceof LocalShareError &&
+      [
+        "login_changed",
+        "login_expired",
+        "unauthenticated",
+        "refresh_failed",
+        "not_configured",
+      ].includes(cause.code)
+    ) {
       reportFailure(cause, signal);
+      return;
+    }
+    setProgress("");
+    const recovered = await refresh(signal, true);
+    if (recovered && !signal.aborted) {
+      setError(failure(cause));
+      setErrorCode(cause instanceof LocalShareError ? cause.code : null);
     }
   }
   function recordOpen(value: LocalShareSnapshot | null) {
@@ -140,9 +163,6 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     setWorking(false);
     setProgress("");
   }
-  function reload() {
-    if (lifetime.current) void refresh(lifetime.current.signal);
-  }
   async function copy(url: string) {
     try {
       await navigator.clipboard.writeText(url);
@@ -163,7 +183,6 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     copied,
     progress,
     run,
-    reload,
     copy,
   };
 }
