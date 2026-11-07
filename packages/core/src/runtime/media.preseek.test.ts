@@ -49,14 +49,8 @@ describe("incoming media preparation", () => {
       expect(el.currentTime).toBe(mediaElementTime(8));
       expect(el.play).not.toHaveBeenCalled();
       tick(3);
-      if (tag === "video") {
-        // A video plays from one second before its in-point, so it is landed there once more as it starts.
-        expect(el.currentTime).toBe(mediaElementTime(7));
-        expect(seek).toHaveBeenCalledTimes(2);
-      } else {
-        tick(4);
-        expect(seek).toHaveBeenCalledTimes(1);
-      }
+      tick(4);
+      expect(seek).toHaveBeenCalledTimes(1);
       expect(el.play).toHaveBeenCalledTimes(1);
     },
   );
