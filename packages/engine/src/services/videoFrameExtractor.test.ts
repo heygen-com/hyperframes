@@ -4049,6 +4049,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
   it("tone-maps an HLG source at HLG's white when a large header SEI follows its SPS", async () => {
     const source = join(fixtureDir, "hlg-x265-header.mp4");
     // x265 stores its settings as an SEI after the SPS in the file header; traced, it runs past 64 KB.
+    // No B-frames: at 1 fps their reorder gap is a whole second, which Windows ffmpeg's mp4 muxer can refuse.
     const synthesized = await runFfmpeg([
       ...["-y", "-hide_banner", "-loglevel", "error"],
       ...["-f", "lavfi", "-i", "color=c=0xe0b080:s=64x64:r=1:d=1"],
@@ -4058,7 +4059,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
         "-c:v",
         "libx265",
         "-x265-params",
-        "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:log-level=error",
+        "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:log-level=error:bframes=0",
       ],
       ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
       source,
