@@ -63,3 +63,30 @@ describe("docs topics", () => {
     }
   });
 });
+
+describe("docs renderer", () => {
+  it("preserves literal asterisks inside inline code", async () => {
+    const { renderMarkdown } = await import("./docs.js");
+    const line = renderMarkdown("Use `**literal**` with **nested `**code**`**");
+    expect(line).toContain("**literal**");
+    expect(line).toContain("**code**");
+    expect(line).not.toContain("**nested");
+  });
+
+  it("renders **bold** spans without leaving the markers behind (#7277)", async () => {
+    const { renderMarkdown } = await import("./docs.js");
+    const topic = readFileSync(
+      join(REPO_ROOT, "packages", "cli", "src", "docs", "compositions.md"),
+      "utf8",
+    );
+    const out = renderMarkdown(topic);
+    expect(out).not.toContain("**");
+    // the attribute names the ticket called out survive as plain/bold text
+    expect(out).toContain("data-composition-variables");
+    expect(out).toContain("data-variable-values");
+    // a synthetic line exercises both inline forms together
+    const line = renderMarkdown("- **`attr`** takes a JSON **array of declarations**");
+    expect(line).not.toContain("**");
+    expect(line).toContain("array of declarations");
+  });
+});
