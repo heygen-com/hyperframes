@@ -55,8 +55,8 @@ export interface BrowserHostileCodec {
 }
 
 /**
- * Browser-hostile codec table v1. One exported constant so extending it is a
- * one-line change. `ffprobe` cannot emit exact RFC 6381 codec strings, so
+ * Browser-hostile codec table v1: the codecs with a known answer; one not here and not in
+ * `BROWSER_PLAYABLE_CODECS` is hostile too. `ffprobe` cannot emit exact RFC 6381 codec strings, so
  * these `representativeMime` values are deliberately coarse (a false
  * positive costs one proxy transcode, never correctness; a false negative is
  * rescued by the runtime's reactive zero-videoWidth swap).
@@ -78,12 +78,15 @@ export const BROWSER_HOSTILE_CODECS: Record<string, BrowserHostileCodec> = {
   vp9: { representativeMime: 'video/webm; codecs="vp09.00.10.08"', prewarm: false },
 };
 
+const BROWSER_PLAYABLE_CODECS: ReadonlySet<string> = new Set(["h264", "vp8"]);
+
+const UNLISTED_HOSTILE: BrowserHostileCodec = { representativeMime: null, prewarm: true };
+
 /** `Object.hasOwn` rather than a bare index: a codec named `constructor` or
  * `toString` would otherwise resolve against `Object.prototype`. */
 function hostileCodecEntry(codecName: string): BrowserHostileCodec | undefined {
-  return Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)
-    ? BROWSER_HOSTILE_CODECS[codecName]
-    : undefined;
+  if (Object.hasOwn(BROWSER_HOSTILE_CODECS, codecName)) return BROWSER_HOSTILE_CODECS[codecName];
+  return BROWSER_PLAYABLE_CODECS.has(codecName) ? undefined : UNLISTED_HOSTILE;
 }
 
 /** The pre-warm gate: true only for codecs with no cross-platform browser
