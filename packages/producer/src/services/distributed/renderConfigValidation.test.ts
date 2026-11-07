@@ -19,3 +19,16 @@ describe("validateDistributedRenderConfig proresProfile", () => {
     ).toThrow("applies to mov renders, not mp4");
   });
 });
+
+describe("validateDistributedRenderConfig minParallelChunks", () => {
+  const mp4 = { ...base, format: "mp4" } as const;
+  it("accepts a floor up to the chunk ceiling and refuses one outside it", () => {
+    expect(() => validateDistributedRenderConfig({ ...mp4, minParallelChunks: 4 })).not.toThrow();
+    expect(() => validateDistributedRenderConfig({ ...mp4, minParallelChunks: 0 })).toThrow(
+      "config.minParallelChunks",
+    );
+    expect(() => validateDistributedRenderConfig({ ...mp4, minParallelChunks: 257 })).toThrow(
+      "must be <= 256",
+    );
+  });
+});
