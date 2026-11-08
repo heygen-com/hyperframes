@@ -2901,9 +2901,28 @@ export interface ScriptLoadCause {
   origin: ScriptLoadOrigin;
   /** `net::ERR_*`, `http-<status>` or `unknown`. */
   code: string;
+  /** `name@x.y.z` of a public CDN's npm package, so a report says which library failed; never the URL. */
+  lib?: string;
 }
 
 const CDN_HOSTS = /^(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)$/;
+
+const LIB = "([a-z0-9][a-z0-9._-]{0,48})";
+const VERSION = "(\\d+\\.\\d+\\.\\d+)";
+const LIB_PATHS = [
+  ["cdn.jsdelivr.net", new RegExp(`^/npm/${LIB}@${VERSION}/`)],
+  ["unpkg.com", new RegExp(`^/${LIB}@${VERSION}/`)],
+  ["cdnjs.cloudflare.com", new RegExp(`^/ajax/libs/${LIB}/${VERSION}/`)],
+] as const;
+
+/** `name@x.y.z` for an unscoped package at one exact version on a public CDN, else undefined. */
+function cdnLib(url: URL): string | undefined {
+  for (const [host, path] of LIB_PATHS) {
+    const match = url.hostname === host ? path.exec(url.pathname) : null;
+    if (match) return `${match[1]}@${match[2]}`;
+  }
+  return undefined;
+}
 
 /** Where a failed script came from and why, never its URL, host or path. */
 export function classifyScriptLoadCause(
@@ -2922,12 +2941,16 @@ export function classifyScriptLoadCause(
       : /^net::ERR_[A-Z0-9_]{1,40}$/.test(failure)
         ? failure
         : "unknown";
-  return { origin, code };
+  const lib = origin === "cdn" ? cdnLib(new URL(url)) : undefined;
+  return lib ? { origin, code, lib } : { origin, code };
 }
 
+/** Each cause's origin and code, then the failed libraries in a bracket the first bracket's readers ignore. */
 function scriptLoadCauseSuffix(causes: readonly ScriptLoadCause[]): string {
   const shown = causes.slice(0, 4).map((c) => `${c.origin}/${c.code}`);
-  return shown.length === 0 ? "" : ` [script_load: ${shown.join(", ")}]`;
+  if (shown.length === 0) return "";
+  const libs = [...new Set(causes.slice(0, 4).flatMap((c) => (c.lib ? [c.lib] : [])))];
+  return ` [script_load: ${shown.join(", ")}]${libs.length > 0 ? ` [script_lib: ${libs.join(", ")}]` : ""}`;
 }
 
 const CANCELLED_BY_THE_PAGE_NOT_REFUSED = "net::ERR_ABORTED";
