@@ -71,6 +71,7 @@ import {
   seekGsapTimeline,
   type GsapStructureKey,
 } from "./adapters/gsap";
+import { stampAuthoredOrder } from "./adapters/gsapAuthoredOrder";
 import { createAnimeJsAdapter } from "./adapters/animejs";
 import { createLottieAdapter } from "./adapters/lottie";
 import { createThreeAdapter } from "./adapters/three";
@@ -459,10 +460,13 @@ export function installAuthoredMediaCapture(): void {
 }
 
 // Mid-tween, GSAP's default force3D writes translate3d, and Chrome snaps a crop edge on it to whole pixels.
-// Runs at script evaluation: GSAP is configured as its bundle assigns window.gsap, before a composition's
-// set() or from() parses an element. Chains to an accessor already there (the producer's early stub).
+// Runs at script evaluation, as GSAP's bundle assigns window.gsap and before a composition's set() or from() parses
+// an element: force3D off, and tweens numbered by write order. Chains to an accessor already there (the early stub).
 export function installFlatGsapTransforms(): void {
-  const flatten = (g: Window["gsap"]) => g?.config?.({ force3D: false });
+  const flatten = (g: Window["gsap"]) => {
+    g?.config?.({ force3D: false });
+    stampAuthoredOrder(g);
+  };
   const prior = Object.getOwnPropertyDescriptor(window, "gsap");
   let loaded = window.gsap;
   flatten(loaded);
