@@ -196,3 +196,53 @@ test("a retried release reuses the attached handler zip instead of building a ne
   assert.match(fresh.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
   assert.equal(fresh.output, "");
 });
+
+test("a package marked private is skipped with a notice and never attempted", () => {
+  const step = publish.steps.find((s) => s.name === "Publish packages");
+  const root = mkdtempSync(join(tmpdir(), "hyperframes-publish-step-"));
+  try {
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    const log = join(root, "calls.log");
+    writeFileSync(
+      join(bin, "npm"),
+      `#!/bin/sh\necho "npm $*" >> "${log}"\n[ "$1" = view ] && exit 1\nexit 0\n`,
+    );
+    writeFileSync(join(bin, "pnpm"), `#!/bin/sh\necho "pnpm $*" >> "${log}"\nexit 0\n`);
+    chmodSync(join(bin, "npm"), 0o755);
+    chmodSync(join(bin, "pnpm"), 0o755);
+    const names = [...step.run.matchAll(/^\s*publish_pkg "[^"]+" "([^"]+)"$/gm)].map((m) => m[1]);
+    assert.ok(names.includes("@hyperframes/share") && names.length > 5);
+    for (const name of [...names, "@hyperframes/cli"]) {
+      const dir = join(root, "packages", name.split("/")[1]);
+      mkdirSync(dir, { recursive: true });
+      const manifest = {
+        name,
+        version: "9.8.7",
+        ...(name === "@hyperframes/share" ? { private: true } : {}),
+      };
+      writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+    }
+
+    const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        VERSION: "9.8.7",
+        DIST_TAG: "latest",
+      },
+      timeout: 10_000,
+    });
+
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const calls = readFileSync(log, "utf8");
+    assert.doesNotMatch(calls, /@hyperframes\/share/);
+    assert.match(result.stdout, /@hyperframes\/share is private/);
+    assert.match(calls, /^pnpm --filter @hyperframes\/core publish /m);
+    assert.match(calls, /^npm publish /m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

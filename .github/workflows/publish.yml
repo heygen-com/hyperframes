@@ -253,9 +253,28 @@ jobs:
         run: |
           FAILED=0
 
+          # A package's own "private": true says it is not on npm yet; its first publish is a separate decision.
+          is_private() {
+            node -e '
+              const fs = require("fs");
+              for (const dir of fs.readdirSync("packages")) {
+                const file = `packages/${dir}/package.json`;
+                if (!fs.existsSync(file)) continue;
+                const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
+                if (pkg.name === process.argv[1]) process.exit(pkg.private === true ? 0 : 1);
+              }
+              process.exit(1);
+            ' "$1"
+          }
+
           publish_pkg() {
             local filter="$1"
             local name="$2"
+
+            if is_private "$name"; then
+              echo "⏭️  ${name} is private (not published to npm yet) — skipping"
+              return 0
+            fi
 
             # Check if this version is already published
             if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
