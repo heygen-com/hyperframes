@@ -1131,7 +1131,6 @@ async function executeLocalRender(
 
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
-  // The CLI ships GSAP at the version the compiler names, so a render never needs the network for it.
   const gsapVendorDir = resolveGsapVendorDir();
   if (gsapVendorDir && !process.env.HYPERFRAMES_GSAP_VENDOR_DIR) {
     process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
