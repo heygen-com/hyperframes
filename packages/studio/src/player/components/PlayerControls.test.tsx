@@ -57,7 +57,7 @@ describe("PlayerControls preview seeking", () => {
         setValue.call(input, String(time));
         input.dispatchEvent(new Event("input", { bubbles: true }));
       });
-      expect(onSeek).toHaveBeenLastCalledWith(time);
+      expect(onSeek).toHaveBeenLastCalledWith(time, { settled: true });
     }
     expect(onSeek).toHaveBeenCalledTimes(4);
   });

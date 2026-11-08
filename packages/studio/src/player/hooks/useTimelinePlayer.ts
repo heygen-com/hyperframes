@@ -28,6 +28,7 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import { attachPausedVideoProvider } from "../lib/pausedVideoProvider";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
@@ -150,6 +151,7 @@ export function useTimelinePlayer({
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
         const win = iframe?.contentWindow as IframeWindow | null;
         if (!iframe || !win) return null;
+        attachPausedVideoProvider(iframe, win);
         const adapter = resolvePlaybackAdapter(iframe, win, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
@@ -295,7 +297,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean; settled?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();

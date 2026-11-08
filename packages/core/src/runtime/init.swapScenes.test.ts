@@ -1879,6 +1879,8 @@ describe("the preview's scene window", () => {
       return ready.has(this) ? 4 : 1;
     });
     vi.spyOn(HTMLMediaElement.prototype, "networkState", "get").mockReturnValue(2);
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(64);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(36);
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const { root } = trackingRoot();

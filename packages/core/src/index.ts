@@ -308,6 +308,11 @@ export {
   type PreviewQuality,
   type PreviewSourceFacts,
 } from "./previewProxyBox";
+export type {
+  PausedVideoFrameProvider,
+  PausedVideoFrameRequest,
+  PausedVideoFrame,
+} from "./runtime/pausedVideoFrames";
 
 // Inline scripts
 export {
