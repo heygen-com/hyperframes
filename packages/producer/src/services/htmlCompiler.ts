@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
+import { bundledScript } from "./bundledScripts.js";
 import {
   COMPOSITION_SOURCE_URL,
   compileTimingAttrs,
@@ -1305,12 +1306,18 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 
   const downloads = await Promise.allSettled(
     externalScripts.map(async ({ el, src }) => {
+      const integrity = el.getAttribute("integrity") || "";
+      // The host's own copy needs no network; one that fails the tag's integrity metadata is not used.
+      const bundled = bundledScript(src);
+      if (bundled && matchesScriptIntegrity(bundled, integrity)) {
+        return { src, text: new TextDecoder().decode(bundled) };
+      }
       const response = await fetch(src, {
         signal: AbortSignal.timeout(15_000),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")) {
+      if (!matchesScriptIntegrity(bytes, integrity)) {
         throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
       }
       return { src, text: new TextDecoder().decode(bytes) };
