@@ -398,7 +398,7 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
 
   const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
   const stripped = rel.replace(/^(?:\.\.\/)+/, "");
-  let archivePath = `${EXT_ASSETS_PREFIX}/${stripped}`;
+  let archivePath = archiveKey(`${EXT_ASSETS_PREFIX}/${stripped}`);
 
   if (ctx.usedArchivePaths.has(archivePath)) {
     const ext = posix.extname(archivePath);
@@ -425,7 +425,7 @@ function includeReferencedProjectFile(
   for (const candidate of [resolvedPath, fromRoot]) {
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
-    const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
+    const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
     if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return;
     if (!existsSync(absPath)) continue;
     if (statSync(absPath).isFile()) {
@@ -673,6 +673,26 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
   return stagePublishFiles(projectDir, Infinity) as Map<string, Buffer>;
 }
 
+export const archiveKey = (path: string): string => path.normalize("NFC");
+
+function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: string[]): void {
+  const names = new Map<string, string>();
+  for (const segment of filePaths.flatMap((path) => path.split("/"))) {
+    const composed = archiveKey(segment);
+    if (composed === segment) continue;
+    names.set(segment, composed);
+    names.set(encodeURIComponent(segment), encodeURIComponent(composed));
+  }
+  if (names.size === 0) return;
+  for (const [key, file] of fileContents) {
+    if (!Buffer.isBuffer(file) || !TEXT_FILE_EXTS.test(key)) continue;
+    let text = file.toString("utf-8");
+    const before = text;
+    for (const [from, to] of names) text = text.replaceAll(from, to);
+    if (text !== before) fileContents.set(key, Buffer.from(text, "utf-8"));
+  }
+}
+
 /** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
 export function stagePublishFiles(
   projectDir: string,
@@ -688,10 +708,20 @@ export function stagePublishFiles(
   }
 
   const fileContents = new Map<string, StagedFile>();
+  const diskPathOf = new Map<string, string>();
   for (const filePath of filePaths) {
-    fileContents.set(filePath, stageFile(join(absProjectDir, filePath), onDiskMinBytes));
+    const key = archiveKey(filePath);
+    const clash = diskPathOf.get(key);
+    if (clash !== undefined) {
+      throw new Error(
+        `"${clash}" and "${filePath}" have the same name written in two Unicode forms and would overwrite each other in the archive. Rename one of them.`,
+      );
+    }
+    diskPathOf.set(key, filePath);
+    fileContents.set(key, stageFile(join(absProjectDir, filePath), onDiskMinBytes));
   }
 
+  composeNamesInText(fileContents, filePaths);
   localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes);
   return fileContents;
 }
