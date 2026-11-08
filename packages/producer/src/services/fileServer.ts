@@ -208,7 +208,8 @@ export function parseRangeHeader(
 /**
  * Page-side virtual-time shim, installed before page scripts on every render path.
  * Holds Date.now, performance.now, rAF and later timers at the seek time, and seeds Math.random and
- * crypto.getRandomValues from it, so workers and re-renders draw the same values.
+ * crypto.getRandomValues from it, so a re-render repeats. Draws at page load or inside a frame also match
+ * across worker counts; a value resolved on a tween's first render depends on the frame a worker reaches first.
  */
 const VIRTUAL_TIME_SHIM = String.raw`(function() {
   if (window.__HF_VIRTUAL_TIME__) return;
