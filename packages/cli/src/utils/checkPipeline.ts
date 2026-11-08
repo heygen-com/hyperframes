@@ -621,7 +621,9 @@ async function collectGridSamples(
 }
 
 function craftEnabled(driver: CheckAuditDriver, options: CheckOptions): boolean {
-  return !options.range && typeof driver.collectCraftFrame === "function";
+  return (
+    options.craft !== false && !options.range && typeof driver.collectCraftFrame === "function"
+  );
 }
 
 async function collectContrastAt(

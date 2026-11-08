@@ -544,6 +544,24 @@ it("--budget sets when the whole check stops, its report time kept back, counted
   expect(runPipeline.mock.calls[1]?.[1].budget).toBeUndefined();
 });
 
+it("--no-craft reaches the pipeline as craft: false, and the craft pass is on without it", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json", "--no-craft"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].craft).toBe(false);
+  expect(runPipeline.mock.calls[1]?.[1].craft).toBe(true);
+});
+
 it("parses the caption-zone grammar and enables the frame gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -3044,6 +3062,15 @@ describe("check pipeline", () => {
 
       const strict = await runScenario(craftDriver(), { strict: true });
       expect(checkExitCode(strict.report)).toBe(0);
+    });
+
+    it("--no-craft never samples the craft frames and the report says the pass was skipped", async () => {
+      const driver = craftDriver();
+      const { report } = await runScenario(driver, { craft: false });
+
+      expect(driver.collectCraftFrame).not.toHaveBeenCalled();
+      expect(report.craft.enabled).toBe(false);
+      expect(report.craft.findings).toEqual([]);
     });
 
     it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {

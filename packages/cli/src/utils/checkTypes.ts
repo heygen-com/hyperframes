@@ -38,6 +38,7 @@ export interface CheckOptions {
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
   includeUnmounted?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {
