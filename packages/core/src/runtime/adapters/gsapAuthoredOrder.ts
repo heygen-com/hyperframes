@@ -27,7 +27,7 @@ export function stampAuthoredOrder(
   }
 }
 
-/** When the film wrote the child of `owner` that holds `tween`; undefined for a film built before the runtime loaded. */
+/** When the film wrote the child of `owner` holding `tween`; undefined for a film built before the runtime loaded. */
 export function authoredOrderOf(tween: GsapPlaced, owner: object): number | undefined {
   let order: number | undefined;
   for (

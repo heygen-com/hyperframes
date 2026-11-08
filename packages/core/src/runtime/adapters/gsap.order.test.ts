@@ -251,8 +251,8 @@ function setBeforeFadeIn() {
 }
 
 const CARD_FRAMES = range(0, 300);
-// Inside the overlap GSAP's own in-order stepping shows the set's value for one frame (190) that the runtime's re-render
-// does not; this test is about what the film shows once the last card has faded in.
+// Inside the overlap GSAP's own in-order stepping shows the set's value for one frame (190) that the runtime's
+// re-render does not; this test is about what the film shows once the last card has faded in.
 const FADED_IN = Math.ceil((6.0 + 3 * 0.15 + 0.8) * SET_FPS);
 
 /** Card 0's opacity at each frame, through the render's seek, or through the runtime's seek and re-render. */
