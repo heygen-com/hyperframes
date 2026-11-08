@@ -4165,6 +4165,20 @@ describe("check cache", () => {
     expect(runPipeline).toHaveBeenCalledTimes(2);
   });
 
+  it("still hits when the check touches its video copies under .transcode-cache", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const copy = join(dir, ".transcode-cache", "clip.mp4");
+    mkdirSync(join(dir, ".transcode-cache"));
+    writeFileSync(copy, Buffer.alloc(3 * 1024 * 1024, 1));
+    runPipeline.mockImplementationOnce(async () => {
+      utimesSync(copy, new Date(), new Date());
+      return reportWithFindings();
+    });
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
   it("never caches a project whose .hyperframes links to another directory", async () => {
     const { dir, runPipeline, run } = setup(reportWithFindings());
     mkdirSync(join(dir, "real"));

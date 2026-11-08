@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "@hyperframes/studio-server/proxy-transcoder";
 import type { CheckOptions, CheckReport } from "./checkTypes.js";
 
 const PROJECT_STATE_DIR = ".hyperframes";
@@ -68,7 +69,7 @@ function hashTree(dir: string, prefix: string, hash: ReturnType<typeof createHas
     a.name < b.name ? -1 : 1,
   );
   for (const entry of entries) {
-    if (entry.name === ".git") continue;
+    if (entry.name === ".git" || entry.name === PROXY_CACHE_DIR_NAME) continue;
     if (prefix === `${PROJECT_STATE_DIR}/` && TOOL_OWNED.has(entry.name)) continue;
     if (entry.name === "node_modules")
       throw new Uncacheable("node_modules can hold code the page runs");
