@@ -44,7 +44,13 @@ import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 import { recordLastCheck } from "../telemetry/config.js";
 import { failureCodes } from "../utils/checkFailureCodes.js";
-import { checkCacheKey, checkCacheable, readCachedPass, storePass } from "../utils/checkCache.js";
+import {
+  browserIdentity,
+  checkCacheKey,
+  checkCacheable,
+  readCachedPass,
+  storePass,
+} from "../utils/checkCache.js";
 import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
@@ -63,6 +69,7 @@ export interface CheckCommandDependencies {
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
   prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
+  browserIdentity?(): Promise<string | undefined>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
@@ -366,13 +373,17 @@ async function checkOrReplay(
   project: ProjectDir,
   options: CheckOptions,
 ): Promise<SavedCheckReport> {
+  const identify = dependencies.browserIdentity ?? browserIdentity;
   return withProjectLock(project.dir, "check", async () => {
-    const key = checkCacheable(options) ? checkCacheKey(project.dir, options, VERSION) : undefined;
+    const keyNow = async () =>
+      checkCacheable(options)
+        ? checkCacheKey(project.dir, options, VERSION, await identify())
+        : undefined;
+    const key = await keyNow();
     const cached = key ? readCachedPass(project.dir, key) : undefined;
     if (cached) return cached;
     const report = await dependencies.runPipeline(project, options);
-    const treeUnchangedByTheRun =
-      key !== undefined && checkCacheKey(project.dir, options, VERSION) === key;
+    const treeUnchangedByTheRun = key !== undefined && (await keyNow()) === key;
     if (treeUnchangedByTheRun) storePass(project.dir, key, report);
     return report;
   });
@@ -726,7 +737,7 @@ function browserSkippedLine(report: CheckReport): string {
 function printHumanReport(report: CheckReport): void {
   if (report.cached)
     console.log(
-      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Run with --no-cache to check again.`,
+      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
     );
   if (report.scope) {
     console.log(

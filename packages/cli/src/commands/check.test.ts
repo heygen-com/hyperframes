@@ -4035,6 +4035,7 @@ describe("check cache", () => {
   });
 
   function setup(report: CheckReport) {
+    const browser: { identity: string | undefined } = { identity: "chrome:1" };
     const dir = mkdtempSync(join(tmpdir(), "hf-check-cache-"));
     dirs.push(dir);
     writeFileSync(join(dir, "index.html"), "<html>one</html>");
@@ -4044,10 +4045,12 @@ describe("check cache", () => {
       runPipeline,
       prepareMedia: vi.fn(async () => []),
       withMeta: (value) => value,
+      browserIdentity: async () => browser.identity,
     });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     return {
       dir,
+      browser,
       runPipeline,
       run: (...flags: string[]) => runCommand(command, { rawArgs: ["--json", ...flags] }),
     };
@@ -4136,6 +4139,40 @@ describe("check cache", () => {
     await run();
     vi.unstubAllEnvs();
     expect(runPipeline).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-runs when the browser binary changes, and never caches without one", async () => {
+    const { browser, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    browser.identity = "chrome:2";
+    await run();
+    browser.identity = undefined;
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when a script under .hyperframes changes, but not when the CLI's own files do", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, ".hyperframes", "artifacts"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.log(1)");
+    await run();
+    writeFileSync(join(dir, ".hyperframes", "artifacts", "report.json"), "{}");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.error(1)");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a project whose .hyperframes links to another directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "real"));
+    mkdirSync(join(dir, ".hyperframes"));
+    symlinkSync(join(dir, "real"), join(dir, ".hyperframes", "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
   });
 
   it("re-runs when the flags differ, or with --no-cache, or under --budget", async () => {

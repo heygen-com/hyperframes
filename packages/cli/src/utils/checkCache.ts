@@ -11,7 +11,16 @@ import {
 import { join } from "node:path";
 import type { CheckOptions, CheckReport } from "./checkTypes.js";
 
-const SKIPPED_DIRS = new Set([".hyperframes", ".git"]);
+const PROJECT_STATE_DIR = ".hyperframes";
+// What the CLI itself writes under .hyperframes; anything else there (a script the page loads) is project input.
+const TOOL_OWNED = new Set([
+  "artifacts",
+  "cache",
+  "history-id",
+  "video-state.json",
+  "video-state-lock",
+  "project.lock",
+]);
 // Bigger files (video, audio) are not read: size, mtime and ctime (which a tool cannot restore) stand for them.
 const HASH_CONTENT_UP_TO = 2 * 1024 * 1024;
 // Environment that changes what a check loads or how long it waits, so it is part of the key.
@@ -21,6 +30,24 @@ class Uncacheable extends Error {}
 
 function cachePath(projectDir: string): string {
   return join(projectDir, ".hyperframes", "cache", "check.json");
+}
+
+/** The browser binary a check would launch, by path and file identity; undefined when none is installed. */
+export async function browserIdentity(): Promise<string | undefined> {
+  const { findBrowser } = await import("../browser/manager.js");
+  const found = await findBrowser();
+  if (!found) return undefined;
+  try {
+    const fd = openSync(found.executablePath, "r");
+    try {
+      const { size, mtimeMs, ctimeMs, ino } = fstatSync(fd);
+      return `${found.executablePath}:${size}:${mtimeMs}:${ctimeMs}:${ino}`;
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 function fileFingerprint(path: string): string {
@@ -41,7 +68,8 @@ function hashTree(dir: string, prefix: string, hash: ReturnType<typeof createHas
     a.name < b.name ? -1 : 1,
   );
   for (const entry of entries) {
-    if (SKIPPED_DIRS.has(entry.name)) continue;
+    if (entry.name === ".git") continue;
+    if (prefix === `${PROJECT_STATE_DIR}/` && TOOL_OWNED.has(entry.name)) continue;
     if (entry.name === "node_modules")
       throw new Uncacheable("node_modules can hold code the page runs");
     const path = join(dir, entry.name);
@@ -56,8 +84,10 @@ export function checkCacheKey(
   projectDir: string,
   options: CheckOptions,
   version: string,
+  browser: string | undefined,
 ): string | undefined {
-  const hash = createHash("sha256").update(`${version}\0`);
+  if (browser === undefined) return undefined; // no installed browser: the check would download one
+  const hash = createHash("sha256").update(`${version}\0${browser}\0`);
   const { cache: _cache, ...verdictOptions } = options;
   const env = Object.entries(process.env)
     .filter(([name]) => VERDICT_ENV.test(name))
