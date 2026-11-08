@@ -1409,6 +1409,12 @@ Overlap is judged on the text a viewer can see: a part of a text block that an
 overflow clip, a `clip-path` or a gradient `mask-image` (on the text or an ancestor)
 keeps from painting does not count.
 
+`text_word_split` (warning) reports Korean text where a line break lands inside
+a word: between two Hangul syllables, or between a Hangul particle and the Latin
+word or number it is attached to (`HyperFrames|로`). Chrome's default
+`word-break: normal` allows those breaks; set `word-break: keep-all` on the text
+or a parent so Korean lines break only at spaces.
+
 #### Mark intentional layout choices
 
 When the audit is wrong because the layout is deliberate, say so in the HTML and
