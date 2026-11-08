@@ -10,10 +10,9 @@ const ADDERS = ["to", "from", "fromTo", "set"] as const;
 let written = 0;
 
 /** Numbers every child a timeline adds with `to`, `from`, `fromTo` and `set` by when the film wrote it. */
-export function stampAuthoredOrder(
-  gsap: { core?: { Timeline?: { prototype: object } } } | undefined,
-): void {
-  const proto = gsap?.core?.Timeline?.prototype as TimelineProto | undefined;
+export function stampAuthoredOrder(gsap: object | undefined): void {
+  const core = (gsap as { core?: { Timeline?: { prototype: object } } } | undefined)?.core;
+  const proto = core?.Timeline?.prototype as TimelineProto | undefined;
   if (!proto || proto._hfStamped) return;
   proto._hfStamped = true;
   for (const name of ADDERS) {
