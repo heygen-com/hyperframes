@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FFMPEG_PATH_ENV, findFFmpeg } from "../browser/ffmpeg.js";
 import { loadSharp } from "../utils/optionalPackages.js";
-import { probeVideo } from "../measure/media.js";
+import { Fix, probeVideo } from "../measure/media.js";
 
 vi.mock("../cloud/auth.js", () => ({
   resolveCloudAuthHeaders: async () => ({ "x-api-key": "k" }),
@@ -42,6 +42,8 @@ vi.mock("./v3.js", async (load) => ({
 }));
 
 const {
+  avatar6Refusal,
+  avatarModel,
   checkRequest,
   foldShort,
   generate,
@@ -916,6 +918,68 @@ describe("generate", () => {
     expect(sent[1]).toMatchObject({ type: "avatar", avatar_id: "look1" });
     expect(creditsOf(priceOf({ type: "avatar", photo, audio, out }))).toBe(116);
     expect(() => checkRequest({ type: "avatar", photo, out })).toThrow("--script");
+  });
+
+  it("renders a look on Avatar 6 by default, with its motion prompt", async () => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      if (url === "https://files.test/a6.mp4") return new Response(new Uint8Array([1]));
+      return json({
+        data: { id: "a6", status: "completed", video_url: "https://files.test/a6.mp4" },
+      });
+    });
+    const look = { type: "avatar", avatar: "look-6", script: "hi there", voice: "v1" } as const;
+    const prompt = "warm, small open-hand gestures";
+    await settled(generate({ ...look, prompt, out: join(project, "assets/a6-pro.mp4") }));
+    await settled(
+      generate({
+        ...look,
+        model: "heygen-avatar-6-turbo",
+        out: join(project, "assets/a6-turbo.mp4"),
+      }),
+    );
+    await settled(
+      generate({ ...look, prompt, model: "avatar_iv", out: join(project, "assets/a6-iv.mp4") }),
+    );
+    expect(sent[0]).toMatchObject({
+      type: "avatar",
+      avatar_id: "look-6",
+      engine: { type: "heygen-avatar-6" },
+      motion_prompt: prompt,
+      resolution: "1080p",
+    });
+    expect(sent[1]).toMatchObject({ engine: { type: "heygen-avatar-6-turbo" } });
+    expect(sent[2]).toMatchObject({ type: "avatar", avatar_id: "look-6" });
+    expect(sent[2]).not.toHaveProperty("engine");
+    expect(sent[2]).not.toHaveProperty("motion_prompt");
+  });
+
+  it("keeps a photo on Avatar IV and names the engines it takes", () => {
+    const photo: GenerateRequest = { type: "avatar", photo: "p.png", script: "hi", out: "a.mp4" };
+    expect(avatarModel(photo)).toBe("avatar_iv");
+    expect(avatarModel({ avatar: "look-6" })).toBe("heygen-avatar-6");
+    expect(() => avatarModel({ ...photo, model: "heygen-avatar-6" })).toThrow("avatar look");
+    expect(() => avatarModel({ avatar: "look-6", model: "avatar_v" })).toThrow(
+      "not an avatar engine",
+    );
+  });
+
+  it("turns HeyGen's 404 on an Avatar 6 render into the Avatar IV rerun", () => {
+    const look: GenerateRequest = { type: "avatar", avatar: "look-6", out: "a.mp4" };
+    const notFound = Object.assign(new Fix("HeyGen 404", "fix the request"), { status: 404 });
+    expect(avatar6Refusal(look, notFound)?.fix).toBe("run the same command with --model avatar_iv");
+    expect(avatar6Refusal({ ...look, model: "avatar_iv" }, notFound)).toBeUndefined();
+    expect(avatar6Refusal(look, Object.assign(notFound, { status: 402 }))).toBeUndefined();
+  });
+
+  it("prices a look on Avatar 6's own rows", () => {
+    const script = Array.from({ length: 30 }, () => "word").join(" ");
+    const pro = priceOf({ type: "avatar", avatar: "look-6", out: "a.mp4", script });
+    expect(creditsOf(pro)).toBe(750);
+    expect(pro.list).toBeCloseTo(1.5);
+    const turbo = { type: "avatar", avatar: "look-6", out: "a.mp4", script } as const;
+    expect(creditsOf(priceOf({ ...turbo, model: "heygen-avatar-6-turbo" }))).toBe(375);
   });
 
   it("prices an avatar on the plan's avatar rows, not its API price", () => {

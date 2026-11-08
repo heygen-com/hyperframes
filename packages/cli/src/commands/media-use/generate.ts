@@ -35,6 +35,10 @@ export const examples: Example[] = [
     "hyperframes media-use generate --type cutout --video assets/presenter.mp4 --out assets/presenter-cutout.webm",
   ],
   [
+    "The person's own HeyGen avatar look saying a script in their chosen voice, on Avatar 6",
+    'hyperframes media-use generate --type avatar --avatar <look-id> --script "Hi, I am Ana" --voice <voice-id> --prompt "warm, small open-hand gestures" --out assets/ana.mp4',
+  ],
+  [
     "The person in a photo saying a finished voice, which stays as it is",
     'hyperframes media-use generate --type avatar --photo assets/presenter.png --audio assets/vo.mp3 --prompt "seated, talks with both hands" --aspect 16:9 --out assets/host.mp4',
   ],
@@ -76,7 +80,8 @@ export default defineCommand({
     },
     prompt: {
       type: "string",
-      description: "What it shows or sounds like (image, video, music); avatar: how a photo moves",
+      description:
+        "What it shows or sounds like (image, video, music); avatar: how the person moves",
     },
     reference: {
       type: "string",
@@ -111,7 +116,8 @@ export default defineCommand({
     photo: { type: "string", description: "avatar: the person's photo" },
     avatar: {
       type: "string",
-      description: "avatar: the person's own HeyGen avatar look id, instead of --photo",
+      description:
+        "avatar: the person's own HeyGen avatar look id, instead of --photo; renders on Avatar 6",
     },
     script: { type: "string", description: "avatar, voice: the words spoken" },
     voice: {
@@ -130,7 +136,7 @@ export default defineCommand({
     model: {
       type: "string",
       description:
-        "image: nano-banana-2 (default), nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare",
+        "image: nano-banana-2 (default), nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare; avatar with --avatar: heygen-avatar-6 (default), heygen-avatar-6-turbo or avatar_iv (a --photo renders on avatar_iv)",
     },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
