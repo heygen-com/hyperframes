@@ -17,8 +17,6 @@ export function defersMediaIn(doc: Document): boolean {
     doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
   );
 }
-/** A capture page (posters, hover frames, `hyperframes check`): it seeks and never plays, so it loads only the clips
- * on screen. */
 export function capturePageIn(doc: Document): boolean {
   return (
     doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.getAttribute("content") ===
