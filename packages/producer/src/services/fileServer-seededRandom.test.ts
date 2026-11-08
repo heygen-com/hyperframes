@@ -1,16 +1,5 @@
 /**
- * Tests for the `seedRandomFromFrame` gate on `buildVirtualTimeShim`.
- *
- *   1. Backwards compatibility — `buildVirtualTimeShim({
- *      seedRandomFromFrame: false })` returns a string byte-identical to the
- *      legacy `VIRTUAL_TIME_SHIM`. Existing in-process callers see no
- *      difference.
- *
- *   2. Distributed determinism — with `seedRandomFromFrame: true`, the shim's
- *      `seekToTime(ms)` reseeds a Mulberry32 PRNG keyed by the virtual time
- *      and replaces `Math.random` / `crypto.getRandomValues` with that PRNG.
- *      `seekToTime(N)` → N `Math.random()` calls is a deterministic
- *      sequence; reseeking to the same time restarts the sequence.
+ * Tests for the seeded `Math.random` / `crypto.getRandomValues` in `VIRTUAL_TIME_SHIM`.
  *
  * The shim is executed inside `node:vm` with a synthetic `window`/`Math` so
  * tests don't need real Chrome.
@@ -18,7 +7,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { Script, createContext, type Context } from "node:vm";
-import { buildVirtualTimeShim, VIRTUAL_TIME_SHIM } from "./fileServer.js";
+import { VIRTUAL_TIME_SHIM } from "./fileServer.js";
 
 /**
  * Build a fresh VM context with its own globals (its own Math, its own
@@ -62,50 +51,16 @@ function runShim(shimSource: string): {
   return ctx;
 }
 
-describe("buildVirtualTimeShim — backwards compatibility", () => {
-  it("default (seedRandomFromFrame: false) is byte-identical to VIRTUAL_TIME_SHIM", () => {
-    // The const that existing call sites import:
-    //   renderOrchestrator.ts: preHeadScripts: [VIRTUAL_TIME_SHIM]
-    //   probeStage.ts:         preHeadScripts: [VIRTUAL_TIME_SHIM]
-    // Must continue to emit the same script.
-    const built = buildVirtualTimeShim({ seedRandomFromFrame: false });
-    expect(built).toBe(VIRTUAL_TIME_SHIM);
-  });
-
-  it("default shim does not mention any seeded-RNG identifiers", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: false });
-    expect(shim).not.toContain("mulberry32");
-    expect(shim).not.toContain("reseedRngFromTime");
-    expect(shim).not.toContain("__seededGetRandomValues");
-    expect(shim).not.toContain("Math.random = ");
-  });
-
-  it("default shim leaves Math.random pointing at the VM's native function", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: false });
-    const { run } = runShim(shim);
-    // toString() of native Math.random is `function random() { [native code] }`
-    const isNative = run<boolean>(`/\\[native code\\]/.test(Math.random.toString())`);
-    expect(isNative).toBe(true);
-  });
-});
-
-describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
-  it("emits the seeded-RNG block", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
-    expect(shim).toContain("mulberry32");
-    expect(shim).toContain("reseedRngFromTime");
-    expect(shim).toContain("__seededGetRandomValues");
-  });
-
+describe("VIRTUAL_TIME_SHIM seeded randomness", () => {
   it("replaces Math.random with a non-native PRNG", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const { run } = runShim(shim);
     const isNative = run<boolean>(`/\\[native code\\]/.test(Math.random.toString())`);
     expect(isNative).toBe(false);
   });
 
   it("produces identical Math.random sequences across two fresh VMs at the same time", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const drawSequence = `(() => {
       window.__HF_VIRTUAL_TIME__.seekToTime(1234);
       const seq = [];
@@ -126,7 +81,7 @@ describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
   it("re-seeking to the same time produces the same Math.random sequence", () => {
     // The core determinism contract for retries: same (planDir, chunkIndex) →
     // same frame N → same seekToTime(t_N) → same Math.random outputs.
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const { run } = runShim(shim);
     const observed = run<{ first: number[]; second: number[] }>(`(() => {
       window.__HF_VIRTUAL_TIME__.seekToTime(42);
@@ -141,7 +96,7 @@ describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
   });
 
   it("different times produce different Math.random sequences", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const { run } = runShim(shim);
     const observed = run<{ t0: number[]; t1: number[] }>(`(() => {
       window.__HF_VIRTUAL_TIME__.seekToTime(0);
@@ -154,7 +109,7 @@ describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
   });
 
   it("seeded crypto.getRandomValues writes deterministic bytes", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const drawBytes = `(() => {
       window.__HF_VIRTUAL_TIME__.seekToTime(7);
       const buf = new Uint8Array(64);
@@ -168,7 +123,7 @@ describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
   });
 
   it("seeded crypto.getRandomValues handles odd byte lengths", () => {
-    const shim = buildVirtualTimeShim({ seedRandomFromFrame: true });
+    const shim = VIRTUAL_TIME_SHIM;
     const { run } = runShim(shim);
     const lengths = run<number[]>(`(() => {
       window.__HF_VIRTUAL_TIME__.seekToTime(3);
@@ -181,5 +136,17 @@ describe("buildVirtualTimeShim — seedRandomFromFrame: true", () => {
       return out;
     })()`);
     expect(lengths).toEqual([1, 2, 3, 4, 5, 7, 31, 33]);
+  });
+
+  it("draws the same Math.random sequence at page load in two fresh pages", () => {
+    // A GSAP stagger { from: "random" } draws its order when the page script runs, before any seek.
+    const drawAtLoad = `(() => {
+      const seq = [];
+      for (let i = 0; i < 16; i++) seq.push(Math.random());
+      return seq;
+    })()`;
+    const seqA = runShim(VIRTUAL_TIME_SHIM).run<number[]>(drawAtLoad);
+    const seqB = runShim(VIRTUAL_TIME_SHIM).run<number[]>(drawAtLoad);
+    expect(seqA).toEqual(seqB);
   });
 });

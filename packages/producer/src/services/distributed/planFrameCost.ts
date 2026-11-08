@@ -8,7 +8,7 @@ import {
 } from "@hyperframes/engine";
 import type { ProducerLogger } from "../../logger.js";
 import {
-  buildVirtualTimeShim,
+  VIRTUAL_TIME_SHIM,
   closeFileServerSafely,
   createFileServer,
   resolveRenderFpsConfig,
@@ -73,7 +73,7 @@ export async function measurePlanSecondsPerFrame(input: {
     projectDir: compiledDir,
     compiledDir,
     port: 0,
-    preHeadScripts: [buildVirtualTimeShim({ seedRandomFromFrame: true })],
+    preHeadScripts: [VIRTUAL_TIME_SHIM],
     fps: fpsRatio,
   });
   let session: Awaited<ReturnType<typeof createCaptureSession>> | null = null;

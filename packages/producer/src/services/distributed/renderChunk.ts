@@ -21,8 +21,7 @@
  *   - Browser is launched with `browserGpuMode: "software"` and verified
  *     against `chrome://gpu` via `assertSwiftShader` — a non-SwiftShader
  *     backend trips a non-retryable `BROWSER_GPU_NOT_SOFTWARE`.
- *   - The file server serves with the seeded-random shim
- *     (`buildVirtualTimeShim({ seedRandomFromFrame: true })`) so any
+ *   - The file server serves `VIRTUAL_TIME_SHIM`, as every render path does, so any
  *     composition that uses `Math.random` / `crypto.getRandomValues`
  *     produces byte-identical pixels per `(planDir, chunkIndex)`.
  *   - No `lastFrameCache` priming: every frame seeks fresh DOM so the
@@ -30,7 +29,7 @@
  *   - The chunk's encode runs with `lockGopForChunkConcat: true` and
  *     `gopSize === framesInChunk` so concat-copy at assemble time is safe.
  *
- * Every determinism toggle above is opt-in — only this primitive enables them.
+ * Every other determinism toggle above is opt-in — only this primitive enables them.
  * In-process renders (`executeRenderJob`) leave them off.
  */
 
@@ -86,7 +85,7 @@ import {
 import { sha256Hex } from "../render/stages/planHash.js";
 import { applyRuntimeEnvSnapshot } from "../render/runtimeEnvSnapshot.js";
 import {
-  buildVirtualTimeShim,
+  VIRTUAL_TIME_SHIM,
   closeFileServerSafely,
   createFileServer,
   resolveRenderFpsConfig,
@@ -723,12 +722,12 @@ export async function renderChunk(
 
     // ── File server with the seeded-random shim ──
     // `Math.random` / `crypto.getRandomValues` are seeded from virtual
-    // time so retries are pixel-identical. Only distributed renders flip this.
+    // time so retries are pixel-identical.
     const fileServer: FileServerHandle = await createFileServer({
       projectDir: compiledDir,
       compiledDir,
       port: 0,
-      preHeadScripts: [buildVirtualTimeShim({ seedRandomFromFrame: true })],
+      preHeadScripts: [VIRTUAL_TIME_SHIM],
       // These dimensions are frozen by the controller from the render job, so
       // chunk runtime seek quantization stays on the same fps grid as capture.
       fps: { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen },
