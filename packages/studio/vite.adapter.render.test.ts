@@ -5,7 +5,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createServer, type ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
@@ -35,6 +35,7 @@ async function fixture(extra: Partial<RenderOptions> = {}) {
   dirs.push(dir);
   server = await createServer({
     configFile: false,
+    optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true, watch: null, ws: false },
   });
   const adapter = createViteAdapter(
@@ -53,7 +54,7 @@ async function fixture(extra: Partial<RenderOptions> = {}) {
     jobId: "gif-job",
     ...extra,
   });
-  return { dir, state, outputPath, metaPath: join(dir, "out.meta.json") };
+  return { dir, state, outputPath, metaPath: join(dir, "gif-job.meta.json") };
 }
 
 describe("Vite GIF rendering", () => {
@@ -76,7 +77,7 @@ describe("Vite GIF rendering", () => {
       producer.executeRenderJob.mockImplementation(
         async (_job, _dir, outputPath: string, _progress, signal: AbortSignal) => {
           writeFileSync(outputPath, "partial-gif");
-          writeFileSync(outputPath.replace(/\.gif$/, ".meta.json"), "{}");
+          writeFileSync(join(dirname(outputPath), "gif-job.meta.json"), "{}");
           await waitForRenderCancellation(signal, lateCompletion);
         },
       );

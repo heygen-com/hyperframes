@@ -204,6 +204,9 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState>();
   const CANCEL_SETTLE_MS = 45_000;
+  // Artifact identity outlives transient progress. Only validated render
+  // requests and disk listings populate this store; DELETE removes entries.
+  const renderArtifacts = new Map<string, { kind: RenderArtifactKind; outputPath: string }>();
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -358,6 +361,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     });
     jobState.kind ??= kind;
     renderJobs.set(jobId, jobState);
+    renderArtifacts.set(jobId, { kind, outputPath });
 
     ensureCleanupTimer();
 
@@ -444,7 +448,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   });
 
   async function renderDirectories(jobId: string): Promise<string[]> {
-    const outputPath = renderJobs.get(jobId)?.outputPath;
+    const outputPath = renderArtifacts.get(jobId)?.outputPath;
     if (outputPath) return [dirname(outputPath)];
 
     const projects = await adapter.listProjects();
@@ -478,13 +482,14 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // job — including one the server has never seen — resolves file
     // candidates only, so an unknown id can never trigger a recursive
     // removal.
-    const kind: RenderArtifactKind = renderJobs.get(jobId)?.kind ?? "file";
+    const kind: RenderArtifactKind = renderArtifacts.get(jobId)?.kind ?? "file";
     const directories = await renderDirectories(jobId);
     const artifacts = resolveRenderArtifacts(directories, jobId, kind);
     if (!artifacts) return c.json({ error: "forbidden" }, 403);
 
     for (const artifact of artifacts) deleteRenderArtifact(artifact);
     renderJobs.delete(jobId);
+    renderArtifacts.delete(jobId);
     return c.json({ deleted: true });
   });
 
@@ -581,13 +586,15 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     // so they remain downloadable after a server restart.
     for (const row of rows) {
       if (!renderJobs.has(row.id)) {
+        const kind = row.kind === "directory" ? "directory" : "file";
         renderJobs.set(row.id, {
           id: row.id,
           status: row.status,
           progress: 100,
           outputPath: row.path,
-          kind: row.kind === "directory" ? "directory" : "file",
+          kind,
         });
+        renderArtifacts.set(row.id, { kind, outputPath: row.path });
       }
     }
     return c.json({ renders: rows.map(({ path: _path, ...render }) => render) });

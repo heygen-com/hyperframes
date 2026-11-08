@@ -16,6 +16,11 @@ import type { RenderJobState, StudioApiAdapter } from "../types";
 
 type StartOpts = Parameters<StudioApiAdapter["startRender"]>[0];
 
+// A finished job is forgotten once a cleanup sweep has seen it finished for
+// longer than the 5-minute TTL. Sweeps run every minute, so the first sweep at
+// 60 s records the finish and the sweep at 420 s drops the job.
+const PROGRESS_EXPIRED_MS = 420_001;
+
 describe("directory (PNG-sequence) renders", () => {
   const roots: string[] = [];
 
@@ -24,6 +29,8 @@ describe("directory (PNG-sequence) renders", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
@@ -59,7 +66,7 @@ describe("directory (PNG-sequence) renders", () => {
     };
     const app = new Hono();
     registerRenderRoutes(app, adapter);
-    return { app, calls, project, rendersDir };
+    return { app, adapter, calls, project, rendersDir };
   }
 
   async function post(app: Hono, body: Record<string, unknown>) {
@@ -202,6 +209,67 @@ describe("directory (PNG-sequence) renders", () => {
   });
 
   describe("DELETE", () => {
+    it.each(["posted", "listed"] as const)(
+      "deletes a %s directory render after progress expires without touching same-stem files",
+      async (source) => {
+        vi.useFakeTimers();
+        const { app, adapter, rendersDir } = fixture();
+        let jobId = "restored";
+        if (source === "posted") {
+          ({ jobId } = await (await post(app, { format: "png-sequence" })).json());
+        } else {
+          writeSequence(join(rendersDir, jobId));
+          await listRenders(app);
+        }
+        writeFileSync(join(rendersDir, `${jobId}.meta.json`), '{"status":"complete"}');
+        writeFileSync(join(rendersDir, `${jobId}.mp4`), "keep");
+        expect((await app.request(`/render/${jobId}/progress`)).status).toBe(200);
+
+        await vi.advanceTimersByTimeAsync(PROGRESS_EXPIRED_MS);
+        expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
+        // Deletion must retain the validated path as well as its kind.
+        vi.spyOn(adapter, "listProjects").mockResolvedValue([]);
+
+        const response = await app.request(`/render/${jobId}`, { method: "DELETE" });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ deleted: true });
+        expect(existsSync(join(rendersDir, jobId))).toBe(false);
+        expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(false);
+        expect(readFileSync(join(rendersDir, `${jobId}.mp4`), "utf-8")).toBe("keep");
+        expect((await listRenders(app)).some((row) => row.kind === "directory")).toBe(false);
+      },
+    );
+
+    it.each(["posted", "listed"] as const)(
+      "deletes a %s file render after progress expires without touching a same-stem directory",
+      async (source) => {
+        vi.useFakeTimers();
+        const { app, rendersDir } = fixture((opts) => {
+          writeFileSync(opts.outputPath, "mp4");
+          return {
+            id: opts.jobId,
+            status: "complete",
+            progress: 100,
+            outputPath: opts.outputPath,
+          };
+        });
+        let jobId = "restored";
+        if (source === "posted") {
+          ({ jobId } = await (await post(app, { format: "mp4" })).json());
+        } else {
+          writeFileSync(join(rendersDir, `${jobId}.mp4`), "mp4");
+          await listRenders(app);
+        }
+        writeSequence(join(rendersDir, jobId));
+
+        await vi.advanceTimersByTimeAsync(PROGRESS_EXPIRED_MS);
+        expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
+        expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+        expect(existsSync(join(rendersDir, `${jobId}.mp4`))).toBe(false);
+        expect(existsSync(join(rendersDir, jobId, "frame_000000.png"))).toBe(true);
+      },
+    );
+
     it("removes the directory, its sidecar, and the job entry", async () => {
       const { app, rendersDir } = fixture();
       const { jobId } = await (await post(app, { format: "png-sequence" })).json();
@@ -217,43 +285,53 @@ describe("directory (PNG-sequence) renders", () => {
       expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
     });
 
-    it("rejects an escaping symlinked directory before deleting anything", async (context) => {
-      const { app, rendersDir } = fixture();
-      const outside = mkdtempSync(join(tmpdir(), "hf-render-outside-"));
-      roots.push(outside);
-      writeFileSync(join(outside, "keep.txt"), "keep");
-      // Only a job the server knows to be a directory render resolves the
-      // bare directory candidate, so the symlink must sit on a posted one.
-      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
-      rmSync(join(rendersDir, jobId), { recursive: true, force: true });
-      try {
-        symlinkSync(outside, join(rendersDir, jobId), "dir");
-      } catch {
-        context.skip();
-        return;
-      }
-      writeFileSync(join(rendersDir, `${jobId}.meta.json`), "{}");
+    it.each([0, PROGRESS_EXPIRED_MS])(
+      "rejects an escaping symlinked directory after %i ms before deleting anything",
+      async (elapsed, context) => {
+        vi.useFakeTimers();
+        const { app, rendersDir } = fixture();
+        const outside = mkdtempSync(join(tmpdir(), "hf-render-outside-"));
+        roots.push(outside);
+        writeFileSync(join(outside, "keep.txt"), "keep");
+        // Only a job the server knows to be a directory render resolves the
+        // bare directory candidate, so the symlink must sit on a posted one.
+        const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+        rmSync(join(rendersDir, jobId), { recursive: true, force: true });
+        try {
+          symlinkSync(outside, join(rendersDir, jobId), "dir");
+        } catch {
+          context.skip();
+          return;
+        }
+        writeFileSync(join(rendersDir, `${jobId}.meta.json`), "{}");
+        await vi.advanceTimersByTimeAsync(elapsed);
 
-      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(403);
-      expect(readFileSync(join(outside, "keep.txt"), "utf-8")).toBe("keep");
-      expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(true);
-    });
+        expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(403);
+        expect(readFileSync(join(outside, "keep.txt"), "utf-8")).toBe("keep");
+        expect(existsSync(join(rendersDir, `${jobId}.meta.json`))).toBe(true);
+      },
+    );
 
-    it("does not follow an in-project symlinked directory into a recursive delete", async (context) => {
-      const { app, rendersDir } = fixture();
-      const { jobId } = await (await post(app, { format: "png-sequence" })).json();
-      rmSync(join(rendersDir, jobId), { recursive: true, force: true });
-      const target = join(rendersDir, "real");
-      writeSequence(target);
-      try {
-        symlinkSync(target, join(rendersDir, jobId), "dir");
-      } catch {
-        context.skip();
-        return;
-      }
-      expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
-      expect(existsSync(join(target, "frame_000000.png"))).toBe(true);
-    });
+    it.each([0, PROGRESS_EXPIRED_MS])(
+      "does not follow an in-project symlinked directory after %i ms into a recursive delete",
+      async (elapsed, context) => {
+        vi.useFakeTimers();
+        const { app, rendersDir } = fixture();
+        const { jobId } = await (await post(app, { format: "png-sequence" })).json();
+        rmSync(join(rendersDir, jobId), { recursive: true, force: true });
+        const target = join(rendersDir, "real");
+        writeSequence(target);
+        try {
+          symlinkSync(target, join(rendersDir, jobId), "dir");
+        } catch {
+          context.skip();
+          return;
+        }
+        await vi.advanceTimersByTimeAsync(elapsed);
+        expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+        expect(existsSync(join(target, "frame_000000.png"))).toBe(true);
+      },
+    );
 
     it("deletes a file render without touching a same-stemmed directory render", async () => {
       const { app, rendersDir } = fixture((opts) => {
