@@ -1,6 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
@@ -13,7 +23,7 @@ import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
-  /** Copies the file in (a clone where the file system can) and returns the copy's hash. */
+  /** Copies the file in (a clone where the file system can, for all but small files) and returns the copy's hash. */
   put(absPath: string): Promise<string>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
@@ -29,6 +39,7 @@ export interface BlobStore {
 }
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
+const READ_ONCE_AT_MOST_BYTES = 64 * 1024;
 
 export function blobPath(dir: string, hash: string): string {
   // Checked where the path is joined, so no caller can read or write outside the store.
@@ -42,6 +53,16 @@ async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
+}
+
+async function readIfSmall(path: string): Promise<{ bytes: Buffer; mode: number } | null> {
+  const handle = await open(path, "r");
+  try {
+    const { size, mode } = await handle.stat();
+    return size > READ_ONCE_AT_MOST_BYTES ? null : { bytes: await handle.readFile(), mode };
+  } finally {
+    await handle.close();
+  }
 }
 
 async function cloneOrStream(from: string, to: string): Promise<void> {
@@ -144,8 +165,39 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     holds.delete(hash);
   };
 
+  const file = (hash: string, size: number) => {
+    if (!sizes.has(hash)) total += size;
+    sizes.set(hash, size);
+  };
+  const withFolderMadeIfMissing = (folder: string, write: () => Promise<void>) =>
+    write().catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      await mkdir(folder, { recursive: true });
+      await write();
+    });
+  // The bytes hashed are the bytes filed, so a write racing the read can never file bytes under the wrong hash.
+  const putBytes = async (bytes: Buffer, mode: number) => {
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    if (sizes.has(hash)) return hash;
+    const temp = join(dir, `incoming-${randomUUID()}`);
+    try {
+      await withFolderMadeIfMissing(dir, () => writeFile(temp, bytes, { mode }));
+      // A write applies the umask; the clone used for larger files keeps the mode exactly.
+      await chmod(temp, mode & 0o7777);
+      const to = blobPath(dir, hash);
+      await withFolderMadeIfMissing(dirname(to), () => renameWithRetryAsync(temp, to));
+    } catch (error) {
+      await rm(temp, { force: true });
+      throw error;
+    }
+    file(hash, bytes.length);
+    return hash;
+  };
+
   return {
     async put(absPath) {
+      const small = await readIfSmall(absPath);
+      if (small) return putBytes(small.bytes, small.mode);
       // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
       const temp = join(dir, `incoming-${randomUUID()}`);
       // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
@@ -162,8 +214,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
       const size = (await stat(temp)).size;
       await renameWithRetryAsync(temp, blobPath(dir, hash));
-      sizes.set(hash, size);
-      total += size;
+      file(hash, size);
       return hash;
     },
     reference: (absPath) => hashFile(absPath),

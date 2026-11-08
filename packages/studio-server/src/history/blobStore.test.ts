@@ -107,14 +107,17 @@ describe("the history store on Windows, while another process briefly holds a fi
     const store = await openBlobStore(join(root, "history", "blobs"));
     let refused = 0;
     vi.mocked(fsp.rename).mockImplementation(async (from, to) => {
-      if (refused++ < 2) throw busy();
+      if (refused < 2) {
+        refused += 1;
+        throw busy();
+      }
       return realRename(from, to);
     });
 
     const hash = await store.put(source);
 
     expect((await store.read(hash)).toString("utf8")).toBe("<p>kept</p>");
-    expect(refused).toBe(3);
+    expect(refused).toBe(2);
   });
 });
 
@@ -168,5 +171,22 @@ describe("a restore of a file the preview is serving", () => {
 
     expect(readFileSync(target, "utf8")).toBe("<p>after</p>");
     expect(heard).toEqual([]);
+  });
+});
+
+describe("the history store's count of what it holds", () => {
+  it("counts a file once when two copies of it are filed together", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-count-"));
+    try {
+      const small = join(root, "small.txt");
+      const large = join(root, "large.txt");
+      writeFileSync(small, "same bytes");
+      writeFileSync(large, "x".repeat(200 * 1024));
+      const store = await openBlobStore(join(root, "history", "blobs"));
+      await Promise.all([store.put(small), store.put(small), store.put(large), store.put(large)]);
+      expect(store.bytes()).toBe("same bytes".length + 200 * 1024);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
