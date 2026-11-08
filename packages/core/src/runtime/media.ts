@@ -473,6 +473,13 @@ function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: numb
   videoStartLatency = Math.min(0.1, Math.max(0, averaged));
 }
 
+/** A muted video takes its clock from its audio track, whose late start stalls the picture after a cut. */
+function dropSilentAudioTrack(el: HTMLMediaElement): void {
+  if (el.tagName !== "VIDEO" || !el.defaultMuted) return;
+  const tracks = (el as { audioTracks?: ArrayLike<{ enabled: boolean }> }).audioTracks;
+  for (const track of Array.from(tracks ?? [])) track.enabled = false;
+}
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -534,6 +541,7 @@ export function syncRuntimeMedia(params: {
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
+    dropSilentAudioTrack(el);
     const clipRate = clip.rate ?? clip.playbackRate;
     const origin = clip.origin ?? clip.start;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
