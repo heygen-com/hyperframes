@@ -1009,6 +1009,8 @@ jobs:
             packages/studio/data/projects/undo-socket-pool
           cp -R packages/studio/tests/e2e/fixtures/aroll-backdrop \
             packages/studio/data/projects/aroll-backdrop
+          cp -R packages/studio/tests/e2e/fixtures/preview-video-regression \
+            packages/studio/data/projects/preview-video-regression
       - name: Build the base the viewport gate compares against
         # The first parent of the checked-out commit, as in base-file.sh. Measured only when the head misses a budget.
         run: |
@@ -1181,7 +1183,7 @@ jobs:
       - name: Install ffmpeg for the paused-video fixture
         if: success() || failure()
         uses: ./.github/actions/install-ffmpeg-linux
-      - name: Undo while paused videos hold the preview's sockets
+      - name: Verify paused-video sockets, picture quality and native recovery
         # Counts the undo's wait for a socket, not its total time: unpinned it is 0 ms.
         if: success() || failure()
         run: |
@@ -1200,6 +1202,12 @@ jobs:
           STUDIO_URL="http://localhost:5318/#project/undo-socket-pool" \
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/undo-socket-pool" \
             node packages/studio/tests/e2e/undo-socket-pool.mjs | tee /tmp/undo-socket-pool.json
+          node packages/studio/tests/e2e/fixtures/preview-video-regression/generate.mjs \
+            packages/studio/data/projects/preview-video-regression
+          STUDIO_URL="http://localhost:5318/#project/preview-video-regression" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
+            OUT_DIR=/tmp/preview-video-regression \
+            node packages/studio/tests/e2e/preview-video-regression.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -1212,6 +1220,7 @@ jobs:
             /tmp/studio-open-counts.json
             /tmp/inline-text-caret/*.png
             /tmp/undo-socket-pool.json
+            /tmp/preview-video-regression/
           if-no-files-found: error
 
   # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json. A pull request

@@ -121,9 +121,11 @@ A paused fallback that outlasts its wait retains the presented clock and picture
 while paused sync continues. It can still publish when the video becomes ready;
 a new gesture cancels that recovery. Studio requests paused-decoder release
 before preparing native playback and reopens readers when paused scrubbing resumes.
-Transparent video queries drain their alpha merges before input disposal. If one
-never settles, its cleanup can outlast the Play deadline; the remaining playback
-still starts while that video's last picture stays visible.
+Paused-reader release waits up to two seconds for transparent video queries to
+drain. After that it cancels their downloads and lets playback continue while
+unfinished merges close in the background; input disposal still waits for the
+merge to finish. A recovering video more than half a second out of sync with the transport
+gets at most one corrective seek per recovery registration before its retained picture is removed.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,
 and the frame decoder does not substitute re-encoded seek copies. Playback

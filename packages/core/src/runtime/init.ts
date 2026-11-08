@@ -51,6 +51,7 @@ import {
 } from "./timedClipHide";
 import {
   inPlayerFrame,
+  STUDIO_PREVIEW_MARK_META,
   PREVIEW_ONLY_ATTRS,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR as FAR_SCENE_ATTR,
@@ -2997,6 +2998,7 @@ export function initSandboxRuntimeModular(): void {
   });
   const hiddenImagesSkipped = skipsHiddenImages();
   const mediaDeferred = defersMedia();
+  const studioPreview = document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
   const skipFarScenes = createFarSceneSkip((host) =>
     runtimeElementWindow(host, {
       timelineRegistry: window.__timelines ?? {},
@@ -5062,17 +5064,22 @@ export function initSandboxRuntimeModular(): void {
       },
       suspend: pausedFrames.suspendProvider,
       prepareNative: pausedFrames.prepareNative,
-      clear: (keep) =>
+      clear: (keep) => {
+        const corrected = new WeakSet<HTMLVideoElement>();
         pausedFrames.clear(keep, (video, presented) => {
-          if (clock.isPlaying()) return presented;
+          const playing = clock.isPlaying();
+          if (playing && !presented) return false;
           const time = clock.now();
           const clip = previewVideoClipsAt(time).find(({ el }) => el === video);
           if (!clip) return true;
           const expected = mediaSourceTimeAt(clip, time);
-          if (Math.abs(video.currentTime - expected) < 0.02) return true;
+          if (playing && corrected.has(video)) return true;
+          if (Math.abs(video.currentTime - expected) < (playing ? 0.5 : 0.02)) return true;
+          if (playing) corrected.add(video);
           video.currentTime = mediaElementTime(expected);
           return false;
-        }),
+        });
+      },
     },
     videosToHold: () =>
       withTimingResolver(() =>
@@ -5162,7 +5169,8 @@ export function initSandboxRuntimeModular(): void {
     play: () => {
       flushHeldSeek();
       if (
-        (pausedFrames.active || (pausedFrames.available() && previewSeek?.time !== undefined)) &&
+        (pausedFrames.active ||
+          ((pausedFrames.available() || studioPreview) && previewSeek?.time !== undefined)) &&
         !clock.isPlaying()
       ) {
         wallClearTimeout(nativeWarmTimer);

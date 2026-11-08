@@ -22,6 +22,7 @@ import {
 const FRAME_BUDGET = 64 * 1024 * 1024;
 const MAX_READERS = 4;
 const NEARBY_FORWARD_SECONDS = 0.5;
+const ALPHA_DRAIN_WAIT_MS = 2000;
 
 type Cached = {
   image: ImageBitmap;
@@ -104,18 +105,28 @@ export function createPausedVideoDecoder(iframe: HTMLIFrameElement): PausedVideo
     reader.disposed = true;
     clearTimeout(reader.idleTimer);
     if (opened.get(reader.key) === reader) opened.delete(reader.key);
-    // Input disposal must not cut off an in-flight alpha merger.
-    if (reader.transparent) await reader.tail;
-    reader.cancelReads();
-    reader.input.dispose();
-    await closeIterator(reader).catch(() => {});
-    for (const entry of reader.cache.values()) {
-      cacheOrder.delete(entry);
-      bytes -= entry.bytes;
-      entry.image.close();
-    }
-    reader.cache.clear();
-    reader.canvas.width = reader.canvas.height = 0;
+    const closing = (async () => {
+      // Input disposal must not cut off an in-flight alpha merger.
+      if (reader.transparent) await reader.tail;
+      reader.cancelReads();
+      reader.input.dispose();
+      await closeIterator(reader).catch(() => {});
+      for (const entry of reader.cache.values()) {
+        cacheOrder.delete(entry);
+        bytes -= entry.bytes;
+        entry.image.close();
+      }
+      reader.cache.clear();
+      reader.canvas.width = reader.canvas.height = 0;
+    })();
+    if (!reader.transparent) return closing;
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reader.cancelReads();
+        resolve();
+      }, ALPHA_DRAIN_WAIT_MS);
+      void closing.then(resolve, reject).finally(() => clearTimeout(timeout));
+    });
   };
   const scheduleIdle = (reader: Reader) => {
     clearTimeout(reader.idleTimer);

@@ -254,3 +254,16 @@ it("cancels a retained native observer when a new paused picture replaces it", a
     else Reflect.deleteProperty(proto, "cancelVideoFrameCallback");
   }
 });
+
+it("does not retire an adopted decoded picture when its native snapshot lease ends", async () => {
+  const { session, video, request } = fixture();
+  Object.defineProperty(video, "readyState", { value: 4 });
+  const stopHold = session.holdNative([video]);
+  const snapshot = getPausedVideoFrame(video);
+  const decoded = await session.prepare(request, new AbortController().signal);
+  expect(decoded!.present()).toBe(true);
+  stopHold();
+  expect(getPausedVideoFrame(video)).toBe(snapshot);
+  expect(ownsPausedVideoTime(video)).toBe(true);
+  expect(video.currentTime).toBe(3);
+});

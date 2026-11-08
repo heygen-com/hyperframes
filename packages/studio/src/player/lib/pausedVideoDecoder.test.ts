@@ -113,7 +113,7 @@ beforeEach(() => {
   canvasContext.mockReset().mockReturnValue({ clearRect: vi.fn(), imageSmoothingQuality: "low" });
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(canvasContext);
   createBitmap.mockReset().mockImplementation(async () => bitmap());
-  cancelReads.mockClear();
+  cancelReads.mockReset();
   qualityChosenBy = "person";
   previewQuality = 1;
   displayScale = 1;
@@ -641,4 +641,77 @@ it("closes the selected alpha sample when the finite iterator fails while draini
   const owner = provider();
   await expect(owner.decode([request("a")], signal())).rejects.toThrow("Alpha drain failed");
   expect(selected.close).toHaveBeenCalledOnce();
+});
+
+it("bounds alpha suspension without disposing an unfinished merger", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    canBeTransparent: async () => true,
+  }));
+  let drain: () => void = () => {};
+  const drained = new Promise<void>((resolve) => {
+    drain = resolve;
+  });
+  const selected = sample();
+  finiteSamples.mockImplementationOnce(async function* () {
+    yield selected;
+    await drained;
+  });
+  const owner = provider();
+  const pending = owner.decode([request("a")], signal()).catch((error: unknown) => error);
+  await vi.waitFor(() => expect(finiteSamples).toHaveBeenCalledOnce());
+  let released = false;
+  const suspended = owner.suspend!().then(() => {
+    released = true;
+  });
+  try {
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(released).toBe(true);
+    expect(cancelReads).toHaveBeenCalledOnce();
+    expect(inputs[0]!.dispose).not.toHaveBeenCalled();
+    expect(selected.close).not.toHaveBeenCalled();
+    const [next] = await owner.decode([request("a")], signal());
+    expect(inputs).toHaveLength(2);
+    next!.release();
+  } finally {
+    drain();
+    await pending;
+    await suspended;
+  }
+  expect(selected.close).toHaveBeenCalledOnce();
+  expect(inputs[0]!.dispose).toHaveBeenCalledOnce();
+  expect(inputs[1]!.dispose).not.toHaveBeenCalled();
+});
+
+it("closes the selected alpha sample when suspension cancels an in-flight read", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  getTrack.mockImplementation(async (source: string) => ({
+    ...track(source),
+    canBeTransparent: async () => true,
+  }));
+  const selected = sample();
+  let rejectRead: (error: Error) => void = () => {};
+  const reading = new Promise<void>((_resolve, reject) => {
+    rejectRead = reject;
+  });
+  finiteSamples.mockImplementationOnce(async function* () {
+    yield selected;
+    await reading;
+  });
+  cancelReads.mockImplementation(() =>
+    rejectRead(new DOMException("Network read cancelled", "AbortError")),
+  );
+  const owner = provider();
+  const decoding = owner.decode([request("a")], signal()).catch((error: unknown) => error);
+  await vi.waitFor(() => expect(finiteSamples).toHaveBeenCalledOnce());
+  const suspended = owner.suspend!();
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(cancelReads).not.toHaveBeenCalled();
+  expect(inputs[0]!.dispose).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  await suspended;
+  expect(await decoding).toMatchObject({ name: "AbortError" });
+  expect(selected.close).toHaveBeenCalledOnce();
+  expect(inputs[0]!.dispose).toHaveBeenCalledOnce();
 });
