@@ -321,16 +321,7 @@ export function createCheckCommand(
           return;
         }
         recordLastCheck({ at: new Date().toISOString(), codes: {} });
-        const key = checkCacheable(options)
-          ? checkCacheKey(project.dir, options, VERSION)
-          : undefined;
-        const cached = key ? readCachedPass(project.dir, key) : undefined;
-        const report =
-          cached ??
-          (await withProjectLock(project.dir, "check", () =>
-            dependencies.runPipeline(project, options),
-          ));
-        if (key && !cached) storePass(project.dir, key, report);
+        const report = await checkOrReplay(dependencies, project, options);
         recordLastCheck({
           at: new Date().toISOString(),
           exitCode: checkExitCode(report),
@@ -362,6 +353,21 @@ export function createCheckCommand(
       }
     },
   });
+}
+
+async function checkOrReplay(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+): Promise<SavedCheckReport> {
+  const key = checkCacheable(options) ? checkCacheKey(project.dir, options, VERSION) : undefined;
+  const cached = key ? readCachedPass(project.dir, key) : undefined;
+  if (cached) return cached;
+  const report = await withProjectLock(project.dir, "check", () =>
+    dependencies.runPipeline(project, options),
+  );
+  if (key) storePass(project.dir, key, report);
+  return report;
 }
 
 function reportCheckFailure(

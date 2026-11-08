@@ -3991,50 +3991,6 @@ it("applies transition sample limits within the requested range", async () => {
   expect(report.layout.transitionSamplesDropped).toBe(3);
 });
 
-describe("check stopped by a signal", () => {
-  it("SIGTERM prints the report so far, then exits 143", async () => {
-    const { deps, runBrowserCheck } = dependencies(fakeDriver());
-    const reachedBrowser = new Promise<void>((resolve) => {
-      runBrowserCheck.mockImplementation(() => {
-        resolve();
-        return new Promise<CheckBrowserResult>(() => undefined);
-      });
-    });
-    const order: string[] = [];
-    registerRootExitRequester((code) => order.push(`exit ${code}`));
-    const log = vi.spyOn(console, "log").mockImplementation((line) => {
-      order.push(`print ${String(line).slice(0, 1)}`);
-    });
-    const command = createCheckCommand({
-      resolveProject: () => PROJECT,
-      runPipeline: (project, options) => runCheckPipeline(project, options, deps),
-      prepareMedia: vi.fn(async () => []),
-      withMeta: (value) => value,
-    });
-
-    const running = runCommand(command, { rawArgs: ["--json"] });
-    await reachedBrowser;
-    process.emit("SIGTERM");
-    await running;
-    await vi.waitFor(() => expect(order).toContain("exit 143"));
-
-    const report = JSON.parse(String(log.mock.calls[0]?.[0]));
-    expect(report.ok).toBe(false);
-    expect(report.runtime.findings.map((finding: CheckFinding) => finding.message)).toContain(
-      "Check stopped before finishing (SIGTERM).",
-    );
-    expect(order).toEqual(["print {", "exit 143"]);
-  });
-});
-
-describe("check --lint-verbose", () => {
-  it("is a known flag, as render, preview and publish spell it, and a made-up one still is not", () => {
-    const check = createCheckCommand() as never;
-    expect(() => assertKnownFlags(check, ["--lint-verbose", "--json"], "check")).not.toThrow();
-    expect(() => assertKnownFlags(check, ["--lint-loud"], "check")).toThrow("Unknown flag");
-  });
-});
-
 describe("check cache", () => {
   const dirs: string[] = [];
   afterEach(() => {
@@ -4096,5 +4052,48 @@ describe("check cache", () => {
     await run("--no-cache");
     await run("--budget", "8m");
     expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+});
+describe("check stopped by a signal", () => {
+  it("SIGTERM prints the report so far, then exits 143", async () => {
+    const { deps, runBrowserCheck } = dependencies(fakeDriver());
+    const reachedBrowser = new Promise<void>((resolve) => {
+      runBrowserCheck.mockImplementation(() => {
+        resolve();
+        return new Promise<CheckBrowserResult>(() => undefined);
+      });
+    });
+    const order: string[] = [];
+    registerRootExitRequester((code) => order.push(`exit ${code}`));
+    const log = vi.spyOn(console, "log").mockImplementation((line) => {
+      order.push(`print ${String(line).slice(0, 1)}`);
+    });
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: (project, options) => runCheckPipeline(project, options, deps),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    const running = runCommand(command, { rawArgs: ["--json"] });
+    await reachedBrowser;
+    process.emit("SIGTERM");
+    await running;
+    await vi.waitFor(() => expect(order).toContain("exit 143"));
+
+    const report = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(report.ok).toBe(false);
+    expect(report.runtime.findings.map((finding: CheckFinding) => finding.message)).toContain(
+      "Check stopped before finishing (SIGTERM).",
+    );
+    expect(order).toEqual(["print {", "exit 143"]);
+  });
+});
+
+describe("check --lint-verbose", () => {
+  it("is a known flag, as render, preview and publish spell it, and a made-up one still is not", () => {
+    const check = createCheckCommand() as never;
+    expect(() => assertKnownFlags(check, ["--lint-verbose", "--json"], "check")).not.toThrow();
+    expect(() => assertKnownFlags(check, ["--lint-loud"], "check")).toThrow("Unknown flag");
   });
 });

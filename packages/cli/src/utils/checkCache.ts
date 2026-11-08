@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { CheckOptions, CheckReport } from "./checkTypes.js";
 
@@ -11,6 +19,19 @@ function cachePath(projectDir: string): string {
   return join(projectDir, ".hyperframes", "cache", "check.json");
 }
 
+function fileFingerprint(path: string): string {
+  const fd = openSync(path, "r");
+  try {
+    const stat = fstatSync(fd);
+    if (stat.isDirectory()) return "dir";
+    return stat.size <= HASH_CONTENT_UP_TO
+      ? createHash("sha256").update(readFileSync(fd)).digest("hex")
+      : `${stat.size}:${stat.mtimeMs}`;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function hashTree(dir: string, prefix: string, hash: ReturnType<typeof createHash>): void {
   const entries = readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     a.name < b.name ? -1 : 1,
@@ -19,11 +40,8 @@ function hashTree(dir: string, prefix: string, hash: ReturnType<typeof createHas
     if (SKIPPED_DIRS.has(entry.name)) continue;
     const path = join(dir, entry.name);
     const name = `${prefix}${entry.name}`;
-    const stat = statSync(path);
-    if (stat.isDirectory()) hashTree(path, `${name}/`, hash);
-    else if (stat.size <= HASH_CONTENT_UP_TO)
-      hash.update(`${name}\0${createHash("sha256").update(readFileSync(path)).digest("hex")}\0`);
-    else hash.update(`${name}\0${stat.size}:${stat.mtimeMs}\0`);
+    if (entry.isDirectory()) hashTree(path, `${name}/`, hash);
+    else hash.update(`${name}\0${fileFingerprint(path)}\0`);
   }
 }
 

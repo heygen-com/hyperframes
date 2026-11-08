@@ -38,7 +38,6 @@ export interface CheckOptions {
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
   includeUnmounted?: boolean;
-  /** False (--no-cache) re-runs even when nothing changed since the last pass. */
   cache?: boolean;
 }
 
@@ -398,7 +397,6 @@ export interface CheckReport {
     notes: string[];
   };
   ok: boolean;
-  /** Set when this is the stored result of the last pass over an unchanged project. */
   cached?: { at: string };
   strict: boolean;
   browserSkipped: boolean;
