@@ -673,8 +673,6 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
   return stagePublishFiles(projectDir, Infinity) as Map<string, Buffer>;
 }
 
-/** The archive's spelling of a project path: Unicode-composed, since a page names a file composed and the renderer's
- * file system matches names byte for byte. macOS lists a file picked in Finder decomposed (e + a combining accent). */
 export const archiveKey = (path: string): string => path.normalize("NFC");
 
 /** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
