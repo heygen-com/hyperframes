@@ -42,7 +42,8 @@ function hashTree(dir: string, prefix: string, hash: ReturnType<typeof createHas
   );
   for (const entry of entries) {
     if (SKIPPED_DIRS.has(entry.name)) continue;
-    if (entry.name === "node_modules") throw new Uncacheable("node_modules can hold code the page runs");
+    if (entry.name === "node_modules")
+      throw new Uncacheable("node_modules can hold code the page runs");
     const path = join(dir, entry.name);
     const name = `${prefix}${entry.name}`;
     if (entry.isDirectory()) hashTree(path, `${name}/`, hash);
@@ -58,7 +59,9 @@ export function checkCacheKey(
 ): string | undefined {
   const hash = createHash("sha256").update(`${version}\0`);
   const { cache: _cache, ...verdictOptions } = options;
-  const env = Object.entries(process.env).filter(([name]) => VERDICT_ENV.test(name)).sort();
+  const env = Object.entries(process.env)
+    .filter(([name]) => VERDICT_ENV.test(name))
+    .sort();
   hash.update(`${JSON.stringify([verdictOptions, env])}\0`);
   try {
     hashTree(projectDir, "", hash);
