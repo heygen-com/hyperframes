@@ -224,3 +224,16 @@ it("preserves the held native picture when a new gesture cancels expired backgro
   await next;
   expect(document.querySelector("canvas")).toBeNull();
 });
+
+it("retires the hard Play timer after native readiness publishes", async () => {
+  vi.useFakeTimers();
+  const { job, video, commit } = fixture();
+  Object.defineProperties(video, {
+    readyState: { value: 4 },
+    seeking: { value: false },
+    currentTime: { value: 3 },
+  });
+  await job.handoff(3);
+  expect(commit).toHaveBeenCalledWith(3);
+  expect(vi.getTimerCount()).toBe(0);
+});

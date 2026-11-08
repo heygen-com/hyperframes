@@ -301,22 +301,24 @@ it("leaves a grading canvas's hidden source in its layout during the hold", asyn
 });
 
 it.each(["play", "render", "teardown"])(
-  "cleans up a pending seek on %s and ignores late completions",
+  "finishes native handoff on Play and ignores retired completions on render or teardown (%s)",
   async (action) => {
     const { main, next } = film();
     const player = window.__player!;
     const landed = player.seek(6);
-    if (action === "play") player.play();
-    else if (action === "render") player.renderSeek(2);
-    else window.__hfRuntimeTeardown?.();
-    const time = main.time?.();
+    const cases = {
+      play: { run: () => player.play(), before: 0, after: 6 },
+      render: { run: () => player.renderSeek(2), before: 2, after: 2 },
+      teardown: { run: () => window.__hfRuntimeTeardown?.(), before: 0, after: 0 },
+    };
+    const expected = cases[action as keyof typeof cases];
+    expected.run();
+    expect(main.time!()).toBe(expected.before);
     for (const video of next) video.land();
     await landed;
-    expect(main.time?.()).toBe(time);
+    expect(main.time!()).toBe(expected.after);
     expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
     expect(document.querySelectorAll("canvas, [data-hf-seek-video]")).toHaveLength(0);
-    if (action === "play") expect(player.getTime()).toBeGreaterThanOrEqual(6);
-    if (action === "render") expect(time).toBe(2);
   },
 );
 
@@ -507,6 +509,47 @@ it("reveals a delayed playing frame without chasing the moving clock with more s
   expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
   expect(window.__player!.isPlaying()).toBe(true);
 });
+
+it.each([1500, 2500].flatMap((lateMs) => [25, 40, 100].map((seekMs) => ({ lateMs, seekMs }))))(
+  "aligns a recovered picture once after $lateMs ms with $seekMs ms seek latency",
+  async ({ lateMs, seekMs }) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const { old, next } = film();
+    const { pending } = frameProvider([...old, ...next]);
+    const initial = window.__player!.seek(1);
+    pending.shift()!();
+    await initial;
+    const stalled = old[0]!;
+    stalled.metadataAt(1);
+    let error: { code: number } | null = { code: 4 };
+    Object.defineProperty(stalled.video, "error", { configurable: true, get: () => error });
+    window.__player!.play();
+    old[1]!.land();
+    await vi.advanceTimersByTimeAsync(0);
+    error = null;
+    const seeks = stalled.seeks.length;
+    for (let elapsed = 0; elapsed < lateMs; elapsed += 25) {
+      await vi.advanceTimersByTimeAsync(25);
+      window.__player!.getTime();
+    }
+    expect(window.__player!.getTime()).toBeCloseTo(1 + lateMs / 1000, 2);
+    Object.defineProperty(stalled.video, "paused", { configurable: true, value: false });
+    stalled.land();
+    stalled.video.dispatchEvent(new Event("playing"));
+    stalled.presentAt(1 + 1 / 30);
+    expect(stalled.seeks).toHaveLength(seeks + 1);
+    const target = window.__player!.getTime();
+    expect(stalled.seeks.at(-1)).toBeCloseTo(target, 2);
+    expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(seekMs);
+    stalled.land();
+    stalled.presentAt(target + 1 / 30);
+    expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
+    expect(stalled.seeks).toHaveLength(seeks + 1);
+    expect(Math.abs(stalled.video.currentTime - window.__player!.getTime())).toBeLessThan(0.1);
+    expect(window.__player!.isPlaying()).toBe(true);
+  },
+);
 
 it("keeps a paused recovery covered until its static target seek lands", async () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
@@ -900,4 +943,24 @@ it("releases a native hold when stop-media cancels its first provider seek", asy
   pending.shift()!();
   await Promise.resolve();
   expect(document.querySelectorAll("canvas[data-hf-preview-video-canvas]")).toHaveLength(0);
+});
+
+it("keeps the native-only complete picture when Play interrupts an unresolved scrub", async () => {
+  const { main, next } = film();
+  const seek = window.__player!.seek(6);
+  const pictures = [...document.querySelectorAll("canvas")];
+  expect(pictures).toHaveLength(2);
+  window.__player!.play();
+  await seek;
+  expect(main.time?.()).toBe(0);
+  expect(pictures.every((picture) => picture.isConnected)).toBe(true);
+  expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(true);
+  next[0]!.land();
+  expect(main.time?.()).toBe(0);
+  next[1]!.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(main.time?.()).toBe(6);
+  expect(window.__player!.isPlaying()).toBe(true);
+  expect(window.__player!.getTime()).toBeGreaterThanOrEqual(6);
+  expect(document.querySelectorAll("canvas")).toHaveLength(0);
 });

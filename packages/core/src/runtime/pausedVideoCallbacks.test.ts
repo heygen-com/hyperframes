@@ -327,3 +327,25 @@ it("keeps waiting when no native frame or playback progress arrives", () => {
   stop();
   expect(pending.size).toBe(0);
 });
+
+it("does not reveal a paused seek from timeupdate after playback had started", () => {
+  const video = document.createElement("video");
+  let paused = false;
+  let time = 3;
+  Object.defineProperties(video, {
+    paused: { get: () => paused },
+    currentTime: { get: () => time },
+  });
+  const recovered = vi.fn(() => true);
+  const stop = observeNativeVideoFrames(video, recovered);
+  paused = true;
+  time = 4;
+  video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).not.toHaveBeenCalled();
+  paused = false;
+  video.dispatchEvent(new Event("playing"));
+  time += 1 / 30;
+  video.dispatchEvent(new Event("timeupdate"));
+  expect(recovered).toHaveBeenCalledOnce();
+  stop();
+});

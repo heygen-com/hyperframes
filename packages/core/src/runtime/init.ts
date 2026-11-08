@@ -5056,17 +5056,22 @@ export function initSandboxRuntimeModular(): void {
       },
       suspend: pausedFrames.suspendProvider,
       prepareNative: pausedFrames.prepareNative,
-      clear: (keep) =>
+      clear: (keep) => {
+        const corrected = new WeakSet<HTMLVideoElement>();
         pausedFrames.clear(keep, (video, presented) => {
-          if (clock.isPlaying()) return presented;
+          const playing = clock.isPlaying();
+          if (playing && !presented) return false;
           const time = clock.now();
           const clip = previewVideoClipsAt(time).find(({ el }) => el === video);
           if (!clip) return true;
           const expected = mediaSourceTimeAt(clip, time);
-          if (Math.abs(video.currentTime - expected) < 0.02) return true;
+          if (playing && corrected.has(video)) return true;
+          if (Math.abs(video.currentTime - expected) < (playing ? 0.5 : 0.02)) return true;
+          if (playing) corrected.add(video);
           video.currentTime = mediaElementTime(expected);
           return false;
-        }),
+        });
+      },
     },
     videosToHold: () =>
       withTimingResolver(() =>
@@ -5155,10 +5160,7 @@ export function initSandboxRuntimeModular(): void {
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
-      if (
-        (pausedFrames.active || (pausedFrames.available() && previewSeek?.time !== undefined)) &&
-        !clock.isPlaying()
-      ) {
+      if ((pausedFrames.active || previewSeek?.time !== undefined) && !clock.isPlaying()) {
         wallClearTimeout(nativeWarmTimer);
         const generation = ++nativePlayGeneration;
         const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);
