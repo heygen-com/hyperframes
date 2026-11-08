@@ -3,7 +3,11 @@ import { initSandboxRuntimeModular } from "./init";
 import { hideTimedClipsUntilFirstPass } from "./timedClipHide";
 import { resetSeekDispatchState } from "./adapters/seek-dispatch";
 import { createMockTimeline, resetRuntimeFixtureDom } from "./runtimeSeekFixture.test-helpers";
-import { PREVIEW_SEEK_HOLD_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
+import {
+  PREVIEW_SEEK_HOLD_ATTR,
+  STUDIO_PREVIEW_MARK_META,
+  PLAYER_FRAME_ATTR,
+} from "../studioPreviewMark";
 import type {
   PausedVideoFrame,
   PausedVideoFrameProvider,
@@ -65,11 +69,11 @@ function decoder(video: HTMLVideoElement, initiallyReady: boolean) {
   };
 }
 
-function film(withImage = false) {
+function film(withImage = false, studio = true) {
   resetRuntimeFixtureDom();
   const meta = document.createElement("meta");
   meta.name = STUDIO_PREVIEW_MARK_META;
-  document.head.append(meta);
+  if (studio) document.head.append(meta);
   vi.spyOn(window, "requestAnimationFrame").mockReturnValue(0);
   const drawImage = vi.fn();
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
@@ -510,7 +514,7 @@ it("reveals a delayed playing frame without chasing the moving clock with more s
   expect(window.__player!.isPlaying()).toBe(true);
 });
 
-it.each([1500, 2500].flatMap((lateMs) => [25, 40, 100].map((seekMs) => ({ lateMs, seekMs }))))(
+it.each([1500, 2500].flatMap((lateMs) => [25, 40, 100, 600].map((seekMs) => ({ lateMs, seekMs }))))(
   "aligns a recovered picture once after $lateMs ms with $seekMs ms seek latency",
   async ({ lateMs, seekMs }) => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
@@ -541,12 +545,18 @@ it.each([1500, 2500].flatMap((lateMs) => [25, 40, 100].map((seekMs) => ({ lateMs
     const target = window.__player!.getTime();
     expect(stalled.seeks.at(-1)).toBeCloseTo(target, 2);
     expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(1);
-    await vi.advanceTimersByTimeAsync(seekMs);
+    for (let elapsed = 0; elapsed < seekMs; elapsed += 25) {
+      await vi.advanceTimersByTimeAsync(Math.min(25, seekMs - elapsed));
+      window.__player!.getTime();
+    }
+    expect(window.__player!.getTime() - target).toBeCloseTo(seekMs / 1000, 2);
     stalled.land();
     stalled.presentAt(target + 1 / 30);
     expect(document.querySelectorAll("[data-hf-preview-video-canvas]")).toHaveLength(0);
     expect(stalled.seeks).toHaveLength(seeks + 1);
-    expect(Math.abs(stalled.video.currentTime - window.__player!.getTime())).toBeLessThan(0.1);
+    expect(Math.abs(stalled.video.currentTime - window.__player!.getTime())).toBeLessThan(
+      Math.max(0.1, seekMs / 1000),
+    );
     expect(window.__player!.isPlaying()).toBe(true);
   },
 );
@@ -963,4 +973,39 @@ it("keeps the native-only complete picture when Play interrupts an unresolved sc
   expect(window.__player!.isPlaying()).toBe(true);
   expect(window.__player!.getTime()).toBeGreaterThanOrEqual(6);
   expect(document.querySelectorAll("canvas")).toHaveLength(0);
+});
+
+function safariPlayerFilm() {
+  vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+    "AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+  );
+  const frame = document.createElement("iframe");
+  frame.setAttribute(PLAYER_FRAME_ATTR, "");
+  vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+  return film(false, false);
+}
+
+it("keeps pending-seek Play synchronous in an unmarked Safari player frame", () => {
+  const { main, next } = safariPlayerFilm();
+  void window.__player!.seek(6);
+  expect(main.time?.()).toBe(0);
+  window.__player!.play();
+  expect(main.time?.()).toBe(6);
+  expect(next.some(({ video }) => vi.mocked(video.play).mock.calls.length > 0)).toBe(true);
+});
+
+it("retains an explicit unmarked provider handoff before its first picture", async () => {
+  const { main, old, next } = safariPlayerFilm();
+  for (const video of old) video.metadataAt(0);
+  const { pending } = frameProvider([...old, ...next]);
+  const seeking = window.__player!.seek(6);
+  window.__player!.play();
+  expect(main.time?.()).toBe(0);
+  expect(window.__player!.isPlaying()).toBe(false);
+  for (const video of next) video.land();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(window.__player!.isPlaying()).toBe(true);
+  pending.shift()!();
+  await seeking;
+  expect(main.time?.()).toBe(6);
 });

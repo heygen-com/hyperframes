@@ -46,6 +46,7 @@ import {
 } from "./timedClipHide";
 import {
   inPlayerFrame,
+  STUDIO_PREVIEW_MARK_META,
   PREVIEW_ONLY_ATTRS,
   RUNTIME_STAMPED_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR as FAR_SCENE_ATTR,
@@ -2992,6 +2993,7 @@ export function initSandboxRuntimeModular(): void {
   });
   const hiddenImagesSkipped = skipsHiddenImages();
   const mediaDeferred = defersMedia();
+  const studioPreview = document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
   const skipFarScenes = createFarSceneSkip((host) =>
     runtimeElementWindow(host, {
       timelineRegistry: window.__timelines ?? {},
@@ -5160,7 +5162,11 @@ export function initSandboxRuntimeModular(): void {
   const transport: RuntimePlayerTransport = {
     play: () => {
       flushHeldSeek();
-      if ((pausedFrames.active || previewSeek?.time !== undefined) && !clock.isPlaying()) {
+      if (
+        (pausedFrames.active ||
+          ((pausedFrames.available() || studioPreview) && previewSeek?.time !== undefined)) &&
+        !clock.isPlaying()
+      ) {
         wallClearTimeout(nativeWarmTimer);
         const generation = ++nativePlayGeneration;
         const duration = getSafeTimelineDurationSeconds(state.capturedTimeline, 0);

@@ -125,7 +125,7 @@ Paused-reader release waits up to two seconds for transparent video queries to
 drain. After that it cancels their downloads and lets playback continue while
 unfinished merges close in the background; input disposal still waits for the
 merge to finish. A recovering video more than half a second out of sync with the transport
-gets one corrective seek before its retained picture is removed.
+gets at most one corrective seek per recovery registration before its retained picture is removed.
 Scrubbing and paused frame steps decode the original video at source resolution
 throughout. Automatic playback quality reductions do not reduce these frames,
 and the frame decoder does not substitute re-encoded seek copies. Playback
