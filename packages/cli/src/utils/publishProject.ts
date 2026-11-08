@@ -675,6 +675,24 @@ export function buildPublishFileMap(projectDir: string): Map<string, Buffer> {
 
 export const archiveKey = (path: string): string => path.normalize("NFC");
 
+function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: string[]): void {
+  const names = new Map<string, string>();
+  for (const segment of filePaths.flatMap((path) => path.split("/"))) {
+    const composed = archiveKey(segment);
+    if (composed === segment) continue;
+    names.set(segment, composed);
+    names.set(encodeURIComponent(segment), encodeURIComponent(composed));
+  }
+  if (names.size === 0) return;
+  for (const [key, file] of fileContents) {
+    if (!Buffer.isBuffer(file) || !TEXT_FILE_EXTS.test(key)) continue;
+    let text = file.toString("utf-8");
+    const before = text;
+    for (const [from, to] of names) text = text.replaceAll(from, to);
+    if (text !== before) fileContents.set(key, Buffer.from(text, "utf-8"));
+  }
+}
+
 /** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
 export function stagePublishFiles(
   projectDir: string,
@@ -703,6 +721,7 @@ export function stagePublishFiles(
     fileContents.set(key, stageFile(join(absProjectDir, filePath), onDiskMinBytes));
   }
 
+  composeNamesInText(fileContents, filePaths);
   localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes);
   return fileContents;
 }

@@ -1580,6 +1580,28 @@ describe("archive keys for names written in either Unicode form", () => {
     expect(entries).toContain(composed);
   });
 
+  it("rewrites a page and a stylesheet that name a decomposed file the way the disk lists it", () => {
+    const dir = makeProjectDir();
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    writeFileSync(join(dir, decomposed), "video");
+    writeFileSync(
+      join(dir, "assets/styles.css"),
+      `.a { background: url("${decomposed.slice(7)}"); }`,
+    );
+    writeFileSync(
+      join(dir, "index.html"),
+      `<video src="${decomposed}"></video><img src="${encodeURI(decomposed)}">`,
+    );
+
+    const map = buildPublishFileMap(dir);
+
+    expect([...map.keys()].sort()).toEqual([composed, "assets/styles.css", "index.html"]);
+    expect(map.get("index.html")?.toString()).toBe(
+      `<video src="${composed}"></video><img src="${encodeURI(composed)}">`,
+    );
+    expect(map.get("assets/styles.css")?.toString()).toContain(composed.slice(7));
+  });
+
   it("refuses two files that differ only by Unicode form instead of letting one overwrite the other", () => {
     const dir = makeProjectDir();
     mkdirSync(join(dir, "assets"), { recursive: true });
