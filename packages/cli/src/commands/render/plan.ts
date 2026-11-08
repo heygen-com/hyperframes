@@ -388,7 +388,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
         "Invalid resolution",
         `Got "${args.resolution}". Must be one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k, ` +
           `landscape-1440p, portrait-1440p, square-1440p ` +
-          `(or aliases 1080p, 4k, uhd, 1440p, 2k, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square).`,
+          `(or aliases 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square).`,
       );
       failUsage();
     }
