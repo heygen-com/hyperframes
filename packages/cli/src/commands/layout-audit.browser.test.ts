@@ -4226,3 +4226,81 @@ function rect({ left, top, width, height }: RectInput): DOMRect {
     },
   } as DOMRect;
 }
+
+describe("layout-audit.browser Korean word splits", () => {
+  // One 60 px glyph per character; characters from `breakAt` on sit on a second line,
+  // and a range gets one client rect per line it spans, as in Chrome.
+  function auditKoreanCaption(
+    text: string,
+    breakAt: number,
+    style: Partial<CSSStyleDeclaration> = {},
+  ): AuditIssue[] {
+    document.body.innerHTML = `<div id="root" data-composition-id="main" data-width="1080" data-height="1920"><p id="caption">${text}</p></div>`;
+    installGeometry(
+      {
+        root: rect({ left: 0, top: 0, width: 1080, height: 1920 }),
+        caption: rect({ left: 90, top: 600, width: 900, height: 144 }),
+      },
+      { caption: style },
+    );
+    const glyph = (index: number) => {
+      const line = index < breakAt ? 0 : 1;
+      const column = line === 0 ? index : index - breakAt;
+      return rect({ left: 90 + column * 60, top: 600 + line * 72, width: 60, height: 60 });
+    };
+    vi.spyOn(document, "createRange").mockImplementation(() => {
+      let start = 0;
+      let end = 0;
+      const glyphs = () =>
+        Array.from({ length: Math.max(0, end - start) }, (_, i) => glyph(start + i));
+      const lineRects = () => {
+        const byLine = new Map<number, DOMRect[]>();
+        for (const item of glyphs()) byLine.set(item.top, [...(byLine.get(item.top) ?? []), item]);
+        return [...byLine.values()].map((line) => boundingTextRect(line) as DOMRect);
+      };
+      return {
+        selectNodeContents(node: Node) {
+          start = 0;
+          end = node.textContent?.length ?? 0;
+        },
+        setStart(_node: Node, offset: number) {
+          start = offset;
+        },
+        setEnd(_node: Node, offset: number) {
+          end = offset;
+        },
+        getClientRects: () => lineRects() as unknown as DOMRectList,
+        getBoundingClientRect: () =>
+          boundingTextRect(glyphs()) ?? rect({ left: 0, top: 0, width: 0, height: 0 }),
+        detach() {},
+      } as unknown as Range;
+    });
+    installAuditScript();
+    return runAudit().filter((issue) => issue.code === "text_word_split");
+  }
+
+  it("reports a Korean word that a line break cuts between syllables", () => {
+    const [issue] = auditKoreanCaption("자막이 줄바꿈되는지", 9);
+    expect(issue).toMatchObject({ selector: "#caption", text: "자막이 줄바꿈되는지" });
+    expect(issue?.message).toContain('"줄바꿈되는|지"');
+    expect(issue?.fixHint).toContain("word-break: keep-all");
+  });
+
+  it("reports a Korean particle cut from the Latin word it is attached to", () => {
+    const [issue] = auditKoreanCaption("HyperFrames로", 11);
+    expect(issue?.message).toContain('"HyperFrames|로"');
+  });
+
+  it("stays quiet when Korean lines break at spaces", () => {
+    expect(auditKoreanCaption("자막이 줄바꿈되는지", 4)).toEqual([]);
+  });
+
+  it("stays quiet for text without Hangul", () => {
+    expect(auditKoreanCaption("Launch faster", 3)).toEqual([]);
+  });
+
+  it("asks for room instead of keep-all when keep-all is already set", () => {
+    const [issue] = auditKoreanCaption("줄바꿈되는지", 5, { wordBreak: "keep-all" });
+    expect(issue?.fixHint).toContain("wider than its line");
+  });
+});
