@@ -477,8 +477,7 @@ function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: numb
 function dropSilentAudioTrack(el: HTMLMediaElement): void {
   if (el.tagName !== "VIDEO" || !el.defaultMuted) return;
   const tracks = (el as { audioTracks?: ArrayLike<{ enabled: boolean }> }).audioTracks;
-  for (let i = 0; i < (tracks?.length ?? 0); i++)
-    if (tracks![i].enabled) tracks![i].enabled = false;
+  for (const track of Array.from(tracks ?? [])) track.enabled = false;
 }
 
 // fallow-ignore-next-line complexity
