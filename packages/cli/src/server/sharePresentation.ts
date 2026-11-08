@@ -8,16 +8,9 @@ export function presentShare(value: ShareState): LocalShareState {
     value.share?.takedown ||
     value.share?.sharingState?.state === "subscription_required";
   return {
-    state: held
-      ? "unavailable"
-      : value.state === "not_shared"
-        ? "not_shared"
-        : value.state === "link_off"
-          ? "link_off"
-          : value.ready
-            ? "ready"
-            : "processing",
-    url: held ? null : value.url,
+    state: presentedState(value, Boolean(held)),
+    url: held ? null : (value.url ?? value.previousUrl),
+    failure: value.state === "failed" ? value.version.failure : null,
     hasReadyVersion: value.ready || Boolean(value.previousUrl),
     manageUrl: value.manageUrl,
     // Desktop's watcher does not cover every portable render input.
@@ -56,4 +49,11 @@ function planOffer(
 ) {
   const plan = entitlements?.plan ?? null;
   return { plan, upgradeUrl: plan === "free" ? `${shareSite()}/pricing` : null };
+}
+
+function presentedState(value: ShareState, held: boolean): LocalShareState["state"] {
+  if (held) return "unavailable";
+  if (value.state === "failed" || value.state === "not_shared" || value.state === "link_off")
+    return value.state;
+  return value.ready ? "ready" : "processing";
 }

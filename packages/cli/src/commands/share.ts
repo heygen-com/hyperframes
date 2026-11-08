@@ -144,6 +144,14 @@ async function chooseAudience(input: ShareAction, args: ShareArgs, service: Shar
 async function presentResult(result: ShareState, input: ShareAction, json: boolean) {
   if (!json && result.source.at === "video_only")
     console.error(`Sharing video only (${result.source.reason}).`);
+  if (result.state === "failed" && input.action !== "manage") {
+    presentFailure(result, json);
+    return;
+  }
+  await presentSuccessfulResult(result, input, json);
+}
+
+async function presentSuccessfulResult(result: ShareState, input: ShareAction, json: boolean) {
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
   else if (input.action === "manage") {
     console.log(result.manageUrl);
@@ -153,4 +161,15 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
   else if (result.state === "link_off")
     console.log("This share's link is off. Run hyperframes share --manage to turn it on.");
   else console.log("Your video is still processing. Run hyperframes share --status to check it.");
+}
+
+function presentFailure(result: ShareState, json: boolean) {
+  const message = result.version.failure ?? "The shared video could not be processed.";
+  if (json)
+    console.log(JSON.stringify({ ...result, ...jsonFailure("share_export_failed", message) }));
+  else {
+    console.error(message);
+    if (result.previousUrl) console.log(`Previous shared version: ${result.previousUrl}`);
+  }
+  setCommandExitCode(1);
 }

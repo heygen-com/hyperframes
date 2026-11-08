@@ -44,14 +44,14 @@ describe("share OAuth identity", () => {
     expect(mocks.refresh).toHaveBeenCalledWith("refresh");
     expect(mocks.user).not.toHaveBeenCalled();
   });
-  it("resolves the actor again when the credential changes", async () => {
+  it("rejects a different actor when the credential changes", async () => {
     mocks.resolve.mockResolvedValueOnce(oauth("a")).mockResolvedValueOnce(oauth("b"));
     mocks.user
       .mockResolvedValueOnce({ username: "first" })
       .mockResolvedValueOnce({ username: "second" });
     const auth = createShareAccess();
     expect((await auth.access()).owner).toBe("first");
-    expect((await auth.access()).owner).toBe("second");
+    await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
   });
   it("does not retry a refused environment token", async () => {
     mocks.resolve.mockResolvedValue(oauth("refused"));

@@ -499,3 +499,28 @@ it("refuses an upgrade destination outside the public pricing flow", async () =>
   await mount();
   expect(host.textContent).not.toContain("Upgrade to Pro");
 });
+
+it.each([false, true])(
+  "shows a persisted failed export after reopen (previous version: %s)",
+  async (previous) => {
+    snapshot.share = {
+      ...snapshot.share,
+      state: "failed",
+      failure: "This video can't be shared.",
+      hasReadyVersion: previous,
+      changed: true,
+      audience: "public",
+      spaceId: "team1",
+      url: previous ? "https://hyperframes.dev/r/previous" : null,
+    };
+    await mount();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("This video can't be shared.");
+    expect(host.textContent).not.toContain("still being prepared");
+    expect(calls).toEqual([]);
+    const action = button(previous ? "Update shared version" : "Create share link");
+    expect(action?.disabled).toBe(false);
+    if (previous) expect(button("Copy current shared link")).toBeDefined();
+    await act(async () => action?.click());
+    expect(calls).toEqual([{ action: "update" }]);
+  },
+);

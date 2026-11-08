@@ -3039,7 +3039,12 @@ check `ready` and `state` in JSON before distributing a URL. `url` is only
 returned for a ready share. Run `--status` to check again. Exit codes are 0
 for an accepted/read operation, 1 for failure, and 2 for invalid arguments.
 A successful local render does not finish sharing: upload failures still return
-a failure exit code.
+a failure exit code. A failed processing or screening attempt stays failed across
+CLI runs: `--status --json` returns `ok: false`, `state: "failed"`, an error,
+and exit code 1. `previousUrl` keeps the earlier ready version available after a
+failed update; `url` remains null. Use `--update` to explicitly retry with the
+current project. Signing into a different account while a share is running
+stops that operation; start it again after sign-in.
 
 Hosts must configure trusted video storage origins before creating or updating
 a share. When running from source or using a custom storage setup, set

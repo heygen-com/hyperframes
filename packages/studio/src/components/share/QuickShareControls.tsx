@@ -28,6 +28,11 @@ export function ShareNotices({ model, snapshot }: Props) {
   ];
   return (
     <>
+      {share.state === "failed" && share.failure ? (
+        <p role="alert" className="text-step-11 text-text-3">
+          {share.failure}
+        </p>
+      ) : null}
       {messages.filter(Boolean).map((message) => (
         <p key={message} className="text-step-11 text-text-3">
           {message}
@@ -49,7 +54,8 @@ export function ShareActions({ model, snapshot, url }: Props & { url: string | n
           disabled={model.busy}
           onClick={() => void model.run({ action: "update" })}
         >
-          {snapshot.job?.state === "failed" && snapshot.share.hasReadyVersion === false
+          {(snapshot.job?.state === "failed" || snapshot.share.state === "failed") &&
+          snapshot.share.hasReadyVersion === false
             ? "Create share link"
             : "Update shared version"}
         </Button>

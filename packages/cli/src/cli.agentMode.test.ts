@@ -353,7 +353,9 @@ describe("agent-mode contract", () => {
     expect(run.code, run.stderr).toBe(1);
     expectJsonFailure(run, "runtime_error");
     const { message } = JSON.parse(run.stdout).error as { message: string };
-    expect(message).toMatch(/Aborting render due to lint issues in --strict mode: [1-9]\d* error/);
+    expect(message).toMatch(/Cannot render: [1-9]\d* error/);
+    expect(message).toContain("root_missing_dimensions");
+    expect(message).toContain("Run hyperframes lint for details.");
     expect(run.stderr).toContain(message);
   });
 

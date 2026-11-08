@@ -8,7 +8,7 @@ export function shareSite(): string {
   return oauthEnvironment() === "dev" ? "https://dev.hyperframes.dev" : "https://hyperframes.dev";
 }
 
-export function createShareAccess(pinIdentity = false) {
+export function createShareAccess(pinIdentity = true) {
   let bound: string | undefined;
   let identity: { token: string; owner: string; email: string | null } | undefined;
   const userClient = new AuthClient();

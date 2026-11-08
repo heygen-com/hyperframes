@@ -11,11 +11,12 @@ export interface LocalShareSpace {
   limit: number | null;
 }
 export interface LocalShareState {
-  state: "not_shared" | "link_off" | "ready" | "processing" | "unavailable";
+  state: "not_shared" | "link_off" | "ready" | "processing" | "failed" | "unavailable";
   url: string | null;
   manageUrl: string;
   changed: boolean | null;
   hasReadyVersion?: boolean;
+  failure?: string | null;
   audience: LocalShareAudience | null;
   spaceId: string | null;
   source: "not_checked" | "ready" | "video_only";

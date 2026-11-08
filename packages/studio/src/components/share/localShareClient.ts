@@ -22,13 +22,14 @@ export const isAudience = (value: unknown): value is LocalShareAudience =>
 function isState(value: unknown): value is LocalShareState {
   return (
     record(value) &&
-    ["not_shared", "link_off", "ready", "processing", "unavailable"].includes(
+    ["not_shared", "link_off", "ready", "processing", "failed", "unavailable"].includes(
       String(value.state),
     ) &&
+    optionalFailure(value.failure) &&
     nullableText(value.url) &&
     text(value.manageUrl) &&
     nullableBoolean(value.changed) &&
-    (value.audience === null || isAudience(value.audience)) &&
+    nullableAudience(value.audience) &&
     nullableText(value.spaceId) &&
     ["not_checked", "ready", "video_only"].includes(String(value.source))
   );
@@ -159,4 +160,12 @@ export function safeShareUrl(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function optionalFailure(value: unknown): boolean {
+  return value === undefined || nullableText(value);
+}
+
+function nullableAudience(value: unknown): boolean {
+  return value === null || isAudience(value);
 }
