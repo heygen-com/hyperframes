@@ -5,7 +5,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
@@ -41,6 +41,7 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
   setup?.(dir);
   server = await createServer({
     configFile: false,
+    optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true, watch: null, ws: false },
   });
   // Loads the received-project rule before the render starts, so a cold load on CI isn't timed by the waits below.
@@ -61,7 +62,7 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
     jobId: "gif-job",
     ...extra,
   });
-  return { dir, state, outputPath, metaPath: join(dir, "out.meta.json") };
+  return { dir, state, outputPath, metaPath: join(dir, "gif-job.meta.json") };
 }
 
 describe("Vite GIF rendering", { timeout: 30_000 }, () => {
@@ -84,7 +85,7 @@ describe("Vite GIF rendering", { timeout: 30_000 }, () => {
       producer.executeRenderJob.mockImplementation(
         async (_job, _dir, outputPath: string, _progress, signal: AbortSignal) => {
           writeFileSync(outputPath, "partial-gif");
-          writeFileSync(outputPath.replace(/\.gif$/, ".meta.json"), "{}");
+          writeFileSync(join(dirname(outputPath), "gif-job.meta.json"), "{}");
           await waitForRenderCancellation(signal, lateCompletion);
         },
       );
