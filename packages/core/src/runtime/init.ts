@@ -50,6 +50,7 @@ import {
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
+  capturePageIn,
   inPlayerFrame,
   STUDIO_PREVIEW_MARK_META,
   PREVIEW_ONLY_ATTRS,
@@ -3003,6 +3004,7 @@ export function initSandboxRuntimeModular(): void {
   const hiddenImagesSkipped = skipsHiddenImages();
   const mediaDeferred = defersMedia();
   const studioPreview = document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+  const loadsAhead = !capturePageIn(document);
   const skipFarScenes = createFarSceneSkip((host) =>
     runtimeElementWindow(host, {
       timelineRegistry: window.__timelines ?? {},
@@ -3267,7 +3269,7 @@ export function initSandboxRuntimeModular(): void {
         // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
         if (decided)
           withoutOwnTimingRecords(el, () =>
-            releaseMedia(el, window.__HF_RELEASE_PASSED_MEDIA === true),
+            releaseMedia(el, !loadsAhead || window.__HF_RELEASE_PASSED_MEDIA === true),
           );
       }
     } else if (!visible || decided === undefined) {
@@ -3472,11 +3474,12 @@ export function initSandboxRuntimeModular(): void {
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
-          playerFrame
-            ? nextTakeClips(currentTime).has(rawNode)
-            : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
+          loadsAhead &&
+            (playerFrame
+              ? nextTakeClips(currentTime).has(rawNode)
+              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
           currentTime,
-          dueAtLoopStart(rawNode, visibleAt),
+          loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {

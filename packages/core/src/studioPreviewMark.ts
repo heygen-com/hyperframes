@@ -17,6 +17,12 @@ export function defersMediaIn(doc: Document): boolean {
     doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
   );
 }
+export function capturePageIn(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.getAttribute("content") ===
+    STUDIO_PREVIEW_CAPTURE_MODE
+  );
+}
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";

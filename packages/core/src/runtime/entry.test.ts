@@ -5,6 +5,7 @@ import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading"
 import {
   PLAYER_FRAME_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
+  STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
 } from "../studioPreviewMark";
 import { revealClip } from "./clipReveal";
@@ -493,6 +494,22 @@ describe("runtime entry", () => {
       expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
       expect(srcWrites.takeRecords()).toHaveLength(2);
       expect(now.getAttribute("src")).toBe("now.mp4");
+    });
+
+    it("in a hidden capture page only the clip on screen loads, and the one a seek left is freed", async () => {
+      spyLoad();
+      servePreview().setAttribute("content", STUDIO_PREVIEW_CAPTURE_MODE);
+      const [now, soon, later] = videos(mountRoot(), "0", "1.5", "9");
+
+      await evaluateRuntime();
+      expect(armed(now, soon, later)).toEqual([true, false, false]);
+      expect(loadsOf(now, soon, later)).toEqual([1, 0, 0]);
+
+      window.__player?.seek(9.4);
+      expect(armed(now, soon, later)).toEqual([false, false, true]);
+      expect(now.preload).toBe("none");
+      // The clip left is reloaded empty; the one landed on is armed by the seek, not reloaded under it.
+      expect(loadsOf(now, soon, later)).toEqual([2, 0, 0]);
     });
 
     // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
