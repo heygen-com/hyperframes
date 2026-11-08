@@ -212,13 +212,12 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-// Shared by every project opening in this process: a batch of first opens must leave file reads for everything else.
-const FIRST_COPY_SLOTS = 4;
+const FIRST_COPY_SLOTS_IN_PROCESS = 4;
 let firstCopiesRunning = 0;
 const firstCopiesWaiting: (() => void)[] = [];
 
 async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
-  if (firstCopiesRunning < FIRST_COPY_SLOTS) firstCopiesRunning += 1;
+  if (firstCopiesRunning < FIRST_COPY_SLOTS_IN_PROCESS) firstCopiesRunning += 1;
   else await new Promise<void>((yours) => firstCopiesWaiting.push(yours));
   try {
     return await copy();

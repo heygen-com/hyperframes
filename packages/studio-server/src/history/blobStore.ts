@@ -29,8 +29,7 @@ export interface BlobStore {
 }
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
-// Up to this size one read and one write beat a clone's extra file operations, and a clone saves almost no disk.
-const READ_ONCE_BYTES = 64 * 1024;
+const READ_ONCE_AT_MOST_BYTES = 64 * 1024;
 
 export function blobPath(dir: string, hash: string): string {
   // Checked where the path is joined, so no caller can read or write outside the store.
@@ -44,6 +43,16 @@ async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
+}
+
+async function readIfSmall(path: string): Promise<{ bytes: Buffer; mode: number } | null> {
+  const handle = await open(path, "r");
+  try {
+    const { size, mode } = await handle.stat();
+    return size > READ_ONCE_AT_MOST_BYTES ? null : { bytes: await handle.readFile(), mode };
+  } finally {
+    await handle.close();
+  }
 }
 
 async function cloneOrStream(from: string, to: string): Promise<void> {
@@ -150,8 +159,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     if (!sizes.has(hash)) total += size;
     sizes.set(hash, size);
   };
-  // The folder is made only when a write finds it missing: it may be removed while the store is open.
-  const madeOnDemand = (folder: string, write: () => Promise<void>) =>
+  const withFolderMadeIfMissing = (folder: string, write: () => Promise<void>) =>
     write().catch(async (error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
       await mkdir(folder, { recursive: true });
@@ -163,9 +171,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     if (sizes.has(hash)) return hash;
     const temp = join(dir, `incoming-${randomUUID()}`);
     try {
-      await madeOnDemand(dir, () => writeFile(temp, bytes, { mode }));
+      await withFolderMadeIfMissing(dir, () => writeFile(temp, bytes, { mode }));
       const to = blobPath(dir, hash);
-      await madeOnDemand(dirname(to), () => renameWithRetryAsync(temp, to));
+      await withFolderMadeIfMissing(dirname(to), () => renameWithRetryAsync(temp, to));
     } catch (error) {
       await rm(temp, { force: true });
       throw error;
@@ -176,8 +184,8 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
 
   return {
     async put(absPath) {
-      const { size: found, mode } = await stat(absPath);
-      if (found <= READ_ONCE_BYTES) return putBytes(await readFile(absPath), mode);
+      const small = await readIfSmall(absPath);
+      if (small) return putBytes(small.bytes, small.mode);
       // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
       const temp = join(dir, `incoming-${randomUUID()}`);
       // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.

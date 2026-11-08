@@ -1,5 +1,4 @@
-// Opens a project's history for the first time and is killed outright partway through the copy, with no cleanup run
-// and one copy half written.
+// A project's first history open, killed outright mid-copy with one copy half written.
 import { writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
