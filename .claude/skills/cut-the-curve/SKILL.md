@@ -105,6 +105,9 @@ Mechanics:
 
 - **Mirrored eases:** exit `power4.in` + entry `power4.out`, same distance and duration —
   the two halves of one `power4.inOut`, so velocity matches exactly at the cut.
+  `seam-gate` measures something slightly different: the average velocity over ~0.1s of
+  whole frames on each side of the cut. Mirrored halves read ≈1.0 there only when the cut
+  sits on the frame grid (a multiple of 1/fps).
 - **The fade trick:** exit opacity completes at ~25–30% of its travel (fade ≈ 0.18–0.3s
   vs motion 0.3–0.34s); entry ignites at ~0.35 opacity mid-path. Time the last fading
   element to die right at the cut — a gap where nothing moves reads as dead air.
