@@ -33,7 +33,10 @@ async function loadHelper(
 }> {
   vi.resetModules();
   const resolveProxy = vi.fn(async () => "/unused-prewarm-proxy-path");
-  vi.doMock("./proxyTranscoder.js", () => ({ resolveProxy, PROXY_PARAMS_VERSION: "v1" }));
+  vi.doMock("./proxyTranscoder.js", () => ({
+    resolveProxy,
+    PROXY_PARAMS_VERSION: "v1",
+  }));
   // The real codec table and pre-warm gate; only the ffprobe-backed scan is
   // replaced, so this asserts the shipped policy rather than a copy of it.
   vi.doMock("./mediaCodecMap.js", async () => ({
@@ -172,19 +175,20 @@ describe("injectMediaCodecMapIntoHtml pre-warm", () => {
 });
 
 describe("injectMediaCodecMapIntoHtml placement", () => {
-  it("puts the map before the document's own </head>, not inside an inlined script that prints one", async () => {
+  it("puts facts before runtime and authored head scripts without confusing script contents for document tags", async () => {
     const { injectMediaCodecMapIntoHtml } = await loadHelper({
       "/audio/seg01.webm": hostile("vp9", 'video/webm; codecs="vp09.00.10.08"'),
     });
     const vendor = 'p.print("<head>"),p.print("</head>"),p.print("<body>")';
 
     const html = await injectMediaCodecMapIntoHtml(
-      `<html><head><script>${vendor}</script></head><body></body></html>`,
+      `<html><head><script src="/api/runtime.js"></script><script>${vendor}</script></head><body></body></html>`,
       tmpProject(),
       [{ html: "<html></html>" }],
     );
 
     expect(html).toContain(`<script>${vendor}</script>`);
-    expect(html.indexOf("data-hf-media-codec-map")).toBeGreaterThan(html.indexOf(vendor));
+    expect(html.indexOf("data-hf-media-codec-map")).toBeLessThan(html.indexOf("/api/runtime.js"));
+    expect(html.indexOf("data-hf-media-codec-map")).toBeLessThan(html.indexOf(vendor));
   });
 });

@@ -43,6 +43,8 @@ function request() {
         codec: "h264",
         chunkSize: 120,
         maxParallelChunks: 8,
+        targetChunkFrames: 1600,
+        minParallelChunks: 4,
         cfr: true,
       },
     },

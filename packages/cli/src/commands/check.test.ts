@@ -1635,6 +1635,28 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
   });
 
+  it("names the saved report file on stderr after a --json run", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const saved = {
+      id: "r1",
+      revision: "rev",
+      report: "/p/.hyperframes/artifacts/checks/r1.json",
+      attribution: "recorded-revision" as const,
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => ({ ...report, saved })),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(err).toHaveBeenCalledWith(`[hyperframes] check: report saved to ${saved.report}`);
+  });
+
   it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
@@ -2438,6 +2460,29 @@ describe("check pipeline", () => {
         "while running the overlap pass (overlap probes from 0s).",
       );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Chrome that never becomes ready ends the whole check with a named finding inside its window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps } = dependencies(fakeDriver());
+      deps.runBrowserCheck = (_project, _options, _motion, deadline) => {
+        deadline!.enter("launch");
+        return new Promise<never>((_, reject) =>
+          deadline!.signal.addEventListener("abort", () => reject(deadline!.signal.reason)),
+        );
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(180_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
+      expect(report.ok).toBe(false);
     } finally {
       vi.useRealTimers();
     }

@@ -100,6 +100,12 @@ console.log(player.duration, player.paused, player.ready);
 console.log(player.compositionWidth, player.compositionHeight);
 ```
 
+In Studio previews, scrubbing keeps the last complete picture visible while video
+layers decode at the requested time. Rapid seeks keep only the latest queued
+destination, and the captions and video layers appear together once it is ready.
+Complete intermediate pictures can appear during a drag. Jumping to a different
+clip supersedes an earlier pending seek; failed sources do not hold up the preview.
+
 ## Events
 
 ```js

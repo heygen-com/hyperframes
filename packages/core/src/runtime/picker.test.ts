@@ -302,6 +302,17 @@ describe("createPickerModule", () => {
       }
     });
 
+    it("picks a video whose decoded preview surface hides the native pixels", () => {
+      const picker = createPickerModule({ postMessage: createMockPostMessage() });
+      picker.installPickerApi();
+      document.body.innerHTML =
+        '<video id="video" data-hf-preview-video-frame style="opacity:0;width:100px;height:100px"></video>';
+      const video = document.querySelector("video")!;
+      expect(candidatesUnder(() => [video])).toContain("#video");
+      video.removeAttribute("data-hf-preview-video-frame");
+      expect(candidatesUnder(() => [video])).not.toContain("#video");
+    });
+
     it("still picks an image inside a faint texture wrapper", () => {
       const picker = createPickerModule({ postMessage: createMockPostMessage() });
       picker.installPickerApi();

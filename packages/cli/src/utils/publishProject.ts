@@ -1,5 +1,5 @@
 import { envProxyEnabled } from "@hyperframes/core/env-proxy";
-import { basename, dirname, join, posix, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 import {
   closeSync,
   existsSync,
@@ -414,28 +414,80 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
+/** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
+function includeReferencedProjectFile(
+  ctx: ExternalAssetContext,
+  resolvedPath: string,
+  rawPath: string,
+  requireOnDisk: boolean,
+): void {
+  const fromRoot = resolve(ctx.absProjectDir, rawPath);
+  for (const candidate of [resolvedPath, fromRoot]) {
+    const absPath = candidate.replace(/[?#].*$/, "");
+    if (!isPathInside(absPath, ctx.absProjectDir)) continue;
+    const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
+    if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return;
+    if (!existsSync(absPath)) continue;
+    if (statSync(absPath).isFile()) {
+      ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
+    }
+    return;
+  }
+  if (!requireOnDisk) return;
+  throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
+}
+
+/** References with no fallback: a missing file here cannot render. */
+const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
+
+const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
+  encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
+
+function archiveTargetOf(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  rawPath: string,
+  options: { requireOnDisk: boolean; filesystemPath: boolean },
+): string | null | undefined {
+  if (isPathInside(absPath, ctx.absProjectDir)) {
+    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk);
+    return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
+  }
+  try {
+    if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
+  } catch {
+    return undefined;
+  }
+  return encodeUrlPath(addExternalAsset(ctx, absPath));
+}
+
 function tryResolveExternal(
   ctx: ExternalAssetContext,
   rawPath: string,
   referrerAbsDir: string,
+  requireOnDisk = false,
 ): string | null {
-  if (isNonRelativeUrl(rawPath)) return null;
-  for (const path of decodeUrlPathVariants(rawPath)) {
-    const absPath = resolve(referrerAbsDir, path);
-    if (isPathInside(absPath, ctx.absProjectDir)) return null;
-    try {
-      if (!existsSync(absPath) || !statSync(absPath).isFile()) continue;
-    } catch {
-      continue;
-    }
-    return encodeUrlPath(addExternalAsset(ctx, absPath));
+  const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
+  if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
+  const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
+  const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
+  for (const variant of decodeUrlPathVariants(path)) {
+    const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
+      requireOnDisk,
+      filesystemPath,
+    });
+    if (target !== undefined) return target && target + suffix;
   }
   return null;
 }
 
 /** Resolves a raw attribute or CSS `url()` value to the archive path or absolute
  * URL it should point at, or `null` to leave it untouched. */
-export type HtmlAttributeResolver = (rawValue: string, referrerAbsDir: string) => string | null;
+export type HtmlAttributeResolver = (
+  rawValue: string,
+  referrerAbsDir: string,
+  ref?: { attr: string; tag: string },
+) => string | null;
 
 function referenceFrom(entryPath: string, target: string): string {
   return isNonRelativeUrl(target) ? target : posix.relative(posix.dirname(entryPath), target);
@@ -490,7 +542,7 @@ export function rewriteHtmlAttributes(
     for (const attr of attrs) {
       const val = (el.getAttribute(attr) || "").trim();
       if (!val) continue;
-      const target = resolveTarget(val, referrerAbsDir);
+      const target = resolveTarget(val, referrerAbsDir, { attr, tag: el.localName });
       if (!target) continue;
       el.setAttribute(attr, referenceFrom(entryPath, target));
       modified = true;
@@ -551,7 +603,13 @@ function rewriteHtmlSrcsets(
 function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content: Buffer): void {
   const referrerAbsDir = resolve(ctx.absProjectDir, dirname(entryPath));
   const { document } = parseHTML(content.toString("utf-8"));
-  const resolveTarget: HtmlAttributeResolver = (val, dir) => tryResolveExternal(ctx, val, dir);
+  const resolveTarget: HtmlAttributeResolver = (val, dir, ref) =>
+    tryResolveExternal(
+      ctx,
+      val,
+      dir,
+      ref !== undefined && HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
+    );
   const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "href", "poster"],
   });

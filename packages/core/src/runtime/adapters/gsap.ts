@@ -1,4 +1,5 @@
 import type { RuntimeDeterministicAdapter, RuntimeTimelineLike } from "../types";
+import { authoredOrderOf } from "./gsapAuthoredOrder";
 
 type GsapAdapterDeps = {
   getTimeline: () => RuntimeTimelineLike | null;
@@ -140,7 +141,12 @@ type PlacedTween = GsapPlaced & {
   vars?: Record<string, unknown>;
   targets?: () => object[];
 };
-type PropertyWrite = { start: number; end: number; properties: Set<string> | null };
+type PropertyWrite = {
+  start: number;
+  end: number;
+  properties: Set<string> | null;
+  order: number | undefined;
+};
 
 function propertiesWritten({ startAt, ...vars }: Record<string, unknown>): Set<string> | null {
   const to = ownPropertiesWritten(vars);
@@ -190,6 +196,7 @@ function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWri
       start: span[0],
       end: span[0] + span[1],
       properties: propertiesWritten(tween.vars ?? {}),
+      order: authoredOrderOf(tween, owner),
     }
   );
 }
@@ -210,6 +217,10 @@ function sharesAProperty(a: PropertyWrite, b: PropertyWrite): boolean {
   return !a.properties || !b.properties || [...a.properties].some((p) => b.properties!.has(p));
 }
 
+function writtenBefore(a: PropertyWrite, b: PropertyWrite): boolean {
+  return a.order !== undefined && b.order !== undefined && a.order < b.order;
+}
+
 function overlapsOnOneTarget(writes: PropertyWrite[]): OverlapSpan[] {
   const spans: OverlapSpan[] = [];
   writes.sort((x, y) => x.start - y.start);
@@ -221,7 +232,7 @@ function overlapsOnOneTarget(writes: PropertyWrite[]): OverlapSpan[] {
           laterStart: second.start,
           sharedEnd: Math.min(first.end, second.end),
           earlierEnd: first.end,
-          laterIsSet: second.end === second.start,
+          laterIsSet: second.end === second.start && !writtenBefore(second, first),
         });
     }
   });
@@ -377,7 +388,7 @@ const landingMarksCache = new WeakMap<object, PlacedMarks>();
 
 const LANDING_MARK_REACH = 0.05;
 
-type GsapPlaced = {
+export type GsapPlaced = {
   _start?: number;
   _ts?: number;
   _repeat?: number;

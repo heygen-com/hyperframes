@@ -85,6 +85,25 @@ describe("readingWords", () => {
     expect(readingWords("今天天气很好")).toBeGreaterThan(1);
   });
 
+  it("counts Korean by its spaces and a number with its counter as one unit", () => {
+    expect(readingWords("실패 12회")).toBe(2);
+    expect(readingWords("오류 3건 발생")).toBe(3);
+    expect(readingWords("테스트 실패 12/40")).toBe(4);
+    expect(readingWords("커피12잔")).toBe(1);
+  });
+
+  it("still segments scripts written without spaces", () => {
+    expect(readingWords("ฉันรักภาษาไทยมาก")).toBeGreaterThan(1);
+    expect(readingWords("ខ្ញុំស្រលាញ់ភាសាខ្មែរ")).toBeGreaterThan(1);
+    expect(readingWords("ຂ້ອຍຮັກພາສາລາວຫຼາຍ")).toBeGreaterThan(1);
+    expect(readingWords("ကျွန်တော်မြန်မာစကားကိုချစ်တယ်")).toBeGreaterThan(1);
+  });
+
+  it("keeps counting a Japanese number and its counter as two", () => {
+    expect(readingWords("12回")).toBe(2);
+    expect(readingWords("実行12回失敗")).toBe(4);
+  });
+
   it("counts a contraction as one word", () => {
     expect(readingWords("a tooth can't get in")).toBe(5);
     expect(readingWords("a tooth can’t get in")).toBe(5);

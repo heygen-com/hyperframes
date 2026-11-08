@@ -246,10 +246,18 @@ function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void 
   };
 }
 
+function shownDir(dir: string, cwd: string): string {
+  const shown = relative(cwd, dir) || ".";
+  return /\s/.test(shown) ? JSON.stringify(shown) : shown;
+}
+
 /** The `hyperframes open` line for a project, relative to where the person is. */
 export function openCommandFor(dir: string, cwd = process.cwd()): string {
-  const shown = relative(cwd, dir) || ".";
-  return `hyperframes open ${/\s/.test(shown) ? JSON.stringify(shown) : shown}`;
+  return `hyperframes open ${shownDir(dir, cwd)}`;
+}
+
+export function previewStopCommandFor(dir: string, port: number, cwd = process.cwd()): string {
+  return `hyperframes preview ${shownDir(dir, cwd)} --stop --port ${port}`;
 }
 
 /** Spotlight's copies of an app with this bundle id; an updater's hidden leftover (`.X.app.installing-…`) is none. */
@@ -280,7 +288,7 @@ function someoneToTell(env: NodeJS.ProcessEnv, tty: boolean): boolean {
   return tty || env["HYPERFRAMES_AGENT"] === "1" || isAgentDriven(env);
 }
 
-/** The app line render and preview print for a person or the agent relaying it (skills/hyperframes/SKILL.md); null inside the app, under CI or a pipe, or with nothing to open or download. */
+/** The app line render and preview print (skills/hyperframes/SKILL.md), saying how a preview stops; null inside the app, under CI or a pipe, or with nothing to open or download. */
 export function desktopHint(
   dir: string,
   {
@@ -289,17 +297,27 @@ export function desktopHint(
     installed,
     platform = process.platform,
     tty = process.stdout.isTTY === true,
+    preview,
   }: {
     env?: NodeJS.ProcessEnv;
     ready?: boolean;
     installed?: boolean;
     platform?: NodeJS.Platform;
     tty?: boolean;
+    preview?: "background" | "foreground";
   } = {},
 ): string | null {
   if (insideHostApp(env) || !someoneToTell(env, tty)) return null;
-  if (ready && (installed ?? desktopInstalled({ platform, env })))
-    return `Keep editing by chatting with Framey in the desktop app: ${openCommandFor(dir)}`;
+  if (ready && (installed ?? desktopInstalled({ platform, env }))) {
+    const open = openCommandFor(dir);
+    const how =
+      preview === "background"
+        ? `${open} (this stops the background preview)`
+        : preview === "foreground"
+          ? `stop this preview, then run ${open}`
+          : open;
+    return `Keep editing by chatting with Framey in the desktop app: ${how}`;
+  }
   const url = desktopDownloadUrl(platform);
   return url ? downloadHint(url) : null;
 }

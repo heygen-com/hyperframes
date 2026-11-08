@@ -4046,6 +4046,42 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     expect(colourProbesSince(before)).toEqual({ firstFrame: 2, keyframes: 1 });
   }, 60_000);
 
+  it("tone-maps an HLG source at HLG's white when a large header SEI follows its SPS", async () => {
+    const source = join(fixtureDir, "hlg-x265-header.mp4");
+    // x265 stores its settings as an SEI after the SPS in the file header; traced, it runs past 64 KB.
+    // No B-frames: at 1 fps their reorder gap is a whole second, which Windows ffmpeg's mp4 muxer can refuse.
+    const synthesized = await runFfmpeg([
+      ...["-y", "-hide_banner", "-loglevel", "error"],
+      ...["-f", "lavfi", "-i", "color=c=0xe0b080:s=64x64:r=1:d=1"],
+      "-vf",
+      "zscale=pin=bt709:tin=bt709:min=bt709:p=bt2020:t=arib-std-b67:m=bt2020nc:r=tv,format=yuv420p10le",
+      ...[
+        "-c:v",
+        "libx265",
+        "-x265-params",
+        "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:log-level=error:bframes=0",
+      ],
+      ...["-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc"],
+      source,
+    ]);
+    if (!synthesized.success) {
+      throw new Error(`x265 HLG fixture synthesis failed: ${synthesized.stderr.slice(-400)}`);
+    }
+    const before = vi.mocked(runFfmpeg).mock.calls.length;
+    await extractVideoFramesRange(source, "hlg-x265-header", 0, 1, {
+      fps: 1,
+      outputDir: join(fixtureDir, "x265-header"),
+      format: "png",
+      toneMapHdrToSdr: true,
+    });
+    const toneMaps = vi
+      .mocked(runFfmpeg)
+      .mock.calls.slice(before)
+      .flatMap(([args]) => args.filter((arg) => arg.includes("tonemap=")));
+    expect(toneMaps).toHaveLength(1);
+    expect(toneMaps[0]).toContain("npl=203");
+  }, 60_000);
+
   it("reads an HLG source's keyframes again after that read failed", async () => {
     const source = join(fixtureDir, "keyframe-retry.mp4");
     await synthesizeHlgClip(source);

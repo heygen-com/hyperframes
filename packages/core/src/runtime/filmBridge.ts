@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 const PREFIX = "appifact-film:";
 
 export interface FilmBridge {
@@ -36,15 +37,15 @@ export function createFilmBridge(options: {
   } | null = null;
   const fail = (error: Error) => {
     failure = error;
-    clearTimeout(startupTimer);
+    wallClearTimeout(startupTimer);
     rejectReady(error);
     if (pending) {
-      clearTimeout(pending.timer);
+      wallClearTimeout(pending.timer);
       pending.reject(error);
       pending = null;
     }
   };
-  const startupTimer = setTimeout(
+  const startupTimer = wallSetTimeout(
     () => fail(new Error("Film runner did not become ready within 20 s")),
     20_000,
   );
@@ -58,7 +59,7 @@ export function createFilmBridge(options: {
       return;
     const request = pending;
     pending = null;
-    clearTimeout(request.timer);
+    wallClearTimeout(request.timer);
     if (data.type === PREFIX + "frame-error") {
       request.reject(new Error("message" in data ? String(data.message) : "Film frame failed"));
     } else request.resolve();
@@ -81,7 +82,7 @@ export function createFilmBridge(options: {
       loaded = true;
       send({ ...load, type: PREFIX + "load" });
     } else if (data.type === PREFIX + "ready" && loaded) {
-      clearTimeout(startupTimer);
+      wallClearTimeout(startupTimer);
       resolveReady();
     } else if (data.type === PREFIX + "error") {
       fail(new Error("message" in data ? String(data.message) : "Film runner failed"));
@@ -106,7 +107,7 @@ export function createFilmBridge(options: {
       if (pending) throw new Error("Film seeks must be serialized; use registerFrameSource");
       const seq = ++sequence;
       return new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
+        const timer = wallSetTimeout(() => {
           fail(new Error("Film frame did not arrive within 15 s"));
         }, 15_000);
         pending = { sequence: seq, resolve, reject, timer };

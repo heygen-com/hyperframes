@@ -12,7 +12,7 @@ import {
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
 import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
-import { getSourceFileForElement } from "../components/editor/domEditingDom";
+import { getLogicalOpacity, getSourceFileForElement } from "../components/editor/domEditingDom";
 import {
   createElementPickerHoverLabel,
   type ElementPickerHoverInfo,
@@ -589,7 +589,8 @@ function readComputedStyles(iframe: HTMLIFrameElement, selector: string): Record
     ];
 
     for (const prop of props) {
-      const val = computed.getPropertyValue(prop);
+      const val =
+        prop === "opacity" ? getLogicalOpacity(el, computed) : computed.getPropertyValue(prop);
       if (val) styles[prop] = val;
     }
   } catch {

@@ -434,4 +434,12 @@ describe("open motion", () => {
       /\.duration-open \{[\s\S]*?prefers-reduced-motion: reduce[\s\S]*?transition-duration: 0ms/,
     );
   });
+
+  it("rounds a row's highlight more than the panel that holds it", async () => {
+    await openActionMenu();
+
+    const rowRadius = [...items()[0]!.classList].find((c) => c.startsWith("rounded-"))!;
+    expect([...popup()!.classList]).toContain("rounded-lg");
+    expect(compileStudioCss([rowRadius])).toMatch(/calc\(var\(--radius-lg\) \+ 6px\)/);
+  });
 });

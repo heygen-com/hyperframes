@@ -885,6 +885,12 @@ Sentences come from a transcript: `--transcript <file>`, or
 `<recording>.transcript.json` beside the recording. Without one, voice lines
 carry no words.
 
+A file you know holds one layer is read whole with `--layer music|sfx|voice`:
+no stems are fetched and nothing leaves the machine, whatever `--quality` says.
+`music` reads the file as the music bed (sections, tempo, levels), `voice` reads
+words and pauses from it, `sfx` finds its effects. The JSON result records the
+declared `layer`; without the flag the read is unchanged.
+
 Effects and music are read from stems. At `--quality best` the
 recording is separated into vocals, drums, bass, guitar, piano and other by
 HeyGen's `/v3/audio/stems`, with your HeyGen credential (see
@@ -1149,6 +1155,13 @@ installed, `open` exits 1 and prints a download link. With `--json`, the result
 names the `reason` and the `downloadUrl`. The hand-off works on macOS, Windows
 and Linux.
 
+The app can't edit a project while a preview of it is running, because the
+preview holds the project's edit history. So `open` first stops the project's
+`preview --background` server and says so. It leaves any other preview running,
+such as one started in a terminal, and prints the `preview --stop` command
+instead. With `--json`, the `preview` field reports `none`, `stopped` or
+`left-running`.
+
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
 what changed in the app since you last looked, and the files changed since
@@ -1196,6 +1209,12 @@ unless you pass `--verbose`, which keeps output clean for agents and CI.
 `--lint-verbose`, which `render`, `preview` and `publish` use for the same wish, works here and on `check` too.
 `--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
 
+Only the compositions the project uses are linted: `index.html` and every file it mounts through
+`data-composition-src`, followed through the files they mount. A file under `compositions/` that
+nothing mounts (an installed block you have not placed yet) is left out, and one line says how
+many were; `--include-unmounted` lints them too. `--json` lists them in `unmountedCompositions`.
+`check` lints the same way and takes the same flag.
+
 The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
 Three.js), and structural problems. [Troubleshooting](/help)
 explains each rule.
@@ -1240,6 +1259,7 @@ cover every finding from the full check.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
 | `--snapshots`                                | Save the five audited frames under `.hyperframes/artifacts/snapshots/`, plus a `finding-NN-<code>.png` crop per finding      |
+| `--include-unmounted`                        | Also lint `compositions/` files that `index.html` never mounts (left out by default, with one line saying how many)          |
 | `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
 | `--at`                                       | Explicit timestamps in seconds, comma-separated                                                                             |
 | `--at-transitions`                           | Also sample every tween start and end, to catch transient overlaps at transition seams                                       |
@@ -1268,6 +1288,10 @@ check prints each copy's progress to stderr every 10 seconds (stdout stays clean
 and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
+
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
+finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
+downloading: run `hyperframes browser ensure` once, then run check again.
 
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
@@ -1365,6 +1389,10 @@ runs at most once per file; whether a `<video>` has sound is probed on each use.
 The check runs alongside the browser pass, up to four files at a time. A clip
 longer than 3 s is first sampled at three 1-second spots and decoded in full
 only if all three are silent.
+
+Overlap is judged on the text a viewer can see: a part of a text block that an
+overflow clip, a `clip-path` or a gradient `mask-image` (on the text or an ancestor)
+keeps from painting does not count.
 
 #### Mark intentional layout choices
 

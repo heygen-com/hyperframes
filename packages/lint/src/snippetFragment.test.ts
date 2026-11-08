@@ -21,7 +21,7 @@ async function lintWithFragment(name: string, html: string) {
   writeFileSync(join(dir, "index.html"), INDEX);
   mkdirSync(join(dir, "compositions"), { recursive: true });
   writeFileSync(join(dir, "compositions", name), html);
-  const result = await lintProject(dir);
+  const result = await lintProject(dir, undefined, {}, { includeUnmounted: true });
   return result.results.filter((r) => r.file.includes(name.replace(".html", "")));
 }
 

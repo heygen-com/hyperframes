@@ -32,6 +32,7 @@ export interface DistributedRenderOptions {
   chunkSize?: number;
   maxParallelChunks?: number;
   targetChunkFrames?: number;
+  minParallelChunks?: number;
   runtimeCap?: DistributedRenderConfig["runtimeCap"];
   rejectOnSystemFonts?: boolean;
   failClosedFontFetch?: boolean;
@@ -166,6 +167,7 @@ function assertDistributedOptions(value: unknown): void {
     "chunkSize",
     "maxParallelChunks",
     "targetChunkFrames",
+    "minParallelChunks",
     "planDirSizeLimitBytes",
   ] as const) {
     assertOptionalInteger(value, field, 1);
@@ -328,6 +330,7 @@ export function distributedConfigFromRequest(
     chunkSize: distributed.chunkSize,
     maxParallelChunks: distributed.maxParallelChunks,
     targetChunkFrames: distributed.targetChunkFrames,
+    minParallelChunks: distributed.minParallelChunks,
     runtimeCap: distributed.runtimeCap,
     rejectOnSystemFonts: distributed.rejectOnSystemFonts,
     failClosedFontFetch: distributed.failClosedFontFetch,
@@ -364,6 +367,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("chunkSize", config.chunkSize),
     ...optionalProperty("maxParallelChunks", config.maxParallelChunks),
     ...optionalProperty("targetChunkFrames", config.targetChunkFrames),
+    ...optionalProperty("minParallelChunks", config.minParallelChunks),
     ...optionalProperty("runtimeCap", config.runtimeCap),
     ...optionalProperty("rejectOnSystemFonts", config.rejectOnSystemFonts),
     ...optionalProperty("failClosedFontFetch", config.failClosedFontFetch),

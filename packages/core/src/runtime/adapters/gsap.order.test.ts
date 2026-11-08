@@ -1,8 +1,12 @@
 import gsap from "gsap";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { rerenderGsapTimelineAt, seekGsapTimeline } from "./gsap";
+import { stampAuthoredOrder } from "./gsapAuthoredOrder";
 import { producerStandIn } from "./gsapStandIn.test-helpers";
 import type { RuntimeTimelineLike } from "../types";
+
+// The runtime stamps the order a film writes its tweens in as GSAP loads, before any composition script runs.
+beforeAll(() => stampAuthoredOrder(gsap));
 
 const FPS = 60;
 const FRAMES = 150;
@@ -227,4 +231,79 @@ describe("a fromTo beside a set on another property of the same element", () => 
     expect(landed.filter((t, i) => i > 0 && t < landed[i - 1]!)).toEqual([]);
     expect(tile.x).toBeCloseTo(100 + 100 * (59 / 30 - 1), 5);
   });
+});
+
+// An init written as a set before the tween that fades in from it: the set sits inside the tween's span, but the
+// author wrote the tween last, so the tween's end is what the film shows.
+function setBeforeFadeIn() {
+  const cards = [0, 1, 2, 3].map(() => ({ opacity: 0, scale: 1 }));
+  const timeline = gsap.timeline({ paused: true });
+  timeline.to({ x: 0 }, { x: 1, duration: 0.8 }, 5.5);
+  timeline.set(cards, { opacity: 0, scale: 0.95 });
+  timeline.fromTo(
+    cards,
+    { opacity: 0, scale: 0.95 },
+    { opacity: 1, scale: 1, duration: 0.8, stagger: 0.15 },
+    6.0,
+  );
+  timeline.to(cards, { opacity: 0, scale: 0.8, duration: 1 }, 8.5);
+  return { cards, timeline: timeline as unknown as RuntimeTimelineLike };
+}
+
+const CARD_FRAMES = range(0, 300);
+// Inside the overlap GSAP's own in-order stepping shows the set's value for one frame (190) that the runtime's
+// re-render does not; this test is about what the film shows once the last card has faded in.
+const FADED_IN = Math.ceil((6.0 + 3 * 0.15 + 0.8) * SET_FPS);
+
+/** Card 0's opacity at each frame, through the render's seek, or through the runtime's seek and re-render. */
+function cardsAt(frames: number[], through: "render" | "runtime"): Map<number, number> {
+  const { cards, timeline } = setBeforeFadeIn();
+  const structure = { owner: timeline, version: "1" };
+  const opacity = new Map<number, number>();
+  for (const frame of frames) {
+    const t = frame / SET_FPS;
+    if (through === "render") seekGsapTimeline(timeline, t, true, structure, SET_FPS);
+    else if (!seekGsapTimeline(timeline, t, false, undefined, SET_FPS)) {
+      rerenderGsapTimelineAt(
+        {
+          totalTime: timeline.totalTime!.bind(timeline),
+          totalDuration: timeline.totalDuration?.bind(timeline),
+          getChildren: timeline.getChildren?.bind(timeline),
+        },
+        t,
+      );
+    }
+    opacity.set(frame, cards[0]!.opacity);
+  }
+  return opacity;
+}
+
+describe("a set written before the tween it sits inside", () => {
+  // What GSAP itself shows playing the film in order, frame by frame.
+  const inOrder = (() => {
+    const { cards, timeline } = setBeforeFadeIn();
+    return new Map(
+      CARD_FRAMES.map((frame) => {
+        timeline.totalTime!(frame / SET_FPS, true);
+        return [frame, cards[0]!.opacity] as const;
+      }),
+    );
+  })();
+
+  it("starts from a film where the fade-in ends fully visible", () => {
+    expect(inOrder.get(Math.round(7.5 * SET_FPS))).toBe(1);
+  });
+
+  for (const through of ["render", "runtime"] as const) {
+    it(`shows the tween's end after the fade-in through the ${through} seek, however frames are shared out`, () => {
+      for (const workers of [1, 2, 3, 4, 6]) {
+        for (let worker = 0; worker < workers; worker++) {
+          for (const [frame, opacity] of cardsAt(range(worker, 300, workers), through)) {
+            if (through === "runtime" && frame < FADED_IN) continue;
+            expect([workers, frame, opacity]).toEqual([workers, frame, inOrder.get(frame)]);
+          }
+        }
+      }
+    });
+  }
 });

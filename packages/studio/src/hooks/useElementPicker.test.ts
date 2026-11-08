@@ -115,6 +115,19 @@ function mountPicker(
   };
 }
 
+it.each(["0.65", "0"])(
+  "reads provider-backed video opacity %s in the picked-element inspector",
+  (opacity) => {
+    const mounted = `<style>[data-hf-preview-video-frame] { opacity: 0 !important; }</style><canvas data-hf-preview-video-canvas style="opacity:${opacity}"></canvas><video id="provider-video" data-hf-preview-video-frame style="opacity:${opacity}"></video>`;
+    const { iframe, picker } = mountPicker({ "index.html": SAVED }, "#provider-video", mounted);
+    expect(
+      iframe.contentWindow!.getComputedStyle(iframe.contentDocument!.querySelector("video")!)
+        .opacity,
+    ).toBe("0");
+    expect(picker().pickedElement?.computedStyles.opacity).toBe(opacity);
+  },
+);
+
 describe("pick mode cancellation and hover feedback", () => {
   it("cancels pick mode when Escape is pressed with Studio focus", () => {
     const { picker } = mountPicker({ "index.html": SAVED });

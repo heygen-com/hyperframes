@@ -55,6 +55,8 @@ export type PreviewSourceFacts = {
   bitDepth: number;
   bitrate: number;
   codec?: string;
+  frameRate?: number;
+  variableFrameRate?: boolean;
 };
 
 export const HEAVY_PIXEL_SHARE = 0.5;

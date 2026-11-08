@@ -316,6 +316,36 @@ describe("runtime entry", () => {
     await window.__hfWaitForSeekCompletion?.();
   });
 
+  it("resolves a mixed image/video seek only after both have decoded", async () => {
+    servePreview();
+    const root = mountRoot();
+    const current = timed(root, "div", "0");
+    const later = timed(root, "div", "5");
+    const image = later.appendChild(document.createElement("img"));
+    let decodeImage = () => {};
+    image.decode = () => new Promise<void>((resolve) => (decodeImage = resolve));
+    const video = timed(later, "video", "5");
+    video.src = "/movie.mp4";
+    let ready = 1;
+    Object.defineProperty(video, "readyState", { configurable: true, get: () => ready });
+    Object.defineProperty(video, "networkState", { configurable: true, value: 2 });
+    Object.defineProperty(video, "videoWidth", { configurable: true, value: 64 });
+    Object.defineProperty(video, "videoHeight", { configurable: true, value: 36 });
+    await evaluateRuntime();
+    let settled = false;
+    const landed = Promise.resolve(window.__player!.seek(5.5)).then(() => {
+      settled = true;
+    });
+    decodeImage();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
+    expect(visibility(current, later)).toEqual(["visible", "hidden"]);
+    ready = 4;
+    video.dispatchEvent(new Event("seeked"));
+    await landed;
+    expect(visibility(current, later)).toEqual(["hidden", "visible"]);
+  });
+
   it("applies a held jump after the cap when an image never decodes", async () => {
     servePreview();
     const root = mountRoot();
@@ -495,6 +525,9 @@ describe("runtime entry", () => {
       ]);
 
       window.__player?.seek(3.5);
+      const video = second![0]!;
+      Object.defineProperty(video, "readyState", { value: 4, configurable: true });
+      video.dispatchEvent(new Event("seeked"));
       expect([first, second, third].map((take) => armed(...take))).toEqual([
         [false, false],
         [true, true],

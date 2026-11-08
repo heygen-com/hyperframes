@@ -226,9 +226,9 @@ export interface VirtualTimeShimOptions {
 /**
  * Build the page-side virtual-time shim script.
  *
- * The shim freezes `Date.now`, `performance.now`, and the rAF/setTimeout
- * pipeline so a render seek can deterministically advance the page's
- * notion of "now". The renderer issues `__HF_VIRTUAL_TIME__.seekToTime(ms)`
+ * The shim freezes `Date.now`, `performance.now`, rAF, and the timers set
+ * after the first seek, so a render seek can deterministically advance the
+ * page's notion of "now". The renderer issues `__HF_VIRTUAL_TIME__.seekToTime(ms)`
  * before every frame capture; everything timing-related on the page sees
  * exactly `ms` until the next seek.
  *
@@ -293,7 +293,7 @@ export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
   // The seekToTime hook reseeds when seeding is on; under seedRandomFromFrame=false
   // we emit no extra call so the function body is byte-identical to the
   // unseeded shim.
-  const seekToTimeReseedCall = seedRandomFromFrame ? "reseedRngFromTime(safeTimeMs);\n      " : "";
+  const seekToTimeReseedCall = seedRandomFromFrame ? "reseedRngFromTime(safeTimeMs);\n    " : "";
   return String.raw`(function() {
   if (window.__HF_VIRTUAL_TIME__) return;
 
@@ -372,6 +372,82 @@ ${seededRandomBlock}
     }
   };
 
+  // Timers set once rendering has started run on film time: each seek fires every timer due by then, in
+  // due order. Until a seek after the page reports ready, timers keep the wall clock: setup code waits on
+  // them while the renderer may already be seeking.
+  var rendering = false;
+  var timerQueue = [];
+  var nextTimerId = 1000000000;
+  var firingDepth = 0;
+  function addTimer(callback, delay, args, repeats) {
+    // A timer set from a firing timer waits at least 1 ms, so a zero-delay chain cannot stall a seek.
+    var ms = Math.max(firingDepth > 0 ? 1 : 0, Number(delay) || 0);
+    var entry = { id: nextTimerId++, callback: callback, args: args, due: virtualNowMs + ms, every: repeats ? Math.max(1, ms) : 0, cancelled: false };
+    timerQueue.push(entry);
+    return entry.id;
+  }
+  function cancelTimer(id) {
+    for (var i = 0; i < timerQueue.length; i++) {
+      if (timerQueue[i].id === id) {
+        timerQueue[i].cancelled = true;
+        return true;
+      }
+    }
+    return false;
+  }
+  function fireDueTimers(untilMs) {
+    // Frame times are fractional, so a timer due on a frame lands a rounding error past it; it still fires on it.
+    untilMs += 0.000001;
+    while (true) {
+      var next = null;
+      for (var i = 0; i < timerQueue.length; i++) {
+        var candidate = timerQueue[i];
+        if (!candidate.cancelled && candidate.due <= untilMs && (next === null || candidate.due < next.due)) next = candidate;
+      }
+      if (next === null) break;
+      var dueMs = next.due;
+      if (next.every) next.due += next.every;
+      else next.cancelled = true;
+      virtualNowMs = dueMs;
+      firingDepth++;
+      try {
+        next.callback.apply(window, next.args);
+      } catch (err) {
+        originalSetTimeout(function() { throw err; }, 0);
+      }
+      firingDepth--;
+    }
+    timerQueue = timerQueue.filter(function(entry) { return !entry.cancelled; });
+  }
+  window.setTimeout = function(callback, delay) {
+    if (!rendering || typeof callback !== "function") return originalSetTimeout.apply(null, arguments);
+    return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), false);
+  };
+  window.setInterval = function(callback, delay) {
+    if (!rendering || typeof callback !== "function") return originalSetInterval.apply(null, arguments);
+    return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), true);
+  };
+  window.clearTimeout = function(id) {
+    if (!cancelTimer(id)) originalClearTimeout(id);
+  };
+  window.clearInterval = function(id) {
+    if (!cancelTimer(id)) originalClearInterval(id);
+  };
+
+  function seekToTime(nextTimeMs) {
+    var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
+    if (!rendering && window.__renderReady === true) {
+      rendering = true;
+      // A worker whose first frame is past the start plays the film's first frame first, so timers the
+      // page starts there keep the schedule a one-worker render gives them.
+      if (safeTimeMs > 0) seekToTime(0);
+    }
+    ${seekToTimeReseedCall}fireDueTimers(safeTimeMs);
+    virtualNowMs = safeTimeMs;
+    flushAnimationFrame();
+    return virtualNowMs;
+  }
+
   window.__HF_VIRTUAL_TIME__ = {
     originalSetTimeout: originalSetTimeout,
     originalClearTimeout: originalClearTimeout,
@@ -379,12 +455,7 @@ ${seededRandomBlock}
     originalClearInterval: originalClearInterval,
     originalRequestAnimationFrame: originalRequestAnimationFrame,
     originalCancelAnimationFrame: originalCancelAnimationFrame,
-    seekToTime: function(nextTimeMs) {
-      var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
-      virtualNowMs = safeTimeMs;
-      ${seekToTimeReseedCall}flushAnimationFrame();
-      return virtualNowMs;
-    },
+    seekToTime: seekToTime,
     getTime: function() {
       return virtualNowMs;
     },

@@ -459,5 +459,6 @@ export interface CapturePerfSummary {
 declare global {
   interface Window {
     __hf?: HfProtocol;
+    __HF_VIRTUAL_TIME__?: { originalSetTimeout?: typeof setTimeout };
   }
 }

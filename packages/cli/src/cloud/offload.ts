@@ -356,6 +356,58 @@ function concatArgs(count: number, video: boolean, audio: number | null): string
   ];
 }
 
+const LIMITED_SHARE = 0.85;
+
+/** Rate limits that keep a re-encode under `maxBytes` while crf stays the quality target; empty when none apply. */
+export function sizeLimitArgs(opts: {
+  maxBytes: number;
+  seconds: number;
+  audioBitsPerSecond: number;
+}): string[] {
+  if (!(opts.seconds > 0)) return [];
+  const bits = (opts.maxBytes * 8 * LIMITED_SHARE) / opts.seconds - opts.audioBitsPerSecond;
+  if (!(bits >= 1000)) return [];
+  const rate = `${Math.floor(bits / 1000)}k`;
+  return ["-maxrate", rate, "-bufsize", rate];
+}
+
+const bitsPerSecond = (args: readonly string[]) => {
+  const rate = args[args.indexOf("-b:a") + 1];
+  return rate ? Number.parseInt(rate, 10) * 1000 : 0;
+};
+
+async function durationSeconds(sourcePath: string): Promise<number | null> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return null;
+  const { stdout } = await execFileAsync(ffprobe, [
+    ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", sourcePath],
+  ]);
+  const value = Number(stdout.trim());
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+const capOf = (presetName: PresetName) => ACCEPTED[REENCODE_PRESETS[presetName].ext]?.maxBytes ?? 0;
+
+const playedSeconds = (segments: PlayedSegment[]) =>
+  segments.reduce((sum, s) => sum + s.end - s.start, 0);
+
+export async function limitFor(
+  sourcePath: string,
+  presetName: PresetName,
+  segments: PlayedSegment[] | undefined,
+  maxBytes = capOf(presetName),
+): Promise<string[]> {
+  if (mediaOf(presetName) !== "video") return [];
+  const seconds = segments?.length ? playedSeconds(segments) : await durationSeconds(sourcePath);
+  const limit = sizeLimitArgs({
+    maxBytes,
+    seconds: seconds ?? 0,
+    audioBitsPerSecond: bitsPerSecond(REENCODE_PRESETS[presetName].audio),
+  });
+  // VP9 takes its ceiling from -b:v; the preset's `-b:v 0` is pure constant quality and ignores -maxrate.
+  return presetName === "alphaVideo" && limit.length ? [...limit, "-b:v", limit[1]!] : limit;
+}
+
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
@@ -378,6 +430,7 @@ async function ffmpegReencode(
         "-y",
         ...(await segmentArgs(sourcePath, decoder, segments, mediaOf(presetName))),
         ...preset.args,
+        ...(await limitFor(sourcePath, presetName, segments)),
         ...color,
         ...preset.audio,
         outPath,
