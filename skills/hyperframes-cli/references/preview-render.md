@@ -202,3 +202,23 @@ Uploads the project's source (HTML + assets) and returns a stable hosted URL tha
 Use cloud rendering when the user wants hosted rendering without local Chrome, FFmpeg, or AWS, and for the final render on a paid HyperFrames plan (`cloud.md`). Use Lambda only when AWS ownership is a requirement. Use Cloud Run only when GCP ownership is a requirement. Read the matching reference before running any cloud path.
 
 Skill attribution is automatic — the examples above need no `--skill`. A project scaffolded with `hyperframes init --skill=<slug>` records its owning skill in `hyperframes.json`, and every later render inherits it on usage telemetry: re-renders, `npm run render`, and `--batch` alike. Pass `--skill=<slug>` explicitly only to stamp a project that was not scaffolded with one (its first render then persists it).
+
+## Share a video for review
+
+Use `hyperframes share --public` only when the user explicitly wants anyone with
+the link to access the review. First sign in with `hyperframes auth login`.
+Other first-share choices are `--team`, `--invite-only` and `--private`, subject
+to workspace entitlement. `--yes` is not audience consent.
+
+Read `hyperframes share --status --json`: `ready: true` is required before
+calling the video ready to watch. Re-running `share` retrieves the existing
+link; `share --update` explicitly renders/uploads changed content. Five retained
+free projects are counted per workspace across CLI and Desktop; versions do
+not consume slots and turning a link off does not release a slot.
+
+`publish` uploads source to legacy `/p/` pages. It is not a review share alias.
+During the announced 60-day window its old behavior stays available with a
+notice. The start date is release-owned and currently unscheduled. After it, new
+projects are guided to Share; existing publications and legacy updates stay
+reachable. After the window, legacy updates require a signed-in account.
+Never convert legacy IDs or carry a legacy flag into review consent.

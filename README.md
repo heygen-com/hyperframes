@@ -110,7 +110,7 @@ This writes `dist/hyperframes-plugin.zip` with a `hyperframes/` root folder and 
 | Skill                   | Use when                                                                                                                                                                                                                                                                                            |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/hyperframes`          | **Read first** for any request to make, edit, animate or render a video, motion graphic, captions or overlays with HyperFrames (HTML rendered to video). Holds the render contract and the work loop, and points to the references for format, motion, look, captions, whole films and storyboards. |
-| `/hyperframes-cli`      | The HyperFrames CLI by job — scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history — plus reading its JSON and recovering from build or render failures.                                                                            |
+| `/hyperframes-cli`      | The HyperFrames CLI by job — scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, share, project history — plus reading its JSON and recovering from build or render failures.                                                                              |
 | `/hyperframes-registry` | About 450 ready-made blocks and components installed as editable source — transitions, overlays, titles, kinetic type, captions, charts, maps, 3D, camera moves. Use before hand-building any named visual; also for `hyperframes add` and `catalog`.                                               |
 | `/media-use`            | Get or make any media for a video — music, sound effects, images, icons, logos, voiceover, avatar and generated video, transcripts, cutouts, colour grades and looks — with HeyGen or free local tools, and mix placed audio. Also for footage that looks dark, flat or dull.                       |
 | `/reverse-any-video`    | Rebuilding any video file as an editable HyperFrames project (motion graphics, talking heads, live action, AI-generated footage), checked frame by frame against the original. HyperFrames Pro.                                                                                                     |
@@ -362,3 +362,11 @@ GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/heygen-com/hyperframes.git
 ## License
 
 [Apache 2.0](LICENSE)
+
+### Share a video for review
+
+Sign in with `npx hyperframes auth login`, then run `npx hyperframes share` to
+choose who can open the rendered review. Use `share --update` when edits should
+become a new version and `share --manage` for web settings. CLI and Desktop use
+the same sharing system and five free projects per workspace. Existing legacy
+published links remain reachable.
