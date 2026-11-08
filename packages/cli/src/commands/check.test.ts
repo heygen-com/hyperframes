@@ -4034,3 +4034,67 @@ describe("check --lint-verbose", () => {
     expect(() => assertKnownFlags(check, ["--lint-loud"], "check")).toThrow("Unknown flag");
   });
 });
+
+describe("check cache", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function setup(report: CheckReport) {
+    const dir = mkdtempSync(join(tmpdir(), "hf-check-cache-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    const command = createCheckCommand({
+      resolveProject: () => ({ dir, name: "p", indexPath: join(dir, "index.html") }),
+      runPipeline,
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    return {
+      dir,
+      runPipeline,
+      run: (...flags: string[]) => runCommand(command, { rawArgs: ["--json", ...flags] }),
+    };
+  }
+
+  it("answers an unchanged tree from the last pass without running the pipeline", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-runs after one byte of the composition changes", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>onf</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a failure", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ ok: false }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a pass whose browser did not run", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ browserSkipped: true }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs when the flags differ, or with --no-cache, or under --budget", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run("--strict");
+    await run("--no-cache");
+    await run("--budget", "8m");
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+});

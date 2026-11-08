@@ -44,6 +44,8 @@ import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 import { recordLastCheck } from "../telemetry/config.js";
 import { failureCodes } from "../utils/checkFailureCodes.js";
+import { checkCacheKey, checkCacheable, readCachedPass, storePass } from "../utils/checkCache.js";
+import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -227,6 +229,12 @@ const CHECK_COMMAND_ARGS = {
     description:
       "Stop the whole check this long after it starts (ms, or 90s, 8m; at least 30s) and report what it found so far",
   },
+  cache: {
+    type: "boolean",
+    description:
+      "Return the stored result when the project, options and CLI are unchanged since the last pass (pass --no-cache to always re-run)",
+    default: true,
+  },
   timeout: {
     type: "string",
     description:
@@ -313,9 +321,16 @@ export function createCheckCommand(
           return;
         }
         recordLastCheck({ at: new Date().toISOString(), codes: {} });
-        const report = await withProjectLock(project.dir, "check", () =>
-          dependencies.runPipeline(project, options),
-        );
+        const key = checkCacheable(options)
+          ? checkCacheKey(project.dir, options, VERSION)
+          : undefined;
+        const cached = key ? readCachedPass(project.dir, key) : undefined;
+        const report =
+          cached ??
+          (await withProjectLock(project.dir, "check", () =>
+            dependencies.runPipeline(project, options),
+          ));
+        if (key && !cached) storePass(project.dir, key, report);
         recordLastCheck({
           at: new Date().toISOString(),
           exitCode: checkExitCode(report),
@@ -450,6 +465,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
     timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
     budget: parseBudget(args.budget),
+    cache: args.cache !== false,
     contrast: args.contrast !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
@@ -693,6 +709,10 @@ function browserSkippedLine(report: CheckReport): string {
 }
 
 function printHumanReport(report: CheckReport): void {
+  if (report.cached)
+    console.log(
+      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Run with --no-cache to check again.`,
+    );
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,
