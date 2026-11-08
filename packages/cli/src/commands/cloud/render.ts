@@ -49,6 +49,7 @@ import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { readProjectConfig } from "../../utils/projectConfig.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import {
+  archiveKey,
   readStaged,
   type StagedFile,
   stagedSize,
@@ -729,10 +730,12 @@ function stageProjectFiles(
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
     const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES);
-    const entryPath = relative(
-      project.dir,
-      resolvePath(project.dir, composition ?? "index.html"),
-    ).replaceAll("\\", "/");
+    const entryPath = archiveKey(
+      relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
+        "\\",
+        "/",
+      ),
+    );
     if (!fileMap.has(entryPath)) {
       throw new Error(
         `Composition "${composition ?? "index.html"}" is excluded from the archive. Check .hyperframesignore.`,
