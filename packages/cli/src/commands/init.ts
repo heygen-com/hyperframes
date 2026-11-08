@@ -842,7 +842,7 @@ export default defineCommand({
     resolution: {
       type: "string",
       description:
-        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. Default: a --video clip's own shape as it plays, 1080 on the short side (4:3 -> 1440x1080), else the template's dimensions (typically 1920x1080).",
+        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160), landscape-1440p (2560x1440), portrait-1440p (1440x2560), square-1440p (1440x1440). Aliases: 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square. Default: a --video clip's own shape as it plays, 1080 on the short side (4:3 -> 1440x1080), else the template's dimensions (typically 1920x1080).",
     },
     skill: {
       type: "string",
@@ -894,8 +894,9 @@ export default defineCommand({
         console.error(
           c.error(
             `Invalid --resolution: "${args.resolution}". ` +
-              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k ` +
-              `(or aliases 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square).`,
+              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k, ` +
+              `landscape-1440p, portrait-1440p, square-1440p ` +
+              `(or aliases 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square).`,
           ),
         );
         failUsage();
