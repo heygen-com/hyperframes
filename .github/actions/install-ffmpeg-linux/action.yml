@@ -51,7 +51,7 @@ runs:
         }
         for attempt in 1 2 3 4; do
           verified && break
-          [ "$attempt" = 4 ] && { echo "ffmpeg download failed four times" >&2; exit 1; }
+          [ "$attempt" = 4 ] && { echo "ffmpeg download failed three times" >&2; exit 1; }
           fetch || sleep $((attempt * 5))
         done
         bin="$RUNNER_TEMP/ffmpeg-bin"
