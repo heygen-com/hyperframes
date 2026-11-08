@@ -371,10 +371,9 @@ async function checkOrReplay(
     const cached = key ? readCachedPass(project.dir, key) : undefined;
     if (cached) return cached;
     const report = await dependencies.runPipeline(project, options);
-    // A tree that changed during the run was checked in a state it no longer has.
-    if (key && checkCacheKey(project.dir, options, VERSION) === key) {
-      storePass(project.dir, key, report);
-    }
+    const treeUnchangedByTheRun =
+      key !== undefined && checkCacheKey(project.dir, options, VERSION) === key;
+    if (treeUnchangedByTheRun) storePass(project.dir, key, report);
     return report;
   });
 }

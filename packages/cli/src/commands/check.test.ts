@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -4100,8 +4101,15 @@ describe("check cache", () => {
     writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 1));
     utimesSync(big, mtime, mtime);
     await run();
-    writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 2));
-    utimesSync(big, mtime, mtime);
+    const writtenAt = statSync(big).ctimeMs;
+    await vi.waitFor(
+      () => {
+        writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 2));
+        utimesSync(big, mtime, mtime);
+        if (statSync(big).ctimeMs === writtenAt) throw new Error("the clock has not ticked");
+      },
+      { interval: 1 },
+    );
     await run();
     expect(runPipeline).toHaveBeenCalledTimes(2);
   });
