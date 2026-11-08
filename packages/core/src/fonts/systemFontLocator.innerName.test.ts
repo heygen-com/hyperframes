@@ -14,7 +14,9 @@ const ttc = makeTtc([
   { families: ["PingFang TC"], weight: 400 },
 ]);
 writeFileSync(join(fonts, "PingFang.ttc"), ttc.file);
-writeFileSync(join(fonts, "Georgia.ttf"), makeSfnt({ families: ["Georgia"] }));
+// Made-up families keep these results independent of the host: the locator also
+// scans the system font folders, and macOS ships Georgia and Zapfino there.
+writeFileSync(join(fonts, "Fixture Serif.ttf"), makeSfnt({ families: ["Fixture Serif"] }));
 
 afterEach(() => clearSystemFontCache());
 
@@ -35,8 +37,8 @@ describe("locateSystemFontVariants by the names inside the file", () => {
   });
 
   it("still matches by file name when the name is the family", () => {
-    expect(locateSystemFontVariants("Georgia")).toEqual([
-      { path: join(fonts, "Georgia.ttf"), format: "ttf", weight: "400", style: "normal" },
+    expect(locateSystemFontVariants("Fixture Serif")).toEqual([
+      { path: join(fonts, "Fixture Serif.ttf"), format: "ttf", weight: "400", style: "normal" },
     ]);
   });
 
@@ -56,6 +58,6 @@ describe("locateSystemFontVariants by the names inside the file", () => {
   });
 
   it("finds nothing for a family no file names", () => {
-    expect(locateSystemFontVariants("Zapfino")).toEqual([]);
+    expect(locateSystemFontVariants("Fixture Absent")).toEqual([]);
   });
 });
