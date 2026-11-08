@@ -38,6 +38,7 @@
     "png-sequence": 3,
     "portrait-edge-bleed": 6,
     "raf-ball-render-compat": 10,
+    "random-stagger-workers": 8,
     "timers-on-film-time": 8,
     "render-symlinked-assets": 6,
     "static-volume-future-set": 9,

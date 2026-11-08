@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { createContext, Script } from "node:vm";
-import { buildVirtualTimeShim } from "./fileServer.js";
+import { VIRTUAL_TIME_SHIM } from "./fileServer.js";
 
 type Page = { run: <T = unknown>(code: string) => T };
 
@@ -17,7 +17,7 @@ function page(): Page {
     globalThis.performance = { now: () => 0 };
     globalThis.__renderReady = true;
   `).runInContext(context);
-  new Script(buildVirtualTimeShim({ seedRandomFromFrame: false })).runInContext(context);
+  new Script(VIRTUAL_TIME_SHIM).runInContext(context);
   return { run: <T>(code: string) => new Script(code).runInContext(context) as T };
 }
 
