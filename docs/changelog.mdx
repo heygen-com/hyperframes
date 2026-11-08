@@ -9,6 +9,31 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.23"
+  description="Released - 2026-11-08"
+  tags={["Release", "Core", "Engine", "Studio"]}
+>
+Fade-ins that follow a starting set now end fully visible instead of vanishing when the fade finishes. Failed script reports also name their library, and menu highlights match their panel.
+
+## Features
+
+- **Engine:** A failed CDN script's report names its library and version, never its URL ([adf14d732](https://github.com/heygen-com/hyperframes/commit/adf14d7324109694614955f32ba6cf2b97ad79d2), [#7394](https://github.com/heygen-com/hyperframes/pull/7394)).
+- **Core:** Preview health names the media element that held play ([fd05a3860](https://github.com/heygen-com/hyperframes/commit/fd05a3860c66958ba3d509981e890c699ae4aa5e), [#7159](https://github.com/heygen-com/hyperframes/pull/7159)).
+
+## Fixes
+
+- **Core:** A set written before its tween no longer erases the tween's end ([75fe18c62](https://github.com/heygen-com/hyperframes/commit/75fe18c621be5297d7b09a788fabc75a3cd6c734), [#7397](https://github.com/heygen-com/hyperframes/pull/7397)).
+- **Studio:** A menu row's highlight is rounder than its panel ([ab785e9c5](https://github.com/heygen-com/hyperframes/commit/ab785e9c5c59e9542593e49b93f9547cb2665b44), [#7395](https://github.com/heygen-com/hyperframes/pull/7395)).
+- **Studio:** Bound recovery and verify full-quality playback ([3151fd213](https://github.com/heygen-com/hyperframes/commit/3151fd21330e7e955210bfd3f557bc8d78d243c5), [#7393](https://github.com/heygen-com/hyperframes/pull/7393)).
+
+## Internal
+
+- **Engine:** The decode timeout warning reaches every caller ([0f5914dc4](https://github.com/heygen-com/hyperframes/commit/0f5914dc445ceed38fdc58eadb617f69632c0a29), [#7119](https://github.com/heygen-com/hyperframes/pull/7119)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.22...v0.9.23).
+</Update>
+
+<Update
   label="HyperFrames v0.9.22"
   description="Released - 2026-11-08"
   tags={["Release", "Producer", "Studio", "Core"]}
