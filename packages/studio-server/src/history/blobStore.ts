@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
@@ -13,7 +13,7 @@ import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
-  /** Copies the file in (a clone where the file system can) and returns the copy's hash. */
+  /** Copies the file in (a clone where the file system can, for all but small files) and returns the copy's hash. */
   put(absPath: string): Promise<string>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
@@ -29,6 +29,8 @@ export interface BlobStore {
 }
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
+// Up to this size one read and one write beat a clone's extra file operations, and a clone saves almost no disk.
+const READ_ONCE_BYTES = 64 * 1024;
 
 export function blobPath(dir: string, hash: string): string {
   // Checked where the path is joined, so no caller can read or write outside the store.
@@ -144,8 +146,38 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     holds.delete(hash);
   };
 
+  const file = (hash: string, size: number) => {
+    if (!sizes.has(hash)) total += size;
+    sizes.set(hash, size);
+  };
+  // The folder is made only when a write finds it missing: it may be removed while the store is open.
+  const madeOnDemand = (folder: string, write: () => Promise<void>) =>
+    write().catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      await mkdir(folder, { recursive: true });
+      await write();
+    });
+  // The bytes hashed are the bytes filed, so a write racing the read can never file bytes under the wrong hash.
+  const putBytes = async (bytes: Buffer, mode: number) => {
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    if (sizes.has(hash)) return hash;
+    const temp = join(dir, `incoming-${randomUUID()}`);
+    try {
+      await madeOnDemand(dir, () => writeFile(temp, bytes, { mode }));
+      const to = blobPath(dir, hash);
+      await madeOnDemand(dirname(to), () => renameWithRetryAsync(temp, to));
+    } catch (error) {
+      await rm(temp, { force: true });
+      throw error;
+    }
+    file(hash, bytes.length);
+    return hash;
+  };
+
   return {
     async put(absPath) {
+      const { size: found, mode } = await stat(absPath);
+      if (found <= READ_ONCE_BYTES) return putBytes(await readFile(absPath), mode);
       // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
       const temp = join(dir, `incoming-${randomUUID()}`);
       // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
@@ -162,8 +194,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
       const size = (await stat(temp)).size;
       await renameWithRetryAsync(temp, blobPath(dir, hash));
-      sizes.set(hash, size);
-      total += size;
+      file(hash, size);
       return hash;
     },
     reference: (absPath) => hashFile(absPath),
