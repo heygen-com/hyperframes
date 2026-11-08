@@ -26,7 +26,12 @@ import {
   lengthIsAuthored,
   stopMediaDownload,
 } from "./preloadMedia";
-import { notePlaybackFrame, noteDisplayScale } from "./playbackHealth";
+import {
+  heldByMedia,
+  notePlaybackFrame,
+  noteDisplayScale,
+  watchMediaFetches,
+} from "./playbackHealth";
 import { hasFrozenPicture } from "./frozenPicture";
 import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
@@ -3819,6 +3824,7 @@ export function initSandboxRuntimeModular(): void {
     document.removeEventListener("play", onMediaPlayWakeTransport, true);
   });
   runtimeCleanupCallbacks.push(watchAudioLoadErrors(document));
+  runtimeCleanupCallbacks.push(watchMediaFetches(document));
 
   let lastVisibilityPassSeconds: number | null = null;
   const syncMediaForCurrentState = (timingRevision?: number) => {
@@ -6237,18 +6243,21 @@ export function initSandboxRuntimeModular(): void {
       const t = clock.now();
       state.currentTime = t;
       if (!window.__HF_EXPORT_RENDER_SEEK_CONFIG) {
+        const nowMs = performance.now();
+        const holder =
+          bufferingFor[0] ??
+          mediaClipsInWindow.find(
+            ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
+          )?.el;
         notePlaybackFrame({
-          nowMs: performance.now(),
+          nowMs,
           filmTime: t,
           fps: state.canonicalFps,
           rate: state.playbackRate,
           playing: playing || bufferingFor.length > 0,
           hidden: document.visibilityState === "hidden",
-          waiting:
-            bufferingFor.length > 0 ||
-            mediaClipsInWindow.some(
-              ({ el }) => el.tagName === "VIDEO" && !el.paused && el.readyState < 3,
-            ),
+          waiting: holder !== undefined,
+          heldBy: holder ? heldByMedia(holder, nowMs) : null,
           frozen: hasFrozenPicture(mediaClipsInWindow, t),
           clock: clock.followedClock(),
           layoutKey: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
