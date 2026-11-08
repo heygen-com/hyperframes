@@ -947,6 +947,8 @@ async function executeWorkerTask(
       throw error;
     });
     const activeSession = session;
+    // Static-frame dedup only needs to verify the frames this worker captures.
+    activeSession.staticDedupFrameRange = { start: task.startFrame, end: task.endFrame };
     browserExecutable = activeSession.browser?.process?.()?.spawnfile || browserExecutable;
     logParDebug(() => `[par:w${task.workerId}] session created`);
     browserVersion = await runPhase(

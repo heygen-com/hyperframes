@@ -299,6 +299,7 @@ export const distributedCaptureSessionDependencies: DistributedCaptureSessionDep
 /**
  * Every browser that can produce distributed frames must pass the software-GL
  * assertion, including fresh screenshot browsers created after a fallback.
+ * `frameRange` is the chunk's frames: static-frame dedup verifies only those.
  */
 export async function createVerifiedDistributedCaptureSession(
   serverUrl: string,
@@ -306,6 +307,7 @@ export async function createVerifiedDistributedCaptureSession(
   captureOptions: CaptureOptions,
   cfg: EngineConfig,
   dependencies: DistributedCaptureSessionDependencies = distributedCaptureSessionDependencies,
+  frameRange?: ChunkFrameRange,
 ): Promise<CaptureSession> {
   const session = await dependencies.createCaptureSession(
     serverUrl,
@@ -314,6 +316,9 @@ export async function createVerifiedDistributedCaptureSession(
     null,
     cfg,
   );
+  if (frameRange) {
+    session.staticDedupFrameRange = { start: frameRange.startFrame, end: frameRange.endFrame };
+  }
   try {
     await dependencies.assertSwiftShader(session.page, dependencies.readWebGlVendorInfo);
     await dependencies.initializeSession(session);
@@ -813,6 +818,8 @@ export async function renderChunk(
           framesDir,
           captureOptions,
           cfg,
+          distributedCaptureSessionDependencies,
+          range,
         );
         sessionBootMs = Date.now() - bootStarted;
         await measureBoxes(session.page);
@@ -848,6 +855,8 @@ export async function renderChunk(
             framesDir,
             captureOptions,
             screenshotCfg,
+            distributedCaptureSessionDependencies,
+            range,
           );
           sessionBootMs += Date.now() - screenshotBootStarted;
         }
@@ -1020,6 +1029,8 @@ export async function renderChunk(
               framesDir,
               captureOptions,
               captureCfg,
+              distributedCaptureSessionDependencies,
+              range,
             );
           }
           const capturePlan = createCapturePlan({
