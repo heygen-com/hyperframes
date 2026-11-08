@@ -1648,6 +1648,17 @@ describe("syncRuntimeMedia", () => {
       expect(tracks[0].enabled).toBe(true);
     });
 
+    it("stays on for a video that is muted by script and unmuted later", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      const tracks = [{ enabled: true }];
+      withTracks(clip.el, tracks);
+      clip.el.muted = true;
+      tick(clip);
+      clip.el.muted = false;
+      tick(clip);
+      expect(tracks[0].enabled).toBe(true);
+    });
+
     it("is switched off when the browser lists it after the first tick", () => {
       const clip = createMockClip({ start: 0, end: 10 });
       clip.el.setAttribute("muted", "");
