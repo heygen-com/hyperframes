@@ -1,6 +1,14 @@
 import type { CheckProgress } from "../utils/checkProgress.js";
 import { runCommand } from "citty";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -4021,6 +4029,7 @@ it("applies transition sample limits within the requested range", async () => {
 describe("check cache", () => {
   const dirs: string[] = [];
   afterEach(() => {
+    vi.unstubAllEnvs();
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
@@ -4070,6 +4079,55 @@ describe("check cache", () => {
     await run();
     await run();
     expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not store a pass for a tree that changed while it was being checked", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    runPipeline.mockImplementationOnce(async () => {
+      writeFileSync(join(dir, "index.html"), "<html>written by someone else</html>");
+      return reportWithFindings();
+    });
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs a large file changed to the same size with its mtime put back", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const big = join(dir, "clip.bin");
+    const mtime = 1_700_000_000;
+    writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 1));
+    utimesSync(big, mtime, mtime);
+    await run();
+    writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 2));
+    utimesSync(big, mtime, mtime);
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a project with node_modules or a linked directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "node_modules"));
+    await run();
+    await run();
+    rmSync(join(dir, "node_modules"), { recursive: true });
+    mkdirSync(join(dir, "real"));
+    symlinkSync(join(dir, "real"), join(dir, "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when --timeout or the runtime URL changes", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:1/runtime.js");
+    await run();
+    await run("--timeout", "20s");
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:2/runtime.js");
+    await run();
+    vi.unstubAllEnvs();
+    expect(runPipeline).toHaveBeenCalledTimes(3);
   });
 
   it("re-runs when the flags differ, or with --no-cache, or under --budget", async () => {

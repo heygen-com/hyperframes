@@ -366,14 +366,17 @@ async function checkOrReplay(
   project: ProjectDir,
   options: CheckOptions,
 ): Promise<SavedCheckReport> {
-  const key = checkCacheable(options) ? checkCacheKey(project.dir, options, VERSION) : undefined;
-  const cached = key ? readCachedPass(project.dir, key) : undefined;
-  if (cached) return cached;
-  const report = await withProjectLock(project.dir, "check", () =>
-    dependencies.runPipeline(project, options),
-  );
-  if (key) storePass(project.dir, key, report);
-  return report;
+  return withProjectLock(project.dir, "check", async () => {
+    const key = checkCacheable(options) ? checkCacheKey(project.dir, options, VERSION) : undefined;
+    const cached = key ? readCachedPass(project.dir, key) : undefined;
+    if (cached) return cached;
+    const report = await dependencies.runPipeline(project, options);
+    // A tree that changed during the run was checked in a state it no longer has.
+    if (key && checkCacheKey(project.dir, options, VERSION) === key) {
+      storePass(project.dir, key, report);
+    }
+    return report;
+  });
 }
 
 function reportCheckFailure(
