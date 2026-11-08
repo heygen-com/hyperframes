@@ -89,6 +89,16 @@ describe("virtual-time shim timers", () => {
     expect(run("fired")).toBe(11);
   });
 
+  it("keeps the film's timer schedule on a worker whose first frame is past the start", () => {
+    const { run } = page();
+    run(`window.at = [];
+      requestAnimationFrame(() => (function step() { setTimeout(() => { at.push(Date.now()); step(); }, 100); })());`);
+    run("window.__HF_VIRTUAL_TIME__.seekToTime(4000 / 30);");
+    expect(run("at")).toEqual([100]);
+    run("for (let f = 5; f <= 30; f++) window.__HF_VIRTUAL_TIME__.seekToTime(f * 1000 / 30);");
+    expect(run("at")).toEqual([100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]);
+  });
+
   it("runs due timers before the frame's animation callbacks", () => {
     const { run } = page();
     run("window.__HF_VIRTUAL_TIME__.seekToTime(0);");
