@@ -172,7 +172,7 @@ export const RenderQueue = memo(function RenderQueue({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="max-h-full overflow-y-auto px-3 py-3 border-b border-border shrink-0">
+      <div className="min-h-0 max-h-full overflow-y-auto px-3 py-3 border-b border-border">
         <RenderExportSettings
           onStartRender={onStartRender}
           isRendering={isRendering}
@@ -215,8 +215,8 @@ export const RenderQueue = memo(function RenderQueue({
         </div>
       )}
 
-      {/* Job list */}
-      <div ref={listRef} className="flex-1 overflow-y-auto">
+      {/* Keep a render's controls reachable when Advanced fills a short dock. */}
+      <div ref={listRef} className="min-h-20 flex-1 overflow-y-auto">
         <RenderJobList
           jobs={jobs}
           projectId={projectId}
