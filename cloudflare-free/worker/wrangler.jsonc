@@ -12,10 +12,10 @@
   "r2_buckets": [
     {
       "binding": "VIDEOS",
-      "bucket_name": "hyperframes-renders"
-    }
+      "bucket_name": "hyperframes-renders",
+    },
   ],
   "vars": {
-    "GITHUB_REPO": "harvey-moeid/hyperframes"
-  }
+    "GITHUB_REPO": "harvey-moeid/hyperframes",
+  },
 }
