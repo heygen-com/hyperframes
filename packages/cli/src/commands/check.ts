@@ -246,6 +246,12 @@ const CHECK_COMMAND_ARGS = {
     description: "Run the WCAG AA contrast pass (enabled by default)",
     default: true,
   },
+  craft: {
+    type: "boolean",
+    description:
+      "Run the craft pass (dead stretches, unread lines, silent films; enabled by default). --no-craft skips it, e.g. for a render preflight",
+    default: true,
+  },
   strict: {
     type: "boolean",
     description: "Exit non-zero on warnings too",
@@ -473,6 +479,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     budget: parseBudget(args.budget),
     cache: args.cache !== false,
     contrast: args.contrast !== false,
+    craft: args.craft !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
     snapshots: args.snapshots === true,

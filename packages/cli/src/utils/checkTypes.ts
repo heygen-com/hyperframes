@@ -39,6 +39,7 @@ export interface CheckOptions {
   browserGpuMode?: BrowserGpuMode;
   includeUnmounted?: boolean;
   cache?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {

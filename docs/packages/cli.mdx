@@ -1273,6 +1273,7 @@ cover every finding from the full check.
 | `--budget <ms\|90s\|8m>`                      | Stop the whole check this long after it starts (at least 30s) and report what it found, with `check_budget_reached` naming the phase it was in. For hosts with their own time limit. |
 | `--no-cache`                                  | Run the check even when the project files, flags and CLI are unchanged since the last pass. Without it, an unchanged project returns that pass in about a second, marked as cached. A failure is never cached. |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
+| `--no-craft`                                 | Skip the craft pass (dead stretches, unread lines, silent film), the longest part of a full check. The report marks it skipped. Use it for a render preflight; keep it on for the full check before a release. |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
