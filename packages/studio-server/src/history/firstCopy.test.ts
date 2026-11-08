@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
@@ -107,7 +107,9 @@ describe("a project's first history copy", () => {
     expect(readFileSync(join(projectDir, "parts", "p7.js")).equals(before)).toBe(true);
   });
 
-  it("keeps the same contents and permissions, small files and large", async () => {
+  it("keeps the same contents and permissions, small files and large, under a strict umask", async () => {
+    const umask = process.umask(0o077);
+    onTestFinished(() => void process.umask(umask));
     const projectDir = projectOf(3, "kept");
     writeFileSync(join(projectDir, "large.js"), "x".repeat(200 * 1024));
     writeFileSync(join(projectDir, "same-a.js"), "same bytes");

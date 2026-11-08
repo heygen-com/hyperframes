@@ -1,6 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
@@ -172,6 +182,8 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     const temp = join(dir, `incoming-${randomUUID()}`);
     try {
       await withFolderMadeIfMissing(dir, () => writeFile(temp, bytes, { mode }));
+      // A write applies the umask; the clone used for larger files keeps the mode exactly.
+      await chmod(temp, mode & 0o7777);
       const to = blobPath(dir, hash);
       await withFolderMadeIfMissing(dirname(to), () => renameWithRetryAsync(temp, to));
     } catch (error) {
