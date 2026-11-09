@@ -6,7 +6,7 @@ import {
   trackKindOf,
   type StructureNode,
 } from "@hyperframes/parsers/top-level-elements";
-import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { parseStartExpression, readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { TIMING_TOLERANCE_SECONDS } from "@hyperframes/parsers/composition-duration";
 
@@ -228,6 +228,104 @@ function neverVisibleNestedFindings(parent: TagNode, severity: Severity): Hyperf
   });
 }
 
+interface ReferenceScope {
+  names: Set<string>;
+  refs: { node: TagNode; refId: string }[];
+}
+
+function addNames(names: Set<string>, node: TagNode): void {
+  for (const name of [node.attrs.id, node.attrs["data-composition-id"]]) if (name) names.add(name);
+}
+
+/** A sub-composition host belongs to the outer composition and opens a new scope for its children. */
+function collectReferenceScopes(node: TagNode, scope: ReferenceScope, scopes: ReferenceScope[]) {
+  for (const child of node.children) {
+    if (child.tag === "template") continue;
+    addNames(scope.names, child);
+    const expression = parseStartExpression(child.attrs["data-start"]);
+    if (expression?.kind === "reference") scope.refs.push({ node: child, refId: expression.refId });
+    if (child.attrs["data-composition-id"] === undefined) {
+      collectReferenceScopes(child, scope, scopes);
+      continue;
+    }
+    const inner: ReferenceScope = { names: new Set(), refs: [] };
+    scopes.push(inner);
+    collectReferenceScopes(child, inner, scopes);
+  }
+}
+
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      row[j] = Math.min(previous[j]! + 1, row[j - 1]! + 1, previous[j - 1]! + cost);
+    }
+    previous = row;
+  }
+  return previous[b.length]!;
+}
+
+function closestName(refId: string, names: Set<string>): string | null {
+  let best: string | null = null;
+  let bestDistance = 3;
+  for (const name of names) {
+    const distance = editDistance(refId.toLowerCase(), name.toLowerCase());
+    if (distance < bestDistance) [best, bestDistance] = [name, distance];
+  }
+  return best;
+}
+
+const SECONDS_WITH_UNIT = /^(\d+(?:\.\d+)?|\.\d+)(ms|s)$/;
+
+function unknownReferenceFixHint(refId: string, names: Set<string>): string {
+  const unit = SECONDS_WITH_UNIT.exec(refId);
+  if (unit) {
+    const seconds = Number(unit[1]) / (unit[2] === "ms" ? 1000 : 1);
+    return `data-start takes plain seconds with no unit. Use data-start="${seconds}".`;
+  }
+  const suggestion = closestName(refId, names);
+  if (suggestion)
+    return `Did you mean "${suggestion}"? Point data-start at a clip in this composition.`;
+  return "Point data-start at the id of a clip in this composition, or use a number of seconds.";
+}
+
+function unknownStartReferenceFindings(ctx: LintContext, root: TagNode): HyperframeLintFinding[] {
+  const rootScope: ReferenceScope = { names: new Set(), refs: [] };
+  addNames(rootScope.names, root);
+  const scopes = [rootScope];
+  collectReferenceScopes(root, rootScope, scopes);
+  const documentNames = new Set<string>();
+  for (const tag of ctx.tags) {
+    for (const attr of ["id", "data-composition-id"]) {
+      const name = readDecodedAttr(tag.raw, attr);
+      if (name) documentNames.add(name);
+    }
+  }
+  return scopes.flatMap(({ names, refs }) =>
+    refs
+      .filter(({ refId }) => !names.has(refId))
+      .map(({ node, refId }) => {
+        const start = `data-start="${node.attrs["data-start"]}"`;
+        const missing = `nothing in this file has the id or data-composition-id "${refId}"`;
+        const consequence = documentNames.has(refId)
+          ? `"${refId}" is in a different composition, and references are only supported inside the same one, so the clip's start is not reliable`
+          : ctx.options.isSubComposition
+            ? `${missing}, so the clip's start is not reliable`
+            : `${missing}, so the clip starts at 0s`;
+        return {
+          code: "unknown_start_reference",
+          severity: "warning" as const,
+          message: `${describe(node)} has ${start}, which refers to "${refId}", but ${consequence}.`,
+          elementId: node.attrs.id,
+          fixHint: unknownReferenceFixHint(refId, names),
+          snippet: truncateSnippet(node.open.raw),
+        };
+      }),
+  );
+}
+
 export const structureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   (ctx) => {
     // The timeline shows the root composition's rows; a sub-composition file is the leaf where layout lives.
@@ -250,5 +348,9 @@ export const structureRules: Array<(ctx: LintContext) => HyperframeLintFinding[]
     return topLevelElements(root)
       .filter((row) => !isSubCompositionHost(row))
       .flatMap((row) => neverVisibleNestedFindings(row, severity));
+  },
+  (ctx) => {
+    const root = buildTree(ctx);
+    return root ? unknownStartReferenceFindings(ctx, root) : [];
   },
 ];

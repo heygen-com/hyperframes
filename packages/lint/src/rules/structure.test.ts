@@ -16,9 +16,62 @@ const STRUCTURE = new Set([
   "multiple_caption_tracks",
   "clip_ends_past_root_duration",
   "nested_clip_never_visible",
+  "unknown_start_reference",
 ]);
 const has = (found: Awaited<ReturnType<typeof codes>>, code: string) =>
   found.some((f) => f.code === code);
+
+describe("unknown_start_reference", () => {
+  const intro = '<div id="intro" class="clip" data-start="0" data-duration="2"></div>';
+  const clip = (start: string) =>
+    `<div id="title" class="clip" data-start="${start}" data-duration="2"></div>`;
+  const unknownRefs = async (body: string, options: HyperframeLinterOptions = {}) =>
+    (await codes(body, options)).filter((f) => f.code === "unknown_start_reference");
+
+  it("flags a typo in a reference and suggests the close id", async () => {
+    const [finding] = await unknownRefs(intro + clip("intor + 0.5"));
+    expect(finding).toMatchObject({ elementId: "title", severity: "warning" });
+    expect(finding?.message).toContain('refers to "intor"');
+    expect(finding?.message).toContain("starts at 0s");
+    expect(finding?.fixHint).toContain('Did you mean "intro"?');
+  });
+  it("flags seconds written with a unit, which parse as an id", async () => {
+    const [finding] = await unknownRefs(intro + clip("1.5s"));
+    expect(finding?.fixHint).toContain('data-start="1.5"');
+    const [ms] = await unknownRefs(intro + clip("500ms"));
+    expect(ms?.fixHint).toContain('data-start="0.5"');
+  });
+  it("leaves valid references, plain numbers and empty starts alone", async () => {
+    for (const start of ["intro + 0.5", "intro", "intro - 1", "1.5", "0", ""]) {
+      expect(await unknownRefs(intro + clip(start))).toEqual([]);
+    }
+  });
+  it("accepts a sub-composition's data-composition-id as a target", async () => {
+    const host =
+      '<div id="host" data-composition-id="outro" data-composition-src="outro.html" data-start="0" data-duration="3"></div>';
+    expect(await unknownRefs(host + clip("outro + 1"))).toEqual([]);
+  });
+  it("flags a reference to an id that only exists in another composition", async () => {
+    const host = `<div id="host" data-composition-id="scene" data-start="0" data-duration="3">${intro}</div>`;
+    const [finding] = await unknownRefs(host + clip("intro"));
+    expect(finding?.message).toContain("in a different composition");
+    expect(
+      await unknownRefs(
+        `<div id="host" data-composition-id="scene" data-start="0" data-duration="3">${intro}${clip("intro")}</div>`,
+      ),
+    ).toEqual([]);
+  });
+  it("lets a sub-composition host reference clips beside it", async () => {
+    const host =
+      '<div id="host" data-composition-id="scene" data-composition-src="scene.html" data-start="intro" data-duration="3"></div>';
+    expect(await unknownRefs(intro + host)).toEqual([]);
+  });
+  it("checks sub-composition files too", async () => {
+    const [finding] = await unknownRefs(clip("intor"), { isSubComposition: true });
+    expect(finding?.message).toContain("not reliable");
+    expect(finding?.message).not.toContain("0s");
+  });
+});
 
 describe("nested_clip_never_visible", () => {
   const shot = (clipStart: number) =>
@@ -194,7 +247,9 @@ describe("clip_ends_past_root_duration", () => {
     expect(finding).toMatchObject({ code: PAST });
     expect(finding?.message).toContain("runs from 8s to 12s");
     expect(
-      await codes('<div class="clip" data-start="intro + 2" data-duration="20">x</div>'),
+      await codes(
+        '<div id="intro" class="clip" data-start="0" data-duration="2">x</div><div class="clip" data-start="intro + 2" data-duration="20">x</div>',
+      ),
     ).toEqual([]);
   });
   it("judges a sub-composition by its host, not its inner clips", async () => {

@@ -62,6 +62,15 @@ element around it. Runs in sub-composition files too.
 **Fix:** Give the clip a `data-start` inside its parent's window, in composition time, or move it out of the
 parent.
 
+### `unknown_start_reference`
+
+**Warning.** A `data-start` refers to an id that no element in the same composition has, as an `id` or a
+`data-composition-id`. A typo like `intor + 0.5`, or seconds with a unit like `1.5s` (read as an id), makes the
+clip start at 0s with no other sign. An id that only exists in a different composition is flagged too, since
+references are only supported inside their own composition. Runs in sub-composition files too.
+
+**Fix:** Point `data-start` at a clip in the same composition, or use plain seconds (`data-start="1.5"`).
+
 ## Composition contract
 
 Source: `packages/lint/src/rules/composition.ts`.
