@@ -176,7 +176,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
+import { isOpenedAtInPoint, stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -1314,7 +1314,7 @@ export function initSandboxRuntimeModular(): void {
       ? {
           from: "media",
           tag: media.tagName.toLowerCase(),
-          src: media.getAttribute("src") ?? media.currentSrc ?? "",
+          src: unproxiedSrc(media) ?? media.currentSrc ?? "",
           trimmed: media.hasAttribute("data-duration") || media.hasAttribute("data-end"),
         }
       : { from };
@@ -2530,10 +2530,7 @@ export function initSandboxRuntimeModular(): void {
         }
         const tagName = node.tagName.toLowerCase();
         const assetUrl =
-          node.getAttribute("src") ??
-          node.getAttribute("href") ??
-          node.getAttribute("poster") ??
-          null;
+          unproxiedSrc(node) ?? node.getAttribute("href") ?? node.getAttribute("poster") ?? null;
         const diagnosticCode =
           tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
         postRuntimeDiagnosticOnce(
@@ -3053,7 +3050,7 @@ export function initSandboxRuntimeModular(): void {
   const NEXT_TAKE_SPAN_SECONDS = 0.5;
   let nextTakes: { t: number; bound: number; clips: Set<HTMLMediaElement> } | null = null;
   const fileOf = (el: HTMLMediaElement) =>
-    el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
+    unproxiedSrc(el) ?? el.querySelector("source")?.getAttribute("src") ?? "";
   const nextTakeClips = (t: number): Set<HTMLMediaElement> => {
     if (nextTakes?.t === t && nextTakes.bound === metadataBoundMedia.size) return nextTakes.clips;
     const byFile = new Map<string, { el: HTMLMediaElement; start: number }[]>();
@@ -3116,7 +3113,8 @@ export function initSandboxRuntimeModular(): void {
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
-  const PREFETCH_SLOTS = 3;
+  // WebKit takes more: each clip opened at its in-point reads little, and three left the next take waiting.
+  const PREFETCH_SLOTS = isWebKit() ? 8 : 3;
   const prefetching = new Set<HTMLMediaElement>();
   type WaitingPrefetch = { element: HTMLMediaElement; start: number };
   const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
@@ -3475,9 +3473,11 @@ export function initSandboxRuntimeModular(): void {
           rawNode,
           isVisibleNow,
           loadsAhead &&
-            (playerFrame
-              ? nextTakeClips(currentTime).has(rawNode)
-              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
+            // A clip opened at its in-point reads little ahead, so every one is fetched, not just the next take.
+            (isOpenedAtInPoint(rawNode) ||
+              (playerFrame
+                ? nextTakeClips(currentTime).has(rawNode)
+                : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime))),
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
