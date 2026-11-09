@@ -1,4 +1,3 @@
-// Floor each larger unit: rounding would print "60m ago" at 59.5 minutes and "24h ago" at 23.5 hours.
 export function ago(at: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
