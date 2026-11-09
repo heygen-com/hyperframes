@@ -189,10 +189,13 @@ function removeAbandonedParts(stage: string, dest: string): void {
   }
 }
 
-/** Unpacks the pack in `stage` and moves it in whole, so `dest` only ever holds a complete template. `stage` is under
- * the project's `.hyperframes/`, which project history and watchers skip: on Windows a reader holding a file in the
- * unpacked folder makes the final rename fail with EPERM. */
-async function unpack(data: Buffer, dest: string, stage: string, pack: TemplatePack): Promise<void> {
+/** Unpacks in `stage`, which watchers skip (a held file fails the rename on Windows), then moves it in whole. */
+async function unpack(
+  data: Buffer,
+  dest: string,
+  stage: string,
+  pack: TemplatePack,
+): Promise<void> {
   makeOutputFolder(dirname(dest));
   makeOutputFolder(stage);
   removeAbandonedParts(stage, dest);
