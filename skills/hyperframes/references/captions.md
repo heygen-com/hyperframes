@@ -38,6 +38,25 @@ tl.set(group, { opacity: 0, visibility: "hidden" }, end);
 - Over footage, choose the blend by the brightness (0–255) behind the text: under 60 `screen`, 60–180 `overlay`, over 180 `normal` with opaque colour. Plain subtitles above brightness 60 get a scrim sized to the text (30–40%), never a full-width bar.
 - Footage may already carry burned-in subtitles only mid-clip: scan a 1 fps contact sheet before placing captions.
 
+## Arabic and right-to-left text
+
+Arabic, Persian, Urdu and Hebrew captions fail two ways, both without an error.
+
+- Words come out in reverse order. `inline-block` word spans are neutral to the bidi algorithm and a flex row follows `direction`, so with no base direction the first Arabic word lands on the left. Put `dir="rtl"` (and `lang`) on the element that holds the word spans, never on `<html>`, so the rest of the scene does not mirror.
+- For data-driven text, pick the direction by counting words, so a Latin brand name at the start does not flip an Arabic line:
+
+```js
+const RTL = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+group.dir = words.filter((w) => RTL.test(w)).length > words.length / 2 ? "rtl" : "ltr";
+```
+
+- Letters fall apart. Arabic letters change shape with their neighbours, and a per-character split (`split("")`, `[...text]`, SplitText `chars`) shapes each one alone. Animate Arabic by word; that is the default.
+- When letters must move, split into units the browser can still join: vowel marks stay with their letter, lam-alef (`لا` `لأ` `لإ` `لآ`) and `الله` are one unit each (many fonts draw them as ligatures), and a run of digits or Latin, including a multi-word phrase, is one unit. Pad each side of a unit that connects to its neighbour with a zero-width joiner (`\u200D`) so it keeps its connected form. Build spans with `textContent`, not `innerHTML`.
+- A split line can render a few pixels wider than the unsplit text, because kerning and mark positioning stop at `inline-block` edges.
+- No `letter-spacing` or `text-transform` on Arabic: tracking breaks joins in Safari and Firefox previews, and Arabic has no case.
+- None of the bundled families covers Arabic script. Embed one with `@font-face` (Noto Sans Arabic, IBM Plex Sans Arabic, Cairo, Tajawal), or the render takes whatever font the machine has. Hebrew is covered by bundled Open Sans.
+- MP4 renders are fine, but in Safari a ZWJ-padded letter falls back to another font when the font has no U+200D glyph (Alexandria from Google Fonts, IBM Plex Sans Arabic, Cairo, Tajawal), mixing two typefaces inside a word on an iPhone preview. For published pages use word-level motion or Noto Sans Arabic / Noto Naskh Arabic.
+
 ## Text behind the speaker
 
 - Stack the video, then the captions, then a cutout of the person from `npx hyperframes remove-background` (`/media-use`), ordered by `z-index`. Shake or punch in the video and the cutout together in one wrapper.
