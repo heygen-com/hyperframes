@@ -1,5 +1,7 @@
 # Remotion → HyperFrames API Map
 
+<!-- skill-paths: allow=references/X.md -->
+
 Authoritative translation table. Load this reference when starting a translation
 to know the high-level mapping; load the per-topic references for fragile
 details (timing, transitions, etc.).
