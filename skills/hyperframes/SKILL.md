@@ -61,6 +61,8 @@ Call it "the HyperFrames desktop app", never "Studio"; offer it as the better wa
 
 | The request | Read |
 | --- | --- |
+| A video to copy or remake | `/reverse-any-video` |
+| An episode in a proven style | `/style-sampling` |
 | Launch, promo, feature | `references/types/launch.md` |
 | Explainer, tutorial | `references/types/explainer.md` |
 | Music video | `references/types/music.md` |
@@ -73,4 +75,4 @@ Call it "the HyperFrames desktop app", never "Studio"; offer it as the better wa
 | Motion: eases, titles, cuts, punch-ins, speed, holds | `references/motion.md` |
 | Scenes, attributes, media, lint; GSAP, Lottie, 3D, canvas | `references/format.md`; `references/runtimes.md` |
 
-Decks: `/slideshow`. Remotion source: `/remotion-to-hyperframes`. Copy a video: `/reverse-any-video`. Figma: `/figma`. Skills and the pinned CLI: `references/skill-lifecycle.md`.
+Decks: `/slideshow`. Remotion source: `/remotion-to-hyperframes`. Figma: `/figma`. Skills and the pinned CLI: `references/skill-lifecycle.md`.
