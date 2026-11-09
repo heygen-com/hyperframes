@@ -4,12 +4,16 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 import { renameWithRetry } from "./renameWithRetry.js";
 
-type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
-type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
+type SiblingFileSystem = Pick<
+  typeof fs,
+  "openSync" | "writeFileSync" | "fsyncSync" | "closeSync" | "chmodSync" | "unlinkSync"
+>;
 
 // Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
 const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"]);
+// Codes a volume that cannot flush a file (some network shares, FUSE mounts) answers fsync() with.
+const NO_FSYNC = new Set(["EINVAL", "ENOTSUP", "EOPNOTSUPP"]);
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
 const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
@@ -40,7 +44,7 @@ function traceWrite(filePath: string, content: string | Uint8Array): void {
   );
 }
 
-/** Replace a file only after the complete sibling temp file is written. No mode: the default one. */
+/** Replace a file only after the complete sibling temp file is on disk. No mode: the default one. */
 export function replaceFileAtomically(
   filePath: string,
   content: string | Uint8Array,
@@ -58,7 +62,7 @@ export function replaceFileAtomically(
 export function createFileAtomically(
   filePath: string,
   content: string | Uint8Array,
-  operations: DirectFileSystem & Pick<typeof fs, "linkSync"> = fs,
+  operations: SiblingFileSystem & Pick<typeof fs, "linkSync"> = fs,
 ): void {
   publishSibling(filePath, content, undefined, operations, (tempPath) => {
     try {
@@ -79,12 +83,35 @@ export function createFileAtomically(
 function createDirectly(
   filePath: string,
   content: string | Uint8Array,
-  operations: DirectFileSystem,
+  operations: SiblingFileSystem,
 ): void {
   const fd = operations.openSync(filePath, "wx");
+  try {
+    writeDurably(fd, content, operations);
+  } catch (error) {
+    try {
+      operations.unlinkSync(filePath);
+    } catch {
+      // Preserve the write error; cleanup is best effort.
+    }
+    throw error;
+  }
+}
+
+/** Write, flush to disk, close; the fd is closed on failure too, so the file can then be removed. */
+function writeDurably(
+  fd: number,
+  content: string | Uint8Array,
+  operations: SiblingFileSystem,
+): void {
   let open = true;
   try {
     operations.writeFileSync(fd, content);
+    try {
+      operations.fsyncSync(fd);
+    } catch (error) {
+      if (!NO_FSYNC.has(errorCode(error))) throw error;
+    }
     open = false;
     operations.closeSync(fd);
   } catch (error) {
@@ -93,12 +120,22 @@ function createDirectly(
     } catch {
       // Preserve the write error; cleanup is best effort.
     }
-    try {
-      operations.unlinkSync(filePath);
-    } catch {
-      // Preserve the write error; cleanup is best effort.
-    }
     throw error;
+  }
+}
+
+/** Flush a rename into the folder's entries. POSIX only: Windows cannot open a folder for this. */
+function syncDirectory(dir: string, operations: SiblingFileSystem): void {
+  if (process.platform === "win32") return;
+  try {
+    const fd = operations.openSync(dir, "r");
+    try {
+      operations.fsyncSync(fd);
+    } finally {
+      operations.closeSync(fd);
+    }
+  } catch {
+    // Best effort: the data is already on disk, and some volumes refuse a folder fsync.
   }
 }
 
@@ -143,6 +180,7 @@ function publishSibling(
     }
     throw error;
   }
+  syncDirectory(dirname(filePath), operations);
 }
 
 /** A new temp file beside `filePath`; a name another writer already holds is never touched. */
@@ -154,14 +192,17 @@ function writeTempSibling(
 ): string {
   for (let attempt = 1; ; attempt++) {
     const tempPath = atomicTempPath(filePath);
+    let fd: number;
     try {
-      operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
+      fd = operations.openSync(tempPath, "wx", mode);
+    } catch (error) {
+      if (errorCode(error) === "EEXIST" && attempt < TEMP_NAME_TRIES) continue;
+      throw error;
+    }
+    try {
+      writeDurably(fd, content, operations);
       return tempPath;
     } catch (error) {
-      if (errorCode(error) === "EEXIST") {
-        if (attempt < TEMP_NAME_TRIES) continue;
-        throw error;
-      }
       try {
         operations.unlinkSync(tempPath);
       } catch {
