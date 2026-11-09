@@ -81,6 +81,8 @@ With a `video/...` `type`, `src` plays in a `<video>` behind the same playback A
 events. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()`
 are composition-only, and `srcdoc` wins over a video `src`, as it does in an iframe.
 
+Removing a video player's `src` attribute or setting it to an empty string unloads the film and resets playback to paused at 0:00. Set a new `src` to load another video.
+
 ## JavaScript API
 
 The main API follows familiar media-player behavior:
