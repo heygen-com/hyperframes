@@ -106,7 +106,7 @@ describe("a path that is not there", () => {
     const cut = join(dir, "My");
     const argv = ["node", "hyperframes", "measure", "probe", cut, "Clips/ref", "one.mp4", "--json"];
     expect(missingFileFix(cut, argv)).toBe(
-      `the path has spaces: quote it ("${join(dir, "My Clips", "ref one.mp4")}")`,
+      `the path has spaces: quote it ("${cut} Clips/ref one.mp4")`,
     );
   });
 
