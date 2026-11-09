@@ -20,6 +20,7 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
+  anyOpenedAtInPoint,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -3113,8 +3114,8 @@ export function initSandboxRuntimeModular(): void {
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
-  // WebKit takes more: each clip opened at its in-point reads little, and three left the next take waiting.
-  const PREFETCH_SLOTS = isWebKit() ? 8 : 3;
+  // A page with clips opened at their in-point takes more: each reads little, and three left the next take waiting.
+  const prefetchSlots = () => (anyOpenedAtInPoint() ? 8 : 3);
   const prefetching = new Set<HTMLMediaElement>();
   type WaitingPrefetch = { element: HTMLMediaElement; start: number };
   const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
@@ -3179,7 +3180,7 @@ export function initSandboxRuntimeModular(): void {
   };
   const fillPrefetchSlots = () => {
     withTimingResolver(() => refreshWaitingForSlotOrder(readCompositionTimingRevision()));
-    while (prefetching.size < PREFETCH_SLOTS && waitingForSlotHead < waitingForSlotOrder.length) {
+    while (prefetching.size < prefetchSlots() && waitingForSlotHead < waitingForSlotOrder.length) {
       const entry = waitingForSlotOrder[waitingForSlotHead++]!;
       if (waitingForSlot.get(entry.element) !== entry) continue;
       waitingForSlot.delete(entry.element);
@@ -3239,7 +3240,7 @@ export function initSandboxRuntimeModular(): void {
     const armer = armedBy.get(el);
     const armed = armer !== undefined && armedFrom.has(armer);
     const decided = mediaNearPlayhead.get(el);
-    const unslotted = !visible && !armed && decided !== true && prefetching.size >= PREFETCH_SLOTS;
+    const unslotted = !visible && !armed && decided !== true && prefetching.size >= prefetchSlots();
     if (unslotted && upcoming) addWaitingForSlot(el);
     else removeWaitingForSlot(el);
     // While playing, a clip that has passed is not fetched again, and one still downloading is released:

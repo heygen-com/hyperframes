@@ -99,10 +99,46 @@ export function lengthIsAuthored(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
-/** WebKit reads about 40 MB from the head of the file for every fresh element however late its in-point
- * seek lands; a start fragment makes it open at the in-point, so many clips of one long file stop pulling
- * many times its size, and each is cheap enough to fetch ahead. */
-export function openAtInPoint(el: HTMLMediaElement): void {
+// WebKit reads about 35 MB from the head of the file for each fresh element, so only a file larger than that
+// loses anything to the head reads.
+const LONG_SOURCE_BYTES = 32 * 1024 * 1024;
+const sourceBytes = new Map<string, Promise<number | null>>();
+let anyOpened = false;
+
+/** Whether any clip was opened at its in-point: the page then has many cheap reads to run at once. */
+export function anyOpenedAtInPoint(): boolean {
+  return anyOpened;
+}
+
+/** The size of a file in bytes from a one-byte range request, or null where the page cannot read it. */
+function bytesOfSource(src: string): Promise<number | null> {
+  let url: string;
+  try {
+    url = new URL(src, document.baseURI).href;
+  } catch {
+    return Promise.resolve(null);
+  }
+  const known = sourceBytes.get(url);
+  if (known) return known;
+  const asked = (async () => {
+    const abort = new AbortController();
+    try {
+      const response = await fetch(url, { headers: { Range: "bytes=0-0" }, signal: abort.signal });
+      const total =
+        /\/(\d+)$/.exec(response.headers.get("content-range") ?? "")?.[1] ??
+        (response.status === 200 ? response.headers.get("content-length") : null);
+      return total === null ? null : Number(total);
+    } catch {
+      return null;
+    } finally {
+      abort.abort();
+    }
+  })();
+  sourceBytes.set(url, asked);
+  return asked;
+}
+
+function openAtInPoint(el: HTMLMediaElement): void {
   const src = el.getAttribute("src");
   const start = readMediaStart(el);
   // Only the player: Studio copies and saves what it reads from the page, and must never see the fragment.
@@ -112,6 +148,19 @@ export function openAtInPoint(el: HTMLMediaElement): void {
   const written = `${src}#t=${start}`;
   recordOpenedAtInPoint(el, src, written);
   el.setAttribute("src", written);
+  anyOpened = true;
+}
+
+/** A start fragment makes a clip of a long file open at its in-point, so many clips of one long file stop
+ * pulling many times its size, and each is cheap enough to fetch ahead. A short file is left as it is. */
+export function openLongSourceAtInPoint(el: HTMLMediaElement, opened: () => void): void {
+  const src = el.getAttribute("src");
+  if (!inPlayerFrame(document) || !src) return;
+  void bytesOfSource(src).then((bytes) => {
+    if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
+    openAtInPoint(el);
+    if (isOpenedAtInPoint(el)) opened();
+  });
 }
 
 type DeferralWindow = Window & { __hfMediaDeferral?: MutationObserver };
@@ -127,8 +176,11 @@ export function deferMediaUntilDue(): void {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
-    openAtInPoint(media);
-    if (startInFilm(el) > 0 && !isOpenedAtInPoint(media)) media.preload = "none";
+    const authoredPreload = media.preload;
+    if (startInFilm(el) > 0) media.preload = "none";
+    openLongSourceAtInPoint(media, () => {
+      media.preload = authoredPreload;
+    });
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
