@@ -24,6 +24,34 @@ export const DEFAULTS = { maxIssues: 25, systemicAbove: 5 };
 
 const clip = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}...` : text);
 
+const escapeData = (text) =>
+  String(text).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+const inertColons = (text) => text.replace(/:(?=:)/g, ": ");
+const escapeProperty = (text) => escapeData(text).replace(/:/g, "%3A").replace(/,/g, "%2C");
+
+export function workflowCommand(name, message, properties = {}) {
+  const props = Object.entries(properties)
+    .map(([key, value]) => `${key}=${escapeProperty(value)}`)
+    .join(",");
+  return `::${name}${props ? ` ${props}` : ""}::${inertColons(escapeData(message))}`;
+}
+
+const warning = (message) => workflowCommand("warning", message);
+
+const inline = (text) =>
+  `\`${String(text)
+    .replace(/`/g, "'")
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\|/g, "\\|")}\``;
+
+function fenced(text) {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+  const ticks = "`".repeat(Math.max(3, longest + 1));
+  return [ticks, text, ticks].join("\n");
+}
+
+const flavourList = (flavours) => [...new Set(flavours)].map(inline).join(", ");
+
 function readFailureFile(file, flavour) {
   try {
     return JSON.parse(readFileSync(file, "utf8")).map((record) => ({ ...record, flavour }));
@@ -82,13 +110,14 @@ export function classify(records) {
 const seedTitle = (seed) => `motion blur nightly: seed ${seed}`;
 const systemicTitle = (date) => `motion blur nightly: systemic failure ${date}`;
 const features = (entry) => entry.features.join(", ") || "none";
+const flavoursOf = (entries) => entries.flatMap((entry) => entry.flavours);
 
 export function seedBody(entry, runUrl) {
   return [
     `Seed ${entry.seed} fails the pixel invariants on \`auto\`.`,
     "",
-    `- Features: ${features(entry)}`,
-    `- Chrome flavours that failed: ${[...new Set(entry.flavours)].join(", ")}`,
+    `- Features: ${inline(features(entry))}`,
+    `- Chrome flavours that failed: ${flavourList(entry.flavours)}`,
     `- Run: ${runUrl}`,
     "",
     "Reproduce from `packages/engine`:",
@@ -99,18 +128,27 @@ export function seedBody(entry, runUrl) {
     "",
     "Findings, by flavour:",
     "",
-    ...entry.problems.slice(0, 10).map((problem) => `- ${clip(problem, MAX_PROBLEM_CHARS)}`),
+    fenced(
+      entry.problems
+        .slice(0, 10)
+        .map((problem) => clip(problem, MAX_PROBLEM_CHARS))
+        .join("\n"),
+    ),
   ].join("\n");
 }
 
 export function systemicBody(entries, date, runUrl) {
   const shown = entries.slice(0, DETAILED_SEEDS);
   const rest = entries.slice(DETAILED_SEEDS).map((entry) => entry.seed);
+  const lines = shown.map(
+    (entry) =>
+      `${entry.seed} [${features(entry)}] (${[...new Set(entry.flavours)].join(", ")}): ${clip(entry.problems[0], 200)}`,
+  );
   return [
     `${entries.length} seeds failed the pixel invariants on \`auto\` in the ${date} run, which points at one cause rather than ${entries.length} defects.`,
     "",
     `- Run: ${runUrl}`,
-    `- Chrome flavours that failed: ${[...new Set(entries.flatMap((entry) => entry.flavours))].join(", ")}`,
+    `- Chrome flavours that failed: ${flavourList(flavoursOf(entries))}`,
     "",
     "Reproduce one from `packages/engine`:",
     "",
@@ -120,10 +158,7 @@ export function systemicBody(entries, date, runUrl) {
     "",
     "Seeds:",
     "",
-    ...shown.map(
-      (entry) =>
-        `- ${entry.seed} [${features(entry)}] (${[...new Set(entry.flavours)].join(", ")}): ${clip(entry.problems[0], 200)}`,
-    ),
+    fenced(lines.join("\n")),
     ...(rest.length ? ["", `And ${rest.length} more: ${rest.join(", ")}`] : []),
   ].join("\n");
 }
@@ -169,7 +204,7 @@ function fileIssues({ failing, gh, date, runUrl, maxIssues, systemicAbove, log }
   }
   const entries = failing.slice(0, maxIssues);
   if (failing.length > entries.length)
-    log(`::warning::${failing.length} failing seeds; the first ${maxIssues} get an issue`);
+    log(warning(`${failing.length} failing seeds; the first ${maxIssues} get an issue`));
   for (const entry of entries)
     openIssue(gh, titles, seedTitle(entry.seed), seedBody(entry, runUrl), log);
 }
@@ -178,23 +213,26 @@ function summaryLines({ failing, unstable, setup, silentFailure }) {
   const lines = ["## Motion blur nightly", ""];
   if (silentFailure) {
     lines.push(
-      "A generated job failed without recording a failing seed (a crash, a kill or a setup step); see the job logs.",
+      `A generated job ended ${inline(silentFailure)} without recording a failing seed (a crash, a kill or a setup step); see the job logs.`,
       "",
     );
   }
   if (setup.length) {
-    lines.push("### The run did not start or its record was unusable", "");
-    for (const item of setup)
-      lines.push(`- ${item.flavour}: ${item.problems.map((p) => clip(p, 300)).join("; ")}`);
-    lines.push("");
+    const items = setup.map(
+      (item) => `${item.flavour}: ${item.problems.map((p) => clip(p, 300)).join("; ")}`,
+    );
+    lines.push(
+      "### The run did not start or its record was unusable",
+      "",
+      fenced(items.join("\n")),
+      "",
+    );
   }
   if (failing.length) {
-    lines.push("### Failing seeds", "");
-    for (const entry of failing)
-      lines.push(
-        `- ${entry.seed} [${features(entry)}] on ${[...new Set(entry.flavours)].join(", ")}`,
-      );
-    lines.push("");
+    const items = failing.map(
+      (entry) => `${entry.seed} [${features(entry)}] on ${[...new Set(entry.flavours)].join(", ")}`,
+    );
+    lines.push("### Failing seeds", "", fenced(items.join("\n")), "");
   }
   if (unstable.length) {
     lines.push(
@@ -203,7 +241,8 @@ function summaryLines({ failing, unstable, setup, silentFailure }) {
       "| Seed | Features | Flavour | Worst blur-off MAE |",
       "| --- | --- | --- | --- |",
       ...unstable.map(
-        (u) => `| ${u.seed} | ${u.features.join(", ")} | ${u.flavour} | ${u.mae.toFixed(2)} |`,
+        (u) =>
+          `| ${u.seed} | ${inline(u.features.join(", "))} | ${inline(u.flavour)} | ${u.mae.toFixed(2)} |`,
       ),
       "",
     );
@@ -215,17 +254,26 @@ function summaryLines({ failing, unstable, setup, silentFailure }) {
 export function report(options) {
   const { dir, generatedResult, summaryFile, log } = options;
   const { failing, unstable, setup } = classify(readRecords(dir));
-  const silentFailure = generatedResult === "failure" && failing.length === 0 && setup.length === 0;
+  const silentFailure =
+    generatedResult !== "success" && failing.length === 0 && setup.length === 0
+      ? generatedResult || "without a result"
+      : "";
   if (silentFailure)
-    log("::warning::A generated job failed without recording a failing seed; see the run logs.");
-  if (setup.length)
     log(
-      `::warning::The nightly did not run cleanly: ${setup.map((s) => `${s.flavour}: ${clip(s.problems[0], 200)}`).join(" | ")}`,
+      warning(
+        `A generated job ended ${silentFailure} without recording a failing seed; see the run logs.`,
+      ),
     );
+  if (setup.length) {
+    const causes = setup.map((s) => `${s.flavour}: ${clip(s.problems[0], 200)}`).join(" | ");
+    log(warning(`The nightly did not run cleanly: ${causes}`));
+  }
   if (unstable.length) {
     const seeds = [...new Set(unstable.map((u) => u.seed))];
     log(
-      `::warning::${seeds.length} seed(s) had a blur-off reference that disagrees with itself and were not counted: ${seeds.join(", ")}`,
+      warning(
+        `${seeds.length} seed(s) had a blur-off reference that disagrees with itself and were not counted: ${seeds.join(", ")}`,
+      ),
     );
   }
   if (summaryFile)

@@ -123,8 +123,11 @@ async function referencePage(f: BlurFixture): Promise<Page> {
 }
 
 export async function stopChrome(): Promise<void> {
-  await closeReference();
-  await closeTestChrome(launched);
+  try {
+    await closeReference();
+  } finally {
+    await closeTestChrome(launched);
+  }
 }
 
 export function chrome(): Browser {

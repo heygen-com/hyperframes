@@ -12,13 +12,14 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { classify } from "./motion-blur-nightly-report.mjs";
+import { classify, workflowCommand } from "./motion-blur-nightly-report.mjs";
 
 const SCRIPT = join(import.meta.dirname, "motion-blur-nightly-report.mjs");
 
 const STUB = `#!/bin/sh
 printf '%s\\n' "$*" >> "$STUB_LOG"
 if [ "$1 $2" = "issue list" ]; then
+  [ "$*" = "issue list --state open --limit 1000 --json title --jq .[].title" ] || { echo "unexpected gh arguments: $*" >&2; exit 2; }
   [ -n "$STUB_LIST_FAIL" ] && { echo "boom" >&2; exit 1; }
   cat "$STUB_TITLES"
   exit 0
@@ -105,10 +106,10 @@ test("one issue per failing seed, titled by seed, with the flavours that failed"
   assert.match(n.creates[1], /--title motion blur nightly: seed 9 /);
   assert.match(n.creates[0], /--label bug --label area\/quality/);
   const [first, second] = readFileSync(join(n.dir, "gh.log.bodies"), "utf8").split("=====\n");
-  assert.match(first, /Chrome flavours that failed: pin, stable/);
-  assert.match(first, /- \[pin\] outside the trail at 0.5/);
-  assert.match(first, /- \[stable\] outside the trail at 0.5/);
-  assert.match(second, /Chrome flavours that failed: stable/);
+  assert.match(first, /Chrome flavours that failed: `pin`, `stable`/);
+  assert.match(first, /^\[pin\] outside the trail at 0.5/m);
+  assert.match(first, /^\[stable\] outside the trail at 0.5/m);
+  assert.match(second, /Chrome flavours that failed: `stable`/);
   assert.match(first, /HF_BLUR_SEEDS=7 /);
   rmSync(n.dir, { recursive: true });
 });
@@ -189,7 +190,7 @@ test("unstable seeds go to the summary and one warning, never to an issue", () =
     n.run.stdout,
     /::warning::2 seed\(s\) had a blur-off reference that disagrees with itself.*129, 130/,
   );
-  assert.match(n.summary, /\| 129 \| canvas2d, svgClip \| pin \| 2\.03 \|/);
+  assert.match(n.summary, /\| 129 \| `canvas2d, svgClip` \| `pin` \| 2\.03 \|/);
   rmSync(n.dir, { recursive: true });
 });
 
@@ -197,14 +198,17 @@ test("a failed job with no record warns and writes the summary", () => {
   const n = night({ files: { "pin-1": [], "stable-1": [] }, generatedResult: "failure" });
   assert.equal(n.run.status, 0, n.run.stderr);
   assert.equal(n.calls.length, 0);
-  assert.match(n.run.stdout, /::warning::A generated job failed without recording a failing seed/);
-  assert.match(n.summary, /failed without recording a failing seed/);
+  assert.match(
+    n.run.stdout,
+    /::warning::A generated job ended failure without recording a failing seed/,
+  );
+  assert.match(n.summary, /ended `failure` without recording a failing seed/);
   rmSync(n.dir, { recursive: true });
 });
 
 test("a failed job with no artifacts at all warns the same way", () => {
   const n = night({ generatedResult: "failure" });
-  assert.match(n.run.stdout, /::warning::A generated job failed without recording/);
+  assert.match(n.run.stdout, /::warning::A generated job ended failure without recording/);
   rmSync(n.dir, { recursive: true });
 });
 
@@ -220,7 +224,7 @@ test("a launch failure record warns and goes to the summary", () => {
     /::warning::The nightly did not run cleanly: stable: Chrome lacks drawElementImage/,
   );
   assert.match(n.summary, /did not start/);
-  assert.ok(!n.run.stdout.includes("failed without recording"));
+  assert.ok(!n.run.stdout.includes("without recording"));
   rmSync(n.dir, { recursive: true });
 });
 
@@ -260,4 +264,100 @@ test("classify groups a seed across flavours and prefixes each finding with its 
       problems: ["[pin] a", "[stable] b"],
     },
   ]);
+});
+
+const commandLines = (stdout) => stdout.split("\n").filter((line) => line.startsWith("::"));
+
+test("the open-title fetch uses exactly the flags the report relies on", () => {
+  const n = night({ files: { "pin-1": [real(5)] } });
+  assert.equal(n.lists[0], "issue list --state open --limit 1000 --json title --jq .[].title");
+  rmSync(n.dir, { recursive: true });
+});
+
+test("a job that was cancelled or timed out warns like a failed one", () => {
+  for (const generatedResult of ["cancelled", "skipped"]) {
+    const n = night({ files: { "pin-1": [] }, generatedResult });
+    assert.match(
+      n.run.stdout,
+      new RegExp(`::warning::A generated job ended ${generatedResult} without`),
+    );
+    rmSync(n.dir, { recursive: true });
+  }
+});
+
+test("workflowCommand escapes data and properties the way the runner does", () => {
+  assert.equal(workflowCommand("warning", "a%b\r\nc"), "::warning::a%25b%0D%0Ac");
+  assert.equal(
+    workflowCommand("warning", "m", { file: "x:y,z\n" }),
+    "::warning file=x%3Ay%2Cz%0A::m",
+  );
+});
+
+test("workflowCommand leaves no :: in its message, so text on one line cannot start a command", () => {
+  const line = workflowCommand("warning", "x ::add-mask::secret ::stop-commands::t :::y");
+  assert.equal(line, "::warning::x : :add-mask: :secret : :stop-commands: :t : : :y");
+  assert.equal(line.slice("::warning::".length).includes("::"), false);
+});
+
+test("untrusted newlines never start a second workflow command", () => {
+  const hostile = "1\n::error::pwned";
+  const n = night({
+    files: {
+      "stable-1": [
+        { seed: hostile, features: [], problems: [] },
+        {
+          seed: null,
+          features: [],
+          problems: ["Chrome died\n::error::pwned %0A\r::warning::again"],
+        },
+        { seed: 3, features: [], problems: [], unstableReference: 1.5 },
+      ],
+    },
+  });
+  assert.equal(n.run.status, 0, n.run.stderr);
+  const commands = commandLines(n.run.stdout);
+  assert.equal(commands.length, 2);
+  assert.ok(commands.every((line) => line.startsWith("::warning::")));
+  assert.ok(
+    !n.run.stdout
+      .split("\n")
+      .some((line) => /^::error/.test(line) || line.startsWith("::warning::again")),
+  );
+  const setup = commands.find((line) => line.includes("did not run cleanly"));
+  assert.ok(setup.includes("Chrome died%0A: :error: :pwned %250A%0D: :warning: :again"), setup);
+  assert.ok(setup.includes("record without a usable seed (1%0A: :error: :pwned)"));
+  rmSync(n.dir, { recursive: true });
+});
+
+test("summary and issue text cannot break out of code, the table or mention anyone", () => {
+  const nasty = "bad | cell @someone ```` and ``` <img src=x onerror=1>\n@other";
+  const n = night({
+    files: {
+      "pin-1": [
+        { seed: 8, features: ["a|b", "@someone", "<b>x</b>", "`tick`"], problems: [nasty] },
+        {
+          seed: 9,
+          features: ["m|n", "@someone", "<b>x</b>", "`tick`"],
+          problems: [],
+          unstableReference: 2,
+        },
+        { seed: null, features: [], problems: [nasty] },
+      ],
+    },
+  });
+  const body = readFileSync(join(n.dir, "gh.log.bodies"), "utf8").split("=====\n")[0];
+  const fence = body.match(/^(`{4,})$/m);
+  assert.ok(fence, "the findings sit in a fence longer than any backtick run in the text");
+  assert.equal(fence[1].length, 5);
+  const [outside, inside, after] = body.split(fence[1]);
+  assert.ok(inside.includes("<img src=x onerror=1>") && inside.includes("@other"));
+  assert.ok(!outside.replace(/`[^`\n]*`/g, "").includes("@someone"));
+  assert.ok(!outside.includes("<img") && !after.includes("<img"));
+  assert.match(outside, /- Features: `a\\\|b, @someone, <b>x<\/b>, 'tick'`/);
+  const row = n.summary.split("\n").find((line) => line.startsWith("| 9 "));
+  assert.equal(row, "| 9 | `m\\|n, @someone, <b>x</b>, 'tick'` | `pin` | 2.00 |");
+  const setupFence = n.summary.match(/^(`{4,})$/m);
+  assert.ok(setupFence);
+  assert.ok(!n.summary.replace(/^(`{5})$[\s\S]*?^\1$/gm, "").includes("<img"));
+  rmSync(n.dir, { recursive: true });
 });

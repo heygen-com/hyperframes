@@ -144,8 +144,11 @@ describe.skipIf(!hasBrowser && !REQUIRED)(
       }
     }, 30_000);
     afterAll(async () => {
-      await stopChrome();
-      if (FAILURES_FILE) writeFileSync(FAILURES_FILE, JSON.stringify(records, null, 2));
+      try {
+        if (FAILURES_FILE) writeFileSync(FAILURES_FILE, JSON.stringify(records, null, 2));
+      } finally {
+        await stopChrome();
+      }
     });
 
     for (const seed of SEEDS) defineSeedCase(seed);
