@@ -17,6 +17,7 @@
  */
 import {
   readdirSync,
+  readFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -28,6 +29,7 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { isContainedIn } from "./registry-target-paths.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(repoRoot, "packages/cli/src/cli.ts");
@@ -67,14 +69,27 @@ const IGNORED = [
   "multiple_root_compositions",
 ];
 
+function readManifestFiles(dir) {
+  const manifest = join(dir, "registry-item.json");
+  if (!isContainedIn(repoRoot, manifest)) return [];
+  try {
+    return JSON.parse(readFileSync(manifest, "utf8")).files ?? [];
+  } catch {
+    return [];
+  }
+}
+
 function discover() {
   const out = [];
   for (const kind of ["blocks", "components"]) {
     const dir = join(repoRoot, "registry", kind);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
-      const html = join(dir, name, `${name}.html`);
-      if (existsSync(html)) out.push({ name, kind, html });
+      const itemDir = join(dir, name);
+      const html = join(itemDir, `${name}.html`);
+      if (existsSync(html)) {
+        out.push({ name, kind, html, dir: itemDir, files: readManifestFiles(itemDir) });
+      }
     }
   }
   return out;
@@ -96,8 +111,29 @@ for (const item of items) {
     mkdirSync(join(proj, "compositions"), { recursive: true });
     writeFileSync(join(proj, "index.html"), HOST);
     copyFileSync(item.html, join(proj, "compositions", `${item.name}.html`));
+    for (const f of item.files) {
+      if (!f?.target || !f?.path) continue;
+      if (!isContainedIn(item.dir, f.path) || !isContainedIn(proj, f.target)) {
+        throw new Error(
+          `Registry item ${item.name} declares a path outside its allowed directory.`,
+        );
+      }
+      const from = join(item.dir, f.path);
+      const to = join(proj, f.target);
+      if (!existsSync(from)) continue; // a real missing file stays a real finding
+      mkdirSync(dirname(to), { recursive: true });
+      copyFileSync(from, to);
+    }
 
     const res = spawnSync("bun", [cli, "lint", proj], { encoding: "utf-8" });
+    // A spawn failure must not read as a clean pass: on hosts where `bun` is
+    // not an .exe on PATH, spawnSync errors with empty output, and every
+    // item would silently "pass" (seen on a Windows machine).
+    if (res.error) {
+      failed++;
+      console.error(`\n✗ ${item.kind}/${item.name}: lint could not run (${res.error.message})`);
+      continue;
+    }
     const lines = `${res.stdout ?? ""}${res.stderr ?? ""}`.split("\n");
     // Only the item's own file — the host scaffold is not under review.
     const hits = lines.filter(
