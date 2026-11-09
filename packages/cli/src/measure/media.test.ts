@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { selectFirstFrameAfterEach } from "../commands/snapshot.js";
@@ -128,14 +128,53 @@ describe("a file ffprobe cannot read", () => {
     expect(ffprobeReason(new Error("boom"), "x.mp4")).toBeUndefined();
   });
 
-  it.each([
-    ["moov atom not found", /download it again/],
-    ["Invalid data found when processing input", /not a video/],
-    ["Permission denied", /permissions/],
-    [undefined, /pass a video file/],
-  ])("answers %s", (reason, fix) => {
-    expect(unreadableFix(reason)).toMatch(fix);
+  it("keeps the specific cause of a cut-short file over ffprobe's generic last line", () => {
+    const err = {
+      stderr: Buffer.from(
+        "[mov,mp4,m4a,3gp,3g2,mj2 @ 0x12e808c00] moov atom not found\nhalf.mp4: Invalid data found when processing input\n",
+      ),
+    };
+    const reason = ffprobeReason(err, "half.mp4");
+    expect(reason).toBe("moov atom not found");
+    expect(unreadableFix(reason, true)).toMatch(/download it again/);
+    // A web page named .mp4 gets the same two lines from ffprobe: only the header tells them apart.
+    expect(unreadableFix(reason, false)).toMatch(/not a video/);
   });
+
+  it.each([
+    ["moov atom not found", true, /download it again/],
+    ["moov atom not found", false, /not a video/],
+    ["End of file", false, /download it again/],
+    ["Invalid data found when processing input", false, /not a video/],
+    ["Permission denied", false, /permissions/],
+    [undefined, false, /pass a video file/],
+  ])("answers %s (MP4 header: %s)", (reason, mp4Header, fix) => {
+    expect(unreadableFix(reason, mp4Header)).toMatch(fix);
+  });
+
+  it.skipIf(!ffmpeg)(
+    "tells a cut-short download to download again, not that it is no video",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-cut-"));
+      const full = join(dir, "full.mp4");
+      const half = join(dir, "half.mp4");
+      execFileSync("ffmpeg", [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=4"],
+        ...["-pix_fmt", "yuv420p", full],
+      ]);
+      const bytes = readFileSync(full);
+      writeFileSync(half, bytes.subarray(0, bytes.length >> 1));
+      try {
+        probeVideo(half);
+        expect.unreachable();
+      } catch (err) {
+        expect((err as Fix).message).toMatch(/moov atom not found/);
+        expect((err as Fix).fix).toMatch(/download it again/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it.skipIf(!ffmpeg)("puts the reason and its fix on the error", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-probe-"));

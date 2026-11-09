@@ -1,7 +1,7 @@
 // Decode with ffmpeg into raw arrays, so measuring and comparing need nothing but node and ffmpeg.
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 
@@ -126,22 +126,55 @@ export function missingFileFix(path: string, argv: readonly string[] = process.a
   return "pass the video's path from the project folder";
 }
 
-/** ffprobe's own last word on a file it could not read, without the path it repeats. */
+const CUT_SHORT = "the file is cut short, as an unfinished download is: download it again";
+const NOT_A_VIDEO =
+  "this is not a video: check what was saved (a web page saved as .mp4 reads like this)";
+
+/** ffprobe says "moov atom not found" for any file named .mp4; only an MP4's own header makes it cut short. */
+const UNREADABLE_CAUSES: readonly { pattern: RegExp; fix: (mp4Header: boolean) => string }[] = [
+  { pattern: /moov atom not found/i, fix: (mp4Header) => (mp4Header ? CUT_SHORT : NOT_A_VIDEO) },
+  { pattern: /end of file|partial file/i, fix: () => CUT_SHORT },
+  { pattern: /permission denied/i, fix: () => "the file cannot be read: check its permissions" },
+  { pattern: /invalid data found/i, fix: () => NOT_A_VIDEO },
+];
+
+/** ffprobe's most specific line on a file it could not read, without the demuxer tag or the path it repeats. */
 export function ffprobeReason(err: unknown, path: string): string | undefined {
   const stderr = (err as { stderr?: Buffer | string } | null)?.stderr?.toString() ?? "";
-  const line = stderr.trim().split(/\r?\n/).pop()?.replace(`${path}: `, "").trim();
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^\[[^\]]*\]\s*/, "")
+        .replace(`${path}: `, "")
+        .trim(),
+    )
+    .filter(Boolean);
+  const specific = UNREADABLE_CAUSES.map(({ pattern }) => lines.find((l) => pattern.test(l))).find(
+    Boolean,
+  );
+  const line = specific ?? lines.at(-1);
   return line ? line.slice(0, 160) : undefined;
 }
 
-/** The fix that goes with ffprobe's reason. */
-export function unreadableFix(reason: string | undefined): string {
-  if (reason && /moov atom not found|end of file|partial file/i.test(reason))
-    return "the file is cut short, as an unfinished download is: download it again";
-  if (reason && /invalid data found/i.test(reason))
-    return "this is not a video: check what was saved (a web page saved as .mp4 reads like this)";
-  if (reason && /permission denied/i.test(reason))
-    return "the file cannot be read: check its permissions";
-  return "pass a video file (mp4, mov, webm)";
+/** The fix that goes with ffprobe's reason; `mp4Header` is whether the file starts with an MP4 `ftyp` box. */
+export function unreadableFix(reason: string | undefined, mp4Header = false): string {
+  const cause = reason ? UNREADABLE_CAUSES.find(({ pattern }) => pattern.test(reason)) : undefined;
+  return cause?.fix(mp4Header) ?? "pass a video file (mp4, mov, webm)";
+}
+
+function startsWithMp4Header(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const head = Buffer.alloc(8);
+    readSync(fd, head, 0, 8, 0);
+    return head.toString("latin1", 4, 8) === "ftyp";
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 /** Size (as displayed, rotation applied), clock and sound of a video. */
@@ -161,7 +194,7 @@ export function probeVideo(path: string): VideoInfo {
     const reason = ffprobeReason(err, path);
     throw new Fix(
       `ffprobe cannot read ${path}${reason ? `: ${reason}` : ""}`,
-      unreadableFix(reason),
+      unreadableFix(reason, startsWithMp4Header(path)),
     );
   }
   const streams = json.streams ?? [];
