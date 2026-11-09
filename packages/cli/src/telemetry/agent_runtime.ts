@@ -69,10 +69,8 @@ export type AgentRuntime =
 
 interface VendorRule {
   name: Exclude<AgentRuntime, null>;
-  /** Check returns true when the named agent is driving the CLI. */
+  /** Check returns true when the named agent (or, in WORKSPACE_RULES, that editor or host) runs the CLI. */
   check: (env: NodeJS.ProcessEnv) => boolean;
-  /** Narrower than `check` when `check` also matches a person in that editor's terminal or host. */
-  agentOnly?: (env: NodeJS.ProcessEnv) => boolean;
 }
 
 // Ordering matters: the FIRST rule that matches wins. Put more specific rules
@@ -313,11 +311,15 @@ const VENDOR_RULES: VendorRule[] = [
     name: "claude_agent_sdk",
     check: (env) => typeof env["CLAUDE_AGENT_SDK_VERSION"] === "string",
   },
-  // Editor terminals and hosted workspaces: these mark where the shell runs,
-  // not that an agent drives it, so every agent marker above wins over them.
+];
+
+// Editor terminals and hosted workspaces mark where a shell runs, not that an
+// agent drives it. Checked after every agent marker, the AI_AGENT name check
+// included, and never counted by isAgentDriven().
+const WORKSPACE_RULES: VendorRule[] = [
   // Cursor's TERM_PROGRAM identifies the IDE terminal only.
   // Source: https://docs.cursor.com/en/agent/terminal
-  { name: "cursor", check: (env) => env["TERM_PROGRAM"] === "cursor", agentOnly: () => false },
+  { name: "cursor", check: (env) => env["TERM_PROGRAM"] === "cursor" },
   // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
   // Attested across many independent detectors (nx
   // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
@@ -329,7 +331,6 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "windsurf",
     check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
-    agentOnly: () => false,
   },
   // Replit — REPL_ID and REPLIT_USER are long-documented environment
   // variables exposed inside every Replit workspace.
@@ -337,7 +338,6 @@ const VENDOR_RULES: VendorRule[] = [
   {
     name: "replit",
     check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
-    agentOnly: () => false,
   },
 ];
 
@@ -449,16 +449,17 @@ export function detectAgentRuntime(): AgentRuntime {
   for (const rule of VENDOR_RULES) {
     if (rule.check(process.env)) return rule.name;
   }
-  return aiAgentFallback(process.env);
+  return (
+    aiAgentFallback(process.env) ??
+    WORKSPACE_RULES.find((rule) => rule.check(process.env))?.name ??
+    null
+  );
 }
 
 /** An agent is running this shell, not a person typing in an editor's terminal or a hosted workspace. */
 export function isAgentDriven(env: NodeJS.ProcessEnv = process.env): boolean {
   if (isGeminiManagedAgent()) return true;
-  return (
-    VENDOR_RULES.some((rule) => (rule.agentOnly ?? rule.check)(env)) ||
-    aiAgentFallback(env) !== null
-  );
+  return VENDOR_RULES.some((rule) => rule.check(env)) || aiAgentFallback(env) !== null;
 }
 
 /** Observed harness marker, not proof of a vendor, benchmark, or human user. */

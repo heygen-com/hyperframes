@@ -556,6 +556,16 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
     expect(detectAgentRuntime()).toBe(runtime);
   });
 
+  it.each([
+    [{ TERM_PROGRAM: "cursor", AI_AGENT: "amp" }, "amp"],
+    [{ REPL_ID: "r", AGENT: "devin_20261101_agent" }, "devin"],
+    [{ TERM_PROGRAM: "windsurf", AI_AGENT: "some-new-agent" }, "other_ai_agent"],
+  ])("lets an agent's own name beat the editor or host: %j -> %s", async (env, runtime) => {
+    Object.assign(process.env, env);
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+  });
+
   it("lets Claude Code's own shell marker beat the Agent SDK version key", async () => {
     process.env["CLAUDECODE"] = "1";
     process.env["CLAUDE_AGENT_SDK_VERSION"] = "0.2.0";
