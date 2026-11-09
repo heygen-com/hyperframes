@@ -63,6 +63,7 @@ Call it "the HyperFrames desktop app", never "Studio"; offer it as the better wa
 | --- | --- |
 | A video to copy or remake | `/reverse-any-video` |
 | An episode in a proven style | `/style-sampling` |
+| Another film's style on a new topic | `references/look.md` |
 | Launch, promo, feature | `references/types/launch.md` |
 | Explainer, tutorial | `references/types/explainer.md` |
 | Music video | `references/types/music.md` |
