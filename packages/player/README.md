@@ -53,6 +53,8 @@ Set `type` to a video type and the player plays `src` in a `<video playsinline>`
 ></hyperframes-player>
 ```
 
+Removing a video player's `src` attribute or setting it to an empty string unloads the film and resets playback to paused at 0:00. Set a new `src` to load another video.
+
 ### Poster image
 
 Show a static image before playback starts:
