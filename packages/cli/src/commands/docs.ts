@@ -88,7 +88,7 @@ function renderMarkdown(content: string): void {
 
     // List items
     if (line.startsWith("- ")) {
-      const rest = formatInlineCode(line.slice(2));
+      const rest = formatBold(formatInlineCode(line.slice(2)));
       console.log(`${c.dim("  \u2022")} ${rest}`);
       continue;
     }
