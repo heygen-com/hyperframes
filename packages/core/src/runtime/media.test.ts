@@ -1331,7 +1331,13 @@ describe("syncRuntimeMedia", () => {
       configurable: true,
     });
     for (const timeSeconds of [2, 2, 2])
-      syncRuntimeMedia({ clips: [clip], timeSeconds, playing: false, playbackRate: 1, forceSync: true });
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: false,
+        playbackRate: 1,
+        forceSync: true,
+      });
     expect(seeks).toHaveLength(3);
   });
 

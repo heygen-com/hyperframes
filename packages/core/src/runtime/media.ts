@@ -848,7 +848,8 @@ export function syncRuntimeMedia(params: {
           } catch (err) {
             swallow("runtime.media.site2", err);
           }
-          if (isHeldVideoTail) heldTailSeekedTo.set(el, { target: relTime, landed: el.currentTime });
+          if (isHeldVideoTail)
+            heldTailSeekedTo.set(el, { target: relTime, landed: el.currentTime });
           else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
