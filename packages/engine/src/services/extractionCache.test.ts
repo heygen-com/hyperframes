@@ -67,7 +67,7 @@ function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: s
 }
 
 describe("extractionCache constants", () => {
-  it("exposes the v7 schema prefix", () => {
+  it("exposes the v9 schema prefix", () => {
     expect(SCHEMA_PREFIX).toBe("hfcache-v9-");
   });
 

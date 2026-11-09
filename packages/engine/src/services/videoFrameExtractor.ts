@@ -1036,6 +1036,7 @@ async function leadInSecondsUnlessAborted(
 function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: number): number {
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
+const KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP = "tpad=stop_mode=clone:stop=1";
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
 function undoTickRoundingOnTheSourceFrameGrid(
   seek: number,
@@ -1044,9 +1045,7 @@ function undoTickRoundingOnTheSourceFrameGrid(
 ): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
-    // The snap moves the stream's end too: a last frame stored one tick long (B-frames at a
-    // 1/600 timescale) would end on its own start and lose its slot, so hold it a frame first.
-    ...(sourceFps > 0 ? ["tpad=stop_mode=clone:stop=1"] : []),
+    ...(sourceFps > 0 ? [KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
@@ -1431,13 +1430,12 @@ async function extractVideoFramesRangeUnredacted(
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
   const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
-  // Slots from the source's end on hold its final frame in lookup, not here (as coverage counts).
-  const totalFrames = metadata.isVFR
-    ? windowFrames
-    : Math.min(
-        windowFrames,
-        extractionFrameCountForDuration(playableDuration - startTime, normalizedFps, false),
-      );
+  const framesBeforeSourceEnd = extractionFrameCountForDuration(
+    playableDuration - startTime,
+    normalizedFps,
+    false,
+  );
+  const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
   // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
   // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
   // decimal rate counts zero frames here and keeps the `-t` window.
