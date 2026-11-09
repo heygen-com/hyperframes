@@ -39,10 +39,10 @@ import { versionSentence } from "./reviewVersionSentences.mjs";
  * definitive result; `reviewSent`: cleanup cutoff, with attribution only when the accepted attempt is
  * known; `last`: the newest version.
  * @typedef {{ pending: { body: ExportRequest, videoId: string | null, projectId?: string | null,
- *   checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean, reviewSent?: ReviewSent } | null,
+ *   renderKey?: string, checkingSince?: number, snapshotRefused?: boolean, unanswered?: boolean, reviewSent?: ReviewSent } | null,
  *   last: { fingerprint: string, versionId: string, exportedAt: string, projectId: string, files?: boolean,
  *     snapshot?: ExportRequest["snapshot"], checksum?: string }
- *   | null }} VersionRecord */
+ *   | null, failure?: (Failure & { projectId: string }) | null }} VersionRecord */
 
 /** `onAdded`: a version went ready, with whether it carries files and whether it is the page's first from here.
  * @typedef {{ onProgress?: (progress: ReviewExportProgress | null) => void, onUploaded?: () => Promise<void>,
@@ -195,11 +195,21 @@ function isLastMetadata(value) {
 }
 
 /** @param {Record<string, unknown>} saved
- * @returns {saved is {pending?: VersionRecord["pending"], last?: SavedLast | null}} */
+ * @returns {saved is {pending?: VersionRecord["pending"], last?: SavedLast | null, failure?: unknown}} */
 const isExportState = (saved) =>
   ("pending" in saved || "last" in saved) &&
   (saved.pending == null || isPending(saved.pending)) &&
   (saved.last == null || isLast(saved.last));
+
+/** @param {unknown} value @returns {value is Failure & { projectId: string }} */
+const isSavedFailure = (value) =>
+  isJsonObject(value) &&
+  isSavedId(value.projectId) &&
+  typeof value.exportKey === "string" &&
+  typeof value.sentence === "string" &&
+  typeof value.final === "boolean" &&
+  typeof value.exportHelps === "boolean" &&
+  isOptionalBoolean(value.held);
 
 /** @param {string} dir @returns {Promise<VersionRecord>} */
 async function readState(dir) {
@@ -210,6 +220,7 @@ async function readState(dir) {
   const { last, pending } = saved;
   return {
     pending: pending ?? null,
+    failure: isSavedFailure(saved.failure) ? saved.failure : null,
     last: typeof last?.fingerprint === "string" ? { ...last, fingerprint: last.fingerprint } : null,
   };
 }
@@ -277,7 +288,8 @@ export async function reviewVersion(projectPath, server = {}) {
   const last = state.last?.projectId === projectId ? state.last : null;
   const onServer =
     server.latestReadyVersionId === undefined || server.latestReadyVersionId === last?.versionId;
-  const failed = failures.get(key);
+  const savedFailure = state.failure?.projectId === projectId ? state.failure : null;
+  const failed = savedFailure ?? failures.get(key);
   return {
     last: last
       ? { exportedAt: last.exportedAt, current: last.fingerprint === now && onServer }
@@ -595,18 +607,31 @@ const permanentRefusal = (error) =>
  * @param {string} id @param {ExportDTO} done @param {FromReview | null} fromReview @returns {Promise<Said | null>} */
 async function finish(dir, state, pending, id, done, fromReview) {
   const ready = done.status === "ready";
-  const last = {
-    fingerprint: pending.body.source_fingerprint ?? "",
-    versionId: done.version_id,
-    exportedAt: done.exported_at,
-    projectId: id,
-    files: Boolean(pending.body.snapshot),
-    ...(pending.body.snapshot && { snapshot: pending.body.snapshot }),
-    checksum: pending.body.local_upload.checksum_sha256,
-  };
-  await writeState(dir, { pending: null, last: ready ? last : state.last });
+  const last = readyRecord(pending, id, done);
+  const failure = ready ? null : said(new ReviewFailed(200, done.error?.reason ?? ""));
+  await writeState(dir, {
+    pending: null,
+    last: ready ? last : state.last,
+    ...(failure && {
+      failure: { ...failure, projectId: id, exportKey: await failedExportKey(dir, pending) },
+    }),
+  });
   if (ready) await sharedFromReview(fromReview, dir, pending.reviewSent?.since);
-  return ready ? null : said(new ReviewFailed(200, done.error?.reason ?? ""));
+  return failure;
+}
+
+/** @param {string} dir @param {NonNullable<VersionRecord["pending"]>} pending */
+async function failedExportKey(dir, pending) {
+  if (typeof pending.renderKey === "string") return pending.renderKey;
+  const latest = latestExportFile(dir);
+  if (!latest) return "";
+  const checksum =
+    latest.fingerprint === pending.body.source_fingerprint
+      ? await fileSha256Base64(latest.path).catch(() => null)
+      : null;
+  return checksum === pending.body.local_upload.checksum_sha256
+    ? exportKeyOf(dir)
+    : `pending:${pending.body.client_operation_id}`;
 }
 
 /** @param {Required<VersionRequest>} r @param {(progress: ReviewExportProgress) => void} report
@@ -643,7 +668,8 @@ function sameSourceMode(r, last, snapshot) {
 /** @param {ReviewClient} client @param {string} id @param {VersionRecord} state @param {ExportRequest} body */
 async function alreadyUploaded(client, id, state, body) {
   const last = state.last;
-  if (state.pending || !last || last.projectId !== id) return false;
+  if (state.pending || state.failure?.projectId === id || !last || last.projectId !== id)
+    return false;
   if (
     last.fingerprint !== body.source_fingerprint ||
     last.checksum !== body.local_upload.checksum_sha256
@@ -655,10 +681,10 @@ async function alreadyUploaded(client, id, state, body) {
  * @param {{file: string, body: ExportRequest}} source @param {string} id @param {VersionRecord} state */
 async function sendVersion(r, report, source, id, state) {
   const first = state.last?.projectId !== id;
-  let pending = bodyToSend(state, source.body, id);
+  let pending = bindRenderKey(bodyToSend(state, source.body, id), r.projectPath);
   const sourceConflict = pendingSourceConflict(r, pending, source.body);
   if (sourceConflict) return local(sourceConflict);
-  await writeState(r.projectPath, (state = { ...state, pending }));
+  await writeState(r.projectPath, (state = { ...state, pending, failure: null }));
   try {
     const answer = await createdExport(r, id, pending, (next) =>
       writeState(r.projectPath, (state = { ...state, pending: next })),
@@ -899,4 +925,24 @@ export async function pendingReviewExport(projectPath) {
     fingerprint: pending.body.source_fingerprint ?? null,
     checksum: pending.body.local_upload.checksum_sha256,
   };
+}
+
+/** @param {NonNullable<VersionRecord["pending"]>} pending @param {string} id @param {ExportDTO} done */
+function readyRecord(pending, id, done) {
+  return {
+    fingerprint: pending.body.source_fingerprint ?? "",
+    versionId: done.version_id,
+    exportedAt: done.exported_at,
+    projectId: id,
+    files: Boolean(pending.body.snapshot),
+    ...(pending.body.snapshot && { snapshot: pending.body.snapshot }),
+    checksum: pending.body.local_upload.checksum_sha256,
+  };
+}
+
+/** @param {NonNullable<VersionRecord["pending"]>} pending @param {string} dir */
+function bindRenderKey(pending, dir) {
+  return typeof pending.renderKey === "string"
+    ? pending
+    : { ...pending, renderKey: exportKeyOf(dir) };
 }

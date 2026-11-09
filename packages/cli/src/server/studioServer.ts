@@ -41,6 +41,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "@hyperframes/studio-server/request-identity";
+import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
@@ -1097,6 +1098,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   });
 
   mountDesktopRoutes(app, projectDir);
+  mountShareRoutes(app, projectDir);
 
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
@@ -1241,9 +1243,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // (`HYPERFRAMES_PREVIEW_HOST=0.0.0.0`) needs it to stay in agreement with
     // the CLI. See buildStudioHeadScriptsForHost.
     const headScript = buildStudioHeadScriptsForHost(buildRuntimeEnvScript(), c.req.header("host"));
-    if (headScript) {
-      html = html.replace("<head>", `<head>${headScript}`);
-    }
+    html = html.replace(
+      "<head>",
+      `<head><meta name="hyperframes-local-share" content="1">${headScript}`,
+    );
     // The shell names the current hashed bundle, so it always revalidates.
     // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
     // would blocklist the document from Chrome's bfcache.

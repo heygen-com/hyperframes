@@ -44,14 +44,14 @@ describe("share OAuth identity", () => {
     expect(mocks.refresh).toHaveBeenCalledWith("refresh");
     expect(mocks.user).not.toHaveBeenCalled();
   });
-  it("resolves the actor again when the credential changes", async () => {
+  it("rejects a different actor when the credential changes", async () => {
     mocks.resolve.mockResolvedValueOnce(oauth("a")).mockResolvedValueOnce(oauth("b"));
     mocks.user
       .mockResolvedValueOnce({ username: "first" })
       .mockResolvedValueOnce({ username: "second" });
     const auth = createShareAccess();
     expect((await auth.access()).owner).toBe("first");
-    expect((await auth.access()).owner).toBe("second");
+    await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
   });
   it("does not retry a refused environment token", async () => {
     mocks.resolve.mockResolvedValue(oauth("refused"));
@@ -60,4 +60,25 @@ describe("share OAuth identity", () => {
     });
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
+});
+
+it("pins a Studio session across account switches but permits same-account token rotation", async () => {
+  const auth = createShareAccess(true);
+  mocks.resolve.mockResolvedValue(oauth("first"));
+  await auth.access();
+  mocks.resolve.mockResolvedValue(oauth("refreshed"));
+  await expect(auth.access()).resolves.toMatchObject({ owner: "owner", token: "refreshed" });
+  mocks.resolve.mockResolvedValue(oauth("other"));
+  mocks.user.mockResolvedValue({ username: "other" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+  await expect(auth.access()).rejects.toMatchObject({ code: "LOGIN_CHANGED" });
+});
+
+it("can revalidate the same token instead of trusting a cached account", async () => {
+  mocks.resolve.mockResolvedValue(oauth("same"));
+  const auth = createShareAccess(true);
+  await auth.access();
+  mocks.user.mockRejectedValue(new Error("account validation refused"));
+  await expect(auth.access(undefined, true)).rejects.toThrow("account validation refused");
+  expect(mocks.user).toHaveBeenCalledTimes(2);
 });

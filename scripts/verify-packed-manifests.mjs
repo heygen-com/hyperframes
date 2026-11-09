@@ -558,6 +558,14 @@ function verifyPackedConsumer(packDir, packedWorkspaces) {
   if (!cliOutput.toLowerCase().includes("hyperframes")) {
     throw new Error("Packed CLI help did not identify HyperFrames");
   }
+  execFileSync(
+    "node",
+    [
+      join(ROOT, "scripts", "check-cli-share-capture.mjs"),
+      join(fixtureDir, "node_modules", "@hyperframes", "cli", "dist"),
+    ],
+    { cwd: fixtureDir, stdio: "inherit", timeout: 30_000 },
+  );
   console.log(smokeOutput.trim());
   console.log(
     "Verified clean packed consumer install, Node execution, NodeNext declaration check, Vite resolution, and CLI startup.",
