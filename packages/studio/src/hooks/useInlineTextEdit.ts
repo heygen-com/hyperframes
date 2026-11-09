@@ -26,6 +26,7 @@ import {
   placeCaretAtEnd,
   takePlainTextOnly,
 } from "@hyperframes/core/runtime/editing-port";
+import { isImeComposing } from "../utils/imeComposition";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -491,6 +492,8 @@ export function useInlineTextEdit({
     if (!element || session.sealed) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // Mid-composition, Enter and Escape finish or cancel the IME's text, not the edit.
+      if (isImeComposing(event)) return;
       // Shift+Enter is a line break in a multi-line element, and is left alone.
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
