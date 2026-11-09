@@ -1037,9 +1037,16 @@ function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: numbe
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
-function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): string[] {
+function undoTickRoundingOnTheSourceFrameGrid(
+  seek: number,
+  lead: number,
+  sourceFps: number,
+): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
+    // The snap moves the stream's end too: a last frame stored one tick long (B-frames at a
+    // 1/600 timescale) would end on its own start and lose its slot, so hold it a frame first.
+    ...(sourceFps > 0 ? ["tpad=stop_mode=clone:stop=1"] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
@@ -1205,7 +1212,11 @@ function videoFilterChain(input: VideoFilterChainInput): (seek: number) => strin
       ? [
           ...(metadata.isVFR
             ? []
-            : undoTickRoundingOnTheSourceFrameGrid(seek, videoStartOnMediaTimeline(metadata))),
+            : undoTickRoundingOnTheSourceFrameGrid(
+                seek,
+                videoStartOnMediaTimeline(metadata),
+                metadata.fps,
+              )),
           "settb=intb/2",
           "setpts=PTS-lte(TB\\,0.001)",
           `fps=${ffmpegFps}:start_time=0:round=up`,
@@ -1419,11 +1430,19 @@ async function extractVideoFramesRangeUnredacted(
     return filters.length > 0 ? ["-vf", filters.join(",")] : [];
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
-  const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  // Slots from the source's end on hold its final frame in lookup, not here (as coverage counts).
+  const totalFrames = metadata.isVFR
+    ? windowFrames
+    : Math.min(
+        windowFrames,
+        extractionFrameCountForDuration(playableDuration - startTime, normalizedFps, false),
+      );
   // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
   // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
   // decimal rate counts zero frames here and keeps the `-t` window.
   const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
+  const frameCap = sampleAtOutputFps && totalFrames > 0 ? ["-frames:v", String(totalFrames)] : [];
   const extract = (hwaccel: string[]) =>
     sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
       ? runSegmentedExtraction({
@@ -1444,17 +1463,20 @@ async function extractVideoFramesRangeUnredacted(
         })
       : inExtractionSlot(
           async () =>
-            runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
-              ...runOptions,
-              onStderr: framesWrittenReader(options.onProgress),
-              timeout: stallTimeoutMs(
-                ffmpegProcessTimeout,
-                options.finalFrameOnly
-                  ? startTime
-                  : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
-                metadata.fps,
-              ),
-            }),
+            runFfmpeg(
+              [...hwaccel, ...args, ...frameCap, ...filterArgsFor(startTime), ...encodeArgs],
+              {
+                ...runOptions,
+                onStderr: framesWrittenReader(options.onProgress),
+                timeout: stallTimeoutMs(
+                  ffmpegProcessTimeout,
+                  options.finalFrameOnly
+                    ? startTime
+                    : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
+                  metadata.fps,
+                ),
+              },
+            ),
           signal,
         );
   options.onProgress?.({
