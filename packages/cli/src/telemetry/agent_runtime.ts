@@ -47,6 +47,22 @@ export type AgentRuntime =
   | "qoder"
   | "kiro"
   | "openhands"
+  | "workbuddy"
+  | "codebuddy"
+  | "trae"
+  | "pippit"
+  | "doubao"
+  | "aily"
+  | "grok"
+  | "kimi"
+  | "zcode"
+  | "swe_agent"
+  | "claude_agent_sdk"
+  | "devin"
+  | "amp"
+  | "v0"
+  | "rovodev"
+  | "base44"
   | "other_ai_agent"
   | null;
 
@@ -252,11 +268,16 @@ const VENDOR_RULES: VendorRule[] = [
     name: "antigravity",
     check: (env) => Boolean(env["ANTIGRAVITY_AGENT"]),
   },
-  // Qoder: sets a non-empty QODER_AGENT on the terminals its agent runs.
+  // Qoder: sets a non-empty QODER_AGENT on the terminals its agent runs. The
+  // CLI and agent SDK keys below come from this CLI's own discovery hints.
   // Source: https://docs.qoder.com/troubleshooting/terminal-execution-exceptions
   {
     name: "qoder",
-    check: (env) => Boolean(env["QODER_AGENT"]),
+    check: (env) =>
+      Boolean(env["QODER_AGENT"]) ||
+      typeof env["QODER_AGENT_SDK_VERSION"] === "string" ||
+      typeof env["QODER_CLI_MAX_SUBAGENT_SPAWN_DEPTH"] === "string" ||
+      typeof env["QODERCN_CLI_MAX_SUBAGENT_SPAWN_DEPTH"] === "string",
   },
   // Kiro: AGENT_DISPLAY_OUT / AGENT_CONTEXT_OUT are "only set when the agent is
   // driving". TERM_PROGRAM=kiro is deliberately NOT used: Kiro sets it for a
@@ -275,15 +296,56 @@ const VENDOR_RULES: VendorRule[] = [
     name: "openhands",
     check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
   },
+  // Closed-source agents with no public marker. Each key below shows up in this
+  // CLI's own agent_env_hints on non-interactive runs, which is direct evidence
+  // that it is in the env of the shell the agent spawned. Only key presence is
+  // checked; several values are tokens and are never read. WorkBuddy is built
+  // on CodeBuddy and carries its keys too, so it goes first.
+  // Source: agent_env_hints discovery telemetry (detectAgentHints below).
+  { name: "workbuddy", check: (env) => typeof env["WORKBUDDY_CLIENT_USER_AGENT"] === "string" },
+  {
+    name: "codebuddy",
+    check: (env) =>
+      typeof env["CODEBUDDY_SESSION_ID"] === "string" ||
+      typeof env["CODEBUDDY_AGENTOS_SESSION_ID"] === "string" ||
+      typeof env["CODEBUDDY_AGENT_RUNTIME"] === "string",
+  },
+  {
+    name: "trae",
+    check: (env) =>
+      typeof env["ICUBE_AI_AGENT_SHUTDOWN_TOKEN"] === "string" ||
+      typeof env["TRAE_REMOTE_AGENT_TOKEN"] === "string",
+  },
+  {
+    name: "pippit",
+    check: (env) =>
+      typeof env["AUTO_PIPPIT_THREAD_ID"] === "string" ||
+      typeof env["PIPPIT_OBS_AGENT_NAME"] === "string",
+  },
+  { name: "doubao", check: (env) => typeof env["DOUBAO_OFFICE_AGENT_NAME"] === "string" },
+  { name: "aily", check: (env) => typeof env["AILY_CLI_AGENT_DELIVER_BLOCKED"] === "string" },
+  { name: "grok", check: (env) => typeof env["GROK_SESSION_ID"] === "string" },
+  { name: "kimi", check: (env) => typeof env["KIMI_AGENT_CLIENT_ID"] === "string" },
+  { name: "zcode", check: (env) => typeof env["ZCODE_SESSION_ID"] === "string" },
+  { name: "swe_agent", check: (env) => typeof env["SWE_AGENT_ENV_FILE"] === "string" },
+  // An app built on the Claude Agent SDK, running a command outside Claude
+  // Code's own shell tool (that path sets CLAUDECODE, caught above). Last, so
+  // a vendor that builds on the SDK and sets its own marker wins.
+  {
+    name: "claude_agent_sdk",
+    check: (env) => typeof env["CLAUDE_AGENT_SDK_VERSION"] === "string",
+  },
 ];
 
 // AI_AGENT convention: an agent sets AI_AGENT=<name> and keeps an inherited
 // value, so the outermost agent's name wins. Checked AFTER every VENDOR_RULE so
 // the immediate executor's own marker takes precedence. Unknown slug-safe names
-// become "other_ai_agent" (the raw name goes out as agent_hint). Bare AGENT is
-// NOT used: it has no agreed values and AGENT=1 is common. A known name matches
-// exactly or as a `<name>_` prefix (Claude Code sends claude-code_2-1-307_agent);
-// the `_` boundary keeps "pi" from swallowing "pilot".
+// become "other_ai_agent" (the raw name goes out as agent_hint). Bare AGENT only
+// counts when it holds a known name: it has no agreed values and AGENT=1 is
+// common. A known name matches exactly or as a `<name>_` / `<name>-` prefix
+// (Claude Code sends claude-code_2-1-307_agent, Devin devin_<build>_agent); the
+// boundary keeps "pi" from swallowing "pilot". Names past hermes come from the
+// values this CLI's agent_hint reports.
 // Sources: https://github.com/vercel/vercel (packages/detect-agent),
 // https://github.com/agentsmd/agents.md/pull/136
 const AI_AGENT_RUNTIMES: ReadonlyArray<readonly [string, Exclude<AgentRuntime, null>]> = [
@@ -292,13 +354,32 @@ const AI_AGENT_RUNTIMES: ReadonlyArray<readonly [string, Exclude<AgentRuntime, n
   ["crush", "crush"],
   ["pi", "pi"],
   ["hermes", "hermes"],
+  ["github_copilot", "copilot_agent"],
+  ["openhands", "openhands"],
+  ["antigravity", "antigravity"],
+  ["trae", "trae"],
+  ["devin", "devin"],
+  ["amp", "amp"],
+  ["v0", "v0"],
+  ["rovodev", "rovodev"],
+  ["base44", "base44"],
 ];
 
-function aiAgentFallback(env: NodeJS.ProcessEnv): AgentRuntime {
-  const value = sanitizeHint(env["AI_AGENT"]);
+function knownAgentName(value: string | null): AgentRuntime {
   if (value === null) return null;
-  const known = AI_AGENT_RUNTIMES.find(([name]) => value === name || value.startsWith(`${name}_`));
-  return known?.[1] ?? "other_ai_agent";
+  const known = AI_AGENT_RUNTIMES.find(
+    ([name]) => value === name || value.startsWith(`${name}_`) || value.startsWith(`${name}-`),
+  );
+  return known?.[1] ?? null;
+}
+
+function aiAgentFallback(env: NodeJS.ProcessEnv): AgentRuntime {
+  const aiAgent = sanitizeHint(env["AI_AGENT"]);
+  return (
+    knownAgentName(aiAgent) ??
+    knownAgentName(sanitizeHint(env["AGENT"])) ??
+    (aiAgent === null ? null : "other_ai_agent")
+  );
 }
 
 // Agents evaluated and deliberately NOT added. Each fails the bar the rules
@@ -320,15 +401,17 @@ function aiAgentFallback(env: NodeJS.ProcessEnv): AgentRuntime {
 //   - Roo Code — ROO_ACTIVE is set only on the `vscode` terminal provider; the
 //     shipped default is the execa provider (terminalShellIntegrationDisabled
 //     defaults true), which sets no marker.
-//   - Amp / Devin / Jules / Factory Droid — no verifiable unconditional runtime
-//     marker (Amp is closed/minified; Devin/Jules are closed sandboxes;
-//     Factory's FACTORY_PROJECT_DIR / DROID_PLUGIN_ROOT are hook-scoped only).
-//     Devin/Jules markers appear only in third-party detector packages.
+//   - Jules / Factory Droid — no verifiable unconditional runtime marker
+//     (Jules is a closed sandbox; Factory's FACTORY_PROJECT_DIR /
+//     DROID_PLUGIN_ROOT are hook-scoped only). Amp and Devin are detected by
+//     the agent names they report instead (AI_AGENT_RUNTIMES).
 //   - Seen only in a shipped bundle: Grok GROK_AGENT (also conflicts with an
-//     older probe), Augment AUGMENT_AGENT, Factory FACTORY_SESSION_ID.
-//   - Third-party detector packages only: CodeBuddy CODEBUDDY_SESSION_ID, Trae
-//     TRAE_AI_SHELL_ID, Windsurf WINDSURF_CASCADE_TERMINAL (plus a forum post).
-//   - Kimi Code: its bash tool sets no marker (MoonshotAI/kimi-code bashTool.ts).
+//     older probe; GROK_SESSION_ID is used), Augment AUGMENT_AGENT, Factory
+//     FACTORY_SESSION_ID.
+//   - Third-party detector packages only: Trae TRAE_AI_SHELL_ID, Windsurf
+//     WINDSURF_CASCADE_TERMINAL (plus a forum post).
+//   - Kimi Code: its bash tool sets no marker (MoonshotAI/kimi-code bashTool.ts);
+//     the kimi rule keys on the hosted agent's KIMI_AGENT_CLIENT_ID.
 
 /**
  * Identify the managed sandbox runtime hosting this CLI invocation.

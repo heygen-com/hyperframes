@@ -489,6 +489,61 @@ describe("detectAgentRuntime: Kilo / opencode / Qwen / Junie / Antigravity / Qod
   });
 });
 
+describe("detectAgentRuntime: agents seen in discovery hints", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(stripVendorEnv);
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it.each([
+    ["QODER_AGENT_SDK_VERSION", "0.1.0", "qoder"],
+    ["QODER_CLI_MAX_SUBAGENT_SPAWN_DEPTH", "2", "qoder"],
+    ["QODERCN_CLI_MAX_SUBAGENT_SPAWN_DEPTH", "2", "qoder"],
+    ["WORKBUDDY_CLIENT_USER_AGENT", "wb", "workbuddy"],
+    ["CODEBUDDY_SESSION_ID", "s", "codebuddy"],
+    ["CODEBUDDY_AGENTOS_SESSION_ID", "s", "codebuddy"],
+    ["CODEBUDDY_AGENT_RUNTIME", "r", "codebuddy"],
+    ["ICUBE_AI_AGENT_SHUTDOWN_TOKEN", "t", "trae"],
+    ["TRAE_REMOTE_AGENT_TOKEN", "t", "trae"],
+    ["AUTO_PIPPIT_THREAD_ID", "t", "pippit"],
+    ["PIPPIT_OBS_AGENT_NAME", "n", "pippit"],
+    ["DOUBAO_OFFICE_AGENT_NAME", "n", "doubao"],
+    ["AILY_CLI_AGENT_DELIVER_BLOCKED", "1", "aily"],
+    ["GROK_SESSION_ID", "s", "grok"],
+    ["KIMI_AGENT_CLIENT_ID", "c", "kimi"],
+    ["ZCODE_SESSION_ID", "s", "zcode"],
+    ["SWE_AGENT_ENV_FILE", "/tmp/env", "swe_agent"],
+    ["CLAUDE_AGENT_SDK_VERSION", "0.2.0", "claude_agent_sdk"],
+  ])("detects %s=%s as %s", async (key, value, runtime) => {
+    process.env[key] = value;
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+    expect(isAgentDriven()).toBe(true);
+  });
+
+  it("attributes WorkBuddy to workbuddy, not the CodeBuddy keys it also carries", async () => {
+    process.env["WORKBUDDY_CLIENT_USER_AGENT"] = "wb";
+    process.env["CODEBUDDY_SESSION_ID"] = "s";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("workbuddy");
+  });
+
+  it("lets Claude Code's own shell marker beat the Agent SDK version key", async () => {
+    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_AGENT_SDK_VERSION"] = "0.2.0";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("claude_code");
+  });
+
+  it("lets a vendor marker beat the Agent SDK version key", async () => {
+    process.env["CODEBUDDY_SESSION_ID"] = "s";
+    process.env["CLAUDE_AGENT_SDK_VERSION"] = "0.2.0";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("codebuddy");
+  });
+});
+
 describe("detectAgentRuntime: AI_AGENT fallback", () => {
   const savedEnv = { ...process.env };
   beforeEach(stripVendorEnv);
@@ -503,6 +558,15 @@ describe("detectAgentRuntime: AI_AGENT fallback", () => {
     ["crush", "crush"],
     ["pi", "pi"],
     ["hermes", "hermes"],
+    ["hermes-agent", "hermes"],
+    ["github_copilot_app_agent", "copilot_agent"],
+    ["antigravity", "antigravity"],
+    ["trae", "trae"],
+    ["devin_20261101_agent", "devin"],
+    ["amp", "amp"],
+    ["v0", "v0"],
+    ["rovodev_cli", "rovodev"],
+    ["base44-superagent", "base44"],
   ])("maps the known AI_AGENT name %s to %s", async (value, runtime) => {
     process.env["AI_AGENT"] = value;
     const { detectAgentRuntime } = await import("./agent_runtime.js");
@@ -542,11 +606,28 @@ describe("detectAgentRuntime: AI_AGENT fallback", () => {
     },
   );
 
-  it("does not apply the fallback to the bare AGENT variable", async () => {
-    process.env["AGENT"] = "1";
+  it.each(["1", "true", "some-new-agent"])(
+    "does not classify an unknown bare AGENT value %j",
+    async (value) => {
+      process.env["AGENT"] = value;
+      const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+      expect(detectAgentRuntime()).toBeNull();
+      expect(isAgentDriven()).toBe(false);
+    },
+  );
+
+  it("maps a known name in the bare AGENT variable", async () => {
+    process.env["AGENT"] = "devin_20261101_agent";
     const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
-    expect(detectAgentRuntime()).toBeNull();
-    expect(isAgentDriven()).toBe(false);
+    expect(detectAgentRuntime()).toBe("devin");
+    expect(isAgentDriven()).toBe(true);
+  });
+
+  it("prefers a known AGENT name over an unknown AI_AGENT name", async () => {
+    process.env["AI_AGENT"] = "some-new-agent";
+    process.env["AGENT"] = "amp";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("amp");
   });
 });
 
