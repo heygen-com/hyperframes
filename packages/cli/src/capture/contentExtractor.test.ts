@@ -73,10 +73,8 @@ vi.mock("../utils/optionalPackages.js", () => ({
   })),
 }));
 
-// These tests exercise the OpenRouter provider path only — it makes a plain
-// `fetch` call we can stub, with no native (`sharp`) or `@google/genai`
-// dependency. OpenRouter wins over Gemini when OPENROUTER_API_KEY is set, so we
-// don't need to clear the Gemini keys for the OpenRouter cases.
+// OpenRouter path only: a plain stubbable `fetch`, no `sharp` or `@google/genai`.
+// OPENROUTER_API_KEY wins over Gemini, so the Gemini keys can stay set.
 
 function makeProjectWithImages(files = ["hero.png"]): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-caption-"));
