@@ -69,20 +69,29 @@ export function firstFive(d: Differential): string {
   return JSON.stringify(d.bad.slice(0, 5));
 }
 
+export interface Measured {
+  d: Differential;
+  reference: Rgba;
+  onFrame: Rgba;
+  mask: Uint8Array;
+}
+
 export async function measureOutside(
   browser: Browser,
   f: BlurFixture,
   t: number,
   tier?: Tier,
-): Promise<Differential> {
+): Promise<Measured> {
   const offFrames = await captureInOrder(await referencePage(f), neighbourTimes(t));
   const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
   const reference = offFrames[INVARIANTS.radiusFrames];
   if (!reference) throw new Error("missing reference frame");
-  return compareTiles(reference, onFrame, trailMask(offFrames, radiusPx(f)), "outside", {
+  const mask = trailMask(offFrames, radiusPx(f));
+  const d = compareTiles(reference, onFrame, mask, "outside", {
     block: INVARIANTS.block,
     maxMae: INVARIANTS.outsideMaxMae,
   });
+  return { d, reference, onFrame, mask };
 }
 
 export const caseName = (what: string, f: BlurFixture, t: number, tier?: Tier): string =>
@@ -114,8 +123,11 @@ async function referencePage(f: BlurFixture): Promise<Page> {
 }
 
 export async function stopChrome(): Promise<void> {
-  await closeReference();
-  await closeTestChrome(launched);
+  try {
+    await closeReference();
+  } finally {
+    await closeTestChrome(launched);
+  }
 }
 
 export function chrome(): Browser {
@@ -134,7 +146,7 @@ export function defineOutsideCase(f: BlurFixture, t: number, tier?: Tier): void 
     caseName("outside the trail, blur on equals blur off", f, t, tier),
     async (ctx) => {
       if (!supported) ctx.skip();
-      const d = await measureOutside(chrome(), f, t, tier);
+      const { d } = await measureOutside(chrome(), f, t, tier);
       expect(d.bad, `${f.name} ${firstFive(d)}`).toEqual([]);
       expect(d.checkedFraction).toBeGreaterThanOrEqual(INVARIANTS.minCheckedFraction);
     },
@@ -154,22 +166,60 @@ function expectBlurredAwayFromSharp(
   );
 }
 
+const shutterMean = async (page: Page, t: number): Promise<Rgba> =>
+  meanFrame(
+    await captureInOrder(page, shutterTimes(t), { subFrameDivisions: SUB_FRAME_DIVISIONS }),
+  );
+
+export async function measureInside(
+  browser: Browser,
+  f: BlurFixture,
+  t: number,
+  tier?: Tier,
+): Promise<Measured> {
+  const samples = await captureInOrder(await referencePage(f), shutterTimes(t), {
+    subFrameDivisions: SUB_FRAME_DIVISIONS,
+  });
+  const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
+  const reference = meanFrame(samples);
+  const mask = trailMask(samples, radiusPx(f));
+  const d = compareTiles(reference, onFrame, mask, "inside", {
+    block: INVARIANTS.block,
+    maxMae: INVARIANTS.insideMaxMae,
+  });
+  return { d, reference, onFrame, mask };
+}
+
+export const REFERENCE_RECAPTURES = 3;
+
+export async function blurOffDisagreement(
+  browser: Browser,
+  f: BlurFixture,
+  region: "outside" | "inside",
+  t: number,
+  first: Measured,
+): Promise<number | undefined> {
+  const maxMae = region === "outside" ? INVARIANTS.outsideMaxMae : INVARIANTS.insideMaxMae;
+  for (let i = 0; i < REFERENCE_RECAPTURES; i++) {
+    const again = await onFreshPage(browser, f, "off", (p) =>
+      region === "outside" ? captureFrame(p, t) : shutterMean(p, t),
+    );
+    const d = compareTiles(first.reference, again, first.mask, region, {
+      block: INVARIANTS.block,
+      maxMae,
+    });
+    if (d.bad.length > 0) return d.worstMae;
+  }
+  return undefined;
+}
+
 export function defineInsideCase(f: BlurFixture, t: number, tier?: Tier): void {
   it(
     caseName("inside the trail, blur on matches the shutter average", f, t, tier),
     async (ctx) => {
       if (!supported) ctx.skip();
-      const offPage = await referencePage(f);
-      const samples = await captureInOrder(offPage, shutterTimes(t), {
-        subFrameDivisions: SUB_FRAME_DIVISIONS,
-      });
-      const sharp = await captureFrame(offPage, t);
-      const onFrame = await onFreshPage(chrome(), f, "on", (p) => captureFrame(p, t), tier);
-      const mask = trailMask(samples, radiusPx(f));
-      const d = compareTiles(meanFrame(samples), onFrame, mask, "inside", {
-        block: INVARIANTS.block,
-        maxMae: INVARIANTS.insideMaxMae,
-      });
+      const { d, onFrame, mask } = await measureInside(chrome(), f, t, tier);
+      const sharp = await captureFrame(await referencePage(f), t);
       expect(d.checkedBlocks).toBeGreaterThan(0);
       expect(d.bad, `${f.name} ${firstFive(d)}`).toEqual([]);
       expectBlurredAwayFromSharp(f, sharp, onFrame, mask);
