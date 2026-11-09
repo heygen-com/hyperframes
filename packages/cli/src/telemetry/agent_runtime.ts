@@ -338,8 +338,10 @@ const VENDOR_RULES: VendorRule[] = [
     check: (env) => env["DSH_SHELL"] === "1" || typeof env["DSH_SESSION_ID"] === "string",
   },
   // An app built on the Claude Agent SDK, running a command outside Claude
-  // Code's own shell tool (that path sets CLAUDECODE, caught above). Last, so
-  // a vendor that builds on the SDK and sets its own marker wins.
+  // Code's own shell tool (that path sets CLAUDECODE, caught above). The SDK
+  // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. Last, so a
+  // vendor that builds on the SDK and sets its own marker wins.
+  // Source: https://github.com/anthropics/claude-agent-sdk-python (src/claude_agent_sdk/_internal/transport/subprocess_cli.py)
   {
     name: "claude_agent_sdk",
     check: (env) => typeof env["CLAUDE_AGENT_SDK_VERSION"] === "string",
