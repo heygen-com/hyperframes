@@ -10,6 +10,7 @@ const VENDOR_ENV_KEYS = [
   "BOBSHELL_API_KEY",
   "BOBSHELL_NO_RELAUNCH",
   "CLAUDECODE",
+  "CLAUDE_CODE_CHILD_SESSION",
   "CLAUDE_CODE_ENTRYPOINT",
   "CODEX_THREAD_ID",
   "CODEX_CI",
@@ -40,6 +41,11 @@ const VENDOR_ENV_KEYS = [
   "QODER_AGENT",
   "AGENT_DISPLAY_OUT",
   "AGENT_CONTEXT_OUT",
+  "CURSOR_CONVERSATION_ID",
+  "CURSOR_SANDBOX",
+  "CLINE_WRAPPER_PATH",
+  "MUSE_RELEASE_INFO",
+  "OZ_RUN_ID",
   "DSH_SHELL",
   "AGENT",
   "AI_AGENT",
@@ -68,7 +74,7 @@ describe("detectAgentRuntime — base behavior", () => {
   it("first matching vendor wins (rule order)", async () => {
     // Claude Code marker set alongside a Codex marker — Claude Code is the
     // first rule, so it wins.
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     process.env["CODEX_THREAD_ID"] = "thread-1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
@@ -83,7 +89,7 @@ describe("detectAgentRuntime — base behavior", () => {
   });
 
   it.each([
-    ["CLAUDECODE", "claude_code"],
+    ["CLAUDE_CODE_CHILD_SESSION", "claude_code"],
     ["CODEX_THREAD_ID", "codex"],
   ])("keeps child-agent attribution for %s inside Cursor", async (key, runtime) => {
     process.env["CURSOR_AGENT"] = "1";
@@ -98,7 +104,7 @@ describe("detectAgentRuntime — base behavior", () => {
     process.env["HARBOR_AGENT"] = "private-harness-value";
     expect(detectExecutionHarnessHint()).toBe("harbor");
     expect(detectAgentRuntime()).toBeNull();
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     expect(detectAgentRuntime()).toBe("claude_code");
     expect(detectExecutionHarnessHint()).toBe("harbor");
   });
@@ -129,7 +135,7 @@ describe("detectAgentRuntime — IBM Bob Shell", () => {
 
   it("wins over inherited outer-agent markers as the immediate executor", async () => {
     process.env["BOBSHELL_CLI"] = "1";
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     process.env["CODEX_THREAD_ID"] = "thread-1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("bob");
@@ -150,8 +156,8 @@ describe("detectAgentRuntime — Claude Code", () => {
     process.env = { ...savedEnv };
   });
 
-  it("detects via CLAUDECODE=1", async () => {
-    process.env["CLAUDECODE"] = "1";
+  it("detects via CLAUDE_CODE_CHILD_SESSION=1", async () => {
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
   });
@@ -384,10 +390,10 @@ describe("detectAgentRuntime — Gemini managed agent", () => {
   });
 
   it("returns gemini_managed_agent over an env-var rule when both signals match", async () => {
-    // If a user happens to set CLAUDECODE=1 inside a Gemini sandbox (or any
+    // If a user happens to set a Claude Code marker inside a Gemini sandbox (or any
     // odd config), the filesystem+kernel signal wins — Gemini is more
     // specific than a generic env-var marker.
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     vi.doMock("node:os", async () => {
       const actual = await vi.importActual<typeof import("node:os")>("node:os");
       return { ...actual, release: () => "4.19.0-gvisor", platform: () => "linux" };
@@ -566,8 +572,37 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
     expect(detectAgentRuntime()).toBe(runtime);
   });
 
-  it("lets Claude Code's own shell marker beat the Agent SDK version key", async () => {
+  it("does not treat a Claude IDE extension terminal (CLAUDECODE only) as an agent", async () => {
     process.env["CLAUDECODE"] = "1";
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+    expect(isAgentDriven()).toBe(false);
+  });
+
+  it.each([
+    ["AUGMENT_AGENT", "1", "auggie"],
+    ["AMP_CURRENT_THREAD_ID", "T-1", "amp"],
+    ["CURSOR_CONVERSATION_ID", "c", "cursor"],
+    ["CURSOR_SANDBOX", "native", "cursor"],
+    ["CLINE_WRAPPER_PATH", "/usr/lib/cline", "cline"],
+    ["MUSE_RELEASE_INFO", "r", "muse"],
+    ["OZ_RUN_ID", "run", "warp_oz"],
+  ])("detects %s=%s as %s", async (key, value, runtime) => {
+    process.env[key] = value;
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+    expect(isAgentDriven()).toBe(true);
+  });
+
+  it("lets the harness a Warp Oz run uses win over OZ_RUN_ID", async () => {
+    process.env["OZ_RUN_ID"] = "run";
+    process.env["CODEX_THREAD_ID"] = "t";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("codex");
+  });
+
+  it("lets Claude Code's own shell marker beat the Agent SDK version key", async () => {
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     process.env["CLAUDE_AGENT_SDK_VERSION"] = "0.2.0";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
@@ -618,7 +653,7 @@ describe("detectAgentRuntime: AI_AGENT fallback", () => {
   });
 
   it("lets a vendor marker beat an inherited AI_AGENT value", async () => {
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     process.env["AI_AGENT"] = "opencode";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("claude_code");
@@ -902,7 +937,7 @@ describe("detectSandboxRuntime — kernel-string path", () => {
 
 describe("isAgentDriven", () => {
   it.each([
-    [{ CLAUDECODE: "1" }, true],
+    [{ CLAUDE_CODE_CHILD_SESSION: "1" }, true],
     [{ CODEX_THREAD_ID: "t" }, true],
     [{ CURSOR_AGENT: "1", TERM_PROGRAM: "cursor" }, true],
     [{ TERM_PROGRAM: "cursor" }, false],
