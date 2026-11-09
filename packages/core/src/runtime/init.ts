@@ -176,7 +176,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { isOpenedAtInPoint, stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
+import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -3475,11 +3475,9 @@ export function initSandboxRuntimeModular(): void {
           rawNode,
           isVisibleNow,
           loadsAhead &&
-            // A clip opened at its in-point reads little ahead of it: every one is fetched ahead, not just the next take.
-            (isOpenedAtInPoint(rawNode) ||
-              (playerFrame
-                ? nextTakeClips(currentTime).has(rawNode)
-                : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime))),
+            (playerFrame
+              ? nextTakeClips(currentTime).has(rawNode)
+              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );

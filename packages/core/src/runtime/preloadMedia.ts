@@ -1,5 +1,5 @@
 import { parseStrictFiniteTimingNumber, readMediaStart } from "./playbackRate";
-import { isOpenedAtInPoint, recordOpenedAtInPoint } from "./proxySrc";
+import { recordOpenedAtInPoint } from "./proxySrc";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
@@ -128,7 +128,7 @@ export function deferMediaUntilDue(): void {
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
     openAtInPoint(media);
-    if (startInFilm(el) > 0 && !isOpenedAtInPoint(media)) media.preload = "none";
+    if (startInFilm(el) > 0) media.preload = "none";
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
