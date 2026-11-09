@@ -12,7 +12,7 @@ describe("getSystemMeta execution context", () => {
   it("retains a harness marker after the child agent is recognized", async () => {
     const savedEnv = { ...process.env };
     try {
-      process.env["CLAUDECODE"] = "1";
+      process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
       process.env["HARBOR_AGENT"] = "private-harness-value";
       const { getSystemMeta } = await import("./system.js");
       const meta = getSystemMeta();

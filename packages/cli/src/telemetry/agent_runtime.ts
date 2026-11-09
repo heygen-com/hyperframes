@@ -64,6 +64,9 @@ export type AgentRuntime =
   | "v0"
   | "rovodev"
   | "base44"
+  | "auggie"
+  | "muse"
+  | "warp_oz"
   | "other_ai_agent"
   | null;
 
@@ -89,14 +92,15 @@ const VENDOR_RULES: VendorRule[] = [
     name: "bob",
     check: (env) => typeof env["BOBSHELL_CLI"] === "string",
   },
-  // Anthropic Claude Code — sets CLAUDECODE=1 on every Bash/PowerShell tool
-  // spawn (Shell.ts:321) and CLAUDE_CODE_ENTRYPOINT at startup, inherited by
-  // every child (main.tsx:527). Both propagate to spawned subprocesses.
-  // Source: confirmed by @magi from Claude Code internal source.
+  // Claude Code sets CLAUDE_CODE_CHILD_SESSION on what its tools spawn, and an
+  // inherited CLAUDE_CODE_ENTRYPOINT (older versions). Not CLAUDECODE: its IDE
+  // extensions also set that in the terminal a person types into.
+  // Source: https://code.claude.com/docs/en/env-vars
   {
     name: "claude_code",
     check: (env) =>
-      typeof env["CLAUDECODE"] === "string" || typeof env["CLAUDE_CODE_ENTRYPOINT"] === "string",
+      typeof env["CLAUDE_CODE_CHILD_SESSION"] === "string" ||
+      typeof env["CLAUDE_CODE_ENTRYPOINT"] === "string",
   },
   // OpenAI Codex (https://github.com/openai/codex).
   // - CODEX_THREAD_ID — set unconditionally on every spawned shell command
@@ -116,16 +120,23 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor Agent marks its shell with CURSOR_AGENT. Keep this after
-  // Claude/Codex for nested agents.
-  // Source: https://docs.cursor.com/en/agent/terminal
-  { name: "cursor", check: (env) => Boolean(env["CURSOR_AGENT"]) },
-  // Nous Research Hermes Agent — cli.py:50 unconditionally executes
+  // Cursor Agent sets CURSOR_AGENT, CURSOR_CONVERSATION_ID per command and
+  // CURSOR_SANDBOX on sandboxed ones. After Claude/Codex for nested agents.
+  // Source: https://docs.cursor.com/en/agent/terminal,
+  // https://cursor.com/docs/agent/security/run-modes
+  {
+    name: "cursor",
+    check: (env) =>
+      Boolean(env["CURSOR_AGENT"]) ||
+      typeof env["CURSOR_CONVERSATION_ID"] === "string" ||
+      typeof env["CURSOR_SANDBOX"] === "string",
+  },
+  // Nous Research Hermes Agent — its cli.py unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
   // at module load, so the marker propagates via os.environ to every
   // subprocess spawned by Hermes. Keying on existence (not the literal
   // "1") so we still match if Hermes ever changes the value.
-  // Source: https://github.com/NousResearch/hermes-agent (cli.py:50)
+  // Source: https://github.com/NousResearch/hermes-agent/blob/main/cli.py#L50
   {
     name: "hermes",
     check: (env) => typeof env["HERMES_QUIET"] === "string",
@@ -148,15 +159,17 @@ const VENDOR_RULES: VendorRule[] = [
   },
   // Cline (cline/cline) VS Code extension — injects CLINE_ACTIVE=true into the
   // integrated terminal via vscode.TerminalOptions.env, which the terminal
-  // exports to every shell command run in it
-  // (apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts:29).
+  // exports to every shell command run in it.
   // Caveat: present only on the default "vscodeTerminal" exec path — the opt-in
   // backgroundExec/YOLO path spawns via child_process without the marker. Same
-  // integrated-terminal-only scope as the Cursor/Windsurf rules above.
-  // Source: https://github.com/cline/cline (VscodeTerminalRegistry.ts:29)
+  // integrated-terminal-only scope as the Cursor/Windsurf rules in WORKSPACE_RULES.
+  // The npm Cline CLI instead adds CLINE_WRAPPER_PATH to its child env, which
+  // its bash tool passes on (apps/cli/bin/cline).
+  // Source: https://github.com/cline/cline/blob/main/apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts
   {
     name: "cline",
-    check: (env) => typeof env["CLINE_ACTIVE"] === "string",
+    check: (env) =>
+      typeof env["CLINE_ACTIVE"] === "string" || typeof env["CLINE_WRAPPER_PATH"] === "string",
   },
   // Google Gemini CLI (open-source @google/gemini-cli) — DISTINCT from the
   // Gemini managed-agent sandbox. (If a /.agents/ filesystem detector is
@@ -235,6 +248,15 @@ const VENDOR_RULES: VendorRule[] = [
     name: "kiro",
     check: (env) => Boolean(env["AGENT_DISPLAY_OUT"]) || Boolean(env["AGENT_CONTEXT_OUT"]),
   },
+  // Auggie (Augment CLI): its shell tool runs commands with AUGMENT_AGENT=1
+  // (@augmentcode/auggie bundle, augment.mjs).
+  { name: "auggie", check: (env) => typeof env["AUGMENT_AGENT"] === "string" },
+  // Amp: the Bash tool and toolbox subprocesses get AMP_CURRENT_THREAD_ID
+  // (@sourcegraph/amp bundle, dist/main.js).
+  { name: "amp", check: (env) => typeof env["AMP_CURRENT_THREAD_ID"] === "string" },
+  // Muse Code: Meta's launcher exports MUSE_RELEASE_INFO, then execs the agent.
+  // Source: https://api.meta.ai/muse-launcher.sh
+  { name: "muse", check: (env) => typeof env["MUSE_RELEASE_INFO"] === "string" },
   // Closed-source agents with no public marker. Each key below shows up in this
   // CLI's own agent_env_hints on non-interactive runs, which is direct evidence
   // that it is in the env of the shell the agent spawned. Only key presence is
@@ -302,6 +324,9 @@ const VENDOR_RULES: VendorRule[] = [
     name: "openhands",
     check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
   },
+  // Warp Oz: OZ_RUN_ID wraps a Claude/Codex/Gemini run, so it follows them.
+  // Source: https://github.com/warpdotdev/warp (crates/warp_cli/src/lib.rs)
+  { name: "warp_oz", check: (env) => typeof env["OZ_RUN_ID"] === "string" },
   // An app built on the Claude Agent SDK, running a command outside Claude
   // Code's own shell tool (that path sets CLAUDECODE, caught above). The SDK
   // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. After the
@@ -407,11 +432,10 @@ function aiAgentFallback(env: NodeJS.ProcessEnv): AgentRuntime {
 //     defaults true), which sets no marker.
 //   - Jules / Factory Droid — no verifiable unconditional runtime marker
 //     (Jules is a closed sandbox; Factory's FACTORY_PROJECT_DIR /
-//     DROID_PLUGIN_ROOT are hook-scoped only). Amp and Devin are detected by
-//     the agent names they report instead (AI_AGENT_RUNTIMES).
+//     DROID_PLUGIN_ROOT are hook-scoped only). Devin is detected by the agent
+//     name it reports instead (AI_AGENT_RUNTIMES).
 //   - Seen only in a shipped bundle: Grok GROK_AGENT (also conflicts with an
-//     older probe; GROK_SESSION_ID is used), Augment AUGMENT_AGENT, Factory
-//     FACTORY_SESSION_ID.
+//     older probe; GROK_SESSION_ID is used), Factory FACTORY_SESSION_ID.
 //   - Third-party detector packages only: Trae TRAE_AI_SHELL_ID, Windsurf
 //     WINDSURF_CASCADE_TERMINAL (plus a forum post).
 //   - Kimi Code: its bash tool sets no marker (MoonshotAI/kimi-code bashTool.ts);
