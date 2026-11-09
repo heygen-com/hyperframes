@@ -316,11 +316,7 @@ export function probeAndCacheElementVolume(
         ? Number(timeline.seek())
         : 0;
   const probeWindow = resolveVolumeProbeWindow(mediaEl, compositionDuration);
-  // The sweep seeks the live timeline before the first visibility pass, while
-  // the until-first-pass sheet hides every clip with `!important`. A tween
-  // rendered for the first time during the sweep would record that inherited
-  // `hidden` as its start value and write it back on later seeks (#7193 — the
-  // same pattern #5690 fixed for jump seeks).
+  // Lift the until-first-pass hide during the sweep so first renders don't capture it (#7193).
   const restoreHiddenClips = showHiddenClips();
   try {
     const keyframes = probeKeyframesInWindow(mediaEl, seekFn, compositionDuration, 60, probeWindow);

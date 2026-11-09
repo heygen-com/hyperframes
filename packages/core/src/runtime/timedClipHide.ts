@@ -35,12 +35,6 @@ export function showHiddenClips(only: (el: HTMLElement) => boolean = () => true)
   const restoreClips = showClips(
     Array.from(document.querySelectorAll<HTMLElement>(`[${CLIP_HIDDEN_ATTR}]`)).filter(only),
   );
-  // The until-first-pass sheet hides every timed clip with
-  // `visibility: hidden !important`, which inline-style reveals cannot lift. A
-  // seek that renders a tween for the first time while the sheet is attached
-  // lets GSAP record the inherited `hidden` as the value to restore (#7193).
-  // Detach the sheet for the caller's synchronous work and put it back
-  // afterwards — unless the first visibility pass lifted it in the meantime.
   const sheet = document.querySelector(`style[${HIDE_ATTR}]`);
   const sheetParent = sheet?.parentNode ?? null;
   sheet?.remove();
