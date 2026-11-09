@@ -111,18 +111,11 @@ export function probeSeconds(path: string): number {
 
 /**
  * What to do about a path that is not there. `D:video\clip.mp4` reaches us as `D:videoclip.mp4` (an unquoted
- * Windows path in bash), and an unquoted path with spaces arrives cut at the first one, its rest in later args.
+ * Windows path in bash).
  */
-export function missingFileFix(path: string, argv: readonly string[] = process.argv): string {
+export function missingFileFix(path: string): string {
   if (/^[A-Za-z]:[^\\/]/.test(path))
     return "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)";
-  const at = argv.indexOf(path);
-  let joined = path;
-  for (const word of at < 0 ? [] : argv.slice(at + 1)) {
-    if (word.startsWith("-")) break;
-    joined = `${joined} ${word}`;
-    if (existsSync(joined)) return `the path has spaces: quote it ("${joined}")`;
-  }
   return "pass the video's path from the project folder";
 }
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { selectFirstFrameAfterEach } from "../commands/snapshot.js";
@@ -97,25 +97,12 @@ describe.skipIf(!ffmpeg)("an odd box", () => {
 });
 
 describe("a path that is not there", () => {
-  const dir = mkdtempSync(join(tmpdir(), "hf-path-"));
-  mkdirSync(join(dir, "My Clips"));
-  writeFileSync(join(dir, "My Clips", "ref one.mp4"), "");
-  afterAll(() => rmSync(dir, { recursive: true, force: true }));
-
-  it("says to quote a path the shell cut at its spaces", () => {
-    const cut = join(dir, "My");
-    const argv = ["node", "hyperframes", "measure", "probe", cut, "Clips/ref", "one.mp4", "--json"];
-    expect(missingFileFix(cut, argv)).toBe(
-      `the path has spaces: quote it ("${cut} Clips/ref one.mp4")`,
-    );
-  });
-
   it("says the shell dropped a Windows path's backslashes", () => {
-    expect(missingFileFix("D:videoclip.mp4", [])).toMatch(/dropped the backslashes/);
+    expect(missingFileFix("D:videoclip.mp4")).toMatch(/dropped the backslashes/);
   });
 
   it("otherwise asks for the path from the project folder", () => {
-    expect(missingFileFix(join(dir, "nope.mp4"), [])).toBe(
+    expect(missingFileFix(join(tmpdir(), "nope.mp4"))).toBe(
       "pass the video's path from the project folder",
     );
   });

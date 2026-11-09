@@ -49,6 +49,7 @@ describe("openShortcutArgv", () => {
 describe("measureProbeShortcutArgv", () => {
   const ops = new Set(["probe", "cuts", "events"]);
   writeFileSync(join(cwd, "ref.mp4"), "");
+  writeFileSync(join(cwd, "ref one.mp4"), "");
 
   it.each([
     [
@@ -62,6 +63,14 @@ describe("measureProbeShortcutArgv", () => {
     [
       ["--verbose", "measure", "ref.mp4"],
       ["--verbose", "measure", "probe", "ref.mp4"],
+    ],
+    [
+      ["measure", "ref", "one.mp4"],
+      ["measure", "probe", "ref one.mp4"],
+    ],
+    [
+      ["measure", "ref", "one.mp4", "--json"],
+      ["measure", "probe", "ref one.mp4", "--json"],
     ],
   ])("probes %j", (argv, expected) => {
     expect(measureProbeShortcutArgv(argv, ops, cwd)).toEqual(expected);

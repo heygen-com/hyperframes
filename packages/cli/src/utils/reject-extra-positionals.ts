@@ -46,10 +46,13 @@ function usageLine(path: string, args: ArgsDef): string {
 }
 
 // An unquoted path with spaces reaches us as several words; the longest run of them that is a file names it.
-function spacedPath(words: readonly string[]): string | undefined {
-  for (let n = words.length; n > 1; n--) {
-    const joined = words.slice(0, n).join(" ");
-    if (existsSync(joined)) return joined;
+function spacedPath(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    let joined = argv[i]!;
+    for (let j = i + 1; j < argv.length && !argv[j]!.startsWith("-"); j++) {
+      joined = `${joined} ${argv[j]}`;
+      if (existsSync(joined)) return joined;
+    }
   }
   return undefined;
 }
@@ -76,7 +79,7 @@ export function resolveExtraPositionals(
   }
 
   const plural = extra.length === 1 ? "" : "s";
-  const spaced = spacedPath(words);
+  const spaced = spacedPath(process.argv.slice(2));
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
     (spaced ? `'${spaced}' is one path with spaces: quote it.\n` : "") +

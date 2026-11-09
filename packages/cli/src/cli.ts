@@ -206,7 +206,10 @@ if (argv[commandWordIndex(argv)] === "measure") {
   const { MEASURE_OPS } = await import("./commands/measure.js");
   const rewritten = measureProbeShortcutArgv(argv, new Set(MEASURE_OPS));
   if (rewritten !== argv) {
-    console.error(`No measure op named: running 'probe'. Ops: ${MEASURE_OPS.join(", ")}.`);
+    const file = rewritten[rewritten.indexOf("probe") + 1];
+    console.error(
+      `No measure op named: running 'probe ${JSON.stringify(file)}'. Ops: ${MEASURE_OPS.join(", ")}.`,
+    );
     process.argv = [...process.argv.slice(0, 2), ...rewritten];
     argv = process.argv.slice(2);
   }

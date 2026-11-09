@@ -25,20 +25,35 @@ describe("resolveExtraPositionals", () => {
     );
   });
 
-  it("says to quote a path the shell split at its spaces", () => {
+  it.each([
+    ["the positional", (dir: string) => ["measure", "probe", join(dir, "ref"), "one.mp4"]],
+    [
+      "a flag value",
+      (dir: string) => [
+        "measure",
+        "look",
+        join(dir, "a.mp4"),
+        "--compare",
+        join(dir, "ref"),
+        "one.mp4",
+      ],
+    ],
+  ])("says to quote a path the shell split at its spaces in %s", (_label, argvOf) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-extra-"));
     writeFileSync(join(dir, "ref one.mp4"), "");
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const argv = process.argv;
+    process.argv = ["node", "hyperframes", ...argvOf(dir)];
     const single = { args: { video: { type: "positional" } } } as CommandDef<ArgsDef>;
-    const head = join(dir, "ref");
     try {
       expect(() =>
-        resolveExtraPositionals(single, "measure probe", { _: [head, "one.mp4"], video: head }),
+        resolveExtraPositionals(single, "measure", { _: ["x", "one.mp4"], video: "x" }),
       ).toThrow(CliUsageError);
       expect(error.mock.calls[0]![0]).toContain(
-        `'${join(dir, "ref one.mp4")}' is one path with spaces: quote it.`,
+        `'${join(dir, "ref")} one.mp4' is one path with spaces: quote it.`,
       );
     } finally {
+      process.argv = argv;
       rmSync(dir, { recursive: true, force: true });
     }
   });

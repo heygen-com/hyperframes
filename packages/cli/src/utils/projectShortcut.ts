@@ -31,13 +31,22 @@ export function measureProbeShortcutArgv(
 ): readonly string[] {
   const at = commandWordIndex(argv);
   if (at < 0 || argv[at] !== "measure") return argv;
-  const file = argv[at + 1];
-  if (file === undefined || file.startsWith("-") || ops.has(file)) return argv;
-  if (!argv.slice(at + 2).every((arg) => arg === "--json")) return argv;
-  try {
-    if (!statSync(resolve(cwd, file)).isFile()) return argv;
-  } catch {
-    return argv;
+  const words = argv.slice(at + 1);
+  if (words.length === 0 || ops.has(words[0]!)) return argv;
+  for (let n = words.length; n > 0; n--) {
+    const file = words.slice(0, n).join(" ");
+    const rest = words.slice(n);
+    if (words.slice(0, n).some((w) => w.startsWith("-"))) continue;
+    if (!rest.every((arg) => arg === "--json")) continue;
+    if (isFile(resolve(cwd, file))) return [...argv.slice(0, at + 1), "probe", file, ...rest];
   }
-  return [...argv.slice(0, at + 1), "probe", ...argv.slice(at + 1)];
+  return argv;
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
