@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -26,7 +26,7 @@ describe("resolveExtraPositionals", () => {
   });
 
   it.each([
-    ["the positional", (dir: string) => ["measure", "probe", join(dir, "ref"), "one.mp4"]],
+    ["the positional", (dir: string) => ["measure", "probe", join(dir, "ref"), "one", "take.mp4"]],
     [
       "a flag value",
       (dir: string) => [
@@ -35,22 +35,35 @@ describe("resolveExtraPositionals", () => {
         join(dir, "a.mp4"),
         "--compare",
         join(dir, "ref"),
-        "one.mp4",
+        "one",
+        "take.mp4",
+      ],
+    ],
+    [
+      "a flag=value",
+      (dir: string) => [
+        "measure",
+        "look",
+        join(dir, "a.mp4"),
+        `--compare=${join(dir, "ref")}`,
+        "one",
+        "take.mp4",
       ],
     ],
   ])("says to quote a path the shell split at its spaces in %s", (_label, argvOf) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-extra-"));
-    writeFileSync(join(dir, "ref one.mp4"), "");
+    mkdirSync(join(dir, "ref one"));
+    writeFileSync(join(dir, "ref one take.mp4"), "");
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const argv = process.argv;
     process.argv = ["node", "hyperframes", ...argvOf(dir)];
     const single = { args: { video: { type: "positional" } } } as CommandDef<ArgsDef>;
     try {
       expect(() =>
-        resolveExtraPositionals(single, "measure", { _: ["x", "one.mp4"], video: "x" }),
+        resolveExtraPositionals(single, "measure", { _: ["x", "take.mp4"], video: "x" }),
       ).toThrow(CliUsageError);
       expect(error.mock.calls[0]![0]).toContain(
-        `'${join(dir, "ref")} one.mp4' is one path with spaces: quote it.`,
+        `'${join(dir, "ref")} one take.mp4' is one path with spaces: quote it.`,
       );
     } finally {
       process.argv = argv;

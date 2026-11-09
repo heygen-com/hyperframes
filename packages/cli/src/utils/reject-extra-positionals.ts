@@ -46,15 +46,22 @@ function usageLine(path: string, args: ArgsDef): string {
 }
 
 // An unquoted path with spaces reaches us as several words; the longest run of them that is a file names it.
+function runStart(word: string): string {
+  if (!word.startsWith("-")) return word;
+  const eq = word.indexOf("=");
+  return eq < 0 ? "" : word.slice(eq + 1);
+}
+
 function spacedPath(argv: readonly string[]): string | undefined {
+  let longest = "";
   for (let i = 0; i < argv.length; i++) {
-    let joined = argv[i]!;
-    for (let j = i + 1; j < argv.length && !argv[j]!.startsWith("-"); j++) {
+    let joined = runStart(argv[i]!);
+    for (let j = i + 1; joined && j < argv.length && !argv[j]!.startsWith("-"); j++) {
       joined = `${joined} ${argv[j]}`;
-      if (existsSync(joined)) return joined;
+      if (joined.length > longest.length && existsSync(joined)) longest = joined;
     }
   }
-  return undefined;
+  return longest || undefined;
 }
 
 /** Join a free-text command's trailing words, else throw a usage error naming the extras. */
