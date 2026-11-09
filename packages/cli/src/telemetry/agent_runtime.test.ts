@@ -40,6 +40,7 @@ const VENDOR_ENV_KEYS = [
   "QODER_AGENT",
   "AGENT_DISPLAY_OUT",
   "AGENT_CONTEXT_OUT",
+  "DSH_SHELL",
   "AGENT",
   "AI_AGENT",
 ] as const;
@@ -514,6 +515,8 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
     ["KIMI_AGENT_CLIENT_ID", "c", "kimi"],
     ["ZCODE_SESSION_ID", "s", "zcode"],
     ["SWE_AGENT_ENV_FILE", "/tmp/env", "swe_agent"],
+    ["DSH_SESSION_ID", "s", "dsh"],
+    ["DSH_SHELL", "1", "dsh"],
     ["CLAUDE_AGENT_SDK_VERSION", "0.2.0", "claude_agent_sdk"],
   ])("detects %s=%s as %s", async (key, value, runtime) => {
     process.env[key] = value;

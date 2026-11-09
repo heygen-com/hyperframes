@@ -57,6 +57,7 @@ export type AgentRuntime =
   | "kimi"
   | "zcode"
   | "swe_agent"
+  | "dsh"
   | "claude_agent_sdk"
   | "devin"
   | "amp"
@@ -328,6 +329,14 @@ const VENDOR_RULES: VendorRule[] = [
   { name: "kimi", check: (env) => typeof env["KIMI_AGENT_CLIENT_ID"] === "string" },
   { name: "zcode", check: (env) => typeof env["ZCODE_SESSION_ID"] === "string" },
   { name: "swe_agent", check: (env) => typeof env["SWE_AGENT_ENV_FILE"] === "string" },
+  // DeepSeek harness (dsh): every model shell call, bash or pwsh, runs with
+  // DSH_SHELL=1 and the agent's DSH_SESSION_ID. HyperFrames Desktop runs dsh
+  // too; those runs also carry HYPERFRAMES_CLIENT, which tells the two apart.
+  // Source: https://github.com/deepseek-ai/deepseek-harness (packages/terminal/terminal-bash/src/index.ts)
+  {
+    name: "dsh",
+    check: (env) => env["DSH_SHELL"] === "1" || typeof env["DSH_SESSION_ID"] === "string",
+  },
   // An app built on the Claude Agent SDK, running a command outside Claude
   // Code's own shell tool (that path sets CLAUDECODE, caught above). Last, so
   // a vendor that builds on the SDK and sets its own marker wins.
