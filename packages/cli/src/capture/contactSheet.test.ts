@@ -1,6 +1,7 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -9,14 +10,15 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import sharp, { type Sharp } from "sharp";
+import { describe, expect, it, vi } from "vitest";
 import {
   createContactSheet,
   createAssetContactSheet,
   createScrollContactSheet,
   createSvgContactSheet,
 } from "./contactSheet.js";
+import { loadSharp } from "../utils/optionalPackages.js";
 
 function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "hf-contact-sheet-test-"));
@@ -307,6 +309,33 @@ describe("contact-sheet capture budget", () => {
       expect(sheets).toEqual([]);
       expect(checks).toBeGreaterThanOrEqual(2);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("labels each SVG thumbnail with its file name", async () => {
+    const dir = tempDir();
+    const runtimeSharp = await loadSharp("contact sheets");
+    const sharpProto: Sharp = Object.getPrototypeOf(
+      runtimeSharp({ create: { width: 1, height: 1, channels: 3, background: "#000" } }),
+    );
+    const composite = vi.spyOn(sharpProto, "composite");
+    try {
+      const svgs = join(dir, "svgs");
+      mkdirSync(svgs);
+      writeFileSync(
+        join(svgs, "logo-mark.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>',
+      );
+
+      await createSvgContactSheet(svgs, join(dir, "svg-contact-sheet.png"));
+
+      const labelSvgs = composite.mock.calls
+        .flatMap(([overlays]) => overlays ?? [])
+        .map((overlay) => (Buffer.isBuffer(overlay.input) ? overlay.input.toString() : ""));
+      expect(labelSvgs.some((svg) => svg.includes(">1. logo-mark</text>"))).toBe(true);
+    } finally {
+      composite.mockRestore();
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);

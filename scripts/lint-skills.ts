@@ -674,26 +674,43 @@ function skillCandidate(name: string, rest: string, ctx: PathContext): PathCandi
     : { kind: "resolve", bases: [root], rest };
 }
 
+// Each classifier returns `undefined` when the token is not its to decide, so
+// `classifyPath` can try them in order; `null` means "decided: not a skill path".
+type PathDecision = PathCandidate | null | undefined;
+
+function classifyRootRelative(first: string, rest: string[], ctx: PathContext): PathDecision {
+  if (SKILL_DIR_SEGMENT.test(first))
+    return { kind: "resolve", bases: [ctx.ownRoot], rest: rest.join("/") };
+  const named = NAMED_SKILL_DIR_SEGMENT.exec(first);
+  if (!named) return undefined;
+  return skillCandidate((named[1] ?? "").toLowerCase().replace(/_/g, "-"), rest.join("/"), ctx);
+}
+
+function classifySkillsDir(first: string, rest: string[], ctx: PathContext): PathDecision {
+  if (first !== "skills") return undefined;
+  const [name = "", ...inner] = rest;
+  if (inner.length === 0 || PATH_PLACEHOLDER.test(name)) return null;
+  if (isWithin(ctx.index.distributedDir, ctx.ownRoot)) return { kind: "nonPortable" };
+  return skillCandidate(name, inner.join("/"), ctx);
+}
+
+function classifyContentDir(segments: string[], ctx: PathContext): PathCandidate | null {
+  const first = segments[0] ?? "";
+  if (rootNamed(first, ctx.ownRoot, ctx.index) !== undefined)
+    return skillCandidate(first, segments.slice(1).join("/"), ctx);
+  if (PROJECT_DIR_NAMES.has(first) || !ctx.index.contentDirs.has(first)) return null;
+  const bases = [...dirsUpToRoot(ctx.filePath, ctx.ownRoot), ...ctx.mentioned];
+  return { kind: "resolve", bases: [...new Set(bases)], rest: segments.join("/") };
+}
+
 function classifyPath(token: string, ctx: PathContext): PathCandidate | null {
   const segments = token.split("/");
   const [first = "", ...rest] = segments;
   if (rest.length === 0 || first === "" || first.startsWith(".")) return null;
-  if (SKILL_DIR_SEGMENT.test(first))
-    return { kind: "resolve", bases: [ctx.ownRoot], rest: rest.join("/") };
-  const named = NAMED_SKILL_DIR_SEGMENT.exec(first);
-  if (named)
-    return skillCandidate((named[1] ?? "").toLowerCase().replace(/_/g, "-"), rest.join("/"), ctx);
-  if (first === "skills") {
-    const [name = "", ...inner] = rest;
-    if (inner.length === 0 || PATH_PLACEHOLDER.test(name)) return null;
-    if (isWithin(ctx.index.distributedDir, ctx.ownRoot)) return { kind: "nonPortable" };
-    return skillCandidate(name, inner.join("/"), ctx);
-  }
-  if (rootNamed(first, ctx.ownRoot, ctx.index) !== undefined)
-    return skillCandidate(first, rest.join("/"), ctx);
-  if (PROJECT_DIR_NAMES.has(first) || !ctx.index.contentDirs.has(first)) return null;
-  const bases = [...dirsUpToRoot(ctx.filePath, ctx.ownRoot), ...ctx.mentioned];
-  return { kind: "resolve", bases: [...new Set(bases)], rest: segments.join("/") };
+  const early = classifyRootRelative(first, rest, ctx);
+  if (early !== undefined) return early;
+  const skills = classifySkillsDir(first, rest, ctx);
+  return skills !== undefined ? skills : classifyContentDir(segments, ctx);
 }
 
 function pathViolation(

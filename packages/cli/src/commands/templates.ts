@@ -6,7 +6,6 @@ import {
   existsSync,
   fstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -25,6 +24,11 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import { trackSkillCommandRan } from "../telemetry/events.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+
+const STYLE_SAMPLING = "style-sampling";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -190,7 +194,7 @@ function removeAbandonedParts(dest: string): void {
 async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
   makeOutputFolder(dirname(dest));
   removeAbandonedParts(dest);
-  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  const work = createStagingDir(dirname(dest), `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
   try {
     writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
@@ -217,6 +221,7 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
   await unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  trackSkillCommandRan({ skill: STYLE_SAMPLING, command: "templates pull" });
   return dest;
 }
 
@@ -236,6 +241,12 @@ function alreadyPulled(dest: string, pack: TemplatePack): boolean {
   throw new PullRefused(
     `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
   );
+}
+
+export function tagStyleSamplingProject(dir: string, pulled: string): void {
+  for (const folder of [dir, pulled]) {
+    if (existsSync(projectConfigPath(folder))) seedProjectAuthoringSkill(folder, STYLE_SAMPLING);
+  }
 }
 
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
@@ -264,6 +275,7 @@ export default defineCommand({
     }
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
+      tagStyleSamplingProject(args.dir ?? ".", path);
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;

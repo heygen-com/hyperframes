@@ -28,8 +28,8 @@ export default defineCommand({
   args: {
     video: videoArg,
     roi: { ...roiArg, description: "The mouth, x,y,w,h in the video's pixels (required)" },
-    start: { type: "string", description: "First second (default 0)" },
-    end: { type: "string", description: "Last second (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "First second (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second (default: the end)" },
     "max-lag-ms": { type: "string", description: "Lags searched each way (default 400)" },
     json: jsonArg,
   },
