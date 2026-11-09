@@ -50,6 +50,9 @@ function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
   }
   return now - m.at;
 }
+// The source time a video was last sent to while held on its tail: a browser lands a seek to the end short of
+// it, so asking again for the same time each tick would seek every frame.
+const heldTailSeekedTo = new WeakMap<HTMLMediaElement, number>();
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -309,6 +312,7 @@ function clampVolume(volume: number): number {
  * element at a different file without ever leaving its active window.
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
+  heldTailSeekedTo.delete(el);
   lastMoved.delete(el);
   lastOffset.delete(el);
   lastRelativeTime.delete(el);
@@ -816,7 +820,9 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      if (hardSync || strictSync || forceSync || (steerSeeks && !dipped)) {
+      // Already sent to this tail time: the browser landed short of it, and asking again would seek every tick.
+      const tailSettled = isHeldVideoTail && heldTailSeekedTo.get(el) === relTime;
+      if (!tailSettled && (hardSync || strictSync || forceSync || (steerSeeks && !dipped))) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
         // `<img id="__render_frame_<id>__">`. The sibling is created only
@@ -835,6 +841,8 @@ export function syncRuntimeMedia(params: {
           } catch (err) {
             swallow("runtime.media.site2", err);
           }
+          if (isHeldVideoTail) heldTailSeekedTo.set(el, relTime);
+          else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
             el.load();
