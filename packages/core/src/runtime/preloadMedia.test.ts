@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
+import { unproxiedSrc } from "./proxySrc";
 import {
+  deferMediaUntilDue,
   isRenderFrameVideo,
   preloadMedia,
   prepareUpcomingMedia,
@@ -259,5 +261,92 @@ describe("preparing upcoming video playback", () => {
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBeCloseTo(6, 3);
     element.remove();
+  });
+});
+
+describe("a clip opening at its in-point on Safari", () => {
+  const SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const CHROME = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36";
+  let meta: HTMLMetaElement;
+  const inPlayer = (on: boolean) => {
+    const frame = document.createElement("iframe");
+    if (on) frame.setAttribute("data-hf-player-frame", "");
+    Object.defineProperty(window, "frameElement", { value: frame, configurable: true });
+  };
+  beforeEach(() => {
+    meta = document.createElement("meta");
+    meta.name = "hyperframes-studio-preview";
+    document.head.appendChild(meta);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(SAFARI);
+    inPlayer(true);
+    deferMediaUntilDue();
+  });
+  afterEach(() => {
+    (window as Window & { __hfMediaDeferral?: MutationObserver }).__hfMediaDeferral?.disconnect();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(window, "frameElement");
+    meta.remove();
+    document.body.replaceChildren();
+  });
+
+  async function added(html: string): Promise<HTMLVideoElement> {
+    document.body.insertAdjacentHTML("beforeend", html);
+    await Promise.resolve();
+    return document.body.lastElementChild as HTMLVideoElement;
+  }
+
+  it("gets a start fragment and keeps its authored src for everything that reads it", async () => {
+    const v = await added(
+      '<video src="/m/film.mp4" data-start="4" data-duration="2" data-media-start="30"></video>',
+    );
+    expect(v.getAttribute("src")).toBe("/m/film.mp4#t=30");
+    expect(unproxiedSrc(v)).toBe("/m/film.mp4");
+  });
+
+  it("stops reporting the authored src once something else sets the src", async () => {
+    const v = await added(
+      '<video src="/m/film.mp4" data-start="4" data-duration="2" data-media-start="30"></video>',
+    );
+    v.setAttribute("src", "/m/other.mp4");
+    expect(unproxiedSrc(v)).toBe("/m/other.mp4");
+  });
+
+  it("does so for a clip already parsed when the runtime arrives", () => {
+    (window as Window & { __hfMediaDeferral?: MutationObserver }).__hfMediaDeferral?.disconnect();
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<audio src="/m/film.mp4" data-start="4" data-duration="2" data-media-start="30"></audio>',
+    );
+    deferMediaUntilDue();
+    expect(document.body.lastElementChild!.getAttribute("src")).toBe("/m/film.mp4#t=30");
+  });
+
+  it.each([
+    ["starts at the head of the file", "/m/film.mp4", 'data-media-start="0"'],
+    ["loops", "/m/film.mp4", 'data-media-start="30" loop'],
+    ["already carries a fragment", "/m/film.mp4#t=1", 'data-media-start="30"'],
+  ])("is left alone when it %s", async (_name, src, attrs) => {
+    const v = await added(
+      `<video src="${src}" data-start="4" data-duration="2" ${attrs}></video>`,
+    );
+    expect(v.getAttribute("src")).toBe(src);
+    expect(unproxiedSrc(v)).toBe(src);
+  });
+
+  it("is left alone in Studio's preview, which copies and saves what it reads from the page", async () => {
+    inPlayer(false);
+    const v = await added(
+      '<video src="/m/film.mp4" data-start="4" data-duration="2" data-media-start="30"></video>',
+    );
+    expect(v.getAttribute("src")).toBe("/m/film.mp4");
+  });
+
+  it("is left alone off Safari", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(CHROME);
+    const v = await added(
+      '<video src="/m/film.mp4" data-start="4" data-duration="2" data-media-start="30"></video>',
+    );
+    expect(v.getAttribute("src")).toBe("/m/film.mp4");
   });
 });
