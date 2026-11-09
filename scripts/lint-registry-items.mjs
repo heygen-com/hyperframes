@@ -7,9 +7,10 @@
  * composition found" — which means registry items were never linted at all.
  * Two `gsap_non_transform_motion` errors reached main that way.
  *
- * This mounts each item into a throwaway project (exactly where `hyperframes
- * add` would put it) and lints that, reporting only findings for the item's
- * own file so the host scaffold's noise is ignored.
+ * This installs each item into a throwaway project, every file its manifest
+ * lists at the target `hyperframes add` would write it to, lints that, and
+ * reports only findings for the item's own files so the host scaffold's noise
+ * is ignored.
  *
  * Usage:
  *   node scripts/lint-registry-items.mjs                 # every item
@@ -17,17 +18,21 @@
  */
 import {
   readdirSync,
+  readFileSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
   copyFileSync,
+  realpathSync,
   writeFileSync,
   rmSync,
 } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { join, relative, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+
+import { isContainedIn } from "./registry-target-paths.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(repoRoot, "packages/cli/src/cli.ts");
@@ -67,55 +72,150 @@ const IGNORED = [
   "multiple_root_compositions",
 ];
 
-function discover() {
+// The linter never looks inside compositions/components/, so a component is
+// staged in a sibling folder at the same depth: its relative references then
+// resolve exactly as they would where `hyperframes add` puts it.
+const COMPONENTS_DIR = "compositions/components/";
+const STAGED_COMPONENTS_DIR = "compositions/registry-components/";
+
+export function discoverItems(registryRoot = join(repoRoot, "registry")) {
   const out = [];
   for (const kind of ["blocks", "components"]) {
-    const dir = join(repoRoot, "registry", kind);
+    const dir = join(registryRoot, kind);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
       const html = join(dir, name, `${name}.html`);
-      if (existsSync(html)) out.push({ name, kind, html });
+      if (existsSync(html)) out.push({ name, kind, dir: join(dir, name) });
     }
   }
   return out;
 }
 
-const only = process.argv.slice(2);
-const items = discover().filter((i) => only.length === 0 || only.includes(i.name));
-if (items.length === 0) {
-  console.error(
-    only.length ? `No registry item matches: ${only.join(", ")}` : "No registry items found.",
-  );
-  process.exit(1);
+function manifestFiles(item) {
+  const manifest = join(item.dir, "registry-item.json");
+  if (!existsSync(manifest)) return [];
+  const { files } = JSON.parse(readFileSync(manifest, "utf-8"));
+  return Array.isArray(files) ? files : [];
 }
 
-let failed = 0;
-for (const item of items) {
-  const proj = mkdtempSync(join(tmpdir(), `hf-lint-${item.name}-`));
-  try {
-    mkdirSync(join(proj, "compositions"), { recursive: true });
-    writeFileSync(join(proj, "index.html"), HOST);
-    copyFileSync(item.html, join(proj, "compositions", `${item.name}.html`));
+function stagedTarget(target) {
+  return target.startsWith(COMPONENTS_DIR)
+    ? STAGED_COMPONENTS_DIR + target.slice(COMPONENTS_DIR.length)
+    : target;
+}
 
-    const res = spawnSync("bun", [cli, "lint", proj], { encoding: "utf-8" });
-    const lines = `${res.stdout ?? ""}${res.stderr ?? ""}`.split("\n");
-    // Only the item's own file — the host scaffold is not under review.
-    const hits = lines.filter(
-      (l) =>
-        l.includes("✗") && l.includes(`${item.name}.html`) && !IGNORED.some((r) => l.includes(r)),
-    );
-    if (hits.length) {
-      failed++;
-      console.error(`\n✗ ${item.kind}/${item.name}`);
-      for (const h of hits) console.error(`   ${h.trim()}`);
-    }
-  } finally {
-    rmSync(proj, { recursive: true, force: true });
+/** Where a manifest entry is read from and written to, or null when it is malformed or escapes. */
+function placement(item, project, file) {
+  if (typeof file?.path !== "string" || typeof file?.target !== "string") return null;
+  const target = stagedTarget(file.target);
+  // The manifest is untrusted input, so neither side may leave its root.
+  if (!isContainedIn(item.dir, file.path) || !isContainedIn(project, target)) return null;
+  return { from: resolve(item.dir, file.path), to: resolve(project, target) };
+}
+
+/** Installs `item` into `project` and returns the paths of the repo files it installed. */
+export function stageItem(item, project) {
+  writeFileSync(join(project, "index.html"), HOST);
+  const ownHtml = `${item.name}.html`;
+  const files = manifestFiles(item);
+  if (!files.some((file) => file?.path === ownHtml)) {
+    files.push({ path: ownHtml, target: `compositions/${ownHtml}` });
   }
+
+  const staged = new Set();
+  let html;
+  for (const file of files) {
+    const place = placement(item, project, file);
+    if (!place) continue;
+    if (existsSync(place.from)) {
+      mkdirSync(dirname(place.to), { recursive: true });
+      copyFileSync(place.from, place.to);
+      staged.add(place.to);
+      if (file.path === ownHtml) html = place.to;
+    } else if (typeof file.url === "string") {
+      // A hosted file is downloaded by `hyperframes add`, not kept in the repo. An empty
+      // stand-in passes the existence checks, and the media probes skip what they can't read.
+      mkdirSync(dirname(place.to), { recursive: true });
+      writeFileSync(place.to, "");
+    }
+  }
+  if (!html) throw new Error(`${ownHtml} could not be staged from its manifest entry`);
+  return staged;
 }
 
-if (failed) {
-  console.error(`\n${failed} registry item(s) have lint errors.`);
-  process.exit(1);
+function runLint(project) {
+  return spawnSync("bun", [cli, "lint", project, "--json", "--include-unmounted"], {
+    encoding: "utf-8",
+  });
 }
-console.log(`Registry item lint passed — ${items.length} item(s), 0 errors.`);
+
+function parseReport({ stdout, stderr, status }) {
+  try {
+    const report = JSON.parse(stdout ?? "");
+    if (report && typeof report === "object") return report;
+  } catch {
+    // Reported below with the linter's own output.
+  }
+  const output = `${stderr ?? ""}${stdout ?? ""}`.trim().split("\n").slice(-3).join(" | ");
+  throw new Error(`lint did not return a JSON report (exit ${status}): ${output}`);
+}
+
+/**
+ * Lints the staged project and returns the error findings in the item's own
+ * files. Throws when the run proves nothing: a crash, or a report that never
+ * scanned the item, would otherwise read as a pass. The exit code is not used,
+ * because the IGNORED rules alone can make it fail.
+ */
+export function lintStagedItem(project, staged, run = runLint) {
+  const report = parseReport(run(project));
+  if (report.error) throw new Error(`lint failed: ${report.error.message ?? report.error.code}`);
+  // index.html plus the item; fewer means the item was skipped.
+  if (!(report.filesScanned >= 2)) {
+    throw new Error(`lint did not scan the item (filesScanned: ${report.filesScanned})`);
+  }
+  return (report.findings ?? []).filter(
+    (finding) =>
+      finding.severity === "error" &&
+      typeof finding.file === "string" &&
+      staged.has(resolve(finding.file)) &&
+      !IGNORED.includes(finding.code),
+  );
+}
+
+function main(only) {
+  const items = discoverItems().filter((i) => only.length === 0 || only.includes(i.name));
+  if (items.length === 0) {
+    console.error(
+      only.length ? `No registry item matches: ${only.join(", ")}` : "No registry items found.",
+    );
+    process.exit(1);
+  }
+
+  let failed = 0;
+  for (const item of items) {
+    const project = realpathSync(mkdtempSync(join(tmpdir(), `hf-lint-${item.name}-`)));
+    try {
+      const errors = lintStagedItem(project, stageItem(item, project));
+      if (errors.length) {
+        failed++;
+        console.error(`\n✗ ${item.kind}/${item.name}`);
+        for (const e of errors) {
+          console.error(`   ${e.code} in ${relative(project, e.file)}: ${e.message}`);
+        }
+      }
+    } catch (error) {
+      failed++;
+      console.error(`\n✗ ${item.kind}/${item.name}\n   ${error.message}`);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  }
+
+  if (failed) {
+    console.error(`\n${failed} registry item(s) have lint errors.`);
+    process.exit(1);
+  }
+  console.log(`Registry item lint passed — ${items.length} item(s), 0 errors.`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
