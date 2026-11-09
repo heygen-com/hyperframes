@@ -84,7 +84,7 @@ beforeEach(() => {
   store = join(home, ".claude", "skills");
   cursor = join(home, ".cursor", "skills");
   mkdirSync(cwd, { recursive: true });
-  for (const name of [...FALLBACK_CORE_SKILLS, "reverse-any-video", "slideshow"]) {
+  for (const name of [...FALLBACK_CORE_SKILLS, "remotion-to-hyperframes", "slideshow"]) {
     write(join(source, name, "SKILL.md"), `# ${name}\nCurrent release\n`);
   }
   manifest = buildManifest(source, { source: "heygen-com/hyperframes" });
@@ -112,12 +112,12 @@ describe("skills update install destination", () => {
     "reports a requested foreign skill while offline (strict: %s)",
     async (strict) => {
       seedCore(store);
-      const path = join(store, "reverse-any-video", "SKILL.md");
+      const path = join(store, "remotion-to-hyperframes", "SKILL.md");
       write(path, "# Another publisher\n");
       write(
         join(home, ".agents", ".skill-lock.json"),
         JSON.stringify({
-          skills: { "reverse-any-video": { source: "another/publisher" } },
+          skills: { "remotion-to-hyperframes": { source: "another/publisher" } },
         }),
       );
       vi.stubGlobal(
@@ -128,17 +128,17 @@ describe("skills update install destination", () => {
       );
       const warning = vi.spyOn(log, "warn").mockImplementation(() => {});
 
-      const update = updateSkills({ cwd, requested: ["reverse-any-video"], strict });
+      const update = updateSkills({ cwd, requested: ["remotion-to-hyperframes"], strict });
 
       if (strict) {
         await expect(update).rejects.toThrow(
-          "Skill(s) owned by another publisher: reverse-any-video",
+          "Skill(s) owned by another publisher: remotion-to-hyperframes",
         );
       } else {
         const result = await update;
-        expect(result.unknown).toEqual(["reverse-any-video"]);
+        expect(result.unknown).toEqual(["remotion-to-hyperframes"]);
         expect(warning).toHaveBeenCalledWith(
-          expect.stringContaining("owned by another publisher: reverse-any-video"),
+          expect.stringContaining("owned by another publisher: remotion-to-hyperframes"),
         );
       }
       expect(installer.run).not.toHaveBeenCalled();
@@ -149,7 +149,7 @@ describe("skills update install destination", () => {
   it("installs the core in one run with only Cursor skills present, then becomes a no-op", async () => {
     seedCore(cursor);
     rmSync(join(cursor, "media-use"), { recursive: true });
-    const optional = join(cursor, "reverse-any-video", "SKILL.md");
+    const optional = join(cursor, "remotion-to-hyperframes", "SKILL.md");
     write(optional, "# Existing Cursor-only workflow\n");
 
     const first = await updateSkills({ cwd, refreshInstalled: true, strict: true });
@@ -160,7 +160,7 @@ describe("skills update install destination", () => {
         readFileSync(join(source, name, "SKILL.md"), "utf8"),
       );
     }
-    expect(existsSync(join(store, "reverse-any-video"))).toBe(false);
+    expect(existsSync(join(store, "remotion-to-hyperframes"))).toBe(false);
     expect(readFileSync(optional, "utf8")).toBe("# Existing Cursor-only workflow\n");
     if (process.platform !== "win32")
       expect(lstatSync(join(cursor, "hyperframes")).isSymbolicLink()).toBe(true);
@@ -172,13 +172,13 @@ describe("skills update install destination", () => {
 
   it("still refreshes an optional skill already installed in the managed store", async () => {
     seedCore(store);
-    write(join(store, "reverse-any-video", "SKILL.md"), "# Stale workflow\n");
+    write(join(store, "remotion-to-hyperframes", "SKILL.md"), "# Stale workflow\n");
 
     const result = await updateSkills({ cwd, refreshInstalled: true, strict: true });
 
-    expect(result.installed).toEqual(["reverse-any-video"]);
-    expect(readFileSync(join(store, "reverse-any-video", "SKILL.md"), "utf8")).toBe(
-      readFileSync(join(source, "reverse-any-video", "SKILL.md"), "utf8"),
+    expect(result.installed).toEqual(["remotion-to-hyperframes"]);
+    expect(readFileSync(join(store, "remotion-to-hyperframes", "SKILL.md"), "utf8")).toBe(
+      readFileSync(join(source, "remotion-to-hyperframes", "SKILL.md"), "utf8"),
     );
     expect(existsSync(join(store, "slideshow"))).toBe(false);
   });
@@ -247,16 +247,16 @@ describe("skills update install destination", () => {
     write(
       join(home, ".agents", ".skill-lock.json"),
       JSON.stringify({
-        skills: { "reverse-any-video": { source: "another/publisher" } },
+        skills: { "remotion-to-hyperframes": { source: "another/publisher" } },
       }),
     );
     seedCore(store);
-    write(join(store, "reverse-any-video", "SKILL.md"), "# Another publisher\n");
+    write(join(store, "remotion-to-hyperframes", "SKILL.md"), "# Another publisher\n");
 
     const result = await updateSkills({ cwd: home, refreshInstalled: true, strict: true });
 
     expect(result.installed).toEqual([]);
-    expect(result.targets).not.toContain("reverse-any-video");
+    expect(result.targets).not.toContain("remotion-to-hyperframes");
     expect(installer.run).not.toHaveBeenCalled();
   });
 });
