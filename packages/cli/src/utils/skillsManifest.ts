@@ -111,9 +111,7 @@ const FETCH_TIMEOUT_MS = 4000;
 //              structurally (sibling `../hyperframes/references/…` paths,
 //              "call /media-use" preambles). These must be present and current
 //              for any video work, so `init` / `skills update` keep them fresh.
-//              The video rebuilds (reverse-any-video, style-sampling) are core
-//              too: a skill only triggers when it is installed, and on demand
-//              they rarely were, so requests for them never reached them.
+//              So are the video rebuilds, which only trigger when installed.
 //   on-demand — everything else: decks, Remotion ports and optional integrations
 //              (figma). They install when named (`hyperframes skills update <name>`),
 //              instead of being sprayed onto every machine that runs `init`.
@@ -121,7 +119,6 @@ const FETCH_TIMEOUT_MS = 4000;
 /** The entry skill — read first for any video request. */
 const ENTRY_SKILL = "hyperframes";
 
-/** Core by name rather than by the `hyperframes-` pattern. */
 const NAMED_CORE_SKILLS = new Set(["media-use", "reverse-any-video", "style-sampling"]);
 
 /** True for skills every machine gets with `init` / `skills update` (see "Skill tiers" above). */
