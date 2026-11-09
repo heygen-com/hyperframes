@@ -58,7 +58,7 @@ export interface SystemMeta {
   /**
    * New-agent discovery signals for the agent_runtime=null bucket, so an agent
    * we have no rule for surfaces on its own instead of vanishing into null.
-   * All three are null on a classified event (agent_runtime != null) and on a
+   * All three are null on a classified event (except "other_ai_agent") and on a
    * plain shell with no markers. See `detectAgentHints` in agent_runtime.ts for
    * the fields and the privacy contract.
    */
@@ -93,7 +93,7 @@ export function getSystemMeta(): SystemMeta {
   // needs no hint, and gating keeps them off the ~80%+ of classified events.
   const agent_runtime = detectAgentRuntime();
   const hints =
-    agent_runtime === null
+    agent_runtime === null || agent_runtime === "other_ai_agent"
       ? detectAgentHints()
       : { agent_hint: null, term_program: null, agent_env_hints: null };
 
@@ -150,6 +150,7 @@ const CI_PROVIDERS: CIProvider[] = [
   { name: "jenkins", envVar: "JENKINS_URL", mode: "presence" },
   { name: "buildkite", envVar: "BUILDKITE", mode: "truthy" },
   { name: "travis", envVar: "TRAVIS", mode: "truthy" },
+  { name: "codebuild", envVar: "CODEBUILD_BUILD_ID", mode: "presence" },
   { name: null, envVar: "CONTINUOUS_INTEGRATION", mode: "truthy" },
   { name: null, envVar: "CI", mode: "truthy" },
 ];

@@ -27,6 +27,21 @@ const VENDOR_ENV_KEYS = [
   "CLINE_ACTIVE",
   "GEMINI_CLI",
   "CRUSH",
+  "COPILOT_AGENT",
+  "COPILOT_CLI",
+  "COPILOT_AGENT_SESSION_ID",
+  "KILO",
+  "KILOCODE_VERSION",
+  "OPENCODE",
+  "OPENCODE_SESSION_ID",
+  "QWEN_CODE",
+  "JUNIE_SHIM_PATH",
+  "ANTIGRAVITY_AGENT",
+  "QODER_AGENT",
+  "AGENT_DISPLAY_OUT",
+  "AGENT_CONTEXT_OUT",
+  "AGENT",
+  "AI_AGENT",
 ] as const;
 
 function stripVendorEnv(): void {
@@ -186,11 +201,41 @@ describe("detectAgentRuntime — Cursor / Copilot / cohort", () => {
     expect(detectAgentRuntime()).toBe("cursor");
   });
 
-  it("detects Copilot Coding Agent via GITHUB_ACTIONS + COPILOT_AGENT_ID", async () => {
-    process.env["GITHUB_ACTIONS"] = "true";
-    process.env["COPILOT_AGENT_ID"] = "abc123";
+  it("detects Copilot agent mode via COPILOT_AGENT=1 (VS Code agent terminals)", async () => {
+    process.env["COPILOT_AGENT"] = "1";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("copilot_agent");
+  });
+
+  it("detects Copilot agent mode via AI_AGENT=github_copilot_<surface>", async () => {
+    process.env["AI_AGENT"] = "github_copilot_vscode_agent";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("copilot_agent");
+  });
+
+  it("no longer reads the unverified Actions markers as copilot_agent", async () => {
+    process.env["GITHUB_ACTIONS"] = "true";
+    process.env["COPILOT_AGENT_ID"] = "abc123";
+    process.env["RUNNER_NAME"] = "Copilot";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+  });
+
+  it.each(["COPILOT_CLI", "COPILOT_AGENT_SESSION_ID"])(
+    "detects Copilot CLI via %s",
+    async (key) => {
+      process.env[key] = "1";
+      const { detectAgentRuntime } = await import("./agent_runtime.js");
+      expect(detectAgentRuntime()).toBe("copilot_cli");
+    },
+  );
+
+  it("attributes Copilot CLI run from a VS Code agent terminal to the CLI", async () => {
+    process.env["COPILOT_AGENT"] = "1";
+    process.env["AI_AGENT"] = "github_copilot_vscode_agent";
+    process.env["COPILOT_CLI"] = "1";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("copilot_cli");
   });
 
   it("does NOT flag generic GitHub Actions as copilot_agent", async () => {
@@ -396,6 +441,115 @@ describe("detectAgentRuntime — Windsurf / Cline / Gemini CLI / Crush", () => {
   });
 });
 
+describe("detectAgentRuntime: Kilo / opencode / Qwen / Junie / Antigravity / Qoder / Kiro / OpenHands", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(stripVendorEnv);
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it.each([
+    ["KILO", "1", "kilo"],
+    ["KILOCODE_VERSION", "1.0.0", "kilo"],
+    ["OPENCODE", "1", "opencode"],
+    ["OPENCODE_SESSION_ID", "ses_1", "opencode"],
+    ["QWEN_CODE", "1", "qwen_code"],
+    ["JUNIE_SHIM_PATH", "/usr/local/bin/junie", "junie"],
+    ["ANTIGRAVITY_AGENT", "1", "antigravity"],
+    ["QODER_AGENT", "1", "qoder"],
+    ["AGENT_DISPLAY_OUT", "/tmp/display", "kiro"],
+    ["AGENT_CONTEXT_OUT", "/tmp/context", "kiro"],
+    ["AI_AGENT", "openhands", "openhands"],
+  ])("detects %s=%s as %s", async (key, value, runtime) => {
+    process.env[key] = value;
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+  });
+
+  it("attributes a Kilo shell to kilo, not the opencode markers it also sets", async () => {
+    process.env["KILO"] = "1";
+    process.env["OPENCODE"] = "1";
+    process.env["AGENT"] = "1";
+    process.env["AI_AGENT"] = "opencode";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("kilo");
+  });
+
+  it("does not treat an empty QODER_AGENT as an agent", async () => {
+    process.env["QODER_AGENT"] = "";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+  });
+
+  it("does not treat Kiro's editor terminal (TERM_PROGRAM=kiro) as an agent", async () => {
+    process.env["TERM_PROGRAM"] = "kiro";
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+    expect(isAgentDriven()).toBe(false);
+  });
+});
+
+describe("detectAgentRuntime: AI_AGENT fallback", () => {
+  const savedEnv = { ...process.env };
+  beforeEach(stripVendorEnv);
+  afterEach(() => {
+    process.env = { ...savedEnv };
+  });
+
+  it.each([
+    ["claude-code", "claude_code"],
+    ["claude-code_2-1-307_agent", "claude_code"],
+    ["opencode", "opencode"],
+    ["crush", "crush"],
+    ["pi", "pi"],
+    ["hermes", "hermes"],
+  ])("maps the known AI_AGENT name %s to %s", async (value, runtime) => {
+    process.env["AI_AGENT"] = value;
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
+  });
+
+  it("classifies an unknown AI_AGENT name as other_ai_agent and as agent-driven", async () => {
+    process.env["AI_AGENT"] = "some-new-agent";
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("other_ai_agent");
+    expect(isAgentDriven()).toBe(true);
+  });
+
+  it("lets a vendor marker beat an inherited AI_AGENT value", async () => {
+    process.env["CLAUDECODE"] = "1";
+    process.env["AI_AGENT"] = "opencode";
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe("claude_code");
+  });
+
+  it.each(["pilot", "crushed", "constructor"])(
+    "does not map %s to a known runtime by a bare prefix",
+    async (value) => {
+      process.env["AI_AGENT"] = value;
+      const { detectAgentRuntime } = await import("./agent_runtime.js");
+      expect(detectAgentRuntime()).toBe("other_ai_agent");
+    },
+  );
+
+  it.each(["", "   ", "sk-ant-api03", "has space in it"])(
+    "ignores an empty or unsafe AI_AGENT value %j",
+    async (value) => {
+      process.env["AI_AGENT"] = value;
+      const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+      expect(detectAgentRuntime()).toBeNull();
+      expect(isAgentDriven()).toBe(false);
+    },
+  );
+
+  it("does not apply the fallback to the bare AGENT variable", async () => {
+    process.env["AGENT"] = "1";
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+    expect(isAgentDriven()).toBe(false);
+  });
+});
+
 describe("detectAgentHints — new-agent discovery signals", () => {
   const savedEnv = { ...process.env };
   beforeEach(() => {
@@ -419,6 +573,13 @@ describe("detectAgentHints — new-agent discovery signals", () => {
     process.env["AI_AGENT"] = "goose";
     const { detectAgentHints } = await import("./agent_runtime.js");
     expect(detectAgentHints().agent_hint).toBe("goose");
+  });
+
+  it("prefers the AI_AGENT name over a bare AGENT=1 flag", async () => {
+    process.env["AGENT"] = "1";
+    process.env["AI_AGENT"] = "some-new-agent";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_hint).toBe("some-new-agent");
   });
 
   it("drops an overlong secret-looking AGENT value rather than leaking it", async () => {
@@ -490,6 +651,14 @@ describe("detectAgentHints — new-agent discovery signals", () => {
     process.env["FOO_AGENT_SESSION_ID"] = "x";
     const { detectAgentHints } = await import("./agent_runtime.js");
     expect(detectAgentHints().agent_env_hints).toContain("FOO_AGENT_SESSION_ID");
+  });
+
+  it("excludes ambient runner, browser and desktop-session keys", async () => {
+    process.env["AGENT_TOOLSDIRECTORY"] = "/opt/hostedtoolcache";
+    process.env["GSM_SKIP_SSH_AGENT_WORKAROUND"] = "true";
+    process.env["EDGE_METRICS_SESSION_ID"] = "session";
+    const { detectAgentHints } = await import("./agent_runtime.js");
+    expect(detectAgentHints().agent_env_hints).toBeNull();
   });
 
   it("excludes SSH/GPG agent false-friends from agent_env_hints", async () => {
@@ -622,6 +791,13 @@ describe("isAgentDriven", () => {
     [{ TERM_PROGRAM: "windsurf" }, false],
     [{ REPL_ID: "r" }, false],
     [{ REPLIT_USER: "u" }, false],
+    [{ COPILOT_AGENT: "1" }, true],
+    [{ COPILOT_CLI: "1" }, true],
+    [{ KILO: "1" }, true],
+    [{ AGENT_DISPLAY_OUT: "/tmp/d" }, true],
+    [{ AI_AGENT: "some-new-agent" }, true],
+    [{ TERM_PROGRAM: "kiro" }, false],
+    [{ AGENT: "1" }, false],
     [{}, false],
   ])("%j -> %s", async (env, expected) => {
     const { isAgentDriven } = await import("./agent_runtime.js");
