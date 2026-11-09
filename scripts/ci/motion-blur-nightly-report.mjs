@@ -40,6 +40,7 @@ const warning = (message) => workflowCommand("warning", message);
 
 const inline = (text) =>
   `\`${String(text)
+    .replace(/\\/g, "\\\\")
     .replace(/`/g, "'")
     .replace(/\r?\n|\r/g, " ")
     .replace(/\|/g, "\\|")}\``;

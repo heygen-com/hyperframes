@@ -337,7 +337,7 @@ test("summary and issue text cannot break out of code, the table or mention anyo
         { seed: 8, features: ["a|b", "@someone", "<b>x</b>", "`tick`"], problems: [nasty] },
         {
           seed: 9,
-          features: ["m|n", "@someone", "<b>x</b>", "`tick`"],
+          features: ["m|n", "@someone", "<b>x</b>", "`tick`", "p\\|q"],
           problems: [],
           unstableReference: 2,
         },
@@ -355,7 +355,7 @@ test("summary and issue text cannot break out of code, the table or mention anyo
   assert.ok(!outside.includes("<img") && !after.includes("<img"));
   assert.match(outside, /- Features: `a\\\|b, @someone, <b>x<\/b>, 'tick'`/);
   const row = n.summary.split("\n").find((line) => line.startsWith("| 9 "));
-  assert.equal(row, "| 9 | `m\\|n, @someone, <b>x</b>, 'tick'` | `pin` | 2.00 |");
+  assert.equal(row, "| 9 | `m\\|n, @someone, <b>x</b>, 'tick', p\\\\\\|q` | `pin` | 2.00 |");
   const setupFence = n.summary.match(/^(`{4,})$/m);
   assert.ok(setupFence);
   assert.ok(!n.summary.replace(/^(`{5})$[\s\S]*?^\1$/gm, "").includes("<img"));

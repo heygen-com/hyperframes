@@ -11,11 +11,20 @@ const SEEDS = parseSeeds("1-200");
 
 const GSAP_SCRIPT = /<script>\/\*![\s\S]*?<\/script>/;
 
+const withoutMatches = (text: string, pattern: RegExp): string => {
+  let current = text;
+  for (
+    let next = current.replace(pattern, "");
+    next !== current;
+    next = current.replace(pattern, "")
+  ) {
+    current = next;
+  }
+  return current;
+};
+
 const visibleText = (html: string): string =>
-  html
-    .replace(/<(script|style)[\s\S]*?<\/\1>/g, "")
-    .replace(/<[^>]*>/g, "")
-    .trim();
+  withoutMatches(withoutMatches(html, /<(script|style)[\s\S]*?<\/\1>/g), /<[^>]*>/g).trim();
 
 describe("generateComposition", () => {
   it("is deterministic per seed", () => {
