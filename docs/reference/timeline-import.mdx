@@ -1,0 +1,303 @@
+---
+title: "Timeline import"
+sidebarTitle: "Timeline import"
+description: "The flat JSON file that hyperframes init --timeline turns into a project: its fields, its JSON Schema, and how clips, media, dissolves and image sequences are laid out."
+---
+`hyperframes init --timeline` turns an editing timeline into a project: one clip
+element per cut, with source trims, speed changes and audio tracks carried over.
+It reads a small, flat JSON file that a converter writes from an editor's own
+timeline format. The file is defined by a [JSON Schema](#schema), so any tool can
+write it.
+
+HyperFrames ships one converter, the `/import-timeline` skill, which reads
+OpenTimelineIO and the formats it supports. See
+[Import from OpenTimelineIO](/guides/import-from-otio) to use it. This page describes
+the file and what `init` does with it, whatever wrote it.
+
+```bash
+# 1. Write the file with a converter
+# 2. Build the project from it
+npx hyperframes init my-video --timeline timeline.json --media-root ./footage
+cd my-video && npx hyperframes check
+```
+
+## File format
+
+```json
+{
+  "$schema": "https://hyperframes.heygen.com/schema/timeline-import.json",
+  "schema": "hyperframes-timeline/1",
+  "fps": { "num": 30000, "den": 1001 },
+  "width": 1920,
+  "height": 1080,
+  "duration": 7,
+  "mediaRoot": null,
+  "clips": [
+    {
+      "id": "c1-intro",
+      "label": "intro",
+      "kind": "video",
+      "start": 0,
+      "duration": 4,
+      "trackIndex": 0,
+      "src": "media/a.mp4",
+      "mediaStart": 2.5,
+      "playbackRate": null,
+      "volume": null,
+      "hasAudio": false,
+      "freeze": false
+    }
+  ],
+  "transitions": [],
+  "warnings": []
+}
+```
+
+Times are in seconds. A clip carries the same fields `hyperframes timeline --json`
+prints for one (`id`, `label`, `kind`, `start`, `duration`, `end`, `trackIndex`, `src`,
+`mediaStart`, `volume`, `playbackRate`), plus `hasAudio`, `freeze` and `sequence`.
+The file as a whole is not that command's output: it also carries the frame rate,
+canvas size, transitions and warnings, and `src` is a path to the source footage, not
+to a file in a project.
+
+## Schema
+
+The format is defined by a JSON Schema (draft 2020-12), served at
+`https://hyperframes.heygen.com/schema/timeline-import.json` and shipped in
+`@hyperframes/core` as `schemas/timeline-import.json`
+([source on GitHub](https://github.com/heygen-com/hyperframes/blob/main/packages/core/schemas/timeline-import.json)).
+The converter HyperFrames ships writes the `$schema` key itself. If you write the file another
+way, add it and an editor will check the file as you type:
+
+```json
+{ "$schema": "https://hyperframes.heygen.com/schema/timeline-import.json" }
+```
+
+Anyone writing a converter can validate against it; the converter HyperFrames ships is
+checked against it in its tests. The schema leaves out
+rules a JSON Schema cannot state, which `init --timeline` still enforces: clip ids
+are unique and the frame rate is between 1 and 240. A key the schema does not
+declare is allowed and ignored, so a converter can add its own notes.
+
+| Field          | Meaning                                                                       |
+| -------------- | ----------------------------------------------------------------------------- |
+| `schema`       | Must be `hyperframes-timeline/1`. Other versions are refused.                 |
+| `fps`          | Exact rational, so NTSC rates stay `30000/1001`. Becomes root `data-fps`.     |
+| `width/height` | Canvas size, or `null` for 1920×1080.                                         |
+| `clips[].kind` | `video`, `audio` or `image`.                                                  |
+| `start`        | Seconds on the timeline. `duration` is the time the clip is on screen.        |
+| `mediaStart`   | Where the clip's first frame sits on its source's own clock, in seconds. `init` turns it into seconds into the file and writes `data-media-start`; see [Where a clip starts in its file](#where-a-clip-starts-in-its-file). |
+| `mediaOrigin`  | Where on that same clock the program that wrote the file believes the media file starts, or `null`. A hint, used only when the file's own timecode does not fit. |
+| `playbackRate` | Constant speed (`2` is double speed), or `null`. Becomes `data-playback-rate`. |
+| `hasAudio`     | A video clip keeps its own sound only when `true`; otherwise it is muted.     |
+| `sequence`     | Set when `src` is a pattern for an image sequence; see [Image sequences](#image-sequences). |
+| `transitions`  | `from` and `to` are clip ids, or `null` for a fade from or to nothing; see [Dissolves](#dissolves). |
+| `freeze`       | Hold the frame at `mediaStart` for the whole clip. It becomes a still taken with ffmpeg. |
+| `mediaRoot`    | Folder that relative `src` paths resolve from, such as an unpacked bundle. `--media-root` overrides it. |
+| `src`          | A path, relative to `--media-root`, an absolute path or a `file://` URL.      |
+
+## Image sequences
+
+A clip can play a series of image files (`img.0001.exr`, `img.0002.exr`, and so on).
+Write it as a `sequence`: a frame `rate` and an `images` list with one path or `file://`
+URL per frame, in play order. An image shown for several frames is listed that many
+times. `src` names the clip and is usually the first image.
+
+```json
+{
+  "id": "c3-plate",
+  "kind": "video",
+  "start": 0,
+  "duration": 0.125,
+  "src": "frames/plate.0101.exr",
+  "sequence": {
+    "rate": 24,
+    "images": [
+      "frames/plate.0101.exr",
+      "frames/plate.0102.exr",
+      "frames/plate.0102.exr"
+    ]
+  }
+}
+```
+
+When `init` runs, the images are encoded into one H.264 video in `assets/` with ffmpeg, at
+the sequence's `rate`. Each listed image becomes exactly one frame, whatever the rate, so the
+video has as many frames as the list has entries. The clip's trim, speed and position then work like any other video
+clip. The format leaves the file names to whoever writes the list, so `init` needs no rule
+for numbering them.
+
+- **Missing images:** an image with no file on disk is replaced by the one before it (by
+  the first one found, when the clip starts on a gap), and the count is reported. If no
+  image exists, the clip is skipped.
+- **Freeze frames:** a frozen sequence clip becomes a still of its first image.
+- **EXR:** decoded to display light (the sRGB curve) before encoding. Without that, EXR
+  frames come out dark. Other formats ffmpeg reads (PNG, JPEG, TIFF, DPX) are encoded as
+  they are.
+- **Handles:** only the images the clip plays are encoded, so a dissolve has no footage
+  beyond the trim points to use and stays a hard cut, with a warning.
+- **Frame rate:** the encoded video is at the sequence's rate and is resampled to the
+  composition's, as any other video would be.
+
+Sequences need ffmpeg, which `hyperframes doctor` checks for. Without it the clip is
+skipped and the warning says why.
+
+## Dissolves
+
+A dissolve straddles the cut: the outgoing clip plays past its end and the
+incoming one starts early. That needs footage beyond each trim point, called
+handles. `init` reads each file's length with ffprobe and clamps the dissolve to
+the handles it finds: the outgoing side to the footage left after its out-point,
+the incoming side to the footage before its in-point and to the time before the
+incoming clip's start on the timeline (a clip at 0 cannot start earlier). The clips are then
+overlapped on their track and the incoming one fades in over the outgoing one.
+For opaque clips that is the same picture as a mutual cross fade.
+
+A shortened dissolve is reported with the amount and the side that ran out. With
+no handle on either side the cut stays hard, and the warning says why. If a
+file's length cannot be read, the outgoing clip is not extended and the dissolve
+runs entirely before the cut. Stills never run out of handle.
+
+```json
+"transitions": [
+  { "from": "c1-intro", "to": "c2-demo", "inOffset": 0.5, "outOffset": 0.5, "kind": "dissolve" }
+]
+```
+
+`inOffset` and `outOffset` are seconds before and after the cut. Without them,
+`duration` is split evenly around it.
+
+A transition next to a gap, or at the start or end of a track, is a fade from or
+to nothing. Write it with `"from": null` or `"to": null`. The clip fades in or
+out on its own and shows whatever lies beneath, which is the black background
+when nothing does. Fading in can start early on the clip's head handle; fading
+out can play on over its tail handle.
+
+## Where a clip starts in its file
+
+`mediaStart` is a position on the source's *own clock*, as an editor writes it. A video that
+carries a start timecode of `00:00:41:18` calls its first frame 41.75 s, so a clip cut from the
+start of that file has `mediaStart` 41.75. A file with no timecode has no clock but its own, and
+`mediaStart` is seconds into it. A converter writes the position as it has it and does not need
+to know which kind of file it is.
+
+`init` finds out. It reads each file's own start with ffprobe, from a video's timecode (drop-frame
+included) or a WAV's `time_reference`, and subtracts it. Three readings are tried in order, and
+each is used only if it puts the clip's start inside the file:
+
+1. the file's own timecode (or 0 for a file that has none);
+2. the clip's `mediaOrigin`, where the program that wrote the file says the media file starts;
+3. `mediaStart` as it stands, as seconds into the file, for a converter that has already done the
+   subtraction.
+
+The file comes first because it is the one source that knows where the file starts. `mediaOrigin`
+is only a hint: one editor leaves it out, and another writes a small window around the clip, which
+is not where the file starts. A clip that starts a fraction of a second before the file does is
+moved to its first frame. A clip that no reading puts inside its file is reported by name, since
+it will be silent or frozen. When a reading other than the first is used, the warning names the
+file once.
+
+If ffprobe is not available, the offsets are used as written and the warning says so.
+
+## Frame rates and precision
+
+`fps` is the composition's frame rate. Write it as an exact fraction, so NTSC rates stay
+`24000/1001`, `30000/1001` and `60000/1001`. Every time in the file is in seconds, so a
+clip made at another rate keeps its place but can fall between composition frames.
+
+Times are written to the microsecond, not the millisecond. A cut at frame 10 of 29.97 fps
+is 0.333667 s; rounded to 0.334 s it renders one frame late. Round a clip's `start` down
+and a source in-point (`mediaStart`) up, so the cut frame is on the new clip and shows the
+right source frame.
+
+## What happens to the media
+
+Each distinct file is copied into `assets/` (or symlinked with `--link-media`),
+and files that share a name are kept apart. A name keeps its characters on disk, and `src` is a URL,
+where `#` starts a fragment and `?` a query, so it is written percent-encoded: `take#1.mp4` is
+`assets/take%231.mp4`, and a name that already looks escaped (`a%20b.mp4`) is `a%2520b.mp4`.
+
+### Where relative paths resolve from
+
+A clip's `src` is usually a relative path such as `media/a.mp4`. `--media-root`
+sets the folder it is resolved against. The first of these that applies wins:
+
+1. `--media-root <dir>` on the command line. A relative `<dir>` is taken from the
+   folder you run the command in.
+2. The file's own `mediaRoot`, which a converter sets when it unpacks media into a
+   folder of its own, so that file needs no flag.
+3. The folder that holds the timeline file.
+
+```bash
+npx hyperframes init my-video --timeline timeline.json --media-root ~/Footage/shoot-04
+```
+
+Use `--media-root` when the timeline file sits apart from the footage, as it does
+when it was exported on another machine or copied out of a project. The root also
+applies to the folder of an [image sequence](#image-sequences). It has no effect on
+an absolute path or a `file://` URL, which are used as written, and remote `http`
+URLs are never downloaded. A path written with `%20` for a space is found either way.
+
+When no clip's file can be found under the root, the import stops and names
+`--media-root` as the thing to check. If only some are missing, those clips are left
+out and listed as warnings, since a missing source fails at render.
+
+### Paths from another machine
+
+A timeline exported from an editor often points at the editor's own paths: a Windows path such as
+`C:\Users\editor\shots\a.mov`, a network share, or media that was never exported. None of them exist on
+this machine, and `--media-root` cannot help, since it only changes where *relative* paths are looked
+for. `init` skips each clip it cannot find and names it. When none is found it stops and lists the first
+few. Relink the timeline to your own files first (in the editor, or with the converter's own relink
+step, which its guide describes) and convert it again.
+
+### Still images
+
+A still image is written with `data-hold`. An editor who puts a still on the timeline means it to stay,
+and `check` calls a long stretch where nothing on screen changes a mistake unless the element says its
+stillness is deliberate. The attribute only informs that check; it changes nothing in the render. A
+stretch of the timeline that is empty because clips were skipped is still reported, since that one is
+not deliberate.
+
+### Linking instead of copying
+
+`--link-media` saves disk and time on large footage, and it does not work the same
+everywhere. On macOS and Linux it makes a symlink with an absolute target, so the
+project must stay on the machine that holds the footage: copy or zip the project
+elsewhere and the links dangle. On Windows, links need Developer Mode or an
+administrator, so `--link-media` copies there. The same copy-and-warn happens on any
+disk or account that refuses a link (a FAT or exFAT drive, some network shares). Other
+errors stop the import. This is the same rule `hyperframes skills` follows when it
+mirrors skills: link on macOS and Linux, copy on Windows.
+
+### Sound
+
+A video-only timeline means each file keeps its own sound, so `init` checks each
+file with ffprobe and mutes the ones that have no audio stream.
+
+## Warnings
+
+Everything skipped or approximated is reported. A converter lists what it skipped in the
+file's `warnings`, and `init --timeline` prints that list again with a count after the
+project is created, together with the warnings only it can raise: missing files, held
+images and shortened dissolves. It prints the first twenty; when there are more it counts the
+rest, because a large edit can raise hundreds (one per offline clip) and bury the few that
+matter. The converter's output keeps every one.
+
+Some warnings only `init` can raise, because only it has the files: a clip that starts outside its
+file, a file whose timecode does not fit the edit, media that is missing, and an audio clip listed
+more than once at the same moment from the same part of the same file. The last one adds the copies
+together (two copies are about 6 dB louder), which is easy to do without meaning to, so it is
+reported and nothing is removed.
+
+Warnings are not saved in the project. Keep them from the terminal, or from the JSON
+file, if you need them later. The exit code stays 0 when the import succeeded, with
+warnings or not; it is non-zero only when nothing could be imported.
+
+## What the file cannot say
+
+The format describes clips, their trims and speeds, dissolves and a canvas. It has no way
+to carry the rest of what an editor holds: wipes and other kinds of transition are
+imported as hard cuts, with a warning (add them with a registry block,
+`/hyperframes-registry`). Audio transitions are hard cuts too. Effects, color corrections
+and markers have no field, so a converter drops them and says so.

@@ -1,0 +1,126 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/timeline-import.json",
+  "schema": "hyperframes-timeline/1",
+  "fps": {
+    "num": 24,
+    "den": 1
+  },
+  "width": 640,
+  "height": 360,
+  "duration": 7.0,
+  "mediaRoot": null,
+  "clips": [
+    {
+      "id": "c1-opening",
+      "label": "opening",
+      "kind": "video",
+      "start": 0.0,
+      "duration": 3.0,
+      "end": 3.0,
+      "trackIndex": 0,
+      "src": "media/a.mp4",
+      "mediaStart": 1.0,
+      "mediaOrigin": 0.0,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": false
+    },
+    {
+      "id": "c2-second",
+      "label": "second",
+      "kind": "video",
+      "start": 3.0,
+      "duration": 2.0,
+      "end": 5.0,
+      "trackIndex": 0,
+      "src": "media/b.mp4",
+      "mediaStart": 2.0,
+      "mediaOrigin": 0.0,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": false
+    },
+    {
+      "id": "c3-fast",
+      "label": "fast",
+      "kind": "video",
+      "start": 5.0,
+      "duration": 2.0,
+      "end": 7.0,
+      "trackIndex": 0,
+      "src": "media/a.mp4",
+      "mediaStart": 0.0,
+      "mediaOrigin": 0.0,
+      "volume": null,
+      "playbackRate": 2.0,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": false
+    },
+    {
+      "id": "c4-title",
+      "label": "title",
+      "kind": "video",
+      "start": 2.0,
+      "duration": 0.5,
+      "end": 2.5,
+      "trackIndex": 1,
+      "src": "media/frames/f.001.png",
+      "mediaStart": 0.0,
+      "mediaOrigin": null,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": {
+        "rate": 24.0,
+        "images": [
+          "media/frames/f.001.png",
+          "media/frames/f.002.png",
+          "media/frames/f.003.png",
+          "media/frames/f.004.png",
+          "media/frames/f.005.png",
+          "media/frames/f.006.png",
+          "media/frames/f.007.png",
+          "media/frames/f.008.png",
+          "media/frames/f.009.png",
+          "media/frames/f.010.png",
+          "media/frames/f.011.png",
+          "media/frames/f.012.png"
+        ]
+      },
+      "hasAudio": false
+    },
+    {
+      "id": "c5-music",
+      "label": "music",
+      "kind": "audio",
+      "start": 0.0,
+      "duration": 7.0,
+      "end": 7.0,
+      "trackIndex": 2,
+      "src": "media/m.wav",
+      "mediaStart": 0.0,
+      "mediaOrigin": 0.0,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": false
+    }
+  ],
+  "transitions": [
+    {
+      "from": "c1-opening",
+      "to": "c2-second",
+      "duration": 0.5,
+      "inOffset": 0.25,
+      "outOffset": 0.25,
+      "kind": "dissolve"
+    }
+  ],
+  "warnings": []
+}

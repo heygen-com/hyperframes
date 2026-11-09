@@ -20,7 +20,7 @@ import { join } from "node:path";
 const ROOT = join(import.meta.dirname, "..");
 const SOURCE_DIR = join(ROOT, "packages/core/schemas");
 const TARGET_DIR = join(ROOT, "docs/schema");
-const MIRRORED = ["registry.json", "registry-item.json"];
+const MIRRORED = ["registry.json", "registry-item.json", "timeline-import.json"];
 
 function main() {
   const checkOnly = process.argv.includes("--check");

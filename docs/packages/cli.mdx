@@ -181,6 +181,9 @@ npx hyperframes init my-video --tailwind
 | `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160), `landscape-1440p` (2560×1440), `portrait-1440p` (1440×2560), `square-1440p` (1440×1440). Aliases: `1080p`, `4k`, `uhd`, `1440p`, `qhd`, `1080p-square`, `square-1080p`, `4k-square`, `1440p-portrait`, `1440p-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
+| `--timeline`        | Path to a [`hyperframes-timeline/1`](/reference/timeline-import) file, checked against its [schema](/reference/timeline-import#schema). Lays its clips out as a composition and copies their media into `assets/`. |
+| `--media-root`      | With `--timeline`: folder that relative clip paths resolve from. Default is the file's own `mediaRoot` (set for an unpacked bundle), else the timeline file's folder. [Details](/reference/timeline-import#where-relative-paths-resolve-from). |
+| `--link-media`      | With `--timeline`: symlink media into `assets/` instead of copying it. Windows, and disks that refuse links, get a copy and a warning. |
 | `--tailwind`        | Add Tailwind CSS browser-runtime support to the scaffolded HTML                                                                                                                                                                                                                      |
 | `--non-interactive` | Never prompt. For agents and CI.                                                                                                                                                                                                                                                     |
 | `--skip-transcribe` | Skip the automatic Whisper transcription                                                                                                                                                                                                                                             |
@@ -188,6 +191,21 @@ npx hyperframes init my-video --tailwind
 | `--model`           | Whisper model for that transcription (for example `small.en`, `medium.en`, `large`)                                                                                                                                                                                                   |
 | `--language`        | Language code for transcription (`en`, `es`, `ja`, …). Filters out speech in other languages.                                                                                                                                                                                         |
 | `--skip-skills`     | Leave AI coding skills alone: `init` does not install the core set. `HYPERFRAMES_SKIP_SKILLS=1` does the same.
+
+Pass `--timeline` to start from an editing timeline instead of a blank
+canvas. It takes the flat JSON in [Timeline import](/reference/timeline-import),
+which has a [JSON Schema](/reference/timeline-import#schema),
+which the `/import-timeline` skill writes from OpenTimelineIO and the editor
+formats it reads ([guide](/guides/import-from-otio)).
+
+- **Cannot be combined with** `--video`, `--audio`, `--example`, `--tailwind` or
+  `--resolution`. The command stops with a usage error and creates nothing. The
+  canvas is the timeline's own size.
+- **Needed by** `--media-root` and `--link-media`, which mean nothing without it.
+  Giving either one alone is a usage error, not a quiet no-op.
+- **Ignored with it:** `--skip-transcribe`, `--keep-original`, `--model` and
+  `--language`, which belong to `--video` and `--audio`, as they are in a plain
+  `init` given no media. `--skill` and `--skip-skills` work as usual.
 
 Pass `--video` or `--audio` and the CLI transcribes the audio with Whisper and
 patches the captions into the composition for you. `--skip-transcribe` turns

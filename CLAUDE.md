@@ -4,11 +4,11 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships 9 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`); `/slideshow`, `/remotion-to-hyperframes` and `/figma` install on demand. Install all 9 only when the user explicitly asks for the full set.
+This repo ships 10 AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`); `/slideshow`, `/remotion-to-hyperframes`, `/import-timeline` and `/figma` install on demand. Install all 10 only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update                         # default: installs/refreshes the core set plus anything already installed
-npx hyperframes skills                                # all 9 published skills at once — only on explicit request
+npx hyperframes skills                                # all 10 published skills at once — only on explicit request
 npx skills add heygen-com/hyperframes                 # interactive picker; internal skills require INSTALL_INTERNAL_SKILLS=1 for discovery
 npx skills add heygen-com/hyperframes --all           # excludes internal skills unless INSTALL_INTERNAL_SKILLS=1
 npx skills add heygen-com/hyperframes --skill <name>  # a named match installs regardless of metadata.internal (bare name, no leading slash)
@@ -29,6 +29,7 @@ Make any video by asking for it; the `/hyperframes` skill carries the render con
 - `/figma` — bring Figma into a video: rendered assets, brand tokens, components, storyboard frames as reconstructed motion, shaders and connector-assisted motion. Use when the person pastes a figma.com link or asks to use a Figma design, frame, logo or brand.
 - `/slideshow` — a presentation, pitch deck or interactive deck with discrete slides, fragment reveals, branching, hotspot navigation and presenter mode with speaker notes; also converts an existing page into a deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
+- `/import-timeline` — Start a HyperFrames project from an editing timeline - OpenTimelineIO (.otio) or any editor format OTIO can read (EDL, Final Cut XML). Flatten it with the official OpenTimelineIO Python package, then run hyperframes init --timeline. Use to import, convert or render an edit made in another editor.
 
 ## Skill catalog maintenance
 
@@ -37,7 +38,7 @@ When adding a new skill, or substantially renaming / repurposing an existing one
 1. The skill list above (CLAUDE.md) AND the skill list in the root `AGENTS.md` AND the `## Skills` section in `README.md` AND `docs/guides/skills.mdx` (rendered at [hyperframes.heygen.com/guides/skills](https://hyperframes.heygen.com/guides/skills)) AND the two setup pages that compress the same descriptions — `docs/prompting/overview.mdx` ("One-time setup") and `docs/quickstart.mdx`. Out-of-date entries silently kill discovery. This list is also the sync set for a **changed contract**, not just an added or renamed skill: a reworded `description:` has to be pushed to every surface or the compressed copies start asserting the opposite of the skill.
 2. The scaffolded project template `packages/cli/src/templates/_shared/CLAUDE.md` + `AGENTS.md` — written into every `hyperframes init` project, so a stale entry there ships to users. The two template files must stay byte-identical.
 3. The routing surface for "make a video" requests is the References table and closing line of `skills/hyperframes/SKILL.md`. A new reference or skill that a request should reach gets a row or a mention there.
-4. Keep the same grouping on every surface: the core set (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`) first, then the on-demand skills (`/figma`, `/slideshow`, `/remotion-to-hyperframes`). Core membership is `isCoreSkill` in `packages/cli/src/utils/skillsManifest.ts` and the `core-skills` entry of `.claude-plugin/marketplace.json`.
+4. Keep the same grouping on every surface: the core set (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`) first, then the on-demand skills (`/figma`, `/slideshow`, `/remotion-to-hyperframes`, `/import-timeline`). Core membership is `isCoreSkill` in `packages/cli/src/utils/skillsManifest.ts` and the `core-skills` entry of `.claude-plugin/marketplace.json`.
 5. Skill count appears in the README and CLAUDE.md intro lines ("8 AI agent skills…") — update on add/remove. The `docs/guides/skills.mdx` page and the CLI templates deliberately omit a count to avoid drift; keep them count-free.
 
 The skill's own `SKILL.md` frontmatter `description:` is the source of truth for the one-line "use when" blurb; copy from there into the catalog rather than paraphrasing.

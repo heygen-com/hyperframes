@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hyperframes.heygen.com/schema/timeline-import.json",
+  "title": "Hyperframes Timeline Import",
+  "description": "A flat editing timeline that `hyperframes init --timeline` reads and lays out as a composition. It is written by a converter: a program that reads an editor's own timeline format and writes this file (the /import-timeline skill ships one). Times are seconds. Rules a JSON Schema cannot state, which `hyperframes init --timeline` enforces: clip ids are unique, `fps` is within the supported range (1 to 240 frames per second), and every transition names clips that exist (a transition whose clip was dropped is ignored).",
+  "type": "object",
+  "required": ["schema", "fps", "clips"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema URL, so an editor can validate the file."
+    },
+    "schema": {
+      "const": "hyperframes-timeline/1",
+      "description": "The format and its version. Any other value is refused."
+    },
+    "fps": {
+      "type": "object",
+      "description": "The composition's frame rate as an exact fraction, so NTSC rates stay `30000/1001`.",
+      "required": ["num", "den"],
+      "properties": {
+        "num": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "den": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "width": {
+      "type": ["number", "null"],
+      "exclusiveMinimum": 0,
+      "description": "Canvas width in pixels, or null for 1920."
+    },
+    "height": {
+      "type": ["number", "null"],
+      "exclusiveMinimum": 0,
+      "description": "Canvas height in pixels, or null for 1080."
+    },
+    "duration": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Length of the composition in seconds. Raised to the end of the last clip if shorter. Default: the end of the last clip."
+    },
+    "mediaRoot": {
+      "type": ["string", "null"],
+      "description": "Folder that relative clip `src` paths and sequence image paths resolve from, for example a folder the program that wrote this file unpacked media into. The `--media-root` option of `hyperframes init --timeline` overrides it. Default: the folder holding this file."
+    },
+    "clips": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/clip"
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/transition"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Things the program that wrote this file skipped or approximated when it read the editor's timeline, such as an offline clip or an effect it cannot carry. `hyperframes init --timeline` prints them."
+    }
+  },
+  "$defs": {
+    "clip": {
+      "type": "object",
+      "required": ["id", "kind", "start", "duration", "src"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique within the file."
+        },
+        "label": {
+          "type": ["string", "null"],
+          "description": "The clip's name in the editor, used in warnings."
+        },
+        "kind": {
+          "enum": ["video", "audio", "image"]
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds on the timeline."
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Seconds the clip is on the timeline."
+        },
+        "end": {
+          "type": "number",
+          "description": "`start + duration`. Optional; derived when absent."
+        },
+        "trackIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The editor lane. A higher lane paints over a lower one. Default 0."
+        },
+        "src": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A path (absolute, or relative to the media root) or a `file://` URL. For an image sequence, the first image's path."
+        },
+        "mediaStart": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Where the clip's first frame sits on its source's own clock, in seconds. For a file that carries a start timecode (a video's timecode track, or a WAV's `time_reference`) that is the timecode, as an editor writes it; `hyperframes init --timeline` subtracts the file's own start timecode. For a file that has none, it is seconds into the file. Default 0."
+        },
+        "mediaOrigin": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Where on that same clock (the one `mediaStart` is measured on) the program that wrote this file believes the media file starts, or null when it does not know. Only a hint: `hyperframes init --timeline` uses the media file's own start timecode first, and falls back to this only when that timecode would put `mediaStart` outside the file."
+        },
+        "volume": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Linear gain, or null for 1."
+        },
+        "playbackRate": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "description": "Constant speed (2 is double), or null for normal speed. The renderer supports 0.1 to 10."
+        },
+        "hasAudio": {
+          "type": "boolean",
+          "description": "A video clip keeps its own sound only when true; otherwise it is muted. Default false."
+        },
+        "freeze": {
+          "type": "boolean",
+          "description": "Hold the frame at `mediaStart` for the whole clip. It becomes a still image. Default false."
+        },
+        "sequence": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/sequence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when the clip plays an image sequence, which `hyperframes init --timeline` encodes into a video."
+        }
+      },
+      "if": {
+        "required": ["sequence"],
+        "properties": {
+          "sequence": {
+            "type": "object"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "video"
+          }
+        }
+      }
+    },
+    "sequence": {
+      "type": "object",
+      "description": "A clip's image sequence: the image files to play, one per frame, in order. `hyperframes init --timeline` encodes them into one video at `rate`.",
+      "required": ["rate", "images"],
+      "properties": {
+        "rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Frames per second the images are played at."
+        },
+        "images": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "One path or `file://` URL per frame, in play order, resolved like `src`. An image shown for several frames is listed that many times. An image whose file is missing is replaced by the one before it (by the one after it, when it is first)."
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "description": "A transition at a cut. `dissolve` (alias `crossfade`) is applied; any other kind is imported as a hard cut with a warning.",
+      "anyOf": [
+        {
+          "required": ["from"],
+          "properties": {
+            "from": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "required": ["to"],
+          "properties": {
+            "to": {
+              "type": "string"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "from": {
+          "type": ["string", "null"],
+          "description": "The outgoing clip id, or null for a fade from nothing (a gap, or the start of the track)."
+        },
+        "to": {
+          "type": ["string", "null"],
+          "description": "The incoming clip id, or null for a fade to nothing."
+        },
+        "inOffset": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Seconds the transition runs before the cut."
+        },
+        "outOffset": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Seconds the transition runs after the cut."
+        },
+        "duration": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total length. Used, split evenly around the cut, only when neither offset is given."
+        },
+        "kind": {
+          "type": "string",
+          "description": "The source's name for the transition. `dissolve` or `crossfade` is applied; anything else is a hard cut. Default `dissolve`."
+        }
+      },
+      "if": {
+        "not": {
+          "anyOf": [
+            {
+              "required": ["inOffset"]
+            },
+            {
+              "required": ["outOffset"]
+            }
+          ]
+        }
+      },
+      "then": {
+        "required": ["duration"]
+      }
+    }
+  }
+}
