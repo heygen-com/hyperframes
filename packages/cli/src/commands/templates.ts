@@ -240,11 +240,6 @@ function alreadyPulled(dest: string, pack: TemplatePack): boolean {
   );
 }
 
-/**
- * A pull is a style-sampling run: report it (the skill's beacon depends on the agent), and mark the project
- * the episode is built in so its renders count for the skill. Only a folder that is already a project is
- * marked: a pull never makes one.
- */
 export function noteStyleSamplingRun(dir: string, pulled: string): void {
   trackSkillRunByCommand(STYLE_SAMPLING);
   for (const folder of [dir, pulled]) {

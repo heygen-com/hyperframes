@@ -283,11 +283,6 @@ export function trackCommand(command: string, runId?: string): void {
   });
 }
 
-/**
- * The HyperFrames skills this machine had at the last background skills check (2 h cache), so a
- * command says whether an on-demand skill was there to trigger at all, and which were stale.
- * Names only, comma-joined; absent until a check has run.
- */
 function installedSkillsFields(): Record<string, string> {
   const config = readConfig();
   if (!config.skillsInstalled) return {};
@@ -1032,11 +1027,6 @@ export function trackReverseStartUnrecorded(props: {
   trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
 }
 
-/**
- * A command only one skill runs (`reverse start`, `templates pull`) reports that skill's run itself.
- * The skill's own beacon depends on the agent running it, which agents often skip; `source` tells
- * the two apart, and a person counts once either way.
- */
 export function trackSkillRunByCommand(skill: string): void {
   trackEvent("skill_invoked", { authoring_skill: skill, source: "command" });
 }
