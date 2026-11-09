@@ -48,7 +48,6 @@ const HF_VIDEO_REF_768P_PER_S = 50;
 const HF_VIDEO_EXTRA_IMAGE = 20;
 const HF_AVATAR_IV_PHOTO_PER_S = 1155 / 60;
 const HF_AVATAR_IV_TWIN_PER_S = 2415 / 60;
-// Avatar 6 at 1080p, per minute: HF credits from the price book's Avatar 6 rows, API list price from HeyGen's rates.
 const AVATAR_6: Record<string, { usdPerMin: number; hfPerMin: number; label: string }> = {
   "heygen-avatar-6": { usdPerMin: 6, hfPerMin: 3000, label: "Avatar 6" },
   "heygen-avatar-6-turbo": { usdPerMin: 3, hfPerMin: 1500, label: "Avatar 6 Turbo" },

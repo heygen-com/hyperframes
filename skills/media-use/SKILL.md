@@ -26,7 +26,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 | Images, icons | HeyGen asset search, 75k+ (signed in) | Generated images | Local FLUX (mflux), if installed |
 | Logos (`logo`) | theSVG, GitHub avatar, favicon; never redrawn | | |
 | Voiceover (`voice`) | Voice Turbo, Free plan: 3 min a month | Voice Turbo on a paid plan, other HeyGen voices, cloning | `npx hyperframes tts` (Kokoro on device) |
-| A presenter speaking | | Avatar video (`--type avatar`, Avatar 6 on a look) | Local LTX for generic clips, if installed |
+| A presenter speaking | | Avatar video (`--type avatar`) | Local LTX for generic clips, if installed |
 | Transcripts | `npx hyperframes transcribe` (Parakeet or whisper) | | |
 | Cutouts | | Video: `--type cutout` | `npx hyperframes remove-background` |
 | Grades, LUTs, looks | `npx hyperframes media-treatment` | | |
@@ -35,9 +35,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 
 **Host apps.** Inside an app with its own media tools, use those first. When `HEYGEN_API_BASE` is set, the host pays: don't ask for a sign-in; relay a refused call's message as written and stop.
 
-**HeyGen.** `npx hyperframes media-use generate` makes images, shots, talking photos, voices and music on the sign-in alone. Helpers and direct recipes need the [`heygen` CLI](https://developers.heygen.com/cli); if it is missing, give the link and wait until they say it is installed. Direct `heygen` recipes bill that CLI's own login: use them only when that payer is selected.
-
-**Presenters.** Before the first avatar video, ask the person two things in one message unless they already named them: who presents (one of their own HeyGen avatar looks from `npx hyperframes media-use avatars`, or a photo) and which voice (their cloned voice or a HeyGen voice; offer two or three from the list `generate` prints when `--voice` is left out). Never pick either for them. A real person is best as their own look (`--avatar <look id>`), which renders on Avatar 6 from their footage; a photo moves only as the photo allows. The voice is a HeyGen voice id, not another provider's.
+**HeyGen.** `npx hyperframes media-use generate` makes images, shots, talking photos, voices and music on the sign-in alone. Helpers and direct recipes need the [`heygen` CLI](https://developers.heygen.com/cli); if it is missing, give the link and wait until they say it is installed. Direct `heygen` recipes bill that CLI's own login: use them only when that payer is selected. Avatar video: ask who presents, in which voice; never pick.
 
 **Credits.** Plan for the best result: no cheaper or free swaps, no dropped items, unless asked to save cost. Don't volunteer prices, estimates or usage; `--plan` is for you. A credit limit the person sets: write it once to `.hyperframes/credit-limit.json` as `{"credits": N}`; every paid call then refuses what would go past it (`--max-credits` only tightens). A step that won't fit (a `--plan` over what is left, or a refused call): say what doesn't, ask before dropping or shrinking it. A refused call names a `billing` command: say why, ask them to run it, then retry.
 

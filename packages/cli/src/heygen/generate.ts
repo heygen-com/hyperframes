@@ -163,7 +163,6 @@ interface Route extends JobRoute {
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
 const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
-/** Engines for a HeyGen avatar look: Avatar 6 (default), its turbo tier, or the older Avatar IV. */
 const AVATAR_MODELS = ["heygen-avatar-6", "heygen-avatar-6-turbo", "avatar_iv"] as const;
 type AvatarModel = (typeof AVATAR_MODELS)[number];
 const AVATAR_6_DEFAULT: AvatarModel = "heygen-avatar-6";
@@ -171,7 +170,6 @@ const isAvatar6 = (model: AvatarModel): boolean => model !== "avatar_iv";
 const isAvatarModel = (model: string): model is AvatarModel =>
   AVATAR_MODELS.some((m) => m === model);
 
-/** The engine an avatar video renders on. A look defaults to Avatar 6; a photo only renders on Avatar IV here. */
 export function avatarModel(r: Pick<GenerateRequest, "avatar" | "model">): AvatarModel {
   const model = r.model;
   if (model !== undefined && !isAvatarModel(model))
@@ -188,7 +186,6 @@ export function avatarModel(r: Pick<GenerateRequest, "avatar" | "model">): Avata
   return "avatar_iv";
 }
 
-/** HeyGen answers 404 to an Avatar 6 render on an account it is not on for; say how to render it anyway. */
 export function avatar6Refusal(r: GenerateRequest, err: unknown): Fix | undefined {
   if (r.type !== "avatar" || !r.avatar || !isAvatar6(avatarModel(r))) return undefined;
   const status = err instanceof Fix && "status" in err ? err.status : undefined;
@@ -199,7 +196,6 @@ export function avatar6Refusal(r: GenerateRequest, err: unknown): Fix | undefine
   );
 }
 
-/** A look on Avatar 6 renders from its own footage and takes a motion prompt; Avatar IV keeps the server default. */
 function avatarLookBody(
   avatarId: string,
   model: AvatarModel,
