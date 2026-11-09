@@ -16,7 +16,8 @@ export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
   hyperframes: 7488,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
-  "hyperframes-cli": 7616,
+  // +256 B for the unattended pointer: a job with no TTY runs the wrapper or a pinned `npx --yes`.
+  "hyperframes-cli": 7872,
   "hyperframes-registry": 5312,
   "media-use": 5312,
   figma: 7360,
