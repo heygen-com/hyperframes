@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { adjustNumericToken, parseNumericToken } from "./propertyPanelHelpers";
 import { useInspectorGestureTransaction } from "./useInspectorGestureTransaction";
+import { outsideImeComposition } from "../../utils/imeComposition";
 
 function arrowDirection(key: string): 1 | -1 | null {
   if (key === "ArrowUp") return 1;
@@ -211,7 +212,7 @@ export function CommitField({
           if (wasDirty && liveCommit) onPreview?.(valueRef.current);
         }
       }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={outsideImeComposition(handleKeyDown)}
       title={parseNumericToken(value) ? "Scroll or use Arrow keys to adjust" : undefined}
       className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-hidden disabled:cursor-not-allowed disabled:text-neutral-600 ${
         align === "right" ? "text-right" : "text-left"

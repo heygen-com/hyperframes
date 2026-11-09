@@ -16,6 +16,7 @@ import {
   type FollowUpQuestion,
 } from "./feedbackTrigger";
 import { projectProvenance } from "./projectProvenance";
+import { isImeComposing } from "../../utils/imeComposition";
 
 /** A failed render is its own question; nothing is rotated in front of it. */
 const FAILURE_FOLLOW_UP: FollowUpQuestion = {
@@ -338,7 +339,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") submit();
+                  if (e.key === "Enter" && !isImeComposing(e)) submit();
                 }}
                 placeholder={followUp.placeholder}
                 aria-label={followUp.prompt}

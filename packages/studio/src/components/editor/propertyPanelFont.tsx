@@ -21,6 +21,7 @@ import {
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { runWhenInputIdle } from "./overlayFrameLoop";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import { isImeComposing } from "../../utils/imeComposition";
 
 /* ------------------------------------------------------------------ */
 /*  Font helper functions                                              */
@@ -422,6 +423,8 @@ export function FontFamilyField({
             setActiveIndex(-1);
           }}
           onKeyDown={(e) => {
+            // Arrows pick IME candidates and Enter confirms them while composing.
+            if (isImeComposing(e)) return;
             if (e.key === "Escape") {
               e.preventDefault();
               setOpen(false);
