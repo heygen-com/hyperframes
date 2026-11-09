@@ -50,9 +50,10 @@ function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
   }
   return now - m.at;
 }
-// The source time a video was last sent to while held on its tail: a browser lands a seek to the end short of
-// it, so asking again for the same time each tick would seek every frame.
-const heldTailSeekedTo = new WeakMap<HTMLMediaElement, number>();
+// Where a video held on its tail was last sent, and where the browser put it: a browser lands a seek to the end
+// short of it, so asking again for the same time each tick would seek every frame.
+const heldTailSeekedTo = new WeakMap<HTMLMediaElement, { target: number; landed: number }>();
+const HELD_TAIL_MOVED_SECONDS = 0.05;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -821,7 +822,11 @@ export function syncRuntimeMedia(params: {
         swallow("runtime.media.site1", err);
       }
       // Already sent to this tail time: the browser landed short of it, and asking again would seek every tick.
-      const tailSettled = isHeldVideoTail && heldTailSeekedTo.get(el) === relTime;
+      const heldTail = heldTailSeekedTo.get(el);
+      const tailSettled =
+        isHeldVideoTail &&
+        heldTail?.target === relTime &&
+        Math.abs(el.currentTime - heldTail.landed) < HELD_TAIL_MOVED_SECONDS;
       if (!tailSettled && (hardSync || strictSync || forceSync || (steerSeeks && !dipped))) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
@@ -841,7 +846,7 @@ export function syncRuntimeMedia(params: {
           } catch (err) {
             swallow("runtime.media.site2", err);
           }
-          if (isHeldVideoTail) heldTailSeekedTo.set(el, relTime);
+          if (isHeldVideoTail) heldTailSeekedTo.set(el, { target: relTime, landed: el.currentTime });
           else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
