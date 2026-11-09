@@ -23,6 +23,7 @@ import {
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
+  restoreHeldBackSrc,
   lengthIsAuthored,
   stopMediaDownload,
 } from "./preloadMedia";
@@ -176,7 +177,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
+import { isSrcHeldBack, stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -3230,6 +3231,7 @@ export function initSandboxRuntimeModular(): void {
     time: number,
     forLoop: boolean,
   ) => {
+    if (visible && isSrcHeldBack(el)) preloadMedia(el);
     // A hold for data is still playing: fetching other clips now would take bandwidth from the starved one.
     const playing = clock.isPlaying() || bufferingFor.length > 0;
     if (!(visible && playing)) armedFrom.delete(el);
@@ -6446,6 +6448,8 @@ export function initSandboxRuntimeModular(): void {
       // Decided BEFORE the transport is asked, because the two verdicts want
       // two different fallback chains — and only one of them is the chain
       // that existed before (#3458).
+      // The route reads the src, which a clip not yet near does not have; preload none keeps it from loading.
+      restoreHeldBackSrc(rawEl);
       const route = classifyWebAudioMediaRoute(rawEl);
       reportWebAudioMediaRoute(rawEl, route);
       // The cross-origin verdict's BEST outcome is decode, since a CDN that

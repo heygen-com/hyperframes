@@ -1,7 +1,8 @@
 import { parseStrictFiniteTimingNumber, readMediaStart } from "./playbackRate";
-import { recordOpenedAtInPoint } from "./proxySrc";
+import { holdBackSrc, takeHeldBackSrc } from "./proxySrc";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
+import { isMediaElement } from "./domRealm";
 import { defersMedia } from "./timedClipHide";
 import { inPlayerFrame } from "../studioPreviewMark";
 import { swallow } from "./diagnostics";
@@ -24,6 +25,7 @@ export function isRenderFrameVideo(
 
 export function preloadMedia(media: PreloadableMedia): void {
   if (isRenderFrameVideo(media)) return;
+  if (isMediaElement(media)) restoreHeldBackSrc(media);
   if (media.preload !== "auto") media.preload = "auto";
   // load() resets an in-flight video fetch, discarding its selected resource and buffered data.
   const videoAlreadyLoading = media.tagName === "VIDEO" && media.networkState === 2;
@@ -99,19 +101,24 @@ export function lengthIsAuthored(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
-/** WebKit reads about 40 MB from the head of the file for every fresh element however late its in-point
- * seek lands; a start fragment makes it open at the in-point, so many clips of one long file stop pulling
- * many times its size, and each is cheap enough to fetch ahead. */
-export function openAtInPoint(el: HTMLMediaElement): void {
+/** WebKit reads about 35 MB from the head of the file for every element that has a src, however late the clip
+ * is due, so a film of many cuts from one file moves many times its size and starves the clip on screen.
+ * The player keeps a clip's src off until it is near. */
+function holdBackUntilNear(el: HTMLMediaElement): void {
   const src = el.getAttribute("src");
-  const start = readMediaStart(el);
-  // Only the player: Studio copies and saves what it reads from the page, and must never see the fragment.
-  if (!inPlayerFrame(document) || !src || src.includes("#") || el.loop) return;
-  if (el.querySelector("source")) return;
-  if (!(start > 0)) return;
-  const written = `${src}#t=${start}`;
-  recordOpenedAtInPoint(el, src, written);
-  el.setAttribute("src", written);
+  if (!inPlayerFrame(document) || !src || el.querySelector("source")) return;
+  holdBackSrc(el, src);
+  el.removeAttribute("src");
+  // A load the parser started before this ran is only ended by a load of the now empty element.
+  el.load();
+}
+
+/** Puts a held-back src on its element; true when there was one. The element loads only when preloaded. */
+export function restoreHeldBackSrc(el: HTMLMediaElement): boolean {
+  const src = takeHeldBackSrc(el);
+  if (src === null) return false;
+  el.setAttribute("src", src);
+  return true;
 }
 
 type DeferralWindow = Window & { __hfMediaDeferral?: MutationObserver };
@@ -127,8 +134,9 @@ export function deferMediaUntilDue(): void {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
-    openAtInPoint(media);
-    if (startInFilm(el) > 0) media.preload = "none";
+    if (startInFilm(el) <= 0) return;
+    media.preload = "none";
+    holdBackUntilNear(media);
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;

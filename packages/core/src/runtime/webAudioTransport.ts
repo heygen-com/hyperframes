@@ -210,14 +210,11 @@ function isBufferSource(
   return source.sourceKind === "buffer";
 }
 
-// The fragment narrowing a clip's span is not part of the file: every clip of it shares one decode.
 const decodeKey = (el: HTMLMediaElement): string | null => {
   const src = el.currentSrc || el.getAttribute("src");
   if (!src) return null;
   try {
-    const url = new URL(assetUrl(src));
-    url.hash = "";
-    return url.href;
+    return assetUrl(src);
   } catch {
     return src;
   }

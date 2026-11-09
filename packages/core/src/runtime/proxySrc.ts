@@ -1,21 +1,27 @@
 /** Media elements swapped to their proxy, each with the src attribute it had before the swap. */
 export const swappedElements = new WeakMap<Element, string | null>();
 
-/** Media elements the runtime opened at their in-point: the src the author wrote and the one written in its place. */
-const openedAtInPoint = new WeakMap<Element, { authored: string; written: string }>();
+/** Media elements whose src is held back until the clip is near, each with the src the author wrote. */
+const heldBackSrc = new WeakMap<Element, string>();
 
-export function recordOpenedAtInPoint(el: Element, authored: string, written: string): void {
-  openedAtInPoint.set(el, { authored, written });
+export function holdBackSrc(el: Element, src: string): void {
+  heldBackSrc.set(el, src);
 }
 
-/** True while the src is still the one the runtime wrote: a script or binding that sets another ends it. */
-export function isOpenedAtInPoint(el: Element): boolean {
-  return openedAtInPoint.get(el)?.written === el.getAttribute("src");
+export function isSrcHeldBack(el: Element): boolean {
+  return heldBackSrc.has(el);
+}
+
+/** The held-back src, forgotten: the caller puts it back on the element. */
+export function takeHeldBackSrc(el: Element): string | null {
+  const src = heldBackSrc.get(el) ?? null;
+  heldBackSrc.delete(el);
+  return src;
 }
 
 export function unproxiedSrc(el: Element): string | null {
   if (swappedElements.has(el)) return swappedElements.get(el) ?? null;
-  return isOpenedAtInPoint(el) ? openedAtInPoint.get(el)!.authored : el.getAttribute("src");
+  return heldBackSrc.get(el) ?? el.getAttribute("src");
 }
 
 /** Videos showing a still of their last frame as poster across a copy swap: the poster they had before, and when. */
