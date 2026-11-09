@@ -16,7 +16,7 @@ import {
   seedProjectAuthoringSkill,
 } from "../../utils/projectConfig.js";
 import { probeReport } from "../measure/probe.js";
-import { trackSkillRunByCommand } from "../../telemetry/events.js";
+import { trackSkillCommandRan } from "../../telemetry/events.js";
 
 export const examples: Example[] = [
   [
@@ -118,7 +118,6 @@ export default defineCommand({
     json: jsonArg,
   },
   async run({ args }) {
-    trackSkillRunByCommand(SKILL);
     await runMeasure(async () => {
       const probe = probeReport(String(args.video));
       const dir = args.dir === undefined ? undefined : String(args.dir);
@@ -127,6 +126,12 @@ export default defineCommand({
         resumeSessionId: readProjectConfig(projectDir)?.reverseSessionId,
       });
       const savedTo = saveRun(started, dir);
+      trackSkillCommandRan({
+        skill: SKILL,
+        command: "reverse start",
+        signedIn: started.recorded || started.reason !== "not_signed_in",
+        sessionId: started.recorded ? started.session.sessionId : undefined,
+      });
       const refused = started.recorded
         ? await refusalWhenServerBlocksFree(started.session)
         : undefined;

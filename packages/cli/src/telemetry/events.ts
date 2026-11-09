@@ -1027,8 +1027,18 @@ export function trackReverseStartUnrecorded(props: {
   trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
 }
 
-export function trackSkillRunByCommand(skill: string): void {
-  trackEvent("skill_invoked", { authoring_skill: skill, source: "command" });
+export function trackSkillCommandRan(props: {
+  skill: string;
+  command: string;
+  signedIn?: boolean;
+  sessionId?: string;
+}): void {
+  trackEvent("skill_command_ran", {
+    authoring_skill: props.skill,
+    command: props.command,
+    signed_in: props.signedIn,
+    session_id: props.sessionId,
+  });
 }
 
 // `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.

@@ -7,6 +7,7 @@ const shouldTrack = vi.fn(() => true);
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
   flush: () => flush(),
+  flushSync: () => undefined,
   shouldTrack: () => shouldTrack(),
 }));
 
@@ -50,8 +51,40 @@ const {
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
+  trackSkillCommandRan,
   identifyUser,
 } = await import("./events.js");
+const { default: beaconCommand } = await import("../commands/events.js");
+
+describe("a skill run seen by its beacon and by its command", () => {
+  it("leaves skill_invoked one observation: the command and its retry go to skill_command_ran", async () => {
+    trackEvent.mockClear();
+    await beaconCommand.run?.({
+      args: { _: [], skill: "reverse-any-video", event: "skill_invoked" },
+      rawArgs: [],
+      cmd: beaconCommand,
+    } as never);
+    trackSkillCommandRan({ skill: "reverse-any-video", command: "reverse start", signedIn: false });
+    trackSkillCommandRan({
+      skill: "reverse-any-video",
+      command: "reverse start",
+      signedIn: true,
+      sessionId: "rvs_1",
+    });
+    const names = trackEvent.mock.calls.map((call) => call[0]);
+    expect(names.filter((n) => n === "skill_invoked")).toHaveLength(1);
+    expect(trackEvent).toHaveBeenCalledWith("skill_invoked", {
+      authoring_skill: "reverse-any-video",
+    });
+    expect(names.filter((n) => n === "skill_command_ran")).toHaveLength(2);
+    expect(trackEvent).toHaveBeenLastCalledWith("skill_command_ran", {
+      authoring_skill: "reverse-any-video",
+      command: "reverse start",
+      signed_in: true,
+      session_id: "rvs_1",
+    });
+  });
+});
 
 describe("command telemetry events", () => {
   beforeEach(() => {

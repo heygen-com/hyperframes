@@ -50,7 +50,10 @@ export async function refreshSkillsCache(): Promise<void> {
 /** Cache a canonical skills check (at this CLI's tag) for the nudge and `_meta.skillsOutdated`. */
 export function recordSkillsCheck(result: SkillsCheckResult): void {
   // Only record a meaningful check when skills were actually found.
-  if (!result.location) return;
+  if (!result.location) {
+    forgetInstalledSkills();
+    return;
+  }
   // Fresh read: this runs in a background child, beside the command's own config writes.
   const config = readConfigFresh();
   config.lastSkillsCheck = new Date().toISOString();
@@ -88,6 +91,14 @@ export function recordSkillsCheck(result: SkillsCheckResult): void {
  * Best-effort: a config write failure must never fail the skills command
  * that just succeeded.
  */
+function forgetInstalledSkills(): void {
+  const config = readConfigFresh();
+  if (!config.skillsInstalled && !config.skillsOutdated) return;
+  delete config.skillsInstalled;
+  delete config.skillsOutdated;
+  writeConfig(config);
+}
+
 export function invalidateSkillsCache(): void {
   try {
     // Fresh read narrows the lost-update window against a concurrently

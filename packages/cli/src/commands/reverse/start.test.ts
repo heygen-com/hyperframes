@@ -11,7 +11,7 @@ const server = vi.hoisted(() => ({
   resumed: [] as (string | undefined)[],
 }));
 const probe = vi.hoisted(() => ({ fail: false }));
-const skillRuns = vi.hoisted(() => [] as string[]);
+const commandRuns = vi.hoisted(() => [] as Record<string, unknown>[]);
 
 vi.mock("../../heygen/plan.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../heygen/plan.js")>()),
@@ -27,7 +27,7 @@ vi.mock("../../heygen/reverse.js", async (importOriginal) => ({
 }));
 vi.mock("../../telemetry/events.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../telemetry/events.js")>()),
-  trackSkillRunByCommand: (skill: string) => void skillRuns.push(skill),
+  trackSkillCommandRan: (run: Record<string, unknown>) => void commandRuns.push(run),
 }));
 vi.mock("../measure/probe.js", () => ({
   probeReport: (video: string) => {
@@ -60,7 +60,7 @@ beforeEach(() => {
   server.answer = { recorded: false, reason: "not_signed_in" };
   server.resumed = [];
   probe.fail = false;
-  skillRuns.length = 0;
+  commandRuns.length = 0;
 });
 
 afterEach(() => {
@@ -267,10 +267,25 @@ describe("reverse start", () => {
     expect(output().reverse).not.toHaveProperty("next");
   });
 
-  it("reports the skill's run itself, whatever the agent does with the beacon", async () => {
+  it("reports a signed-out run, then the signed-in retry with the session that keys it", async () => {
+    await run();
     server.answer = recorded();
     await run();
-    expect(skillRuns).toEqual(["reverse-any-video"]);
+    expect(commandRuns).toEqual([
+      {
+        skill: "reverse-any-video",
+        command: "reverse start",
+        signedIn: false,
+        sessionId: undefined,
+      },
+      { skill: "reverse-any-video", command: "reverse start", signedIn: true, sessionId: SESSION },
+    ]);
+  });
+
+  it("reports no run for a video it cannot probe", async () => {
+    probe.fail = true;
+    await expect(run()).rejects.toThrow(CliRuntimeError);
+    expect(commandRuns).toEqual([]);
   });
 
   it("fails like measure probe when the video cannot be probed, before asking the server", async () => {

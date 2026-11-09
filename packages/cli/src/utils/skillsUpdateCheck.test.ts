@@ -178,6 +178,31 @@ describe("skillsUpdateCheck", () => {
     await refreshSkillsCache();
   });
 
+  it("forgets the installed skill names once a check finds no install (check, uninstall, check)", async () => {
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    mockCheckSkills.mockResolvedValue({
+      location: "/home/user/.claude/skills",
+      updateAvailable: true,
+      summary: { current: 1, outdated: 1, missing: 0, coreMissing: 0 },
+      skills: [
+        { name: "hyperframes", status: "current" },
+        { name: "media-use", status: "outdated" },
+      ],
+    });
+    await refreshSkillsCache();
+    expect(config).toMatchObject({ skillsInstalled: ["hyperframes", "media-use"] });
+
+    mockCheckSkills.mockResolvedValue({
+      location: null,
+      updateAvailable: false,
+      summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0 },
+      skills: [],
+    });
+    await refreshSkillsCache();
+    expect(config).not.toHaveProperty("skillsInstalled");
+    expect(config).not.toHaveProperty("skillsOutdated");
+  });
+
   /** Drive printSkillsUpdateNotice from the given cache shape; returns what it wrote (if anything). */
   async function noticeTextFor(cache: FakeConfig, project = "/projects/a"): Promise<string | null> {
     config = cache;

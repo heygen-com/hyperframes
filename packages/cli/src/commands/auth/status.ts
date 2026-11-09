@@ -147,13 +147,13 @@ function handleUnconfigured(asJson: boolean): never {
     : buildUnconfiguredLines(ctx, engines).join("\n");
   console.log(output);
   // Exit 1 is the answer skills read; the cause keeps "not signed in" apart from a failure in cli_error.
-  failCommand(1, new NotSignedIn());
+  failCommand(1, new AuthStatusUnavailable("not_signed_in"));
 }
 
-class NotSignedIn extends Error {
-  constructor() {
-    super("not signed in");
-    this.name = "NotSignedIn";
+class AuthStatusUnavailable extends Error {
+  constructor(code: string) {
+    super(code);
+    this.name = "AuthStatusUnavailable";
   }
 }
 
@@ -168,7 +168,7 @@ function handleResolveError(err: unknown, asJson: boolean): never {
     console.error(c.error(err.message));
     if (err.hint) console.error(c.dim(err.hint));
   }
-  failCommand(1, err);
+  failCommand(1, new AuthStatusUnavailable(err.code));
 }
 
 /** An offline refresh says so at once rather than waiting out a second request with the stale token. */

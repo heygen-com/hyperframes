@@ -36,13 +36,13 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFile };
 });
 
-const skillRuns = vi.hoisted(() => [] as string[]);
+const commandRuns = vi.hoisted(() => [] as { skill: string; command: string }[]);
 vi.mock("../telemetry/events.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../telemetry/events.js")>()),
-  trackSkillRunByCommand: (skill: string) => void skillRuns.push(skill),
+  trackSkillCommandRan: (run: { skill: string; command: string }) => void commandRuns.push(run),
 }));
 
-import { noteStyleSamplingRun, pullTemplate, PullRefused, TEMPLATES } from "./templates.js";
+import { pullTemplate, PullRefused, tagStyleSamplingProject, TEMPLATES } from "./templates.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -99,12 +99,21 @@ describe("pullTemplate", () => {
     );
   });
 
-  it("leaves a template it pulled before alone and spends no call", async () => {
+  it("leaves a template it pulled before alone, spends no call and counts no second run", async () => {
+    commandRuns.length = 0;
     const fetchMock = serve({});
     await pullTemplate("sample", dir);
     fetchMock.mockClear();
     await pullTemplate("sample", dir);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(commandRuns).toEqual([{ skill: "style-sampling", command: "templates pull" }]);
+  });
+
+  it("counts no run when the pull is refused", async () => {
+    commandRuns.length = 0;
+    serve({ status: 402 });
+    await expect(pullTemplate("sample", dir)).rejects.toThrow(PullRefused);
+    expect(commandRuns).toEqual([]);
   });
 
   it("fills an empty folder where the template goes", async () => {
@@ -283,15 +292,12 @@ describe("pullTemplate", () => {
   });
 });
 
-describe("noteStyleSamplingRun", () => {
-  beforeEach(() => void (skillRuns.length = 0));
-
-  it("reports the run and marks the project the episode is built in", () => {
+describe("tagStyleSamplingProject", () => {
+  it("marks the project the episode is built in", () => {
     const pulled = join(dir, "templates", "sample");
     mkdirSync(pulled, { recursive: true });
     writeFileSync(join(dir, "hyperframes.json"), "{}\n");
-    noteStyleSamplingRun(dir, pulled);
-    expect(skillRuns).toEqual(["style-sampling"]);
+    tagStyleSamplingProject(dir, pulled);
     expect(JSON.parse(readFileSync(join(dir, "hyperframes.json"), "utf8"))).toMatchObject({
       authoringSkill: "style-sampling",
     });
@@ -300,8 +306,7 @@ describe("noteStyleSamplingRun", () => {
   it("makes no project where there is none", () => {
     const pulled = join(dir, "templates", "sample");
     mkdirSync(pulled, { recursive: true });
-    noteStyleSamplingRun(dir, pulled);
-    expect(skillRuns).toEqual(["style-sampling"]);
+    tagStyleSamplingProject(dir, pulled);
     expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
     expect(existsSync(join(pulled, "hyperframes.json"))).toBe(false);
   });
