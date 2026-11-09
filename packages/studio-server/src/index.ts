@@ -78,3 +78,12 @@ export {
   createStudioMotionRenderBodyScript,
   type StudioMotionRenderScriptOptions,
 } from "./helpers/studioMotionRenderScript.js";
+export type {
+  LocalShareAudience,
+  LocalShareSpace,
+  LocalShareState,
+  LocalShareJob,
+  LocalShareSnapshot,
+  LocalShareAction,
+  LocalShareInteraction,
+} from "./localShare.js";

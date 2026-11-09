@@ -30,8 +30,9 @@ export interface ShareAction {
   waitSeconds?: number;
   videoOnly?: boolean;
 }
-function linkState(share: ReviewShare | null, ready: boolean): string {
+function linkState(share: ReviewShare | null, ready: boolean, failed: boolean): string {
   if (!share) return "not_shared";
+  if (failed) return "failed";
   if (!share.url) return "link_off";
   return ready ? "ready" : "processing";
 }
@@ -60,15 +61,16 @@ async function readStatus(
   const pending = await pendingReviewExport(dir);
   const activeUrl = share?.url ?? null;
   const processing = isProcessing(pending, share);
-  const ready = Boolean(activeUrl && latest && !processing);
+  const failed = hasFailedVersion(version);
+  const ready = Boolean(activeUrl && latest && !processing && !failed);
   return {
     share,
     version,
     pending,
-    state: linkState(share, ready),
+    state: linkState(share, ready, failed),
     ready,
     source: uncheckedSource(),
-    ...statusLinks(activeUrl, ready, processing, project),
+    ...statusLinks(activeUrl, ready, processing || failed, project),
   };
 }
 async function readProject(share: ReviewShare | null, client: ReviewClient) {
@@ -158,10 +160,10 @@ function assertResumeSource(current: ShareState, input: ShareAction) {
 export function createShareService(
   projectPath: string,
   progress: (value: ReviewExportProgress | null) => void = () => {},
-  options: { surface?: ShareSurface } = {},
+  options: { surface?: ShareSurface; pinIdentity?: boolean } = {},
 ) {
   const dir = bindCliShareProject(projectPath);
-  const auth = createShareAccess();
+  const auth = createShareAccess(options.pinIdentity);
   const client = reviewClient(auth);
   const status = async (expectedProjectId?: string) => {
     await auth.access();
@@ -258,6 +260,7 @@ export function createShareService(
     return upload(input, target.projectId, sources, attempt);
   };
   return {
+    checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
     status,
     run: (input: ShareAction) =>
       input.action === "status" || input.action === "manage"
@@ -284,3 +287,7 @@ export function createShareService(
 }
 export type ShareService = ReturnType<typeof createShareService>;
 export type ShareState = Awaited<ReturnType<typeof readStatus>>;
+
+function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): boolean {
+  return Boolean(version.failure && !version.held);
+}

@@ -388,3 +388,24 @@ it("link reactivation cannot bypass the first-share rollout gate", async () => {
   });
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
+it.each([null, "previous-version"])(
+  "keeps a terminal failure separate from ready version %s",
+  async (latest) => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.project.mockResolvedValue({ latest_ready_version_id: latest });
+    mocks.version.mockResolvedValue({
+      last: null,
+      source: "ready",
+      failure: "This video can't be shared.",
+    });
+    const result = await createShareService("/project").run({ action: "status" });
+    expect(result).toMatchObject({
+      state: "failed",
+      ready: false,
+      url: null,
+      previousUrl: latest ? shared.url : null,
+    });
+    expect(mocks.add).not.toHaveBeenCalled();
+  },
+);

@@ -30,7 +30,7 @@ export function shareError(error: unknown): { code: string; message: string } {
     };
   if (error instanceof ReviewFailed)
     return {
-      code: error.reason || "share_failed",
+      code: error.status === 401 ? "login_expired" : error.reason || "share_failed",
       message: HINTS[error.reason] ?? reviewSentence(error),
     };
   return {

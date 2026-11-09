@@ -104,6 +104,13 @@ async function main() {
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
 
+  // The bundled sharing modules resolve their policy and Unicode tables beside
+  // the CLI chunks, rather than from the share package's source directory.
+  copyDir(
+    join(REPO_ROOT, "packages", "share", "src", "sources", "contract"),
+    join(DIST, "contract"),
+  );
+
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
   // Only the SPA studioServer.ts serves (index.html, /assets, /icons, /favicon.svg);
