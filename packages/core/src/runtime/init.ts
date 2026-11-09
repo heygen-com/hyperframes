@@ -3120,7 +3120,7 @@ export function initSandboxRuntimeModular(): void {
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
-  const PREFETCH_SLOTS = 3;
+  const PREFETCH_SLOTS = 8;
   const prefetching = new Set<HTMLMediaElement>();
   type WaitingPrefetch = { element: HTMLMediaElement; start: number };
   const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
