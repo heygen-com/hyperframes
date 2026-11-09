@@ -35,9 +35,15 @@ describe("fileHint", () => {
     );
   });
 
-  it("stays quiet at the root, for a missing file, and for a group with no commands", () => {
+  it("names them for a path that does not exist yet too", () => {
+    expect(fileHint("clips/no-such-file.mp4", ["measure"], ops)).toBe(
+      "'clips/no-such-file.mp4' looks like a file; name a command first: 'hyperframes measure <probe|cuts> clips/no-such-file.mp4'.",
+    );
+  });
+
+  it("stays quiet at the root, for a plain word, and for a group with no commands", () => {
     expect(fileHint("package.json", [], ops)).toBeUndefined();
-    expect(fileHint("no-such-file.mp4", ["measure"], ops)).toBeUndefined();
+    expect(fileHint("prbe", ["measure"], ops)).toBeUndefined();
     expect(fileHint("package.json", ["measure"], [])).toBeUndefined();
   });
 });

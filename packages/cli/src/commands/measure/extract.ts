@@ -152,7 +152,7 @@ export default defineCommand({
     video: videoArg,
     out: {
       type: "string",
-      alias: ["output", "output-dir"],
+      alias: ["o", "output", "output-dir"],
       description: "The file to write: .png/.jpg for a still, .mp4 for a clip",
       required: true,
     },
