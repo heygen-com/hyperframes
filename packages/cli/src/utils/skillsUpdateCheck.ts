@@ -60,6 +60,13 @@ export function recordSkillsCheck(result: SkillsCheckResult): void {
   // Core-missing only: skills that install on demand (workflows not yet
   // triggered on this machine) are not "missing" worth nagging about.
   config.skillsMissingCount = result.summary.coreMissing;
+  // Which skills, for telemetry: an on-demand skill that never triggers may simply not be there.
+  const installed = result.skills.filter((s) => s.status !== "missing");
+  config.skillsInstalled = installed.map((s) => s.name).sort();
+  config.skillsOutdated = installed
+    .filter((s) => s.status === "outdated")
+    .map((s) => s.name)
+    .sort();
   writeConfig(config);
 }
 
@@ -91,6 +98,8 @@ export function invalidateSkillsCache(): void {
     delete config.skillsUpdateAvailable;
     delete config.skillsOutdatedCount;
     delete config.skillsMissingCount;
+    delete config.skillsInstalled;
+    delete config.skillsOutdated;
     writeConfig(config);
   } catch {
     // best-effort — never break the command that just reconciled skills

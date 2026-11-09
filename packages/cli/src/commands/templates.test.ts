@@ -36,7 +36,13 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFile };
 });
 
-import { pullTemplate, PullRefused, TEMPLATES } from "./templates.js";
+const skillRuns = vi.hoisted(() => [] as string[]);
+vi.mock("../telemetry/events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../telemetry/events.js")>()),
+  trackSkillRunByCommand: (skill: string) => void skillRuns.push(skill),
+}));
+
+import { noteStyleSamplingRun, pullTemplate, PullRefused, TEMPLATES } from "./templates.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -274,5 +280,29 @@ describe("pullTemplate", () => {
 
   it("names the templates when the slug is unknown", async () => {
     await expect(pullTemplate("nope", dir)).rejects.toThrow("sample");
+  });
+});
+
+describe("noteStyleSamplingRun", () => {
+  beforeEach(() => void (skillRuns.length = 0));
+
+  it("reports the run and marks the project the episode is built in", () => {
+    const pulled = join(dir, "templates", "sample");
+    mkdirSync(pulled, { recursive: true });
+    writeFileSync(join(dir, "hyperframes.json"), "{}\n");
+    noteStyleSamplingRun(dir, pulled);
+    expect(skillRuns).toEqual(["style-sampling"]);
+    expect(JSON.parse(readFileSync(join(dir, "hyperframes.json"), "utf8"))).toMatchObject({
+      authoringSkill: "style-sampling",
+    });
+  });
+
+  it("makes no project where there is none", () => {
+    const pulled = join(dir, "templates", "sample");
+    mkdirSync(pulled, { recursive: true });
+    noteStyleSamplingRun(dir, pulled);
+    expect(skillRuns).toEqual(["style-sampling"]);
+    expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
+    expect(existsSync(join(pulled, "hyperframes.json"))).toBe(false);
   });
 });

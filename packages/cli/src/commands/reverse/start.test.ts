@@ -11,6 +11,7 @@ const server = vi.hoisted(() => ({
   resumed: [] as (string | undefined)[],
 }));
 const probe = vi.hoisted(() => ({ fail: false }));
+const skillRuns = vi.hoisted(() => [] as string[]);
 
 vi.mock("../../heygen/plan.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../heygen/plan.js")>()),
@@ -23,6 +24,10 @@ vi.mock("../../heygen/reverse.js", async (importOriginal) => ({
     server.resumed.push(opts.resumeSessionId);
     return server.answer;
   },
+}));
+vi.mock("../../telemetry/events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../telemetry/events.js")>()),
+  trackSkillRunByCommand: (skill: string) => void skillRuns.push(skill),
 }));
 vi.mock("../measure/probe.js", () => ({
   probeReport: (video: string) => {
@@ -55,6 +60,7 @@ beforeEach(() => {
   server.answer = { recorded: false, reason: "not_signed_in" };
   server.resumed = [];
   probe.fail = false;
+  skillRuns.length = 0;
 });
 
 afterEach(() => {
@@ -162,7 +168,13 @@ describe("reverse start", () => {
     [
       "not signed in",
       { recorded: false, reason: "not_signed_in" },
-      { signed_in: false, plan: null, recorded: false },
+      {
+        signed_in: false,
+        plan: null,
+        recorded: false,
+        login_command: "npx hyperframes auth login",
+        next: expect.stringContaining("run `npx hyperframes auth login` now"),
+      },
     ],
     [
       "the server cannot answer",
@@ -246,6 +258,19 @@ describe("reverse start", () => {
     server.answer = answer;
     await run();
     expect(output()).toMatchObject({ ok: true, width: 1080, reverse: { recorded: true } });
+  });
+
+  it("names no sign-in step to an account that is signed in", async () => {
+    server.answer = { recorded: false, reason: "unavailable", plan: "free" };
+    await run();
+    expect(output().reverse).not.toHaveProperty("login_command");
+    expect(output().reverse).not.toHaveProperty("next");
+  });
+
+  it("reports the skill's run itself, whatever the agent does with the beacon", async () => {
+    server.answer = recorded();
+    await run();
+    expect(skillRuns).toEqual(["reverse-any-video"]);
   });
 
   it("fails like measure probe when the video cannot be probed, before asking the server", async () => {

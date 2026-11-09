@@ -21,8 +21,17 @@ vi.mock("./system.js", async () => ({
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
 // deterministic and the test never touches disk.
+const cachedSkills = vi.hoisted(() => ({
+  installed: undefined as string[] | undefined,
+  outdated: undefined as string[] | undefined,
+}));
 vi.mock("./config.js", () => ({
-  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+  readConfig: () => ({
+    anonymousId: "anon-test-123",
+    telemetryEnabled: true,
+    skillsInstalled: cachedSkills.installed,
+    skillsOutdated: cachedSkills.outdated,
+  }),
 }));
 
 const {
@@ -56,6 +65,21 @@ describe("command telemetry events", () => {
       command: "check",
       run_id: "run-123",
     });
+  });
+
+  it("says which HyperFrames skills the last check found, once one has run", () => {
+    cachedSkills.installed = ["hyperframes", "media-use", "reverse-any-video"];
+    cachedSkills.outdated = ["media-use"];
+    trackCommand("render");
+    expect(trackEvent).toHaveBeenLastCalledWith("cli_command", {
+      command: "render",
+      skills_installed: "hyperframes,media-use,reverse-any-video",
+      skills_outdated: "media-use",
+    });
+    cachedSkills.installed = undefined;
+    cachedSkills.outdated = undefined;
+    trackCommand("render");
+    expect(trackEvent.mock.lastCall?.[1]).not.toHaveProperty("skills_installed");
   });
 
   it("omits run_id from cli_command when no run ID is provided", () => {

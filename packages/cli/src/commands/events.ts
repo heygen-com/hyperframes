@@ -48,7 +48,7 @@ export default defineCommand({
       if (!SKILL_SLUG.test(skill)) return; // missing / non-slug → no-op
 
       const event = ALLOWED_EVENTS.includes(args.event) ? args.event : "skill_invoked";
-      const props: Record<string, string> = { authoring_skill: skill };
+      const props: Record<string, string> = { authoring_skill: skill, source: "beacon" };
       if (args.outcome && ALLOWED_OUTCOMES.includes(args.outcome)) {
         props["outcome"] = args.outcome;
       }

@@ -25,6 +25,8 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import { trackSkillRunByCommand } from "../telemetry/events.js";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -238,6 +240,20 @@ function alreadyPulled(dest: string, pack: TemplatePack): boolean {
   );
 }
 
+/**
+ * A pull is a style-sampling run: report it (the skill's beacon depends on the agent), and mark the project
+ * the episode is built in so its renders count for the skill. Only a folder that is already a project is
+ * marked: a pull never makes one.
+ */
+export function noteStyleSamplingRun(dir: string, pulled: string): void {
+  trackSkillRunByCommand(STYLE_SAMPLING);
+  for (const folder of [dir, pulled]) {
+    if (existsSync(projectConfigPath(folder))) seedProjectAuthoringSkill(folder, STYLE_SAMPLING);
+  }
+}
+
+const STYLE_SAMPLING = "style-sampling";
+
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
 export default defineCommand({
   meta: {
@@ -264,6 +280,7 @@ export default defineCommand({
     }
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
+      noteStyleSamplingRun(args.dir ?? ".", path);
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
