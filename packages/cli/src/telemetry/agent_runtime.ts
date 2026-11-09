@@ -92,9 +92,9 @@ const VENDOR_RULES: VendorRule[] = [
     name: "bob",
     check: (env) => typeof env["BOBSHELL_CLI"] === "string",
   },
-  // Claude Code sets CLAUDE_CODE_CHILD_SESSION on what its tools spawn, and an
-  // inherited CLAUDE_CODE_ENTRYPOINT (older versions). Not CLAUDECODE: its IDE
-  // extensions also set that in the terminal a person types into.
+  // Claude Code sets CLAUDE_CODE_CHILD_SESSION on what its tools spawn, and
+  // CLAUDE_CODE_ENTRYPOINT on itself, which MCP servers inherit too. Not
+  // CLAUDECODE: its IDE extensions also set that in a terminal a person uses.
   // Source: https://code.claude.com/docs/en/env-vars
   {
     name: "claude_code",
@@ -327,10 +327,10 @@ const VENDOR_RULES: VendorRule[] = [
   // Warp Oz: OZ_RUN_ID wraps a Claude/Codex/Gemini run, so it follows them.
   // Source: https://github.com/warpdotdev/warp (crates/warp_cli/src/lib.rs)
   { name: "warp_oz", check: (env) => typeof env["OZ_RUN_ID"] === "string" },
-  // An app built on the Claude Agent SDK, running a command outside Claude
-  // Code's own shell tool (that path sets CLAUDECODE, caught above). The SDK
-  // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. After the
-  // agent rules, so a vendor that builds on the SDK and sets its own marker wins.
+  // An app built on the Claude Agent SDK, outside Claude Code's own shell tool
+  // (that path sets CLAUDE_CODE_CHILD_SESSION, caught above). The SDK always
+  // sets CLAUDE_AGENT_SDK_VERSION on what it spawns. After the agent rules, so
+  // a vendor that builds on the SDK and sets its own marker wins.
   // Source: https://github.com/anthropics/claude-agent-sdk-python (src/claude_agent_sdk/_internal/transport/subprocess_cli.py)
   {
     name: "claude_agent_sdk",
