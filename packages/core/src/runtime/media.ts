@@ -821,7 +821,6 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      // Already sent to this tail time: the browser landed short of it, and asking again would seek every tick.
       const heldTail = heldTailSeekedTo.get(el);
       // Only while playing: a paused pass (a seek, a render's prepare) always lands the frame it asks for.
       const tailSettled =
