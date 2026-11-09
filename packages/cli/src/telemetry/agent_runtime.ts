@@ -13,7 +13,9 @@ import { detectWSL } from "./platform.js";
 //   - well-known kernel strings (release(), /proc/version)
 //   - sandbox marker files (/.dockerenv etc.)
 //   - the *existence* of vendor environment variables — never the value
-//     (some are API keys).
+//     (some are API keys). The exceptions are self-identifying name or flag
+//     variables (TERM_PROGRAM, AI_AGENT, `=1` flags), which are only compared
+//     against fixed values and never emitted raw by detectAgentRuntime().
 //
 // Output is two opaque strings: sandbox_runtime ('gvisor' | 'docker' | ...)
 // and agent_runtime ('claude_code' | 'codex' | ...). Both null when unknown.
@@ -27,6 +29,7 @@ export type AgentRuntime =
   | "codex"
   | "cursor"
   | "copilot_agent"
+  | "copilot_cli"
   | "replit"
   | "hermes"
   | "openclaw"
@@ -36,6 +39,32 @@ export type AgentRuntime =
   | "cline"
   | "gemini_cli"
   | "crush"
+  | "kilo"
+  | "opencode"
+  | "qwen_code"
+  | "junie"
+  | "antigravity"
+  | "qoder"
+  | "kiro"
+  | "openhands"
+  | "workbuddy"
+  | "codebuddy"
+  | "trae"
+  | "pippit"
+  | "doubao"
+  | "aily"
+  | "grok"
+  | "kimi"
+  | "zcode"
+  | "swe_agent"
+  | "dsh"
+  | "claude_agent_sdk"
+  | "devin"
+  | "amp"
+  | "v0"
+  | "rovodev"
+  | "base44"
+  | "other_ai_agent"
   | null;
 
 interface VendorRule {
@@ -47,8 +76,8 @@ interface VendorRule {
 }
 
 // Ordering matters: the FIRST rule that matches wins. Put more specific rules
-// before more generic ones (e.g. copilot_agent before a hypothetical generic
-// 'github_actions' rule).
+// before more generic ones (e.g. kilo before opencode, whose OPENCODE=1 Kilo's
+// bash tool also sets), and the generic AI_AGENT fallback after all of them.
 const VENDOR_RULES: VendorRule[] = [
   // IBM Bob Shell — both shell execution paths stamp BOBSHELL_CLI=1 onto the
   // child environment: childProcessFallback's spawn env and executeWithPty's
@@ -89,46 +118,10 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor Agent marks its shell with CURSOR_AGENT; TERM_PROGRAM identifies
-  // the IDE terminal only. Keep this after Claude/Codex for nested agents.
+  // Cursor Agent marks its shell with CURSOR_AGENT. Keep this after
+  // Claude/Codex for nested agents.
   // Source: https://docs.cursor.com/en/agent/terminal
-  {
-    name: "cursor",
-    check: (env) => Boolean(env["CURSOR_AGENT"]) || env["TERM_PROGRAM"] === "cursor",
-    agentOnly: (env) => Boolean(env["CURSOR_AGENT"]),
-  },
-  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
-  // Attested across many independent detectors (nx
-  // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
-  // git-hooks). Compared case-INsensitively (unlike the exact Cursor rule
-  // above) because Windsurf sources disagree on casing ("windsurf" vs
-  // "Windsurf"); Cursor's do not, so it stays exact. Like Cursor this marks the
-  // editor's integrated terminal, not specifically that the Cascade agent is
-  // driving; under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
-  {
-    name: "windsurf",
-    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
-    agentOnly: () => false,
-  },
-  // GitHub Copilot Coding Agent — runs inside GitHub Actions and the
-  // workflow injects an additional marker to distinguish from generic CI.
-  // Not yet verified from a public-source citation in this audit; the var
-  // names below match GitHub Copilot Coding Agent documentation but
-  // should be confirmed before relying on attribution.
-  {
-    name: "copilot_agent",
-    check: (env) =>
-      env["GITHUB_ACTIONS"] === "true" &&
-      (typeof env["COPILOT_AGENT_ID"] === "string" || env["RUNNER_NAME"] === "Copilot"),
-  },
-  // Replit — REPL_ID and REPLIT_USER are long-documented environment
-  // variables exposed inside every Replit workspace.
-  // Source: https://docs.replit.com/replit-workspace/configuring-the-environment
-  {
-    name: "replit",
-    check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
-    agentOnly: () => false,
-  },
+  { name: "cursor", check: (env) => Boolean(env["CURSOR_AGENT"]) },
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
   // at module load, so the marker propagates via os.environ to every
@@ -194,19 +187,212 @@ const VENDOR_RULES: VendorRule[] = [
     name: "crush",
     check: (env) => typeof env["CRUSH"] === "string",
   },
+  // Kilo Code CLI: bootstrap sets KILO=1 and KILOCODE_VERSION on its own
+  // process.env, so every shell it spawns inherits both. Must stay ahead of
+  // opencode: Kilo is an opencode fork and its bash tool also sets OPENCODE=1.
+  // Source: https://github.com/Kilo-Org/kilocode (packages/opencode/src/kilocode/cli/setup.ts)
+  {
+    name: "kilo",
+    check: (env) => env["KILO"] === "1" || typeof env["KILOCODE_VERSION"] === "string",
+  },
+  // opencode: the bash tool sets OPENCODE=1 and OPENCODE_SESSION_ID (plus the
+  // generic AGENT=1 and AI_AGENT=opencode) on every command it runs.
+  // Source: https://github.com/anomalyco/opencode (packages/core/src/tool/plugin/shell.ts)
+  {
+    name: "opencode",
+    check: (env) => env["OPENCODE"] === "1" || typeof env["OPENCODE_SESSION_ID"] === "string",
+  },
+  // Qwen Code: the shell execution service sets QWEN_CODE=1 on the child env
+  // of both the child_process and PTY spawn paths.
+  // Source: https://github.com/QwenLM/qwen-code (packages/core/src/services/shellExecutionService.ts)
+  {
+    name: "qwen_code",
+    check: (env) => env["QWEN_CODE"] === "1",
+  },
+  // JetBrains Junie CLI: the launcher shim exports JUNIE_SHIM_PATH before it
+  // execs the agent, so every process the agent spawns inherits it.
+  // Source: https://github.com/JetBrains/junie (templates/junie.shim.sh)
+  {
+    name: "junie",
+    check: (env) => typeof env["JUNIE_SHIM_PATH"] === "string",
+  },
+  // Google Antigravity: sets ANTIGRAVITY_AGENT on the commands its agent runs;
+  // Google's own firebase-tools keys its agent detection on this marker.
+  // Source: https://github.com/firebase/firebase-tools/pull/10457 (src/env.ts)
+  {
+    name: "antigravity",
+    check: (env) => Boolean(env["ANTIGRAVITY_AGENT"]),
+  },
+  // Qoder: sets a non-empty QODER_AGENT on the terminals its agent runs.
+  // Source: https://docs.qoder.com/troubleshooting/terminal-execution-exceptions
+  {
+    name: "qoder",
+    check: (env) => Boolean(env["QODER_AGENT"]),
+  },
+  // Kiro: AGENT_DISPLAY_OUT / AGENT_CONTEXT_OUT are "only set when the agent is
+  // driving". TERM_PROGRAM=kiro is deliberately NOT used: Kiro sets it for a
+  // person's terminal too.
+  // Source: https://kiro.dev/docs/reference/built-in-tools
+  {
+    name: "kiro",
+    check: (env) => Boolean(env["AGENT_DISPLAY_OUT"]) || Boolean(env["AGENT_CONTEXT_OUT"]),
+  },
+  // Closed-source agents with no public marker. Each key below shows up in this
+  // CLI's own agent_env_hints on non-interactive runs, which is direct evidence
+  // that it is in the env of the shell the agent spawned. Only key presence is
+  // checked; several values are tokens and are never read. WorkBuddy is built
+  // on CodeBuddy and carries its keys too, so it goes first.
+  // Source: agent_env_hints discovery telemetry (detectAgentHints below).
+  { name: "workbuddy", check: (env) => typeof env["WORKBUDDY_CLIENT_USER_AGENT"] === "string" },
+  {
+    name: "codebuddy",
+    check: (env) =>
+      typeof env["CODEBUDDY_SESSION_ID"] === "string" ||
+      typeof env["CODEBUDDY_AGENTOS_SESSION_ID"] === "string",
+  },
+  {
+    name: "trae",
+    check: (env) =>
+      typeof env["ICUBE_AI_AGENT_SHUTDOWN_TOKEN"] === "string" ||
+      typeof env["TRAE_REMOTE_AGENT_TOKEN"] === "string",
+  },
+  {
+    name: "pippit",
+    check: (env) =>
+      typeof env["AUTO_PIPPIT_THREAD_ID"] === "string" ||
+      typeof env["PIPPIT_OBS_AGENT_NAME"] === "string",
+  },
+  { name: "doubao", check: (env) => typeof env["DOUBAO_OFFICE_AGENT_NAME"] === "string" },
+  { name: "aily", check: (env) => typeof env["AILY_CLI_AGENT_DELIVER_BLOCKED"] === "string" },
+  { name: "grok", check: (env) => typeof env["GROK_SESSION_ID"] === "string" },
+  { name: "kimi", check: (env) => typeof env["KIMI_AGENT_CLIENT_ID"] === "string" },
+  { name: "zcode", check: (env) => typeof env["ZCODE_SESSION_ID"] === "string" },
+  { name: "swe_agent", check: (env) => typeof env["SWE_AGENT_ENV_FILE"] === "string" },
+  // DeepSeek harness (dsh): every model shell call, bash or pwsh, runs with
+  // DSH_SHELL=1. DSH_SESSION_ID is NOT used: dsh also sets it on the interactive
+  // terminal a person types into. HyperFrames Desktop runs dsh too; those runs
+  // also carry HYPERFRAMES_CLIENT, which tells the two apart.
+  // Source: https://github.com/deepseek-ai/deepseek-harness (packages/terminal/terminal-bash/src/index.ts,
+  // packages/api/terminal-controller/src/index.ts)
+  { name: "dsh", check: (env) => env["DSH_SHELL"] === "1" },
+  // GitHub Copilot CLI: shell commands and MCP servers receive
+  // COPILOT_AGENT_SESSION_ID, and its subprocesses carry COPILOT_CLI=1.
+  // Both Copilot rules sit after the other agents: their markers are inherited,
+  // so an agent Copilot starts must win. copilot_cli goes first because the CLI
+  // run from a VS Code agent terminal inherits that terminal's COPILOT_AGENT=1.
+  // Source: https://github.com/github/copilot-cli (changelog.md)
+  {
+    name: "copilot_cli",
+    check: (env) =>
+      env["COPILOT_CLI"] === "1" || typeof env["COPILOT_AGENT_SESSION_ID"] === "string",
+  },
+  // GitHub Copilot agent mode in VS Code: the agent's terminal tool sets
+  // AI_AGENT=github_copilot_<surface> and COPILOT_AGENT=1 on agent terminals
+  // only, never on a person's terminal.
+  // Source: https://github.com/microsoft/vscode (src/vs/platform/chat/common/aiAgentEnv.ts,
+  // src/vs/workbench/contrib/terminalContrib/chatAgentTools/browser/toolTerminalCreator.ts)
+  {
+    name: "copilot_agent",
+    check: (env) =>
+      env["COPILOT_AGENT"] === "1" || env["AI_AGENT"]?.startsWith("github_copilot_") === true,
+  },
+  // OpenHands: sanitized_env() defaults AI_AGENT=openhands on every command
+  // the agent runs (it keeps an inherited value, so an outer agent's name wins).
+  // Last of the vendor rules because AI_AGENT is the generic convention.
+  // Source: https://github.com/OpenHands/software-agent-sdk (openhands-sdk/openhands/sdk/utils/command.py)
+  {
+    name: "openhands",
+    check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
+  },
+  // An app built on the Claude Agent SDK, running a command outside Claude
+  // Code's own shell tool (that path sets CLAUDECODE, caught above). The SDK
+  // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. After the
+  // agent rules, so a vendor that builds on the SDK and sets its own marker wins.
+  // Source: https://github.com/anthropics/claude-agent-sdk-python (src/claude_agent_sdk/_internal/transport/subprocess_cli.py)
+  {
+    name: "claude_agent_sdk",
+    check: (env) => typeof env["CLAUDE_AGENT_SDK_VERSION"] === "string",
+  },
+  // Editor terminals and hosted workspaces: these mark where the shell runs,
+  // not that an agent drives it, so every agent marker above wins over them.
+  // Cursor's TERM_PROGRAM identifies the IDE terminal only.
+  // Source: https://docs.cursor.com/en/agent/terminal
+  { name: "cursor", check: (env) => env["TERM_PROGRAM"] === "cursor", agentOnly: () => false },
+  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
+  // Attested across many independent detectors (nx
+  // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
+  // git-hooks). Compared case-INsensitively (unlike the exact Cursor rule
+  // above) because Windsurf sources disagree on casing ("windsurf" vs
+  // "Windsurf"); Cursor's do not, so it stays exact. Like Cursor this marks the
+  // editor's integrated terminal, not specifically that the Cascade agent is
+  // driving; under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
+  {
+    name: "windsurf",
+    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
+    agentOnly: () => false,
+  },
+  // Replit — REPL_ID and REPLIT_USER are long-documented environment
+  // variables exposed inside every Replit workspace.
+  // Source: https://docs.replit.com/replit-workspace/configuring-the-environment
+  {
+    name: "replit",
+    check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
+    agentOnly: () => false,
+  },
 ];
+
+// AI_AGENT convention: an agent sets AI_AGENT=<name> and keeps an inherited
+// value, so the outermost agent's name wins. Checked AFTER every VENDOR_RULE so
+// the immediate executor's own marker takes precedence. Unknown slug-safe names
+// become "other_ai_agent" (the raw name goes out as agent_hint). Bare AGENT only
+// counts when it holds a known name: it has no agreed values and AGENT=1 is
+// common. A known name matches exactly or as a `<name>_` / `<name>-` prefix
+// (Claude Code sends claude-code_2-1-307_agent, Devin devin_<build>_agent); the
+// boundary keeps "pi" from swallowing "pilot". Names past hermes come from the
+// values this CLI's agent_hint reports.
+// Sources: https://github.com/vercel/vercel (packages/detect-agent),
+// https://github.com/agentsmd/agents.md/pull/136
+const AI_AGENT_RUNTIMES: ReadonlyArray<readonly [string, Exclude<AgentRuntime, null>]> = [
+  ["claude-code", "claude_code"],
+  ["opencode", "opencode"],
+  ["crush", "crush"],
+  ["pi", "pi"],
+  ["hermes", "hermes"],
+  ["github_copilot", "copilot_agent"],
+  ["openhands", "openhands"],
+  ["antigravity", "antigravity"],
+  ["trae", "trae"],
+  ["devin", "devin"],
+  ["amp", "amp"],
+  ["v0", "v0"],
+  ["rovodev", "rovodev"],
+  ["base44", "base44"],
+];
+
+function knownAgentName(value: string | null): AgentRuntime {
+  if (value === null) return null;
+  const known = AI_AGENT_RUNTIMES.find(
+    ([name]) => value === name || value.startsWith(`${name}_`) || value.startsWith(`${name}-`),
+  );
+  return known?.[1] ?? null;
+}
+
+function aiAgentFallback(env: NodeJS.ProcessEnv): AgentRuntime {
+  const aiAgent = sanitizeHint(env["AI_AGENT"]);
+  return (
+    knownAgentName(aiAgent) ??
+    knownAgentName(sanitizeHint(env["AGENT"])) ??
+    (aiAgent === null ? null : "other_ai_agent")
+  );
+}
 
 // Agents evaluated and deliberately NOT added. Each fails the bar the rules
 // above meet — a marker reliably present in the environment of the
 // shell/subprocess the agent spawns. Recorded here (not only in the PR) so the
 // next person doesn't re-derive it:
-//   - OpenHands — OPENHANDS_BUILD_GIT_SHA/_REF exists in the agent-server
-//     Dockerfile (base-image-minimal stage, added 2025-11-09 in PR #1100) but
-//     is empirically ABSENT from the runtime env of every published
-//     ghcr.io/openhands/agent-server image inspected (12+ tags, 2025-10 →
-//     2026-01, incl. the introducing PR's merge commit). The declared ENV
-//     never reaches the published image. Re-add only if a real published image
-//     carries it in `docker inspect .Config.Env`.
+//   - OpenHands OPENHANDS_BUILD_GIT_SHA/_REF: declared in the agent-server
+//     Dockerfile but absent from every published agent-server image inspected.
+//     OpenHands is detected through AI_AGENT=openhands instead (rule above).
 //   - Aider — sets no self-identifying env var; both shell-spawn sites
 //     (run_cmd.py Popen / pexpect.spawn) pass no env=, so children inherit
 //     os.environ verbatim.
@@ -214,14 +400,22 @@ const VENDOR_RULES: VendorRule[] = [
 //     and the computercontroller MCP extension, but NOT on the default
 //     developer `shell` tool (sets only PATH+cwd), so the primary path is
 //     undetected.
-//   - opencode — OPENCODE_TERMINAL=1 is set only on the interactive PTY panel,
-//     not on the model's bash/shell tool.
+//   - opencode OPENCODE_TERMINAL: PTY panel only, not the bash tool (opencode
+//     is detected through the bash tool's own markers, rule above).
 //   - Roo Code — ROO_ACTIVE is set only on the `vscode` terminal provider; the
 //     shipped default is the execa provider (terminalShellIntegrationDisabled
 //     defaults true), which sets no marker.
-//   - Amp / Devin / Jules / Factory Droid — no verifiable unconditional runtime
-//     marker (Amp is closed/minified; Devin/Jules are closed sandboxes;
-//     Factory's FACTORY_PROJECT_DIR / DROID_PLUGIN_ROOT are hook-scoped only).
+//   - Jules / Factory Droid — no verifiable unconditional runtime marker
+//     (Jules is a closed sandbox; Factory's FACTORY_PROJECT_DIR /
+//     DROID_PLUGIN_ROOT are hook-scoped only). Amp and Devin are detected by
+//     the agent names they report instead (AI_AGENT_RUNTIMES).
+//   - Seen only in a shipped bundle: Grok GROK_AGENT (also conflicts with an
+//     older probe; GROK_SESSION_ID is used), Augment AUGMENT_AGENT, Factory
+//     FACTORY_SESSION_ID.
+//   - Third-party detector packages only: Trae TRAE_AI_SHELL_ID, Windsurf
+//     WINDSURF_CASCADE_TERMINAL (plus a forum post).
+//   - Kimi Code: its bash tool sets no marker (MoonshotAI/kimi-code bashTool.ts);
+//     the kimi rule keys on the hosted agent's KIMI_AGENT_CLIENT_ID.
 
 /**
  * Identify the managed sandbox runtime hosting this CLI invocation.
@@ -255,13 +449,16 @@ export function detectAgentRuntime(): AgentRuntime {
   for (const rule of VENDOR_RULES) {
     if (rule.check(process.env)) return rule.name;
   }
-  return null;
+  return aiAgentFallback(process.env);
 }
 
 /** An agent is running this shell, not a person typing in an editor's terminal or a hosted workspace. */
 export function isAgentDriven(env: NodeJS.ProcessEnv = process.env): boolean {
   if (isGeminiManagedAgent()) return true;
-  return VENDOR_RULES.some((rule) => (rule.agentOnly ?? rule.check)(env));
+  return (
+    VENDOR_RULES.some((rule) => (rule.agentOnly ?? rule.check)(env)) ||
+    aiAgentFallback(env) !== null
+  );
 }
 
 /** Observed harness marker, not proof of a vendor, benchmark, or human user. */
@@ -282,7 +479,8 @@ export function detectExecutionHarnessHint(): "harbor" | null {
 // detectAgentHints() adds a self-populating residual signal for exactly that
 // null bucket, so an unrecognized agent surfaces on its own in analytics and
 // can be promoted to a real VENDOR_RULE later. Callers should only emit these
-// when detectAgentRuntime() returns null — a classified event needs no hint.
+// when detectAgentRuntime() returns null or "other_ai_agent" (the AI_AGENT
+// value no rule names); any other classified event needs no hint.
 //
 // Privacy — consistent with the "never read secret-shaped values" stance above:
 //   - agent_env_hints emits KEY NAMES only, never values.
@@ -296,8 +494,9 @@ export function detectExecutionHarnessHint(): "harbor" | null {
 
 export interface AgentHints {
   /**
-   * Best-effort agent name from a self-identifying env-var value: AGENT, else
-   * AI_AGENT. null when neither is set or the value isn't a short safe slug.
+   * Best-effort agent name: AI_AGENT (what "other_ai_agent" was classified
+   * from), else AGENT, which is often just a flag like AGENT=1. null when neither
+   * is set or the value isn't a short safe slug.
    */
   agent_hint: string | null;
   /**
@@ -362,8 +561,10 @@ function sanitizeHint(value: string | undefined): string | null {
 }
 
 // A key (uppercased) looks like a coding-agent marker. Excludes the two
-// value-captured generics (read via agent_hint) and the SSH/GPG "agent" false
-// friends, which are credential agents, not coding agents. No bare `CODING`
+// value-captured generics (read via agent_hint), the SSH/GPG "agent" false
+// friends, which are credential agents, not coding agents, and a few ambient
+// keys that only match by accident (a CI runner's toolcache path, a browser's
+// metrics session, a desktop session's ssh-agent switch). No bare `CODING`
 // token — it substring-matches `ENCODING` (e.g. PYTHONIOENCODING) and real
 // coding-agent keys already match via `AGENT` (e.g. PI_CODING_AGENT).
 export const HINT_KEY_PATTERN = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREAD_ID$|_SESSION_ID$/;
@@ -371,7 +572,16 @@ export const HINT_KEY_PATTERN = /AGENT|ASSISTANT|COPILOT|CODEX|CLAUDE|LLM|_THREA
 function isDiscoveryHintKey(upperKey: string): boolean {
   if (upperKey === "AGENT" || upperKey === "AI_AGENT") return false;
   if (upperKey.startsWith("SSH_") || upperKey.startsWith("GPG_")) return false;
-  if (["NPM_CONFIG_USER_AGENT", "TERM_SESSION_ID", "XDG_SESSION_ID"].includes(upperKey))
+  if (
+    [
+      "NPM_CONFIG_USER_AGENT",
+      "TERM_SESSION_ID",
+      "XDG_SESSION_ID",
+      "AGENT_TOOLSDIRECTORY",
+      "GSM_SKIP_SSH_AGENT_WORKAROUND",
+      "EDGE_METRICS_SESSION_ID",
+    ].includes(upperKey)
+  )
     return false;
   return HINT_KEY_PATTERN.test(upperKey);
 }
@@ -390,7 +600,7 @@ function discoveryHintPriority(key: string): number {
  */
 export function detectAgentHints(): AgentHints {
   const env = process.env;
-  const agent_hint = sanitizeHint(env["AGENT"]) ?? sanitizeHint(env["AI_AGENT"]);
+  const agent_hint = sanitizeHint(env["AI_AGENT"]) ?? sanitizeHint(env["AGENT"]);
   const term_program = sanitizeHint(env["TERM_PROGRAM"]);
 
   const keys = new Set<string>();
