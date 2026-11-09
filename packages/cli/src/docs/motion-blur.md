@@ -22,6 +22,6 @@ The same attributes drive the browser editor preview and `hyperframes render`.
 
 - `npx hyperframes check` reports `motion_blur_filter_fallback`, `motion_blur_no_movers` and `motion_blur_unverified`
 - `hyperframes render --page-motion-blur off` renders without the composition's blur
-- Blur is off for HDR, distributed, and sub-frame-blur renders
+- Blur is off for HDR and sub-frame-blur renders; distributed and `--start`/`--end` range renders blur like a whole render
 
 Full guide: https://hyperframes.heygen.com/guides/motion-blur

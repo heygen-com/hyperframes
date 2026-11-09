@@ -1228,6 +1228,7 @@ async function compilePlanComposition(
     logger: config.logger,
     producerConfig: cfg,
     variables: config.variables,
+    pageMotionBlur: config.pageMotionBlur,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);

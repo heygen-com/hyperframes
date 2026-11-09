@@ -32,3 +32,24 @@ describe("validateDistributedRenderConfig minParallelChunks", () => {
     );
   });
 });
+
+describe("validateDistributedRenderConfig pageMotionBlur", () => {
+  it("accepts off, the one value that stands the page's blur down, and no value", () => {
+    expect(() =>
+      validateDistributedRenderConfig({ ...base, format: "mp4", pageMotionBlur: "off" }),
+    ).not.toThrow();
+    expect(() => validateDistributedRenderConfig({ ...base, format: "mp4" })).not.toThrow();
+  });
+
+  it("refuses any other value", () => {
+    for (const value of ["on", "distributed-render", "hdr-render", ""]) {
+      expect(() =>
+        validateDistributedRenderConfig({
+          ...base,
+          format: "mp4",
+          pageMotionBlur: value as unknown as "off",
+        }),
+      ).toThrow('must be "off" when provided');
+    }
+  });
+});

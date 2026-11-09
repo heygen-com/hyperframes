@@ -676,6 +676,7 @@ export async function renderChunk(
       bitrate: encoder.bitrate,
       hdrMode: "force-sdr",
       entryFile: "index.html",
+      pageMotionBlur: encoder.pageMotionBlur,
     });
     job.totalFrames = framesInChunk;
     job.duration = (framesInChunk * plan.dimensions.fpsDen) / plan.dimensions.fpsNum;
