@@ -4,8 +4,9 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import { lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
+  createStagingDir,
   atomicTempPath,
   createFileAtomically,
   isAtomicTempPath,
@@ -542,5 +543,42 @@ describe("HF_WRITE_TRACE", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("createStagingDir", () => {
+  const dirs: string[] = [];
+  const root = () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-staging-"));
+    dirs.push(dir);
+    return dir;
+  };
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("makes a fresh private directory named like mkdtemp's: the prefix and 6 letters or digits", () => {
+    const parent = root();
+    const first = createStagingDir(parent, ".stage-");
+    const second = createStagingDir(parent, ".stage-");
+    expect(first).not.toBe(second);
+    expect(first).toBe(join(parent, basename(first)));
+    expect(basename(first)).toMatch(/^\.stage-[A-Za-z0-9]{6}$/);
+    expect(fs.statSync(first).isDirectory()).toBe(true);
+    if (process.platform !== "win32") expect(fs.statSync(first).mode & 0o777).toBe(0o700);
+  });
+
+  it("does not create the parent", () => {
+    expect(() => createStagingDir(join(root(), "missing"), ".s-")).toThrow(/ENOENT/);
+  });
+
+  it.runIf(process.platform === "win32")("works when the full path passes 260 characters", () => {
+    let parent = root();
+    while (parent.length < 280) parent = join(parent, "d".repeat(40));
+    fs.mkdirSync(parent, { recursive: true });
+    const dir = createStagingDir(parent, ".stage-");
+    expect(dir.length).toBeGreaterThan(260);
+    expect(dir.startsWith("\\\\?\\")).toBe(false);
+    expect(fs.statSync(dir).isDirectory()).toBe(true);
   });
 });
