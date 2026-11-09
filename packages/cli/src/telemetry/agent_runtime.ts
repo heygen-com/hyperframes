@@ -118,56 +118,10 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor Agent marks its shell with CURSOR_AGENT; TERM_PROGRAM identifies
-  // the IDE terminal only. Keep this after Claude/Codex for nested agents.
+  // Cursor Agent marks its shell with CURSOR_AGENT. Keep this after
+  // Claude/Codex for nested agents.
   // Source: https://docs.cursor.com/en/agent/terminal
-  {
-    name: "cursor",
-    check: (env) => Boolean(env["CURSOR_AGENT"]) || env["TERM_PROGRAM"] === "cursor",
-    agentOnly: (env) => Boolean(env["CURSOR_AGENT"]),
-  },
-  // GitHub Copilot CLI: shell commands and MCP servers receive
-  // COPILOT_AGENT_SESSION_ID, and its subprocesses carry COPILOT_CLI=1.
-  // Ahead of copilot_agent: the CLI run from a VS Code agent terminal inherits
-  // that terminal's COPILOT_AGENT=1, and the CLI is the immediate executor.
-  // Source: https://github.com/github/copilot-cli (changelog.md)
-  {
-    name: "copilot_cli",
-    check: (env) =>
-      env["COPILOT_CLI"] === "1" || typeof env["COPILOT_AGENT_SESSION_ID"] === "string",
-  },
-  // GitHub Copilot agent mode in VS Code: the agent's terminal tool sets
-  // AI_AGENT=github_copilot_<surface> and COPILOT_AGENT=1 on agent terminals
-  // only, never on a person's terminal. Ahead of the Windsurf editor-terminal
-  // rule, since a VS Code fork's TERM_PROGRAM can sit alongside it.
-  // Source: https://github.com/microsoft/vscode (src/vs/platform/chat/common/aiAgentEnv.ts,
-  // src/vs/workbench/contrib/terminalContrib/chatAgentTools/browser/toolTerminalCreator.ts)
-  {
-    name: "copilot_agent",
-    check: (env) =>
-      env["COPILOT_AGENT"] === "1" || env["AI_AGENT"]?.startsWith("github_copilot_") === true,
-  },
-  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
-  // Attested across many independent detectors (nx
-  // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
-  // git-hooks). Compared case-INsensitively (unlike the exact Cursor rule
-  // above) because Windsurf sources disagree on casing ("windsurf" vs
-  // "Windsurf"); Cursor's do not, so it stays exact. Like Cursor this marks the
-  // editor's integrated terminal, not specifically that the Cascade agent is
-  // driving; under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
-  {
-    name: "windsurf",
-    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
-    agentOnly: () => false,
-  },
-  // Replit — REPL_ID and REPLIT_USER are long-documented environment
-  // variables exposed inside every Replit workspace.
-  // Source: https://docs.replit.com/replit-workspace/configuring-the-environment
-  {
-    name: "replit",
-    check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
-    agentOnly: () => false,
-  },
+  { name: "cursor", check: (env) => Boolean(env["CURSOR_AGENT"]) },
   // Nous Research Hermes Agent — cli.py:50 unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
   // at module load, so the marker propagates via os.environ to every
@@ -269,16 +223,11 @@ const VENDOR_RULES: VendorRule[] = [
     name: "antigravity",
     check: (env) => Boolean(env["ANTIGRAVITY_AGENT"]),
   },
-  // Qoder: sets a non-empty QODER_AGENT on the terminals its agent runs. The
-  // CLI and agent SDK keys below come from this CLI's own discovery hints.
+  // Qoder: sets a non-empty QODER_AGENT on the terminals its agent runs.
   // Source: https://docs.qoder.com/troubleshooting/terminal-execution-exceptions
   {
     name: "qoder",
-    check: (env) =>
-      Boolean(env["QODER_AGENT"]) ||
-      typeof env["QODER_AGENT_SDK_VERSION"] === "string" ||
-      typeof env["QODER_CLI_MAX_SUBAGENT_SPAWN_DEPTH"] === "string" ||
-      typeof env["QODERCN_CLI_MAX_SUBAGENT_SPAWN_DEPTH"] === "string",
+    check: (env) => Boolean(env["QODER_AGENT"]),
   },
   // Kiro: AGENT_DISPLAY_OUT / AGENT_CONTEXT_OUT are "only set when the agent is
   // driving". TERM_PROGRAM=kiro is deliberately NOT used: Kiro sets it for a
@@ -286,16 +235,7 @@ const VENDOR_RULES: VendorRule[] = [
   // Source: https://kiro.dev/docs/reference/built-in-tools
   {
     name: "kiro",
-    check: (env) =>
-      typeof env["AGENT_DISPLAY_OUT"] === "string" || typeof env["AGENT_CONTEXT_OUT"] === "string",
-  },
-  // OpenHands: sanitized_env() defaults AI_AGENT=openhands on every command
-  // the agent runs (it keeps an inherited value, so an outer agent's name wins).
-  // Last of the vendor rules because AI_AGENT is the generic convention.
-  // Source: https://github.com/OpenHands/software-agent-sdk (openhands-sdk/openhands/sdk/utils/command.py)
-  {
-    name: "openhands",
-    check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
+    check: (env) => Boolean(env["AGENT_DISPLAY_OUT"]) || Boolean(env["AGENT_CONTEXT_OUT"]),
   },
   // Closed-source agents with no public marker. Each key below shows up in this
   // CLI's own agent_env_hints on non-interactive runs, which is direct evidence
@@ -308,8 +248,7 @@ const VENDOR_RULES: VendorRule[] = [
     name: "codebuddy",
     check: (env) =>
       typeof env["CODEBUDDY_SESSION_ID"] === "string" ||
-      typeof env["CODEBUDDY_AGENTOS_SESSION_ID"] === "string" ||
-      typeof env["CODEBUDDY_AGENT_RUNTIME"] === "string",
+      typeof env["CODEBUDDY_AGENTOS_SESSION_ID"] === "string",
   },
   {
     name: "trae",
@@ -330,21 +269,75 @@ const VENDOR_RULES: VendorRule[] = [
   { name: "zcode", check: (env) => typeof env["ZCODE_SESSION_ID"] === "string" },
   { name: "swe_agent", check: (env) => typeof env["SWE_AGENT_ENV_FILE"] === "string" },
   // DeepSeek harness (dsh): every model shell call, bash or pwsh, runs with
-  // DSH_SHELL=1 and the agent's DSH_SESSION_ID. HyperFrames Desktop runs dsh
-  // too; those runs also carry HYPERFRAMES_CLIENT, which tells the two apart.
-  // Source: https://github.com/deepseek-ai/deepseek-harness (packages/terminal/terminal-bash/src/index.ts)
+  // DSH_SHELL=1. DSH_SESSION_ID is NOT used: dsh also sets it on the interactive
+  // terminal a person types into. HyperFrames Desktop runs dsh too; those runs
+  // also carry HYPERFRAMES_CLIENT, which tells the two apart.
+  // Source: https://github.com/deepseek-ai/deepseek-harness (packages/terminal/terminal-bash/src/index.ts,
+  // packages/api/terminal-controller/src/index.ts)
+  { name: "dsh", check: (env) => env["DSH_SHELL"] === "1" },
+  // GitHub Copilot CLI: shell commands and MCP servers receive
+  // COPILOT_AGENT_SESSION_ID, and its subprocesses carry COPILOT_CLI=1.
+  // Both Copilot rules sit after the other agents: their markers are inherited,
+  // so an agent Copilot starts must win. copilot_cli goes first because the CLI
+  // run from a VS Code agent terminal inherits that terminal's COPILOT_AGENT=1.
+  // Source: https://github.com/github/copilot-cli (changelog.md)
   {
-    name: "dsh",
-    check: (env) => env["DSH_SHELL"] === "1" || typeof env["DSH_SESSION_ID"] === "string",
+    name: "copilot_cli",
+    check: (env) =>
+      env["COPILOT_CLI"] === "1" || typeof env["COPILOT_AGENT_SESSION_ID"] === "string",
+  },
+  // GitHub Copilot agent mode in VS Code: the agent's terminal tool sets
+  // AI_AGENT=github_copilot_<surface> and COPILOT_AGENT=1 on agent terminals
+  // only, never on a person's terminal.
+  // Source: https://github.com/microsoft/vscode (src/vs/platform/chat/common/aiAgentEnv.ts,
+  // src/vs/workbench/contrib/terminalContrib/chatAgentTools/browser/toolTerminalCreator.ts)
+  {
+    name: "copilot_agent",
+    check: (env) =>
+      env["COPILOT_AGENT"] === "1" || env["AI_AGENT"]?.startsWith("github_copilot_") === true,
+  },
+  // OpenHands: sanitized_env() defaults AI_AGENT=openhands on every command
+  // the agent runs (it keeps an inherited value, so an outer agent's name wins).
+  // Last of the vendor rules because AI_AGENT is the generic convention.
+  // Source: https://github.com/OpenHands/software-agent-sdk (openhands-sdk/openhands/sdk/utils/command.py)
+  {
+    name: "openhands",
+    check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
   },
   // An app built on the Claude Agent SDK, running a command outside Claude
   // Code's own shell tool (that path sets CLAUDECODE, caught above). The SDK
-  // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. Last, so a
-  // vendor that builds on the SDK and sets its own marker wins.
+  // always sets CLAUDE_AGENT_SDK_VERSION on the process it spawns. After the
+  // agent rules, so a vendor that builds on the SDK and sets its own marker wins.
   // Source: https://github.com/anthropics/claude-agent-sdk-python (src/claude_agent_sdk/_internal/transport/subprocess_cli.py)
   {
     name: "claude_agent_sdk",
     check: (env) => typeof env["CLAUDE_AGENT_SDK_VERSION"] === "string",
+  },
+  // Editor terminals and hosted workspaces: these mark where the shell runs,
+  // not that an agent drives it, so every agent marker above wins over them.
+  // Cursor's TERM_PROGRAM identifies the IDE terminal only.
+  // Source: https://docs.cursor.com/en/agent/terminal
+  { name: "cursor", check: (env) => env["TERM_PROGRAM"] === "cursor", agentOnly: () => false },
+  // Windsurf (Codeium) integrated terminal — exports TERM_PROGRAM=windsurf.
+  // Attested across many independent detectors (nx
+  // packages/nx/src/native/ide/detection.rs, adonisjs/application, ag-grid
+  // git-hooks). Compared case-INsensitively (unlike the exact Cursor rule
+  // above) because Windsurf sources disagree on casing ("windsurf" vs
+  // "Windsurf"); Cursor's do not, so it stays exact. Like Cursor this marks the
+  // editor's integrated terminal, not specifically that the Cascade agent is
+  // driving; under WSL/remote it can also fall back to TERM_PROGRAM=vscode.
+  {
+    name: "windsurf",
+    check: (env) => env["TERM_PROGRAM"]?.toLowerCase() === "windsurf",
+    agentOnly: () => false,
+  },
+  // Replit — REPL_ID and REPLIT_USER are long-documented environment
+  // variables exposed inside every Replit workspace.
+  // Source: https://docs.replit.com/replit-workspace/configuring-the-environment
+  {
+    name: "replit",
+    check: (env) => typeof env["REPL_ID"] === "string" || typeof env["REPLIT_USER"] === "string",
+    agentOnly: () => false,
   },
 ];
 

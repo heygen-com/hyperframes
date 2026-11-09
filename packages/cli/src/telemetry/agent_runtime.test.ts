@@ -476,6 +476,15 @@ describe("detectAgentRuntime: Kilo / opencode / Qwen / Junie / Antigravity / Qod
     expect(detectAgentRuntime()).toBe("kilo");
   });
 
+  it.each(["AGENT_DISPLAY_OUT", "AGENT_CONTEXT_OUT"])(
+    "does not treat an empty %s as Kiro",
+    async (key) => {
+      process.env[key] = "";
+      const { detectAgentRuntime } = await import("./agent_runtime.js");
+      expect(detectAgentRuntime()).toBeNull();
+    },
+  );
+
   it("does not treat an empty QODER_AGENT as an agent", async () => {
     process.env["QODER_AGENT"] = "";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
@@ -498,13 +507,9 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
   });
 
   it.each([
-    ["QODER_AGENT_SDK_VERSION", "0.1.0", "qoder"],
-    ["QODER_CLI_MAX_SUBAGENT_SPAWN_DEPTH", "2", "qoder"],
-    ["QODERCN_CLI_MAX_SUBAGENT_SPAWN_DEPTH", "2", "qoder"],
     ["WORKBUDDY_CLIENT_USER_AGENT", "wb", "workbuddy"],
     ["CODEBUDDY_SESSION_ID", "s", "codebuddy"],
     ["CODEBUDDY_AGENTOS_SESSION_ID", "s", "codebuddy"],
-    ["CODEBUDDY_AGENT_RUNTIME", "r", "codebuddy"],
     ["ICUBE_AI_AGENT_SHUTDOWN_TOKEN", "t", "trae"],
     ["TRAE_REMOTE_AGENT_TOKEN", "t", "trae"],
     ["AUTO_PIPPIT_THREAD_ID", "t", "pippit"],
@@ -515,7 +520,6 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
     ["KIMI_AGENT_CLIENT_ID", "c", "kimi"],
     ["ZCODE_SESSION_ID", "s", "zcode"],
     ["SWE_AGENT_ENV_FILE", "/tmp/env", "swe_agent"],
-    ["DSH_SESSION_ID", "s", "dsh"],
     ["DSH_SHELL", "1", "dsh"],
     ["CLAUDE_AGENT_SDK_VERSION", "0.2.0", "claude_agent_sdk"],
   ])("detects %s=%s as %s", async (key, value, runtime) => {
@@ -530,6 +534,26 @@ describe("detectAgentRuntime: agents seen in discovery hints", () => {
     process.env["CODEBUDDY_SESSION_ID"] = "s";
     const { detectAgentRuntime } = await import("./agent_runtime.js");
     expect(detectAgentRuntime()).toBe("workbuddy");
+  });
+
+  it("does not treat a person's dsh terminal (DSH_SESSION_ID only) as an agent", async () => {
+    process.env["DSH_SESSION_ID"] = "s";
+    const { detectAgentRuntime, isAgentDriven } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBeNull();
+    expect(isAgentDriven()).toBe(false);
+  });
+
+  it.each([
+    [{ COPILOT_AGENT: "1", OPENCODE: "1" }, "opencode"],
+    [{ AI_AGENT: "github_copilot_vscode_agent", QWEN_CODE: "1" }, "qwen_code"],
+    [{ COPILOT_CLI: "1", GEMINI_CLI: "1" }, "gemini_cli"],
+    [{ TERM_PROGRAM: "cursor", KILO: "1" }, "kilo"],
+    [{ TERM_PROGRAM: "windsurf", CRUSH: "1" }, "crush"],
+    [{ REPL_ID: "r", OPENCODE: "1" }, "opencode"],
+  ])("lets the agent Copilot or an editor started win: %j -> %s", async (env, runtime) => {
+    Object.assign(process.env, env);
+    const { detectAgentRuntime } = await import("./agent_runtime.js");
+    expect(detectAgentRuntime()).toBe(runtime);
   });
 
   it("lets Claude Code's own shell marker beat the Agent SDK version key", async () => {
