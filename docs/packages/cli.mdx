@@ -130,6 +130,22 @@ There, a command that would ask for confirmation, such as `publish` or `upgrade`
 exits 2 instead and names the flag to pass (`--yes`), and spinners print only
 their final line, on stderr.
 
+**`npx` installs before the CLI runs.** The guarantee above starts once the CLI
+is running, and `npx` keeps it: with no terminal, npm skips its
+`Ok to proceed?` prompt, prints a warning, and installs. What `npx` adds is the
+install itself. An unversioned `npx hyperframes` asks the registry for the
+latest release on every run and installs it when it is new there, so two jobs
+that start together can collide in npm's cache (`_cacache` for the fetch,
+`_npx` for the install: `EEXIST` or `ENOTEMPTY`; a retry succeeds), and a new
+release silently changes
+what the same command renders. In scripts and CI, run the `npm run` scripts a
+scaffolded project ships (`npm run render` is `npx --yes hyperframes@X.Y.Z`,
+pinned to the version that created the project), or pin the same way yourself.
+An installed binary (`npm i hyperframes@X.Y.Z`, then
+`node_modules/.bin/hyperframes`, or a global install) skips the fetch
+entirely. Check the render's dimensions and duration with `ffprobe` before
+anything downstream consumes it.
+
 **Exit codes.** `0` means the command succeeded, `1` means it ran and failed, and
 `2` means the command line itself is wrong: an unknown command or flag, or a
 missing or invalid value.
