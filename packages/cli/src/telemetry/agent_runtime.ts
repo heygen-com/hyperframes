@@ -92,11 +92,9 @@ const VENDOR_RULES: VendorRule[] = [
     name: "bob",
     check: (env) => typeof env["BOBSHELL_CLI"] === "string",
   },
-  // Anthropic Claude Code — sets CLAUDE_CODE_CHILD_SESSION=1 on the commands
-  // its tools and hooks spawn, and CLAUDE_CODE_ENTRYPOINT at startup, inherited
-  // by every child (older versions have only the latter). CLAUDECODE is NOT
-  // used: the IDE extensions also set it in their integrated terminals, where a
-  // person types.
+  // Claude Code sets CLAUDE_CODE_CHILD_SESSION on what its tools spawn, and an
+  // inherited CLAUDE_CODE_ENTRYPOINT (older versions). Not CLAUDECODE: its IDE
+  // extensions also set that in the terminal a person types into.
   // Source: https://code.claude.com/docs/en/env-vars
   {
     name: "claude_code",
@@ -122,9 +120,8 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CODEX_CI"] === "string" ||
       typeof env["CODEX_SANDBOX_NETWORK_DISABLED"] === "string",
   },
-  // Cursor Agent marks its shell with CURSOR_AGENT, plus CURSOR_CONVERSATION_ID
-  // per command (CLI and IDE agent-exec bundles) and CURSOR_SANDBOX on every
-  // sandboxed child. Keep this after Claude/Codex for nested agents.
+  // Cursor Agent sets CURSOR_AGENT, CURSOR_CONVERSATION_ID per command and
+  // CURSOR_SANDBOX on sandboxed ones. After Claude/Codex for nested agents.
   // Source: https://docs.cursor.com/en/agent/terminal,
   // https://cursor.com/docs/agent/security/run-modes
   {
@@ -134,12 +131,12 @@ const VENDOR_RULES: VendorRule[] = [
       typeof env["CURSOR_CONVERSATION_ID"] === "string" ||
       typeof env["CURSOR_SANDBOX"] === "string",
   },
-  // Nous Research Hermes Agent — cli.py:50 unconditionally executes
+  // Nous Research Hermes Agent — its cli.py unconditionally executes
   //   os.environ["HERMES_QUIET"] = "1"
   // at module load, so the marker propagates via os.environ to every
   // subprocess spawned by Hermes. Keying on existence (not the literal
   // "1") so we still match if Hermes ever changes the value.
-  // Source: https://github.com/NousResearch/hermes-agent (cli.py:50)
+  // Source: https://github.com/NousResearch/hermes-agent/blob/main/cli.py#L50
   {
     name: "hermes",
     check: (env) => typeof env["HERMES_QUIET"] === "string",
@@ -162,14 +159,13 @@ const VENDOR_RULES: VendorRule[] = [
   },
   // Cline (cline/cline) VS Code extension — injects CLINE_ACTIVE=true into the
   // integrated terminal via vscode.TerminalOptions.env, which the terminal
-  // exports to every shell command run in it
-  // (apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts:29).
+  // exports to every shell command run in it.
   // Caveat: present only on the default "vscodeTerminal" exec path — the opt-in
   // backgroundExec/YOLO path spawns via child_process without the marker. Same
   // integrated-terminal-only scope as the Cursor/Windsurf rules in WORKSPACE_RULES.
   // The npm Cline CLI instead adds CLINE_WRAPPER_PATH to its child env, which
-  // its bash tool passes on (apps/cli/bin/cline:21-24).
-  // Source: https://github.com/cline/cline (VscodeTerminalRegistry.ts:29)
+  // its bash tool passes on (apps/cli/bin/cline).
+  // Source: https://github.com/cline/cline/blob/main/apps/vscode/src/hosts/vscode/terminal/VscodeTerminalRegistry.ts
   {
     name: "cline",
     check: (env) =>
@@ -328,8 +324,7 @@ const VENDOR_RULES: VendorRule[] = [
     name: "openhands",
     check: (env) => env["AI_AGENT"]?.trim().toLowerCase() === "openhands",
   },
-  // Warp Oz: OZ_RUN_ID marks an agent run whose harness may be Claude Code,
-  // Codex or Gemini, so it comes after those agents' own markers.
+  // Warp Oz: OZ_RUN_ID wraps a Claude/Codex/Gemini run, so it follows them.
   // Source: https://github.com/warpdotdev/warp (crates/warp_cli/src/lib.rs)
   { name: "warp_oz", check: (env) => typeof env["OZ_RUN_ID"] === "string" },
   // An app built on the Claude Agent SDK, running a command outside Claude
