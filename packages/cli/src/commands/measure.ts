@@ -27,7 +27,6 @@ const subCommands = {
   sync: () => import("./measure/sync.js").then((m) => m.default),
 };
 
-/** The op names, which `hyperframes measure <video>` (no op) is told about when it runs `probe`. */
 export const MEASURE_OPS = Object.keys(subCommands);
 
 export default defineCommand({

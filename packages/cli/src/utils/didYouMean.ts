@@ -76,7 +76,6 @@ export const REDIRECTS_WITH_NEXT_STEP = Object.keys(COMMAND_REDIRECTS).filter(
 
 export function fileHint(word: string, path: string[], names: string[]): string | undefined {
   if (path.length === 0 || names.length === 0) return undefined;
-  // A path or a name with an extension is a file the person meant, whether or not it exists yet.
   const kind = existsSync(word) ? "is" : /[\\/]|\.\w{2,4}$/.test(word) ? "looks like" : undefined;
   if (!kind) return undefined;
   const group = ["hyperframes", ...path].join(" ");

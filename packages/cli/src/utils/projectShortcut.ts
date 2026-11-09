@@ -24,11 +24,6 @@ export function openShortcutArgv(
   return [...argv.slice(0, at), "open", ...argv.slice(at)];
 }
 
-/**
- * `hyperframes measure <video>` with no op is `hyperframes measure probe <video>`, the first look every
- * rebuild starts with. Only a bare file (or `--json`) is rewritten: with other flags the op is a guess,
- * so the unknown-command hint asks for one instead.
- */
 export function measureProbeShortcutArgv(
   argv: readonly string[],
   ops: ReadonlySet<string>,
