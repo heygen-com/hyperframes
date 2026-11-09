@@ -779,8 +779,11 @@ delete in Studio save back to the same file.
 
 A track without a steady beat (ambient, rubato, too short) gets no beat file:
 the command answers an empty result (`count: 0`, exit 0) and writes nothing rather
-than inventing a grid. Results match Studio's to within a frame or two — Studio decodes in the browser, often
-at a different sample rate, which can shift a beat slightly.
+than inventing a grid. Reanalyzing a track that has no beats removes its saved
+beat file, so replacing the audio cannot leave the previous track's grid in Studio.
+A failed decode keeps the saved file. Results match Studio's to within a frame or
+two. Studio decodes in the browser, often at a different sample rate, which can
+shift a beat slightly.
 
 ### `audio`
 
