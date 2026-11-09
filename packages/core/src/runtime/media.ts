@@ -823,8 +823,10 @@ export function syncRuntimeMedia(params: {
       }
       // Already sent to this tail time: the browser landed short of it, and asking again would seek every tick.
       const heldTail = heldTailSeekedTo.get(el);
+      // Only while playing: a paused pass (a seek, a render's prepare) always lands the frame it asks for.
       const tailSettled =
         isHeldVideoTail &&
+        params.playing &&
         heldTail?.target === relTime &&
         Math.abs(el.currentTime - heldTail.landed) < HELD_TAIL_MOVED_SECONDS;
       if (!tailSettled && (hardSync || strictSync || forceSync || (steerSeeks && !dipped))) {

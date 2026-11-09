@@ -1318,6 +1318,23 @@ describe("syncRuntimeMedia", () => {
     expect(seeks).toHaveLength(2);
   });
 
+  it("seeks a held video tail on every paused pass, as a render's prepare relies on", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    let time = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => time,
+      set: (value: number) => {
+        seeks.push(value);
+        time = Math.min(value, 0.2);
+      },
+      configurable: true,
+    });
+    for (const timeSeconds of [2, 2, 2])
+      syncRuntimeMedia({ clips: [clip], timeSeconds, playing: false, playbackRate: 1, forceSync: true });
+    expect(seeks).toHaveLength(3);
+  });
+
   it("holds a video that runs to the composition end on its last frame at the terminal time", () => {
     const clip = createMockClip({ start: 2.5, end: 5, duration: 2.5, sourceDuration: 10 });
     const seek = {
