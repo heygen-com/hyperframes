@@ -150,6 +150,7 @@ import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
+  type PageMotionBlurSummary,
   type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
@@ -509,6 +510,7 @@ export default defineCommand({
 });
 
 export interface SingleRenderResult extends Partial<ReferenceBackgroundResult> {
+  motionBlur?: PageMotionBlurSummary;
   durationMs?: number;
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
@@ -1304,6 +1306,7 @@ async function executeLocalRender(
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
     ...producer.referenceBackgroundResult(job[producer.REFERENCE_BACKGROUND_FIELD]),
+    motionBlur: job.perfSummary?.motionBlur,
     renderTimeMs: elapsed,
     durationMs,
     outcome,

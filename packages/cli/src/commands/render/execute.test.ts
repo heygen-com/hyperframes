@@ -175,6 +175,27 @@ describe("the machine result line after a single render", () => {
     });
   });
 
+  it("prints the motion blur summary beside the background", async () => {
+    const lines = await resultLines({
+      renderTimeMs: 5,
+      reference_background: { kind: "none" },
+      motionBlur: {
+        tier: "capture",
+        reasonCode: null,
+        movers: 2,
+        failedFrames: 1,
+        readEvents: true,
+        fingerprint: null,
+      },
+    });
+    expect(JSON.parse((lines[0] ?? "").slice("@hf-result ".length))).toEqual({
+      version: 1,
+      operation: "render",
+      reference_background: { kind: "none" },
+      motion_blur: { tier: "capture", movers: 2, failed_frames: 1 },
+    });
+  });
+
   it("prints nothing when the render fails", async () => {
     expect(await resultLines(new Error("capture failed"))).toEqual([]);
   });
