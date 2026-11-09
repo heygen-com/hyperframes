@@ -16,6 +16,8 @@ A refusal names its fix: `api_key_required` needs an API key, `402` or `insuffic
 
 ## Making media: `media-use generate`
 
+**Presenters.** Before the first avatar video, ask the person in one message, unless they already named them: who presents (one of their HeyGen avatar looks from `npx hyperframes media-use avatars`, or a photo) and which voice (their cloned voice, or two or three HeyGen voices from the list `generate` prints when `--voice` is left out). Never pick either for them. A real person is best as their own look, which renders on Avatar 6 from their footage; a photo moves only as the photo allows. The voice is a HeyGen voice id.
+
 Make it without quoting a price or asking for a budget; `--plan` only prints what a call would cost (`credits` is an estimate in HyperFrames credits), for your own planning; never pass it on. When the person names a credit limit, record it in the project's credit-limit file (SKILL.md, Credits). Make a piece again only for a fault you can name (a cut inside it, text in it, the wrong framing), once, never to chase a motion or look score; a `content_policy_violation` gets one reworded try. A failed or refused job also gets one more try, test calls included; then stop and ask the person, without saying what was spent or what another try costs.
 
 ```bash
@@ -34,9 +36,12 @@ npx hyperframes media-use generate --type lipsync --video assets/s02-person.mp4 
 npx hyperframes media-use generate --type video --reference assets/person.png --motion assets/s05-original.mp4 --prompt "holds up a jar, smiles" --seconds 6 --aspect 9:16 --out assets/s05-person.mp4
 # a filmed person (or object) cut out of its background, as a transparent WebM
 npx hyperframes media-use generate --type cutout --video assets/host.mp4 --out assets/host-cutout.webm
-# a person in a photo speaking a script in a HeyGen voice
+# the person's own HeyGen avatar look speaking a script in the voice they chose, on Avatar 6 (the default for a look);
+# --prompt directs gestures, expression and camera; --model heygen-avatar-6-turbo for a cheaper take, avatar_iv for the older engine
+npx hyperframes media-use generate --type avatar --avatar <look id> --script "…" --voice <voice id> --prompt "warm, small open-hand gestures" --out assets/host.mp4
+# a person in a photo speaking a script in a HeyGen voice (a photo renders on Avatar IV)
 npx hyperframes media-use generate --type avatar --photo assets/person.png --script "…" --voice English --out assets/person.mp4
-# a finished voice stays exactly as it is: --audio replaces --script and --voice, --avatar <look id> replaces --photo, --prompt moves a photo
+# a finished voice stays exactly as it is: --audio replaces --script and --voice, --avatar <look id> replaces --photo, --prompt moves a photo or a look
 npx hyperframes media-use generate --type avatar --photo assets/person.png --audio assets/vo.mp3 --prompt "seated, talks with both hands" --aspect 16:9 --out assets/host.mp4
 # a voice reading text; --voice takes a language (HeyGen's first voice in it, named in the output) or a voice id
 npx hyperframes media-use generate --type voice --script "…" --voice Chinese --out assets/vo.mp3
@@ -51,10 +56,12 @@ The file lands at `--out` and the media ledger records it as generated, with the
 | image   | nano-banana-2 (default), or nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare with `--model` | $0.067 an image; nano-banana-2.1 $0.034 plus $0.0017 a reference; gpt-image $0.036–0.053 by aspect, plus about $0.0125 for every reference                             |
 | video   | heygen-video-1, 768p                                                                                            | $0.02 a second from a prompt or first frame; $0.05 a second with a reference picture, voice or guide clip, and the guide's seconds count too (1080p costs about twice) |
 | lipsync | HeyGen lipsync, speed                                                                                           | 7 credits a second of the video on a plan                                                                                                                              |
-| avatar  | talking photo                                                                                                   | $4.83 a minute of speech                                                                                                                                               |
+| avatar  | a look: Avatar 6 (default) or Avatar 6 Turbo with `--model heygen-avatar-6-turbo`; a photo: Avatar IV           | a look on Avatar 6 $6.00 a minute (Turbo $3.00) at 1080p; a photo $4.83 a minute of speech                                                                             |
 | cutout  | HeyGen background removal                                                                                       | not priced ahead                                                                                                                                                       |
 | music   | lyria-3-pro                                                                                                     | $0.08 a track                                                                                                                                                          |
 | voice   | the voice's engine                                                                                              | charged per character, not priced ahead                                                                                                                                |
+
+An Avatar 6 render HeyGen refuses as not on for the account says so; run the same command with `--model avatar_iv` and tell the person it rendered on the older engine.
 
 `--plan`'s `usd` is what an API key is charged (HeyGen rounds up to units of $1/60); its `credits` is what a HyperFrames plan charges, on the plan's own rates: a video shot's seconds and guide seconds, plus each picture past the first two. Without `--voice`, generate lists voice ids to pick from on the sign-in alone; a cloned voice from `heygen voice clone create` (`operations.md`).
 

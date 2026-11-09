@@ -163,6 +163,52 @@ interface Route extends JobRoute {
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
 const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
+const AVATAR_MODELS = ["heygen-avatar-6", "heygen-avatar-6-turbo", "avatar_iv"] as const;
+type AvatarModel = (typeof AVATAR_MODELS)[number];
+const AVATAR_6_DEFAULT: AvatarModel = "heygen-avatar-6";
+const isAvatar6 = (model: AvatarModel): boolean => model !== "avatar_iv";
+const isAvatarModel = (model: string): model is AvatarModel =>
+  AVATAR_MODELS.some((m) => m === model);
+
+export function avatarModel(r: Pick<GenerateRequest, "avatar" | "model">): AvatarModel {
+  const model = r.model;
+  if (model !== undefined && !isAvatarModel(model))
+    throw new Fix(
+      `--model ${model} is not an avatar engine`,
+      `--model ${AVATAR_MODELS.join(", --model ")}`,
+    );
+  if (r.avatar) return model ?? AVATAR_6_DEFAULT;
+  if (model && isAvatar6(model))
+    throw new Fix(
+      `${model} needs the person's HeyGen avatar look, not a photo`,
+      "--avatar <look id> (their digital twin), or drop --model to render the photo on Avatar IV",
+    );
+  return "avatar_iv";
+}
+
+export function avatar6Refusal(r: GenerateRequest, err: unknown): Fix | undefined {
+  if (r.type !== "avatar" || !r.avatar || !isAvatar6(avatarModel(r))) return undefined;
+  const status = err instanceof Fix && "status" in err ? err.status : undefined;
+  if (status !== 404) return undefined;
+  return new Fix(
+    "Avatar 6 is not on for this account yet (HeyGen answered 404); nothing was charged",
+    "run the same command with --model avatar_iv",
+  );
+}
+
+function avatarLookBody(
+  avatarId: string,
+  model: AvatarModel,
+  prompt: string | undefined,
+): Record<string, unknown> {
+  if (!isAvatar6(model)) return { type: "avatar", avatar_id: avatarId };
+  return {
+    type: "avatar",
+    avatar_id: avatarId,
+    engine: { type: model },
+    ...(prompt ? { motion_prompt: prompt } : {}),
+  };
+}
 const VIDEO_RESOLUTION = "768p";
 /** HeyGen follows at most this many seconds of a guide clip; the rest is not sent. */
 export const GUIDE_MAX_S = 15;
@@ -268,7 +314,7 @@ const ROUTES: Record<GenerateType, Route> = {
     status: (c, id, signal) => c.getVideoV3({ video_id: id, signal }),
     body: (r, media) => ({
       ...(r.avatar
-        ? { type: "avatar", avatar_id: r.avatar }
+        ? avatarLookBody(r.avatar, avatarModel(r), r.prompt)
         : {
             type: "image",
             image: media(need(r.photo, "--photo", "--photo assets/presenter.png"), "image"),
@@ -693,6 +739,8 @@ export async function generate(
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
       credits,
+    }).catch((err: unknown) => {
+      throw avatar6Refusal(r, err) ?? err;
     });
     const url = urlOf(job, route.urls);
     if (!url)
@@ -746,7 +794,7 @@ export async function generate(
         provenance: {
           provider: "heygen",
           route: route.path,
-          model: body.model ?? null,
+          model: body.model ?? (r.type === "avatar" ? avatarModel(r) : null),
           job: job.id,
           prompt: r.prompt ?? null,
           ...(r.references?.length ? { references: r.references.map(describe) } : {}),

@@ -1,7 +1,7 @@
 // Prices before a paid call, from the HyperFrames app's creation pricing. HeyGen charges in units of $1/60, rounded
 // up; the label rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
 import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
-import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
+import { avatarModel, GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
 
 export interface Price {
   usd: number | null;
@@ -48,6 +48,10 @@ const HF_VIDEO_REF_768P_PER_S = 50;
 const HF_VIDEO_EXTRA_IMAGE = 20;
 const HF_AVATAR_IV_PHOTO_PER_S = 1155 / 60;
 const HF_AVATAR_IV_TWIN_PER_S = 2415 / 60;
+const AVATAR_6: Record<string, { usdPerMin: number; hfPerMin: number; label: string }> = {
+  "heygen-avatar-6": { usdPerMin: 6, hfPerMin: 3000, label: "Avatar 6" },
+  "heygen-avatar-6-turbo": { usdPerMin: 3, hfPerMin: 1500, label: "Avatar 6 Turbo" },
+};
 // Billed on the whole video, not the voice: measured 2026-11-01, a 13.75 s shot took 97 credits.
 const HF_LIPSYNC_SPEED_PER_S = 7;
 const MUSIC_PER_TRACK = 0.08;
@@ -108,6 +112,13 @@ export function priceOf(r: GenerateRequest): Price {
       const seconds = r.audio
         ? probeSeconds(r.audio)
         : Math.max(1, Math.floor(words / SCRIPT_WORDS_PER_S));
+      const six = AVATAR_6[avatarModel(r)];
+      if (six)
+        return at(
+          (seconds * six.usdPerMin) / 60,
+          `${six.label} avatar video at 1080p, about ${round(seconds, 1)} s${r.audio ? "" : ` from ${words} words`} at $${six.usdPerMin.toFixed(2)} a minute`,
+          (seconds * six.hfPerMin) / 60,
+        );
       return at(
         Math.ceil(seconds * AVATAR_IV_PER_MIN) / 60,
         `avatar video, about ${round(seconds, 1)} s${r.audio ? "" : ` from ${words} words`} at $4.83 a minute`,
