@@ -180,9 +180,14 @@ export default defineCommand({
       description: "One strip of consecutive frames per window from measure events --map",
       default: false,
     },
-    start: { type: "string", description: "With --events or --every: first second (default 0)" },
+    start: {
+      type: "string",
+      alias: ["from"],
+      description: "With --events or --every: first second (default 0)",
+    },
     end: {
       type: "string",
+      alias: ["to"],
       description: "With --events or --every: last second (default: the end)",
     },
     max: {

@@ -41,7 +41,7 @@ export function detectFormat(filePath: string): TranscriptFormat {
   const ext = extname(filePath).toLowerCase();
   if (ext === ".srt") return "srt";
   if (ext === ".vtt") return "vtt";
-  if (ext === ".json") return detectJsonFormat(JSON.parse(readJsonFileText(filePath)));
+  if (ext === ".json") return detectJsonFormat(parseWhisperJson(readJsonFileText(filePath)));
   throw new Error(`Unsupported transcript file extension: ${ext}. Use .json, .srt, or .vtt`);
 }
 
@@ -499,6 +499,15 @@ export function formatVtt(words: Word[], opts?: WordsToCuesOptions): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+const BARE_NAN_OR_INF_OUTSIDE_STRINGS =
+  /"(?:[^"\\]|\\.)*"|-?\b(?:nan(?:\([^)]*\))?|inf(?:inity)?)(?!\w)/gi;
+
+export function parseWhisperJson(text: string): any {
+  return JSON.parse(
+    text.replace(BARE_NAN_OR_INF_OUTSIDE_STRINGS, (m) => (m.startsWith('"') ? m : "null")),
+  );
+}
+
 /**
  * Load and normalize a transcript file to a standard word array.
  *
@@ -523,7 +532,7 @@ export function loadTranscript(filePath: string): { words: Word[]; format: Trans
   }
 
   // JSON formats — parse once, detect, then extract words
-  const parsed = JSON.parse(content);
+  const parsed = parseWhisperJson(content);
   const format = detectJsonFormat(parsed);
 
   // JSON parsers never set id — assign w{index} like the srt/vtt branches above
