@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { ArgsDef, CommandDef } from "citty";
 import { CliUsageError } from "./commandResult.js";
 import { isTextFile } from "./textFile.js";
@@ -44,6 +45,15 @@ function usageLine(path: string, args: ArgsDef): string {
   return parts.join(" ");
 }
 
+// An unquoted path with spaces reaches us as several words; the longest run of them that is a file names it.
+function spacedPath(words: readonly string[]): string | undefined {
+  for (let n = words.length; n > 1; n--) {
+    const joined = words.slice(0, n).join(" ");
+    if (existsSync(joined)) return joined;
+  }
+  return undefined;
+}
+
 /** Join a free-text command's trailing words, else throw a usage error naming the extras. */
 export function resolveExtraPositionals(
   cmd: CommandDef<ArgsDef>,
@@ -66,8 +76,10 @@ export function resolveExtraPositionals(
   }
 
   const plural = extra.length === 1 ? "" : "s";
+  const spaced = spacedPath(words);
   const message =
     `Unexpected extra argument${plural} for hyperframes ${path}: ${extra.join(", ")}\n` +
+    (spaced ? `'${spaced}' is one path with spaces: quote it.\n` : "") +
     `Usage: ${usageLine(path, args)}`;
   if (wantsJson(parsed?.json)) console.log(JSON.stringify(jsonFailure("usage_error", message)));
   else console.error(message);

@@ -23,3 +23,26 @@ export function openShortcutArgv(
   }
   return [...argv.slice(0, at), "open", ...argv.slice(at)];
 }
+
+/**
+ * `hyperframes measure <video>` with no op is `hyperframes measure probe <video>`, the first look every
+ * rebuild starts with. Only a bare file (or `--json`) is rewritten: with other flags the op is a guess,
+ * so the unknown-command hint asks for one instead.
+ */
+export function measureProbeShortcutArgv(
+  argv: readonly string[],
+  ops: ReadonlySet<string>,
+  cwd: string = process.cwd(),
+): readonly string[] {
+  const at = commandWordIndex(argv);
+  if (at < 0 || argv[at] !== "measure") return argv;
+  const file = argv[at + 1];
+  if (file === undefined || file.startsWith("-") || ops.has(file)) return argv;
+  if (!argv.slice(at + 2).every((arg) => arg === "--json")) return argv;
+  try {
+    if (!statSync(resolve(cwd, file)).isFile()) return argv;
+  } catch {
+    return argv;
+  }
+  return [...argv.slice(0, at + 1), "probe", ...argv.slice(at + 1)];
+}

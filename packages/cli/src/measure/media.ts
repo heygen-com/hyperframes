@@ -109,28 +109,60 @@ export function probeSeconds(path: string): number {
   return Number(text) || 0;
 }
 
+/**
+ * What to do about a path that is not there. `D:video\clip.mp4` reaches us as `D:videoclip.mp4` (an unquoted
+ * Windows path in bash), and an unquoted path with spaces arrives cut at the first one, its rest in later args.
+ */
+export function missingFileFix(path: string, argv: readonly string[] = process.argv): string {
+  if (/^[A-Za-z]:[^\\/]/.test(path))
+    return "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)";
+  const at = argv.indexOf(path);
+  let joined = path;
+  for (const word of at < 0 ? [] : argv.slice(at + 1)) {
+    if (word.startsWith("-")) break;
+    joined = `${joined} ${word}`;
+    if (existsSync(joined)) return `the path has spaces: quote it ("${joined}")`;
+  }
+  return "pass the video's path from the project folder";
+}
+
+/** ffprobe's own last word on a file it could not read, without the path it repeats. */
+export function ffprobeReason(err: unknown, path: string): string | undefined {
+  const stderr = (err as { stderr?: Buffer | string } | null)?.stderr?.toString() ?? "";
+  const line = stderr.trim().split(/\r?\n/).pop()?.replace(`${path}: `, "").trim();
+  return line ? line.slice(0, 160) : undefined;
+}
+
+/** The fix that goes with ffprobe's reason. */
+export function unreadableFix(reason: string | undefined): string {
+  if (reason && /moov atom not found|end of file|partial file/i.test(reason))
+    return "the file is cut short, as an unfinished download is: download it again";
+  if (reason && /invalid data found/i.test(reason))
+    return "this is not a video: check what was saved (a web page saved as .mp4 reads like this)";
+  if (reason && /permission denied/i.test(reason))
+    return "the file cannot be read: check its permissions";
+  return "pass a video file (mp4, mov, webm)";
+}
+
 /** Size (as displayed, rotation applied), clock and sound of a video. */
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string): VideoInfo {
-  if (!existsSync(path))
-    throw new Fix(
-      `no file at ${path}`,
-      // `D:video\clip.mp4` reached us as `D:videoclip.mp4`: an unquoted Windows path in bash.
-      /^[A-Za-z]:[^\\/]/.test(path)
-        ? "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)"
-        : "pass the video's path from the project folder",
-    );
+  if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(
       execFileSync(
         ffprobeBin(),
         ["-v", "error", "-show_streams", "-show_format", "-of", "json", "--", path],
-        { maxBuffer: MAX_BUFFER, windowsHide: true },
+        { maxBuffer: MAX_BUFFER, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
       ).toString(),
     );
-  } catch {
-    throw new Fix(`ffprobe cannot read ${path}`, "pass a video file (mp4, mov, webm)");
+  } catch (err) {
+    const reason = ffprobeReason(err, path);
+    throw new Fix(
+      `ffprobe cannot read ${path}${reason ? `: ${reason}` : ""}`,
+      unreadableFix(reason),
+    );
   }
   const streams = json.streams ?? [];
   const video = streams.find((s) => s.codec_type === "video");

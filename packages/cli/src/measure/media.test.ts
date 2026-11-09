@@ -1,10 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { selectFirstFrameAfterEach } from "../commands/snapshot.js";
-import { meanAbsDiff, probeVideo, readClip, readFrames, sumOf, videoClip } from "./media.js";
+import {
+  Fix,
+  ffprobeReason,
+  meanAbsDiff,
+  missingFileFix,
+  probeVideo,
+  readClip,
+  readFrames,
+  sumOf,
+  unreadableFix,
+  videoClip,
+} from "./media.js";
 
 const terms = (n: number) => Array.from({ length: n }, (_, i) => `eq(n\\,${i * 2})`);
 
@@ -81,6 +92,64 @@ describe.skipIf(!ffmpeg)("an odd box", () => {
       const box = readFrames(path, { roi: [x, y, w, h], gray }).frames;
       expect(box).toHaveLength(10);
       expect(meanAbsDiff(box[9]!, there)).toBe(0);
+    }
+  });
+});
+
+describe("a path that is not there", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-path-"));
+  mkdirSync(join(dir, "My Clips"));
+  writeFileSync(join(dir, "My Clips", "ref one.mp4"), "");
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("says to quote a path the shell cut at its spaces", () => {
+    const cut = join(dir, "My");
+    const argv = ["node", "hyperframes", "measure", "probe", cut, "Clips/ref", "one.mp4", "--json"];
+    expect(missingFileFix(cut, argv)).toBe(
+      `the path has spaces: quote it ("${join(dir, "My Clips", "ref one.mp4")}")`,
+    );
+  });
+
+  it("says the shell dropped a Windows path's backslashes", () => {
+    expect(missingFileFix("D:videoclip.mp4", [])).toMatch(/dropped the backslashes/);
+  });
+
+  it("otherwise asks for the path from the project folder", () => {
+    expect(missingFileFix(join(dir, "nope.mp4"), [])).toBe(
+      "pass the video's path from the project folder",
+    );
+  });
+});
+
+describe("a file ffprobe cannot read", () => {
+  it("keeps ffprobe's reason without the path it repeats", () => {
+    const err = { stderr: Buffer.from("x.mp4: Invalid data found when processing input\n") };
+    expect(ffprobeReason(err, "x.mp4")).toBe("Invalid data found when processing input");
+    expect(ffprobeReason(new Error("boom"), "x.mp4")).toBeUndefined();
+  });
+
+  it.each([
+    ["moov atom not found", /download it again/],
+    ["Invalid data found when processing input", /not a video/],
+    ["Permission denied", /permissions/],
+    [undefined, /pass a video file/],
+  ])("answers %s", (reason, fix) => {
+    expect(unreadableFix(reason)).toMatch(fix);
+  });
+
+  it.skipIf(!ffmpeg)("puts the reason and its fix on the error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-probe-"));
+    const page = join(dir, "ref.mp4");
+    writeFileSync(page, "<!doctype html><title>Sign in</title>");
+    try {
+      probeVideo(page);
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(Fix);
+      expect((err as Fix).message).toMatch(/^ffprobe cannot read .*: .+/);
+      expect((err as Fix).fix).toMatch(/not a video/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });
