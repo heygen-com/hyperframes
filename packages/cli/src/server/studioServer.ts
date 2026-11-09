@@ -684,6 +684,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               state.stage = `Waiting for another render (${describeRenderLockHolder(holder, Date.now())})`;
             },
           });
+          state.stage = undefined;
           try {
             await executeRenderJob(
               job,

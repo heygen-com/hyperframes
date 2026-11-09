@@ -87,6 +87,8 @@ describe("Studio render slot", () => {
     endFirst();
     await vi.waitFor(() => expect(first.status).toBe("complete"));
     await vi.waitFor(() => expect(second.status, second.error).toBe("complete"), slow);
+    // The wait words go once the slot is taken, not only when the producer reports a stage.
+    expect(second.stage ?? "").not.toContain(WAITING);
     expect(mocks.executeRenderJob).toHaveBeenCalledTimes(2);
   });
 
