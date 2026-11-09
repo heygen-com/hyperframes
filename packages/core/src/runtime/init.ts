@@ -518,12 +518,16 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
+const DECODE_FIRST_MAX_SECONDS = 120;
+
 /** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
   return (
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
+    // A long source's whole-file fetch takes the link from the picture; its audio plays from the element.
+    el.duration <= DECODE_FIRST_MAX_SECONDS &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
