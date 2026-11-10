@@ -16,7 +16,7 @@ import { stagePrebuiltHandler } from "./prebuiltHandler.js";
 import { fetchStackOutputs, locateSamTemplate, samDeploy } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
 import { DEFAULT_STACK_NAME, readStackOutputs, writeStackOutputs } from "./state.js";
-import { pushVideoImage, type VideoArch } from "./videoImage.js";
+import { pushVideoImage, videoRepositoryName, type VideoArch } from "./videoImage.js";
 import { warmFunction } from "./warm.js";
 
 export interface DeployArgs {
@@ -95,7 +95,11 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     reservedConcurrency: outputs.reservedConcurrency,
     videoFunctionName: outputs.videoFunctionName,
     // Back on x86 the repository outlives the video function, so destroy still needs its name.
-    videoRepository: video?.repositoryName ?? readStackOutputs(resolved.stackName)?.videoRepository,
+    videoRepository:
+      video?.repositoryName ??
+      (readStackOutputs(resolved.stackName)?.videoRepository
+        ? videoRepositoryName(resolved.stackName)
+        : undefined),
     deployedAt: new Date().toISOString(),
   });
 

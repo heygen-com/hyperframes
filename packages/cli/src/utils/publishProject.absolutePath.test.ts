@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { stagePublishFiles } from "./publishProject.js";
 
@@ -59,5 +59,25 @@ describe("a media file referenced by its filesystem path", () => {
   it("that does not exist is left as written, like any root-relative URL", () => {
     const { index } = stage(() => `<html><img src="/assets/none.png"></html>`);
     expect(index).toContain('src="/assets/none.png"');
+  });
+});
+
+describe("an env file outside the project", () => {
+  it("is not archived, whether named by its path or by a relative reference", () => {
+    const project = temp();
+    const external = temp();
+    writeFileSync(join(external, ".env"), "SECRET=1");
+    writeFileSync(join(external, ".env.production"), "SECRET=1");
+    writeFileSync(join(external, "song.mp3"), "audio");
+    const sibling = `../${basename(external)}`;
+    writeFileSync(
+      join(project, "index.html"),
+      `<link href="${join(external, ".env")}"><link href="${sibling}/.env.production">` +
+        `<audio src="${sibling}/song.mp3"></audio>`,
+    );
+    const keys = [...stagePublishFiles(project, Infinity).keys()];
+    expect(keys.filter((key) => key.startsWith("_ext/"))).toEqual([
+      expect.stringMatching(/song\.mp3$/),
+    ]);
   });
 });

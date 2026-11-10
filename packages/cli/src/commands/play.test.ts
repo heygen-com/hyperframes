@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -153,6 +153,24 @@ async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> 
 }
 
 describe("registerCompositionRoute", () => {
+  it("does not serve env files, Git data or the tools' own records", async () => {
+    const project = tmpProject();
+    mkdirSync(join(project.dir, ".git"));
+    mkdirSync(join(project.dir, ".hyperframes"));
+    writeFileSync(join(project.dir, ".env"), "KEY=secret");
+    writeFileSync(join(project.dir, ".env.local"), "KEY=secret");
+    writeFileSync(join(project.dir, ".git", "config"), "[core]");
+    writeFileSync(join(project.dir, ".hyperframes", "lambda-stack-x.json"), "{}");
+    writeFileSync(join(project.dir, "logo.png"), "png");
+    const app = await buildApp(project, false);
+
+    for (const path of [".env", ".ENV", ".env.local", ".git/config"]) {
+      expect((await app.request(`/composition/${path}`)).status).toBe(404);
+    }
+    expect((await app.request("/composition/.hyperframes/lambda-stack-x.json")).status).toBe(404);
+    expect((await app.request("/composition/logo.png")).status).toBe(200);
+  });
+
   it("lets a browser revalidate the composition and its assets instead of refetching them", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
