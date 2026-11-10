@@ -47,9 +47,23 @@ export function realFilePath(filePath: string): string {
 const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
+/** One path segment as Windows opens it: any case, no trailing dots or spaces, no `:stream` suffix. */
+function segmentsOf(relPath: string): string[] {
+  return relPath
+    .toLowerCase()
+    .split(/[\\/]/)
+    .map((segment) => segment.replace(/:.*$/, "").replace(/[. ]+$/, ""));
+}
+
+// Git's own files (a folder, or a file in a linked work tree) and env files hold commands other tools run and
+// secrets: no route reads or writes them.
+const isVcsOrSecretSegment = (segment: string): boolean =>
+  segment === ".git" || segment.startsWith(".env");
+
 /** For a project-relative path with `/` separators. */
 export function isPrivateProjectPath(relPath: string): boolean {
   const path = relPath.toLowerCase();
+  if (segmentsOf(path).some(isVcsOrSecretSegment)) return true;
   return (
     (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
     !STUDIO_FILES.has(path) &&
@@ -57,11 +71,48 @@ export function isPrivateProjectPath(relPath: string): boolean {
   );
 }
 
-export function isPrivateProjectFile(projectDir: string, filePath: string): boolean {
+const projectRelatives = (projectDir: string, filePath: string): string[] => {
   const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
-  return [rel(projectDir, filePath), rel(realFilePath(projectDir), realFilePath(filePath))].some(
-    isPrivateProjectPath,
+  return [rel(projectDir, filePath), rel(realFilePath(projectDir), realFilePath(filePath))];
+};
+
+export function isPrivateProjectFile(projectDir: string, filePath: string): boolean {
+  return projectRelatives(projectDir, filePath).some(isPrivateProjectPath);
+}
+
+// The only hidden folders a request may write into: Studio's own records (still closed by `isPrivateProjectPath`
+// past its own files) and the media ledger's folder.
+const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
+
+/**
+ * May a request create, change, rename or delete this project-relative path? Not the project folder itself, nothing
+ * under `node_modules`, and no hidden file or folder (tool settings, hooks, git and env files) but the ones above.
+ */
+export function isWritableProjectPath(relPath: string): boolean {
+  if (!relPath || isPrivateProjectPath(relPath)) return false;
+  const segments = segmentsOf(relPath);
+  return segments.every(
+    (segment, at) =>
+      segment !== "" &&
+      segment !== "node_modules" &&
+      (!segment.startsWith(".") || (at === 0 && WRITABLE_HIDDEN_FOLDERS.has(segment))),
   );
+}
+
+/** `isWritableProjectPath` for an absolute path, spelled as asked and with every link resolved. */
+export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
+  return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
+}
+
+/** `resolveWithinProject` for a path a request writes, renames or deletes. */
+export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
+  const resolved = resolveWithinProject(base, relativePath);
+  return resolved && isWritableProjectFile(base, resolved) ? resolved : null;
+}
+
+/** `pinWithinProject` for a path a request writes. */
+export function pinWritableWithinProject(base: string, relativePath: string): string | null {
+  return pinResolved(base, resolveWritableWithinProject(base, relativePath));
 }
 
 /**

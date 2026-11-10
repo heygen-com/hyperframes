@@ -304,6 +304,7 @@ async function installAll(
   force: boolean,
   requestedName: string,
   variableValues: Record<string, unknown> | null,
+  installDirs: string[],
 ): Promise<{
   written: string[];
   preserved: string[];
@@ -325,6 +326,7 @@ async function installAll(
           // Only the item the user named. A dependency dragged in behind it never
           // declared these variables and must not be rewritten by them.
           variableValues: planItem.name === requestedName ? variableValues : null,
+          installDirs,
         }),
       );
     }
@@ -438,6 +440,8 @@ export async function addToProject(
     opts.force ?? false,
     item.name,
     variableValues,
+    // Items write only into the project's own blocks, components and assets folders.
+    [config.paths.blocks, config.paths.components, config.paths.assets],
   );
 
   // Report what landed, not what was asked for: a failed install throws above,
