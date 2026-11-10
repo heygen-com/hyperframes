@@ -17,7 +17,7 @@ import {
   affectsProjectSignature,
   createProjectSignature,
   createProjectSignatureAsync,
-  listProjectFiles,
+  listProjectFilesAsync,
 } from "./projectSignature.js";
 
 const temporaryProjects: string[] = [];
@@ -72,15 +72,15 @@ describe("affectsProjectSignature", () => {
   });
 });
 
-describe("listProjectFiles", () => {
-  it("leaves out the temp file of a save in flight", () => {
+describe("listProjectFilesAsync", () => {
+  it("leaves out the temp file of a save in flight", async () => {
     const project = mkdtempSync(resolve(tmpdir(), "hf-signature-"));
     temporaryProjects.push(project);
     writeFileSync(resolve(project, "index.html"), "<h1>Hello</h1>");
     writeFileSync(resolve(project, "index.html.hf0a1b2c.tmp"), "<h1>Bye</h1>");
     writeFileSync(resolve(project, "foo.12345678.tmp"), "mine");
 
-    expect(listProjectFiles(project).map((file) => file.path)).toEqual([
+    expect((await listProjectFilesAsync(project)).map((file) => file.path)).toEqual([
       "foo.12345678.tmp",
       "index.html",
     ]);

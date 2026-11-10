@@ -26,7 +26,8 @@ import { realFilePath } from "../helpers/safePath.js";
 import {
   STUDIO_SIGNATURE_MANIFEST_PATHS,
   affectsProjectSignature,
-  listProjectFiles,
+  listProjectFilesAsync,
+  type ListedProjectFile,
 } from "../helpers/projectSignature.js";
 import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
@@ -263,9 +264,9 @@ function withoutHiddenPaths(log: HistoryLog): HistoryLog {
   return log;
 }
 
-const historyFiles = (dir: string) =>
-  listProjectFiles(dir).filter((file) => isHistoryPath(file.path));
-type ListedFile = ReturnType<typeof listProjectFiles>[number];
+const historyFiles = async (dir: string) =>
+  (await listProjectFilesAsync(dir)).filter((file) => isHistoryPath(file.path));
+type ListedFile = ListedProjectFile;
 const COPY_LATER_ABOVE_BYTES = 1024 ** 2;
 
 const sameWho = (a: HistoryWho, b: HistoryWho) => a.kind === b.kind && a.name === b.name;
@@ -491,7 +492,7 @@ class Engine {
     const left = this.readAdopting();
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
-    this.adoptMediaInBackground(historyFiles(this.dir).filter(unadopted), this.now());
+    this.adoptMediaInBackground((await historyFiles(this.dir)).filter(unadopted), this.now());
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
@@ -554,7 +555,7 @@ class Engine {
   async takeInUnnamedLedger(): Promise<void> {
     const named = (path: string) =>
       this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
-    const ledger = historyFiles(this.dir).find((file) => file.path === MEDIA_LEDGER);
+    const ledger = (await historyFiles(this.dir)).find((file) => file.path === MEDIA_LEDGER);
     if (ledger && !this.log.baseline.has(MEDIA_LEDGER) && !named(MEDIA_LEDGER)) {
       const copied = await this.storeIfPresent(MEDIA_LEDGER);
       if (typeof copied === "object") this.log.baseline.set(MEDIA_LEDGER, copied.hash);
@@ -566,7 +567,7 @@ class Engine {
 
   async firstOpen(): Promise<void> {
     const sweptAt = this.now();
-    const files = historyFiles(this.dir);
+    const files = await historyFiles(this.dir);
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
     const hashes = await Promise.allSettled(
       copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path))),
@@ -690,7 +691,7 @@ class Engine {
     const sweptAt = this.now();
     const changedAt = (file: { mtimeMs: number; ctimeMs: number }) =>
       Math.min(sweptAt, Math.max(file.mtimeMs, file.ctimeMs));
-    const seen = historyFiles(this.dir).filter((file) => !this.adopting.has(file.path));
+    const seen = (await historyFiles(this.dir)).filter((file) => !this.adopting.has(file.path));
     const heard = new Map(this.overwritten);
     const present = new Set(seen.map((file) => file.path));
     const removed = [...this.tracked.keys()]

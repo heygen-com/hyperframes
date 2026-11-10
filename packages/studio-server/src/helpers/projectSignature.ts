@@ -242,12 +242,13 @@ async function collectProjectFilesAsync(
   return collected;
 }
 
-/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
-export function listProjectFiles(
-  projectDir: string,
-): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
+export type ListedProjectFile = { path: string; size: number; mtimeMs: number; ctimeMs: number };
+
+/** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`.
+ * Awaited, so a host serving requests keeps answering through a large project's walk. */
+export async function listProjectFilesAsync(projectDir: string): Promise<ListedProjectFile[]> {
   const normalizedProjectDir = resolve(projectDir);
-  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
+  return (await collectProjectFilesAsync(normalizedProjectDir)).map((entry) => ({
     path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
     size: entry.size,
     mtimeMs: entry.mtimeMs,
