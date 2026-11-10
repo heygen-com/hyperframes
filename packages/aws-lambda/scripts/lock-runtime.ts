@@ -1,6 +1,8 @@
 /**
  * Regenerates the committed lockfiles the Lambda handler ZIP installs from, one per Chrome source,
- * at the exact versions bun.lock resolved. Run after bumping puppeteer-core or @sparticuz/chromium:
+ * with puppeteer-core and @sparticuz/chromium at the exact versions bun.lock resolved. npm resolves
+ * the transitive tree, and Renovate's weekly lockFileMaintenance keeps it current. Run after
+ * bumping puppeteer-core or @sparticuz/chromium:
  *   bun packages/aws-lambda/scripts/lock-runtime.ts
  */
 import { spawnSync } from "node:child_process";

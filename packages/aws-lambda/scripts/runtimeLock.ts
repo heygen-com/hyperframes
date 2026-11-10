@@ -19,7 +19,11 @@ export function bunLockVersion(lockText: string, moduleName: string): string | n
   return new RegExp(`"${name}":\\s*\\["${name}@([^"]+)"`).exec(lockText)?.[1] ?? null;
 }
 
-/** Where the committed runtime lockfile disagrees with the workspace's bun.lock; empty when they match. */
+/**
+ * Where the committed lock's direct versions (puppeteer-core, @sparticuz/chromium) disagree with
+ * bun.lock; empty when they match. The transitive tree is the lock's own: npm resolves it, and
+ * Renovate's lockFileMaintenance refreshes it (see .github/renovate.json), so it can differ from bun.lock.
+ */
 export function lockMismatches(source: RuntimeSource, bunLockText: string): string[] {
   const lockPath = join(RUNTIME_LOCK_DIR, source, "package-lock.json");
   if (!existsSync(lockPath)) return [`${source}: no committed package-lock.json`];

@@ -253,7 +253,7 @@ async function bundleHandler(stagingDir: string): Promise<void> {
 
 function stageRuntimeModules(stagingDir: string, source: BuildOptions["source"]): void {
   // This runs in the publish job: node_modules come only from the committed lockfile, with
-  // lifecycle scripts off, and in the repo that lock must match bun.lock.
+  // lifecycle scripts off, and in the repo its direct versions must match bun.lock.
   assertRuntimeLockCurrent(source);
   const lockDir = join(RUNTIME_LOCK_DIR, source);
   copyFileSync(join(lockDir, "package.json"), join(stagingDir, "package.json"));
