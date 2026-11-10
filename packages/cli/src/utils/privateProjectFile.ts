@@ -3,7 +3,6 @@ import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/s
 
 const ENV_FILE = /^\.env(\..*)?$/;
 
-/** A path through a Git folder or to an env file such as `.env.local`. */
 export function isEnvOrGitPath(path: string): boolean {
   const segments = path.toLowerCase().split(/[\\/]/);
   return segments.includes(".git") || ENV_FILE.test(segments.at(-1) ?? "");

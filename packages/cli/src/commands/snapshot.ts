@@ -55,6 +55,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -431,7 +432,7 @@ export function privateMediaDir(parent: string): string {
     stat.isDirectory() &&
     (process.platform === "win32" ||
       (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
-  return ours ? dir : mkdtempSync(join(parent, "hyperframes-snapshot-media-"));
+  return ours ? dir : createStagingDir(parent, "hyperframes-snapshot-media-");
 }
 
 let remoteVideoDir: string | undefined;
