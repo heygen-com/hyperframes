@@ -31,7 +31,7 @@ function runCreateReleaseTag(cwd, version) {
   return spawnSync("bash", ["-euo", "pipefail", "-c", createReleaseTag.run], {
     cwd,
     encoding: "utf8",
-    env: { ...process.env, VERSION: version },
+    env: { ...process.env, VERSION: version, GITHUB_TOKEN: "test-token" },
     timeout: 5_000,
   });
 }
@@ -73,6 +73,13 @@ test("stable release tag recovery is idempotent and immutable", () => {
   assert.equal(
     createReleaseTag.run.trim(),
     [
+      ': "${GITHUB_TOKEN:?}"',
+      'BASIC_AUTH="$(printf \'x-access-token:%s\' "$GITHUB_TOKEN" | base64 -w0)"',
+      'echo "::add-mask::$BASIC_AUTH"',
+      "export GIT_CONFIG_COUNT=1",
+      'export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"',
+      'export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"',
+      "",
       'TAG="v$VERSION"',
       'EXPECTED_TAG_SHA="$(git rev-parse HEAD)"',
       "",
@@ -114,11 +121,25 @@ test("stable release tag creation survives retries and rejects a mismatched comm
     git(checkout, "branch", "-M", "main");
     git(checkout, "remote", "add", "origin", origin);
     git(checkout, "push", "-u", "origin", "main");
+    const pushAuth = join(root, "push-auth");
+    writeFileSync(
+      join(checkout, ".git", "hooks", "pre-push"),
+      `#!/bin/sh\ngit config --get http.https://github.com/.extraheader > "${pushAuth}"\n`,
+    );
+    chmodSync(join(checkout, ".git", "hooks", "pre-push"), 0o755);
 
     const releaseSha = git(checkout, "rev-parse", "HEAD");
     const firstRun = runCreateReleaseTag(checkout, "9.8.7");
     assert.equal(firstRun.status, 0, `${firstRun.stdout}\n${firstRun.stderr}`);
     assert.equal(git(checkout, "rev-parse", "refs/tags/v9.8.7^{commit}"), releaseSha);
+    const basicAuth = Buffer.from("x-access-token:test-token").toString("base64");
+    assert.equal(readFileSync(pushAuth, "utf8").trim(), `AUTHORIZATION: basic ${basicAuth}`);
+    assert.match(firstRun.stdout, new RegExp(`::add-mask::${basicAuth}`));
+    assert.equal(
+      spawnSync("git", ["config", "--get-regexp", "extraheader"], { cwd: checkout }).status,
+      1,
+      "the tag step must not write the token into .git/config",
+    );
 
     const retry = runCreateReleaseTag(checkout, "9.8.7");
     assert.equal(retry.status, 0, `${retry.stdout}\n${retry.stderr}`);
@@ -130,6 +151,19 @@ test("stable release tag creation survives retries and rejects a mismatched comm
     assert.match(mismatch.stdout, /points to .* expected/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the publish checkout keeps no token and only the tag push gets one for git", () => {
+  assert.equal(checkout.with["persist-credentials"], false);
+  assert.ok(!JSON.stringify(publish.env ?? {}).includes("secrets."));
+  assert.equal(createReleaseTag.env.GITHUB_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
+  for (const step of publish.steps) {
+    for (const [name, value] of Object.entries(step.env ?? {})) {
+      if (!String(value).includes("secrets.GITHUB_TOKEN")) continue;
+      const allowed = step === createReleaseTag ? "GITHUB_TOKEN" : "GH_TOKEN";
+      assert.equal(name, allowed, `${step.name ?? step.uses} passes the token as ${name}`);
+    }
   }
 });
 
