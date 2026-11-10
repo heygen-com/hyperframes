@@ -3204,6 +3204,16 @@ describe("SVG draw-on rules", () => {
     expect(performance.now() - started).toBeLessThan(3000);
   });
 
+  it("scans a closed style block of many unclosed rules in linear time", async () => {
+    const html = `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <style>${"x{".repeat(40000)}</style>
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   // ── gsap_timeline_set_initial_hide ─────────────────────────────────────────
 
   it("gsap_timeline_set_initial_hide: warns on tl.set hidden state at position 0", async () => {

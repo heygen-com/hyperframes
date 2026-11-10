@@ -420,10 +420,35 @@ function styleLooksFullFrameOverlay(style: string): boolean {
   return coversFrame && styleHasOpaqueBackground(style);
 }
 
+// The `[selectorList, body]` pairs `/(?<![^{}])([^{}]+)\{([^}]+)\}/g` matches, found in linear
+// time: a run of non-braces, then `{`, then everything up to the next `}`. The next `}` is cached,
+// because rescanning for it from every `{` is quadratic on a style with many `{` and no `}`.
+function styleRuleBodies(css: string): Array<[selectorList: string, body: string]> {
+  const out: Array<[string, string]> = [];
+  let start = 0;
+  let close = 0;
+  while (start < css.length) {
+    let brace = start;
+    while (brace < css.length && css[brace] !== "{" && css[brace] !== "}") brace++;
+    if (brace === css.length) break;
+    if (css[brace] === "{" && brace > start) {
+      if (close !== -1 && close <= brace) close = css.indexOf("}", brace + 1);
+      if (close === -1) break;
+      if (close > brace + 1) {
+        out.push([css.slice(start, brace), css.slice(brace + 1, close)]);
+        start = close + 1;
+        continue;
+      }
+    }
+    start = brace + 1;
+  }
+  return out;
+}
+
 function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
   const rules = new Map<string, string>();
   for (const style of styles) {
-    for (const [, selectorList, body] of style.content.matchAll(/(?<![^{}])([^{}]+)\{([^}]+)\}/g)) {
+    for (const [selectorList, body] of styleRuleBodies(style.content)) {
       if (!selectorList || !body) continue;
       for (const selector of selectorList.split(",")) {
         const token = selector.trim();
@@ -2350,9 +2375,7 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const multiDashTokens = new Set<string>();
     for (const style of styles) {
-      for (const [, selectorList, body] of style.content.matchAll(
-        /(?<![^{}])([^{}]+)\{([^}]+)\}/g,
-      )) {
+      for (const [selectorList, body] of styleRuleBodies(style.content)) {
         if (!selectorList || !body) continue;
         const value = readStyleProperty(body, "stroke-dasharray");
         if (!value || !isMultiComponentDasharray(value)) continue;
