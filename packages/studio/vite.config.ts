@@ -97,10 +97,15 @@ async function bridgeHonoResponse(
   res.end();
 }
 
-// Vite allows any IP-literal Host by default, which is what keeps `--host` on a LAN address working.
-function isIpLiteralHost(host: string): boolean {
+// Vite's own rule (IP literals, *.localhost, leading-dot entries), so the API serves every Host Vite serves the page on.
+function viteAllowsHost(host: string, allowedHosts: readonly string[]): boolean {
   const bracketed = /^\[([^\]]+)\]/.exec(host);
-  return bracketed ? isIP(bracketed[1]!) === 6 : isIP(host.split(":")[0]!) === 4;
+  if (bracketed) return isIP(bracketed[1]!) === 6;
+  const name = host.split(":")[0]!.toLowerCase();
+  if (isIP(name) === 4 || name === "localhost" || name.endsWith(".localhost")) return true;
+  return allowedHosts.some(
+    (allowed) => allowed.startsWith(".") && (name === allowed.slice(1) || name.endsWith(allowed)),
+  );
 }
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
@@ -210,8 +215,7 @@ function devProjectApi(): Plugin {
       };
 
       // Vite runs its own Host check after the middlewares added here, so the
-      // plugin's routes check Host first: the CLI preview server's rule plus
-      // the IP literals and configured host Vite allows by default.
+      // plugin's routes check Host first: the CLI preview server's rule plus Vite's.
       const allowedHosts = [...previewAllowedHostsFromEnv()];
       if (typeof server.config.server.host === "string")
         allowedHosts.push(server.config.server.host);
@@ -219,7 +223,8 @@ function devProjectApi(): Plugin {
         const url = req.url ?? "";
         if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
         const host = req.headers.host ?? "";
-        if (hostHeaderAllowed(host, allowedHosts) || isIpLiteralHost(host)) return next();
+        if (hostHeaderAllowed(host, allowedHosts) || viteAllowsHost(host, allowedHosts))
+          return next();
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({

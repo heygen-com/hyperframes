@@ -122,6 +122,17 @@ describe("studio dev server host check", () => {
     expect((await request(middlewares, "/api/projects", "evil.tunnel.example")).status).toBe(403);
   });
 
+  it("serves the *.localhost and leading-dot hosts Vite serves the page on", async () => {
+    vi.stubEnv(ENV, ".tunnel.example");
+    const middlewares = startPlugin();
+    for (const host of ["studio.localhost:5190", "tunnel.example", "a.b.tunnel.example:443"]) {
+      expect((await request(middlewares, "/api/projects", host)).status, host).toBe(200);
+    }
+    for (const host of ["localhost.evil.example", "eviltunnel.example", "tunnel.example.evil"]) {
+      expect((await request(middlewares, "/api/projects", host)).status, host).toBe(403);
+    }
+  });
+
   it("leaves routes the plugin does not own to Vite's own host check", async () => {
     const middlewares = startPlugin();
     expect((await request(middlewares, "/", "other.example:5190")).status).toBeUndefined();
