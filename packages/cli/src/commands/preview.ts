@@ -1692,7 +1692,11 @@ export async function runEmbeddedMode(
 
   const url = `http://localhost:${result.port}`;
   listening =
-    originForListeningAddress(result.server.address()) ?? `http://127.0.0.1:${result.port}`;
+    originForListeningAddress(
+      result.server.address(),
+      "http",
+      process.env.HYPERFRAMES_PREVIEW_HOST,
+    ) ?? `http://127.0.0.1:${result.port}`;
   if (options?.json) {
     writeLifecycleJson(foregroundPreviewReadyPayload(pName, url, dir, process.pid));
   } else {

@@ -1,10 +1,17 @@
-import type { AddressInfo } from "node:net";
+import { isIP, type AddressInfo } from "node:net";
 
+// bindHost is the name the server was asked to listen on. A hostname bind is reached by that
+// name: the Host check accepts the bind name, not the address it resolved to.
 export function originForListeningAddress(
   address: AddressInfo | string | null | undefined,
   protocol: "http" | "https" = "http",
+  bindHost?: string,
 ): string | undefined {
   if (!address || typeof address === "string") return undefined;
+  const bindName = bindHost?.trim() ?? "";
+  if (bindName !== "" && bindName !== "*" && isIP(bindName) === 0) {
+    return `${protocol}://${bindName}:${address.port}`;
+  }
   const unspecified = address.address === "0.0.0.0" || address.address === "::";
   const host = unspecified ? "127.0.0.1" : address.address;
   return `${protocol}://${host.includes(":") ? `[${host}]` : host}:${address.port}`;
