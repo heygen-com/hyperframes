@@ -11,6 +11,7 @@ import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
 import { heldPosters, swappedElements, unproxiedSrc } from "./proxySrc";
+import { giveBackWhenDue } from "./preloadMedia";
 import { restartPlaybackHealth } from "./playbackHealth";
 import { failedCopyElements, noteCopy, setCopyReportingLevel } from "./previewCopies";
 import { waitForServedProxy } from "./proxyWait";
@@ -551,6 +552,8 @@ export function swapToProxy(
   lightFacts?: PreviewSourceFacts,
 ): void {
   if (swappedElements.has(el)) return;
+  // A clip held with no src takes its file back first, so the copy replaces the file it plays.
+  giveBackWhenDue(el);
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);
   const variant = copyVariant(entry);

@@ -1,16 +1,28 @@
 /** Media elements swapped to their proxy, each with the src attribute it had before the swap. */
 export const swappedElements = new WeakMap<Element, string | null>();
 
-/** Media elements the runtime opened at their in-point: the src the author wrote and the one written in its place. */
-const openedAtInPoint = new WeakMap<Element, { authored: string; written: string }>();
+/** Media elements the runtime opened at their in-point: the src the author wrote and the one written in its
+ * place, null while the clip is held with no src until it is due. */
+const openedAtInPoint = new WeakMap<Element, { authored: string; written: string | null }>();
 
-export function recordOpenedAtInPoint(el: Element, authored: string, written: string): void {
+export function recordOpenedAtInPoint(el: Element, authored: string, written: string | null): void {
   openedAtInPoint.set(el, { authored, written });
 }
 
 /** True while the src is still the one the runtime wrote: a script or binding that sets another ends it. */
 export function isOpenedAtInPoint(el: Element): boolean {
-  return openedAtInPoint.get(el)?.written === el.getAttribute("src");
+  const record = openedAtInPoint.get(el);
+  return record !== undefined && record.written === el.getAttribute("src");
+}
+
+/** True while the runtime holds the clip with no src. */
+export function isHeldUntilDue(el: Element): boolean {
+  return isOpenedAtInPoint(el) && openedAtInPoint.get(el)!.written === null;
+}
+
+/** The src the author wrote for a clip the runtime opened or holds. */
+export function authoredSrcOf(el: Element): string | null {
+  return openedAtInPoint.get(el)?.authored ?? null;
 }
 
 export function unproxiedSrc(el: Element): string | null {

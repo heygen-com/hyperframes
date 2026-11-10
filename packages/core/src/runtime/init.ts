@@ -20,7 +20,7 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
-  anyOpenedAtInPoint,
+  giveBackWhenDue,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -177,7 +177,7 @@ import {
   forgetPositionEdit,
   installPositionEditsSeekReapply,
 } from "./positionEdits";
-import { isOpenedAtInPoint, stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
+import { stillStandsIn, unheldPoster, unproxiedSrc } from "./proxySrc";
 import { applyVariableBindings, unproxiedMediaSrc } from "./applyVariableBindings";
 import { createColorGradingRuntime, type RuntimeColorGradingApi } from "./colorGrading";
 import { COLOR_GRADING_AUTHORED_OPACITY_ATTR } from "../colorGrading";
@@ -3114,8 +3114,7 @@ export function initSandboxRuntimeModular(): void {
   const hostOf = (el: Element) => el.parentElement?.closest("[data-composition-id]");
   // Clips due soon fetch a few at a time, earliest first: a fast cut sequence has dozens inside the
   // look-ahead, and fetching them all queues the clip that is due behind clips that are not.
-  // A page with clips opened at their in-point takes more: each reads little, and three left the next take waiting.
-  const prefetchSlots = () => (anyOpenedAtInPoint() ? 8 : 3);
+  const PREFETCH_SLOTS = 3;
   const prefetching = new Set<HTMLMediaElement>();
   type WaitingPrefetch = { element: HTMLMediaElement; start: number };
   const waitingForSlot = new Map<HTMLMediaElement, WaitingPrefetch>();
@@ -3180,7 +3179,7 @@ export function initSandboxRuntimeModular(): void {
   };
   const fillPrefetchSlots = () => {
     withTimingResolver(() => refreshWaitingForSlotOrder(readCompositionTimingRevision()));
-    while (prefetching.size < prefetchSlots() && waitingForSlotHead < waitingForSlotOrder.length) {
+    while (prefetching.size < PREFETCH_SLOTS && waitingForSlotHead < waitingForSlotOrder.length) {
       const entry = waitingForSlotOrder[waitingForSlotHead++]!;
       if (waitingForSlot.get(entry.element) !== entry) continue;
       waitingForSlot.delete(entry.element);
@@ -3240,7 +3239,7 @@ export function initSandboxRuntimeModular(): void {
     const armer = armedBy.get(el);
     const armed = armer !== undefined && armedFrom.has(armer);
     const decided = mediaNearPlayhead.get(el);
-    const unslotted = !visible && !armed && decided !== true && prefetching.size >= prefetchSlots();
+    const unslotted = !visible && !armed && decided !== true && prefetching.size >= PREFETCH_SLOTS;
     if (unslotted && upcoming) addWaitingForSlot(el);
     else removeWaitingForSlot(el);
     // While playing, a clip that has passed is not fetched again, and one still downloading is released:
@@ -3252,6 +3251,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
     const wasApproaching = approachingMedia.has(el);
@@ -3474,11 +3474,9 @@ export function initSandboxRuntimeModular(): void {
           rawNode,
           isVisibleNow,
           loadsAhead &&
-            // A clip opened at its in-point reads little ahead, so every one is fetched, not just the next take.
-            (isOpenedAtInPoint(rawNode) ||
-              (playerFrame
-                ? nextTakeClips(currentTime).has(rawNode)
-                : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime))),
+            (playerFrame
+              ? nextTakeClips(currentTime).has(rawNode)
+              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
           currentTime,
           loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );

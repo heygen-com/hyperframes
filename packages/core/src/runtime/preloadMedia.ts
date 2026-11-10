@@ -1,5 +1,11 @@
 import { parseStrictFiniteTimingNumber, readMediaStart } from "./playbackRate";
-import { isOpenedAtInPoint, recordOpenedAtInPoint } from "./proxySrc";
+import {
+  authoredSrcOf,
+  isHeldUntilDue,
+  isOpenedAtInPoint,
+  recordOpenedAtInPoint,
+  unproxiedSrc,
+} from "./proxySrc";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
@@ -90,6 +96,7 @@ function wholeFileBuffered(media: HTMLMediaElement): boolean {
 
 export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): void {
   if (media.querySelector("source") || (!whenBuffered && wholeFileBuffered(media))) return;
+  if (heldWhenIdle.has(media) && isOpenedAtInPoint(media)) return holdUntilDue(media);
   const src = media.getAttribute("src");
   stopMediaDownload(media);
   if (src !== null) media.setAttribute("src", src);
@@ -103,12 +110,6 @@ export function lengthIsAuthored(media: Element): boolean {
 // loses anything to the head reads.
 const LONG_SOURCE_BYTES = 32 * 1024 * 1024;
 const sourceBytes = new Map<string, Promise<number | null>>();
-let anyOpened = false;
-
-/** Whether any clip was opened at its in-point: the page then has many cheap reads to run at once. */
-export function anyOpenedAtInPoint(): boolean {
-  return anyOpened;
-}
 
 /** The size of a file in bytes from a one-byte range request, or null where the page cannot read it. */
 function bytesOfSource(src: string): Promise<number | null> {
@@ -148,16 +149,41 @@ function openAtInPoint(el: HTMLMediaElement): void {
   const written = `${src}#t=${start}`;
   recordOpenedAtInPoint(el, src, written);
   el.setAttribute("src", written);
-  anyOpened = true;
 }
 
-/** A start fragment makes a clip of a long file open at its in-point, so many clips of one long file stop
- * pulling many times its size, and each is cheap enough to fetch ahead. A short file is left as it is. */
-export function openLongSourceAtInPoint(el: HTMLMediaElement, opened: () => void): void {
+// Later clips of a long file: WebKit opens the file for any clip that has a src, whatever its preload.
+const heldWhenIdle = new WeakSet<HTMLMediaElement>();
+
+function holdUntilDue(el: HTMLMediaElement): void {
+  const authored = unproxiedSrc(el);
+  if (authored === null) return;
+  recordOpenedAtInPoint(el, authored, null);
+  stopMediaDownload(el);
+}
+
+/** A held clip gets its src back, opening at its in-point, once the runtime decides it is due. */
+export function giveBackWhenDue(el: HTMLMediaElement): void {
+  if (!isHeldUntilDue(el)) return;
+  const authored = authoredSrcOf(el)!;
+  const start = readMediaStart(el);
+  const written = start > 0 ? `${authored}#t=${start}` : authored;
+  recordOpenedAtInPoint(el, authored, written);
+  el.setAttribute("src", written);
+}
+
+/** A clip of a long file opens at its in-point; a later one holds no src until it is due, so only the clips
+ * on screen and the next take read the file at once. A short file is left as it is. */
+export function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean, opened: () => void): void {
   const src = el.getAttribute("src");
-  if (!inPlayerFrame(document) || !src) return;
+  if (!isWebKit() || !inPlayerFrame(document) || !src) return;
   void bytesOfSource(src).then((bytes) => {
     if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
+    const idle = el.preload === "none" && el.networkState !== 2;
+    if (later && idle && !src.includes("#") && !el.loop && !el.querySelector("source")) {
+      heldWhenIdle.add(el);
+      holdUntilDue(el);
+      return;
+    }
     openAtInPoint(el);
     if (isOpenedAtInPoint(el)) opened();
   });
@@ -177,8 +203,9 @@ export function deferMediaUntilDue(): void {
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
     const authoredPreload = media.preload;
-    if (startInFilm(el) > 0) media.preload = "none";
-    openLongSourceAtInPoint(media, () => {
+    const later = startInFilm(el) > 0;
+    if (later) media.preload = "none";
+    openLongSourceAtInPoint(media, later, () => {
       media.preload = authoredPreload;
     });
   };

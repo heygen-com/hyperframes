@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { unproxiedSrc } from "./proxySrc";
 import {
-  anyOpenedAtInPoint,
   deferMediaUntilDue,
+  giveBackWhenDue,
   isRenderFrameVideo,
   preloadMedia,
   prepareUpcomingMedia,
@@ -308,8 +308,9 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
   });
 
   // Each test names its own file: the size of a file is asked once per page.
-  const clip = (attrs = 'data-media-start="30"') =>
-    `<video src="/m/film-${seq++}.mp4" data-start="4" data-duration="2" ${attrs}></video>`;
+  const clip = (attrs = 'data-media-start="30"', start = "0") =>
+    `<video src="/m/film-${seq++}.mp4" data-start="${start}" data-duration="2" ${attrs}></video>`;
+  const later = () => clip('data-media-start="30"', "4");
   async function added(html: string): Promise<HTMLVideoElement> {
     document.body.insertAdjacentHTML("beforeend", html);
     await Promise.resolve();
@@ -322,14 +323,30 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
     const authored = v.getAttribute("src")!;
     await vi.waitFor(() => expect(v.getAttribute("src")).toBe(`${authored}#t=30`));
     expect(unproxiedSrc(v)).toBe(authored);
-    expect(anyOpenedAtInPoint()).toBe(true);
   });
 
-  it("gets its authored preload back once opened, and has none until then", async () => {
-    const v = await added(clip());
-    expect(v.preload).toBe("none");
-    await vi.waitFor(() => expect(opened(v)).toBe(true));
-    expect(v.preload).not.toBe("none");
+  it("holds a later clip with no src, still naming its file, until it is due", async () => {
+    const v = await added(later());
+    const authored = v.getAttribute("src")!;
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+    expect(unproxiedSrc(v)).toBe(authored);
+    giveBackWhenDue(v);
+    expect(v.getAttribute("src")).toBe(`${authored}#t=30`);
+  });
+
+  it("holds a later clip again when it is released after playing", async () => {
+    const v = await added(later());
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+    giveBackWhenDue(v);
+    releaseMedia(v, true);
+    expect(v.getAttribute("src")).toBeNull();
+  });
+
+  it("does not hold a later clip a binding has given another src", async () => {
+    const v = await added(later());
+    v.setAttribute("src", "/m/bound.mp4");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.getAttribute("src")).toBe("/m/bound.mp4");
   });
 
   it("does so for a clip already parsed when the runtime arrives", async () => {
@@ -349,7 +366,7 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
 
   it("is left alone when its file is small, so a short film loads exactly as before", async () => {
     sizeOf(5_600_000);
-    const v = await added(clip());
+    const v = await added(later());
     await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 10));
     expect(opened(v)).toBe(false);
