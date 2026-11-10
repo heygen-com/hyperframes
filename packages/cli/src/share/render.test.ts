@@ -72,3 +72,18 @@ describe("local sharing render boundary", () => {
     },
   );
 });
+
+it("reuses the video when only a scratch log is added", async () => {
+  const dir = folder();
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  rendering.execute.mockImplementation(async ({ output }: { output: string }) =>
+    writeFileSync(output, "video"),
+  );
+  await prepareShareRender(dir);
+  const original = latestShareRender(dir);
+  rendering.execute.mockClear();
+  writeFileSync(join(dir, "other.log"), "scratch output");
+  await prepareShareRender(dir);
+  expect(rendering.execute).not.toHaveBeenCalled();
+  expect(latestShareRender(dir)?.id).toBe(original?.id);
+});

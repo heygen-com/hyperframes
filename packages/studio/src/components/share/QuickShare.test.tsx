@@ -583,3 +583,23 @@ it("resets the copied acknowledgement after two seconds", async () => {
   expect(button("Copy link")).toBeDefined();
   vi.useRealTimers();
 });
+
+it("offers Only you for an existing public share", async () => {
+  snapshot.share = { ...snapshot.share, state: "ready", audience: "public", spaceId: "team1" };
+  await mount();
+  const option = host.querySelector<HTMLOptionElement>('option[value="private"]');
+  expect(option?.disabled).toBe(false);
+});
+it("confirms a newly published version", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/r/test",
+    audience: "public",
+    spaceId: "team1",
+  };
+  job = { ...job, state: "done", result: { ...snapshot.share, updated: true } };
+  await mount();
+  await act(async () => button("Update shared version")?.click());
+  expect(host.textContent).toContain("Shared version updated.");
+});

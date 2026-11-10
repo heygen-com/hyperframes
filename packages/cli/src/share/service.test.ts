@@ -453,12 +453,23 @@ it("does not label a newly published version as already up to date", async () =>
     onAdded();
     return null;
   });
-  expect((await createShareService("/project").run({ action: "update" })).upToDate).toBe(false);
+  expect(await createShareService("/project").run({ action: "update" })).toMatchObject({
+    upToDate: false,
+  });
 });
 it("does not label a still-processing update as already up to date", async () => {
   mocks.status.mockResolvedValue(shared);
   mocks.version.mockResolvedValue({ last: { current: true }, source: "ready" });
   mocks.pending.mockResolvedValue({ projectId: "project" });
   mocks.add.mockResolvedValue(null);
-  expect((await createShareService("/project").run({ action: "update" })).upToDate).toBe(false);
+  expect(await createShareService("/project").run({ action: "update" })).toMatchObject({
+    upToDate: false,
+  });
+});
+
+it("does not claim to check freshness in status", async () => {
+  mocks.status.mockResolvedValue(shared);
+  expect(await createShareService("/project").run({ action: "status" })).not.toHaveProperty(
+    "upToDate",
+  );
 });

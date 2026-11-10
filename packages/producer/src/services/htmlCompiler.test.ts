@@ -1461,16 +1461,16 @@ describe("local font embedding", () => {
 </body></html>`,
     );
 
-    const originalInfo = defaultLogger.info;
+    const originalDebug = defaultLogger.debug;
     const embeddedMessages: string[] = [];
-    defaultLogger.info = (message) => {
+    defaultLogger.debug = (message) => {
       if (message.includes("Embedded local font file")) embeddedMessages.push(message);
     };
 
     try {
       await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     } finally {
-      defaultLogger.info = originalInfo;
+      defaultLogger.debug = originalDebug;
     }
 
     expect(embeddedMessages).toHaveLength(1);
@@ -1550,9 +1550,9 @@ describe("local font embedding", () => {
 </body></html>`,
     );
 
-    const originalInfo = defaultLogger.info;
+    const originalDebug = defaultLogger.debug;
     const fileBackedMessages: string[] = [];
-    defaultLogger.info = (message) => {
+    defaultLogger.debug = (message) => {
       if (message.includes("Kept large local font file-backed")) {
         fileBackedMessages.push(message);
       }
@@ -1562,7 +1562,7 @@ describe("local font embedding", () => {
     try {
       compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     } finally {
-      defaultLogger.info = originalInfo;
+      defaultLogger.debug = originalDebug;
     }
 
     expect(compiled.html).toContain('url("assets/large.ttc")');

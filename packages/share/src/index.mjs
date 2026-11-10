@@ -86,3 +86,5 @@ export {
   shareSourceFingerprint,
   createProjectShareSourceStore,
 } from "./shareSources.mjs";
+
+export { SourceIgnoreError } from "./sourceIgnore.mjs";
