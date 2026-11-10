@@ -14,7 +14,8 @@ const SAID = {
   export_daily_limit: (error) =>
     `You've added the most versions for today. Try again ${laterIn(error.retryAfterMs)}.`,
   content_rejected: "This video can't be shared.",
-  export_blocked: "Adding videos to review pages isn't available for this account.",
+  export_blocked:
+    "Sharing new videos is blocked because of recent content moderation strikes in this workspace. Rendering again will not lift the block. For appeal instructions, visit https://help.heygen.com/en/articles/7842567-the-ethical-use-of-synthetic-media",
   feature_unavailable: "Review pages aren't available for your account yet.",
   permission_denied: "This account can't add videos to this review page yet.",
   upload_expired: "The upload took too long. Try again.",

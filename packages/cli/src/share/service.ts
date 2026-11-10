@@ -85,7 +85,9 @@ function statusLinks(
   return {
     url: ready ? url : null,
     previousUrl: processing && project?.latest_ready_version_id ? url : null,
-    manageUrl: project?.authenticated_review_url ?? `${shareSite()}/shares`,
+    manageUrl:
+      project?.authenticated_review_url ??
+      `${shareSite() === "https://hyperframes.dev" ? "https://hyperframes.studio" : shareSite()}/shares`,
   };
 }
 function isProcessing(
@@ -117,7 +119,13 @@ function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
     throw new ReviewFailed(409, "manage_existing_audience");
 }
 function retrievesExisting(current: ShareState, input: ShareAction) {
-  return current.share && input.action === "share" && current.state !== "processing";
+  return (
+    current.share &&
+    input.action === "share" &&
+    (current.ready ||
+      current.state === "link_off" ||
+      (current.version.last && current.state !== "processing"))
+  );
 }
 async function preflightFirst(dir: string, client: ReviewClient, input: ShareAction) {
   const audience = input.audience;
@@ -152,7 +160,12 @@ function assertAudience(audience: AccessMode, space: Space) {
     throw new ReviewFailed(402, "review_subscription_required");
 }
 function assertResumeSource(current: ShareState, input: ShareAction) {
-  if (current.share && input.action === "share" && current.version.source !== "ready")
+  if (
+    current.share &&
+    current.pending &&
+    input.action === "share" &&
+    current.version.source !== "ready"
+  )
     throw new Error(
       "The shared video is unfinished and local edits have changed. Run hyperframes share --update to explicitly upload the current project.",
     );

@@ -243,3 +243,54 @@ test("a file whose folder cannot be resolved once opened is refused, and its han
   await assert.rejects(hashListedFile(root, file, gone), /ENOENT/);
   assert.equal(await openFiles(), before, "the opened file was left open");
 });
+
+test("explicit exclusions remove scratch files from capture and render fingerprints", async (t) => {
+  const { projectFingerprint } = await import("../src/projectSnapshot.mjs");
+  const root = await project({
+    "index.html": "<html></html>",
+    ".hyperframesignore": "# Scratch files\nout.json\nscratch/\n",
+    "out.json": "private",
+    "scratch/nested.txt": "private",
+    "assets/data.json": "asset",
+    ".env": "secret",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const first = captured(await captureProject(root));
+  assert.deepEqual(
+    first.manifest.document.files.map((file) => file.path),
+    [".hyperframesignore", "assets/data.json", "index.html"],
+  );
+  const before = await projectFingerprint(root);
+  await rm(join(root, "out.json"));
+  await writeFile(join(root, "scratch/nested.txt"), "changed");
+  assert.equal(await projectFingerprint(root), before);
+  assert.deepEqual(captured(await captureProject(root)).manifest, first.manifest);
+  await writeFile(join(root, "assets/data.json"), "changed asset");
+  assert.notEqual(await projectFingerprint(root), before);
+});
+
+test("ignore rules fail closed for unsupported patterns, entrypoint exclusions, and symlinks", async (t) => {
+  const root = await project({ "index.html": "<html></html>" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const rule of ["index.html", "../secret", "*.json", "!out.json"]) {
+    await writeFile(join(root, ".hyperframesignore"), rule);
+    await assert.rejects(captureProject(root), /literal project-relative/);
+  }
+  await rm(join(root, ".hyperframesignore"));
+  await symlink(join(root, "index.html"), join(root, ".hyperframesignore"));
+  await assert.rejects(captureProject(root), /regular file/);
+});
+
+test("ignore configuration rejects oversized files, directories and dangling symlinks", async (t) => {
+  const root = await project({ "index.html": "<html></html>" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, ".hyperframesignore");
+  await writeFile(file, "a".repeat(65536));
+  await assert.rejects(captureProject(root), /regular file/);
+  await rm(file);
+  await mkdir(file);
+  await assert.rejects(captureProject(root), /regular file/);
+  await rm(file, { recursive: true });
+  await symlink(join(root, "missing"), file);
+  await assert.rejects(captureProject(root), /regular file/);
+});

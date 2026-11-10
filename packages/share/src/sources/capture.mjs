@@ -2,6 +2,7 @@
 // Captures a project folder as the canonical manifest the server accepts: every portable regular file with its
 // SHA-256 and length. A file that cannot be read, a link, a special file or a name no client can store fails the
 // capture with a list of them; it never becomes a deletion. Limits are checked from sizes alone, before any hashing.
+import { readSourceIgnore } from "../sourceIgnore.mjs";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
@@ -83,6 +84,7 @@ async function listFolder(root, dir) {
 async function walkProject(root, renderOutput) {
   /** @type {Walk} */
   const walk = { files: [], problems: [], waiting: [], skippedLinks: [] };
+  const ignored = await readSourceIgnore(root);
   const dirs = [""];
   for (let dir = dirs.pop(); dir !== undefined; dir = dirs.pop()) {
     let entries;
@@ -95,7 +97,7 @@ async function walkProject(root, renderOutput) {
     }
     for (const entry of entries) {
       const rel = dir ? `${dir}/${entry.name}` : entry.name;
-      if (prefiltered(entry.name) || renderOutput(rel)) continue;
+      if (prefiltered(entry.name) || renderOutput(rel) || ignored(rel)) continue;
       await visit(root, rel, entry, walk, dirs);
     }
   }
