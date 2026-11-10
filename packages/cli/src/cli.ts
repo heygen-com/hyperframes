@@ -32,6 +32,7 @@ for (const stream of [process.stdout, process.stderr]) {
 // We emit the worker entry next to cli.js (see tsup.config.ts) and tell
 // the pool where to find it via the published env-var override.
 import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";

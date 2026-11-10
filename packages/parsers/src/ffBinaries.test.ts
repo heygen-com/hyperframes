@@ -72,13 +72,12 @@ describe("findFfBinary", () => {
     expect(findFfBinary("ffmpeg")).toBe("/tools/ffmpeg.exe");
   });
 
-  it("discovers a Windows binary in a Unicode current directory without decoding console output", async () => {
+  it("discovers a Windows binary in a Unicode PATH directory without decoding console output", async () => {
     delete process.env.HYPERFRAMES_FFMPEG_PATH;
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
-    process.env.PATH = "";
     const unicodeDirectory = "/用户/工具";
+    process.env.PATH = unicodeDirectory;
     const ffmpegPath = join(unicodeDirectory, "ffmpeg.exe");
-    vi.spyOn(process, "cwd").mockReturnValue(unicodeDirectory);
     const execFileSync = vi.fn();
     vi.resetModules();
     vi.doMock("node:child_process", () => ({
@@ -97,6 +96,34 @@ describe("findFfBinary", () => {
 
     expect(findFfBinary("ffmpeg")).toBe(ffmpegPath);
     expect(execFileSync).not.toHaveBeenCalled();
+  });
+
+  it("never returns a Windows binary from the working directory or a relative PATH entry", async () => {
+    delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    const project = "/projects/shared";
+    process.env.PATH = ["", ".", "bin"].join(process.platform === "win32" ? ";" : ":");
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    const execFileSync = vi.fn();
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({
+      execFileSync,
+      default: { execFileSync },
+    }));
+    vi.doMock("node:fs", () => {
+      const mocked = {
+        existsSync: (candidate: unknown) =>
+          typeof candidate === "string" &&
+          /ffmpeg\.exe$/.test(candidate) &&
+          !/hyperframes/.test(candidate),
+        accessSync: () => {},
+        constants: { X_OK: 1 },
+      };
+      return { ...mocked, default: mocked };
+    });
+    const { findFfBinary } = await importFresh();
+
+    expect(findFfBinary("ffmpeg")).toBeUndefined();
   });
 
   it("falls back to scanning PATH when which/where fails", async () => {
