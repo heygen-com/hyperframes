@@ -167,7 +167,7 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const ruleHeader = /([^{}]+)\{/g;
+  const ruleHeader = /(?<![^{}])([^{}]+)\{/g;
   let m: RegExpExecArray | null;
   while ((m = ruleHeader.exec(noComments)) !== null) {
     const header = (m[1] ?? "").trim();
@@ -209,7 +209,7 @@ function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   const ids = new Set<string>();
   for (const style of styles) {
     const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
     while ((m = ruleWithBody.exec(noComments)) !== null) {
       const header = (m[1] ?? "").trim();
@@ -556,7 +556,7 @@ function stylesheetCanvasZoomHits(
 ): CanvasZoomHit[] {
   const hits: CanvasZoomHit[] = [];
   for (const style of styles) {
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     const content = stripCssComments(style.content);
     // At-rules and style attributes can restrict selector applicability.
     const allowNewHits = style.attrs.trim() === "" && !content.includes("@");
@@ -787,7 +787,7 @@ function stackingContextSelectors(styles: readonly ExtractedBlock[]): Set<string
   const selectors = new Set<string>();
   for (const style of styles) {
     const content = stripCssComments(style.content);
-    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    const rule = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let match: RegExpExecArray | null;
     while ((match = rule.exec(content)) !== null) {
       if (!STACKING_CONTEXT_DECLARATION.test(match[2] ?? "")) continue;

@@ -423,7 +423,7 @@ function styleLooksFullFrameOverlay(style: string): boolean {
 function collectSimpleStyleRules(styles: LintContext["styles"]): Map<string, string> {
   const rules = new Map<string, string>();
   for (const style of styles) {
-    for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+    for (const [, selectorList, body] of style.content.matchAll(/(?<![^{}])([^{}]+)\{([^}]+)\}/g)) {
       if (!selectorList || !body) continue;
       for (const selector of selectorList.split(",")) {
         const token = selector.trim();
@@ -897,6 +897,25 @@ function expressionReachesMeasurement(expression: string, measuring: Set<string>
   return false;
 }
 
+const LINE_TERMINATOR = /[\n\r\u2028\u2029]/;
+
+// Whether `id` is `parts` in order with a gap of non-line-terminators between each pair, the
+// language of `^a.*b.*c$`, checked with leftmost indexOf so time stays linear in the id.
+function matchesTemplateParts(id: string, parts: string[]): boolean {
+  const first = parts[0] ?? "";
+  const last = parts[parts.length - 1] ?? "";
+  if (parts.length === 1) return id === first;
+  if (!id.startsWith(first)) return false;
+  let at = first.length;
+  for (const part of parts.slice(1, -1)) {
+    const found = id.indexOf(part, at);
+    if (found === -1 || LINE_TERMINATOR.test(id.slice(at, found))) return false;
+    at = found + part.length;
+  }
+  const end = id.length - last.length;
+  return end >= at && id.endsWith(last) && !LINE_TERMINATOR.test(id.slice(at, end));
+}
+
 // Resolve script-level element variables to the simple selector tokens they can
 // denote: literal getElementById/querySelector lookups, template-literal ids
 // matched against the document's actual ids, and script-assigned class names
@@ -923,9 +942,8 @@ function resolveScriptElementTokens(source: string, tags: OpenTag[]): Map<string
     // A template with no literal segments (`getElementById(\`${name}\`)`) would
     // match EVERY id in the document — treat it as unresolved instead.
     if (staticParts.every((part) => part === "")) continue;
-    const idPattern = new RegExp(`^${staticParts.map(escapeRegExp).join(".*")}$`);
     for (const id of documentIds) {
-      if (idPattern.test(id)) add(match[1] ?? "", `#${id}`);
+      if (matchesTemplateParts(id, staticParts)) add(match[1] ?? "", `#${id}`);
     }
   }
   for (const match of source.matchAll(
@@ -2332,7 +2350,9 @@ export const gsapRules: LintRule<LintContext>[] = [
 
     const multiDashTokens = new Set<string>();
     for (const style of styles) {
-      for (const [, selectorList, body] of style.content.matchAll(/([^{}]+)\{([^}]+)\}/g)) {
+      for (const [, selectorList, body] of style.content.matchAll(
+        /(?<![^{}])([^{}]+)\{([^}]+)\}/g,
+      )) {
         if (!selectorList || !body) continue;
         const value = readStyleProperty(body, "stroke-dasharray");
         if (!value || !isMultiComponentDasharray(value)) continue;
