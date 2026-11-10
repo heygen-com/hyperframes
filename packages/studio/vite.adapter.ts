@@ -23,6 +23,7 @@ import {
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   historyCache,
+  originForListeningAddress,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import type { RegistryItem } from "@hyperframes/core/registry";
@@ -306,6 +307,11 @@ export function createViteAdapter(
     },
 
     runtimeUrl: "/api/runtime.js",
+    serverOrigin: () =>
+      originForListeningAddress(
+        server.httpServer?.address(),
+        server.config.server.https ? "https" : "http",
+      ),
 
     rendersDir: () => resolve(dataDir, "../renders"),
 

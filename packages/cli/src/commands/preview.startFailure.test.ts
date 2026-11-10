@@ -22,6 +22,7 @@ vi.mock("@clack/prompts", async (importOriginal) => {
 vi.mock("../server/studioServer.js", () => ({
   resolveStudioBundle: () => ({ available: true, checkedPaths: [] }),
   loadPreviewServerBuildSignature: async () => "test",
+  originForListeningAddress: () => undefined,
   createStudioServer: () => ({
     app: { fetch: () => new Response() },
     watcher: { close: vi.fn() },

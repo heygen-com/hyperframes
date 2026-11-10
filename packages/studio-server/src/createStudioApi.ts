@@ -38,6 +38,15 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
+async function sandboxPreviewOpenedFromAnotherSite(c: Context, next: Next) {
+  await next();
+  c.header("Vary", "Sec-Fetch-Site", { append: true });
+  const site = c.req.header("sec-fetch-site");
+  if (site === "cross-site" || site === "same-site") {
+    c.header("Content-Security-Policy", "sandbox allow-scripts");
+  }
+}
+
 function urlHost(url: string): string | undefined {
   try {
     return new URL(url).host || undefined;
@@ -60,6 +69,7 @@ export interface StudioApiOptions {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  api.use("/projects/:id/preview/*", sandboxPreviewOpenedFromAnotherSite);
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {
