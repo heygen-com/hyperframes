@@ -235,7 +235,11 @@ export function runningInstall(): RunningInstall {
   const path = resolveEntry();
   // plugin-cli.mjs runs a pinned `npx hyperframes@<version>` and marks the child with this.
   if (process.env["HYPERFRAMES_PLUGIN_VERSION"]) return { channel: "plugin", path };
-  const installer = detectInstaller();
+  return installAt(path);
+}
+
+function installAt(path: string | null): RunningInstall {
+  const installer = detectInstaller(path);
   if (installer.kind !== "skip") return { channel: installer.kind, path };
   if (!path) return { channel: "unknown", path };
   if (isWorkspaceLink(path)) return { channel: "workspace", path };
@@ -306,6 +310,8 @@ function packageVersionAbove(entry: string): string | null {
   return null;
 }
 
+const UPDATABLE_CHANNELS = new Set<InstallChannel>(["npm", "pnpm", "bun", "brew", "project"]);
+
 export interface ShadowingInstall {
   version: string;
   /** What moves that install to the latest release. */
@@ -338,8 +344,9 @@ function isOlder(version: string, than: string): boolean {
 }
 
 /**
- * The older global install a plain `npx hyperframes` runs instead of this npx copy: the first
- * `hyperframes` on PATH outside the npx cache, when it is older than `current`. Agents never update
+ * The older install a plain `npx hyperframes` runs instead of this npx copy: the first
+ * `hyperframes` on PATH outside the npx cache, when it is older than `current` and its manager
+ * (global or the project's) can move it. Agents never update
  * it (no notice, no auto-install unattended), so it only moves when the person runs this command.
  * ponytail: POSIX shims only; Windows `.cmd` shims are not looked up.
  */
@@ -348,7 +355,7 @@ export function shadowingInstall(current: string): ShadowingInstall | null {
   const global = firstGlobalOnPath(resolveEntry());
   const version = global ? packageVersionAbove(global) : null;
   if (!global || !version || !isOlder(version, current)) return null;
-  const updateCommand =
-    detectInstaller(global).installCommand("latest") ?? "npm install -g hyperframes@latest";
-  return { version, updateCommand };
+  const install = installAt(global);
+  if (!UPDATABLE_CHANNELS.has(install.channel)) return null;
+  return { version, updateCommand: updateCommandFor(install, current) };
 }

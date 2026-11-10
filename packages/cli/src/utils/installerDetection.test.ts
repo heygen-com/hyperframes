@@ -303,8 +303,43 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     const { shadowingInstall } = await import("./installerDetection.js");
     expect(shadowingInstall("0.9.29")).toEqual({
       version: "0.9.8",
-      updateCommand: "npm install -g hyperframes@latest",
+      updateCommand: "npm install -g hyperframes@0.9.29",
     });
+  });
+
+  /** Swaps the global install for a package at `pkgDir` (relative to the layout root) on PATH. */
+  function onPathInstead(root: string, pkgDir: string): string {
+    const pkg = join(root, pkgDir);
+    mkdirSync(join(pkg, "bin"), { recursive: true });
+    writeFileSync(
+      join(pkg, "package.json"),
+      JSON.stringify({ name: "hyperframes", version: "0.9.8" }),
+    );
+    writeFileSync(join(pkg, "bin/hyperframes.mjs"), "");
+    const bin = join(root, "other-bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(join(pkg, "bin/hyperframes.mjs"), join(bin, "hyperframes"));
+    const [npxBin] = (process.env["PATH"] ?? "").split(delimiter);
+    process.env["PATH"] = [npxBin, bin].join(delimiter);
+    return pkg;
+  }
+
+  it("moves an older project-local install with the project's own manager", async () => {
+    const root = layout(null);
+    onPathInstead(root, "app/node_modules/hyperframes");
+    writeFileSync(join(root, "app/bun.lock"), "");
+    const { shadowingInstall } = await import("./installerDetection.js");
+    expect(shadowingInstall("0.9.29")).toEqual({
+      version: "0.9.8",
+      updateCommand: "bun add hyperframes@0.9.29",
+    });
+  });
+
+  it("stays quiet when no manager is known to move the older install", async () => {
+    const root = layout(null);
+    onPathInstead(root, "opt/hyperframes");
+    const { shadowingInstall } = await import("./installerDetection.js");
+    expect(shadowingInstall("0.9.29")).toBeNull();
   });
 
   it("stays quiet when the global install is not older, or there is none", async () => {
