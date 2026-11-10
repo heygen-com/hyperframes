@@ -20,6 +20,8 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
+  giveBackWhenDue,
+  isLongSource,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -523,6 +525,7 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
+    !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
@@ -1314,7 +1317,7 @@ export function initSandboxRuntimeModular(): void {
       ? {
           from: "media",
           tag: media.tagName.toLowerCase(),
-          src: media.getAttribute("src") ?? media.currentSrc ?? "",
+          src: unproxiedSrc(media) ?? media.currentSrc ?? "",
           trimmed: media.hasAttribute("data-duration") || media.hasAttribute("data-end"),
         }
       : { from };
@@ -2530,10 +2533,7 @@ export function initSandboxRuntimeModular(): void {
         }
         const tagName = node.tagName.toLowerCase();
         const assetUrl =
-          node.getAttribute("src") ??
-          node.getAttribute("href") ??
-          node.getAttribute("poster") ??
-          null;
+          unproxiedSrc(node) ?? node.getAttribute("href") ?? node.getAttribute("poster") ?? null;
         const diagnosticCode =
           tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
         postRuntimeDiagnosticOnce(
@@ -3053,7 +3053,7 @@ export function initSandboxRuntimeModular(): void {
   const NEXT_TAKE_SPAN_SECONDS = 0.5;
   let nextTakes: { t: number; bound: number; clips: Set<HTMLMediaElement> } | null = null;
   const fileOf = (el: HTMLMediaElement) =>
-    el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
+    unproxiedSrc(el) ?? el.querySelector("source")?.getAttribute("src") ?? "";
   const nextTakeClips = (t: number): Set<HTMLMediaElement> => {
     if (nextTakes?.t === t && nextTakes.bound === metadataBoundMedia.size) return nextTakes.clips;
     const byFile = new Map<string, { el: HTMLMediaElement; start: number }[]>();
@@ -3253,6 +3253,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
     const wasApproaching = approachingMedia.has(el);
