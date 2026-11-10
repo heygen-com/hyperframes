@@ -20,7 +20,11 @@ import { isSafeVersion } from "./safeVersion.js";
 
 export { isSafeVersion } from "./safeVersion.js";
 
-const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
+export function updateChannel(version = VERSION): string {
+  if (version === "0.0.0-dev") return "latest";
+  return version.match(/^\d+\.\d+\.\d+-([a-z][a-z0-9-]*)(?:\.|$)/i)?.[1] ?? "latest";
+}
+const NPM_REGISTRY_URL = `https://registry.npmjs.org/hyperframes/${updateChannel()}`;
 const CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const SKILLS_COUNT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 3000;
@@ -92,7 +96,11 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
     // data.version (e.g. "1.2.3; rm -rf /") must never be persisted. Reject it
     // and fall back to the last known-good version. Closes the injection class
     // for every consumer at one point.
-    if (typeof data.version !== "string" || !isSafeVersion(data.version)) {
+    if (
+      typeof data.version !== "string" ||
+      !isSafeVersion(data.version) ||
+      updateChannel(data.version) !== updateChannel()
+    ) {
       return fallbackResult(config.latestVersion);
     }
     const latest = data.version;
@@ -140,9 +148,11 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
 }
 
 const isSafeCache = (value: unknown): value is string =>
-  typeof value === "string" && isSafeVersion(value);
+  typeof value === "string" && isSafeVersion(value) && updateChannel(value) === updateChannel();
 
 function cachedVersionForThisInstall(value: unknown): string | undefined {
+  const checkedAt = readConfig().lastUpdateCheck;
+  if (checkedAt && Date.now() - Date.parse(checkedAt) >= CHECK_INTERVAL_MS) return undefined;
   return isSafeCache(value) && !isNewerSemver(VERSION, value) ? value : undefined;
 }
 
@@ -227,7 +237,7 @@ export function updateCommandForThisInstall(
     return projectNoticeCommand(install, cliBehind, skillsBehind, latest);
   }
   return install.channel === "npx" && cliBehind
-    ? "npx hyperframes@latest update"
+    ? `npx hyperframes@${updateChannel()} update`
     : "npx hyperframes update";
 }
 
@@ -346,7 +356,7 @@ export function printUpdateNotice(): void {
   // the suppression + update-available gates, so it adds no cost to normal runs.
   const safeLatest = isSafeVersion(meta.latestVersion);
   const managerCommand = safeLatest ? detectInstaller().installCommand(meta.latestVersion) : null;
-  const command = managerCommand ?? "npx hyperframes@latest";
+  const command = managerCommand ?? `npx hyperframes@${updateChannel()}`;
 
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +

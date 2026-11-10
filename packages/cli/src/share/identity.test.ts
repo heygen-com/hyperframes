@@ -1,4 +1,9 @@
 import { beforeEach, expect, it, vi } from "vitest";
+vi.mock("./activity.js", () => ({
+  readShareActivity: async () => null,
+  withShareActivity: async (_dir: string, run: (phase: () => Promise<void>) => Promise<unknown>) =>
+    run(async () => {}),
+}));
 const mocks = vi.hoisted(() => ({
   token: "first",
   owner: "first-owner",

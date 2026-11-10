@@ -31,8 +31,8 @@ export default defineCommand({
       type: "boolean",
       description: "Explicitly allow anyone with the link on first share",
     },
-    team: { type: "boolean", description: "First share with this workspace" },
-    "invite-only": { type: "boolean", description: "First share with invited people only" },
+    team: { type: "boolean", description: "Share with workspace members (paid plan)" },
+    "invite-only": { type: "boolean", description: "Share with invited people only (paid plan)" },
     private: { type: "boolean", description: "First share with private access" },
     update: {
       type: "boolean",
@@ -60,7 +60,7 @@ export default defineCommand({
   async run({ args }) {
     try {
       const input = parseInput(args);
-      const project = resolveProjectOrThrow(args.dir);
+      const project = resolveProjectOrThrow(args.dir, { searchParents: true });
       let lastProgress = "";
       const service: ShareService = createShareService(project.dir, (value) => {
         if (!value || args.json) return;
@@ -164,8 +164,8 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
     throw new CliUsageError("There is no share to manage yet. Create a share first.", {
       code: "not_shared",
     });
-  if (!json && result.source.at === "video_only")
-    console.error(`Sharing video only (${result.source.reason}).`);
+  if (!json && !result.upToDate && result.source.at === "video_only")
+    console.error(sourceNotice(result.source.reason));
   if (result.state === "failed" && input.action !== "manage") {
     presentFailure(result, json);
     return;
@@ -175,6 +175,10 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
 
 async function presentSuccessfulResult(result: ShareState, input: ShareAction, json: boolean) {
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
+  else if (result.activity)
+    console.log(
+      `Sharing: ${result.activity.step.replaceAll("_", " ")}. Run hyperframes share --status to check progress.`,
+    );
   else if (result.upToDate) console.log("Already up to date.");
   else if (input.action === "manage") {
     console.log(result.manageUrl);
@@ -195,4 +199,12 @@ function presentFailure(result: ShareState, json: boolean) {
     if (result.previousUrl) console.log(`Previous shared version: ${result.previousUrl}`);
   }
   setCommandExitCode(1);
+}
+
+function sourceNotice(reason: string): string {
+  if (reason === "source_plan_required")
+    return "Your video is shared without editable project files. Upgrade to Pro to include source files: https://hyperframes.studio/pricing";
+  if (reason === "requested")
+    return "Sharing the video without editable project files (--video-only).";
+  return "Sharing the video without editable project files; source sharing is unavailable in this workspace.";
 }

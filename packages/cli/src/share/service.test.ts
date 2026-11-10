@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("./activity.js", () => ({
+  readShareActivity: () => mocks.activity(),
+  withShareActivity: async (_dir: string, run: (phase: () => Promise<void>) => Promise<unknown>) =>
+    run(async () => {}),
+}));
 const mocks = vi.hoisted(() => ({
+  activity: vi.fn(),
   status: vi.fn(),
   version: vi.fn(),
   record: vi.fn(),
@@ -58,6 +64,7 @@ const shared = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.activity.mockResolvedValue(null);
   mocks.status.mockResolvedValue(null);
   mocks.record.mockResolvedValue(null);
   mocks.pending.mockResolvedValue(null);
@@ -472,4 +479,25 @@ it("does not claim to check freshness in status", async () => {
   expect(await createShareService("/project").run({ action: "status" })).not.toHaveProperty(
     "upToDate",
   );
+});
+
+it("reports local rendering instead of the previous ready version", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.activity.mockResolvedValue({ step: "rendering", startedAt: "2026-11-10T00:00:00Z" });
+  const state = await createShareService("/project").run({ action: "status" });
+  expect(state).toMatchObject({
+    state: "rendering",
+    ready: false,
+    url: null,
+    previousUrl: shared.url,
+  });
+  expect(mocks.render).not.toHaveBeenCalled();
+});
+it("reports the first share while it has no server project yet", async () => {
+  mocks.activity.mockResolvedValue({ step: "uploading_source", startedAt: "2026-11-10T00:00:00Z" });
+  expect(await createShareService("/project").run({ action: "status" })).toMatchObject({
+    state: "uploading_source",
+    ready: false,
+    url: null,
+  });
 });

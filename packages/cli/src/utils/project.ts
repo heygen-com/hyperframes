@@ -12,6 +12,7 @@ export interface ProjectDir {
 
 export interface ResolveProjectOptions {
   requireIndex?: boolean;
+  searchParents?: boolean;
 }
 
 export class InvalidProjectError extends Error {
@@ -41,7 +42,11 @@ export function resolveProjectOrThrow(
     );
   }
 
-  const dir = resolve(dirArg ?? ".");
+  const start = resolve(dirArg ?? ".");
+  const dir =
+    options.searchParents && dirArg === undefined
+      ? projectHolding(join(start, "index.html"))
+      : start;
   const name = basename(dir);
   const indexPath = resolve(dir, "index.html");
 

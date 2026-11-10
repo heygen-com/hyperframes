@@ -9,7 +9,7 @@ const HINTS: Record<string, string> = {
   review_project_limit_reached:
     "Your workspace has used its five free shared projects. Update an existing share, or manage and remove one to free a slot. Turning a link off does not free a slot.",
   review_subscription_required:
-    "That sharing option is not included in this workspace's plan. Choose an available audience explicitly or manage your plan.",
+    "Workspace and invite-only sharing require a paid plan. On Free, choose --private (only you) or --public (anyone with the link), or upgrade your workspace plan.",
   workspace_mismatch:
     "This folder already shares into another workspace. Manage the existing share instead of changing its identity.",
   review_binding_changed:

@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   factory: vi.fn(),
   content: vi.fn(),
 }));
-vi.mock("@hyperframes/share", () => ({
+vi.mock("@hyperframes/share", async (original) => ({
+  ...(await original<typeof import("@hyperframes/share")>()),
   shareSources: mocks.factory,
   projectFingerprint: async () => "rendered",
 }));

@@ -159,7 +159,7 @@ async function claimDirectory(draft, lock, deadline) {
     throw error;
   }
 }
-/** @template T @param {string} projectPath @param {"review" | "export" | "source"} lane @param {() => Promise<T>} run
+/** @template T @param {string} projectPath @param {"review" | "export" | "source" | "operation"} lane @param {() => Promise<T>} run
  * @param {{ timeoutMs?: number, signal?: AbortSignal }} [options] @returns {Promise<T>} */
 export async function withProjectShareLock(
   projectPath,
@@ -171,11 +171,13 @@ export async function withProjectShareLock(
   const folder = await mkdirInside(root, ".hyperframes");
   const lock = join(
     folder,
-    lane === "review"
-      ? "review.lock"
-      : lane === "source"
-        ? "share-source.lock"
-        : "review-export.lock",
+    lane === "operation"
+      ? "share-operation.lock"
+      : lane === "review"
+        ? "review.lock"
+        : lane === "source"
+          ? "share-source.lock"
+          : "review-export.lock",
   );
   const owner = { token: randomUUID(), pid: process.pid, hostname: hostname() };
   const draft = `${lock}.${owner.token}.tmp`;

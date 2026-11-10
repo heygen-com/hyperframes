@@ -1,3 +1,9 @@
+import {
+  readShareActivity,
+  withShareActivity,
+  type ShareActivity,
+  type SharePhase,
+} from "./activity.js";
 import { basename } from "node:path";
 import { CliUsageError } from "../utils/commandResult.js";
 import {
@@ -131,7 +137,7 @@ async function preflightFirst(dir: string, client: ReviewClient, input: ShareAct
   const audience = input.audience;
   if (!audience)
     throw new CliUsageError(
-      "Choose an audience with --public, --team, --invite-only or --private. --yes is not audience consent.",
+      "Choose an audience with --public, --team, --invite-only or --private.",
       { code: "audience_required" },
     );
   const [spaces, record] = await Promise.all([client.spaces(), reviewRecord(dir)]);
@@ -180,13 +186,25 @@ export function createShareService(
   const client = reviewClient(auth);
   const status = async (expectedProjectId?: string): Promise<ShareState> => {
     await auth.access();
-    return readStatus(dir, client, expectedProjectId);
+    const current = await readStatus(dir, client, expectedProjectId);
+    const activity = expectedProjectId ? null : await readShareActivity(dir);
+    return activity
+      ? {
+          ...current,
+          activity,
+          state: activity.step,
+          ready: false,
+          previousUrl: current.url ?? current.previousUrl,
+          url: null,
+        }
+      : current;
   };
   const upload = async (
     input: ShareAction,
     projectId: string,
     sources: PreparedShareSource,
     attempt: ShareAttempt,
+    phase: (step: SharePhase) => Promise<void>,
   ) => {
     const end = Date.now() + (input.waitSeconds ?? 300) * 1000;
     let added = false;
@@ -198,6 +216,7 @@ export function createShareService(
       onProgress: (value) => {
         attempt.progress(value);
         progress(value);
+        if (value?.step === "checking") void phase("checking");
       },
       allowPending: true,
       ...(sources.filesForExport && { filesForExport: sources.filesForExport }),
@@ -251,11 +270,15 @@ export function createShareService(
       audience: target.audience,
     });
   };
-  const mutate = async (input: ShareAction, attempt: ShareAttempt): Promise<ShareState> => {
+  const mutate = async (
+    input: ShareAction,
+    attempt: ShareAttempt,
+    phase: (step: SharePhase) => Promise<void>,
+  ): Promise<ShareState> => {
     await auth.access();
     attempt.authenticated();
     let current = await readStatus(dir, client, undefined, attempt.recover);
-    if (current.share && changesAudience(input, current.share)) {
+    if (current.share && input.audience && changesAudience(input, current.share)) {
       assertExistingIntent(current.share, { ...input, audience: undefined });
       const projectId = current.share.projectId;
       await setReviewAccess({ projectPath: dir, client, change: { access: input.audience } });
@@ -276,14 +299,17 @@ export function createShareService(
       : await preflightFirst(dir, client, input);
     assertResumeSource(current, input);
     assertReviewUploadStorage();
+    await phase("rendering");
     await prepareShareRender(dir);
     const target = await uploadTarget(current.share, input, space);
+    await phase("uploading_source");
     const sources = await prepareCliShareSource(dir, auth.access, target.spaceId, {
       videoOnly: input.videoOnly,
       shareFiles: flags.shareFiles,
     });
     if (sources.requireSource) await checkPreparedTarget(target);
-    return upload(input, target.projectId, sources, attempt);
+    await phase("uploading_video");
+    return upload(input, target.projectId, sources, attempt, phase);
   };
   return {
     checkSession: (verifyIdentity = false) => auth.access(undefined, verifyIdentity),
@@ -292,7 +318,7 @@ export function createShareService(
       input.action === "status" || input.action === "manage"
         ? status()
         : observeShareMutation(input.action, options.surface ?? "cli", (attempt) =>
-            mutate(input, attempt),
+            withShareActivity(dir, (phase) => mutate(input, attempt, phase)),
           ),
     capabilities: () => client.reviewFlags(),
     spaces: () => client.spaces(),
@@ -315,6 +341,7 @@ export type ShareService = ReturnType<typeof createShareService>;
 export type ShareState = Awaited<ReturnType<typeof readStatus>> & {
   upToDate?: boolean;
   updated?: boolean;
+  activity?: ShareActivity;
 };
 
 function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): boolean {
