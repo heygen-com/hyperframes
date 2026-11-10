@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -72,4 +72,27 @@ it("a sweep of a project on a slow disk lets the host keep answering while it li
 
   // A blocking walk of these 420 entries holds the loop at least 420 ms.
   expect(longest, `held the loop ${longest.toFixed(1)} ms`).toBeLessThan(200);
+});
+
+// fails without the fix: every queued operation rebuilt and rewrote video-state.json, one record per project file.
+it("a sweep that finds nothing leaves the video state file alone, and a change rewrites it", async () => {
+  const projectDir = tempDir("hf-history-state-");
+  writeFileSync(join(projectDir, "index.html"), "<h1>Hello</h1>");
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot: tempDir("hf-history-root-"),
+    now: () => Date.now() + 60_000,
+  });
+  cleanup.push(() => history.close());
+  await history.flush();
+  // Each write replaces the file, so a rewrite shows as a new inode.
+  const written = () => statSync(join(projectDir, ".hyperframes", "video-state.json")).ino;
+  const before = written();
+
+  await history.flush();
+  expect(written()).toBe(before);
+
+  writeFileSync(join(projectDir, "index.html"), "<h1>Bye</h1>");
+  await history.flush();
+  expect(written()).not.toBe(before);
 });

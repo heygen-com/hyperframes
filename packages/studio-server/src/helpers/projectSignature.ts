@@ -248,8 +248,13 @@ export type ListedProjectFile = { path: string; size: number; mtimeMs: number; c
  * Awaited, so a host serving requests keeps answering through a large project's walk. */
 export async function listProjectFilesAsync(projectDir: string): Promise<ListedProjectFile[]> {
   const normalizedProjectDir = resolve(projectDir);
+  // Every collected file is under the folder, so its relative path is the rest of it (path.relative per file
+  // was most of a large project's listing time).
+  const under = normalizedProjectDir.endsWith(sep)
+    ? normalizedProjectDir
+    : normalizedProjectDir + sep;
   return (await collectProjectFilesAsync(normalizedProjectDir)).map((entry) => ({
-    path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
+    path: entry.file.slice(under.length).split(sep).join("/"),
     size: entry.size,
     mtimeMs: entry.mtimeMs,
     ctimeMs: entry.ctimeMs,

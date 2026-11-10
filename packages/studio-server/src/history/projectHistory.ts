@@ -367,13 +367,30 @@ function keepTargetsOfItsFiles(entry: HistoryEntry): HistoryEntry {
   return entry;
 }
 
+/** The tracked files; any change owes the project's video-state.json a rewrite. */
+class TrackedFiles extends Map<string, Tracked> {
+  constructor(private readonly changed: () => void) {
+    super();
+  }
+  override set(path: string, file: Tracked): this {
+    this.changed();
+    return super.set(path, file);
+  }
+  override delete(path: string): boolean {
+    this.changed();
+    return super.delete(path);
+  }
+}
+
 class Engine {
   readonly dir: string;
   readonly foldsCase: boolean;
   readonly folder: FolderIdentity & { dev: number };
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
-  tracked = new Map<string, Tracked>();
+  // Only a change rewrites video-state.json: a sweep that finds nothing skips rebuilding it file by file.
+  owesState = true;
+  tracked = new TrackedFiles(() => (this.owesState = true));
   windows: Group[] = [];
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
@@ -427,7 +444,8 @@ class Engine {
       try {
         return await task();
       } finally {
-        if (this.whereFolder() === "here") {
+        if (this.owesState && this.whereFolder() === "here") {
+          this.owesState = false;
           await writeHistoryState(
             this.dir,
             this.projectId,
@@ -435,7 +453,10 @@ class Engine {
             this.log.entries,
             this.manifest(),
             manifestAt(this.log, this.log.entries.at(-1)?.id ?? START) ?? new Map(),
-          ).catch((error) => this.options.onError?.(error));
+          ).catch((error) => {
+            this.owesState = true;
+            this.options.onError?.(error);
+          });
         }
       }
     });
@@ -458,6 +479,7 @@ class Engine {
   }
 
   persistLog(record?: LogRecord): void {
+    this.owesState = true;
     if (record) saveRecord(this.logFile, this.log, record);
     else writeLog(this.logFile, this.log);
     if (!existsSync(join(this.home, "project.json")))
