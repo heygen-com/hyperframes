@@ -19,6 +19,7 @@ import {
   desktopInstalled,
   openCommandFor,
   openInDesktop,
+  previewStopCommandFor,
 } from "./desktopApp.js";
 
 const LIVE = { ready: true, platform: "darwin" as const, env: {}, installed: () => true };
@@ -398,6 +399,16 @@ describe("openCommandFor", () => {
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
   });
+
+  it("names the matching `preview --stop` the same way", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(work, 3002, work)).toBe(
+      "hyperframes preview . --stop --port 3002",
+    );
+    expect(previewStopCommandFor(join(work, "my film"), 4567, work)).toBe(
+      'hyperframes preview "my film" --stop --port 4567',
+    );
+  });
 });
 
 describe("desktopInstalled", () => {
@@ -483,6 +494,19 @@ describe("desktopHint", () => {
     );
   });
 
+  it("tells a preview's reader that the app can't edit while the preview runs", () => {
+    const installed = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installed, preview: "background" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open . (this stops the background preview)",
+    );
+    expect(desktopHint(process.cwd(), { ...installed, preview: "foreground" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: stop this preview, then run hyperframes open .",
+    );
+    expect(desktopHint(process.cwd(), { ...mac, installed: false, preview: "background" })).toBe(
+      MAC_HINT,
+    );
+  });
+
   it("says nothing inside the app, whose runs carry HYPERFRAMES_DESKTOP_PROJECT", () => {
     const inApp = {
       ...mac,
@@ -500,7 +524,13 @@ describe("desktopHint", () => {
   });
 
   it("still gives the line to a coding agent, which passes it on to the person", () => {
-    const agent = { ...mac, ready: true, installed: true, tty: false, env: { CLAUDECODE: "1" } };
+    const agent = {
+      ...mac,
+      ready: true,
+      installed: true,
+      tty: false,
+      env: { CLAUDE_CODE_CHILD_SESSION: "1" },
+    };
     expect(desktopHint(process.cwd(), agent)).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );

@@ -92,6 +92,7 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
      * @returns {Promise<{ versionSharing: boolean, shareFiles: boolean }>} */
     reviewFlags: async () => {
       const data = await call("GET", SPACES, undefined, {}, SHARING_REFUSALS);
+      if (!Array.isArray(data?.items)) throw new ReviewFailed(502, "malformed_spaces");
       return {
         versionSharing: data?.version_sharing === true,
         shareFiles: data?.share_files === true,
@@ -152,9 +153,8 @@ function threadWrites(call, project) {
   };
 }
 
-/** An invite to an email whose grant was revoked: the server keeps the revoked row, leaves it out of the grant list,
- * and takes it back only with that row's revision and a fresh operation ID, so the one revision the client can learn is
- * the conflict's. Null for any other refusal, or one the same revision already got.
+/** An invite to an email whose grant was revoked: the server takes the row back only at its revision with a fresh
+ * operation ID, here the conflict's revision. Null for any other refusal, or one the same revision already got.
  * @param {unknown} error @param {import("./types/reviewWire.js").CreateGrantRequest} body
  * @returns {import("./types/reviewWire.js").CreateGrantRequest | null} */
 function regrantOf(error, body) {
@@ -166,17 +166,24 @@ function regrantOf(error, body) {
   return { ...body, client_operation_id: randomUUID(), expected_revision: revision };
 }
 
-/** Creating a grant, keeping the re-grant `regrantOf` makes as that invitation's retry. The window retries with the
- * operation it first sent; once a re-grant went out under a new operation, that exact re-grant is sent again, so the
- * server's replay recovers a lost answer (or refuses it as revoked since) and no further re-grant is made. It goes
- * exactly when the window drops its own operation: on an answer, on a refusal `rejectedGrantRequest` (the window's own
- * test) calls final, or when the email is invited afresh. Any other refusal, a moderation hold among them, keeps it.
+/** Grants listed with their revoked rows, whose revisions let a re-invite go straight out as the re-grant; a server
+ * that ignores `include_revoked` lists none, and the re-invite meets `revision_conflict` first. A re-grant is kept as
+ * its invitation's retry, sent again as itself until an answer or a refusal `rejectedGrantRequest` calls final.
  * @param {(method: string, route: string, body?: unknown) => Promise<any>} call @param {(id: string) => string} project
  * @param {import("./types/access.js").ApiAccess} access */
-function grantCreator(call, project, access) {
+function grantCalls(call, project, access) {
   /** Re-grants awaiting a final answer, by site, account, project and the operation the window sent.
    * @type {Map<string, { email: string, regrant: import("./types/reviewWire.js").CreateGrantRequest }>} */
   const sent = new Map();
+  /** The revision of each revoked grant the last list read, by site, account and project, then email.
+   * @type {Map<string, Map<string, number>>} */
+  const revoked = new Map();
+  /** @param {string} id */
+  const scopeOf = async (id) => {
+    // expected: signed out, the call itself refuses as login_required; the scope is only a key.
+    const who = await access().catch(() => null);
+    return [who?.heygen ?? "", who?.owner ?? "", id].join("\n");
+  };
   /** @param {string} route @param {string} key @param {import("./types/reviewWire.js").CreateGrantRequest} body */
   const settle = async (route, key, body) => {
     try {
@@ -188,27 +195,74 @@ function grantCreator(call, project, access) {
       throw error;
     }
   };
-  /** @param {string} id @param {import("./types/reviewWire.js").CreateGrantRequest} body
-   * @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO>} */
-  return async (id, body) => {
-    const route = `${project(id)}/access-grants`;
-    // expected: signed out, the POST below refuses as login_required; the scope is only a key.
-    const who = await access().catch(() => null);
-    const scope = grantScope(who, id);
-    const key = `${scope}\n${body.client_operation_id}`;
-    const retained = sent.get(key);
-    if (retained) return settle(route, key, retained.regrant);
-    for (const [other, kept] of sent)
-      if (other.startsWith(`${scope}\n`) && kept.email === body.email) sent.delete(other);
-    try {
-      return await call("POST", route, body);
-    } catch (error) {
-      const regrant = regrantOf(error, body);
-      if (!regrant) throw error;
-      sent.set(key, { email: body.email, regrant });
-      return settle(route, key, regrant);
-    }
+  /** @param {string} route @param {string} key @param {import("./types/reviewWire.js").CreateGrantRequest} body */
+  const regranting = (route, key, body) => {
+    sent.set(key, { email: body.email, regrant: body });
+    return settle(route, key, body);
   };
+  /** @param {string} scope @param {string} email */
+  const forgetEarlierInvites = (scope, email) => {
+    for (const [other, kept] of sent)
+      if (other.startsWith(`${scope}\n`) && kept.email === email) sent.delete(other);
+  };
+  return {
+    /** The project's live grants. @param {string} id
+     * @returns {Promise<{items: import("./types/reviewWire.js").AccessGrantDTO[]}>} */
+    grants: async (id) => {
+      const scope = await scopeOf(id);
+      const items = await everyGrant(call, `${project(id)}/access-grants`);
+      revoked.set(
+        scope,
+        new Map(
+          items.filter((grant) => grant.revoked_at).map((grant) => [grant.email, grant.revision]),
+        ),
+      );
+      return { items: items.filter((grant) => !grant.revoked_at) };
+    },
+    /** @param {string} id @param {import("./types/reviewWire.js").CreateGrantRequest} body
+     * @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO>} */
+    createGrant: async (id, body) => {
+      const route = `${project(id)}/access-grants`;
+      const scope = await scopeOf(id);
+      const key = `${scope}\n${body.client_operation_id}`;
+      const retained = sent.get(key);
+      if (retained) return settle(route, key, retained.regrant);
+      forgetEarlierInvites(scope, body.email);
+      const known =
+        body.expected_revision === null ? revoked.get(scope)?.get(body.email) : undefined;
+      revoked.get(scope)?.delete(body.email);
+      const first =
+        known === undefined
+          ? body
+          : { ...body, client_operation_id: randomUUID(), expected_revision: known };
+      try {
+        return await (first === body ? call("POST", route, body) : regranting(route, key, first));
+      } catch (error) {
+        const regrant = regrantOf(error, first);
+        if (!regrant) throw error;
+        return regranting(route, key, regrant);
+      }
+    },
+  };
+}
+
+/** Every page of a grant list, revoked rows included where the server lists them.
+ * @param {(method: string, route: string) => Promise<any>} call @param {string} route
+ * @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO[]>} */
+async function everyGrant(call, route) {
+  const items = [];
+  const cursors = new Set();
+  let cursor = null;
+  do {
+    const query = new URLSearchParams({ include_revoked: "true", ...(cursor ? { cursor } : {}) });
+    const page = await call("GET", `${route}?${query}`);
+    items.push(...page.items);
+    cursor = page.next_cursor;
+    if (cursor && (cursors.has(cursor) || cursors.size >= 1000))
+      throw new ReviewFailed(502, "malformed_grant_pagination");
+    cursors.add(cursor);
+  } while (cursor);
+  return items;
 }
 
 /** @typedef {ReturnType<typeof reviewClient>} ReviewClient
@@ -229,23 +283,7 @@ function managementClient(call, project, access) {
       }),
     /** @param {string} id @returns {Promise<null>} */
     removeProject: (id) => call("DELETE", project(id)),
-    /** @param {string} id @returns {Promise<{items: import("./types/reviewWire.js").AccessGrantDTO[]}>} */
-    grants: async (id) => {
-      const items = [];
-      const cursors = new Set();
-      let cursor = null;
-      do {
-        const query = new URLSearchParams(cursor ? { cursor } : {});
-        const page = await call("GET", `${project(id)}/access-grants?${query}`);
-        items.push(...page.items);
-        cursor = page.next_cursor;
-        if (cursor && (cursors.has(cursor) || cursors.size >= 1000))
-          throw new ReviewFailed(502, "malformed_grant_pagination");
-        cursors.add(cursor);
-      } while (cursor);
-      return { items };
-    },
-    createGrant: grantCreator(call, project, access),
+    ...grantCalls(call, project, access),
     /** @param {string} id @param {string} grantId @param {{role: import("./types/reviewWire.js").AccessGrantDTO["role"],
      * expected_revision: number}} body @returns {Promise<import("./types/reviewWire.js").AccessGrantDTO>} */
     updateGrant: (id, grantId, body) =>
@@ -255,6 +293,3 @@ function managementClient(call, project, access) {
       call("DELETE", `${project(id)}/access-grants/${encodeURIComponent(grantId)}`),
   };
 }
-
-/** @param {Awaited<ReturnType<import("./types/access.js").ApiAccess>>} who @param {string} id */
-const grantScope = (who, id) => [who?.heygen ?? "", who?.owner ?? "", id].join("\n");

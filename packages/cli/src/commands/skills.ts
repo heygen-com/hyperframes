@@ -1,3 +1,4 @@
+import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, spawn } from "node:child_process";
@@ -50,6 +51,7 @@ function hasNpx(): boolean {
 // up front and skip cleanly instead of letting that surface. `git` resolves as
 // a real executable on every platform, so no cmd.exe wrapping is needed.
 function hasGit(): boolean {
+  if (!runsWithoutInstallPrompt("git")) return false;
   try {
     execFileSync("git", ["--version"], { stdio: "ignore", timeout: 5000 });
     return true;

@@ -81,6 +81,8 @@ With a `video/...` `type`, `src` plays in a `<video>` behind the same playback A
 events. `scenes`, `setRuntimeData()`, `setColorGrading()`, `iframeElement` and `stopMedia()`
 are composition-only, and `srcdoc` wins over a video `src`, as it does in an iframe.
 
+Removing a video player's `src` attribute or setting it to an empty string unloads the film and resets playback to paused at 0:00. Set a new `src` to load another video.
+
 ## JavaScript API
 
 The main API follows familiar media-player behavior:
@@ -99,6 +101,12 @@ player.muted = true;
 console.log(player.duration, player.paused, player.ready);
 console.log(player.compositionWidth, player.compositionHeight);
 ```
+
+In Studio previews, scrubbing keeps the last complete picture visible while video
+layers decode at the requested time. Rapid seeks keep only the latest queued
+destination, and the captions and video layers appear together once it is ready.
+Complete intermediate pictures can appear during a drag. Jumping to a different
+clip supersedes an earlier pending seek; failed sources do not hold up the preview.
 
 ## Events
 

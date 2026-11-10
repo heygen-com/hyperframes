@@ -101,6 +101,8 @@ interface FfprobeStream {
   width?: number;
   height?: number;
   bit_rate?: string;
+  r_frame_rate?: string;
+  avg_frame_rate?: string;
   disposition?: Record<string, number | undefined>;
   tags?: Record<string, string | undefined>;
 }
@@ -226,11 +228,25 @@ function sourceFactsOf(
 ): PreviewSourceFacts | undefined {
   if (!stream?.width || !stream.height) return undefined;
   const bitrate = Number(stream.bit_rate ?? formatBitrate);
+  const rate = (raw: string | undefined) => {
+    const [numerator, denominator = "1"] = (raw ?? "0").split("/");
+    const value = Number(numerator) / Number(denominator);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const nominal = rate(stream.r_frame_rate);
+  const average = rate(stream.avg_frame_rate);
   return {
     width: stream.width,
     height: stream.height,
     bitDepth: bitDepthOf(stream),
     bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+    ...(nominal > 0
+      ? {
+          frameRate: nominal,
+          variableFrameRate:
+            average > 0 && Math.abs(nominal - average) / Math.max(nominal, average) > 0.1,
+        }
+      : {}),
   };
 }
 
@@ -317,7 +333,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
       "--",

@@ -35,6 +35,7 @@ import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
+  archiveKey,
   assertUnchanged,
   type HtmlAttributeResolver,
   readChecked,
@@ -356,6 +357,58 @@ function concatArgs(count: number, video: boolean, audio: number | null): string
   ];
 }
 
+const LIMITED_SHARE = 0.85;
+
+/** Rate limits that keep a re-encode under `maxBytes` while crf stays the quality target; empty when none apply. */
+export function sizeLimitArgs(opts: {
+  maxBytes: number;
+  seconds: number;
+  audioBitsPerSecond: number;
+}): string[] {
+  if (!(opts.seconds > 0)) return [];
+  const bits = (opts.maxBytes * 8 * LIMITED_SHARE) / opts.seconds - opts.audioBitsPerSecond;
+  if (!(bits >= 1000)) return [];
+  const rate = `${Math.floor(bits / 1000)}k`;
+  return ["-maxrate", rate, "-bufsize", rate];
+}
+
+const bitsPerSecond = (args: readonly string[]) => {
+  const rate = args[args.indexOf("-b:a") + 1];
+  return rate ? Number.parseInt(rate, 10) * 1000 : 0;
+};
+
+async function durationSeconds(sourcePath: string): Promise<number | null> {
+  const ffprobe = findFFprobe();
+  if (!ffprobe) return null;
+  const { stdout } = await execFileAsync(ffprobe, [
+    ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", sourcePath],
+  ]);
+  const value = Number(stdout.trim());
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+const capOf = (presetName: PresetName) => ACCEPTED[REENCODE_PRESETS[presetName].ext]?.maxBytes ?? 0;
+
+const playedSeconds = (segments: PlayedSegment[]) =>
+  segments.reduce((sum, s) => sum + s.end - s.start, 0);
+
+export async function limitFor(
+  sourcePath: string,
+  presetName: PresetName,
+  segments: PlayedSegment[] | undefined,
+  maxBytes = capOf(presetName),
+): Promise<string[]> {
+  if (mediaOf(presetName) !== "video") return [];
+  const seconds = segments?.length ? playedSeconds(segments) : await durationSeconds(sourcePath);
+  const limit = sizeLimitArgs({
+    maxBytes,
+    seconds: seconds ?? 0,
+    audioBitsPerSecond: bitsPerSecond(REENCODE_PRESETS[presetName].audio),
+  });
+  // VP9 takes its ceiling from -b:v; the preset's `-b:v 0` is pure constant quality and ignores -maxrate.
+  return presetName === "alphaVideo" && limit.length ? [...limit, "-b:v", limit[1]!] : limit;
+}
+
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
@@ -378,6 +431,7 @@ async function ffmpegReencode(
         "-y",
         ...(await segmentArgs(sourcePath, decoder, segments, mediaOf(presetName))),
         ...preset.args,
+        ...(await limitFor(sourcePath, presetName, segments)),
         ...color,
         ...preset.audio,
         outPath,
@@ -876,9 +930,9 @@ function htmlSrcKey(
   if (!clean || isRemoteOrInlineUrl(clean)) return null;
   const rootRelative = clean.startsWith("/")
     ? clean
-    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p));
+    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p)));
   for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-    const key = relative(absDir, candidate).replaceAll("\\", "/");
+    const key = archiveKey(relative(absDir, candidate).replaceAll("\\", "/"));
     if (fileMap.has(key)) return key;
   }
   return null;
@@ -903,7 +957,7 @@ function rewriteReferences(
 ): void {
   const urlFor: UrlFor = (rootRelative) => {
     for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-      const url = urlForKey(relative(absDir, candidate).replaceAll("\\", "/"));
+      const url = urlForKey(archiveKey(relative(absDir, candidate).replaceAll("\\", "/")));
       if (url) return url;
     }
     return null;
@@ -979,7 +1033,11 @@ function rewriteHtmlDocument(
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
   // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
-    localTarget(raw, (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p)), urlFor);
+    localTarget(
+      raw,
+      (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p))),
+      urlFor,
+    );
   const { document } = parseHTML(html);
   const attrs = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "poster", "href"],

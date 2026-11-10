@@ -49,17 +49,19 @@ export class RenderChunkValidationError extends Error {
   }
 }
 
+export const chunkFrameInjectorDependencies = { createVideoFrameInjector };
+
 /** One injector per browser session: a hook reused on a fresh page can skip its first injection. */
 export function createChunkVideoFrameInjectorFactory(
   frameLookup: FrameLookupTable | Promise<FrameLookupTable> | null,
   options?: Parameters<typeof createVideoFrameInjector>[1],
 ): () => BeforeCaptureHook | null {
   if (!(frameLookup instanceof Promise))
-    return () => createVideoFrameInjector(frameLookup, options);
+    return () => chunkFrameInjectorDependencies.createVideoFrameInjector(frameLookup, options);
   return () => {
     let hook: BeforeCaptureHook | null | undefined;
     return async (page, time, heldVideoTime) => {
-      hook ??= createVideoFrameInjector(await frameLookup, options);
+      hook ??= chunkFrameInjectorDependencies.createVideoFrameInjector(await frameLookup, options);
       await hook?.(page, time, heldVideoTime);
     };
   };
@@ -160,7 +162,7 @@ export function buildChunkCaptureOptions(input: {
     ...(videoCaptureBeyondViewport !== undefined
       ? { captureBeyondViewport: videoCaptureBeyondViewport }
       : {}),
-    pageMotionBlur: encoder.pageMotionBlur ?? "distributed-render",
+    pageMotionBlur: encoder.pageMotionBlur,
     // A fixed warmup count keeps `beginFrameTimeTicks` host-independent.
     lockWarmupTicks: true,
     requiresWebGpu: compositionRequiresWebGpu(input.html),

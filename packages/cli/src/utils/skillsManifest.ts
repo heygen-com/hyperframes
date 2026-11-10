@@ -111,17 +111,19 @@ const FETCH_TIMEOUT_MS = 4000;
 //              structurally (sibling `../hyperframes/references/…` paths,
 //              "call /media-use" preambles). These must be present and current
 //              for any video work, so `init` / `skills update` keep them fresh.
-//   on-demand — everything else: decks, Remotion ports, video rebuilds
-//              (reverse-any-video, style-sampling) and optional integrations (figma).
-//              They install when named (`hyperframes skills update <name>`),
+//              So are the video rebuilds, which only trigger when installed.
+//   on-demand — everything else: decks, Remotion ports and optional integrations
+//              (figma). They install when named (`hyperframes skills update <name>`),
 //              instead of being sprayed onto every machine that runs `init`.
 
 /** The entry skill — read first for any video request. */
 const ENTRY_SKILL = "hyperframes";
 
-/** True for skills every other skill depends on (see "Skill tiers" above). */
+const NAMED_CORE_SKILLS = new Set(["media-use", "reverse-any-video", "style-sampling"]);
+
+/** True for skills every machine gets with `init` / `skills update` (see "Skill tiers" above). */
 export function isCoreSkill(name: string): boolean {
-  return name === ENTRY_SKILL || name.startsWith("hyperframes-") || name === "media-use";
+  return name === ENTRY_SKILL || name.startsWith("hyperframes-") || NAMED_CORE_SKILLS.has(name);
 }
 
 /**
@@ -138,6 +140,8 @@ export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes-cli",
   "hyperframes-registry",
   "media-use",
+  "reverse-any-video",
+  "style-sampling",
 ];
 
 /**

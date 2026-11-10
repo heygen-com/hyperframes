@@ -1,6 +1,6 @@
 import type { CheckDeadline } from "./checkDeadline.js";
 import type { CheckProgress } from "./checkProgress.js";
-import type { ProjectLintResult } from "./lintProject.js";
+import type { ProjectLintOptions, ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
@@ -37,6 +37,9 @@ export interface CheckOptions {
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  includeUnmounted?: boolean;
+  cache?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {
@@ -395,6 +398,7 @@ export interface CheckReport {
     notes: string[];
   };
   ok: boolean;
+  cached?: { at: string };
   strict: boolean;
   browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
@@ -422,7 +426,7 @@ export interface CheckReport {
 }
 
 export interface CheckDependencies {
-  lintProject(projectDir: string): Promise<ProjectLintResult>;
+  lintProject(projectDir: string, options?: ProjectLintOptions): Promise<ProjectLintResult>;
   resolveMotionSpec(projectDir: string): MotionSpecResolution;
   runBrowserCheck(
     project: ProjectDir,

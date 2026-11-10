@@ -81,7 +81,7 @@ function runAsAgent(args: string[], { ci = true } = {}): Promise<Run> {
         HOME: home,
         USERPROFILE: home,
         ...(ci ? { CI: "1" } : {}),
-        CLAUDECODE: "1",
+        CLAUDE_CODE_CHILD_SESSION: "1",
       },
     });
     let stdout = "";

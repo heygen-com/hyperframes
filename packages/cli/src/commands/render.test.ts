@@ -2089,6 +2089,21 @@ describe("checkRenderResolutionPreflight", () => {
       ).toBeUndefined();
     });
 
+    it("clears a landscape-1440p preset on a portrait 720p composition (an exact 2×)", async () => {
+      expect(
+        await checkRenderResolutionPreflight(comp(720, 1280), "landscape-1440p", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("refuses `--resolution 1440p` on a 1920×1080 composition: 4/3 is not an integer scale", async () => {
+      const result = await checkRenderResolutionPreflight(
+        landscapeHtml,
+        "landscape-1440p",
+        agnostic,
+      );
+      expect(result?.kind).toBe("non-integer-scale");
+    });
+
     it("clears a landscape preset on a square composition", async () => {
       // aspect > 1 → landscape, aspect = 1 → square. Both self-heal.
       expect(

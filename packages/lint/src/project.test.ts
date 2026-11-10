@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
-import { lintProject } from "./project.js";
+import { lintProject, unmountedNotice } from "./project.js";
 
 // Keep project lint tests independent of the host's ffprobe installation.
 vi.mock("node:child_process", () => {
@@ -676,7 +676,7 @@ describe("sub-composition stylesheet links", () => {
   }
 
   async function fontFaceFindings(project: string): Promise<HyperframeLintFinding[]> {
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     return results
       .flatMap((entry) => entry.result.findings)
       .filter((finding) => finding.code === "font_family_without_font_face");
@@ -1395,8 +1395,9 @@ describe("audio-aware project rules", () => {
 
 describe("sub-composition files", () => {
   const sceneFindings = async (project: string) =>
-    (await lintProject(project)).results.find((result) => result.file === "compositions/scene.html")
-      ?.result.findings ?? [];
+    (await lintProject(project, undefined, {}, { includeUnmounted: true })).results.find(
+      (result) => result.file === "compositions/scene.html",
+    )?.result.findings ?? [];
 
   it("resolves a scene's ../assets/ path from its own folder, as preview and render do", async () => {
     const project = makeProject(validHtml(), {
@@ -1437,7 +1438,7 @@ describe("sub-composition files", () => {
       join(project, "styles", "escape.css"),
       ".a { background: url('../../outside.png'); }",
     );
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     const traversal = (file: string) =>
       results
         .find((result) => result.file === file)
@@ -1513,4 +1514,66 @@ describe("a page saved as UTF-16", () => {
       (await lintProject(dir)).results.flatMap((r) => r.result.findings.map((f) => f.code)).sort();
     expect(await codes(utf16)).toEqual(await codes(utf8));
   });
+});
+
+describe("compositions the entry never mounts", () => {
+  const mounting = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="5"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  const broken =
+    '<div data-composition-id="unused"><section data-composition-id="bare"></section></div>';
+
+  it("are not linted and are named in unmountedCompositions", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+      "nested/also-unused.html": broken,
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toEqual([
+      "index.html",
+      "compositions/used.html",
+    ]);
+    expect(result.unmountedCompositions).toEqual([
+      "compositions/nested/also-unused.html",
+      "compositions/unused.html",
+    ]);
+  });
+
+  it("are linted again with includeUnmounted", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+    });
+
+    const result = await lintProject(project, undefined, {}, { includeUnmounted: true });
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/unused.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+
+  it("follows mounts made by a mounted composition", async () => {
+    const project = makeProject(mounting("compositions/outer.html"), {
+      "outer.html": `<div data-composition-id="scene"><div data-composition-id="inner" data-composition-src="compositions/inner.html"></div></div>`,
+      "inner.html": validHtml("inner"),
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/inner.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+});
+
+it("names the unmounted count in one line", () => {
+  expect(unmountedNotice(1)).toBe(
+    "1 file in compositions/ is not mounted from index.html, so not checked; --include-unmounted adds them.",
+  );
+  expect(unmountedNotice(3)).toContain("3 files in compositions/ are not mounted");
 });

@@ -1,6 +1,10 @@
 import { isWebKit } from "./runtime/mediaClock.js";
 
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
+export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
+export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
+export const PREVIEW_VIDEO_SOURCE_ATTR = "data-hf-preview-video-source";
+export const PREVIEW_VIDEO_CANVAS_ATTR = "data-hf-preview-video-canvas";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
 
@@ -11,6 +15,12 @@ export function inPlayerFrame(doc: Document): boolean {
 export function defersMediaIn(doc: Document): boolean {
   return (
     doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
+  );
+}
+export function capturePageIn(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`)?.getAttribute("content") ===
+    STUDIO_PREVIEW_CAPTURE_MODE
   );
 }
 export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
@@ -30,6 +40,9 @@ export const CLIP_HIDDEN_ATTR = "data-hf-clip-hidden";
 export const STUDIO_PREVIEW_FAR_SCENE_ATTR = "data-hf-far-scene";
 export const STUDIO_PREVIEW_PARKED_SCENE_ATTR = "data-hf-parked-scene";
 export const PREVIEW_ONLY_ATTRS = [
+  PREVIEW_VIDEO_FRAME_ATTR,
+  PREVIEW_VIDEO_SOURCE_ATTR,
+  PREVIEW_VIDEO_CANVAS_ATTR,
   STUDIO_PREVIEW_UPCOMING_ATTR,
   STUDIO_PREVIEW_FAR_SCENE_ATTR,
   STUDIO_PREVIEW_PARKED_SCENE_ATTR,

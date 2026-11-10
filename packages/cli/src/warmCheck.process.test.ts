@@ -15,7 +15,7 @@ import {
 import { Frame, encodeFrame, frameReader, warmCheckEndpoint } from "./warmCheckProtocol.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const CHECK_ARGS = ["--json", "--no-browser-gpu", "--samples=1"];
+const CHECK_ARGS = ["--json", "--no-browser-gpu", "--samples=1", "--no-cache"];
 const CHROME = /chrom/i;
 
 function temporary(prefix: string, base = tmpdir()): string {

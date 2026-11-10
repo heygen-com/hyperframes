@@ -212,6 +212,22 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
+const FIRST_COPY_SLOTS_IN_PROCESS = 4;
+let firstCopiesRunning = 0;
+const firstCopiesWaiting: (() => void)[] = [];
+
+async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
+  if (firstCopiesRunning < FIRST_COPY_SLOTS_IN_PROCESS) firstCopiesRunning += 1;
+  else await new Promise<void>((yours) => firstCopiesWaiting.push(yours));
+  try {
+    return await copy();
+  } finally {
+    const next = firstCopiesWaiting.shift();
+    if (next) next();
+    else firstCopiesRunning -= 1;
+  }
+}
+
 const MEDIA_LEDGER = ".media/manifest.jsonl";
 const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
@@ -548,11 +564,18 @@ class Engine {
   async firstOpen(): Promise<void> {
     const sweptAt = this.now();
     const files = historyFiles(this.dir);
-    for (const file of files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES)) {
-      const hash = await this.storeIfPresent(file.path);
-      if (this.whereFolder() !== "here") throw this.replaced();
-      if (hash !== null) this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
-    }
+    const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
+    const hashes = await Promise.allSettled(
+      copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path))),
+    );
+    // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
+    if (this.whereFolder() !== "here") throw this.replaced();
+    copied.forEach((file, i) => {
+      const result = hashes[i]!;
+      if (result.status === "rejected") throw result.reason;
+      if (result.value !== null)
+        this.tracked.set(file.path, { hash: result.value, stat: statKey(file, sweptAt) });
+    });
     this.log.baseline = this.manifest();
     this.log.keepsLedger = true;
     this.persistLog();

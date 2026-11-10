@@ -269,6 +269,15 @@ export type RuntimePreviewCopiesMessage = {
   } | null;
 };
 
+export type FetchNotSeenToStart = null;
+
+export type PlaybackHeldBy = {
+  kind: "audio" | "video";
+  readyState: number;
+  networkState: number;
+  fetchMs: number | FetchNotSeenToStart;
+};
+
 export type RuntimePreviewHealthMessage = {
   source: "hf-preview";
   type: "preview-health";
@@ -285,6 +294,7 @@ export type RuntimePreviewHealthMessage = {
     gapP50Ms: number;
     gapP95Ms: number;
     clockSource: "audio" | "webaudio" | "monotonic";
+    heldBy: PlaybackHeldBy | null;
     mode: "play";
   } | null;
 };
@@ -337,7 +347,7 @@ export type RuntimePlayer = {
   _timeline: RuntimeTimelineLike | null;
   play: () => void;
   pause: () => void;
-  seek: (timeSeconds: number, options?: { keepPlaying?: boolean }) => HeldSeek;
+  seek: (timeSeconds: number, options?: { keepPlaying?: boolean; settled?: boolean }) => HeldSeek;
   renderSeek: (timeSeconds: number, options?: RuntimeSeekOptions) => void;
   getTime: () => number;
   getDuration: () => number;

@@ -89,6 +89,18 @@ export interface ProjectLintResult {
   totalErrors: number;
   totalWarnings: number;
   totalInfos: number;
+  unmountedCompositions?: string[];
+}
+
+/** The one line a run prints when it left unmounted compositions out. */
+export function unmountedNotice(count: number): string {
+  const skipped =
+    count === 1 ? "1 file in compositions/ is" : `${count} files in compositions/ are`;
+  return `${skipped} not mounted from index.html, so not checked; --include-unmounted adds them.`;
+}
+
+export interface ProjectLintOptions {
+  includeUnmounted?: boolean;
 }
 
 /**
@@ -294,6 +306,7 @@ export async function lintProject(
   projectDir: string,
   entryFile?: string,
   hostOptions: Pick<HyperframeLinterOptions, "host" | "isSubComposition"> = {},
+  { includeUnmounted = false }: ProjectLintOptions = {},
 ): Promise<ProjectLintResult> {
   const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
   if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
@@ -307,10 +320,11 @@ export async function lintProject(
   let totalInfos = 0;
 
   const rootHtml = readTextFile(indexPath);
-  const projectFontFamilies = declaredProjectFontFamilies(
-    projectDir,
-    mountedSources(projectDir, rootHtml, rootCompSrcPath),
-  );
+  const mounted = mountedSources(projectDir, rootHtml, rootCompSrcPath);
+  const mountedPaths = new Set(mounted.map((source) => source.compSrcPath));
+  const unmountedCompositions: string[] = [];
+  const unmountedSources: HtmlSource[] = [];
+  const projectFontFamilies = declaredProjectFontFamilies(projectDir, mounted);
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
@@ -349,6 +363,11 @@ export async function lintProject(
       const filePath = join(compositionsDir, file);
       const html = readTextFile(filePath);
       const compSrcPath = `compositions/${file}`;
+      if (!includeUnmounted && !mountedPaths.has(compSrcPath)) {
+        unmountedSources.push({ html, compSrcPath });
+        if (!isSnippetFragment(html)) unmountedCompositions.push(compSrcPath);
+        continue;
+      }
       allHtmlSources.push({ html, compSrcPath });
       // Mountable fragments (figma component imports, registry snippets) are
       // not standalone compositions — composition-root rules don't apply.
@@ -382,7 +401,9 @@ export async function lintProject(
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...lintLinkedStylesheetAssets(projectDir, allHtmlSources),
     ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
-    ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
+    ...(!entryFile
+      ? lintBlankRootWithStandaloneComposition(rootHtml, [...allHtmlSources, ...unmountedSources])
+      : []),
     ...lintDuplicateAudioTracks(projectDir, rootHtml),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintVideoMediaStartPastEof(projectDir, allHtmlSources)),
@@ -406,7 +427,7 @@ export async function lintProject(
     }
   }
 
-  return { results, totalErrors, totalWarnings, totalInfos };
+  return { results, totalErrors, totalWarnings, totalInfos, unmountedCompositions };
 }
 
 function lintBlankRootWithStandaloneComposition(
@@ -624,6 +645,14 @@ function lintMissingLocalAsset(
   return findings;
 }
 
+function localCssUrl(match: RegExpMatchArray): string | undefined {
+  const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
+  // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+  if (isUnresolvedAssetPlaceholder(rawUrl)) return undefined;
+  const url = cleanAssetUrl(rawUrl);
+  return url && !isRemoteOrInlineUrl(url) ? url : undefined;
+}
+
 function lintTextureMaskAssetNotFound(
   projectDir: string,
   htmlSources: HtmlSource[],
@@ -643,11 +672,8 @@ function lintTextureMaskAssetNotFound(
         matches = [...cssSource.content.matchAll(MASK_IMAGE_URL_RE)];
       }
       for (const match of matches) {
-        const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
-        // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
-        if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
-        const url = cleanAssetUrl(rawUrl);
-        if (!url || isRemoteOrInlineUrl(url)) continue;
+        const url = localCssUrl(match);
+        if (!url) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,
@@ -712,10 +738,8 @@ function lintLinkedStylesheetAssets(
       root.walkDecls((declaration) => {
         if (/^(?:-webkit-)?mask-image$/i.test(declaration.prop)) return;
         for (const match of declaration.value.matchAll(CSS_URL_RE)) {
-          const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
-          if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
-          const url = cleanAssetUrl(rawUrl);
-          if (!url || isRemoteOrInlineUrl(url) || url.startsWith("/")) continue;
+          const url = localCssUrl(match);
+          if (!url || url.startsWith("/")) continue;
           if (
             resolveCssAssetCandidates(projectDir, url, undefined, rootRelativePath).some(existsSync)
           )

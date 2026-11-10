@@ -39,6 +39,7 @@ import { mountDesktopRoutes } from "./desktopRoutes.js";
 import { isDevMode } from "../utils/env.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
@@ -674,13 +675,27 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(
-            job,
-            opts.project.dir,
-            opts.outputPath,
-            onProgress,
-            abortController.signal,
-          );
+          // The CLI's one-render-slot-per-account lock: a Studio render waits behind it, and Cancel ends the wait.
+          const releaseSlot = await acquireRenderLock({
+            project: opts.project.dir,
+            wait: true,
+            signal: abortController.signal,
+            onWait: (holder) => {
+              state.stage = `Waiting for another render (${describeRenderLockHolder(holder, Date.now())})`;
+            },
+          });
+          state.stage = undefined;
+          try {
+            await executeRenderJob(
+              job,
+              opts.project.dir,
+              opts.outputPath,
+              onProgress,
+              abortController.signal,
+            );
+          } finally {
+            releaseSlot();
+          }
           if (abortController.signal.aborted) {
             // Cancel landed just as the render finished: honor the cancel the
             // route already reported instead of resurrecting a completed job.

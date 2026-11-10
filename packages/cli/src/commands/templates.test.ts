@@ -36,7 +36,13 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFile };
 });
 
-import { pullTemplate, PullRefused, TEMPLATES } from "./templates.js";
+const commandRuns = vi.hoisted(() => [] as { skill: string; command: string }[]);
+vi.mock("../telemetry/events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../telemetry/events.js")>()),
+  trackSkillCommandRan: (run: { skill: string; command: string }) => void commandRuns.push(run),
+}));
+
+import { pullTemplate, PullRefused, tagStyleSamplingProject, TEMPLATES } from "./templates.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -93,12 +99,21 @@ describe("pullTemplate", () => {
     );
   });
 
-  it("leaves a template it pulled before alone and spends no call", async () => {
+  it("leaves a template it pulled before alone, spends no call and counts no second run", async () => {
+    commandRuns.length = 0;
     const fetchMock = serve({});
     await pullTemplate("sample", dir);
     fetchMock.mockClear();
     await pullTemplate("sample", dir);
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(commandRuns).toEqual([{ skill: "style-sampling", command: "templates pull" }]);
+  });
+
+  it("counts no run when the pull is refused", async () => {
+    commandRuns.length = 0;
+    serve({ status: 402 });
+    await expect(pullTemplate("sample", dir)).rejects.toThrow(PullRefused);
+    expect(commandRuns).toEqual([]);
   });
 
   it("fills an empty folder where the template goes", async () => {
@@ -190,7 +205,7 @@ describe("pullTemplate", () => {
     });
     const pulling = pullTemplate("sample", dir).catch(() => undefined);
     await unpacking;
-    const templates = join(dir, "templates");
+    const templates = join(dir, ".hyperframes", "template-pulls");
     const own = readdirSync(templates).find((name) => /^sample\.part-\d+-/.test(name))!;
     const copy = join(templates, `sample.part-${pid}-${suffix}`);
     cpSync(join(templates, own), copy, { recursive: true });
@@ -214,7 +229,7 @@ describe("pullTemplate", () => {
 
   it("leaves every sibling a pull did not mark: folders, files, symlinks and unmarked old parts", async () => {
     serve({});
-    const templates = join(dir, "templates");
+    const templates = join(dir, ".hyperframes", "template-pulls");
     const outside = await partLeftBy(deadPid(), "Ou7sid");
     const target = join(dir, "outside-target");
     cpSync(outside, target, { recursive: true });
@@ -248,13 +263,37 @@ describe("pullTemplate", () => {
     void pullTemplate("sample", dir);
     await unpacking;
     const parts = () =>
-      readdirSync(join(dir, "templates")).filter((name) => name.includes(".part-"));
+      readdirSync(join(dir, ".hyperframes", "template-pulls")).filter((name) =>
+        name.includes(".part-"),
+      );
     expect(parts()).toHaveLength(1);
     const stop = process.listeners("SIGINT").find((listener) => !before.has(listener));
     stop?.("SIGINT");
     expect(parts()).toEqual([]);
     expect(resent).toHaveBeenCalledWith(process.pid, "SIGINT");
     expect(process.listeners("SIGINT").filter((listener) => !before.has(listener))).toEqual([]);
+  });
+
+  // Feedback, Windows: Desktop's project history read the half-unpacked files beside templates/<slug>, and the final
+  // rename failed with EPERM while it held one. The unpack now happens where history never looks.
+  it("unpacks under .hyperframes, so templates/ holds nothing but finished templates", async () => {
+    serve({});
+    let stop!: ExecFileCallback;
+    const unpacking = new Promise<void>((started) => {
+      unpackGate.hold = (done) => {
+        stop = done;
+        started();
+      };
+    });
+    const pulling = pullTemplate("sample", dir).catch(() => undefined);
+    await unpacking;
+    const parts = (folder: string) =>
+      existsSync(folder) ? readdirSync(folder).filter((name) => name.includes(".part-")) : [];
+    expect(parts(join(dir, "templates"))).toEqual([]);
+    expect(parts(join(dir, ".hyperframes", "template-pulls"))).toHaveLength(1);
+    unpackGate.hold = null;
+    stop(new Error("stopped"), "", "");
+    await pulling;
   });
 
   it("names the unreachable host instead of a bare fetch failure when offline", async () => {
@@ -274,5 +313,25 @@ describe("pullTemplate", () => {
 
   it("names the templates when the slug is unknown", async () => {
     await expect(pullTemplate("nope", dir)).rejects.toThrow("sample");
+  });
+});
+
+describe("tagStyleSamplingProject", () => {
+  it("marks the project the episode is built in", () => {
+    const pulled = join(dir, "templates", "sample");
+    mkdirSync(pulled, { recursive: true });
+    writeFileSync(join(dir, "hyperframes.json"), "{}\n");
+    tagStyleSamplingProject(dir, pulled);
+    expect(JSON.parse(readFileSync(join(dir, "hyperframes.json"), "utf8"))).toMatchObject({
+      authoringSkill: "style-sampling",
+    });
+  });
+
+  it("makes no project where there is none", () => {
+    const pulled = join(dir, "templates", "sample");
+    mkdirSync(pulled, { recursive: true });
+    tagStyleSamplingProject(dir, pulled);
+    expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
+    expect(existsSync(join(pulled, "hyperframes.json"))).toBe(false);
   });
 });

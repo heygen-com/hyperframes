@@ -1,6 +1,15 @@
 import type { CheckProgress } from "../utils/checkProgress.js";
 import { runCommand } from "citty";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -542,6 +551,24 @@ it("--budget sets when the whole check stops, its report time kept back, counted
   expect(budget?.stopAt).toBeGreaterThanOrEqual(startedAt + 470_000);
   expect(budget?.stopAt).toBeLessThanOrEqual(Date.now() + 470_000);
   expect(runPipeline.mock.calls[1]?.[1].budget).toBeUndefined();
+});
+
+it("--no-craft reaches the pipeline as craft: false, and the craft pass is on without it", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json", "--no-craft"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].craft).toBe(false);
+  expect(runPipeline.mock.calls[1]?.[1].craft).toBe(true);
 });
 
 it("parses the caption-zone grammar and enables the frame gate", async () => {
@@ -1635,6 +1662,28 @@ describe("check pipeline", () => {
     expect(checkExitCode(report)).toBe(1);
   });
 
+  it("names the saved report file on stderr after a --json run", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const saved = {
+      id: "r1",
+      revision: "rev",
+      report: "/p/.hyperframes/artifacts/checks/r1.json",
+      attribution: "recorded-revision" as const,
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => ({ ...report, saved })),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(err).toHaveBeenCalledWith(`[hyperframes] check: report saved to ${saved.report}`);
+  });
+
   it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
@@ -2443,6 +2492,29 @@ describe("check pipeline", () => {
     }
   });
 
+  it("a Chrome that never becomes ready ends the whole check with a named finding inside its window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps } = dependencies(fakeDriver());
+      deps.runBrowserCheck = (_project, _options, _motion, deadline) => {
+        deadline!.enter("launch");
+        return new Promise<never>((_, reject) =>
+          deadline!.signal.addEventListener("abort", () => reject(deadline!.signal.reason)),
+        );
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(180_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
+      expect(report.ok).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a check given a long --timeout is not ended as idle after 120 s of waiting for its page", async () => {
     vi.useFakeTimers();
     try {
@@ -2999,6 +3071,15 @@ describe("check pipeline", () => {
 
       const strict = await runScenario(craftDriver(), { strict: true });
       expect(checkExitCode(strict.report)).toBe(0);
+    });
+
+    it("--no-craft never samples the craft frames and the report says the pass was skipped", async () => {
+      const driver = craftDriver();
+      const { report } = await runScenario(driver, { craft: false });
+
+      expect(driver.collectCraftFrame).not.toHaveBeenCalled();
+      expect(report.craft.enabled).toBe(false);
+      expect(report.craft.findings).toEqual([]);
     });
 
     it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {
@@ -3946,6 +4027,177 @@ it("applies transition sample limits within the requested range", async () => {
   expect(report.layout.transitionSamplesDropped).toBe(3);
 });
 
+describe("check cache", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function setup(report: CheckReport) {
+    const browser: { identity: string | undefined } = { identity: "chrome:1" };
+    const dir = mkdtempSync(join(tmpdir(), "hf-check-cache-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    const command = createCheckCommand({
+      resolveProject: () => ({ dir, name: "p", indexPath: join(dir, "index.html") }),
+      runPipeline,
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      browserIdentity: async () => browser.identity,
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    return {
+      dir,
+      browser,
+      runPipeline,
+      run: (...flags: string[]) => runCommand(command, { rawArgs: ["--json", ...flags] }),
+    };
+  }
+
+  it("answers an unchanged tree from the last pass without running the pipeline", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-runs after one byte of the composition changes", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>onf</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a failure", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ ok: false }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a pass whose browser did not run", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ browserSkipped: true }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not store a pass for a tree that changed while it was being checked", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    runPipeline.mockImplementationOnce(async () => {
+      writeFileSync(join(dir, "index.html"), "<html>written by someone else</html>");
+      return reportWithFindings();
+    });
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs a large file changed to the same size with its mtime put back", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const big = join(dir, "clip.bin");
+    const mtime = 1_700_000_000;
+    writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 1));
+    utimesSync(big, mtime, mtime);
+    await run();
+    const writtenAt = statSync(big).ctimeMs;
+    await vi.waitFor(
+      () => {
+        writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 2));
+        utimesSync(big, mtime, mtime);
+        if (statSync(big).ctimeMs === writtenAt) throw new Error("the clock has not ticked");
+      },
+      { interval: 1 },
+    );
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a project with node_modules or a linked directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "node_modules"));
+    await run();
+    await run();
+    rmSync(join(dir, "node_modules"), { recursive: true });
+    mkdirSync(join(dir, "real"));
+    symlinkSync(join(dir, "real"), join(dir, "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when --timeout or the runtime URL changes", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:1/runtime.js");
+    await run();
+    await run("--timeout", "20s");
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:2/runtime.js");
+    await run();
+    vi.unstubAllEnvs();
+    expect(runPipeline).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-runs when the browser binary changes, and never caches without one", async () => {
+    const { browser, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    browser.identity = "chrome:2";
+    await run();
+    browser.identity = undefined;
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when a script under .hyperframes changes, but not when the CLI's own files do", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, ".hyperframes", "artifacts"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.log(1)");
+    await run();
+    writeFileSync(join(dir, ".hyperframes", "artifacts", "report.json"), "{}");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.error(1)");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("still hits when the check touches its video copies under .transcode-cache", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const copy = join(dir, ".transcode-cache", "clip.mp4");
+    mkdirSync(join(dir, ".transcode-cache"));
+    writeFileSync(copy, Buffer.alloc(3 * 1024 * 1024, 1));
+    runPipeline.mockImplementationOnce(async () => {
+      utimesSync(copy, new Date(), new Date());
+      return reportWithFindings();
+    });
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("never caches a project whose .hyperframes links to another directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "real"));
+    mkdirSync(join(dir, ".hyperframes"));
+    symlinkSync(join(dir, "real"), join(dir, ".hyperframes", "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs when the flags differ, or with --no-cache, or under --budget", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run("--strict");
+    await run("--no-cache");
+    await run("--budget", "8m");
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+});
 describe("check stopped by a signal", () => {
   it("SIGTERM prints the report so far, then exits 143", async () => {
     const { deps, runBrowserCheck } = dependencies(fakeDriver());

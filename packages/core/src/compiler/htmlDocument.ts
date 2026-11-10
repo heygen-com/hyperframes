@@ -1,4 +1,5 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
+import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
@@ -16,8 +17,30 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
 
+export interface SceneRootLookup {
+  root: Element | null;
+  hasTemplate: boolean;
+  hasLiveRoot: boolean;
+}
+
+export function locateSceneRoot(html: string): SceneRootLookup {
+  const { document } = parseHTML(html);
+  const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
+  const templates = Array.from(document.querySelectorAll("template"));
+  const sceneRoot =
+    (findSceneTemplate(templates)?.content.querySelector(
+      "[data-composition-id]",
+    ) as Element | null) ?? null;
+  return {
+    root: sceneRoot,
+    hasTemplate: templates.length > 0,
+    hasLiveRoot: liveRoot !== null,
+  };
+}
+
 export function isTemplateEntry(html: string): boolean {
-  return /^<template[\s>/]/i.test(html.replace(LEADING_COMMENTS, ""));
+  const { root, hasTemplate, hasLiveRoot } = locateSceneRoot(html);
+  return hasTemplate && root !== null && !hasLiveRoot;
 }
 
 export function isFullHtmlDocument(html: string): boolean {
@@ -393,8 +416,8 @@ function insertTagInHead(html: string, tag: string): string {
 const ACCEL_TRACKER_ATTR = "data-hf-accel-tracker";
 const OPTS_INTO_MOTION_BLUR = /\sdata-motion-blur\s*=\s*["']?on[\s"'>]/i;
 
-export function insertRuntimeTag(html: string, tag: string): string {
-  const withRuntime = insertTagInHead(html, tag);
+export function insertRuntimeTag(html: string, tag: string, atHeadStart = false): string {
+  const withRuntime = atHeadStart ? injectTagsAtHeadStart(html, tag) : insertTagInHead(html, tag);
   if (!OPTS_INTO_MOTION_BLUR.test(html) || html.includes(ACCEL_TRACKER_ATTR)) return withRuntime;
   const tracker = `<script ${ACCEL_TRACKER_ATTR}>${acceleratedCanvasTrackerSource()}</script>`;
   return injectTagsAtHeadStart(withRuntime, tracker);

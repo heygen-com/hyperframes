@@ -6,7 +6,6 @@ import {
   existsSync,
   fstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -25,6 +24,11 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import { trackSkillCommandRan } from "../telemetry/events.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+
+const STYLE_SAMPLING = "style-sampling";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -175,22 +179,27 @@ function pullOwner(path: string, name: string, dest: string): number | null {
   return pid !== null && markedBy(readPullMarker(path), pid) ? pid : null;
 }
 
-function removeAbandonedParts(dest: string): void {
-  const parent = dirname(dest);
-  if (!existsSync(parent)) return;
-  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+function removeAbandonedParts(stage: string, dest: string): void {
+  if (!existsSync(stage)) return;
+  for (const entry of readdirSync(stage, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const path = join(parent, entry.name);
+    const path = join(stage, entry.name);
     const pid = pullOwner(path, entry.name, dest);
     if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
   }
 }
 
-/** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
+/** Unpacks in `stage`, which watchers skip (a held file fails the rename on Windows), then moves it in whole. */
+async function unpack(
+  data: Buffer,
+  dest: string,
+  stage: string,
+  pack: TemplatePack,
+): Promise<void> {
   makeOutputFolder(dirname(dest));
-  removeAbandonedParts(dest);
-  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  makeOutputFolder(stage);
+  removeAbandonedParts(stage, dest);
+  const work = createStagingDir(stage, `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
   try {
     writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
@@ -216,7 +225,9 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  await unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  const stage = resolve(dir, ".hyperframes", "template-pulls");
+  await unpack(await download(await bundleUrl(pack), pack), dest, stage, pack);
+  trackSkillCommandRan({ skill: STYLE_SAMPLING, command: "templates pull" });
   return dest;
 }
 
@@ -236,6 +247,12 @@ function alreadyPulled(dest: string, pack: TemplatePack): boolean {
   throw new PullRefused(
     `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
   );
+}
+
+export function tagStyleSamplingProject(dir: string, pulled: string): void {
+  for (const folder of [dir, pulled]) {
+    if (existsSync(projectConfigPath(folder))) seedProjectAuthoringSkill(folder, STYLE_SAMPLING);
+  }
 }
 
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
@@ -264,6 +281,7 @@ export default defineCommand({
     }
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
+      tagStyleSamplingProject(args.dir ?? ".", path);
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;

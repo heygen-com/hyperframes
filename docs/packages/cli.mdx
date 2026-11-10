@@ -178,7 +178,7 @@ npx hyperframes init my-video --tailwind
 | Flag                | Description                                                                                                                                                                                                                                                                          |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--example, -e`     | Example to scaffold. Default is the centered blank. See [Examples](/examples) for the full list.                                                                                                                                                                                     |
-| `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160). Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `square-1080p`, `4k-square`. Default: keep template dimensions. |
+| `--resolution`      | Canvas preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k` (3840×2160), `portrait-4k` (2160×3840), `square` (1080×1080), `square-4k` (2160×2160), `landscape-1440p` (2560×1440), `portrait-1440p` (1440×2560), `square-1440p` (1440×1440). Aliases: `1080p`, `4k`, `uhd`, `1440p`, `qhd`, `1080p-square`, `square-1080p`, `4k-square`, `1440p-portrait`, `1440p-square`. Default: keep template dimensions. |
 | `--video, -v`       | Path to a video file (MP4, WebM, MOV)                                                                                                                                                                                                                                                |
 | `--audio, -a`       | Path to an audio file (MP3, WAV, M4A)                                                                                                                                                                                                                                                |
 | `--tailwind`        | Add Tailwind CSS browser-runtime support to the scaffolded HTML                                                                                                                                                                                                                      |
@@ -1155,6 +1155,13 @@ installed, `open` exits 1 and prints a download link. With `--json`, the result
 names the `reason` and the `downloadUrl`. The hand-off works on macOS, Windows
 and Linux.
 
+The app can't edit a project while a preview of it is running, because the
+preview holds the project's edit history. So `open` first stops the project's
+`preview --background` server and says so. It leaves any other preview running,
+such as one started in a terminal, and prints the `preview --stop` command
+instead. With `--json`, the `preview` field reports `none`, `stopped` or
+`left-running`.
+
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
 what changed in the app since you last looked, and the files changed since
@@ -1202,6 +1209,12 @@ unless you pass `--verbose`, which keeps output clean for agents and CI.
 `--lint-verbose`, which `render`, `preview` and `publish` use for the same wish, works here and on `check` too.
 `--json` adds `errorCount`, `warningCount`, `infoCount`, and a `findings` array.
 
+Only the compositions the project uses are linted: `index.html` and every file it mounts through
+`data-composition-src`, followed through the files they mount. A file under `compositions/` that
+nothing mounts (an installed block you have not placed yet) is left out, and one line says how
+many were; `--include-unmounted` lints them too. `--json` lists them in `unmountedCompositions`.
+`check` lints the same way and takes the same flag.
+
 The linter catches missing attributes, missing adapter libraries (GSAP, Lottie,
 Three.js), and structural problems. [Troubleshooting](/help)
 explains each rule.
@@ -1246,6 +1259,7 @@ cover every finding from the full check.
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `--json`                                     | One aggregated envelope. Every finding carries a selector, `data-*` identity, source file, bbox, and sample time.           |
 | `--snapshots`                                | Save the five audited frames under `.hyperframes/artifacts/snapshots/`, plus a `finding-NN-<code>.png` crop per finding      |
+| `--include-unmounted`                        | Also lint `compositions/` files that `index.html` never mounts (left out by default, with one line saying how many)          |
 | `--samples`                                  | Midpoint samples across the duration (default 9)                                                                            |
 | `--at`                                       | Explicit timestamps in seconds, comma-separated                                                                             |
 | `--at-transitions`                           | Also sample every tween start and end, to catch transient overlaps at transition seams                                       |
@@ -1257,7 +1271,9 @@ cover every finding from the full check.
 | `--tolerance`                                | Allowed overflow in px before reporting (default 2)                                                                         |
 | `--timeout`                                  | Render-ready budget in ms; also raises page navigation above its 10s floor (default 45000, as snapshot and render)                                   |
 | `--budget <ms\|90s\|8m>`                      | Stop the whole check this long after it starts (at least 30s) and report what it found, with `check_budget_reached` naming the phase it was in. For hosts with their own time limit. |
+| `--no-cache`                                  | Run the check even when the project files, flags, CLI and browser are unchanged since the last pass. Without it, an unchanged project returns that pass in about a second, marked as cached; remote scripts and assets are not fetched again for that. A failure is never cached, and a project with `node_modules` or a linked directory is never replayed. |
 | `--no-contrast`                              | Skip the WCAG pass while iterating                                                                                         |
+| `--no-craft`                                 | Skip the craft pass (dead stretches, unread lines, silent film), the longest part of a full check. The report marks it skipped. Use it for a render preflight; keep it on for the full check before a release. |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
@@ -1274,6 +1290,10 @@ check prints each copy's progress to stderr every 10 seconds (stdout stays clean
 and ends a copy that makes no progress for 3 minutes (`HYPERFRAMES_PROXY_STALL_MS`).
 For a long project, run `hyperframes check --prepare-media` first, then the check itself finds
 every copy ready.
+
+A Chrome that is not ready 3 minutes after the check begins to start it ends the check with a runtime
+finding that says Chrome did not start and how long each step took. On a first run Chrome may still be
+downloading: run `hyperframes browser ensure` once, then run check again.
 
 `--caption-zone` and `--frame-check` refuse a ranged check when none of their
 configured seek samples falls inside `--range`; a requested gate never silently
@@ -1371,6 +1391,10 @@ runs at most once per file; whether a `<video>` has sound is probed on each use.
 The check runs alongside the browser pass, up to four files at a time. A clip
 longer than 3 s is first sampled at three 1-second spots and decoded in full
 only if all three are silent.
+
+Overlap is judged on the text a viewer can see: a part of a text block that an
+overflow clip, a `clip-path` or a gradient `mask-image` (on the text or an ancestor)
+keeps from painting does not count.
 
 #### Mark intentional layout choices
 
@@ -1798,7 +1822,7 @@ The flags that come up most:
 | `--format`          | `mp4`                         | `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls`. WebM and MOV carry transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory. |
 | `--fps, -f`         | root `data-fps`, otherwise 30 | 1–240, or an ffmpeg rational like `30000/1001` for 29.97                                                                                            |
 | `--quality, -q`     | `looks`                       | `draft`, `looks` (CRF 16, default), `delivery` (= `high`), `standard`, or `high`. MOV always uses the fixed alpha-preserving ProRes 4444 profile. |
-| `--resolution`      | the composition's size        | Supersample to a preset via Chrome's `deviceScaleFactor`. Aspect ratio must match and the scale must be a whole multiple. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
+| `--resolution`      | the composition's size        | Render to a preset via Chrome's `deviceScaleFactor`, including `landscape-1440p`, `portrait-1440p`, `square-1440p` (aliases `1440p`, `qhd`). Aspect ratio must match; upscaling requires an integer multiple. 720p→1440p and 4K→1440p work; 1080p→1440p is refused. Not with `--hdr`. See [4K rendering](/guides/4k-rendering). |
 | `--docker`          | off                           | Render inside Docker for [deterministic output](/concepts/determinism)                                                                             |
 | `--variables`       | —                             | JSON object merged over the composition's `data-composition-variables` defaults                                                                    |
 | `--variables-file`  | —                             | Read those overrides from a JSON file instead                                                                                                     |
@@ -2282,7 +2306,9 @@ error names, aggregate browser diagnostic counts, browser initialization
 duration and tween count, aggregate video-extraction workload counts (extracted
 frames, VFR preflights), aggregate counts of what a motion-blur render's composition holds
 (movers, videos, iframes, canvases, custom elements, and similar), example choices, the names of registry items `add` or
-Studio installs and which of the two installed them, and system info — including a coarse
+Studio installs and which of the two installed them, the names of the HyperFrames skills installed (and which are out of
+date) as of the last background skills check, which skill ran `reverse start` or `templates pull` (with the
+HeyGen session id of a recorded reverse run, so a retry counts once), and system info — including a coarse
 environment fingerprint: OS, kernel string, CPU and memory shape, sandbox
 runtime such as gVisor or Docker, and the _name_ of a coding agent driving the
 CLI when one is detected (`claude_code`, `codex`, `cursor`). That name is

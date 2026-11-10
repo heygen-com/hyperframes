@@ -282,6 +282,24 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("window.AUTHOR_SEEN = 1");
   });
 
+  it("keeps the accelerated-canvas tracker before authored scripts in blur previews", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><script>window.AUTHOR_CANVAS = 1</script></head><body data-motion-blur="on"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.indexOf("data-hf-accel-tracker")).toBeGreaterThan(-1);
+    expect(html.indexOf("data-hf-accel-tracker")).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+    expect(html.indexOf('src="/api/runtime.js"')).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+  });
+
   it("serves one preview runtime when the page on disk already links one", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -1625,6 +1643,71 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     }));
     return import("./preview.js");
   }
+
+  it.each(["bundled", "disk after null bundle", "disk after failed bundle"])(
+    "installs preview hooks before authored head consumers with flags, facts and error capture already present (%s)",
+    async (path) => {
+      const projectDir = createProjectDir();
+      const authored = `<!doctype html><html><head>
+        <script data-hf-accel-tracker>window.TRACKER_KEPT = true;</script>
+        <script data-hyperframes-preview-runtime="1" src="/stale-runtime.js"></script>
+        <script id="head-consumer">window.HEAD_CONSUMER = document.createElement("video").requestVideoFrameCallback;</script>
+        <script id="head-library" src="assets/head-library.js"></script>
+      </head><body><main data-composition-id="main" data-duration="2" data-motion-blur="on"></main>
+        <script id="body-consumer">window.BODY_CONSUMER = true;</script>
+      </body></html>`;
+      writeFileSync(join(projectDir, "index.html"), authored);
+      writeFileSync(
+        join(projectDir, "scene.html"),
+        `<template><main data-composition-id="scene" data-duration="2"></main><script id="body-consumer">window.BODY_CONSUMER = true;</script></template>`,
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({
+          "/clip.webm": {
+            codecName: "vp9",
+            browserHostile: true,
+            representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+          },
+        }),
+      });
+      const app = new Hono();
+      register(
+        app,
+        createAdapter(projectDir, {
+          bundle: async () => {
+            if (path === "disk after failed bundle") throw new Error("bundler unavailable");
+            return path === "bundled" ? authored : null;
+          },
+        }),
+      );
+      for (const suffix of ["", "/comp/scene.html"]) {
+        const response = await app.request("http://localhost/projects/demo/preview" + suffix);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        const runtime = html.indexOf('src="/api/runtime.js"');
+        expect(runtime).toBeGreaterThan(-1);
+        for (const early of [
+          `name="${STUDIO_PREVIEW_MARK_META}"`,
+          `window.${STUDIO_PREVIEW_ERRORS}=`,
+          "window.__HF_MEDIA_CODEC_MAP__=",
+          "window.__HF_MEDIA_SOURCE_FACTS__=",
+        ]) {
+          expect(html.indexOf(early)).toBeGreaterThan(-1);
+          expect(html.indexOf(early)).toBeLessThan(runtime);
+        }
+        for (const authoredId of ["head-consumer", "head-library", "body-consumer"])
+          expect(runtime).toBeLessThan(html.indexOf(`id="${authoredId}"`));
+        expect(html).not.toContain("stale-runtime.js");
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hyperframes-preview-runtime]"),
+        ).toHaveLength(1);
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hf-accel-tracker]"),
+        ).toHaveLength(1);
+        expect(html).toContain("window.TRACKER_KEPT = true;");
+      }
+    },
+  );
 
   describe("?hf-proxy=h264 on the static asset route", () => {
     it("serves proxy bytes with Accept-Ranges on a full request, and a 206 range slice on a Range request", async () => {

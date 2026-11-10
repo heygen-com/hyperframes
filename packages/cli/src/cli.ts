@@ -104,7 +104,11 @@ import {
   type CommandResult,
 } from "./utils/commandResult.js";
 import { registerRunningCli } from "./utils/runningCli.js";
-import { commandWordIndex, openShortcutArgv } from "./utils/projectShortcut.js";
+import {
+  commandWordIndex,
+  measureProbeShortcutArgv,
+  openShortcutArgv,
+} from "./utils/projectShortcut.js";
 
 registerRunningCli();
 
@@ -196,6 +200,20 @@ process.argv = [
   ...openShortcutArgv(argv, new Set(Object.keys(commandLoaders))),
 ];
 argv = process.argv.slice(2);
+
+// `hyperframes measure <video>` is `hyperframes measure probe <video>`.
+if (argv[commandWordIndex(argv)] === "measure") {
+  const { MEASURE_OPS } = await import("./commands/measure.js");
+  const rewritten = measureProbeShortcutArgv(argv, new Set(MEASURE_OPS));
+  if (rewritten !== argv) {
+    const file = rewritten[rewritten.indexOf("probe") + 1];
+    console.error(
+      `No measure op named: running 'probe ${JSON.stringify(file)}'. Ops: ${MEASURE_OPS.join(", ")}.`,
+    );
+    process.argv = [...process.argv.slice(0, 2), ...rewritten];
+    argv = process.argv.slice(2);
+  }
+}
 
 const subCommands = Object.fromEntries(
   Object.entries(commandLoaders).map(([name, load]) => [name, trackCommandFailures(load)]),

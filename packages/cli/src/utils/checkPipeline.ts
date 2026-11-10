@@ -32,6 +32,7 @@ import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import type { ProjectDir } from "./project.js";
 import { lintProject, type ProjectLintResult } from "./lintProject.js";
+import { unmountedNotice } from "@hyperframes/lint";
 import {
   buildLayoutSampleTimes,
   buildTransitionSampleTimes,
@@ -620,7 +621,9 @@ async function collectGridSamples(
 }
 
 function craftEnabled(driver: CheckAuditDriver, options: CheckOptions): boolean {
-  return !options.range && typeof driver.collectCraftFrame === "function";
+  return (
+    options.craft !== false && !options.range && typeof driver.collectCraftFrame === "function"
+  );
 }
 
 async function collectContrastAt(
@@ -1693,7 +1696,11 @@ export async function runCheckPipeline(
     let lintResult: ProjectLintResult;
     const lintStartedAt = Date.now();
     try {
-      lintResult = await dependencies.lintProject(project.dir);
+      lintResult = await dependencies.lintProject(project.dir, {
+        includeUnmounted: options.includeUnmounted === true,
+      });
+      const unmounted = lintResult.unmountedCompositions?.length ?? 0;
+      if (unmounted > 0) console.error(`[hyperframes] check: ${unmountedNotice(unmounted)}`);
     } catch (error) {
       // The linter itself crashed (unreadable file, internal error) — distinct
       // from lint findings; a runtime-failure code would send the agent hunting
@@ -2269,7 +2276,7 @@ function emptyBrowserResult(): CheckBrowserResult {
   };
 }
 
-export const STOP_CODES = [
+const STOP_CODES = [
   "media_copies_unfinished",
   "check_budget_reached",
   "check_runtime_failure",
@@ -2435,7 +2442,7 @@ function audioCheckFailure(project: ProjectDir, error: unknown): CheckFinding[] 
 }
 
 const DEFAULT_DEPENDENCIES: CheckDependencies = {
-  lintProject,
+  lintProject: (projectDir, options) => lintProject(projectDir, undefined, {}, options),
   resolveMotionSpec,
   runBrowserCheck,
   prelaunchBrowser,

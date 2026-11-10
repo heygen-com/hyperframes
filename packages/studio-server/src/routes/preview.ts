@@ -150,10 +150,10 @@ function parseStudioMotionManifestContent(content: string): {
   }
 }
 
-/** Swaps any runtime already in the page for the preview runtime, placed as the bundler places it. */
+/** Preview hooks must install before authored head scripts register media consumers. */
 function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag);
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -685,7 +685,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       gsapBaseUrl,
     );
     if (!html) return c.text("not found", 404);
-    html = withRootImportMap(html, baseHref);
+    html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
     html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {

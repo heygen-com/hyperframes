@@ -12,6 +12,7 @@ export const examples: Example[] = [
   ["Include info-level findings", "hyperframes lint --verbose"],
 ];
 import { formatLintFindings } from "../utils/lintFormat.js";
+import { unmountedNotice } from "@hyperframes/lint";
 import { lintProject } from "../utils/lintProject.js";
 import { isUnderCompositions, resolveLintTarget } from "../utils/project.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
@@ -39,6 +40,11 @@ export default defineCommand({
       description: "Show info-level findings (hidden by default)",
       default: false,
     },
+    "include-unmounted": {
+      type: "boolean",
+      description: "Also lint compositions/ files that index.html never mounts",
+      default: false,
+    },
     "lint-verbose": {
       type: "boolean",
       description: "Same as --verbose (render, preview and publish spell it --lint-verbose)",
@@ -62,7 +68,9 @@ export default defineCommand({
         entryFile && isUnderCompositions(project.dir, entryFile)
           ? { isSubComposition: true }
           : undefined,
+        { includeUnmounted: Boolean(args["include-unmounted"]) },
       );
+      const unmounted = lintResult.unmountedCompositions ?? [];
       trackLintRun(project.dir, lintResult, {
         command: "lint",
         durationMs: Date.now() - startedAt,
@@ -78,6 +86,7 @@ export default defineCommand({
           infoCount: lintResult.totalInfos,
           findings: verbose ? allFindings : allFindings.filter((f) => f.severity !== "info"),
           filesScanned: lintResult.results.length,
+          unmountedCompositions: unmounted,
         };
         console.log(JSON.stringify(withMeta(combined), null, 2));
         setCommandExitCode(combined.ok ? 0 : 1);
@@ -88,6 +97,7 @@ export default defineCommand({
       const fileLabel =
         fileCount === 1 ? (lintResult.results[0]?.file ?? "index.html") : `${fileCount} files`;
       console.log(`${c.accent("◆")}  Linting ${c.accent(`${project.name}/${fileLabel}`)}`);
+      if (unmounted.length > 0) console.log(c.dim(unmountedNotice(unmounted.length)));
       console.log();
 
       if (lintResult.totalErrors === 0 && lintResult.totalWarnings === 0) {

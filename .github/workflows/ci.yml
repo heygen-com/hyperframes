@@ -408,6 +408,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
@@ -883,6 +885,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
       # imports resolve via the "node" export condition (dist) under vitest.
@@ -975,6 +979,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
       # resolves the workspace packages through their "node" export condition.
@@ -1009,6 +1015,8 @@ jobs:
             packages/studio/data/projects/undo-socket-pool
           cp -R packages/studio/tests/e2e/fixtures/aroll-backdrop \
             packages/studio/data/projects/aroll-backdrop
+          cp -R packages/studio/tests/e2e/fixtures/preview-video-regression \
+            packages/studio/data/projects/preview-video-regression
       - name: Build the base the viewport gate compares against
         # The first parent of the checked-out commit, as in base-file.sh. Measured only when the head misses a budget.
         run: |
@@ -1181,7 +1189,7 @@ jobs:
       - name: Install ffmpeg for the paused-video fixture
         if: success() || failure()
         uses: ./.github/actions/install-ffmpeg-linux
-      - name: Undo while paused videos hold the preview's sockets
+      - name: Verify paused-video sockets, picture quality and native recovery
         # Counts the undo's wait for a socket, not its total time: unpinned it is 0 ms.
         if: success() || failure()
         run: |
@@ -1200,6 +1208,12 @@ jobs:
           STUDIO_URL="http://localhost:5318/#project/undo-socket-pool" \
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/undo-socket-pool" \
             node packages/studio/tests/e2e/undo-socket-pool.mjs | tee /tmp/undo-socket-pool.json
+          node packages/studio/tests/e2e/fixtures/preview-video-regression/generate.mjs \
+            packages/studio/data/projects/preview-video-regression
+          STUDIO_URL="http://localhost:5318/#project/preview-video-regression" \
+            STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
+            OUT_DIR=/tmp/preview-video-regression \
+            node packages/studio/tests/e2e/preview-video-regression.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
@@ -1212,6 +1226,7 @@ jobs:
             /tmp/studio-open-counts.json
             /tmp/inline-text-caret/*.png
             /tmp/undo-socket-pool.json
+            /tmp/preview-video-regression/
           if-no-files-found: error
 
   # Manual editing accuracy in the built Studio, gated against the base branch's baseline.json. A pull request

@@ -206,47 +206,29 @@ export function parseRangeHeader(
 }
 
 /**
- * Options for {@link buildVirtualTimeShim}.
+ * Page-side virtual-time shim, installed before page scripts on every render path.
+ * Holds Date.now, performance.now, rAF and later timers at the seek time, and seeds Math.random and
+ * crypto.getRandomValues from it, so a re-render repeats. Draws at page load or inside a frame also match
+ * across worker counts; a value resolved on a tween's first render depends on the frame a worker reaches first.
  */
-export interface VirtualTimeShimOptions {
-  /**
-   * When `true`, the shim additionally replaces `Math.random` and
-   * `crypto.getRandomValues` with a Mulberry32-seeded PRNG keyed by the
-   * current frame's virtual time. Compositions that call `Math.random()`
-   * during render then produce byte-identical pixels across machines and
-   * across replays of the same `(planDir, chunkIndex)` pair.
-   *
-   * Default `false`: leaves `Math.random` / `crypto.getRandomValues` native,
-   * preserving the in-process renderer's non-deterministic behavior for
-   * compositions that rely on it.
-   */
-  seedRandomFromFrame: boolean;
-}
+const VIRTUAL_TIME_SHIM = String.raw`(function() {
+  if (window.__HF_VIRTUAL_TIME__) return;
 
-/**
- * Build the page-side virtual-time shim script.
- *
- * The shim freezes `Date.now`, `performance.now`, and the rAF/setTimeout
- * pipeline so a render seek can deterministically advance the page's
- * notion of "now". The renderer issues `__HF_VIRTUAL_TIME__.seekToTime(ms)`
- * before every frame capture; everything timing-related on the page sees
- * exactly `ms` until the next seek.
- *
- * When `options.seedRandomFromFrame` is `true`, the returned script also
- * installs a seeded `Math.random` / `crypto.getRandomValues` keyed by the
- * current virtual time — so compositions with stochastic visuals retry
- * identically. When `false`, the shim emits no random-override code; the
- * page's native `Math.random` is left alone (the in-process default).
- */
-export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
-  const seedRandomFromFrame = options.seedRandomFromFrame === true;
-  // The seeded-RNG block is gated at build time so the unlocked shim is
-  // byte-identical to the pre-flag form. Producer regression baselines
-  // compare on rendered pixels — but the file-server unit tests in
-  // `fileServer.test.ts` also string-match `VIRTUAL_TIME_SHIM`, and we want
-  // those matches to remain stable.
-  const seededRandomBlock = seedRandomFromFrame
-    ? String.raw`
+  var virtualNowMs = 0;
+  var rafId = 1;
+  var rafQueue = [];
+  var OriginalDate = Date;
+  var originalSetTimeout = window.setTimeout.bind(window);
+  var originalClearTimeout = window.clearTimeout.bind(window);
+  var originalSetInterval = window.setInterval.bind(window);
+  var originalClearInterval = window.clearInterval.bind(window);
+  var originalRequestAnimationFrame = window.requestAnimationFrame
+    ? window.requestAnimationFrame.bind(window)
+    : null;
+  var originalCancelAnimationFrame = window.cancelAnimationFrame
+    ? window.cancelAnimationFrame.bind(window)
+    : null;
+
   // Seeded Math.random / crypto.getRandomValues, keyed by virtual time.
   // Mulberry32: single uint32 state, deterministic, fast.
   var rngState = 0;
@@ -288,30 +270,7 @@ export function buildVirtualTimeShim(options: VirtualTimeShimOptions): string {
       window.crypto.getRandomValues = __seededGetRandomValues;
     } catch (e) {}
   }
-`
-    : "";
-  // The seekToTime hook reseeds when seeding is on; under seedRandomFromFrame=false
-  // we emit no extra call so the function body is byte-identical to the
-  // unseeded shim.
-  const seekToTimeReseedCall = seedRandomFromFrame ? "reseedRngFromTime(safeTimeMs);\n      " : "";
-  return String.raw`(function() {
-  if (window.__HF_VIRTUAL_TIME__) return;
 
-  var virtualNowMs = 0;
-  var rafId = 1;
-  var rafQueue = [];
-  var OriginalDate = Date;
-  var originalSetTimeout = window.setTimeout.bind(window);
-  var originalClearTimeout = window.clearTimeout.bind(window);
-  var originalSetInterval = window.setInterval.bind(window);
-  var originalClearInterval = window.clearInterval.bind(window);
-  var originalRequestAnimationFrame = window.requestAnimationFrame
-    ? window.requestAnimationFrame.bind(window)
-    : null;
-  var originalCancelAnimationFrame = window.cancelAnimationFrame
-    ? window.cancelAnimationFrame.bind(window)
-    : null;
-${seededRandomBlock}
   function flushAnimationFrame() {
     if (!rafQueue.length) return;
     var current = rafQueue.slice();
@@ -372,6 +331,83 @@ ${seededRandomBlock}
     }
   };
 
+  // Timers set once rendering has started run on film time: each seek fires every timer due by then, in
+  // due order. Until a seek after the page reports ready, timers keep the wall clock: setup code waits on
+  // them while the renderer may already be seeking.
+  var rendering = false;
+  var timerQueue = [];
+  var nextTimerId = 1000000000;
+  var firingDepth = 0;
+  function addTimer(callback, delay, args, repeats) {
+    // A timer set from a firing timer waits at least 1 ms, so a zero-delay chain cannot stall a seek.
+    var ms = Math.max(firingDepth > 0 ? 1 : 0, Number(delay) || 0);
+    var entry = { id: nextTimerId++, callback: callback, args: args, due: virtualNowMs + ms, every: repeats ? Math.max(1, ms) : 0, cancelled: false };
+    timerQueue.push(entry);
+    return entry.id;
+  }
+  function cancelTimer(id) {
+    for (var i = 0; i < timerQueue.length; i++) {
+      if (timerQueue[i].id === id) {
+        timerQueue[i].cancelled = true;
+        return true;
+      }
+    }
+    return false;
+  }
+  function fireDueTimers(untilMs) {
+    // Frame times are fractional, so a timer due on a frame lands a rounding error past it; it still fires on it.
+    untilMs += 0.000001;
+    while (true) {
+      var next = null;
+      for (var i = 0; i < timerQueue.length; i++) {
+        var candidate = timerQueue[i];
+        if (!candidate.cancelled && candidate.due <= untilMs && (next === null || candidate.due < next.due)) next = candidate;
+      }
+      if (next === null) break;
+      var dueMs = next.due;
+      if (next.every) next.due += next.every;
+      else next.cancelled = true;
+      virtualNowMs = dueMs;
+      firingDepth++;
+      try {
+        next.callback.apply(window, next.args);
+      } catch (err) {
+        originalSetTimeout(function() { throw err; }, 0);
+      }
+      firingDepth--;
+    }
+    timerQueue = timerQueue.filter(function(entry) { return !entry.cancelled; });
+  }
+  window.setTimeout = function(callback, delay) {
+    if (!rendering || typeof callback !== "function") return originalSetTimeout.apply(null, arguments);
+    return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), false);
+  };
+  window.setInterval = function(callback, delay) {
+    if (!rendering || typeof callback !== "function") return originalSetInterval.apply(null, arguments);
+    return addTimer(callback, delay, Array.prototype.slice.call(arguments, 2), true);
+  };
+  window.clearTimeout = function(id) {
+    if (!cancelTimer(id)) originalClearTimeout(id);
+  };
+  window.clearInterval = function(id) {
+    if (!cancelTimer(id)) originalClearInterval(id);
+  };
+
+  function seekToTime(nextTimeMs) {
+    var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
+    if (!rendering && window.__renderReady === true) {
+      rendering = true;
+      // A worker whose first frame is past the start plays the film's first frame first, so timers the
+      // page starts there keep the schedule a one-worker render gives them.
+      if (safeTimeMs > 0) seekToTime(0);
+    }
+    reseedRngFromTime(safeTimeMs);
+    fireDueTimers(safeTimeMs);
+    virtualNowMs = safeTimeMs;
+    flushAnimationFrame();
+    return virtualNowMs;
+  }
+
   window.__HF_VIRTUAL_TIME__ = {
     originalSetTimeout: originalSetTimeout,
     originalClearTimeout: originalClearTimeout,
@@ -379,25 +415,12 @@ ${seededRandomBlock}
     originalClearInterval: originalClearInterval,
     originalRequestAnimationFrame: originalRequestAnimationFrame,
     originalCancelAnimationFrame: originalCancelAnimationFrame,
-    seekToTime: function(nextTimeMs) {
-      var safeTimeMs = Math.max(0, Number(nextTimeMs) || 0);
-      virtualNowMs = safeTimeMs;
-      ${seekToTimeReseedCall}flushAnimationFrame();
-      return virtualNowMs;
-    },
+    seekToTime: seekToTime,
     getTime: function() {
       return virtualNowMs;
     },
   };
 })();`;
-}
-
-/**
- * Default in-process virtual-time shim — `seedRandomFromFrame: false`.
- * Existing call sites (`renderOrchestrator`, `probeStage`) import this
- * constant. Distributed callers build their own with seeding enabled.
- */
-const VIRTUAL_TIME_SHIM = buildVirtualTimeShim({ seedRandomFromFrame: false });
 
 /**
  * Render mode extension -- adds renderSeek() for frame-accurate seeking

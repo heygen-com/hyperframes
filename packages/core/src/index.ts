@@ -1,5 +1,5 @@
 // Types
-export type { RuntimeTimelineClipIdentity } from "./runtime/types.js";
+export type { PlaybackHeldBy, RuntimeTimelineClipIdentity } from "./runtime/types.js";
 export type {
   ExecutionMode,
   Orientation,
@@ -308,6 +308,11 @@ export {
   type PreviewQuality,
   type PreviewSourceFacts,
 } from "./previewProxyBox";
+export type {
+  PausedVideoFrameProvider,
+  PausedVideoFrameRequest,
+  PausedVideoFrame,
+} from "./runtime/pausedVideoFrames";
 
 // Inline scripts
 export {

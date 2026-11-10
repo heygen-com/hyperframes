@@ -2419,6 +2419,7 @@ describe("layout-audit.browser content overlap", () => {
     }).find((issue) => issue.code === "content_overlap");
     expect(overlap).toMatchObject({ selector: "#a", containerSelector: "#b" });
     expect(overlap?.fixHint).toContain("container inside the scene");
+    expect(overlap?.fixHint).toContain("data-layout-ignore");
   });
 
   it("ignores blocks that overlap by less than a fifth of the smaller box", () => {

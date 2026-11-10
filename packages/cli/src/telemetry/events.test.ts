@@ -7,6 +7,7 @@ const shouldTrack = vi.fn(() => true);
 vi.mock("./client.js", () => ({
   trackEvent: (...args: unknown[]) => trackEvent(...args),
   flush: () => flush(),
+  flushSync: () => undefined,
   shouldTrack: () => shouldTrack(),
 }));
 
@@ -21,8 +22,17 @@ vi.mock("./system.js", async () => ({
 
 // identifyUser reads the install anonymousId; pin it so the $identify alias is
 // deterministic and the test never touches disk.
+const cachedSkills = vi.hoisted(() => ({
+  installed: undefined as string[] | undefined,
+  outdated: undefined as string[] | undefined,
+}));
 vi.mock("./config.js", () => ({
-  readConfig: () => ({ anonymousId: "anon-test-123", telemetryEnabled: true }),
+  readConfig: () => ({
+    anonymousId: "anon-test-123",
+    telemetryEnabled: true,
+    skillsInstalled: cachedSkills.installed,
+    skillsOutdated: cachedSkills.outdated,
+  }),
 }));
 
 const {
@@ -41,8 +51,40 @@ const {
   trackAuthLoginStarted,
   trackAuthLoginCompleted,
   trackAuthLoginFailed,
+  trackSkillCommandRan,
   identifyUser,
 } = await import("./events.js");
+const { default: beaconCommand } = await import("../commands/events.js");
+
+describe("a skill run seen by its beacon and by its command", () => {
+  it("leaves skill_invoked one observation: the command and its retry go to skill_command_ran", async () => {
+    trackEvent.mockClear();
+    await beaconCommand.run?.({
+      args: { _: [], skill: "reverse-any-video", event: "skill_invoked" },
+      rawArgs: [],
+      cmd: beaconCommand,
+    } as never);
+    trackSkillCommandRan({ skill: "reverse-any-video", command: "reverse start", signedIn: false });
+    trackSkillCommandRan({
+      skill: "reverse-any-video",
+      command: "reverse start",
+      signedIn: true,
+      sessionId: "rvs_1",
+    });
+    const names = trackEvent.mock.calls.map((call) => call[0]);
+    expect(names.filter((n) => n === "skill_invoked")).toHaveLength(1);
+    expect(trackEvent).toHaveBeenCalledWith("skill_invoked", {
+      authoring_skill: "reverse-any-video",
+    });
+    expect(names.filter((n) => n === "skill_command_ran")).toHaveLength(2);
+    expect(trackEvent).toHaveBeenLastCalledWith("skill_command_ran", {
+      authoring_skill: "reverse-any-video",
+      command: "reverse start",
+      signed_in: true,
+      session_id: "rvs_1",
+    });
+  });
+});
 
 describe("command telemetry events", () => {
   beforeEach(() => {
@@ -56,6 +98,21 @@ describe("command telemetry events", () => {
       command: "check",
       run_id: "run-123",
     });
+  });
+
+  it("says which HyperFrames skills the last check found, once one has run", () => {
+    cachedSkills.installed = ["hyperframes", "media-use", "reverse-any-video"];
+    cachedSkills.outdated = ["media-use"];
+    trackCommand("render");
+    expect(trackEvent).toHaveBeenLastCalledWith("cli_command", {
+      command: "render",
+      skills_installed: "hyperframes,media-use,reverse-any-video",
+      skills_outdated: "media-use",
+    });
+    cachedSkills.installed = undefined;
+    cachedSkills.outdated = undefined;
+    trackCommand("render");
+    expect(trackEvent.mock.lastCall?.[1]).not.toHaveProperty("skills_installed");
   });
 
   it("omits run_id from cli_command when no run ID is provided", () => {

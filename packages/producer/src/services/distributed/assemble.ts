@@ -28,14 +28,13 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   appendRateCapArgs,
   appendRenderProvenanceArgs,
@@ -62,6 +61,7 @@ import { DISTRIBUTED_RENDER_CAPABILITIES, readPlanProtocolV1 } from "./planProto
 import { writeStitchedMp4 } from "./mp4Stitch.js";
 import { validatePlanV2MaterializedTarget } from "./planV2.js";
 import type { DistributedFormat } from "./shared.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 /**
  * Result of {@link assemble}. `fileSize` reflects the final file on disk
@@ -179,7 +179,7 @@ export async function assemble(
   if (!existsSync(dirname(outputPath))) {
     mkdirSync(dirname(outputPath), { recursive: true });
   }
-  const workDir = mkdtempSync(`${outputPath}.assemble-work-`);
+  const workDir = createStagingDir(dirname(outputPath), `${basename(outputPath)}.assemble-work-`);
   const fps = { num: plan.dimensions.fpsNum, den: plan.dimensions.fpsDen };
   const stageMs: Record<string, number> = {};
   const ctx: JoinContext = {

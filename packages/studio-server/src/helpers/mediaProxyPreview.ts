@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
-import { insertBeforeCloseTag } from "@hyperframes/core/compiler/html-document";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import type { StudioApiAdapter } from "../types.js";
 import {
   createMediaCodecProbeCache,
@@ -134,7 +134,7 @@ export async function injectMediaCodecMapIntoHtml(
     `window.__HF_MEDIA_SOURCE_FACTS__=${safeJson(sourceFacts)};`,
   ];
   const tag = `<script data-hf-media-codec-map>${assignments.join("")}</script>`;
-  return insertBeforeCloseTag(html, "head", `${tag}\n`) ?? `${tag}\n${html}`;
+  return injectTagsAtHeadStart(html, tag);
 }
 
 /**
