@@ -168,6 +168,7 @@ jobs:
               - ".claude/skills/**"
               - ".agents/skills/**"
               - "skills-manifest.json"
+              - "packages/core/schemas/timeline-import.json"
               - "scripts/lint-skills.ts"
               - "scripts/check-skill-mirror.mjs"
               - "package.json"
@@ -664,6 +665,7 @@ jobs:
         test-cli,
         test-support,
         test-skills,
+        test-import-timeline,
       ]
     # Keep the existing required `Test` context authoritative for producer
     # failures too. It also fails closed if any package shard fails or is cancelled.
@@ -688,9 +690,10 @@ jobs:
           echo "studio=${{ needs.test-studio.result }} runtime=${{ needs.test-runtime.result }} cli=${{ needs.test-cli.result }} support=${{ needs.test-support.result }}"
           exit 1
       - name: Require skills tests
-        if: needs.changes.outputs.skills == 'true' && needs.test-skills.result != 'success'
+        if: needs.changes.outputs.skills == 'true' && (needs.test-skills.result != 'success' || needs.test-import-timeline.result != 'success')
         run: |
           echo "::error::Skills tests did not succeed."
+          echo "skills=${{ needs.test-skills.result }} import-timeline=${{ needs.test-import-timeline.result }}"
           exit 1
 
   producer-source-tests:
@@ -761,6 +764,36 @@ jobs:
           printf 'Running %d skills test file(s):\n' "${#SKILLS_TESTS[@]}"
           printf '  * %s\n' "${SKILLS_TESTS[@]}"
           node --import ./packages/cli/scripts/test-home.mjs --test "${SKILLS_TESTS[@]}"
+
+  # The /import-timeline converter is Python on top of OpenTimelineIO, which no other job installs.
+  # Its tests skip when an adapter is missing, so a skip here means the install drifted: fail on it.
+  test-import-timeline:
+    name: "Test: import-timeline converter"
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install OpenTimelineIO and its adapters
+        run: |
+          python3 -m venv "$RUNNER_TEMP/otio"
+          "$RUNNER_TEMP/otio/bin/pip" install --quiet \
+            opentimelineio==0.18.1 \
+            otio-cmx3600-adapter==1.0.0 \
+            otio-fcp-adapter==1.0.0 \
+            otio-fcpx-xml-adapter==1.0.0 \
+            otio-xges-adapter==1.0.0 \
+            otio-ale-adapter==1.1.0 \
+            jsonschema==4.26.0
+      - name: Run the converter tests
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/otio/bin/python" -I skills/import-timeline/scripts/otio_flatten_test.py 2>&1 | tee "$RUNNER_TEMP/otio-test.log"
+          if grep -q "skipped" "$RUNNER_TEMP/otio-test.log"; then
+            echo "::error::Converter tests were skipped; an adapter or jsonschema did not install."
+            exit 1
+          fi
 
   test-skill-bootstrap-windows:
     name: "Test: skill bootstrap (Windows, Node 24)"

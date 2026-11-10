@@ -17,6 +17,10 @@ export const examples: Example[] = [
   ["Scaffold a portrait video", "hyperframes init my-video --resolution portrait"],
   ["Start from an existing video file", "hyperframes init my-video --video clip.mp4"],
   ["Start from an audio file", "hyperframes init my-video --audio track.mp3"],
+  [
+    "Start from an editing timeline (flattened by /import-timeline)",
+    "hyperframes init my-video --timeline timeline.json",
+  ],
   ["Scaffold with Tailwind CSS", "hyperframes init my-video --tailwind"],
   ["Non-interactive mode (for CI or AI agents)", "hyperframes init my-video --non-interactive"],
   ["Skip installing AI skills", "hyperframes init my-video --skip-skills"],
@@ -28,6 +32,7 @@ import {
   copyFileSync,
   statSync,
   writeFileSync,
+  rmSync,
   readFileSync,
   readdirSync,
 } from "node:fs";
@@ -119,7 +124,7 @@ export function resolveVideoDurationSeconds({
 // ffprobe helper — shells out to ffprobe to avoid engine dependency
 // ---------------------------------------------------------------------------
 
-function probeVideo(filePath: string): VideoMeta | undefined {
+export function probeVideo(filePath: string): VideoMeta | undefined {
   try {
     const ffprobePath = findFFprobe();
     if (!ffprobePath) return undefined;
@@ -336,6 +341,22 @@ function copyIntoProjectUnlessAlreadyThere(src: string, dest: string): void {
 
 /** The longest folder name the common disks hold: 255 UTF-8 bytes on Linux, 255 UTF-16 units on macOS and Windows. */
 const MAX_FOLDER_NAME = 255;
+
+function requireUsableDestination(
+  destDir: string,
+  name: string,
+  sources: (string | undefined)[],
+): void {
+  const tooLong = nameTooLongMessage(destDir);
+  if (tooLong) {
+    console.error(c.error(tooLong));
+    failCommand();
+  }
+  if (holdsFilesBesideProjectConfigOrSources(destDir, sources)) {
+    console.error(c.error(`Directory already exists and is not empty: ${name}`));
+    failCommand();
+  }
+}
 
 /** One plain sentence when a folder in `name` is too long for the disk, null when all fit. Checked before mkdir,
  * which otherwise throws Node's raw ENAMETOOLONG and the full path (repro: init a 256-character name). */
@@ -804,6 +825,21 @@ export default defineCommand({
       description: "Path to an audio file (MP3, WAV, M4A)",
       alias: "a",
     },
+    timeline: {
+      type: "string",
+      description:
+        "Path to a hyperframes-timeline/1 JSON file (e.g. from an OpenTimelineIO export); clips are laid out as a composition and their media copied into assets/",
+    },
+    "media-root": {
+      type: "string",
+      description:
+        "With --timeline: folder that relative clip paths resolve from (default: the file's own mediaRoot, else the timeline file's folder)",
+    },
+    "link-media": {
+      type: "boolean",
+      description:
+        "With --timeline: symlink media into assets/ instead of copying it (copied on Windows, and where the disk refuses links)",
+    },
     "skip-transcribe": {
       type: "boolean",
       description: "Skip whisper transcription",
@@ -904,6 +940,81 @@ export default defineCommand({
     }
 
     // -----------------------------------------------------------------------
+    // Timeline import — a flat timeline file becomes the composition; no prompts
+    // -----------------------------------------------------------------------
+    const timelineFlag = args.timeline;
+    if (
+      timelineFlag === undefined &&
+      (args["media-root"] !== undefined || args["link-media"] === true)
+    ) {
+      console.error(c.error("--media-root and --link-media only apply together with --timeline"));
+      failUsage();
+    }
+    if (timelineFlag !== undefined) {
+      if (videoFlag || audioFlag || exampleFlag || tailwind || resolutionPreset) {
+        console.error(
+          c.error(
+            "--timeline cannot be combined with --video, --audio, --example, --tailwind or --resolution",
+          ),
+        );
+        failUsage();
+      }
+      const timelinePath = resolve(timelineFlag);
+      if (!existsSync(timelinePath)) {
+        console.error(c.error(`Timeline file not found: ${timelineFlag}`));
+        failCommand();
+      }
+      const name = args.name ?? "my-video";
+      const destDir = resolve(name);
+      requireUsableDestination(destDir, name, [timelineFlag]);
+
+      const createdDir = !existsSync(destDir);
+      try {
+        const { stageTimeline, warningLines } = await import("./initTimeline.js");
+        const staged = stageTimeline({
+          timelineFile: timelinePath,
+          destDir,
+          mediaRoot: args["media-root"],
+          linkMedia: args["link-media"] === true,
+          probeMedia: probeVideo,
+        });
+        await scaffoldProject(
+          destDir,
+          basename(destDir),
+          "blank",
+          {},
+          false,
+          undefined,
+          args.skill,
+        );
+        writeFileSync(resolve(destDir, "index.html"), staged.html, "utf-8");
+        await finishScaffold(destDir, "blank", false);
+
+        console.log(c.success(`Created ${c.accent(name + "/")}`));
+        console.log(`Timeline: ${staged.clipCount} clips, ${staged.width}x${staged.height}`);
+        if (staged.warnings.length > 0) {
+          const n = staged.warnings.length;
+          console.log(
+            c.warn(
+              `${n} thing${n === 1 ? "" : "s"} did not carry over exactly. Check these against the source timeline:`,
+            ),
+          );
+          for (const line of warningLines(staged.warnings)) console.log(line);
+        }
+      } catch (err) {
+        if (createdDir) rmSync(destDir, { recursive: true, force: true });
+        console.error(c.error(err instanceof Error ? err.message : String(err)));
+        failCommand();
+      }
+      if (!skipSkills) await keepSkillsCurrent(destDir);
+      console.log();
+      console.log(
+        `Next: ${c.accent(`cd ${name}`)} && ${c.accent("npm run check")}, then ${c.accent("npm run dev")}`,
+      );
+      return;
+    }
+
+    // -----------------------------------------------------------------------
     // Non-interactive mode — all inputs from flags, defaults where missing
     // -----------------------------------------------------------------------
     if (!interactive) {
@@ -911,16 +1022,7 @@ export default defineCommand({
       const name = args.name ?? "my-video";
       const destDir = resolve(name);
 
-      const tooLong = nameTooLongMessage(destDir);
-      if (tooLong) {
-        console.error(c.error(tooLong));
-        failCommand();
-      }
-
-      if (holdsFilesBesideProjectConfigOrSources(destDir, [videoFlag, audioFlag])) {
-        console.error(c.error(`Directory already exists and is not empty: ${name}`));
-        failCommand();
-      }
+      requireUsableDestination(destDir, name, [videoFlag, audioFlag]);
 
       if (videoFlag && audioFlag) {
         console.error(c.error("Cannot use --video and --audio together"));

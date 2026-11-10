@@ -14,7 +14,8 @@ export const DESCRIPTION_MAX = 320;
 // Each budget carries +192 B for the usage beacon line (`beaconProblems`).
 export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
-  hyperframes: 7488,
+  // +64 B for the `/import-timeline` routing mention.
+  hyperframes: 7552,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
   "hyperframes-cli": 7616,
   "hyperframes-registry": 5312,
@@ -22,6 +23,7 @@ export const CORE_SKILLS = {
   figma: 7360,
   slideshow: 5312,
   "remotion-to-hyperframes": 5312,
+  "import-timeline": 5312,
   "reverse-any-video": 5312,
   "style-sampling": 5312,
 };

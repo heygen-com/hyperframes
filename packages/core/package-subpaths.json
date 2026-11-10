@@ -44,6 +44,12 @@
       "types": "./dist/beats/index.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./timeline-import": {
+      "source": "./src/timelineImport/index.ts",
+      "runtime": "./dist/timelineImport/index.js",
+      "types": "./dist/timelineImport/index.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./html-attr-safety": {
       "source": "./src/utils/htmlAttrSafety.ts",
       "runtime": "./dist/utils/htmlAttrSafety.js",
@@ -623,6 +629,12 @@
     "./schemas/registry-item.json": {
       "source": "./schemas/registry-item.json",
       "runtime": "./schemas/registry-item.json",
+      "types": null,
+      "environments": ["browser", "bun", "node"]
+    },
+    "./schemas/timeline-import.json": {
+      "source": "./schemas/timeline-import.json",
+      "runtime": "./schemas/timeline-import.json",
       "types": null,
       "environments": ["browser", "bun", "node"]
     },

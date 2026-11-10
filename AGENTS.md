@@ -8,7 +8,7 @@ This repo ships AI agent skills via [vercel-labs/skills](https://github.com/verc
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set plus anything already installed
-npx hyperframes skills                  # all 9 published skills at once
+npx hyperframes skills                  # all 10 published skills at once
 npx skills add heygen-com/hyperframes   # interactive picker (terminal only; repo-internal skills are excluded by default)
 ```
 
@@ -23,6 +23,7 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 - `/figma` — bring Figma into a video: rendered assets, brand tokens, components, storyboard frames as reconstructed motion.
 - `/slideshow` — a presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
+- `/import-timeline` — Start a HyperFrames project from an editing timeline - OpenTimelineIO (.otio) or any editor format OTIO can read (EDL, Final Cut XML). Flatten it with the official OpenTimelineIO Python package, then run hyperframes init --timeline. Use to import, convert or render an edit made in another editor.
 
 ## Issue and PR triage
 

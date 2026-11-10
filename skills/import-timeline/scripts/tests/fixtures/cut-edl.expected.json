@@ -1,0 +1,50 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/timeline-import.json",
+  "schema": "hyperframes-timeline/1",
+  "fps": {
+    "num": 24,
+    "den": 1
+  },
+  "width": 640,
+  "height": 360,
+  "duration": 5.0,
+  "mediaRoot": null,
+  "clips": [
+    {
+      "id": "c1-a",
+      "label": "a",
+      "kind": "video",
+      "start": 0.0,
+      "duration": 3.0,
+      "end": 3.0,
+      "trackIndex": 0,
+      "src": "media/a.mp4",
+      "mediaStart": 1.0,
+      "mediaOrigin": null,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": true
+    },
+    {
+      "id": "c2-b",
+      "label": "b",
+      "kind": "video",
+      "start": 3.0,
+      "duration": 2.0,
+      "end": 5.0,
+      "trackIndex": 0,
+      "src": "media/b.mp4",
+      "mediaStart": 2.0,
+      "mediaOrigin": null,
+      "volume": null,
+      "playbackRate": null,
+      "freeze": false,
+      "sequence": null,
+      "hasAudio": true
+    }
+  ],
+  "transitions": [],
+  "warnings": []
+}

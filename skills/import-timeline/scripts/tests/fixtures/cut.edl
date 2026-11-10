@@ -1,0 +1,8 @@
+TITLE: fixture-edl
+
+001  AX       V     C        00:00:01:00 00:00:04:00 00:00:00:00 00:00:03:00
+* FROM CLIP NAME: a
+* FROM CLIP: media/a.mp4
+002  BX       V     C        00:00:02:00 00:00:04:00 00:00:03:00 00:00:05:00
+* FROM CLIP NAME: b
+* FROM CLIP: media/b.mp4

@@ -56,6 +56,12 @@
       "import": "./src/beats/index.ts",
       "types": "./src/beats/index.ts"
     },
+    "./timeline-import": {
+      "bun": "./src/timelineImport/index.ts",
+      "node": "./dist/timelineImport/index.js",
+      "import": "./src/timelineImport/index.ts",
+      "types": "./src/timelineImport/index.ts"
+    },
     "./html-attr-safety": {
       "bun": "./src/utils/htmlAttrSafety.ts",
       "node": "./dist/utils/htmlAttrSafety.js",
@@ -623,6 +629,7 @@
     },
     "./schemas/registry.json": "./schemas/registry.json",
     "./schemas/registry-item.json": "./schemas/registry-item.json",
+    "./schemas/timeline-import.json": "./schemas/timeline-import.json",
     "./timeline-asset-id": {
       "bun": "./src/timelineAssetId.ts",
       "node": "./dist/timelineAssetId.js",
@@ -657,6 +664,10 @@
       "./beats": {
         "import": "./dist/beats/index.js",
         "types": "./dist/beats/index.d.ts"
+      },
+      "./timeline-import": {
+        "import": "./dist/timelineImport/index.js",
+        "types": "./dist/timelineImport/index.d.ts"
       },
       "./html-attr-safety": {
         "import": "./dist/utils/htmlAttrSafety.js",
@@ -1037,6 +1048,7 @@
       },
       "./schemas/registry.json": "./schemas/registry.json",
       "./schemas/registry-item.json": "./schemas/registry-item.json",
+      "./schemas/timeline-import.json": "./schemas/timeline-import.json",
       "./timeline-asset-id": {
         "import": "./dist/timelineAssetId.js",
         "types": "./dist/timelineAssetId.d.ts"

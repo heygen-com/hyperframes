@@ -1,0 +1,173 @@
+---
+title: "Import from OpenTimelineIO"
+sidebarTitle: "Import from OpenTimelineIO"
+description: "Turn an edit made in another editor into a HyperFrames project. The /import-timeline skill reads OpenTimelineIO and the formats it supports, then hyperframes init --timeline builds the project."
+---
+
+The `/import-timeline` skill reads an editing timeline with the official
+[OpenTimelineIO](https://opentimelineio.readthedocs.io) (OTIO) Python package, so the format
+parsing and the time math come from OpenTimelineIO itself. It writes the flat file that
+[`hyperframes init --timeline`](/reference/timeline-import) turns into a project. Everything
+specific to OTIO lives in this converter; the file it writes knows nothing of OTIO, so it is
+described, and defined by a [JSON Schema](/reference/timeline-import#schema), on its own page.
+
+## Run it
+
+Install OTIO once, into its own environment:
+
+```bash
+uv venv ~/.venvs/otio && VIRTUAL_ENV=~/.venvs/otio uv pip install opentimelineio
+```
+
+Flatten the timeline, then build the project:
+
+```bash
+# 1. Flatten (the skill ships otio_flatten.py)
+~/.venvs/otio/bin/python -I otio_flatten.py cut.otio --width 1920 --height 1080 > timeline.json
+
+# 2. Build the project
+npx hyperframes init my-video --timeline timeline.json --media-root ./footage
+cd my-video && npx hyperframes check
+```
+
+OTIO reads `.otio` on its own. Other formats need an adapter package installed beside it; see
+[Formats](#formats). An OTIO file has no canvas size, so give `--width` and `--height`, or the
+project is 1920x1080.
+
+## Formats
+
+The converter reads whatever OpenTimelineIO can read. `.otio` is built in; every other format needs
+its adapter package in the same Python environment, and the file's extension picks the adapter
+(`--adapter` names one).
+
+| Format | Adapter package | Status |
+| --- | --- | --- |
+| OpenTimelineIO `.otio`, `.otioz`, `.otiod` | built in | Tested, including a rendered bundle. |
+| EDL (CMX 3600) | `otio-cmx3600-adapter` | Tested. An EDL has no media range, so a source timecode that starts at an hour is reported. |
+| Final Cut Pro 7 XML | `otio-fcp-adapter` | Tested. |
+| Final Cut Pro X (`.fcpxml`) | `otio-fcpx-xml-adapter` | Tested. |
+| GStreamer Editing Services (`.xges`) | `otio-xges-adapter` | Tested, but the adapter reads every file at 30 fps, so the composition runs at 30 fps whatever the source rate. |
+| AAF | `otio-aaf-adapter` | Reads an Avid composition AAF (tested). An AAF carries no media: its references point at the editor's original paths, so it needs [relinking](#offline-media-and-relinking) before it can import. |
+| ALE logs | `otio-ale-adapter` | Refused: an ALE file lists clips and has no edit to import. |
+
+"Tested" means a timeline written with the adapter was flattened back and its clips,
+trims and positions compared. It does not mean files from every editor version
+work: each editor writes its own variation of these formats. Check any import
+against the editor's cut list.
+
+
+## What an OTIO file can hold
+
+The converter reads the whole [OTIO data model](https://opentimelineio.readthedocs.io/en/latest/tutorials/otio-serialized-schema.html).
+This is what happens to each part.
+
+| In the OTIO file | What import does |
+| --- | --- |
+| Tracks (video and audio), in stack order | Lanes. A higher track paints over a lower one; audio tracks follow the video lanes. |
+| Clips, source trims, files that start at a timecode | Start, length and `mediaStart`, OTIO's source start as written. `init` subtracts the file's own start timecode (see below). |
+| Gaps | Empty time. The black background shows. |
+| Nested tracks and stacks | Flattened into the parent, each nested stack keeping its own lanes. |
+| `source_range` on a stack, track or nested composition | Trims the content and shifts it, so what is cut off stays cut off. |
+| `enabled: false` on a clip, track or stack | Skipped, with a warning. |
+| Several media references on a clip | The active one. |
+| Linear speed (`LinearTimeWarp`) | `playbackRate`. Stacked warps multiply; a disabled warp is ignored. |
+| Freeze frame, or a speed of 0 | A still of the frame at the in-point. |
+| Dissolves, including to and from a gap | Applied and clamped to the available handles (see [Dissolves](/reference/timeline-import#dissolves)). |
+| Wipes and other transition types | Hard cuts, with a warning. |
+| `.otio`, `.otioz`, `.otiod` | `.otioz` is unpacked into `<name>-media` in the current folder (`--extract-to` picks another) and its `mediaRoot` is set; `.otiod` paths are made absolute. |
+| Other editor formats | Through the OTIO adapter for each; see [Formats](#formats). |
+| A collection of timelines | The first timeline, with a warning that names how many there were. |
+| Image sequences (`ImageSequenceReference`) | The images a clip plays are encoded into one H.264 video in `assets/` (see [Image sequences](/reference/timeline-import#image-sequences)). |
+| Generated media (solid colors, bars) | Not supported: the time is left empty. For black, that is already the background. |
+| Reverse playback, speeds outside 0.1x-10x | Reverse plays forward and other speeds are set to the nearest limit, with a warning. |
+| Effects | Not applied, and named. One warning per effect: a few clips get a line each, many get a count and an example. An effect that is switched off in OTIO is not mentioned. |
+| Editor-specific metadata (the free-form `metadata` an editor attaches to a clip or an effect) | Not read; see below. |
+| Compound clips and nested timelines exported as a bare media reference | Skipped, and named as such with the time they occupy. The film keeps its length, so that time is empty. |
+| Markers, colors, metadata, spatial bounds | Ignored. |
+| Remote media (`http` URLs) | Not downloaded: the clip is skipped with a warning. |
+
+A clip that cannot be placed, for example one with no media range at all, is
+skipped and named in the warnings. It does not stop the import.
+
+
+## How OTIO is mapped
+
+**Frame rate.** The composition's rate is the timeline's own: the OTIO start rate, else the most
+common clip rate. NTSC rates stay exact (`24000/1001`, `30000/1001`, `60000/1001`). When clips use
+different rates the converter warns. Every time is exact seconds, so a clip made at another rate
+keeps its place but can fall between composition frames. Times are written to the microsecond, with
+starts rounded down and source in-points up, so a cut lands on the right frame.
+
+**Source in-point.** OTIO's source start is passed through as it is (`mediaStart`), together with the
+start of the media reference's `available_range` as a hint (`mediaOrigin`). OTIO does not reliably say
+where a file's own clock starts: Avid's export through `otiotool` leaves the range out, and Resolve
+writes a small window around each clip. So `init` asks the file: it subtracts the file's own start
+timecode, read with ffprobe, and uses the hint only if that puts the clip outside the file. The
+rule, and its order of preference, are on the [format page](/reference/timeline-import#where-a-clip-starts-in-its-file).
+
+**Image sequences.** OTIO names the files (`start_frame + image * frame_step`, zero-padded, a
+negative number written with its sign in front) and says an image covers `frame_step` frames of
+time. The converter asks the library for each file name, and writes the result as a plain list of
+images, one per frame, so nothing of those rules reaches the file. A stepped sequence lists each
+image once per frame it covers. Frames past the end of the sequence repeat the last image, with a
+warning. A sequence whose policy for missing images is `black` is imported as held, with a warning.
+A sequence with no available range is skipped, because the library cannot name its images.
+
+**Bundles.** An `.otioz` bundle is unpacked into `<name>-media` in the current folder, not beside the
+bundle: a bundle is often a download and can be gigabytes. `--extract-to` picks another folder. The
+converter sets the file's `mediaRoot` to it, so the bundle needs no `--media-root` on `init`. Running
+again into a folder this bundle was already unpacked into reuses it (every file in the bundle must be
+there with the size and CRC-32 the bundle records; this reads every extracted file once). A folder that holds anything else is refused and left alone, so two sets of
+media are never mixed. An `.otiod` bundle's media paths are made absolute.
+
+**The film's length.** The film keeps the timeline's length. If clips at the end are skipped (an offline
+compound clip, say), the time they held stays, empty, and a warning names what was skipped there. Without
+this the render would end early and fall out of step with anything cut to the original.
+
+**Editor-specific metadata.** Only OTIO's own data model is read. The free-form `metadata` an editor
+attaches is that one editor's layout, not part of OTIO's specification, and it can change between
+versions, so it is not interpreted. The cost is whatever an editor keeps only there. DaVinci Resolve, for
+one, exports every effect as a generic OTIO effect labeled "Resolve Effect" and keeps the real name, the
+parameters and its video faders in its metadata. Those show up as "Resolve Effect" in the warnings, and
+its fades and effects are not applied. A fade that OTIO itself describes, a transition to or from a gap,
+is applied.
+
+**Transitions.** An OTIO dissolve (`SMPTE_Dissolve`) becomes a `dissolve` with the transition's
+offsets before and after the cut. Any other transition type is written under its OTIO name and
+imported as a hard cut.
+
+## Offline media and relinking
+
+An AAF, and an OTIO written from one, carries no media. Its references point at the editor's own
+paths, often a Windows path from another machine (`file://C:/Users/…`), and sometimes at media that
+was never exported. Importing it as is skips every clip and says so. Relink to your files first, by
+name:
+
+```bash
+otiotool -i edit.aaf --relink-by-name ./video/ ./audio/ -o relinked.otio
+~/.venvs/otio/bin/python -I otio_flatten.py relinked.otio --width 1920 --height 1080 > timeline.json
+```
+
+A relinked file usually has no `available_range`, which is why the in-point is resolved against each
+file's own timecode.
+
+A stereo stem that an AAF lists on two mono tracks plays twice, about 6 dB louder than intended.
+`init` names it in a warning; it does not remove either copy.
+
+## Large edits
+
+Check a big edit at a reduced size before rendering it in full: flatten with a smaller `--width` and
+`--height`, build, and render that. A render of a time slice (`--start` and `--end`) still prepares the
+frames of every video in the film, so for a long 4K edit a short slice is not cheaper than the whole.
+
+## Warnings
+
+Everything skipped or approximated is reported in two places:
+
+- `otio_flatten.py` prints each warning to stderr as it flattens, with a count, and puts the same
+  list in the JSON's `warnings`.
+- `init --timeline` prints the list again after the project is created, with the warnings only it
+  can raise. See [Warnings](/reference/timeline-import#warnings).
+
+A clip that cannot be placed, for example one with no media range at all, is skipped and named in
+the warnings. It does not stop the import.

@@ -78,7 +78,8 @@
                   "guides/avatar-presenter",
                   "guides/pr-to-video",
                   "guides/slideshow",
-                  "guides/general-video"
+                  "guides/general-video",
+                  "guides/import-from-otio"
                 ]
               },
               {
@@ -249,6 +250,7 @@
                   "reference/color-grading",
                   "reference/audio-effects",
                   "reference/speed-ramps",
+                  "reference/timeline-import",
                   "reference/lint-rules"
                 ]
               },
