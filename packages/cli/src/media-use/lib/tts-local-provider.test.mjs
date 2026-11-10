@@ -70,3 +70,34 @@ test("non-win32: spawns plain npx unchanged", async () => {
   assert.deepEqual(captured[0].args.slice(0, 3), ["hyperframes", "tts", "hola"]);
   assert.ok(captured[0].args.includes("--lang"));
 });
+
+test("a launching CLI's entry file runs instead of npx, on every platform", async () => {
+  for (const platform of ["darwin", "linux", "win32"]) {
+    const captured = [];
+    const fakeExec = (cmd, args) => captured.push({ cmd, args });
+    const entry = "/opt/hf/dist/cli.js";
+    const env = { ...envWithNpxCli, HYPERFRAMES_CLI_ENTRY: entry };
+
+    await localTtsGenerate("hi", {}, platform, fakeExec, env, pathExists);
+
+    assert.equal(captured.length, 1);
+    assert.equal(captured[0].cmd, process.execPath);
+    assert.deepEqual(captured[0].args.slice(0, 3), [entry, "tts", "hi"]);
+  }
+});
+
+test("a relative CLI entry is ignored and npx resolves as before", async () => {
+  const captured = [];
+  const fakeExec = (cmd, args) => captured.push({ cmd, args });
+
+  await localTtsGenerate(
+    "hi",
+    {},
+    "darwin",
+    fakeExec,
+    { HYPERFRAMES_CLI_ENTRY: "cli.js" },
+    () => false,
+  );
+
+  assert.equal(captured[0].cmd, "npx");
+});

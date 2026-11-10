@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 function resolveNpxCliPath(env, pathExists) {
   const npmExecPath = env.npm_execpath;
@@ -24,6 +24,18 @@ function resolveNpxCliPath(env, pathExists) {
 // so tests can exercise the win32 branch without mocking node:child_process
 // (its ESM exports are non-configurable) — same idiom as spawnP and
 // localTtsGenerate.
+// A HyperFrames CLI that launches this code hands over its own entry file, so `npx hyperframes`
+// runs that same build with the same Node instead of whatever npx resolves from the project.
+function launchingCliInvocation(argv, opts, env) {
+  const entry = env.HYPERFRAMES_CLI_ENTRY;
+  if (argv[0] !== "hyperframes" || !entry || !isAbsolute(entry)) return null;
+  return {
+    cmd: process.execPath,
+    args: [entry, ...argv.slice(1).map((arg) => String(arg))],
+    opts: { stdio: "ignore", windowsHide: true, ...opts },
+  };
+}
+
 export function resolveNpxInvocation(
   argv,
   opts,
@@ -32,7 +44,8 @@ export function resolveNpxInvocation(
   pathExists = existsSync,
 ) {
   const resolved =
-    platform !== "win32"
+    launchingCliInvocation(argv, opts, env) ??
+    (platform !== "win32"
       ? { cmd: "npx", args: argv, opts: { stdio: "ignore", ...opts } }
       : (() => {
           const nodeExecPath = env.npm_node_execpath || process.execPath;
@@ -44,7 +57,7 @@ export function resolveNpxInvocation(
                 opts: { stdio: "ignore", windowsHide: true, ...opts },
               }
             : null;
-        })();
+        })());
   if (!resolved) {
     // npx-on-win32 with no resolvable npx-cli.js — same terminal condition
     // spawnP warns about, surfaced as a throw for callers with no fallback.

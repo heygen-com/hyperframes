@@ -1,5 +1,5 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -75,6 +75,14 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
+export function mediaUseEngineEnv(
+  env: NodeJS.ProcessEnv,
+  entry: string | undefined = process.argv[1],
+): NodeJS.ProcessEnv {
+  if (!entry || /\.[cm]?ts$/.test(entry)) return env;
+  return { ...env, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
+}
+
 type InvokeMediaUse = (verb: MediaUseVerb) => never | Promise<never>;
 
 async function invokeEngine(verb: MediaUseVerb): Promise<never> {
@@ -84,7 +92,7 @@ async function invokeEngine(verb: MediaUseVerb): Promise<never> {
   const result = await withMediaAuthEnvironment((env) =>
     spawnSync(process.execPath, [resolveMediaUseEnginePath(here), ...flag, ...passed], {
       stdio: "inherit",
-      env,
+      env: mediaUseEngineEnv(env),
     }),
   );
   if (result.error) throw result.error;
