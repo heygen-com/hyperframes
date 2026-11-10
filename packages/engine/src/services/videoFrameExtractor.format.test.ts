@@ -1,6 +1,6 @@
 import { vi, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -146,6 +146,21 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     const frame = result.extracted[0]!.framePaths.get(0)!;
     expect(frame.startsWith(outDir)).toBe(true);
     expect(existsSync(frame)).toBe(true);
+  });
+
+  it("keeps the frames of a video whose id has parent segments inside the output directory", async () => {
+    const outDir = join(FIXTURE_DIR, "id-path", "work", "frames");
+    mkdirSync(outDir, { recursive: true });
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "../../escaped" }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir: outDir },
+    );
+    expect(result.errors).toEqual([]);
+    const extracted = result.extracted[0]!;
+    expect(dirname(extracted.outputDir)).toBe(outDir);
+    expect(dirname(extracted.framePaths.get(0)!)).toBe(extracted.outputDir);
+    expect(existsSync(join(FIXTURE_DIR, "id-path", "escaped"))).toBe(false);
   });
 
   it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) jpg extraction", async () => {

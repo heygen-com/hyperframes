@@ -25,12 +25,13 @@ import {
   checkOutputResolutionCompatibility,
   type CanvasResolution,
 } from "@hyperframes/core";
-import type {
-  AudioElement,
-  ExtractedFrames,
-  ImageElement,
-  ParallelProgress,
-  VideoElement,
+import {
+  mediaIdPathSegment,
+  type AudioElement,
+  type ExtractedFrames,
+  type ImageElement,
+  type ParallelProgress,
+  type VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -162,6 +163,10 @@ export function writeCompiledArtifacts(
 
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
+    if (!isPathInside(outPath, compileDir)) {
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${srcPath}`);
+      continue;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, html, "utf-8");
   }
@@ -677,7 +682,7 @@ export function materializeExtractedFramesForCompiledDir(
     const resolvedOut = pathModule.resolve(ext.outputDir);
     if (isPathInside(resolvedOut, resolvedCompiledDir, { pathModule })) continue;
 
-    const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
+    const linkPath = pathModule.join(compiledFrameRoot, mediaIdPathSegment(ext.videoId));
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
       stageExtractedFrameDir(

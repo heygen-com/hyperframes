@@ -351,6 +351,35 @@ function resolvePreparedRenderOutput(
   return { input, cleanupProjectDir, absoluteOutputPath };
 }
 
+type PreparedRenderJob =
+  | {
+      job: RenderJob;
+      input: RenderInput;
+      cleanupProjectDir?: string;
+      absoluteOutputPath: string;
+    }
+  | { error: string };
+
+/**
+ * Build the render job before a render slot is taken, so a request the strict
+ * render-request validator rejects never holds a slot. On failure the inline
+ * project directory is removed here, since no handler cleanup will run.
+ */
+function prepareRenderJob(
+  prepared: PreparedRenderInput,
+  rendersDir: string,
+  log: ProducerLogger,
+): PreparedRenderJob {
+  try {
+    const output = resolvePreparedRenderOutput(prepared, rendersDir, log);
+    const job = createRenderJob(buildRenderJobConfig(output.input, output.absoluteOutputPath, log));
+    return { ...output, job };
+  } catch (error) {
+    cleanupTempDir(prepared.cleanupProjectDir, log);
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
  * Validate explicitly-supplied render overrides that can't be sanely coerced.
  * Returns an error string for a clean 400, or `undefined` when the body is
@@ -366,6 +395,9 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
       body.maxRenderMs < 0)
   ) {
     return "maxRenderMs must be a non-negative integer number of milliseconds";
+  }
+  if (typeof body.workers === "number" && (!Number.isInteger(body.workers) || body.workers < 1)) {
+    return "workers must be a positive integer";
   }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
@@ -750,11 +782,11 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       return c.json({ success: false, requestId, error: preparedResult.error }, 400);
     }
 
-    const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
-      preparedResult.prepared,
-      rendersDir,
-      log,
-    );
+    const preparedJob = prepareRenderJob(preparedResult.prepared, rendersDir, log);
+    if ("error" in preparedJob) {
+      return c.json({ success: false, requestId, error: preparedJob.error }, 400);
+    }
+    const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
 
     const release = await renderSemaphore.acquire();
 
@@ -764,8 +796,6 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       fps: input.fps,
       quality: input.quality,
     });
-
-    const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
 
     try {
       await executeRenderJob(
@@ -839,15 +869,21 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const prepared = await prepareSseRenderRequest(c, stream, requestId);
       if (!prepared) return;
 
-      const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
-        prepared,
-        rendersDir,
-        log,
-      );
+      const preparedJob = prepareRenderJob(prepared, rendersDir, log);
+      if ("error" in preparedJob) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            requestId,
+            error: preparedJob.error,
+            stage: "validation",
+          }),
+        });
+        return;
+      }
+      const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
-
-      const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
       const abortController = new AbortController();
       const onRequestAbort = () =>
         abortController.abort(new RenderCancelledError("request_aborted"));
@@ -949,11 +985,35 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 // ---------------------------------------------------------------------------
 
 /**
+ * True when a browser sent the request from a page on another origin. The browser's own
+ * Sec-Fetch-Site verdict wins when present, so a same-origin page behind a proxy that rewrites
+ * Host is still served; older browsers fall back to comparing Origin with Host.
+ */
+function isCrossOriginBrowserRequest(c: Context): boolean {
+  const fetchSite = c.req.header("sec-fetch-site");
+  if (fetchSite) return fetchSite !== "same-origin" && fetchSite !== "none";
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== c.req.header("host");
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Create a Hono app with clean public routes for OSS use.
  */
 export function createProducerApp(options: HandlerOptions = {}): Hono {
   const app = new Hono();
   const handlers = createRenderHandlers(options);
+
+  app.post("*", async (c, next) => {
+    if (isCrossOriginBrowserRequest(c)) {
+      return c.json({ success: false, error: "Cross-origin requests are not allowed" }, 403);
+    }
+    await next();
+  });
 
   app.get("/health", handlers.health);
   app.post("/render", handlers.render);

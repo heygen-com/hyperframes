@@ -1189,6 +1189,37 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
     const escapeTarget = join(workDir, "etc", "passwd");
     expect(existsSync(escapeTarget)).toBe(false);
   });
+
+  it("writes sub-compositions only inside compileDir", () => {
+    const sandboxRoot = mkdtempSync(join(tmpdir(), "hf-orch-root-"));
+    tempDirs.push(sandboxRoot);
+    const workDir = join(sandboxRoot, "work");
+    mkdirSync(workDir, { recursive: true });
+
+    const compiled = {
+      html: "<!doctype html>",
+      subCompositions: new Map<string, string>([
+        ["scenes/intro.html", "intro"],
+        ["outro.html?v=2", "outro"],
+        ["outro.html?/../../../escaped.html", "escaped"],
+      ]),
+      videos: [],
+      audios: [],
+      unresolvedCompositions: [],
+      externalAssets: new Map<string, string>(),
+      width: 1920,
+      height: 1080,
+      staticDuration: 10,
+      renderModeHints: { recommendScreenshot: false, reasons: [] },
+      hasShaderTransitions: false,
+    };
+
+    writeCompiledArtifacts(compiled, workDir, false);
+
+    expect(readFileSync(join(workDir, "compiled", "scenes", "intro.html"), "utf-8")).toBe("intro");
+    expect(readFileSync(join(workDir, "compiled", "outro.html?v=2"), "utf-8")).toBe("outro");
+    expect(existsSync(join(sandboxRoot, "escaped.html"))).toBe(false);
+  });
 });
 
 function createCompiledComposition(

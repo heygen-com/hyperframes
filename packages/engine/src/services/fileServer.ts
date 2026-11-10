@@ -52,6 +52,7 @@ export interface FileServerOptions {
   bodyScripts?: string[];
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
+  hostname?: string;
 }
 
 export interface FileServerHandle {
@@ -104,7 +105,13 @@ function resolveContainedPaths(
 }
 
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
-  const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
+  const {
+    projectDir,
+    compiledDir,
+    port = 0,
+    stripEmbeddedRuntime = true,
+    hostname = "127.0.0.1",
+  } = options;
 
   const headScripts = options.headScripts ?? [];
   const bodyScripts = options.bodyScripts ?? [];
@@ -146,7 +153,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   });
 
   return new Promise((resolve) => {
-    const server = serve({ fetch: app.fetch, port }, (info) => {
+    const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
       const actualPort = info.port;
       const url = `http://localhost:${actualPort}`;
       resolve({
