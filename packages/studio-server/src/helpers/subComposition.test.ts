@@ -20,6 +20,23 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  // Windows does not allow a quote in a file name.
+  it.skipIf(process.platform === "win32")(
+    "writes the composition's path into its root as attribute text",
+    () => {
+      const name = 'a"b&c.html';
+      const dir = makeTempProject({
+        "index.html": "<!doctype html><html><head></head><body></body></html>",
+        [name]: '<div data-composition-id="scene"></div>',
+      });
+      const html = buildSubCompositionHtml(dir, name, "/runtime.js") ?? "";
+      const { document } = parseHTML(html);
+      const root = document.querySelector("[data-composition-id]");
+      expect(root?.getAttribute("data-composition-file")).toBe(name);
+      expect(root?.getAttributeNames()).not.toContain('b&c.html"');
+    },
+  );
+
   it("returns null for a composition path that resolves outside the project", () => {
     const outside = makeTempProject({ "secret.txt": "outside-secret" });
     const dir = makeTempProject({

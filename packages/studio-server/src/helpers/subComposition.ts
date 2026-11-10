@@ -240,7 +240,9 @@ function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
   if (tagEnd === -1) return bodyHtml;
   if (bodyHtml.slice(match.index, tagEnd).includes("data-composition-file")) return bodyHtml;
   return (
-    bodyHtml.slice(0, tagEnd) + ` data-composition-file="${compPath}"` + bodyHtml.slice(tagEnd)
+    bodyHtml.slice(0, tagEnd) +
+    ` data-composition-file="${escapeAttrValue(compPath)}"` +
+    bodyHtml.slice(tagEnd)
   );
 }
 

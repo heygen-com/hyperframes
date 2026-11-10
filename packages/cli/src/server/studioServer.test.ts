@@ -8,9 +8,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,6 +49,27 @@ vi.mock("@hyperframes/producer", () => ({
   createRenderJob: (opts: Record<string, unknown>) => ({ ...opts, perfSummary: undefined }),
   executeRenderJob: (...args: Parameters<typeof producerState.executeRenderJob>) =>
     producerState.executeRenderJob(...args),
+}));
+// Stand-ins for the HEIF and GIF steps: each writes a converted file where a real conversion would.
+const imagePrep = vi.hoisted(() => ({
+  convert: async (html: string, options: { outputDir: string }) => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(options.outputDir, { recursive: true });
+    writeFileSync(`${options.outputDir}/converted`, "image");
+    return { html, preparedAssets: new Map<string, string>() };
+  },
+}));
+vi.mock("../../../producer/src/services/heifImagePrep.js", () => ({
+  prepareHeifImageInputs: async (html: string, options: { outputDir: string }) => ({
+    ...(await imagePrep.convert(html, options)),
+    preparedImages: [],
+  }),
+}));
+vi.mock("../../../producer/src/services/animatedGifPrep.js", () => ({
+  prepareAnimatedGifInputs: async (html: string, options: { outputDir: string }) => ({
+    ...(await imagePrep.convert(html, options)),
+    preparedGifs: [],
+  }),
 }));
 const engineState = vi.hoisted(() => ({
   acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
@@ -1200,4 +1223,44 @@ describe("createStudioServer Host check on every route", () => {
       delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
     }
   });
+});
+
+describe("createStudioServer preview image preparation", () => {
+  const html = '<div data-composition-id="main"><img src="photo.png"></div>';
+  const prepared = (projectDir: string) =>
+    ["heif", "gif"].filter((kind) =>
+      existsSync(join(projectDir, ".hyperframes", "prepared-assets", kind, "converted")),
+    );
+
+  it("prepares HEIF and GIF images inside a project's own .hyperframes folder", async () => {
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir });
+
+    await server.adapter.transformPreviewHtml?.({
+      html,
+      project: { id: "p", dir: projectDir },
+      activeCompositionPath: "index.html",
+    });
+
+    expect(prepared(projectDir)).toEqual(["heif", "gif"]);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "serves images unprepared when .hyperframes is a link, and writes nothing where it points",
+    async () => {
+      const projectDir = tmpProject();
+      const outside = tmpProject();
+      symlinkSync(outside, join(projectDir, ".hyperframes"));
+      server = createStudioServer({ projectDir });
+
+      const served = await server.adapter.transformPreviewHtml?.({
+        html,
+        project: { id: "p", dir: projectDir },
+        activeCompositionPath: "index.html",
+      });
+
+      expect(served).toContain('src="photo.png"');
+      expect(readdirSync(outside)).toEqual([]);
+    },
+  );
 });

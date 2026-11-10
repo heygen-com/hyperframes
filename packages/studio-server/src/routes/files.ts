@@ -1070,6 +1070,8 @@ function updateReferences(
 
 // ── GSAP script extraction ──────────────────────────────────────────────────
 
+const escapeScriptEndTags = (code: string) => code.replace(/<\/(script)/gi, "<\\/$1");
+
 /**
  * Mint the HTML's ids (so a tween saved on a served id writes that id too), parse it with
  * linkedom, locate the inline `<script>` holding GSAP timeline code, and return its text and
@@ -1095,7 +1097,7 @@ function extractGsapScriptBlock(html: string): {
     document,
     root: clipQueryRoot(script),
     replaceScript(newText: string): string {
-      script.textContent = newText;
+      script.textContent = escapeScriptEndTags(newText);
       return document.toString();
     },
   };

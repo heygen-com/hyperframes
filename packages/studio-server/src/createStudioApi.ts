@@ -38,13 +38,21 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
+const fromAnotherSite = (c: Context) => {
+  const site = c.req.header("sec-fetch-site");
+  return site === "cross-site" || site === "same-site";
+};
+
 async function sandboxPreviewOpenedFromAnotherSite(c: Context, next: Next) {
   await next();
   c.header("Vary", "Sec-Fetch-Site", { append: true });
-  const site = c.req.header("sec-fetch-site");
-  if (site === "cross-site" || site === "same-site") {
-    c.header("Content-Security-Policy", "sandbox allow-scripts");
-  }
+  if (fromAnotherSite(c)) c.header("Content-Security-Policy", "sandbox allow-scripts");
+}
+
+async function refuseThumbnailForAnotherSite(c: Context, next: Next) {
+  if (fromAnotherSite(c))
+    return c.json({ error: "forbidden: thumbnail requested by another site" }, 403);
+  return next();
 }
 
 function urlHost(url: string): string | undefined {
@@ -70,6 +78,7 @@ export interface StudioApiOptions {
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
   api.use("/projects/:id/preview/*", sandboxPreviewOpenedFromAnotherSite);
+  api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {

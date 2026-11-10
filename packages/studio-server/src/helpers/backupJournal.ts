@@ -2,7 +2,12 @@ import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
-import { isProjectRootMissing, isSafePath, mkdirWithinProject } from "./safePath.js";
+import {
+  isLinkFreeWithinProject,
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+} from "./safePath.js";
 
 const DEFAULT_KEEP_PER_FILE = 10;
 
@@ -37,6 +42,7 @@ export function snapshotBeforeWrite(
 
     const relativePath = relative(projectDir, absPath);
     const backupDir = join(projectDir, ".hyperframes", "backup");
+    if (!isLinkFreeWithinProject(projectDir, backupDir)) return { backupPath: null };
     mkdirWithinProject(projectDir, backupDir);
 
     const pathKey = Buffer.from(relativePath, "utf-8").toString("base64url");
@@ -45,7 +51,7 @@ export function snapshotBeforeWrite(
         ? pathKey
         : `sha256~${createHash("sha256").update(relativePath).digest("hex")}`;
     const backupPath = nextBackupPath(backupDir, backupKey);
-    writeFileSync(backupPath, content);
+    writeFileSync(backupPath, content, { flag: "wx" });
     pruneBackups(backupDir, [pathKey, backupKey], options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
     return { backupPath };
   } catch (error) {

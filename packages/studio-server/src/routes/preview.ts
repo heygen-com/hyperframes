@@ -42,6 +42,7 @@ import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import {
   isPrivateProjectFile,
   isProjectRootMissing,
+  projectRelativePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
@@ -649,14 +650,17 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
-    const compPath = requestSubPath(c.req.url, "projects/:id/preview/comp");
-    const compFile = resolveWithinProject(project.dir, compPath);
+    const compFile = resolveWithinProject(
+      project.dir,
+      requestSubPath(c.req.url, "projects/:id/preview/comp"),
+    );
     if (compFile) recordPreviewRead(project.dir, compFile);
     // The sub-composition document takes its head from the root.
     recordPreviewRead(project.dir, "index.html");
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
+    const compPath = projectRelativePath(project.dir, compFile);
 
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must

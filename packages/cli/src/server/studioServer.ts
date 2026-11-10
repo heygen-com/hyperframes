@@ -73,6 +73,7 @@ import {
   historyCache,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
+import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
@@ -564,6 +565,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const gifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "gif");
       const gifDownloadDir = join(project.dir, ".hyperframes", "prepared-assets", "downloads");
       const heifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "heif");
+      const preparedDirs = [gifOutputDir, gifDownloadDir, heifOutputDir];
+      if (!preparedDirs.every((dir) => isLinkFreeWithinProject(project.dir, dir)))
+        return injectDeterministicFontFaces(html);
       const { html: htmlWithJpegs } = await prepareHeifImageInputs(html, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
