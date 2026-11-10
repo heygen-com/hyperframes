@@ -1462,20 +1462,17 @@ async function extractVideoFramesRangeUnredacted(
         })
       : inExtractionSlot(
           async () =>
-            runFfmpeg(
-              [...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs],
-              {
-                ...runOptions,
-                onStderr: framesWrittenReader(options.onProgress),
-                timeout: stallTimeoutMs(
-                  ffmpegProcessTimeout,
-                  options.finalFrameOnly
-                    ? startTime
-                    : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
-                  metadata.fps,
-                ),
-              },
-            ),
+            runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
+              ...runOptions,
+              onStderr: framesWrittenReader(options.onProgress),
+              timeout: stallTimeoutMs(
+                ffmpegProcessTimeout,
+                options.finalFrameOnly
+                  ? startTime
+                  : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
+                metadata.fps,
+              ),
+            }),
           signal,
         );
   options.onProgress?.({
