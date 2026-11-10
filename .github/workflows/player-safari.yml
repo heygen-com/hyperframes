@@ -68,7 +68,7 @@ jobs:
         working-directory: packages/player
         run: |
           sw_vers
-          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari,chrome --runs 2
+          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari --fixtures heavy-alpha-webm,heavy-alpha-hevc --runs 8
 
       - name: Upload results
         if: always()

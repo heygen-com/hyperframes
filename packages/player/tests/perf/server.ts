@@ -190,6 +190,8 @@ export function startServer(options: ServeOptions = {}): RunningServer {
 
       if (path.startsWith("/fixtures/")) {
         const rel = path.replace(/^\/fixtures\//, "");
+        if (rel.includes("_media/"))
+          console.log(`[probe] serve ${Date.now()} ${rel} range=${req.headers.get("range")}`);
         const filePath = join(PATHS.fixturesDir, rel);
         if (!filePath.startsWith(PATHS.fixturesDir)) {
           return new Response("Forbidden", { status: 403 });

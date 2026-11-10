@@ -325,6 +325,11 @@ try {
       }
       for (const fixture of fixtures) {
         for (let run = 1; run <= runs; run++) {
+          const wc = execFileSync("ps", ["-axo", "pid=,etime=,rss=,comm="], { encoding: "utf-8" })
+            .split("\n")
+            .filter((l) => /WebKit\.(WebContent|GPU|Networking)/.test(l))
+            .map((l) => l.trim().replace(/\s+\S*\/com\.apple\.WebKit\./, " "));
+          console.log(`[probe] ${Date.now()} ${browser} ${fixture} run ${run} start: ${wc.join(" | ")}`);
           try {
             const { page, peakRssMb } = await runFilm(
               `http://127.0.0.1:${port}`,

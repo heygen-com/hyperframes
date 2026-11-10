@@ -121,6 +121,10 @@ export async function bench(cfg) {
     const unstarted = videos()
       .filter((v) => v.readyState === 0 && v.networkState === 2)
       .map((v) => v.currentSrc.split("/").pop());
+    const all = videos().map((v) =>
+      [v.currentSrc.split("/").pop(), v.readyState, v.networkState, v.preload, v.error && v.error.code, v.buffered.length].join(":"),
+    );
+    e.message += ` [probe ${Date.now()} ${all.join(" ")}]`;
     if (unstarted.length === 0) throw e;
     throw new Error(`${e.message}: the browser never started loading ${unstarted.join(", ")}`);
   });
