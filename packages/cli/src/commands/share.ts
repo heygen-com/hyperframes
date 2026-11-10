@@ -61,11 +61,12 @@ export default defineCommand({
     try {
       const input = parseInput(args);
       const project = resolveProjectOrThrow(args.dir);
+      let lastProgress = "";
       const service: ShareService = createShareService(project.dir, (value) => {
-        if (value && !args.json)
-          process.stderr.write(
-            `Sharing: ${value.step}${value.slow ? " (still processing)" : ""}\r`,
-          );
+        if (!value || args.json) return;
+        const message = `Sharing: ${value.step}${value.slow ? " (still processing)" : ""}`;
+        if (message !== lastProgress) process.stderr.write(`${message}\n`);
+        lastProgress = message;
       });
       await chooseAudience(input, args, service);
       const result = await service.run(input);
@@ -102,7 +103,21 @@ function parseInput(args: ShareArgs): ShareAction {
   const audience = requestedAudience(args);
   const action = args.status ? "status" : args.manage ? "manage" : args.update ? "update" : "share";
 
+  validateActionOptions(action, audience, args);
   return { action, audience, space: args.space, waitSeconds, videoOnly: args["video-only"] };
+}
+
+function validateActionOptions(
+  action: ShareAction["action"],
+  audience: ShareAction["audience"],
+  args: ShareArgs,
+) {
+  if (action !== "share" && audience)
+    throw new CliUsageError(
+      "Audience flags are only valid for a first share. Use --manage to change access.",
+    );
+  if ((action === "status" || action === "manage") && (args.space || args["video-only"]))
+    throw new CliUsageError("--space and --video-only cannot be used with --status or --manage.");
 }
 
 function requestedAudience(args: ShareArgs) {
@@ -142,6 +157,10 @@ async function chooseAudience(input: ShareAction, args: ShareArgs, service: Shar
 }
 
 async function presentResult(result: ShareState, input: ShareAction, json: boolean) {
+  if (input.action === "manage" && result.state === "not_shared")
+    throw new CliUsageError("There is no share to manage yet. Create a share first.", {
+      code: "not_shared",
+    });
   if (!json && result.source.at === "video_only")
     console.error(`Sharing video only (${result.source.reason}).`);
   if (result.state === "failed" && input.action !== "manage") {

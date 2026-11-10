@@ -411,7 +411,7 @@ describe("CLI lifecycle", () => {
 });
 
 describe("stale-skills notice under --json", () => {
-  it("prints on a --json run while the self-update notices stay off", async () => {
+  it("suppresses unrelated notices on a --json run", async () => {
     const printSkillsUpdateNotice = vi.fn();
     const printUpdateNotice = vi.fn();
     mockInitCommand(vi.fn());
@@ -431,7 +431,7 @@ describe("stale-skills notice under --json", () => {
     process.argv = ["node", "cli.ts", "init", "--json"];
     await import("./cli.js");
 
-    await vi.waitFor(() => expect(printSkillsUpdateNotice).toHaveBeenCalledTimes(1));
+    expect(printSkillsUpdateNotice).not.toHaveBeenCalled();
     expect(printUpdateNotice).not.toHaveBeenCalled();
   });
 });

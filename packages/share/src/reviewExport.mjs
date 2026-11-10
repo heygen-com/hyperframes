@@ -705,9 +705,17 @@ async function sendVersion(r, report, source, id, state) {
     const done = await watch(r, id, uploaded, size, report, clock);
     return finishRun(r, state, pending, id, done, first);
   } catch (error) {
-    if (spent(error, state.pending)) await writeState(r.projectPath, { ...state, pending: null });
-    console.error("[review] version failed:", error);
-    return said(error);
+    const failure = said(error);
+    await writeState(r.projectPath, {
+      ...state,
+      pending: spent(error, state.pending) ? null : state.pending,
+      failure: {
+        ...failure,
+        projectId: id,
+        exportKey: await failedExportKey(r.projectPath, pending),
+      },
+    });
+    return failure;
   }
 }
 
@@ -773,7 +781,6 @@ export async function addVersion(request) {
     if (kept) failures.set(key, { ...failure, exportKey: exportKeyOf(r.projectPath) });
     return failure?.sentence ?? null;
   } catch (error) {
-    console.error("[review] version failed:", error);
     const sentence =
       error instanceof SharingStateError ? error.message : "Couldn't add this version. Try again.";
     failures.set(key, {

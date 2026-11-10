@@ -327,12 +327,13 @@ if (
       .catch(() => {});
   }
 
-  // Skills freshness nudge: stderr only, so it also runs under --json, which agents pass.
-  import("./utils/skillsUpdateCheck.js")
-    .then((mod) => {
-      _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
-    })
-    .catch(() => {});
+  // Machine-readable commands should not include unrelated update notices.
+  if (!hasJsonFlag)
+    import("./utils/skillsUpdateCheck.js")
+      .then((mod) => {
+        _printSkillsUpdateNotice = mod.printSkillsUpdateNotice;
+      })
+      .catch(() => {});
 
   // The notices read the caches; a detached child refreshes them for the next run.
   import("./utils/backgroundChecks.js").then((mod) => mod.launchBackgroundChecks()).catch(() => {});

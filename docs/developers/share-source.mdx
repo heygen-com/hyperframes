@@ -27,11 +27,26 @@ styles, assets, and supported Studio edit metadata. Known credential filenames
 (such as `.env`, `.npmrc`, and `*.pem`), dependency directories, chat
 history, local sharing state, and recorded render outputs stay out.
 
-These are filename rules, not a secret scanner. `.gitignore` and
-`.hyperframesignore` do not control source capture. Other regular files can be
-included even if Git ignores them. Keep private material outside the project,
-or use `--video-only` when you do not want to upload project files. Unsupported symlinks and invalid file names stop source
-preparation rather than silently producing an incomplete editable project.
+These are filename rules, not a secret scanner. `.gitignore` does not control
+source capture. Other regular files can be included even if Git ignores them.
+Keep private material outside the project, or use `--video-only` when you do not
+want to upload project files. Unsupported symlinks and invalid file names stop
+source preparation rather than silently producing an incomplete editable project.
+
+To exclude scratch files, add `.hyperframesignore` at the project root:
+
+```text
+# Literal paths, relative to the project root
+out.json
+scratch/
+```
+
+Each line excludes that file or folder and its contents from source capture and
+sharing change detection. Blank lines and lines starting with `#` are ignored.
+Use literal paths with `/` separators; wildcards, negation, absolute paths, and
+excluding `index.html` are rejected. Do not exclude assets your composition uses.
+These rules can only exclude files, never re-include credentials or other files
+blocked by the portable project policy.
 
 The upload uses the workspace's file-count, per-file, project-size and manifest
 limits. Large media uploads in parts. Only a verified published snapshot that
@@ -68,6 +83,25 @@ a new video-only version after the earlier upload finishes, use
 `not_checked`; it does not promise that local files match the shared version.
 The upload result uses `ready` only after source verification and attachment
 preparation; video readiness remains the separate top-level `ready` field.
+
+## Refused uploads
+
+A refused upload is saved locally so `--status` reports a failure, including
+across CLI restarts. Retry an unfinished first share with the same command;
+use `--update` to replace a previously shared video. An upload whose result is
+still unknown keeps its recovery record to avoid creating duplicate versions.
+
+`export_blocked` means recent content moderation strikes prevent new video
+versions in this workspace. Contact HeyGen support to appeal. Rendering again,
+changing audience, or having a paid plan does not lift the block.
+`can_register_project` describes project quota eligibility, not moderation
+permission to upload a video.
+
+`--manage` requires an existing share. Audience flags are for first-share
+creation and cannot be combined with `--status`, `--manage`, or `--update`.
+Progress is written to stderr once per step; `--json` suppresses progress and
+unrelated skill-update notices. Set `HF_DEBUG_RENDER=1` only when diagnosing
+render initialization.
 
 ## Integrating another local host
 
