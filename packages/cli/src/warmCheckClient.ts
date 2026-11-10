@@ -1,4 +1,5 @@
 import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";

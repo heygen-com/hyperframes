@@ -1,4 +1,5 @@
 import "./utils/hideChildConsoles.js";
+import "./utils/windowsExeSearch.js";
 import { constants, setPriority } from "node:os";
 import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
