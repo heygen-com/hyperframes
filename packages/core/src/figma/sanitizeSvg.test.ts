@@ -65,7 +65,7 @@ const HOSTILE_CASES: Array<[label: string, input: string, mustNotContain: string
     ["evil.example"],
   ],
   [
-    "CSS-escaped url() followed by a form feed in a presentation attribute",
+    "CSS-escaped url() followed by a form feed in a presentation attribute (guards the line-ending fold, not a base bypass)",
     `<svg><rect fill="\\75\frl(https://evil.example/b)"/></svg>`,
     ["evil.example"],
   ],
