@@ -499,7 +499,7 @@ function findInvalidDataVolumeFindings(ctx: LintContext): HyperframeLintFinding[
       findings.push({
         code: "media_invalid_data_volume",
         severity: "warning",
-        message: `<${tag.name}> has data-volume="${raw}", outside the documented 0..3.98 gain range (0..+12 dB). Out-of-range values are clamped to +12 dB and non-numbers fall back to normal volume, so the clip will not play at the level written.`,
+        message: `<${tag.name}> has data-volume="${raw}", outside the documented 0..3.98 gain range (0..+12 dB). Out-of-range values are clamped to the nearest end of the supported range and non-numbers fall back to normal volume, so the clip will not play at the level written.`,
         elementId: readAttr(tag.raw, "id") || undefined,
         fixHint: "Set data-volume to a number between 0 and 3.98 (linear gain; 1 is unity).",
         snippet: truncateSnippet(tag.raw),
