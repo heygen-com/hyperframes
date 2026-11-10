@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/share",
-  "version": "0.9.30",
+  "version": "0.9.31",
   "description": "Shared review identity, version upload and sharing state for HyperFrames hosts",
   "license": "Apache-2.0",
   "repository": {
