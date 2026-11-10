@@ -179,15 +179,20 @@ export function giveBackWhenDue(el: HTMLMediaElement): void {
   el.setAttribute("src", written);
 }
 
+// One WebKit began reading at parse opens at its in-point instead: its metadata then costs little.
+const holdable = (el: HTMLMediaElement, src: string) =>
+  el.preload === "none" &&
+  el.networkState !== 2 &&
+  !src.includes("#") &&
+  !el.loop &&
+  !el.querySelector("source");
+
 function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean, opened: () => void): void {
   const src = el.getAttribute("src");
   if (!isWebKit() || !inPlayerFrame(document) || !src) return;
   void bytesOfSource(src).then((bytes) => {
     if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
-    // One WebKit began reading at parse opens at its in-point instead: its metadata then costs little.
-    const idle = el.preload === "none" && el.networkState !== 2;
-    if (later && idle && !src.includes("#") && !el.loop && !el.querySelector("source"))
-      return holdUntilDue(el);
+    if (later && holdable(el, src)) return holdUntilDue(el);
     openAtInPoint(el);
     opened();
   });
