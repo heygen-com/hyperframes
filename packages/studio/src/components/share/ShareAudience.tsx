@@ -16,7 +16,7 @@ const AUDIENCES = {
     detail: "People you add in Manage sharing",
     icon: UserPlus,
   },
-  private: { label: "Only you", detail: "This existing share is private", icon: Lock },
+  private: { label: "Only you", detail: "Only you can access this share", icon: Lock },
 };
 
 export function ShareAudience({
@@ -30,7 +30,7 @@ export function ShareAudience({
   const Icon = selected?.icon ?? Lock;
   const space = snapshot.spaces.find((item) => item.id === model.spaceId);
   const choices: LocalShareAudience[] = ["public", "team", "invite"];
-  if (snapshot.share.audience === "private") choices.push("private");
+  if (snapshot.share.state !== "not_shared") choices.push("private");
   return (
     <Menu
       aria-label="Who can access"

@@ -194,7 +194,9 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
 export type QuickShareModel = ReturnType<typeof useQuickShare>;
 
 function completionNotice(job: LocalShareJob) {
-  return job.state === "done" && job.result?.upToDate ? "Already up to date." : "";
+  if (job.state !== "done") return "";
+  if (job.result?.upToDate) return "Already up to date.";
+  return job.result?.updated ? "Shared version updated." : "";
 }
 
 function useCopyAcknowledgement() {

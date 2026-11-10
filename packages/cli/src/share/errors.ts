@@ -1,4 +1,4 @@
-import { ownerOf, ReviewFailed, reviewSentence } from "@hyperframes/share";
+import { SourceIgnoreError, ownerOf, ReviewFailed, reviewSentence } from "@hyperframes/share";
 import { ShareSourceError } from "./sources.js";
 import { isAuthError } from "../auth/errors.js";
 import { CliUsageError } from "../utils/commandResult.js";
@@ -20,6 +20,7 @@ const HINTS: Record<string, string> = {
     "This project has no shared review yet. Run hyperframes share with an explicit audience.",
 };
 export function shareError(error: unknown): { code: string; message: string; owner?: string } {
+  if (error instanceof SourceIgnoreError) return { code: error.code, message: error.message };
   if (error instanceof CliUsageError) return { code: error.code, message: error.message };
   if (error instanceof ShareSourceError)
     return { code: "source_unavailable", message: error.message };
