@@ -12,9 +12,11 @@ import { isAbsolute, relative, resolve } from "node:path";
  * raw URL. The URL group is anchored to non-whitespace at both ends so the
  * surrounding `\s*` can never overlap it (avoids polynomial-ReDoS backtracking);
  * the captured value is whitespace-bounded already, matching the old behavior
- * after callers `.trim()` it.
+ * after callers `.trim()` it. Inside quotes only the matching quote ends the
+ * URL, so `url("photo (1).png")` and `url("don't.png")` are found too.
  */
-export const CSS_URL_RE = /\burl\(\s*(["']?)([^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
+export const CSS_URL_RE =
+  /\burl\(\s*(["']?)((?<=")[^"\s](?:[^"]*[^"\s])?|(?<=')[^'\s](?:[^']*[^'\s])?|(?<!["'])[^)"'\s](?:[^)"']*[^)"'\s])?)\1\s*\)/g;
 
 /** Attributes that may contain relative asset paths. */
 export const PATH_ATTRS = ["src", "href"] as const;
