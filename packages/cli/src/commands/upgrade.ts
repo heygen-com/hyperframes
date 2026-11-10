@@ -3,7 +3,8 @@ import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, renameSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
@@ -286,9 +287,7 @@ export async function upgradeProjectPins(
     });
   if (rewrite.changed && !opts.check) {
     raw.scripts = rewrite.scripts;
-    const tmp = `${pkgPath}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(raw, null, 2)}\n`, "utf-8");
-    renameSync(tmp, pkgPath);
+    replaceFileAtomically(pkgPath, `${JSON.stringify(raw, null, 2)}\n`);
   }
   if (!opts.check) {
     for (const wrapper of wrapperRewrites) {
