@@ -24,7 +24,7 @@ export function updateChannel(version = VERSION): string {
   if (version === "0.0.0-dev") return "latest";
   return version.match(/^\d+\.\d+\.\d+-([a-z][a-z0-9-]*)(?:\.|$)/i)?.[1] ?? "latest";
 }
-const NPM_REGISTRY_URL = `https://registry.npmjs.org/hyperframes/${updateChannel()}`;
+const npmRegistryUrl = () => `https://registry.npmjs.org/hyperframes/${updateChannel()}`;
 const CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const SKILLS_COUNT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 3000;
@@ -74,14 +74,14 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   if (!force && !updateCheckDue(config)) return fallbackResult(config.latestVersion);
 
   try {
-    if (!force && !(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
+    if (!force && !(await hostAnswers(new URL(npmRegistryUrl()).hostname))) {
       return fallbackResult(config.latestVersion);
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let data: { version?: unknown };
     try {
-      const res = await fetch(NPM_REGISTRY_URL, {
+      const res = await fetch(npmRegistryUrl(), {
         signal: controller.signal,
         headers: { Connection: "close" },
       });
