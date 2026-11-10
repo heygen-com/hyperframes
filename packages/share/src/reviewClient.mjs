@@ -92,6 +92,7 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
      * @returns {Promise<{ versionSharing: boolean, shareFiles: boolean }>} */
     reviewFlags: async () => {
       const data = await call("GET", SPACES, undefined, {}, SHARING_REFUSALS);
+      if (!Array.isArray(data?.items)) throw new ReviewFailed(502, "malformed_spaces");
       return {
         versionSharing: data?.version_sharing === true,
         shareFiles: data?.share_files === true,
