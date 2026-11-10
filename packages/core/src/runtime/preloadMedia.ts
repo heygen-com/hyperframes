@@ -111,8 +111,21 @@ export function lengthIsAuthored(media: Element): boolean {
 const LONG_SOURCE_BYTES = 32 * 1024 * 1024;
 const sourceBytes = new Map<string, Promise<number | null>>();
 
+const knownBytes = new Map<string, number>();
+
+/** True once the clip's file is known to be long; false while its size is unknown. */
+export function isLongSource(el: Element): boolean {
+  const src = unproxiedSrc(el);
+  if (!src) return false;
+  try {
+    return (knownBytes.get(new URL(src, document.baseURI).href) ?? 0) >= LONG_SOURCE_BYTES;
+  } catch {
+    return false;
+  }
+}
+
 /** The size of a file in bytes from a one-byte range request, or null where the page cannot read it. */
-function bytesOfSource(src: string): Promise<number | null> {
+export function bytesOfSource(src: string): Promise<number | null> {
   let url: string;
   try {
     url = new URL(src, document.baseURI).href;
@@ -128,7 +141,9 @@ function bytesOfSource(src: string): Promise<number | null> {
       const total =
         /\/(\d+)$/.exec(response.headers.get("content-range") ?? "")?.[1] ??
         (response.status === 200 ? response.headers.get("content-length") : null);
-      return total === null ? null : Number(total);
+      if (total === null) return null;
+      knownBytes.set(url, Number(total));
+      return Number(total);
     } catch {
       return null;
     } finally {

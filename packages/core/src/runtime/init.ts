@@ -21,6 +21,7 @@ import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
   giveBackWhenDue,
+  isLongSource,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -518,12 +519,14 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
-/** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
+/** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time.
+ * A long file stays on its element: the decode fetches the whole file first, starving the clips due now. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
   return (
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
+    !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
