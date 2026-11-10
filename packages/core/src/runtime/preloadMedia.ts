@@ -181,6 +181,8 @@ export function giveBackWhenDue(el: HTMLMediaElement): void {
 
 // One WebKit began reading at parse opens at its in-point instead: its metadata then costs little.
 const holdable = (el: HTMLMediaElement, src: string) =>
+  el.paused &&
+  !el.seeking &&
   el.preload === "none" &&
   el.networkState !== 2 &&
   !src.includes("#") &&
@@ -207,13 +209,13 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral?.disconnect();
   win.__hfMediaDeferral = undefined;
   if (!defersMedia()) return;
-  const defer = (el: Element, startInFilm: (el: Element) => number) => {
+  const defer = (el: Element, startInFilm: (el: Element) => number, parsedEarly = false) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
     const authoredPreload = media.preload;
     const later = startInFilm(el) > 0;
-    if (later) media.preload = "none";
+    if (later && !parsedEarly) media.preload = "none";
     openLongSourceAtInPoint(media, later, () => (media.preload = authoredPreload));
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
@@ -229,6 +231,6 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral.observe(document.documentElement, { childList: true, subtree: true });
   if (isWebKit()) {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
-    for (const media of document.querySelectorAll("video, audio")) defer(media, startInFilm);
+    for (const media of document.querySelectorAll("video, audio")) defer(media, startInFilm, true);
   }
 }

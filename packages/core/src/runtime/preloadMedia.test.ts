@@ -341,6 +341,26 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
     expect(v.preload).not.toBe("none");
   });
 
+  it("leaves the preload of a small file's clip parsed before the runtime as authored", async () => {
+    sizeOf(5_600_000);
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    const authored = v.preload;
+    deferMediaUntilDue();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.preload).toBe(authored);
+  });
+
+  it("does not hold a later clip that is already playing when its file's size arrives", async () => {
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    Object.defineProperty(v, "paused", { value: false, configurable: true });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.getAttribute("src")).not.toBeNull();
+  });
+
   it("holds a later clip again when it is released after playing", async () => {
     const v = await added(later());
     await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
