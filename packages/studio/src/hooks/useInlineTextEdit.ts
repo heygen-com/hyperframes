@@ -212,7 +212,6 @@ export function useInlineTextEdit({
     if (!element) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // Mid-composition, Enter and Escape finish or cancel the IME's text, not the edit.
       if (isImeComposing(event)) return;
       // Shift+Enter is a line break in a multi-line element, and is left alone.
       if (event.key === "Enter" && !event.shiftKey) {
