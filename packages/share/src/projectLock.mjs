@@ -125,8 +125,8 @@ async function reap(path) {
   if (stat?.isDirectory()) return reapDirectory(path);
 }
 
-/** @param {string} draft @param {string} marker @param {string} lock */
-async function claim(draft, marker, lock) {
+/** @param {string} draft @param {string} marker @param {string} lock @param {number} deadline */
+async function claim(draft, marker, lock, deadline) {
   try {
     await fs.link(join(draft, marker), lock);
     return "file";
@@ -139,6 +139,11 @@ async function claim(draft, marker, lock) {
     )
       throw error;
   }
+  return claimDirectory(draft, lock, deadline);
+}
+
+/** @param {string} draft @param {string} lock @param {number} deadline */
+async function claimDirectory(draft, lock, deadline) {
   // A directory rename publishes the owner atomically and cannot replace a file or a nonempty directory.
   try {
     await fs.rename(draft, lock);
@@ -146,7 +151,11 @@ async function claim(draft, marker, lock) {
   } catch (error) {
     const code = String(errorCode(error));
     if (["EEXIST", "ENOTEMPTY", "ENOTDIR", "EISDIR"].includes(code)) return null;
-    if (["EPERM", "EACCES", "EBUSY"].includes(code) && (await lockAt(lock))) return null;
+    if (["EPERM", "EACCES", "EBUSY"].includes(code)) {
+      if (await lockAt(lock)) return null;
+      // Windows can deny the rename while another process has a handle open on the draft.
+      if (process.platform === "win32" && Date.now() < deadline) return null;
+    }
     throw error;
   }
 }
@@ -171,7 +180,7 @@ export async function withProjectShareLock(
     await writeFile(join(draft, marker), JSON.stringify(owner), { flag: "wx", mode: 0o600 });
     while (!held) {
       signal?.throwIfAborted();
-      held = await claim(draft, marker, lock);
+      held = await claim(draft, marker, lock, deadline);
       if (held) break;
       await reap(lock);
       if (Date.now() >= deadline) throw new ShareBusyError(lock);
