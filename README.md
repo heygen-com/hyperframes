@@ -7,6 +7,8 @@
 </p>
 
 <p align="center">
+  <a href="https://skills.sh/heygen-com/hyperframes"><img src="https://img.shields.io/endpoint?style=flat&url=https%3A%2F%2Fskills.sh%2Fapi%2Fbadge%2Fheygen-com%2Fhyperframes" alt="Skills downloads"></a>
+  <a href="https://www.star-history.com/heygen-com/hyperframes"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark"><img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36"></picture></a>
   <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/v/hyperframes.svg?style=flat" alt="npm version"></a>
   <a href="https://www.npmjs.com/package/hyperframes"><img src="https://img.shields.io/npm/dm/hyperframes.svg?style=flat" alt="npm downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
