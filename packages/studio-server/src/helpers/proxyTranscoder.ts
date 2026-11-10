@@ -355,7 +355,6 @@ function forget(job: ProxyJob): void {
 
 function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
   try {
-    // A linked cache folder still receives copies, so previews keep playing, but is never swept.
     if (!isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) return;
     cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
   } catch (error) {
