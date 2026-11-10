@@ -32,37 +32,17 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return { ...real, runFfmpeg: vi.fn(real.runFfmpeg) };
 });
 
-// ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
-// regression test at packages/producer/tests/vfr-screen-recording/ runs inside
-// Dockerfile.test (which does include ffmpeg) and is the primary CI signal
-// for this bug. Locally and in any CI job with ffmpeg on PATH, the tests
-// below run too — they exercise the extractor in isolation against a
-// synthesized VFR fixture.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 
-// Regression test for the VFR (variable frame rate) freeze bug.
-// Screen recordings and phone videos often have irregular timestamps.
-// When such inputs hit `extractVideoFramesRange`'s `-ss <start> -i ... -t <dur>
-// -vf fps=N` pipeline, the fps filter can emit fewer frames than requested —
-// e.g. a 4-second segment at 30fps would produce ~90 frames instead of 120.
-// FrameLookupTable.getFrameAtTime then returns null for out-of-range indices
-// and the compositor holds the last valid frame, which the user perceives as
-// the video freezing. extractAllVideoFrames now routes VFR sources through
-// FFmpeg's one-pass `-fps_mode cfr -r` extraction path to fix this without a
-// separate normalization encode.
+// Irregular timestamps once made the fps filter emit too few frames, so the video froze;
+// VFR sources now extract through one `-fps_mode cfr -r` pass.
 describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
   const FIXTURE_DIR = mkdtempSync(join(tmpdir(), "hf-vfr-test-"));
   const VFR_FIXTURE = join(FIXTURE_DIR, "vfr_screen.mp4");
 
   beforeAll(async () => {
-    // 10s testsrc2 at 60fps, ~40% of frames dropped via select filter and
-    // encoded with -fps_mode vfr so timestamps are irregular. Declared fps 60,
-    // actual average ~36 — well over the 10% threshold used by isVFR.
-    // The select expression drops four 1-second windows (frames 30-89,
-    // 180-239, 330-389, 480-539) to simulate static segments in a screen
-    // recording where no pixels changed.
-    // -g/-keyint_min 600 forces a single keyframe so mid-segment seeks in the
-    // mediaStart=3 test don't snap to an intermediate IDR and drift the count.
+    // 10 s at 60 fps minus frames 30-89, 180-239, 330-389, 480-539: about 36 fps on average, past
+    // isVFR's 10% threshold. One keyframe (-g 600) so the mediaStart=3 seek cannot snap to an IDR.
     const result = await runFfmpeg([
       "-y",
       "-hide_banner",

@@ -19,12 +19,6 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return { ...real, runFfmpeg: vi.fn(real.runFfmpeg) };
 });
 
-// ffmpeg is not preinstalled on GitHub's ubuntu-24.04 runners. The producer
-// regression test at packages/producer/tests/vfr-screen-recording/ runs inside
-// Dockerfile.test (which does include ffmpeg) and is the primary CI signal
-// for this bug. Locally and in any CI job with ffmpeg on PATH, the tests
-// below run too — they exercise the extractor in isolation against a
-// synthesized VFR fixture.
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 const HAS_ZSCALE =
   HAS_FFMPEG &&
