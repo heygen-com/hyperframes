@@ -34,9 +34,7 @@ import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 export interface CaptureCostEstimate {
   multiplier: number;
   reasons: string[];
-  /** Slowest calibration frame; sizes the worker count. */
   p95Ms?: number;
-  /** Typical calibration frame; predicts the render's length. */
   medianMs?: number;
 }
 
