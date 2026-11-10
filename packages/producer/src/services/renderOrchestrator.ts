@@ -1219,19 +1219,30 @@ export function resetCaptureAttemptProgress(job: { framesRendered?: number }): v
 }
 
 const FIRST_FRAME_STALL_MS = 300_000;
+// Capture browsers start like the probe's did: allow twice its start-up before the first frame, up to the ceiling.
+const FIRST_FRAME_STARTUP_FACTOR = 2;
+const FIRST_FRAME_STALL_CEILING_MS = 900_000;
 const TAIL_STALL_MS = FIRST_FRAME_STALL_MS;
+
+/** Allowed wait for the first frame, given how long the probe's browser took to start; 0 or unknown keeps 300 s. */
+export function firstFrameWindowMs(probeStartupMs: number | undefined): number {
+  const fromStartup = (probeStartupMs ?? 0) * FIRST_FRAME_STARTUP_FACTOR;
+  if (!Number.isFinite(fromStartup)) return FIRST_FRAME_STALL_MS;
+  return Math.max(FIRST_FRAME_STALL_MS, Math.min(FIRST_FRAME_STALL_CEILING_MS, fromStartup));
+}
 
 /** The no-progress rule for capture stages that have no watchdog of their own: disk, HDR, chunk. Once
  * `totalFrames` have landed the frame count can no longer change, so the stage is judged on the tail budget. */
 export function frameStallRule(
   job: { framesRendered?: number },
   totalFrames: number,
+  probeStartupMs: number | undefined,
 ): StageStallRule {
   const noProgressMs = resolveCaptureStallTimeoutMs();
   return {
     progress: () => job.framesRendered ?? 0,
     noProgressMs,
-    firstProgressMs: Math.max(FIRST_FRAME_STALL_MS, noProgressMs),
+    firstProgressMs: Math.max(firstFrameWindowMs(probeStartupMs), noProgressMs),
     complete: () => (job.framesRendered ?? 0) >= totalFrames,
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
@@ -4899,7 +4910,7 @@ async function executeRenderPipeline(input: {
             onProgress,
           });
         },
-        { stall: frameStallRule(job, totalFrames) },
+        { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
       );
       lastBrowserConsole = hdrRes.lastBrowserConsole;
       layeredCaptureWarnings.push(...hdrRes.warnings);
@@ -5476,7 +5487,7 @@ async function executeRenderPipeline(input: {
                 interleaveFrames: overlap !== null,
                 openAttempt,
               }),
-            { stall: frameStallRule(job, totalFrames) },
+            { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
           );
         let captureRes;
         try {
