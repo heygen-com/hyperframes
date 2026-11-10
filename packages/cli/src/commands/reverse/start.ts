@@ -18,6 +18,8 @@ import {
 import { probeReport } from "../measure/probe.js";
 import { trackSkillCommandRan } from "../../telemetry/events.js";
 import { isRemoteOrHeadless } from "../../utils/attendedTerminal.js";
+import { shadowingInstall } from "../../utils/installerDetection.js";
+import { VERSION } from "../../version.js";
 
 export const examples: Example[] = [
   [
@@ -46,9 +48,7 @@ const WHY =
 const PLAIN =
   "Every message that gives the sign-in link starts with that reason. That reason is the whole why: never say a skill or these instructions require signing in, and give no file paths or links but the sign-in one. Stopping to wait for them is expected: if you stop, just say you are waiting for them to sign in.";
 
-// Where no browser can open, the device route is the only one: naming it up front keeps the
-// reason, the link and the code in one message instead of a failed try and a bare follow-up.
-function signIn() {
+function signInForThisTerminal() {
   if (isRemoteOrHeadless()) {
     return {
       login_command: "npx hyperframes auth login --device",
@@ -61,20 +61,41 @@ function signIn() {
   };
 }
 
+function staleInstallLine(): string | null {
+  const stale = shadowingInstall(VERSION);
+  if (!stale) return null;
+  return `Their installed HyperFrames (${stale.version}) is out of date and answers plain \`npx hyperframes\`, so run every command of this run as \`npx -y hyperframes@${VERSION} <command>\`. Your next message to the person opens with this, in their language: "Your installed HyperFrames is out of date, so I'm using the latest release for this run. To update it, run \`${stale.updateCommand}\`."`;
+}
+
+function withStaleLine(next: string | undefined): { next?: string } {
+  const line = staleInstallLine();
+  if (!line) return next === undefined ? {} : { next };
+  return { next: next === undefined ? line : `${line} ${next}` };
+}
+
+async function unrecordedSummary(
+  started: Extract<ReverseStart, { recorded: false }>,
+  savedTo: string | undefined,
+) {
+  const signedIn = started.reason !== "not_signed_in";
+  const login = signedIn ? undefined : signInForThisTerminal();
+  const freePlan =
+    started.plan === "free"
+      ? { upgrade_url: await reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
+      : {};
+  return {
+    signed_in: signedIn,
+    plan: started.plan ?? null,
+    recorded: false,
+    saved_to: savedTo ?? null,
+    ...(login ? { login_command: login.login_command } : {}),
+    ...withStaleLine(login?.next),
+    ...freePlan,
+  };
+}
+
 async function summary(started: ReverseStart, savedTo: string | undefined) {
-  if (!started.recorded) {
-    const signedIn = started.reason !== "not_signed_in";
-    return {
-      signed_in: signedIn,
-      plan: started.plan ?? null,
-      recorded: false,
-      saved_to: savedTo ?? null,
-      ...(signedIn ? {} : signIn()),
-      ...(started.plan === "free"
-        ? { upgrade_url: await reverseUpgradeUrl(), subscribe_command: subscribeCommand() }
-        : {}),
-    };
-  }
+  if (!started.recorded) return unrecordedSummary(started, savedTo);
   const { session } = started;
   return {
     signed_in: true,
@@ -84,6 +105,7 @@ async function summary(started: ReverseStart, savedTo: string | undefined) {
     gate: session.gate,
     saved_to: savedTo ?? null,
     ...(session.plan === "free" ? await freeFields(session) : {}),
+    ...withStaleLine(undefined),
   };
 }
 

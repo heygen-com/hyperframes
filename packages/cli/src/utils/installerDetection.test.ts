@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The module inspects `process.argv[1]` + `realpathSync`. We stub both so
@@ -261,5 +261,64 @@ describe("runningInstall: which binary runs, and the command that updates it", (
     const install = run.mod.runningInstall();
     expect(install.channel).toBe("plugin");
     expect(run.mod.updateCommandFor(install, "0.9.8")).toMatch(/plugin/);
+  });
+});
+
+describe("shadowingInstall: the older global install a plain `npx hyperframes` runs instead", () => {
+  const saved = { argv1: process.argv[1], path: process.env["PATH"] };
+  afterEach(() => {
+    process.argv[1] = saved.argv1 ?? "";
+    process.env["PATH"] = saved.path;
+  });
+
+  /** An npx copy running now, and a global npm install of `globalVersion` first on PATH. */
+  function layout(globalVersion: string | null): string {
+    const root = mkdtempSync(join(tmpdir(), "hf-shadow-"));
+    const npxEntry = join(root, ".npm/_npx/abc/node_modules/hyperframes/dist/cli.js");
+    mkdirSync(dirname(npxEntry), { recursive: true });
+    writeFileSync(npxEntry, "");
+    process.argv[1] = npxEntry;
+    const bin = join(root, "prefix/bin");
+    mkdirSync(bin, { recursive: true });
+    if (globalVersion) {
+      const pkg = join(root, "prefix/lib/node_modules/hyperframes");
+      mkdirSync(join(pkg, "bin"), { recursive: true });
+      writeFileSync(
+        join(pkg, "package.json"),
+        JSON.stringify({ name: "hyperframes", version: globalVersion }),
+      );
+      writeFileSync(join(pkg, "bin/hyperframes.mjs"), "");
+      symlinkSync(join(pkg, "bin/hyperframes.mjs"), join(bin, "hyperframes"));
+    }
+    // npx puts the bin of the copy it runs first on PATH.
+    const npxBin = join(root, ".npm/_npx/abc/node_modules/.bin");
+    mkdirSync(npxBin, { recursive: true });
+    symlinkSync(npxEntry, join(npxBin, "hyperframes"));
+    process.env["PATH"] = [npxBin, bin].join(delimiter);
+    return root;
+  }
+
+  it("names an older global npm install and the command that moves it", async () => {
+    layout("0.9.8");
+    const { shadowingInstall } = await import("./installerDetection.js");
+    expect(shadowingInstall("0.9.29")).toEqual({
+      version: "0.9.8",
+      updateCommand: "npm install -g hyperframes@latest",
+    });
+  });
+
+  it("stays quiet when the global install is not older, or there is none", async () => {
+    const { shadowingInstall } = await import("./installerDetection.js");
+    layout("0.9.29");
+    expect(shadowingInstall("0.9.29")).toBeNull();
+    layout(null);
+    expect(shadowingInstall("0.9.29")).toBeNull();
+  });
+
+  it("stays quiet when this run is not an npx copy", async () => {
+    const root = layout("0.9.8");
+    process.argv[1] = join(root, "prefix/lib/node_modules/hyperframes/bin/hyperframes.mjs");
+    const { shadowingInstall } = await import("./installerDetection.js");
+    expect(shadowingInstall("0.9.29")).toBeNull();
   });
 });

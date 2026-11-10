@@ -14,12 +14,12 @@ Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the
 then ask `npx hyperframes auth status --json` and read its `hyperframes` field, never `user.subscription`, which is the HeyGen
 app's plan and does not unlock Reverse. `<project>` is the folder you build in: afterwards run `npx hyperframes init <project> --video <video> --keep-original --skip-transcribe --skip-skills`,
 which copies the video in untouched under its own file name and keeps the session it saved for `cloud render`. Keep the video out of `<project>` until then: `init`
-refuses a folder that already holds other files. Outside a plugin, a CLI that does not know `reverse start`, or whose
-`reverse start` output has `_meta.updateAvailable: true`, is an old install (often a global one, which never updates
-itself when an agent runs it) shadowing the current release: run `reverse start` again and every later command of this
-run as `npx -y hyperframes@latest <command>`, and tell the person in one line that their installed HyperFrames is out of
-date (with the command in `_meta.updateNotice` when there is one). That line goes in your next message to them, the
-sign-in one when they are not signed in.
+refuses a folder that already holds other files. Outside a plugin, a CLI is an old install (often a global one, which
+never updates itself when an agent runs it) shadowing the current release when it does not know `reverse start`, when
+its `reverse start` output has `_meta.updateAvailable: true`, or when that output says `signed_in: false` with no
+`reverse.next`. Then run `npx -y hyperframes@latest --version` once and run `reverse start` again and every later
+command of this run as `npx -y hyperframes@<that version> <command>`, so the whole run uses one release. That `reverse start` names the out-of-date install in `reverse.next` with the line
+to open your next message to the person with: say it.
 Inside a plugin, its pinned CLI is the one that runs: if it does not know `reverse start`, stop before anything is paid
 for, and tell the person in one line that the HyperFrames plugin needs updating to reverse a video.
 
