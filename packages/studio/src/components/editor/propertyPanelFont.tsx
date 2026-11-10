@@ -423,7 +423,6 @@ export function FontFamilyField({
             setActiveIndex(-1);
           }}
           onKeyDown={(e) => {
-            // Arrows pick IME candidates and Enter confirms them while composing.
             if (isImeComposing(e)) return;
             if (e.key === "Escape") {
               e.preventDefault();
