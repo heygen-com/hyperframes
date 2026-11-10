@@ -28,7 +28,12 @@ import {
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
-import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
+import {
+  isLinkFreeWithinProject,
+  mkdirOwnedWithinProject,
+  realpath,
+  realProjectRoot,
+} from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -350,6 +355,7 @@ function forget(job: ProxyJob): void {
 
 function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
   try {
+    if (!isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) return;
     cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
@@ -923,7 +929,7 @@ async function transcodeToCache(
     if (existsSync(cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
-    mkdirWithinProject(projectDir, cacheDir);
+    mkdirOwnedWithinProject(projectDir, cacheDir);
     const contentIndex = contentIndexPath(
       cacheDir,
       await contentCopyKey(
@@ -1180,7 +1186,7 @@ async function makeStill(
     false,
     box,
   );
-  mkdirWithinProject(source.projectDir, dirname(cachePath));
+  mkdirOwnedWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {
     const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];

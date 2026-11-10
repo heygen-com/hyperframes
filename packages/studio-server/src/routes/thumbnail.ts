@@ -12,7 +12,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { StudioApiAdapter } from "../types.js";
 import { STUDIO_MANUAL_EDITS_PATH } from "../helpers/manualEditsRenderScript.js";
@@ -25,8 +25,10 @@ import { STUDIO_MOTION_PATH } from "../helpers/studioMotionRenderScript.js";
 import { thumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import {
+  isLinkFreeWithinProject,
   isProjectRootMissing,
   mkdirWithinProject,
+  projectRelativePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
@@ -45,6 +47,7 @@ export function pruneThumbnailCache(
   protectedPaths: ReadonlySet<string>,
   now = Date.now(),
 ): void {
+  if (!isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) return;
   let entries: Dirent[];
   try {
     entries = readdirSync(cacheDir, { withFileTypes: true });
@@ -136,7 +139,8 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     if (compPath && !compPath.includes(".")) compPath += ".html";
     const htmlFile = resolveWithinProject(project.dir, compPath);
     const source = htmlFile ? readFileOnce(htmlFile) : "not-a-file";
-    if (source === "not-a-file") return c.json({ error: "not found" }, 404);
+    if (!htmlFile || source === "not-a-file") return c.json({ error: "not found" }, 404);
+    compPath = projectRelativePath(project.dir, htmlFile);
     // Keyed on what this composition renders from, so editing one scene leaves the others cached.
     const inputSignature = await compositionInputSignature(project.dir, compPath, projectSignature);
 
@@ -267,6 +271,7 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
             // but never file them under a signature they do not prove.
             return generated;
           }
+          if (!isLinkFreeWithinProject(project.dir, cacheDir)) return generated;
           mkdirWithinProject(project.dir, cacheDir);
           writeThumbnailAtomically(cachePath, generated);
           return generated;
