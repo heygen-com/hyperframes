@@ -120,6 +120,7 @@ import type {
   SubTimelineWaitMemo,
   SubTimelineWaitOutcome,
 } from "../types.js";
+import { PROVENANCE_VERSION } from "../utils/renderProvenance.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
 import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 import {
@@ -4280,6 +4281,138 @@ export async function verifyStaticFramesSafe(
   }
 }
 
+// A session reusing an earlier session's verified set re-verifies this many short runs of its own frames.
+const STATIC_SPOT_CHECK_RUNS = 4;
+const STATIC_SPOT_CHECK_FRAMES = 2 * STATIC_VERIFY_REFERENCE_STRIDE;
+
+/** Sessions share a dedup verdict only when every input that decides their pixels is equal. */
+export function staticDedupMemoKey(session: CaptureSession): string | undefined {
+  const options = session.options;
+  if (!options.staticDedupMemo || !options.compositionHash) return undefined;
+  return JSON.stringify([
+    options.compositionHash,
+    options.width,
+    options.height,
+    options.deviceScaleFactor ?? 1,
+    session.captureMode,
+    options.format ?? null,
+    options.quality ?? null,
+    options.transparent === true,
+    options.fps,
+    [...(options.hiddenElementIds ?? [])].sort(),
+    options.variables ?? null,
+    options.motionBlur ?? null,
+    options.pageMotionBlur ?? null,
+    PROVENANCE_VERSION,
+  ]);
+}
+
+/** Up to STATIC_SPOT_CHECK_RUNS short runs of `frames` inside `range`: the first, the last and evenly between. */
+export function pickStaticSpotCheck(
+  frames: ReadonlySet<number>,
+  range?: { start: number; end: number },
+): Set<number> {
+  const inRange = [...frames]
+    .filter((frame) => !range || (frame >= range.start && frame < range.end))
+    .sort((left, right) => left - right);
+  const runs = contiguousStaticRuns(inRange).filter((run) => run.a >= 1 && run.b - run.a >= 2);
+  const count = Math.min(STATIC_SPOT_CHECK_RUNS, runs.length);
+  const picked = new Set<number>();
+  for (let index = 0; index < count; index++) {
+    const run = runs[count === 1 ? 0 : Math.round((index * (runs.length - 1)) / (count - 1))]!;
+    const end = Math.min(run.b, run.a + STATIC_SPOT_CHECK_FRAMES - 1);
+    for (let frame = run.a; frame <= end; frame++) picked.add(frame);
+  }
+  return picked;
+}
+
+export interface SharedStaticDedupDependencies {
+  openVerificationPage?: (session: CaptureSession) => Promise<Page>;
+}
+
+export type StaticDedupClaim =
+  | { kind: "verify"; settle: (frames: readonly number[] | null) => void }
+  | { kind: "reuse"; check: Promise<readonly number[] | null> };
+
+/** The first session for a key verifies and must settle; later sessions with that key reuse its check. */
+export function claimStaticDedupCheck(session: CaptureSession): StaticDedupClaim | undefined {
+  const key = staticDedupMemoKey(session);
+  const memo = session.options.staticDedupMemo;
+  if (!key || !memo) return undefined;
+  const checks = (memo.checks ??= new Map());
+  const pending = checks.get(key);
+  if (pending) return { kind: "reuse", check: pending };
+  let settle!: (frames: readonly number[] | null) => void;
+  checks.set(key, new Promise((resolve) => (settle = resolve)));
+  return { kind: "verify", settle };
+}
+
+/** What a verification gives later sessions: its fully verified frames, or null when it has none. */
+export function shareableStaticFrames(
+  verdict: StaticVerificationResult | null,
+): readonly number[] | null {
+  const usable =
+    verdict !== null &&
+    verdict.outcome !== "mismatch" &&
+    verdict.outcome !== "infrastructure" &&
+    verdict.outcome !== "unprofitable" &&
+    verdict.verifiedFrames.size > 0;
+  return usable ? [...verdict.verifiedFrames] : null;
+}
+
+/**
+ * Arms dedup from an earlier session's check of the same page. The shared frames are narrowed to this
+ * session's own prediction and spot-checked; any failure turns dedup off for this session only.
+ */
+export async function armFromSharedStaticDedup(
+  session: CaptureSession,
+  sharedFrames: readonly number[] | null,
+  predicted: ReadonlySet<number>,
+  fps: number,
+  logInitPhase: (phase: string) => void,
+  dependencies: SharedStaticDedupDependencies = {},
+): Promise<void> {
+  if (!sharedFrames) {
+    session.staticDedupSkipReason = "verification_failed";
+    logInitPhase(
+      "static-frame dedup: disabled (an earlier session of this render could not verify it)",
+    );
+    return;
+  }
+  const frames = new Set(sharedFrames.filter((frame) => predicted.has(frame)));
+  const spot = pickStaticSpotCheck(frames, session.options.staticDedupFrameRange);
+  if (spot.size === 0) {
+    session.staticDedupSkipReason = "ineligible";
+    logInitPhase("static-frame dedup: disabled (no shared static run in this session's frames)");
+    return;
+  }
+  const openPage = dependencies.openVerificationPage ?? createStaticVerificationPage;
+  let page: Page | undefined;
+  let verdict: StaticVerificationResult | undefined;
+  try {
+    page = await openPage(session);
+    verdict = await verifyStaticFramesSafe(session, page, spot, fps, 1);
+  } catch {
+    verdict = undefined;
+  } finally {
+    await page?.close().catch(() => {});
+  }
+  if (verdict?.outcome !== "verified" || verdict.verifiedFrames.size !== spot.size) {
+    session.staticDedupSkipReason = "verification_failed";
+    const at = verdict?.badFrame === undefined ? "" : ` at frame ${verdict.badFrame}`;
+    logInitPhase(
+      `static-frame dedup: disabled (spot check of the shared set: ${verdict?.outcome ?? "infrastructure"}${at})`,
+    );
+    return;
+  }
+  session.staticDedupVerification = verdict;
+  session.staticFrames = frames;
+  logInitPhase(
+    `static-frame dedup: ${frames.size}/${predicted.size} predicted frame(s) reusable (shared check, ` +
+      `spot check ${spot.size} frame(s), screenshots=${verdict.stats.screenshots}, elapsedMs=${verdict.stats.elapsedMs})`,
+  );
+}
+
 /**
  * Arm static-frame dedup for this render (default-on; opt out with HF_STATIC_DEDUP=false).
  * Runs at init in normal DOM state so the verification screenshots are valid. Predicts
@@ -4381,6 +4514,36 @@ async function armStaticDedup(
     );
     return;
   }
+  const claim = claimStaticDedupCheck(session);
+  if (claim?.kind === "reuse") {
+    await armFromSharedStaticDedup(
+      session,
+      await claim.check,
+      stats.staticFrameSet,
+      fps,
+      logInitPhase,
+    );
+    return;
+  }
+  // Every exit settles the claim, so sessions waiting on this check never hang.
+  let shared: StaticVerificationResult | null = null;
+  try {
+    await verifyAndArmStaticDedup(session, stats, fps, samples, logInitPhase, (verdict) => {
+      shared = verdict;
+    });
+  } finally {
+    claim?.settle(shareableStaticFrames(shared));
+  }
+}
+
+async function verifyAndArmStaticDedup(
+  session: CaptureSession,
+  stats: Awaited<ReturnType<typeof computeStaticFrameSet>>,
+  fps: number,
+  samples: number,
+  logInitPhase: (phase: string) => void,
+  onVerdict: (verdict: StaticVerificationResult) => void,
+): Promise<void> {
   let verificationPage: Page | undefined;
   let verdict: StaticVerificationResult;
   try {
@@ -4400,6 +4563,7 @@ async function armStaticDedup(
     await verificationPage?.close().catch(() => {});
   }
   session.staticDedupVerification = verdict;
+  onVerdict(verdict);
   if (verdict.outcome === "mismatch" || verdict.outcome === "infrastructure") {
     session.staticDedupSkipReason = "verification_failed";
     logInitPhase(
