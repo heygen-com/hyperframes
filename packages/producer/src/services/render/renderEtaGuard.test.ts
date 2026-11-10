@@ -1,17 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RenderTooSlowError, checkRenderEta, startRenderEtaGuard } from "./renderEtaGuard.js";
+import {
+  RenderTooSlowError,
+  checkCalibratedRenderEta,
+  checkRenderEta,
+  startRenderEtaGuard,
+} from "./renderEtaGuard.js";
 
 const RENDER_TOO_SLOW = "RENDER_TOO_SLOW";
 
 describe("checkRenderEta", () => {
   const base = { maxRenderMs: 100_000, elapsedMs: 0, framesCompleted: 0, totalFrames: 100 };
 
-  it("passes at the 1.2x margin and fails just over it", () => {
-    expect(checkRenderEta("capture", { ...base, msPerFrame: 1_200 })).toBeUndefined();
-    const error = checkRenderEta("capture", { ...base, msPerFrame: 1_201 });
+  it("passes at the 2x margin and fails just over it", () => {
+    expect(checkRenderEta("capture", { ...base, msPerFrame: 2_000 })).toBeUndefined();
+    const error = checkRenderEta("capture", { ...base, msPerFrame: 2_001 });
     expect(error).toBeInstanceOf(RenderTooSlowError);
     expect(error?.message).toMatch(/^render too slow:/);
-    expect(error?.publicMetadata).toMatchObject({ stage: "capture", etaMs: 120_100 });
+    expect(error?.publicMetadata).toMatchObject({ stage: "capture", etaMs: 200_100 });
     // The producer server reads these off the error to build the wire envelope.
     expect(error?.code).toBe(RENDER_TOO_SLOW);
     expect(error?.owner).toBe("user");
@@ -20,7 +25,7 @@ describe("checkRenderEta", () => {
 
   it("counts time already spent", () => {
     expect(
-      checkRenderEta("capture", { ...base, elapsedMs: 30_000, msPerFrame: 1_000 }),
+      checkRenderEta("capture", { ...base, elapsedMs: 110_000, msPerFrame: 1_000 }),
     ).toBeInstanceOf(RenderTooSlowError);
   });
 
@@ -44,7 +49,7 @@ describe("checkRenderEta", () => {
         msPerFrame: 784 / 4,
       }),
     ).toBeUndefined();
-    // 570 frames, 1 worker, p95 15.8 s: 150 min, caught before capture.
+    // 570 frames, 1 worker, 15.8 s a frame: 160 min, so it runs to the attempt limit as before.
     expect(
       checkRenderEta("capture_calibration", {
         maxRenderMs: budget,
@@ -53,7 +58,59 @@ describe("checkRenderEta", () => {
         totalFrames: 570,
         msPerFrame: 15_800 / 1,
       }),
+    ).toBeUndefined();
+    // Twice as many frames at that cost: over 5 h, caught before capture.
+    expect(
+      checkRenderEta("capture_calibration", {
+        maxRenderMs: budget,
+        elapsedMs: 600_000,
+        framesCompleted: 0,
+        totalFrames: 1_140,
+        msPerFrame: 15_800 / 1,
+      }),
     ).toBeInstanceOf(RenderTooSlowError);
+  });
+});
+
+describe("checkCalibratedRenderEta", () => {
+  const budget = { maxRenderMs: 5_100_000, elapsedMs: 15_000 };
+
+  it("lets a render through whose slowest calibration frame alone would refuse it", () => {
+    // One slow calibration frame among fast ones: the slowest predicts about 3 h, the typical one under 1 h.
+    const input = { maxRenderMs: 5_100_000, elapsedMs: 33_000, totalFrames: 1_800, workerCount: 1 };
+    expect(checkCalibratedRenderEta({ ...input, estimate: { medianMs: 1_421 } })).toBeUndefined();
+    expect(
+      checkRenderEta("capture_calibration", { ...input, framesCompleted: 0, msPerFrame: 5_772 }),
+    ).toBeInstanceOf(RenderTooSlowError);
+  });
+
+  it("lets through a long many-worker render whose typical frame fits the budget", () => {
+    const input = {
+      maxRenderMs: 5_100_000,
+      elapsedMs: 438_000,
+      totalFrames: 61_092,
+      workerCount: 6,
+    };
+    expect(checkCalibratedRenderEta({ ...input, estimate: { medianMs: 613 } })).toBeUndefined();
+  });
+
+  it("still refuses a render that would take hours on its typical frame", () => {
+    const tooSlow = checkCalibratedRenderEta({
+      ...budget,
+      totalFrames: 7_890,
+      workerCount: 1,
+      estimate: { medianMs: 1_905 },
+    });
+    expect(tooSlow?.publicMetadata).toMatchObject({
+      stage: "capture_calibration",
+      totalFrames: 7_890,
+    });
+  });
+
+  it("skips the check without a calibration estimate", () => {
+    expect(
+      checkCalibratedRenderEta({ ...budget, totalFrames: 2_145, workerCount: 1 }),
+    ).toBeUndefined();
   });
 });
 
