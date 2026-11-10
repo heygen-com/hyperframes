@@ -68,7 +68,7 @@ jobs:
         working-directory: packages/player
         run: |
           sw_vers
-          for pass in 1 2 3; do echo "[probe] pass $pass"; bun run tests/perf/browsers/run.ts --browsers safari --runs 2 || true; done
+          bun run tests/perf/browsers/run.ts --browsers safari --fixtures heavy-alpha-webm --runs 25 || true
 
       - name: Upload results
         if: always()
