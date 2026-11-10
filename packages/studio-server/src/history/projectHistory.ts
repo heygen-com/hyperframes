@@ -28,7 +28,7 @@ import {
   affectsProjectSignature,
   listProjectFiles,
 } from "../helpers/projectSignature.js";
-import { openBlobStore, readBlob, type BlobStore } from "./blobStore.js";
+import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
@@ -666,7 +666,7 @@ class Engine {
    * Takes in every write since the last sweep and files each change to its writer. ponytail: always the whole
    * project (a stat per file, a hash only when the stat moved); per-path sweeps if projects reach tens of thousands.
    */
-  async sweep(): Promise<void> {
+  async sweep(asItStands: "every" | ReadonlySet<string> = new Set()): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
     if (this.whereFolder() !== "here") return;
     const sweptAt = this.now();
@@ -693,8 +693,20 @@ class Engine {
       ...removed,
       ...seen.map((file) => ({ at: appearedAt(file), path: file.path, file })),
     ].sort((a, b) => a.at - b.at);
+    // An emptied file may be a save not yet written; a window's write, a claimed path and an undo take it as it is.
+    const waitsForQuiet = (path: string, file: ListedFile, at: number) =>
+      file.size === 0 &&
+      asItStands !== "every" &&
+      !asItStands.has(path) &&
+      isSettling(file, sweptAt) &&
+      !this.windows.some((open) => takesWrite(open, at));
     let changed = false;
+    let waiting = false;
     for (const { at, path, file } of events) {
+      if (file && waitsForQuiet(path, file, at)) {
+        waiting = true;
+        continue;
+      }
       if (file) {
         changed = (await this.observe(path, statKey(file, sweptAt), at)) || changed;
         continue;
@@ -706,9 +718,10 @@ class Engine {
       changed = true;
     }
     if (changed) this.saveStatCache();
+    if (waiting) this.sweepIn(SETTLE_MS);
   }
 
-  /** The file's hash once copied in; null when it was removed before the copy (the next sweep records that). */
+  /** The file's hash once copied in; null when it was removed or kept changing (the next sweep records that). */
   async storeIfPresent(path: string): Promise<string | null> {
     try {
       const abs = join(this.dir, path);
@@ -753,7 +766,7 @@ class Engine {
     paths: readonly string[],
     { coalesceKey, idleMs, overwrote = {}, targets = [] }: ClaimOptions,
   ): Promise<{ id: string } | null> {
-    await this.sweep();
+    await this.sweep(new Set(paths.map((path) => this.logPath(path))));
     const taken = await this.takeClaimed(who, paths, overwrote);
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
@@ -1000,7 +1013,7 @@ class Engine {
 
   /** Before an operation or a window: every write is filed and every pending change committed, in write order. */
   async settle(): Promise<void> {
-    await this.sweep();
+    await this.sweep("every");
     await this.commitClaim();
     await this.commitPending();
   }
@@ -1010,10 +1023,15 @@ class Engine {
     const absolute = resolve(this.dir, path);
     if (this.notedTimer || !affectsProjectSignature(this.dir, absolute)) return;
     if (!isHistoryPath(relative(this.dir, absolute).split(sep).join("/"))) return;
+    this.sweepIn(20);
+  }
+
+  sweepIn(ms: number): void {
+    if (this.notedTimer || this.closed) return;
     this.notedTimer = setTimeout(() => {
       this.notedTimer = null;
       this.background(() => this.sweep());
-    }, 20);
+    }, ms);
     this.notedTimer.unref?.();
   }
 
