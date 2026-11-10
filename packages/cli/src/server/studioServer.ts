@@ -94,6 +94,8 @@ import {
 } from "../browser/gpuPolicy.js";
 import { loadSharpInBackground } from "../utils/optionalPackages.js";
 
+export { originForListeningAddress } from "@hyperframes/studio-server";
+
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
@@ -605,6 +607,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     runtimeUrl: "/api/runtime.js",
     gsapLocalRoot: gsapVendorDir ? GSAP_LOCAL_ROOT : undefined,
+    serverOrigin: () => options.origin?.(),
 
     rendersDir: () => join(projectDir, "renders"),
 

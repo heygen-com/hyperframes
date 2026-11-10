@@ -229,6 +229,8 @@ export interface StudioApiAdapter {
     jobId: string;
   }) => MediaProcessingJobState;
 
+  serverOrigin?: () => string | undefined;
+
   /** Optional: generate a thumbnail at the route's explicit output dimensions. */
   generateThumbnail?: (opts: {
     project: ResolvedProject;

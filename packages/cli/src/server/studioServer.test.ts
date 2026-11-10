@@ -795,6 +795,14 @@ describe("host guarding on identity-bearing responses", () => {
     expect(await res.text()).not.toContain('distinctId":"');
   });
 
+  it("gives the thumbnail browser the origin it listens on, not the request's", async () => {
+    let listening: string | undefined;
+    server = createStudioServer({ projectDir: tmpProject(), origin: () => listening });
+    expect(server.adapter.serverOrigin?.()).toBeUndefined();
+    listening = "http://127.0.0.1:3002";
+    expect(server.adapter.serverOrigin?.()).toBe("http://127.0.0.1:3002");
+  });
+
   it("serves the identity endpoint on a loopback Host", async () => {
     server = createStudioServer({ projectDir: tmpProject() });
     const res = await server.app.request("/api/telemetry-identity", {

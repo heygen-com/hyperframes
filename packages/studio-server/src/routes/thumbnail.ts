@@ -31,6 +31,7 @@ import {
 } from "../helpers/safePath.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
 import { PREVIEW_CAPTURE_PARAM } from "./preview.js";
+import { thumbnailPreviewOrigin } from "../helpers/serverOrigin.js";
 
 const THUMBNAIL_CACHE_VERSION = "v5";
 const THUMBNAIL_MAX_OUTPUT_WIDTH = 240;
@@ -186,7 +187,9 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const motion = manifestKey(join(project.dir, STUDIO_MOTION_PATH));
     sourceMtime = Math.max(sourceMtime, manualEdits.mtimeMs, motion.mtimeMs);
 
-    const projectUrl = `http://${c.req.header("host")}/api/projects/${encodeURIComponent(project.id)}`;
+    const origin = thumbnailPreviewOrigin(adapter.serverOrigin?.(), c.req.header("host"));
+    if (!origin) return c.json({ error: "thumbnail needs a loopback Host" }, 400);
+    const projectUrl = `${origin}/api/projects/${encodeURIComponent(project.id)}`;
     const previewPath =
       compPath === "index.html"
         ? `${projectUrl}/preview`
