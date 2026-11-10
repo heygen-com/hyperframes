@@ -170,7 +170,7 @@ import {
 import { runCaptureSegmentedStage } from "./render/stages/captureSegmentedStage.js";
 import {
   RenderTooSlowError,
-  checkRenderEta,
+  checkCalibratedRenderEta,
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
@@ -4257,6 +4257,7 @@ async function executeRenderPipeline(input: {
         forceScreenshot: captureForceScreenshot,
         multiplier: outcome.calibration?.estimate.multiplier ?? null,
         p95Ms: outcome.calibration?.estimate.p95Ms ?? null,
+        medianMs: outcome.calibration?.estimate.medianMs ?? null,
       });
     } else {
       observability.checkpoint("capture_calibration", "skipped", {
@@ -4393,12 +4394,12 @@ async function executeRenderPipeline(input: {
 
     // No calibration estimate (explicit workers, short or forced-screenshot renders) skips the
     // pre-capture check; the measured-rate guard below still covers capture.
-    const calibratedTooSlow = checkRenderEta("capture_calibration", {
+    const calibratedTooSlow = checkCalibratedRenderEta({
       maxRenderMs: job.config.maxRenderMs,
       elapsedMs: Date.now() - pipelineStart,
-      framesCompleted: 0,
       totalFrames,
-      msPerFrame: (captureCalibration?.estimate.p95Ms ?? 0) / workerCount,
+      estimate: captureCalibration?.estimate,
+      workerCount,
     });
     if (calibratedTooSlow) throw calibratedTooSlow;
     execution.defer(

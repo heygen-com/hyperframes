@@ -1681,6 +1681,18 @@ describe("estimateMeasuredCaptureCostMultiplier", () => {
     expect(estimate.reasons).toEqual(["calibration-p95=2400ms"]);
   });
 
+  it("records the typical calibration frame next to the slowest", () => {
+    const estimate = estimateMeasuredCaptureCostMultiplier(
+      [92, 1243, 1183, 983, 717].map((captureTimeMs, i) => ({
+        frameIndex: i * 100,
+        captureTimeMs,
+      })),
+    );
+
+    expect(estimate.p95Ms).toBe(1243);
+    expect(estimate.medianMs).toBe(983);
+  });
+
   it("keeps fast calibration samples at baseline cost", () => {
     const estimate = estimateMeasuredCaptureCostMultiplier([
       { frameIndex: 0, captureTimeMs: 120 },

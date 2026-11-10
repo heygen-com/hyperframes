@@ -34,7 +34,10 @@ import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 export interface CaptureCostEstimate {
   multiplier: number;
   reasons: string[];
+  /** Slowest calibration frame; sizes the worker count. */
   p95Ms?: number;
+  /** Typical calibration frame; predicts the render's length. */
+  medianMs?: number;
 }
 
 export interface CaptureCalibrationSample {
@@ -100,12 +103,14 @@ function combineCaptureCostEstimates(
       multiplier: staticCost.multiplier,
       reasons: [...staticCost.reasons, ...measuredCost.reasons],
       p95Ms: measuredCost.p95Ms,
+      medianMs: measuredCost.medianMs,
     };
   }
   return {
     multiplier: measuredCost.multiplier,
     reasons: [...measuredCost.reasons, ...staticCost.reasons],
     p95Ms: measuredCost.p95Ms,
+    medianMs: measuredCost.medianMs,
   };
 }
 
@@ -228,6 +233,12 @@ export function estimateMeasuredCaptureCostMultiplier(
     return { multiplier: 1, reasons: [] };
   }
   const p95Ms = Math.round(p95Sample.captureTimeMs);
+  const mid = sorted.length / 2;
+  const medianMs = Math.round(
+    sorted.length % 2 === 1
+      ? sorted[Math.floor(mid)]!.captureTimeMs
+      : (sorted[mid - 1]!.captureTimeMs + sorted[mid]!.captureTimeMs) / 2,
+  );
   const multiplier = Math.min(
     MAX_MEASURED_CAPTURE_COST_MULTIPLIER,
     Math.max(1, Math.round((p95Ms / CAPTURE_CALIBRATION_TARGET_MS) * 100) / 100),
@@ -237,6 +248,7 @@ export function estimateMeasuredCaptureCostMultiplier(
     multiplier,
     reasons: multiplier > 1 ? [`calibration-p95=${p95Ms}ms`] : [],
     p95Ms,
+    medianMs,
   };
 }
 
