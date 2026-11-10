@@ -10,7 +10,7 @@ import {
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
-import { heldPosters, swappedElements } from "./proxySrc";
+import { heldPosters, swappedElements, unproxiedSrc } from "./proxySrc";
 import { restartPlaybackHealth } from "./playbackHealth";
 import { failedCopyElements, noteCopy, setCopyReportingLevel } from "./previewCopies";
 import { waitForServedProxy } from "./proxyWait";
@@ -523,7 +523,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     return;
   }
   noteCopy(el, "ready", null, light);
-  swappedElements.set(el, originalAttr);
+  swappedElements.set(el, unproxiedSrc(el));
   if (lightFacts) lightElements.add(el);
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
   // The shown size may have grown while this copy was being made.

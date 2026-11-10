@@ -1,8 +1,21 @@
 /** Media elements swapped to their proxy, each with the src attribute it had before the swap. */
 export const swappedElements = new WeakMap<Element, string | null>();
 
+/** Media elements the runtime opened at their in-point: the src the author wrote and the one written in its place. */
+const openedAtInPoint = new WeakMap<Element, { authored: string; written: string }>();
+
+export function recordOpenedAtInPoint(el: Element, authored: string, written: string): void {
+  openedAtInPoint.set(el, { authored, written });
+}
+
+/** True while the src is still the one the runtime wrote: a script or binding that sets another ends it. */
+export function isOpenedAtInPoint(el: Element): boolean {
+  return openedAtInPoint.get(el)?.written === el.getAttribute("src");
+}
+
 export function unproxiedSrc(el: Element): string | null {
-  return swappedElements.has(el) ? (swappedElements.get(el) ?? null) : el.getAttribute("src");
+  if (swappedElements.has(el)) return swappedElements.get(el) ?? null;
+  return isOpenedAtInPoint(el) ? openedAtInPoint.get(el)!.authored : el.getAttribute("src");
 }
 
 /** Videos showing a still of their last frame as poster across a copy swap: the poster they had before, and when. */
