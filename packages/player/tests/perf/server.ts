@@ -156,6 +156,7 @@ function applyCacheHeaders(res: Response, noCache: boolean): Response {
   return res;
 }
 
+let openMedia = 0;
 export function startServer(options: ServeOptions = {}): RunningServer {
   const noCache = options.noCache ?? false;
 
@@ -190,8 +191,14 @@ export function startServer(options: ServeOptions = {}): RunningServer {
 
       if (path.startsWith("/fixtures/")) {
         const rel = path.replace(/^\/fixtures\//, "");
-        if (rel.includes("_media/"))
-          console.log(`[probe] serve ${Date.now()} ${rel} range=${req.headers.get("range")}`);
+        if (rel.includes("_media/")) {
+          openMedia++;
+          console.log(`[probe] serve ${Date.now()} ${rel} range=${req.headers.get("range")} open=${openMedia}`);
+          req.signal.addEventListener("abort", () => {
+            openMedia--;
+            console.log(`[probe] abort ${Date.now()} ${rel} open=${openMedia}`);
+          });
+        }
         const filePath = join(PATHS.fixturesDir, rel);
         if (!filePath.startsWith(PATHS.fixturesDir)) {
           return new Response("Forbidden", { status: 403 });
