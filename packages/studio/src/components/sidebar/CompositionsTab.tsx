@@ -36,13 +36,7 @@ const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
 const CARD_W = 80;
 const CARD_H = 45;
 
-/**
- * The hover preview runs the composition's own scripts, so it gets an opaque
- * origin: no `allow-same-origin`. The card never reads into the frame; it
- * drives playback and learns the stage size over the runtime's postMessage
- * bridge only.
- */
-const COMPOSITION_HOVER_PREVIEW_SANDBOX = "allow-scripts";
+const OPAQUE_ORIGIN_SCRIPTS_ONLY_SANDBOX = "allow-scripts";
 
 export function resolveCompositionPreviewScale(input: {
   cardWidth: number;
@@ -85,8 +79,9 @@ function positiveDimension(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-/** Stage size from the runtime's `timeline` message, or null for any other message. */
-function hoverPreviewStageFromMessage(data: unknown): { width: number; height: number } | null {
+function stageSizeFromRuntimeTimelineMessage(
+  data: unknown,
+): { width: number; height: number } | null {
   if (typeof data !== "object" || data === null) return null;
   const message = data as Record<string, unknown>;
   if (message.source !== "hf-preview" || message.type !== "timeline") return null;
@@ -96,8 +91,7 @@ function hoverPreviewStageFromMessage(data: unknown): { width: number; height: n
   };
 }
 
-/** Muted first, so a card preview never sounds, then play. */
-function playHoverPreview(iframe: HTMLIFrameElement | null): void {
+function muteThenPlayOverRuntimeBridge(iframe: HTMLIFrameElement | null): void {
   if (!iframe) return;
   setPreviewMediaMuted(iframe, true);
   postRuntimeControlMessage(iframe.contentWindow, "play");
@@ -214,14 +208,14 @@ function CompCard({
     const onRuntimeMessage = (event: MessageEvent) => {
       const frame = iframeRef.current;
       if (!frame || event.source !== frame.contentWindow) return;
-      // "ready" means the runtime's control listener is installed; it is posted
-      // again after every reload of the frame.
-      if (event.data?.source === "hf-preview" && event.data.type === "ready") {
+      const runtimeControlListenerInstalled =
+        event.data?.source === "hf-preview" && event.data.type === "ready";
+      if (runtimeControlListenerInstalled) {
         postFrameDisplayScale(frame);
-        playHoverPreview(frame);
+        muteThenPlayOverRuntimeBridge(frame);
         return;
       }
-      const stage = hoverPreviewStageFromMessage(event.data);
+      const stage = stageSizeFromRuntimeTimelineMessage(event.data);
       if (!stage) return;
       setStageSize((current) =>
         current.width === stage.width && current.height === stage.height ? current : stage,
@@ -297,7 +291,7 @@ function CompCard({
           <iframe
             ref={iframeRef}
             src={previewUrl}
-            sandbox={COMPOSITION_HOVER_PREVIEW_SANDBOX}
+            sandbox={OPAQUE_ORIGIN_SCRIPTS_ONLY_SANDBOX}
             className="absolute border-none pointer-events-none"
             style={{
               transformOrigin: "0 0",
