@@ -341,6 +341,41 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
     expect(v.preload).not.toBe("none");
   });
 
+  it("leaves the preload of a small file's clip parsed before the runtime as authored", async () => {
+    sizeOf(5_600_000);
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    const authored = v.preload;
+    deferMediaUntilDue();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.preload).toBe(authored);
+  });
+
+  it("holds a later clip of a long file parsed before the runtime", async () => {
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    deferMediaUntilDue();
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+  });
+
+  it.each([
+    ["playing", "paused", false],
+    ["seeking", "seeking", true],
+  ])(
+    "leaves the src of a later clip already %s when its file's size arrives",
+    async (_n, prop, value) => {
+      document.body.insertAdjacentHTML("beforeend", later());
+      const v = document.body.lastElementChild as HTMLVideoElement;
+      const authored = v.getAttribute("src");
+      Object.defineProperty(v, prop, { value, configurable: true });
+      await new Promise((r) => setTimeout(r, 10));
+      expect(v.getAttribute("src")).toBe(authored);
+    },
+  );
+
   it("holds a later clip again when it is released after playing", async () => {
     const v = await added(later());
     await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());

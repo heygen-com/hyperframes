@@ -187,11 +187,17 @@ const holdable = (el: HTMLMediaElement, src: string) =>
   !el.loop &&
   !el.querySelector("source");
 
-function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean, opened: () => void): void {
+function openLongSourceAtInPoint(
+  el: HTMLMediaElement,
+  later: boolean,
+  opened: () => void,
+  notLong?: () => void,
+): void {
   const src = el.getAttribute("src");
-  if (!isWebKit() || !inPlayerFrame(document) || !src) return;
+  if (!isWebKit() || !inPlayerFrame(document) || !src) return notLong?.();
   void bytesOfSource(src).then((bytes) => {
-    if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
+    if (bytes === null || bytes < LONG_SOURCE_BYTES) return notLong?.();
+    if (el.getAttribute("src") !== src || !el.paused || el.seeking) return;
     if (later && holdable(el, src)) return holdUntilDue(el);
     openAtInPoint(el);
     opened();
@@ -207,14 +213,15 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral?.disconnect();
   win.__hfMediaDeferral = undefined;
   if (!defersMedia()) return;
-  const defer = (el: Element, startInFilm: (el: Element) => number) => {
+  const defer = (el: Element, startInFilm: (el: Element) => number, parsedEarly = false) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
     const authoredPreload = media.preload;
     const later = startInFilm(el) > 0;
     if (later) media.preload = "none";
-    openLongSourceAtInPoint(media, later, () => (media.preload = authoredPreload));
+    const restore = () => (media.preload = authoredPreload);
+    openLongSourceAtInPoint(media, later, restore, later && parsedEarly ? restore : undefined);
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
@@ -229,6 +236,6 @@ export function deferMediaUntilDue(): void {
   win.__hfMediaDeferral.observe(document.documentElement, { childList: true, subtree: true });
   if (isWebKit()) {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
-    for (const media of document.querySelectorAll("video, audio")) defer(media, startInFilm);
+    for (const media of document.querySelectorAll("video, audio")) defer(media, startInFilm, true);
   }
 }
