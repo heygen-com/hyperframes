@@ -143,9 +143,13 @@ function devProjectApi(): Plugin {
 
       let _api: { fetch: (req: Request) => Promise<Response> } | null = null;
       let _studioServerModule: {
-        createStudioApi: (adapter: ReturnType<typeof createViteAdapter>) => {
+        createStudioApi: (
+          adapter: ReturnType<typeof createViteAdapter>,
+          options?: { allowedHosts?: readonly string[] },
+        ) => {
           fetch: (req: Request) => Promise<Response>;
         };
+        previewAllowedHostsFromEnv: () => string[];
         identifyFileWrite: (
           path: string,
           expectedVersion: string,
@@ -170,6 +174,7 @@ function devProjectApi(): Plugin {
             "fileContentVersion",
             "affectsPreview",
             "openProjectHistory",
+            "previewAllowedHostsFromEnv",
           ] as const) {
             if (typeof mod[name] !== "function") {
               throw new Error(`@hyperframes/studio-server dev module is missing ${name}()`);
@@ -183,7 +188,11 @@ function devProjectApi(): Plugin {
             // id and real root before the signature cache starts watching them.
             onResolveProject: (project) => watchedProjects.set(project.dir, project.id),
           });
-          _api = mod.createStudioApi(adapter);
+          // Same env var as the CLI preview server: extra hosts whose
+          // writes the API accepts (Codespaces, tunnels).
+          _api = mod.createStudioApi(adapter, {
+            allowedHosts: mod.previewAllowedHostsFromEnv(),
+          });
         }
         return _api;
       };
