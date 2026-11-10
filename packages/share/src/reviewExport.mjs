@@ -710,18 +710,23 @@ async function sendVersion(r, report, source, id, state) {
     const done = await watch(r, id, uploaded, size, report, clock);
     return finishRun(r, state, pending, id, done, first);
   } catch (error) {
-    return failedSend(r.projectPath, state, error);
+    return failedSend(r.projectPath, state, pending, id, error);
   }
 }
 
-/** @param {string} dir @param {VersionRecord} state @param {unknown} error */
-async function failedSend(dir, state, error) {
+/** @param {string} dir @param {VersionRecord} state
+ * @param {NonNullable<VersionRecord["pending"]>} pending @param {string} id @param {unknown} error */
+async function failedSend(dir, state, pending, id, error) {
   const refused = permanentRefusal(error);
   // An earlier create can still be in flight when the replay is refused.
   const unansweredCreate = state.pending?.unanswered === true && state.pending.videoId === null;
-  if (refused && !unansweredCreate) await writeState(dir, { ...state, pending: null });
-  console.error("[review] version failed:", error);
-  return said(error, refused && unansweredCreate);
+  const failure = said(error, refused && unansweredCreate);
+  await writeState(dir, {
+    ...state,
+    pending: refused && !unansweredCreate ? null : state.pending,
+    failure: { ...failure, projectId: id, exportKey: await failedExportKey(dir, pending) },
+  });
+  return failure;
 }
 
 /** @param {Required<VersionRequest>} r @param {NonNullable<VersionRecord["pending"]>} pending @param {ExportRequest} fresh */
@@ -786,7 +791,6 @@ export async function addVersion(request) {
     if (kept) failures.set(key, { ...failure, exportKey: exportKeyOf(r.projectPath) });
     return failure?.sentence ?? null;
   } catch (error) {
-    console.error("[review] version failed:", error);
     const sentence =
       error instanceof SharingStateError ? error.message : "Couldn't add this version. Try again.";
     failures.set(key, {

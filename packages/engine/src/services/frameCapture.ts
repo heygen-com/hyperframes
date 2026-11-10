@@ -1463,8 +1463,10 @@ async function finalizeDrawElementInit(
 export async function completeDeferredDrawElementInit(session: CaptureSession): Promise<void> {
   if (!session.deInitDeferred || !session.onBeforeCapture) return;
   const page = session.page;
-  const logInitPhase = (phase: string) =>
-    console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  const logInitPhase = (phase: string) => {
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  };
   await finalizeDrawElementInit(session, page, logInitPhase, {
     transparent: capturesAlpha(session.options),
     forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
@@ -3163,7 +3165,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   const initStart = Date.now();
   const logInitPhase = (phase: string) => {
-    console.error(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
   };
   const gotoEntryPage = async (): Promise<void> => {
     appendBrowserDiagnostic(

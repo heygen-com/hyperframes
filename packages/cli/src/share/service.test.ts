@@ -237,6 +237,7 @@ describe("share operation consent and identity", () => {
     mocks.status.mockResolvedValue(shared);
     mocks.project.mockResolvedValue({ latest_ready_version_id: null });
     mocks.version.mockResolvedValue({ last: null, source: "stale" });
+    mocks.pending.mockResolvedValue({ projectId: "project", videoId: "upload" });
     await expect(createShareService("/project").run({ action: "share" })).rejects.toThrow(
       "--update",
     );
@@ -409,3 +410,16 @@ it.each([null, "previous-version"])(
     expect(mocks.add).not.toHaveBeenCalled();
   },
 );
+
+it("retries an uncreated first version after refusal even when local files changed", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.project.mockResolvedValue({ latest_ready_version_id: null });
+  mocks.version.mockResolvedValue({ last: null, source: "stale", failure: "Sharing blocked." });
+  mocks.add.mockResolvedValue("Sharing blocked.");
+  await expect(
+    createShareService("/project").run({ action: "share", audience: "public" }),
+  ).rejects.toThrow("Sharing blocked.");
+  expect(mocks.render).toHaveBeenCalledOnce();
+  expect(mocks.add).toHaveBeenCalledOnce();
+  expect(mocks.create).not.toHaveBeenCalled();
+});

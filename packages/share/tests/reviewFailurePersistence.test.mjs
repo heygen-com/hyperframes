@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { test } from "node:test";
-import { addVersion, bindShareHost, refreshReviewExport } from "../src/index.mjs";
+import { addVersion, bindShareHost, refreshReviewExport, ReviewFailed } from "../src/index.mjs";
 
 const run = promisify(execFile);
 const moduleUrl = new URL("../src/index.mjs", import.meta.url).href;
@@ -194,3 +194,40 @@ test("malformed optional failure leaves a valid pending upload and previous vers
   assert.equal(value.last.exportedAt, "before");
   assert.deepEqual(JSON.parse(await readFile(file, "utf8")).pending, pending);
 });
+
+for (const update of [false, true]) {
+  test(`registration 403 for ${update ? "update" : "first share"} persists across processes and allows retry`, async (t) => {
+    const dir = await fixture(t);
+    const file = join(dir, ".hyperframes", "review-export.json");
+    const last = update
+      ? { projectId: "project", versionId: "old", fingerprint: "old", exportedAt: "2026-11-01" }
+      : null;
+    await writeFile(file, JSON.stringify({ pending: null, last }));
+    const request = {
+      projectPath: dir,
+      projectId: "project",
+      title: "Video",
+      probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    };
+    const failure = await addVersion({
+      ...request,
+      client: {
+        createExport: async () => {
+          throw new ReviewFailed(403, "export_blocked");
+        },
+      },
+    });
+    assert.match(failure, /moderation strikes/);
+    const fresh = await readFromAnotherProcess(dir);
+    assert.equal(fresh.failure, failure);
+    assert.equal(fresh.retryable, false);
+    const saved = JSON.parse(await readFile(file, "utf8"));
+    assert.equal(saved.pending, null);
+    assert.deepEqual(saved.last, last);
+    assert.equal(
+      await addVersion({ ...request, client: { createExport: async () => ready } }),
+      null,
+    );
+    assert.equal((await readFromAnotherProcess(dir)).failure, null);
+  });
+}
