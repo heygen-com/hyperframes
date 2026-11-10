@@ -31,7 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, delimiter, dirname, join, relative, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
@@ -328,6 +328,7 @@ describe("findBrowser — cache resolution", () => {
       configurable: true,
     });
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     vi.doUnmock("node:fs");
     vi.doUnmock("node:os");
     vi.doUnmock("node:child_process");
@@ -355,29 +356,25 @@ describe("findBrowser — cache resolution", () => {
     expect(result).toEqual({ executablePath: HF_BINARY, source: "cache" });
   });
 
-  it("hides the Windows console used by the where lookup", async () => {
+  it("on Windows, skips a google-chrome.exe in the working directory and takes the PATH copy", async () => {
     Object.defineProperty(process, "platform", {
       value: "win32",
       configurable: true,
     });
-    installFsMocks({ existing: new Set() });
+    const project = join("/", "projects", "shared");
+    const tools = join("/", "tools", "chrome");
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    vi.stubEnv("PATH", [project, tools].join(delimiter));
+    const existing = installFsMocks({ existing: new Set([join(project, "google-chrome.exe")]) });
     installPuppeteerBrowsersMock();
-    const execSync = vi.fn((command: string) =>
-      command === "where google-chrome" ? "C:\\Chrome\\chrome.exe\n" : "",
-    );
-    vi.doMock("node:child_process", () => ({ execSync, spawnSync: vi.fn() }));
+    const { findSystemBrowser } = await import("./manager.js");
 
-    const { findBrowser } = await import("./manager.js");
-    const result = await findBrowser();
-
-    expect(result).toEqual({
-      executablePath: "C:\\Chrome\\chrome.exe",
+    expect(findSystemBrowser()).toBeUndefined();
+    existing.add(join(tools, "google-chrome.exe"));
+    expect(findSystemBrowser()).toEqual({
+      executablePath: join(tools, "google-chrome.exe"),
       source: "system",
     });
-    expect(execSync).toHaveBeenCalledWith(
-      "where google-chrome",
-      expect.objectContaining({ windowsHide: true }),
-    );
   });
 
   it("finds Chrome in the standard Windows Program Files location", async () => {

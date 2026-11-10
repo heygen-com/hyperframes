@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression coverage for a silent HYPERFRAMES_PYTHON override rejection:
@@ -73,6 +74,23 @@ describe("findPython / describeRejectedPythonOverride", () => {
       throw new Error(`unexpected call: ${cmd} ${args.join(" ")}`);
     });
     expect(findPython()).toBe("/usr/bin/python3");
+  });
+
+  it("findPython never runs a python that the lookup finds in the working directory", () => {
+    delete process.env.HYPERFRAMES_PYTHON;
+    vi.stubEnv("PATH", "");
+    const planted = join(process.cwd(), "python3");
+    execFileSyncMock.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === "which" || cmd === "where") return `${planted}\n`;
+      if (args[0] === "--version") return "Python 3.11.0";
+      throw new Error(`unexpected call: ${cmd} ${args.join(" ")}`);
+    });
+    try {
+      expect(findPython()).toBeUndefined();
+      expect(execFileSyncMock.mock.calls.some(([cmd]) => cmd === planted)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("findPython uses the override directly when it validates", () => {

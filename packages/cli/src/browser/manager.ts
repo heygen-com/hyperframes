@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { execSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import {
   browserPathFromEnv,
   managedChromeVersion,
@@ -286,25 +287,6 @@ const SYSTEM_CHROME_PATHS: ReadonlyArray<string> =
           "/usr/bin/chromium-browser",
         ];
 
-function whichBinary(name: string): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
-    const output = execSync(cmd, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-      windowsHide: true,
-    });
-    const first = output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    return first || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 // A caller-supplied browser, named by HYPERFRAMES_BROWSER_PATH or PRODUCER_HEADLESS_SHELL_PATH (the engine's
 // and the deploy docs' name). check, snapshot and compare honour it as render does; which name wins is
 // browserPathFromEnv's, so the engine launches what this resolved.
@@ -448,7 +430,7 @@ export function findSystemBrowser(): BrowserResult | undefined {
     }
   }
 
-  const fromWhich = whichBinary("google-chrome") ?? whichBinary("chromium");
+  const fromWhich = findTrustedExecutable("google-chrome") ?? findTrustedExecutable("chromium");
   if (fromWhich) {
     return { executablePath: fromWhich, source: "system" };
   }

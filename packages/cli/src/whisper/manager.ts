@@ -9,6 +9,7 @@ import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 const MODELS_DIR = hyperframesCacheDir("whisper", "models");
 const DEFAULT_MODEL = "small.en";
@@ -103,24 +104,6 @@ export function pinnedWhisperModel(model: string): ModelFile | undefined {
 
 // --- Find helpers -----------------------------------------------------------
 
-function whichBinary(name: string): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? "where" : "which";
-    const output = execFileSync(cmd, [name], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    const first = output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    return first || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function findFromEnv(): WhisperResult | undefined {
   const envPath = process.env["HYPERFRAMES_WHISPER_PATH"];
   if (envPath && existsSync(envPath)) {
@@ -131,7 +114,7 @@ function findFromEnv(): WhisperResult | undefined {
 
 function findFromSystem(): WhisperResult | undefined {
   // `whisper` is the OpenAI Python CLI; only whisper.cpp's binary accepts our flags.
-  const path = whichBinary("whisper-cli");
+  const path = findTrustedExecutable("whisper-cli");
   if (path) return { executablePath: path, source: "system" };
 
   // Check brew paths directly on macOS
@@ -268,16 +251,16 @@ export function getInstallInstructions(): string {
 }
 
 function hasBrew(): boolean {
-  return whichBinary("brew") !== undefined;
+  return findTrustedExecutable("brew") !== undefined;
 }
 
 function hasGit(): boolean {
-  const git = whichBinary("git");
+  const git = findTrustedExecutable("git");
   return git !== undefined && runsWithoutInstallPrompt(git);
 }
 
 function hasCmake(): boolean {
-  return whichBinary("cmake") !== undefined;
+  return findTrustedExecutable("cmake") !== undefined;
 }
 
 export async function ensureWhisper(options?: {
