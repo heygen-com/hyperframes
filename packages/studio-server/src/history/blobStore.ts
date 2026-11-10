@@ -23,10 +23,7 @@ import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
-  /**
-   * Copies the file in (a clone where it can, for all but small files) and returns its hash;
-   * null while it keeps changing.
-   */
+  /** Copies the file in (cloned where it can) and returns its hash; null while it keeps changing. */
   put(absPath: string): Promise<string | null>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
