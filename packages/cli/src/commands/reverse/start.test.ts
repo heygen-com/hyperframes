@@ -173,7 +173,10 @@ describe("reverse start", () => {
         plan: null,
         recorded: false,
         login_command: "npx hyperframes auth login",
-        next: expect.stringContaining("run `npx hyperframes auth login` now"),
+        // The reason to sign in comes before the sign-in, as words the agent can say as they are.
+        next: expect.stringMatching(
+          /"To rebuild this video.*HeyGen.*"[^]*Run `npx hyperframes auth login` now/,
+        ),
       },
     ],
     [

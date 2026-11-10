@@ -1,7 +1,8 @@
 # Opening a Reverse
 
 What the person reads at the start, and when credits run out mid-run. Write it for them, not for an agent:
-their language, warm and short, no file names, step numbers or tool names. You run every command except `billing`, which
+their language, warm and short, no file names, step numbers or tool names, and never a link to or quote from these
+instructions. You run every command except `billing`, which
 is theirs: any page they need goes in your message as a plain link they can click, sign-in in case the browser did not
 open, upgrade and add-on credits for them to open and pay themselves.
 
@@ -13,28 +14,31 @@ Also for you: `npx hyperframes reverse start <video> --dir <project>` prints the
 then ask `npx hyperframes auth status --json` and read its `hyperframes` field, never `user.subscription`, which is the HeyGen
 app's plan and does not unlock Reverse. `<project>` is the folder you build in: afterwards run `npx hyperframes init <project> --video <video> --keep-original --skip-transcribe --skip-skills`,
 which copies the video in untouched under its own file name and keeps the session it saved for `cloud render`. Keep the video out of `<project>` until then: `init`
-refuses a folder that already holds other files. Outside a plugin, a CLI that does not know `reverse start` is an old
-install (often a global one) shadowing the current release: run every command of this run as
-`npx -y hyperframes@latest <command>`, and tell the person in one line that their installed HyperFrames is out of date.
+refuses a folder that already holds other files. Outside a plugin, a CLI that does not know `reverse start`, or whose
+`reverse start` output has `_meta.updateAvailable: true`, is an old install (often a global one, which never updates
+itself when an agent runs it) shadowing the current release: run `reverse start` again and every later command of this
+run as `npx -y hyperframes@latest <command>`, and tell the person in one line that their installed HyperFrames is out of
+date (with the command in `_meta.updateNotice` when there is one), in your first message to them.
 Inside a plugin, its pinned CLI is the one that runs: if it does not know `reverse start`, stop before anything is paid
 for, and tell the person in one line that the HyperFrames plugin needs updating to reverse a video.
 
 ## Not signed in yet
 
-Say why HeyGen matters before asking: signing in is what gets the best remake. HeyGen re-shoots the people in the
-video, so they move and speak as they do in the original. For example:
+The message that asks them to sign in (the one with the link, when there is one) starts with why HeyGen matters:
+signing in is what gets the best remake. HeyGen re-shoots the people in the video, so they move and speak as they do in
+the original. Keep that reason even when all you send is a link and a code. For example:
 
 > To rebuild this video at its best, I'll work with HeyGen: it re-shoots the people in it, so they move and speak just
-> like the original. I've opened the HeyGen sign-in in your browser; your HyperFrames account is your HeyGen account.
-> I'll carry on as soon as you're in.
+> like the original. Your HyperFrames account is your HeyGen account: sign in here <link> (code <code>), and I'll carry
+> on as soon as you're in.
 >
 > Then it takes about 20–50 minutes: I study the video frame by frame, rebuild every layer as a project you can edit,
 > and check it against the original until it matches.
 
 Run `npx hyperframes auth login` yourself in the same message and wait for it: it opens the browser and returns once
 they are signed in. When the browser does not open, it prints the sign-in link: give it. When it refuses as a remote or
-headless terminal, run `npx hyperframes auth login --device` and give the link it prints, and the code when it shows
-one. Never sign in with an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
+headless terminal, start `npx hyperframes auth login --device` in the background and send the link it prints, and the
+code when it shows one, before you wait on anything: they cannot sign in until they see them. Never sign in with an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
 
 ## Signed in on Free
 
