@@ -148,6 +148,23 @@ function findFromSystem(): WhisperResult | undefined {
 
 const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
+// A reviewed release, checked by commit after the clone, so a moved tag is never built or run.
+const WHISPER_TAG = "v1.9.5";
+const WHISPER_COMMIT = "d1be6fde11ac6e0407606b4e42fe72d34add8037";
+
+function assertPinnedCheckout(): void {
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: BUILD_DIR,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 10_000,
+  }).trim();
+  if (head === WHISPER_COMMIT) return;
+  rmSync(BUILD_DIR, { recursive: true, force: true });
+  throw new Error(
+    `whisper.cpp ${WHISPER_TAG} resolved to commit ${head}, not the reviewed ${WHISPER_COMMIT}; refusing to build it`,
+  );
+}
 
 function findBuiltBinary(): WhisperResult | undefined {
   // Windows (Visual Studio generator) writes bin/Release/whisper-cli.exe, not bin/whisper-cli.
@@ -174,13 +191,18 @@ async function buildFromSource(
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
     mkdirSync(BUILD_DIR, { recursive: true });
-    await stoppableExecFile("git", ["clone", "--depth", "1", WHISPER_REPO, "."], {
-      cwd: BUILD_DIR,
-      stdio: "ignore",
-      timeout: 60_000,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      signal,
-    });
+    await stoppableExecFile(
+      "git",
+      ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],
+      {
+        cwd: BUILD_DIR,
+        stdio: "ignore",
+        timeout: 60_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        signal,
+      },
+    );
+    assertPinnedCheckout();
   }
 
   onProgress?.("Building whisper.cpp (this may take a minute)...");

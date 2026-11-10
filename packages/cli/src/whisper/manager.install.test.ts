@@ -64,6 +64,29 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
   }
 });
 
+it("builds only the reviewed whisper.cpp commit", async () => {
+  const cache = mkdtempSync(join(tmpdir(), "hf-whisper-cache-"));
+  vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+  vi.resetModules();
+  const { ensureWhisper: ensure } = await import("./manager.js");
+  calls.exec.mockImplementation((command: string, args: string[]) => {
+    const lookup = command === "which" || command === "where";
+    if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
+      throw new Error("not available");
+    if (lookup) return `/bin/${args[0]}\n`;
+    if (command === "git" && args[0] === "rev-parse") return "0123456789abcdef\n";
+    return "";
+  });
+  try {
+    await expect(ensure()).rejects.toThrow();
+    const clone = calls.exec.mock.calls.find(([c, a]) => c === "git" && a[0] === "clone");
+    expect((clone as [string, string[]])[1]).toEqual(expect.arrayContaining(["--branch"]));
+    expect(calls.exec.mock.calls.some(([command]) => command === "cmake")).toBe(false);
+  } finally {
+    rmSync(cache, { recursive: true, force: true });
+  }
+});
+
 it("names the missing build tool when whisper.cpp cannot be built", async () => {
   vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
   vi.resetModules();
