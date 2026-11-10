@@ -984,8 +984,14 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 // Public app factory
 // ---------------------------------------------------------------------------
 
-/** True when a browser sent the request from a page on another origin. */
+/**
+ * True when a browser sent the request from a page on another origin. The browser's own
+ * Sec-Fetch-Site verdict wins when present, so a same-origin page behind a proxy that rewrites
+ * Host is still served; older browsers fall back to comparing Origin with Host.
+ */
 function isCrossOriginBrowserRequest(c: Context): boolean {
+  const fetchSite = c.req.header("sec-fetch-site");
+  if (fetchSite) return fetchSite !== "same-origin" && fetchSite !== "none";
   const origin = c.req.header("origin");
   if (!origin) return false;
   try {

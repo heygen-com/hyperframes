@@ -44,9 +44,24 @@ describe("createProducerApp: cross-origin browser requests", () => {
     expect((await postRender({ origin: "null" })).status).toBe(403);
   });
 
+  it.each(["cross-site", "same-site"])(
+    "refuses a page the browser marks %s, even when Origin matches Host",
+    async (fetchSite) => {
+      const res = await postRender({
+        origin: "http://localhost:9847",
+        "sec-fetch-site": fetchSite,
+      });
+      expect(res.status).toBe(403);
+    },
+  );
+
   it.each([
     ["no Origin (curl, server-to-server)", {}],
     ["a same-origin page", { origin: "http://localhost:9847" }],
+    [
+      "a same-origin page behind a proxy that rewrites Host",
+      { origin: "https://render.example.com", "sec-fetch-site": "same-origin" },
+    ],
   ])("renders for %s", async (_label, headers) => {
     const res = await postRender({ "content-type": "application/json", ...headers });
     expect(res.status).toBe(200);
