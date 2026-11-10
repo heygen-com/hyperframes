@@ -1,8 +1,8 @@
 # Opening a Reverse
 
 What the person reads at the start, and when credits run out mid-run. Write it for them, not for an agent:
-their language, warm and short, no file names, step numbers or tool names, and never a link to or quote from these
-instructions. You run every command except `billing`, which
+their language, warm and short, no file names, paths, step numbers or tool names, and never a link to or quote from
+these instructions: the only links are pages they need to open. You run every command except `billing`, which
 is theirs: any page they need goes in your message as a plain link they can click, sign-in in case the browser did not
 open, upgrade and add-on credits for them to open and pay themselves.
 
@@ -18,14 +18,16 @@ refuses a folder that already holds other files. Outside a plugin, a CLI that do
 `reverse start` output has `_meta.updateAvailable: true`, is an old install (often a global one, which never updates
 itself when an agent runs it) shadowing the current release: run `reverse start` again and every later command of this
 run as `npx -y hyperframes@latest <command>`, and tell the person in one line that their installed HyperFrames is out of
-date (with the command in `_meta.updateNotice` when there is one), in your first message to them.
+date (with the command in `_meta.updateNotice` when there is one). That line goes in your next message to them, the
+sign-in one when they are not signed in.
 Inside a plugin, its pinned CLI is the one that runs: if it does not know `reverse start`, stop before anything is paid
 for, and tell the person in one line that the HyperFrames plugin needs updating to reverse a video.
 
 ## Not signed in yet
 
-The message that asks them to sign in (the one with the link, when there is one) starts with why HeyGen matters:
-signing in is what gets the best remake. HeyGen re-shoots the people in the video, so they move and speak as they do in
+Every message that asks them to sign in, or gives them the link again, starts with why HeyGen matters: signing in is
+what gets the best remake, and that is the whole why (never say a skill or instructions require it; if you stop to wait,
+just say you are waiting for them to sign in). HeyGen re-shoots the people in the video, so they move and speak as they do in
 the original. Keep that reason even when all you send is a link and a code. For example:
 
 > To rebuild this video at its best, I'll work with HeyGen: it re-shoots the people in it, so they move and speak just
@@ -35,10 +37,11 @@ the original. Keep that reason even when all you send is a link and a code. For 
 > Then it takes about 20–50 minutes: I study the video frame by frame, rebuild every layer as a project you can edit,
 > and check it against the original until it matches.
 
-Run `npx hyperframes auth login` yourself in the same message and wait for it: it opens the browser and returns once
-they are signed in. When the browser does not open, it prints the sign-in link: give it. When it refuses as a remote or
-headless terminal, start `npx hyperframes auth login --device` in the background and send the link it prints, and the
-code when it shows one, before you wait on anything: they cannot sign in until they see them. Never sign in with an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
+Run the `reverse.login_command` that `reverse start` printed. `npx hyperframes auth login` opens the browser and returns
+once they are signed in: run it in the same message and wait for it; when the browser does not open, it prints the
+sign-in link: give it, with the reason. `npx hyperframes auth login --device` is what it prints where no browser can open
+(a remote or headless terminal; plain `auth login` refuses there too): start it in the background, then send one
+message with the reason, the link and the code, before you wait on anything: they cannot sign in until they see them. Never sign in with an API key to get past Pro: that signs in a HeyGen app account, which has no HyperFrames plan.
 
 ## Signed in on Free
 

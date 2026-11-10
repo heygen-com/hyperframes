@@ -11,6 +11,7 @@ const server = vi.hoisted(() => ({
   resumed: [] as (string | undefined)[],
 }));
 const probe = vi.hoisted(() => ({ fail: false }));
+const terminal = vi.hoisted(() => ({ remote: false }));
 const commandRuns = vi.hoisted(() => [] as Record<string, unknown>[]);
 
 vi.mock("../../heygen/plan.js", async (importOriginal) => ({
@@ -28,6 +29,10 @@ vi.mock("../../heygen/reverse.js", async (importOriginal) => ({
 vi.mock("../../telemetry/events.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../telemetry/events.js")>()),
   trackSkillCommandRan: (run: Record<string, unknown>) => void commandRuns.push(run),
+}));
+vi.mock("../../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../utils/attendedTerminal.js")>()),
+  isRemoteOrHeadless: () => terminal.remote,
 }));
 vi.mock("../measure/probe.js", () => ({
   probeReport: (video: string) => {
@@ -58,6 +63,7 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation((line: unknown) => void printed.push(String(line)));
   vi.spyOn(console, "error").mockImplementation(() => undefined);
   server.answer = { recorded: false, reason: "not_signed_in" };
+  terminal.remote = false;
   server.resumed = [];
   probe.fail = false;
   commandRuns.length = 0;
@@ -175,7 +181,7 @@ describe("reverse start", () => {
         login_command: "npx hyperframes auth login",
         // The reason to sign in comes before the sign-in, as words the agent can say as they are.
         next: expect.stringMatching(
-          /"To rebuild this video.*HeyGen.*"[^]*Run `npx hyperframes auth login` now/,
+          /"To rebuild this video.*HeyGen.*"[^]*Run `npx hyperframes auth login` now and wait/,
         ),
       },
     ],
@@ -199,6 +205,18 @@ describe("reverse start", () => {
       expect(config(dir)).not.toHaveProperty("reverseSessionId");
     },
   );
+
+  it("sends a remote terminal straight to the device route, with the reason, link and code in one message", async () => {
+    terminal.remote = true;
+    await run();
+    expect(output().reverse).toMatchObject({
+      signed_in: false,
+      login_command: "npx hyperframes auth login --device",
+      next: expect.stringMatching(
+        /`npx hyperframes auth login --device` in the background[^]*one message: first why[^]*"To rebuild this video.*HeyGen.*"[^]*Then the link and code/,
+      ),
+    });
+  });
 
   it("names no saved_to when the --dir project's config is broken, and leaves it as it was", async () => {
     const dir = join(root, "rebuild");
