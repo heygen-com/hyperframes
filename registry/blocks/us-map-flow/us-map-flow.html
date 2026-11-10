@@ -242,7 +242,8 @@
           }
 
           /* --- Load topology and render states --- */
-          d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json").then(function (us) {
+          var US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
+          d3.json(US_TOPO_URL).then(function (us) {
             var states = topojson.feature(us, us.objects.states).features;
 
             states.forEach(function (feature) {
