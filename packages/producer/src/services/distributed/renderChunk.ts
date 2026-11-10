@@ -1074,7 +1074,7 @@ export async function renderChunk(
                 verifyFirstSession:
                   forceScreenshot || !verifyInWorker ? undefined : verifyFirstWorker,
               }),
-            { stall: frameStallRule(job, framesInChunk) },
+            { stall: frameStallRule(job, framesInChunk, undefined) },
           ).catch(async (captureError: unknown) => {
             await overlap.current?.abort();
             overlap.current = null;

@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig, type WorkerTask } from "@hyperframes/engine";
 import { formatCaptureFrameName } from "../utils/paths.js";
-import { createRenderJob, executeRenderJob, type ProgressCallback } from "./renderOrchestrator.js";
+import {
+  createRenderJob,
+  executeRenderJob,
+  firstFrameWindowMs,
+  type ProgressCallback,
+} from "./renderOrchestrator.js";
 import { OrderedRenderEventPublisher } from "./render/renderEventPublisher.js";
 
 // Entry: executeRenderJob with the real disk capture stage and retry ladder. Each parallel attempt is
@@ -21,6 +26,7 @@ const capture = vi.hoisted(() => ({
   workerCount: 4,
   shaderTransitions: false,
   blocked: 0,
+  probeMs: 0,
 }));
 
 // The 250 ms memory sampler is a faked interval: left running it is the next timer on every jump.
@@ -177,7 +183,7 @@ vi.mock("./render/stages/probeStage.js", () => ({
     lastBrowserConsole: [],
     duration: 40 / 30,
     totalFrames: 40,
-    browserProbeMs: 0,
+    browserProbeMs: capture.probeMs,
     beginFrameStalled: false,
   }),
 }));
@@ -258,6 +264,7 @@ beforeEach(() => {
   capture.shaderTransitions = false;
   capture.workerCount = 4;
   capture.blocked = 0;
+  capture.probeMs = 0;
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
   });
@@ -423,6 +430,53 @@ it("still fails a capture whose tail outlasts the tail budget", async () => {
   const outcome = startRender();
   await runFor(40 * 1_000 + 2 * 300_000 + 20_000, outcome);
   expect(outcome()).toMatchObject({ code: "RENDER_STAGE_STALLED", retryable: false });
+});
+
+it("waits for a first frame that comes after a start-up as slow as the probe's", async () => {
+  capture.probeMs = 304_000;
+  capture.scripts = [{ firstFrameAfterMs: 304_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(304_000 + 40 * 1_000 + 10_000, outcome);
+  expect(capture.retriedWithWorkers).toEqual([]);
+  expect(await settled(outcome)).toBe("completed");
+});
+
+it("after a slow start, still retries a capture that stops once frames flow, on the same window", async () => {
+  capture.probeMs = 304_000;
+  capture.scripts = ["stall", { firstFrameAfterMs: 1_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(3_000 + 60_000 + 10_000, outcome);
+  expect(capture.retriedWithWorkers).toEqual([2]);
+});
+
+it("with no probe start-up, treats a first frame later than 300 s as a stall", async () => {
+  capture.scripts = [{ firstFrameAfterMs: 400_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(290_000, outcome);
+  expect(outcome()).toBe(PENDING);
+  await runFor(20_000 + 60_000 + 10_000, outcome);
+  expect(await settled(outcome)).toMatchObject({ code: "RENDER_STAGE_STALLED" });
+});
+
+it("never waits past the ceiling for a first frame, however slow the probe was", async () => {
+  capture.probeMs = 600_000;
+  capture.scripts = [{ firstFrameAfterMs: 1_300_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(880_000, outcome);
+  expect(outcome()).toBe(PENDING);
+  await runFor(30_000 + 60_000 + 10_000, outcome);
+  expect(await settled(outcome)).toMatchObject({ code: "RENDER_STAGE_STALLED" });
+});
+
+it.each([
+  [undefined, 300_000],
+  [0, 300_000],
+  [Number.NaN, 300_000],
+  [100_000, 300_000],
+  [304_000, 608_000],
+  [600_000, 900_000],
+])("gives a probe start-up of %s ms a first-frame window of %s ms", (probeMs, windowMs) => {
+  expect(firstFrameWindowMs(probeMs)).toBe(windowMs);
 });
 
 it("completes even when the progress sink never drains", async () => {
