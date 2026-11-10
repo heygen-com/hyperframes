@@ -92,14 +92,19 @@ export function listStackNames(cwd: string = process.cwd()): string[] {
  */
 export function requireStack(stackName: string, cwd: string = process.cwd()): StackOutputs {
   const stack = readStackOutputs(stackName, cwd);
+  const path = stateFilePath(stackName, cwd);
+  const deploy = `Run \`hyperframes lambda deploy${stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${stackName}`}\``;
   if (!stack) {
     const known = listStackNames(cwd);
-    let hint = `Run \`hyperframes lambda deploy${stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${stackName}`}\` first.`;
-    if (known.length) {
-      hint += ` Known stacks here: ${known.join(", ")}.`;
-    }
+    const hint = known.length ? ` Known stacks here: ${known.join(", ")}.` : "";
     console.error(
-      `[hyperframes lambda] no stack state for "${stackName}" at ${stateFilePath(stackName, cwd)}. ${hint}`,
+      `[hyperframes lambda] no stack state for "${stackName}" at ${path}. ${deploy} first.${hint}`,
+    );
+    failCommand();
+  }
+  if (stack.stackName !== stackName) {
+    console.error(
+      `[hyperframes lambda] ${path} names stack "${stack.stackName}", not "${stackName}". ${deploy} to rewrite it.`,
     );
     failCommand();
   }
