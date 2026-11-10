@@ -3153,6 +3153,67 @@ describe("SVG draw-on rules", () => {
     expect(finding).toBeUndefined();
   });
 
+  it("svg_drawon_css_dasharray_conflict: resolves a template id with a literal segment to the matching element", async () => {
+    const html = `
+<html><body>
+  <style>.wire-b { stroke-dasharray: 10 10; }</style>
+  <div data-composition-id="b" data-width="1920" data-height="1080">
+    <svg><path id="line-b" class="wire-b" d="M 0 0 L 100 100"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const name = "b";
+    const target = document.getElementById(\`line-\${name}\`);
+    tl.set(target, { strokeDasharray: 141.4, strokeDashoffset: 141.4 }, 0);
+    window.__timelines["b"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "svg_drawon_css_dasharray_conflict");
+    expect(finding).toBeDefined();
+  });
+
+  it("matches a many-placeholder template id against a long near-miss id in linear time", async () => {
+    const template = Array.from({ length: 40 }, () => "${x}").join("a") + "b";
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg><path id="${"a".repeat(5000)}c" d="M 0 0 L 1 1"/></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const el = document.getElementById(\`${template}\`);
+    const tl = gsap.timeline({ paused: true });
+    tl.set(el, { strokeDasharray: 1 }, 0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("scans a long style block with no braces in linear time", async () => {
+    const html = `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <style>${"a ".repeat(40000)}</style>
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(3000);
+  });
+
+  it("scans a closed style block of many unclosed rules in linear time", async () => {
+    const html = `<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <style>${"x{".repeat(40000)}</style>
+</body></html>`;
+    const started = performance.now();
+    await lintHyperframeHtml(html);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   // ── gsap_timeline_set_initial_hide ─────────────────────────────────────────
 
   it("gsap_timeline_set_initial_hide: warns on tl.set hidden state at position 0", async () => {

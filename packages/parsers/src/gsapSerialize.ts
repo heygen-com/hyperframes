@@ -274,7 +274,7 @@ export function serializeGsapAnimations(
   });
   // fallow-ignore-next-line complexity
   const lines = sorted.map((anim) => {
-    const selector = JSON.stringify(anim.targetSelector);
+    const selector = scriptJson(anim.targetSelector);
     const props: Record<string, number | string> = { ...anim.properties };
     if (anim.duration !== undefined) props.duration = anim.duration;
     if (anim.ease) props.ease = anim.ease;
@@ -288,7 +288,7 @@ export function serializeGsapAnimations(
         propsStr = propsStr.slice(0, -2) + `, ${extrasStr} }`;
       }
     }
-    const posStr = JSON.stringify(anim.position);
+    const posStr = scriptJson(anim.position);
     switch (anim.method) {
       case "set":
         // A global set is a base `gsap.set` — off the timeline, no position arg.
@@ -338,11 +338,25 @@ ${lines.join("\n")}${mediaSync}${postamble}
   `;
 }
 
+/** `JSON.stringify` whose output cannot end, or open a comment in, the inline script it lands in. */
+export function scriptJson(value: unknown): string {
+  return String(JSON.stringify(value)).replace(/<(\/script|!--)/gi, "\\u003c$1");
+}
+
+const TWEEN_METHODS: ReadonlySet<string> = new Set<GsapMethod>(["set", "to", "from", "fromTo"]);
+
+/** The method name, checked against the four tween methods because it is emitted as code. */
+export function tweenMethodCode(method: string): GsapMethod {
+  if (!TWEEN_METHODS.has(method))
+    throw new TypeError(`Unsupported tween method: ${scriptJson(method)}`);
+  return method as GsapMethod;
+}
+
 export function serializeValue(value: unknown): string {
   if (typeof value === "string" && value.startsWith("__raw:")) {
     return value.slice(6);
   }
-  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "string") return scriptJson(value);
   return String(value);
 }
 
@@ -353,7 +367,7 @@ export function plainPercentKey(percentage: number): string {
 }
 
 export function safeJsKey(key: string): string {
-  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : scriptJson(key);
 }
 
 function serializeObject(obj: Record<string, number | string>): string {
@@ -603,6 +617,24 @@ export function resolveConversionProps(
 
 // ── Arc path serialization helpers (shared by recast + acorn writers) ─────────
 
+/** Rejects a motion path whose coordinates or curviness are not numbers, since they are emitted as code. */
+export function assertMotionPathNumbers(config: {
+  waypoints: Array<{ x: number; y: number }>;
+  segments: ArcPathSegment[];
+}): void {
+  const points = [
+    ...config.waypoints,
+    ...config.segments.flatMap((s) => [s.cp1, s.cp2].filter((p) => p !== undefined)),
+  ];
+  const values = [
+    ...points.flatMap((p): unknown[] => [p.x, p.y]),
+    ...config.segments.map((s): unknown => s.curviness ?? 1),
+  ];
+  if (values.some((v) => typeof v !== "number")) {
+    throw new TypeError("Motion path coordinates and curviness must be numbers");
+  }
+}
+
 function numericXY(props: Record<string, number | string>): { x: number; y: number } | null {
   const vx = props.x;
   const vy = props.y;
@@ -671,6 +703,7 @@ export function buildMotionPathObjectCode(config: {
   segments: ArcPathSegment[];
   autoRotate: boolean | number;
 }): string {
+  assertMotionPathNumbers(config);
   const { waypoints, segments, autoRotate } = config;
   const arSuffix = autoRotateSuffix(autoRotate);
   // GSAP's simple `path` array supports only ONE scalar `curviness` for the whole
