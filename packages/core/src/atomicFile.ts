@@ -7,9 +7,8 @@ import { renameWithRetry } from "./renameWithRetry.js";
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
 type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
 
-// Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
+// Codes a volume without hard links (FAT, exFAT, some network shares, Android app data) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
-// EACCES: Android app data (Termux, SELinux) denies link() in a folder the temp file was just written to.
 const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR", "EACCES"]);
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
