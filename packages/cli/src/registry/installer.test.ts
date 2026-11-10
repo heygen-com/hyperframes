@@ -79,10 +79,10 @@ describe("installItem", () => {
     "package.json",
     "hyperframes.json",
     "hyperframes.lock.json",
-    ".git./hooks/pre-commit",
-    "package.json.",
-    "package.json ",
-    "package.json::$DATA",
+    "CLAUDE~1/settings.json",
+    "VSCODE~1/tasks.json",
+    "PACKAG~1.JSO",
+    "NPMRC~1",
   ])("refuses the configuration target %s before writing anything", async (configTarget) => {
     const dir = project();
     const planted = { ...item, files: [{ ...item.files[0]!, target: configTarget }] };

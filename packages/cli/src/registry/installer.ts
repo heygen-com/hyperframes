@@ -131,19 +131,14 @@ function keptByProject(
   return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
 }
 
-/**
- * Reject target paths that would escape `destDir`. Mirrors the pattern check
- * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
- * install time so a registry that bypasses schema validation still can't write
- * outside the project.
- */
 // Project and tool configuration is never registry content: VCS metadata, package-manager and
 // agent or editor settings are executed or trusted by other tools. Only an example (a fresh `init`)
 // may bring its own package.json and HyperFrames config.
 const PROJECT_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
 const EXAMPLE_DOTFILES = new Set([".gitignore"]);
 
-const isGitSegment = (part: string): boolean => part === ".git" || /^git~\d+$/.test(part);
+// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
+const isShortName = (part: string): boolean => /~\d+(\.|$)/.test(part);
 
 function isHiddenConfigFile(file: string, example: boolean): boolean {
   if (file === ".gitkeep" || (example && EXAMPLE_DOTFILES.has(file))) return false;
@@ -156,7 +151,8 @@ type TargetRule = [
 ];
 
 const CONFIG_TARGET_RULES: TargetRule[] = [
-  ["it writes into git metadata", (dirs, file) => [...dirs, file].some(isGitSegment)],
+  ["it writes into git metadata", (dirs, file) => [...dirs, file].includes(".git")],
+  ["it uses a Windows short name", (dirs, file) => [...dirs, file].some(isShortName)],
   ["it writes into a hidden tool directory", (dirs) => dirs.some((dir) => dir.startsWith("."))],
   [
     "it writes a hidden configuration file",
@@ -169,18 +165,18 @@ const CONFIG_TARGET_RULES: TargetRule[] = [
 ];
 
 function configTargetError(target: string, type: RegistryItem["type"]): string | null {
-  // Windows drops trailing dots and spaces and reads `name:stream` as `name`, so compare that name.
-  const parts = target.split(/[\\/]/).map((part) =>
-    part
-      .toLowerCase()
-      .replace(/:.*$/, "")
-      .replace(/(?<=.)[. ]+$/, ""),
-  );
+  const parts = target.split(/[\\/]/).map((part) => part.toLowerCase());
   const file = parts.pop() ?? "";
   const example = type === "hyperframes:example";
   return CONFIG_TARGET_RULES.find(([, applies]) => applies(parts, file, example))?.[0] ?? null;
 }
 
+/**
+ * Reject target paths that would escape `destDir`. Mirrors the pattern check
+ * in `packages/core/schemas/registry-item.json#files.items.target`, but runs at
+ * install time so a registry that bypasses schema validation still can't write
+ * outside the project.
+ */
 function assertSafeTarget(destDir: string, target: string, type: RegistryItem["type"]): void {
   if (isAbsolute(target)) {
     throw new Error(`Unsafe target "${target}": absolute paths are not allowed.`);
