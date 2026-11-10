@@ -16,6 +16,10 @@ describe("isEnvOrGitPath", () => {
     expect(isEnvOrGitPath("/home/me/.env")).toBe(true);
     expect(isEnvOrGitPath("a\\.Env.Local")).toBe(true);
     expect(isEnvOrGitPath("repo/.git/config")).toBe(true);
+    expect(isEnvOrGitPath(".envrc")).toBe(true);
+    expect(isEnvOrGitPath("sub/.env-local")).toBe(true);
+    expect(isEnvOrGitPath(".env_prod")).toBe(true);
+    expect(isEnvOrGitPath(".environment.json")).toBe(false);
     expect(isEnvOrGitPath("assets/environment.png")).toBe(false);
     expect(isEnvOrGitPath("dotfiles.git/logo.png")).toBe(false);
   });

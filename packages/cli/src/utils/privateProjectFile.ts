@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 
-const ENV_FILE = /^\.env(\..*)?$/;
+const ENV_FILE = /^\.env([._-].*|rc)?$/;
 
 export function isEnvOrGitPath(path: string): boolean {
   const segments = path.toLowerCase().split(/[\\/]/);

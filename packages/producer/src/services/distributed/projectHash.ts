@@ -18,7 +18,7 @@ import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
 // Env files hold the author's keys; no composition loads one, so none is uploaded.
-const ENV_FILE = /^\.env(\..*)?$/i;
+const ENV_FILE = /^\.env([._-].*|rc)?$/i;
 
 const leftOut = (rel: string, name: string): boolean =>
   (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) || ENV_FILE.test(name);

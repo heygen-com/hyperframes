@@ -56,6 +56,9 @@ describe("listSiteFiles / hashProjectDir", () => {
     mkdirSync(join(dir, "sub"));
     writeFileSync(join(dir, ".env"), "KEY=1");
     writeFileSync(join(dir, "sub", ".env.local"), "KEY=1");
+    writeFileSync(join(dir, ".envrc"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env-local"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env_prod"), "KEY=1");
     writeFileSync(join(dir, "sub", "environment.css"), "a{}");
     expect(listSiteFiles(dir)).toEqual(["index.html", "sub/environment.css"]);
   });
