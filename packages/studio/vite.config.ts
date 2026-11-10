@@ -9,6 +9,7 @@ import {
   lstatSync,
   realpathSync,
 } from "node:fs";
+import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { readNodeRequestBody } from "./vite.request-body.js";
 import { bindNodeRequestSignal } from "./vite.request-signal.js";
@@ -18,6 +19,11 @@ import { previewConfigPayload } from "./vite.preview-config";
 import { loadStudioServerDevModule } from "./vite.studio-server-module";
 import type { openProjectHistory } from "@hyperframes/studio-server";
 import { previewChangeOwner } from "./vite.preview-watch";
+import {
+  hostHeaderAllowed,
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+} from "../studio-server/src/helpers/requestIdentity";
 
 async function loadRuntimeSourceForDev(
   server: import("vite").ViteDevServer,
@@ -89,6 +95,12 @@ async function bridgeHonoResponse(
     /* client disconnected */
   }
   res.end();
+}
+
+// Vite allows any IP-literal Host by default, which is what keeps `--host` on a LAN address working.
+function isIpLiteralHost(host: string): boolean {
+  const bracketed = /^\[([^\]]+)\]/.exec(host);
+  return bracketed ? isIP(bracketed[1]!) === 6 : isIP(host.split(":")[0]!) === 4;
 }
 
 // ── Vite plugin ──────────────────────────────────────────────────────────────
@@ -196,6 +208,28 @@ function devProjectApi(): Plugin {
         }
         return _api;
       };
+
+      // Vite runs its own Host check after the middlewares added here, so the
+      // plugin's routes check Host first: the CLI preview server's rule plus
+      // the IP literals and configured host Vite allows by default.
+      const allowedHosts = [...previewAllowedHostsFromEnv()];
+      if (typeof server.config.server.host === "string")
+        allowedHosts.push(server.config.server.host);
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? "";
+        if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
+        const host = req.headers.host ?? "";
+        if (hostHeaderAllowed(host, allowedHosts) || isIpLiteralHost(host)) return next();
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error:
+              `forbidden: host "${host}" is not allowed. ` +
+              `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+              `(comma separated for several hosts).`,
+          }),
+        );
+      });
 
       server.middlewares.use((req, res, next) => {
         if (req.url !== "/__hyperframes_config") return next();
@@ -347,6 +381,8 @@ export default defineConfig({
   },
   server: {
     port: 5190,
+    // Vite's defaults (localhost, IP literals) still apply on top of this list.
+    allowedHosts: previewAllowedHostsFromEnv(),
     watch: {
       // A composition lives under this package's root, so Vite's HMR sees a
       // write to one as an html page dependency changing and full-reloads the
