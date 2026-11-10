@@ -85,6 +85,9 @@ export function listStackNames(cwd: string = process.cwd()): string[] {
     .map((f) => f.slice(STATE_FILE_PREFIX.length, -".json".length));
 }
 
+const sameFileOnCaseInsensitiveDisk = (a: string, b: string): boolean =>
+  a.toLowerCase() === b.toLowerCase();
+
 /**
  * Read stack outputs or print a helpful error and exit. Shared between
  * `render`, `progress`, and `destroy` so the "did you run `deploy` first?"
@@ -102,7 +105,7 @@ export function requireStack(stackName: string, cwd: string = process.cwd()): St
     );
     failCommand();
   }
-  if (stack.stackName !== stackName) {
+  if (!sameFileOnCaseInsensitiveDisk(String(stack.stackName), stackName)) {
     console.error(
       `[hyperframes lambda] ${path} names stack "${stack.stackName}", not "${stackName}". ${deploy} to rewrite it.`,
     );

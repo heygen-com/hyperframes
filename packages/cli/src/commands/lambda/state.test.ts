@@ -75,6 +75,8 @@ describe("lambda state file", () => {
     try {
       expect(() => requireStack("test", workdir)).toThrow();
       expect(requireStack("other", workdir).stackName).toBe("other");
+      writeFileSync(stateFilePath("OTHER", workdir), readFileSync(path));
+      expect(requireStack("OTHER", workdir).stackName).toBe("other");
     } finally {
       quiet.mockRestore();
     }
