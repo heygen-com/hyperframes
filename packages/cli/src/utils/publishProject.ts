@@ -7,6 +7,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   type Stats,
   statSync,
 } from "node:fs";
@@ -22,6 +23,7 @@ import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
+import { isEnvOrGitPath, isPrivateCompositionFile } from "./privateProjectFile.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -414,6 +416,11 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
+function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): boolean {
+  if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return true;
+  return isPrivateCompositionFile(ctx.absProjectDir, absPath);
+}
+
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
@@ -426,7 +433,7 @@ function includeReferencedProjectFile(
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
-    if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return;
+    if (staysOut(ctx, rel, absPath)) return;
     if (!existsSync(absPath)) continue;
     if (statSync(absPath).isFile()) {
       ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
@@ -455,6 +462,7 @@ function archiveTargetOf(
   }
   try {
     if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
+    if (isEnvOrGitPath(absPath) || isEnvOrGitPath(realpathSync(absPath))) return undefined;
   } catch {
     return undefined;
   }

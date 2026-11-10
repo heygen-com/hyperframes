@@ -1559,6 +1559,14 @@ describe("createPublishArchive referenced dot-paths", () => {
     const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v", ".env": "SECRET=1" });
     expect(names(dir)).not.toContain(".env");
   });
+
+  it("leaves out an env file or a tool record even when the markup names it", () => {
+    const dir = projectWith(
+      `<link href=".env"><img src=".env.local"><a href=".hyperframes/history-turn.json">h</a>`,
+      { ".env": "SECRET=1", ".env.local": "SECRET=1", ".hyperframes/history-turn.json": "{}" },
+    );
+    expect(names(dir)).toEqual(["index.html"]);
+  });
 });
 
 describe("archive keys for names written in either Unicode form", () => {
