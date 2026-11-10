@@ -721,7 +721,7 @@ class Engine {
     if (waiting) this.sweepIn(SETTLE_MS);
   }
 
-  /** The file's hash once copied in; null when it was removed or kept changing (the next sweep records that). */
+  /** The file's hash once copied in; null when it is gone or still changing (the next sweep records that). */
   async storeIfPresent(path: string): Promise<string | null> {
     try {
       const abs = join(this.dir, path);
