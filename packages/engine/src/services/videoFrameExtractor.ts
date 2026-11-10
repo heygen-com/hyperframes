@@ -149,13 +149,8 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
 
 const SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES = 1e-4;
 /**
- * Resolve the frame count produced for a requested extraction duration.
- *
- * Both paths sample with FFmpeg's fps filter. A CFR window gets a frame for every
- * output slot it covers, at least as many as exportClipWindow shows; a VFR window
- * rounds up, keeping the slot a trailing still covers. Keep this calculation shared
- * by superset slicing and producer coverage accounting so a complete extraction
- * cannot be rejected because the two paths disagree by one frame.
+ * Frames a window gets: one per output slot it covers (CFR), or rounded up (VFR).
+ * Superset slicing and the coverage gate share it, so they never disagree by a frame.
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
