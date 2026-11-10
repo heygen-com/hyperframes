@@ -147,14 +147,15 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
   return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
 }
 
+const SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES = 1e-4;
 /**
  * Resolve the frame count produced for a requested extraction duration.
  *
- * Both paths sample with FFmpeg's fps filter. A CFR window ends at the nearest
- * frame boundary; a VFR window rounds up, keeping the slot a trailing still
- * covers. Keep this calculation shared by superset slicing and
- * producer coverage accounting so a complete VFR extraction cannot be
- * rejected because the two paths disagree by one frame.
+ * Both paths sample with FFmpeg's fps filter. A CFR window gets a frame for every
+ * output slot it covers, at least as many as exportClipWindow shows; a VFR window
+ * rounds up, keeping the slot a trailing still covers. Keep this calculation shared
+ * by superset slicing and producer coverage accounting so a complete extraction
+ * cannot be rejected because the two paths disagree by one frame.
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
@@ -214,9 +215,11 @@ export function extractionFrameCountForDuration(
 
   const frameNumerator = microseconds * fpsNumerator;
   const frameDenominator = 1_000_000n * fpsDenominator;
+  const slotsPerTolerance = BigInt(Math.round(1 / SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES));
   const frameCount = isVFR
     ? (frameNumerator + frameDenominator - 1n) / frameDenominator
-    : (2n * frameNumerator + frameDenominator) / (2n * frameDenominator);
+    : (slotsPerTolerance * (frameNumerator + frameDenominator) - frameDenominator - 1n) /
+      (slotsPerTolerance * frameDenominator);
   const frames = Number(frameCount);
   return Math.max(1, Number.isSafeInteger(frames) ? frames : Number.MAX_SAFE_INTEGER);
 }
@@ -1441,13 +1444,10 @@ async function extractVideoFramesRangeUnredacted(
     false,
   );
   const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
-  // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
-  // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
-  // decimal rate counts zero frames here and keeps the `-t` window.
-  const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
-  const frameCap = sampleAtOutputFps && totalFrames > 0 ? ["-frames:v", String(totalFrames)] : [];
+  // A `-t` window ends at the nearest slot; segments read a frame past and keep exactly their own.
+  // A decimal rate counts zero frames here and keeps the `-t` window.
   const extract = (hwaccel: string[]) =>
-    sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
+    sampleAtOutputFps && (options.frameRanges || totalFrames > 0)
       ? runSegmentedExtraction({
           decodeArgs: [...hwaccel, ...decodeArgs],
           filterAndEncodeArgs: (seek) => [...filterArgsFor(seek), ...encodeArgs],
@@ -1468,7 +1468,7 @@ async function extractVideoFramesRangeUnredacted(
       : inExtractionSlot(
           async () =>
             runFfmpeg(
-              [...hwaccel, ...args, ...frameCap, ...filterArgsFor(startTime), ...encodeArgs],
+              [...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs],
               {
                 ...runOptions,
                 onStderr: framesWrittenReader(options.onProgress),
