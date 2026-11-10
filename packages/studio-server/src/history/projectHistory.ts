@@ -28,7 +28,7 @@ import {
   affectsProjectSignature,
   listProjectFiles,
 } from "../helpers/projectSignature.js";
-import { openBlobStore, readBlob, type BlobStore } from "./blobStore.js";
+import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
@@ -211,6 +211,9 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
   sweptAt - Math.max(file.mtimeMs, file.ctimeMs) < RACY_MS
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
+
+type Copied = { hash: string } | "gone" | "changing";
+const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
 const FIRST_COPY_SLOTS_IN_PROCESS = 4;
 let firstCopiesRunning = 0;
@@ -551,12 +554,12 @@ class Engine {
   async takeInUnnamedLedger(): Promise<void> {
     const named = (path: string) =>
       this.log.entries.some((entry) => entry.files.some((file) => file.path === path));
-    const listed = () => historyFiles(this.dir).some((file) => file.path === MEDIA_LEDGER);
-    const hash =
-      this.log.baseline.has(MEDIA_LEDGER) || named(MEDIA_LEDGER) || !listed()
-        ? null
-        : await this.storeIfPresent(MEDIA_LEDGER);
-    if (hash !== null) this.log.baseline.set(MEDIA_LEDGER, hash);
+    const ledger = historyFiles(this.dir).find((file) => file.path === MEDIA_LEDGER);
+    if (ledger && !this.log.baseline.has(MEDIA_LEDGER) && !named(MEDIA_LEDGER)) {
+      const copied = await this.storeIfPresent(MEDIA_LEDGER);
+      if (typeof copied === "object") this.log.baseline.set(MEDIA_LEDGER, copied.hash);
+      else if (copied === "changing") this.adoptMediaInBackground([ledger], this.now());
+    }
     this.log.keepsLedger = true;
     this.persistLog();
   }
@@ -570,18 +573,20 @@ class Engine {
     );
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
+    const owed: ListedFile[] = [];
     copied.forEach((file, i) => {
       const result = hashes[i]!;
       if (result.status === "rejected") throw result.reason;
-      if (result.value !== null)
-        this.tracked.set(file.path, { hash: result.value, stat: statKey(file, sweptAt) });
+      if (result.value === "changing") owed.push(file);
+      else if (result.value !== "gone")
+        this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
     });
     this.log.baseline = this.manifest();
     this.log.keepsLedger = true;
     this.persistLog();
     this.saveStatCache();
     this.adoptMediaInBackground(
-      files.filter((file) => file.size > COPY_LATER_ABOVE_BYTES),
+      [...owed, ...files.filter((file) => file.size > COPY_LATER_ABOVE_BYTES)],
       sweptAt,
     );
   }
@@ -602,13 +607,14 @@ class Engine {
     replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
   }
 
-  async adopt(file: ListedFile, sweptAt: number) {
+  async adopt(file: ListedFile, sweptAt: number, tries = 0) {
     try {
       if (this.whereFolder() !== "here") return;
-      const stored = await this.storeIfPresent(file.path);
+      const copied = await this.storeIfPresent(file.path);
       await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
-        await this.recordAdopted(file, sweptAt, stored);
+        if ((await this.recordAdopted(file, sweptAt, copied)) === "changing")
+          return this.adoptLater(file, sweptAt, tries + 1);
         this.adopting.delete(file.path);
         this.saveAdopting();
       });
@@ -617,12 +623,23 @@ class Engine {
     }
   }
 
-  async recordAdopted(file: ListedFile, sweptAt: number, stored: string | null) {
-    if (stored === null || this.whereFolder() !== "here") return;
+  /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
+  adoptLater(file: ListedFile, sweptAt: number, tries: number): void {
+    if (this.closing) return;
+    const timer = setTimeout(
+      () => void this.adopt(file, sweptAt, tries),
+      Math.min(SETTLE_MS * 2 ** tries, ADOPT_RETRY_AT_MOST_MS),
+    );
+    timer.unref?.();
+  }
+
+  async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
+    if (typeof first === "string" || this.whereFolder() !== "here") return first;
     // A prune that ran while this copy waited for the queue may have taken its bytes.
-    const kept = this.blobs.has(stored) || isUncopied(file.path, file.size);
-    const hash = kept ? stored : await this.storeIfPresent(file.path);
-    if (hash === null) return;
+    const kept = this.blobs.has(first.hash) || isUncopied(file.path, file.size);
+    const copied = kept ? first : await this.storeIfPresent(file.path);
+    if (typeof copied === "string") return copied;
+    const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
     const found = this.overwrittenBy(change, undefined, new Set());
     const start = found && this.blobs.has(found) ? found : hash;
@@ -631,6 +648,7 @@ class Engine {
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
     this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
+    return copied;
   }
 
   manifest(): Manifest {
@@ -666,7 +684,7 @@ class Engine {
    * Takes in every write since the last sweep and files each change to its writer. ponytail: always the whole
    * project (a stat per file, a hash only when the stat moved); per-path sweeps if projects reach tens of thousands.
    */
-  async sweep(): Promise<void> {
+  async sweep(asItStands: "every" | ReadonlySet<string> = new Set()): Promise<void> {
     // A folder moved or removed was not emptied, and another project at its path is none of this history's.
     if (this.whereFolder() !== "here") return;
     const sweptAt = this.now();
@@ -693,8 +711,20 @@ class Engine {
       ...removed,
       ...seen.map((file) => ({ at: appearedAt(file), path: file.path, file })),
     ].sort((a, b) => a.at - b.at);
+    // An emptied file may be a save not yet written; a window's write, a claimed path and an undo take it as it is.
+    const waitsForQuiet = (path: string, file: ListedFile, at: number) =>
+      file.size === 0 &&
+      asItStands !== "every" &&
+      !asItStands.has(path) &&
+      isSettling(file, sweptAt) &&
+      !this.windows.some((open) => takesWrite(open, at));
     let changed = false;
+    let waiting = false;
     for (const { at, path, file } of events) {
+      if (file && waitsForQuiet(path, file, at)) {
+        waiting = true;
+        continue;
+      }
       if (file) {
         changed = (await this.observe(path, statKey(file, sweptAt), at)) || changed;
         continue;
@@ -706,16 +736,19 @@ class Engine {
       changed = true;
     }
     if (changed) this.saveStatCache();
+    if (waiting) this.sweepIn(SETTLE_MS);
   }
 
-  /** The file's hash once copied in; null when it was removed before the copy (the next sweep records that). */
-  async storeIfPresent(path: string): Promise<string | null> {
+  /** The file's hash once copied in, or why there is none: gone, or still changing through every read. */
+  async storeIfPresent(path: string): Promise<Copied> {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
-      return await (isUncopied(path, size) ? this.blobs.reference(abs) : this.blobs.put(abs));
+      if (isUncopied(path, size)) return { hash: await this.blobs.reference(abs) };
+      const hash = await this.blobs.put(abs);
+      return hash === null ? "changing" : { hash };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
     }
   }
@@ -724,8 +757,9 @@ class Engine {
     const known = this.tracked.get(path) ?? { hash: null, stat: null };
     if (stat && known.stat === stat) return false;
     const heard = this.overwritten.get(path);
-    const hash = await this.storeIfPresent(path);
-    if (hash === null || this.whereFolder() !== "here") return false;
+    const copied = await this.storeIfPresent(path);
+    if (typeof copied === "string" || this.whereFolder() !== "here") return false;
+    const { hash } = copied;
     this.tracked.set(path, { hash, stat });
     this.forgetWritesBefore(path, hash, heard);
     if (known.hash !== hash) await this.record(path, known.hash, hash, at);
@@ -753,7 +787,7 @@ class Engine {
     paths: readonly string[],
     { coalesceKey, idleMs, overwrote = {}, targets = [] }: ClaimOptions,
   ): Promise<{ id: string } | null> {
-    await this.sweep();
+    await this.sweep(new Set(paths.map((path) => this.logPath(path))));
     const taken = await this.takeClaimed(who, paths, overwrote);
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
@@ -1000,7 +1034,7 @@ class Engine {
 
   /** Before an operation or a window: every write is filed and every pending change committed, in write order. */
   async settle(): Promise<void> {
-    await this.sweep();
+    await this.sweep("every");
     await this.commitClaim();
     await this.commitPending();
   }
@@ -1010,10 +1044,15 @@ class Engine {
     const absolute = resolve(this.dir, path);
     if (this.notedTimer || !affectsProjectSignature(this.dir, absolute)) return;
     if (!isHistoryPath(relative(this.dir, absolute).split(sep).join("/"))) return;
+    this.sweepIn(20);
+  }
+
+  sweepIn(ms: number): void {
+    if (this.notedTimer || this.closed) return;
     this.notedTimer = setTimeout(() => {
       this.notedTimer = null;
       this.background(() => this.sweep());
-    }, 20);
+    }, ms);
     this.notedTimer.unref?.();
   }
 

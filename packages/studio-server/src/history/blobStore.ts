@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants, createReadStream, createWriteStream } from "node:fs";
+import { constants, createReadStream, createWriteStream, type Stats } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -23,8 +23,8 @@ import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
-  /** Copies the file in (a clone where the file system can, for all but small files) and returns the copy's hash. */
-  put(absPath: string): Promise<string>;
+  /** Copies the file in (cloned where it can) and returns its hash; null while it keeps changing. */
+  put(absPath: string): Promise<string | null>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
@@ -40,6 +40,18 @@ export interface BlobStore {
 
 const BLOB_HASH = /^[0-9a-f]{64}$/;
 const READ_ONCE_AT_MOST_BYTES = 64 * 1024;
+const READS_BEFORE_LEAVING_IT = 3;
+
+// Longer than the 20 ms a watcher gathers a burst for, so the sweep a save's first event starts sees it under way.
+export const SETTLE_MS = 100;
+
+export const isSettling = (file: { mtimeMs: number; ctimeMs: number }, now: number) =>
+  Math.abs(now - Math.max(file.mtimeMs, file.ctimeMs)) < SETTLE_MS;
+
+const unchanged = (before: Stats, after: Stats) =>
+  before.size === after.size &&
+  before.mtimeMs === after.mtimeMs &&
+  before.ctimeMs === after.ctimeMs;
 
 export function blobPath(dir: string, hash: string): string {
   // Checked where the path is joined, so no caller can read or write outside the store.
@@ -55,11 +67,15 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function readIfSmall(path: string): Promise<{ bytes: Buffer; mode: number } | null> {
+async function readIfSmall(
+  path: string,
+): Promise<{ bytes: Buffer; mode: number; moved: boolean } | null> {
   const handle = await open(path, "r");
   try {
-    const { size, mode } = await handle.stat();
-    return size > READ_ONCE_AT_MOST_BYTES ? null : { bytes: await handle.readFile(), mode };
+    const before = await handle.stat();
+    if (before.size > READ_ONCE_AT_MOST_BYTES) return null;
+    const bytes = await handle.readFile();
+    return { bytes, mode: before.mode, moved: !unchanged(before, await handle.stat()) };
   } finally {
     await handle.close();
   }
@@ -194,28 +210,43 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     return hash;
   };
 
-  return {
-    async put(absPath) {
-      const small = await readIfSmall(absPath);
-      if (small) return putBytes(small.bytes, small.mode);
-      // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
-      const temp = join(dir, `incoming-${randomUUID()}`);
-      // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
-      await mkdir(dir, { recursive: true });
-      await cloneOrStream(absPath, temp).catch(async (error) => {
+  const putIfUnchanged = async (absPath: string): Promise<string | null> => {
+    const small = await readIfSmall(absPath);
+    if (small) return small.moved ? null : putBytes(small.bytes, small.mode);
+    // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
+    const temp = join(dir, `incoming-${randomUUID()}`);
+    // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
+    await mkdir(dir, { recursive: true });
+    const before = await stat(absPath);
+    const moved = await cloneOrStream(absPath, temp)
+      .then(async () => !unchanged(before, await stat(absPath)))
+      .catch(async (error) => {
         await rm(temp, { force: true });
         throw error;
       });
-      const hash = await hashFile(temp);
-      if (sizes.has(hash)) {
-        await rm(temp, { force: true });
-        return hash;
-      }
-      await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
-      const size = (await stat(temp)).size;
-      await renameWithRetryAsync(temp, blobPath(dir, hash));
-      file(hash, size);
+    if (moved) {
+      await rm(temp, { force: true });
+      return null;
+    }
+    const hash = await hashFile(temp);
+    if (sizes.has(hash)) {
+      await rm(temp, { force: true });
       return hash;
+    }
+    await mkdir(dirname(blobPath(dir, hash)), { recursive: true });
+    const size = (await stat(temp)).size;
+    await renameWithRetryAsync(temp, blobPath(dir, hash));
+    file(hash, size);
+    return hash;
+  };
+
+  return {
+    async put(absPath) {
+      for (let read = 0; read < READS_BEFORE_LEAVING_IT; read += 1) {
+        const hash = await putIfUnchanged(absPath);
+        if (hash !== null) return hash;
+      }
+      return null;
     },
     reference: (absPath) => hashFile(absPath),
     has: (hash) => sizes.has(hash) || asideSizes.has(hash),
