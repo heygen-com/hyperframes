@@ -473,11 +473,13 @@ describe("resolveVideoExtractionDuration", () => {
 });
 
 describe("extractionFrameCountForDuration", () => {
-  it("uses the same VFR ceil and CFR nearest-boundary rules as FFmpeg", () => {
+  it("ceils VFR windows and counts every output slot a CFR window covers", () => {
     expect(extractionFrameCountForDuration(0.466666, 30, true)).toBe(14);
     expect(extractionFrameCountForDuration(0.466666, 30, false)).toBe(14);
     expect(extractionFrameCountForDuration(0.616666, 30, true)).toBe(19);
-    expect(extractionFrameCountForDuration(0.616666, 30, false)).toBe(18);
+    expect(extractionFrameCountForDuration(0.616666, 30, false)).toBe(19);
+    expect(extractionFrameCountForDuration(0.2667, 30, false)).toBe(9);
+    expect(extractionFrameCountForDuration(0.266667, 30, false)).toBe(8);
   });
 
   it.each([
@@ -3561,7 +3563,7 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
       label: "non-half-integer boundary",
       duration: 0.616666,
       offset: 0.1,
-      expectedFrames: 18,
+      expectedFrames: 19,
     },
   ])(
     "keeps direct and superset CFR extraction equal at a $label",
