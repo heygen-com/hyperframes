@@ -1036,10 +1036,16 @@ async function leadInSecondsUnlessAborted(
 function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: number): number {
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
+const KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP = "tpad=stop_mode=clone:stop=1";
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
-function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): string[] {
+function undoTickRoundingOnTheSourceFrameGrid(
+  seek: number,
+  lead: number,
+  sourceFps: number,
+): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
+    ...(sourceFps > 0 ? [KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
@@ -1077,13 +1083,18 @@ function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
-function splitFrameRanges(ranges: readonly FrameRange[], segmentFrames: number): FrameRange[] {
+function splitFrameRanges(
+  ranges: readonly FrameRange[],
+  segmentFrames: number,
+  frameLimit: number,
+): FrameRange[] {
   const segments: FrameRange[] = [];
   for (const range of ranges) {
-    for (let offset = 0; offset < range.frames; offset += segmentFrames) {
+    const frames = Math.min(range.frames, frameLimit - range.firstFrame);
+    for (let offset = 0; offset < frames; offset += segmentFrames) {
       segments.push({
         firstFrame: range.firstFrame + offset,
-        frames: Math.min(segmentFrames, range.frames - offset),
+        frames: Math.min(segmentFrames, frames - offset),
       });
     }
   }
@@ -1205,7 +1216,11 @@ function videoFilterChain(input: VideoFilterChainInput): (seek: number) => strin
       ? [
           ...(metadata.isVFR
             ? []
-            : undoTickRoundingOnTheSourceFrameGrid(seek, videoStartOnMediaTimeline(metadata))),
+            : undoTickRoundingOnTheSourceFrameGrid(
+                seek,
+                videoStartOnMediaTimeline(metadata),
+                metadata.fps,
+              )),
           "settb=intb/2",
           "setpts=PTS-lte(TB\\,0.001)",
           `fps=${ffmpegFps}:start_time=0:round=up`,
@@ -1419,11 +1434,18 @@ async function extractVideoFramesRangeUnredacted(
     return filters.length > 0 ? ["-vf", filters.join(",")] : [];
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
-  const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const framesBeforeSourceEnd = extractionFrameCountForDuration(
+    playableDuration - startTime,
+    normalizedFps,
+    false,
+  );
+  const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
   // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
   // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
   // decimal rate counts zero frames here and keeps the `-t` window.
   const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
+  const frameCap = sampleAtOutputFps && totalFrames > 0 ? ["-frames:v", String(totalFrames)] : [];
   const extract = (hwaccel: string[]) =>
     sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
       ? runSegmentedExtraction({
@@ -1438,23 +1460,27 @@ async function extractVideoFramesRangeUnredacted(
           segments: splitFrameRanges(
             options.frameRanges ?? [{ firstFrame: 0, frames: totalFrames }],
             segmentFrames,
+            totalFrames > 0 ? totalFrames : Number.POSITIVE_INFINITY,
           ),
           runOptions,
           onProgress: options.onProgress,
         })
       : inExtractionSlot(
           async () =>
-            runFfmpeg([...hwaccel, ...args, ...filterArgsFor(startTime), ...encodeArgs], {
-              ...runOptions,
-              onStderr: framesWrittenReader(options.onProgress),
-              timeout: stallTimeoutMs(
-                ffmpegProcessTimeout,
-                options.finalFrameOnly
-                  ? startTime
-                  : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
-                metadata.fps,
-              ),
-            }),
+            runFfmpeg(
+              [...hwaccel, ...args, ...frameCap, ...filterArgsFor(startTime), ...encodeArgs],
+              {
+                ...runOptions,
+                onStderr: framesWrittenReader(options.onProgress),
+                timeout: stallTimeoutMs(
+                  ffmpegProcessTimeout,
+                  options.finalFrameOnly
+                    ? startTime
+                    : await leadInSecondsUnlessAborted(videoPath, startTime, signal),
+                  metadata.fps,
+                ),
+              },
+            ),
           signal,
         );
   options.onProgress?.({
