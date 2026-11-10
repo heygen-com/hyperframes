@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -63,5 +63,23 @@ describe("completed render reference background", () => {
       body: JSON.stringify({ html: "<html><body></body></html>" }),
     });
     expect(await response.json()).toMatchObject({ reference_background: { kind: "unknown" } });
+  });
+  it("names the producer version that rendered it in the stream's complete event", async () => {
+    state.background = undefined;
+    const handlers = createRenderHandlers({ rendersDir: dir });
+    const app = new Hono();
+    app.post("/render/stream", handlers.renderStream);
+    const stream = await app.request("/render/stream", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ html: "<html><body></body></html>" }),
+    });
+    const terminal = (await stream.text())
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => JSON.parse(line.slice(5)))
+      .find((event) => event.type === "complete");
+    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+    expect(terminal.producerVersion).toBe(pkg.version);
   });
 });
