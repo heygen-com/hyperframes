@@ -13,6 +13,7 @@ import {
 } from "@hyperframes/core/compiler";
 import { findStartTags, isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
+import { resolveWithinProject } from "@hyperframes/core/safe-path";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
 
@@ -273,8 +274,9 @@ export function buildSubCompositionHtml(
   rawOverride?: string,
   gsapBaseUrl?: string,
 ): string | null {
-  const compFile = join(projectDir, compPath);
-  if (!existsSync(compFile)) return null;
+  // compPath comes from a request: a path that resolves outside the project is not a composition.
+  const compFile = resolveWithinProject(projectDir, compPath);
+  if (!compFile || !existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
   // directly, so the build uses ids minted from the raw file, which is never

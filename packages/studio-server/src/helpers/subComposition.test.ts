@@ -20,6 +20,16 @@ function makeTempProject(files: Record<string, string>): string {
 }
 
 describe("buildSubCompositionHtml", () => {
+  it("returns null for a composition path that resolves outside the project", () => {
+    const outside = makeTempProject({ "secret.txt": "outside-secret" });
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+    });
+    const escape = `../${outside.split("/").pop()}/secret.txt`;
+    expect(buildSubCompositionHtml(dir, escape, "/runtime.js")).toBeNull();
+    expect(buildSubCompositionHtml(dir, join(outside, "secret.txt"), "/runtime.js")).toBeNull();
+  });
+
   it.each([
     ["template", (body: string) => `<template>${body}</template>`],
     ["document", (body: string) => `<!doctype html><html><body>${body}</body></html>`],
