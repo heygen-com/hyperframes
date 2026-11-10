@@ -552,7 +552,6 @@ export function swapToProxy(
   lightFacts?: PreviewSourceFacts,
 ): void {
   if (swappedElements.has(el)) return;
-  // A clip held with no src takes its file back first, so the copy replaces the file it plays.
   giveBackWhenDue(el);
   if (proxyRequested.has(el) && proxyRequested.get(el) === el.getAttribute("src")) return;
   const originalSrc = currentSrcValue(el);

@@ -519,8 +519,7 @@ const joinsWebAudio = (el: Element): el is HTMLMediaElement =>
     }));
 const WEB_AUDIO_MEDIA = "audio[data-start], video[data-start]";
 
-/** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time.
- * A long file stays on its element: the decode fetches the whole file first, starving the clips due now. */
+/** WebKit restarts a media element's audio 150 to 400 ms late; a decoded buffer on the context clock starts on time. */
 function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolean {
   return (
     isWebKit() &&

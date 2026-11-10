@@ -106,14 +106,11 @@ export function lengthIsAuthored(media: Element): boolean {
   return parseStrictFiniteTimingNumber(media.getAttribute("data-duration")) != null;
 }
 
-// WebKit reads about 35 MB from the head of the file for each fresh element, so only a file larger than that
-// loses anything to the head reads.
 const LONG_SOURCE_BYTES = 32 * 1024 * 1024;
 const sourceBytes = new Map<string, Promise<number | null>>();
 
 const knownBytes = new Map<string, number>();
 
-/** True once the clip's file is known to be long; false while its size is unknown. */
 export function isLongSource(el: Element): boolean {
   const src = unproxiedSrc(el);
   if (!src) return false;
@@ -124,7 +121,6 @@ export function isLongSource(el: Element): boolean {
   }
 }
 
-/** The size of a file in bytes from a one-byte range request, or null where the page cannot read it. */
 export function bytesOfSource(src: string): Promise<number | null> {
   let url: string;
   try {
@@ -174,7 +170,6 @@ function holdUntilDue(el: HTMLMediaElement): void {
   stopMediaDownload(el);
 }
 
-/** A held clip gets its src back, opening at its in-point, once the runtime decides it is due. */
 export function giveBackWhenDue(el: HTMLMediaElement): void {
   if (!isHeldUntilDue(el)) return;
   const authored = authoredSrcOf(el)!;
@@ -184,8 +179,6 @@ export function giveBackWhenDue(el: HTMLMediaElement): void {
   el.setAttribute("src", written);
 }
 
-/** A clip of a long file opens at its in-point; a later one holds no src until it is due, so only the clips
- * on screen and the next take read the file at once. A short file is left as it is. */
 export function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean): void {
   const src = el.getAttribute("src");
   if (!isWebKit() || !inPlayerFrame(document) || !src) return;
@@ -193,7 +186,8 @@ export function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean): v
     if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
     // preload none: the runtime has not yet asked for this clip, whatever WebKit read of it at parse.
     const unclaimed = later && el.preload === "none";
-    if (unclaimed && !src.includes("#") && !el.loop && !el.querySelector("source")) holdUntilDue(el);
+    if (unclaimed && !src.includes("#") && !el.loop && !el.querySelector("source"))
+      holdUntilDue(el);
     else openAtInPoint(el);
   });
 }
@@ -226,7 +220,6 @@ export function deferMediaUntilDue(): void {
       }
   });
   win.__hfMediaDeferral.observe(document.documentElement, { childList: true, subtree: true });
-  // A runtime loaded after the clips parsed missed them; WebKit has already begun their head reads.
   if (isWebKit()) {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;
     for (const media of document.querySelectorAll("video, audio")) defer(media, startInFilm);

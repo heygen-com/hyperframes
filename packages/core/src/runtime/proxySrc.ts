@@ -28,7 +28,6 @@ export function isOpenedAtInPoint(el: Element): boolean {
   return record !== undefined && record.written === el.getAttribute("src");
 }
 
-/** True while the runtime holds the clip with no src. */
 export function isHeldUntilDue(el: Element): boolean {
   return isOpenedAtInPoint(el) && openedAtInPoint.get(el)!.written === null;
 }

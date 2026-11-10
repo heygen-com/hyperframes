@@ -21,7 +21,10 @@ describe("later clips of a long file in the player on WebKit", () => {
     Object.defineProperty(window, "frameElement", { value: frame, configurable: true });
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(null, { status: 206, headers: { "content-range": "bytes 0-0/68000000" } })),
+      vi.fn(
+        async () =>
+          new Response(null, { status: 206, headers: { "content-range": "bytes 0-0/68000000" } }),
+      ),
     );
     // Each test names its own file: a file's size is asked once per page.
     file = `/m/film-${seq++}.mp4`;
