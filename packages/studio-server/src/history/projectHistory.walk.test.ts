@@ -2,11 +2,28 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { openProjectHistory } from "./projectHistory";
+
+// A slow disk, as a large project on a scanned drive is: each blocking stat or listing holds the thread this long.
+const slowDisk = vi.hoisted(() => ({ ms: 0 }));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  const slow =
+    <A extends unknown[], R>(call: (...args: A) => R) =>
+    (...args: A): R => {
+      if (slowDisk.ms) Atomics.wait(pause, 0, 0, slowDisk.ms);
+      return call(...args);
+    };
+  const lstatSync = slow(real.lstatSync);
+  const readdirSync = slow(real.readdirSync);
+  return { ...real, lstatSync, readdirSync, default: { ...real, lstatSync, readdirSync } };
+});
 
 const cleanup: Array<() => unknown> = [];
 afterEach(async () => {
+  slowDisk.ms = 0;
   for (const step of cleanup.splice(0).reverse()) await step();
 });
 
@@ -16,8 +33,8 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
-/** The longest stretch the event loop went without turning while `work` ran, and how long `work` took. */
-async function longestHold(work: () => Promise<unknown>) {
+/** The longest stretch the event loop went without turning while `work` ran. */
+async function longestHold(work: () => Promise<unknown>): Promise<number> {
   let last = performance.now();
   let longest = 0;
   let running = true;
@@ -27,25 +44,32 @@ async function longestHold(work: () => Promise<unknown>) {
     last = now;
     if (running) setImmediate(turn);
   };
-  const began = performance.now();
   setImmediate(turn);
   await work();
   running = false;
-  return { longest, took: performance.now() - began };
+  // The stretch since the last turn counts too: a walk that never yields ends before a first turn.
+  return Math.max(longest, performance.now() - last);
 }
 
 // fails without the fix: the sweep listed the project with readdirSync and lstatSync, holding the loop for the walk.
-it("a sweep of a large project lets the host keep answering while it lists the files", async () => {
+it("a sweep of a project on a slow disk lets the host keep answering while it lists the files", async () => {
   const projectDir = tempDir("hf-history-walk-");
-  for (let folder = 0; folder < 40; folder++) {
+  for (let folder = 0; folder < 20; folder++) {
     mkdirSync(join(projectDir, `scenes-${folder}`));
-    for (let file = 0; file < 100; file++)
+    for (let file = 0; file < 20; file++)
       writeFileSync(join(projectDir, `scenes-${folder}`, `clip-${file}.html`), `<p>${file}</p>`);
   }
-  const history = await openProjectHistory({ projectDir, historyRoot: tempDir("hf-history-root-") });
+  // A minute on, the files are settled, as in a project opened later: the sweep stats them and hashes none.
+  const history = await openProjectHistory({
+    projectDir,
+    historyRoot: tempDir("hf-history-root-"),
+    now: () => Date.now() + 60_000,
+  });
   cleanup.push(() => history.close());
 
-  const { longest, took } = await longestHold(() => history.flush());
+  slowDisk.ms = 1;
+  const longest = await longestHold(() => history.flush());
 
-  expect(longest).toBeLessThan(took / 2);
+  // A blocking walk of these 420 entries holds the loop at least 420 ms.
+  expect(longest, `held the loop ${longest.toFixed(1)} ms`).toBeLessThan(200);
 });
