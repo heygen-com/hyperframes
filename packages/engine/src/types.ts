@@ -38,6 +38,14 @@ export interface SubTimelineWaitMemo {
   loggedSceneCallbackErrors?: string[];
 }
 
+/**
+ * Shared by every capture session of one render: per key, the first session's static-frame dedup check,
+ * which later sessions with that key wait for. It resolves to the verified frames, or null for none.
+ */
+export interface StaticDedupMemo {
+  checks?: Map<string, Promise<readonly number[] | null>>;
+}
+
 export type CaptureWarningCode =
   | "media_readiness_timeout"
   | "media_load_failed"
@@ -226,6 +234,12 @@ export interface CaptureOptions {
   skipReadinessVideoIds?: readonly string[];
   /** Pass one object to every session of a render; see `SubTimelineWaitMemo`. */
   subTimelineWaitMemo?: SubTimelineWaitMemo;
+  /** Pass one object to every session of a render, with `compositionHash`; see `StaticDedupMemo`. */
+  staticDedupMemo?: StaticDedupMemo;
+  /** Hash of the composition HTML this session loads; part of the static dedup sharing key. */
+  compositionHash?: string;
+  /** The frames this session captures, [start, end): a shared dedup set is spot-checked inside it. */
+  staticDedupFrameRange?: { start: number; end: number };
   /**
    * Render-time variable overrides for the composition. The engine injects
    * these as `window.__hfVariables` via `evaluateOnNewDocument` before any

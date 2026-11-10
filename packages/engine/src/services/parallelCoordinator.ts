@@ -933,7 +933,7 @@ async function executeWorkerTask(
     const launch = createCaptureSession(
       serverUrl,
       task.outputDir,
-      captureOptions,
+      { ...captureOptions, staticDedupFrameRange: { start: task.startFrame, end: task.endFrame } },
       createBeforeCaptureHook(),
       workerConfig,
     );
