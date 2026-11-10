@@ -984,12 +984,30 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 // Public app factory
 // ---------------------------------------------------------------------------
 
+/** True when a browser sent the request from a page on another origin. */
+function isCrossOriginBrowserRequest(c: Context): boolean {
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== c.req.header("host");
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Create a Hono app with clean public routes for OSS use.
  */
 export function createProducerApp(options: HandlerOptions = {}): Hono {
   const app = new Hono();
   const handlers = createRenderHandlers(options);
+
+  app.post("*", async (c, next) => {
+    if (isCrossOriginBrowserRequest(c)) {
+      return c.json({ success: false, error: "Cross-origin requests are not allowed" }, 403);
+    }
+    await next();
+  });
 
   app.get("/health", handlers.health);
   app.post("/render", handlers.render);
