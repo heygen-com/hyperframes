@@ -69,6 +69,7 @@ export function QuickShareContent({
       {progress ? (
         <p role="status">{progress} You can close this panel; keep Studio running.</p>
       ) : null}
+      {model.notice ? <p role="status">{model.notice}</p> : null}
       <ShareLogin model={model} />
       {error ? (
         <p role="alert" className="text-step-11 text-text-2">
