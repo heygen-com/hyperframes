@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +45,7 @@ const {
   checkRequest,
   foldShort,
   generate,
+  isVendorPriced,
   parseMask,
   pickVoice,
   ringChange,
@@ -141,6 +142,109 @@ describe("generate", () => {
     const ledger = readFileSync(join(project, ".media/manifest.jsonl"), "utf8");
     expect(ledger).toContain('"source":"generated"');
     expect(ledger).toContain('"references":["ref.png"]');
+  });
+
+  it("reports and records the credits HeyGen says it charged", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img2",
+              status: "completed",
+              images: [{ url: "https://files.test/charged.png" }],
+              charged: { amount: 41, pool: "hyperframes_credits" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/charged.png"),
+      prompt: "a charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r.charged_credits).toBe(41);
+    expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
+      '"charged_credits":41',
+    );
+  });
+
+  it("keeps 10% headroom under the run's credit limit for an image charged at the vendor's cost", async () => {
+    const run = (limit: number) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-generate-limit-"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      const request = {
+        type: "image",
+        out: join(dir, "assets/limited.png"),
+        prompt: "a limited picture",
+        model: "gpt-image-2.5",
+        aspect: "16:9",
+      } as const;
+      return generate(request, undefined, creditsOf(priceOf(request)) ?? undefined);
+    };
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/limited.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img4",
+              status: "completed",
+              images: [{ url: "https://files.test/limited.png" }],
+            },
+          }),
+    );
+    await expect(run(43)).rejects.toThrow(
+      "about 40 credits, 44 with 10% headroom because it is charged at the vendor's cost and the run's credit limit of 43 leaves 43",
+    );
+    await expect(run(44)).resolves.toMatchObject({ job: "img4" });
+  });
+
+  it("reports no charge in HyperFrames credits for a charge to another pool", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/api-charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img5",
+              status: "completed",
+              images: [{ url: "https://files.test/api-charged.png" }],
+              charged: { amount: 2.46, pool: "api_credits" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/api-charged.png"),
+      prompt: "an api-charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
+  });
+
+  it("reports no charge when HeyGen does not say one", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/uncharged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img3",
+              status: "completed",
+              images: [{ url: "https://files.test/uncharged.png" }],
+              charged: null,
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/uncharged.png"),
+      prompt: "an uncharged picture",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
   });
 
   it("sends a picture with no ffmpeg on the machine, shrunk to 2048 px", async () => {
@@ -790,6 +894,15 @@ describe("generate", () => {
     expect(priceOf({ type: "image", out: "a.png", model: "some-new-model" }).credits).toBeNull();
   });
 
+  it("says a GPT Image price is an estimate charged at vendor cost, and a Nano Banana one is not", () => {
+    expect(
+      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" }).basis,
+    ).toBe(
+      "gpt-image-2.5 at 16:9, about 40 credits (charged at vendor cost), with about $0.0125 a reference",
+    );
+    expect(priceOf({ type: "image", out: "a.png" }).basis).toBe("nano-banana-2, $0.067 an image");
+  });
+
   it("prices only a request the real call would accept", () => {
     // --plan runs the same checks as the real call, so it never prices a request the call would refuse.
     const [plate, voice] = [join(project, "plate.png"), join(project, "voice.m4a")];
@@ -949,6 +1062,21 @@ describe("generate", () => {
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
   });
+
+  it("keeps 10% headroom under the limit for an image charged at the vendor's cost", () => {
+    const limited = (request: GenerateRequest, limit: number) => () =>
+      checkLimit(creditsOf(priceOf(request)), limit, isVendorPriced(request));
+    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" } as const;
+    expect(creditsOf(priceOf(gpt))).toBe(40);
+    expect(limited(gpt, 40)).toThrow(
+      "about 40 credits, 44 with 10% headroom because it is charged at the vendor's cost, over --max-credits 40",
+    );
+    expect(limited(gpt, 43)).toThrow("44 with 10% headroom");
+    expect(limited(gpt, 44)).not.toThrow();
+    const nano = { type: "image", out: "a.png", model: "nano-banana-2" } as const;
+    expect(isVendorPriced(nano)).toBe(false);
+    expect(limited(nano, 67)).not.toThrow();
+  });
 });
 
 describe("each route through the generated client", () => {
@@ -1013,6 +1141,7 @@ describe("each route through the generated client", () => {
           [file, undefined],
         ]);
         expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+        expect(r).not.toHaveProperty("charged_credits");
       },
     );
 

@@ -1,7 +1,8 @@
 // Prices before a paid call, from the HyperFrames app's creation pricing. HeyGen charges in units of $1/60, rounded
 // up; the label rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
 import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
-import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
+import { GUIDE_MAX_S, VENDOR_PRICED_IMAGES, type GenerateRequest } from "./generate.js";
+import { limitCheck } from "./v3.js";
 
 export interface Price {
   usd: number | null;
@@ -31,7 +32,6 @@ const GPT_IMAGE: Record<string, number> = {
   "3:4": 0.03612,
 };
 const GPT_REFERENCE = 0.0125;
-const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
 const NANO_IMAGE = 0.067;
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
@@ -68,12 +68,14 @@ export function priceOf(r: GenerateRequest): Price {
           NANO_2_1_IMAGE + refs * NANO_2_1_REFERENCE,
           "nano-banana-2.1, $0.0336 an image and $0.00168 a reference",
         );
-      if (!GPT_MODELS.has(model))
+      if (!VENDOR_PRICED_IMAGES.has(model))
         return { usd: null, list: null, credits: null, basis: `${model}, not priced ahead` };
       const each = GPT_IMAGE[r.aspect ?? "16:9"] ?? GPT_IMAGE["16:9"]!;
+      const list = each + refs * GPT_REFERENCE;
+      const about = Math.ceil(list * HF_CREDITS_PER_USD - 1e-9);
       return at(
-        each + refs * GPT_REFERENCE,
-        `${model} at ${r.aspect ?? "16:9"}, about $0.0125 a reference`,
+        list,
+        `${model} at ${r.aspect ?? "16:9"}, about ${about} credits (charged at vendor cost), with about $0.0125 a reference`,
       );
     }
     case "video": {
@@ -141,8 +143,12 @@ export function priceOf(r: GenerateRequest): Price {
 export const creditsOf = (p: Price): number | null =>
   p.credits === null ? null : Math.ceil(p.credits - 1e-9);
 
-/** Refuses, before anything is sent, a call that would not fit what is left of the person's credit limit. */
-export function checkLimit(credits: number | null, limit: number | undefined): void {
+/** Refuses, before anything is sent, a call past the limit; a vendor-priced image is checked at its estimate + 10%. */
+export function checkLimit(
+  credits: number | null,
+  limit: number | undefined,
+  vendorPriced = false,
+): void {
   if (limit === undefined) return;
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
@@ -151,9 +157,10 @@ export function checkLimit(credits: number | null, limit: number | undefined): v
       `this call cannot be priced ahead, so it cannot be kept under --max-credits ${limit}; nothing was made`,
       fix,
     );
-  if (credits > limit)
+  const { checked, about } = limitCheck(credits, vendorPriced);
+  if (checked > limit)
     throw new Fix(
-      `this call is about ${credits} credits, over --max-credits ${limit}; nothing was made or charged`,
+      `this call is ${about}, over --max-credits ${limit}; nothing was made or charged`,
       fix,
     );
 }
