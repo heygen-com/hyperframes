@@ -16,7 +16,7 @@
   <a href="https://www.star-history.com/heygen-com/hyperframes">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank&theme=dark">
-      <img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="28">
+      <img alt="GitHub top repository global rank" src="https://api.star-history.com/badge?repo=heygen-com/hyperframes&type=rank" height="36">
     </picture>
   </a>
 </p>
