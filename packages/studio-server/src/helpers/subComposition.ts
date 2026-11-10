@@ -274,7 +274,6 @@ export function buildSubCompositionHtml(
   rawOverride?: string,
   gsapBaseUrl?: string,
 ): string | null {
-  // compPath comes from a request: a path that resolves outside the project is not a composition.
   const compFile = resolveWithinProject(projectDir, compPath);
   if (!compFile || !existsSync(compFile)) return null;
 
