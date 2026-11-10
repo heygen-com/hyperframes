@@ -125,6 +125,9 @@ jobs:
           # release PR event exposes main as github.ref, which may advance
           # before this job starts; use the event's exact merge commit instead.
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
+          # Keep the write token out of .git/config. Only "Create release tag"
+          # pushes, and it authenticates its own git calls.
+          persist-credentials: false
 
       - name: Verify immutable release checkout
         run: |
@@ -172,7 +175,15 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          : "${GITHUB_TOKEN:?}"
+          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$BASIC_AUTH"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
+
           TAG="v$VERSION"
           EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
 
