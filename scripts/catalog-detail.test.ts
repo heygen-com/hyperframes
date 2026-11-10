@@ -14,6 +14,7 @@
  */
 
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -466,7 +467,11 @@ test("printing keeps two decimals and drops a negative zero", () => {
 });
 
 /** The component as a page renders it: React comes from the studio workspace, the hooks are the globals Mintlify supplies. */
-async function renderDetail(slots: string[], wrapped = false): Promise<string> {
+async function renderDetail(
+  slots: string[],
+  wrapped = false,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
   const requireFromStudio = createRequire(
     join(dirname(fileURLToPath(import.meta.url)), "..", "packages", "studio", "package.json"),
   );
@@ -510,6 +515,7 @@ async function renderDetail(slots: string[], wrapped = false): Promise<string> {
         variables: [],
         meta: { duration: 5, width: 1920, height: 1080 },
         hasCode: true,
+        ...overrides,
       },
       ...children,
     ),
@@ -528,6 +534,97 @@ for (const wrapped of [false, true]) {
     assert.ok(at("MARK-docs") > at('class="hf-ve-stage"'), "the other slots stay below the stage");
   });
 }
+
+const previewValues = (() => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "catalog-detail.jsx"),
+    "utf8",
+  );
+  const open = source.indexOf("// >>> preview values");
+  const close = source.indexOf("// <<< preview values");
+  assert.ok(open !== -1 && close > open, "the preview values markers are missing");
+  return new Function(`${source.slice(open, close)}\nreturn { scriptJson, declaredValues };`)() as {
+    scriptJson: (value: unknown) => string;
+    declaredValues: (parsed: unknown, ids: Set<string>) => Record<string, unknown>;
+  };
+})();
+
+test("preview values embed as JSON with no markup characters and read back unchanged", () => {
+  const value = { t: "</script><img src=x onerror=alert(1)>", a: "R&D", s: "\u2028\u2029", n: 2 };
+  const json = previewValues.scriptJson(value);
+  assert.ok(!/[<>&\u2028\u2029]/.test(json), json);
+  assert.deepEqual(JSON.parse(json), value);
+  assert.deepEqual(new Function(`return ${json};`)(), value);
+  assert.equal(previewValues.scriptJson({ a: "plain", n: 1.5 }), '{"a":"plain","n":1.5}');
+});
+
+test("a link's values keep only declared ids holding a string, finite number or boolean", () => {
+  const ids = new Set(["a", "b", "c", "d"]);
+  assert.deepEqual(
+    previewValues.declaredValues({ a: "x", b: 2, c: true, d: { nested: 1 }, e: "stray" }, ids),
+    { a: "x", b: 2, c: true },
+  );
+  assert.deepEqual(previewValues.declaredValues(["a"], ids), {});
+  assert.deepEqual(previewValues.declaredValues(null, ids), {});
+});
+
+test("a link value that closes a script element stays inside the preview's bootstrap script", async () => {
+  const injected = "</script><script>window.hacked=1</script>";
+  const query = new URLSearchParams({ "vars-x": JSON.stringify({ label: injected }) });
+  Object.assign(globalThis, {
+    window: { location: { search: `?${query}` }, matchMedia: () => ({ matches: false }) },
+  });
+  try {
+    const html = await renderDetail(["install"], false, {
+      variables: [{ id: "label", type: "string", default: "hello" }],
+    });
+    const srcdoc = /srcDoc="([^"]*)"|srcdoc="([^"]*)"/.exec(html);
+    assert.ok(srcdoc, "the preview frame has a srcdoc");
+    const doc = (srcdoc[1] ?? srcdoc[2] ?? "")
+      .replace(/&quot;/g, '"')
+      .replace(/&#x27;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+    assert.equal(doc.match(/<script/gi)?.length, 2, "only the player and bootstrap scripts");
+    assert.ok(!doc.includes("window.hacked=1</script>"));
+    assert.match(doc, /var INITIAL = \{"label":"\\u003c\/script\\u003e/);
+    const body = /<body><script>([\s\S]*)<\/script><\/body>/.exec(doc)?.[1] ?? "";
+    assert.doesNotThrow(() => new Function(body), "the bootstrap script still parses");
+    assert.match(body, /var scriptJson = function scriptJson\(value\)/);
+  } finally {
+    Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+const varsArgument = (() => {
+  const source = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "install-command.jsx"),
+    "utf8",
+  );
+  const open = source.indexOf("// >>> vars argument");
+  const close = source.indexOf("// <<< vars argument");
+  assert.ok(open !== -1 && close > open, "the vars argument markers are missing");
+  return new Function(`${source.slice(open, close)}\nreturn varsArgument;`)() as (
+    raw: string | null,
+  ) => string;
+})();
+
+test("the install command's --vars suffix is one shell argument for any link value", () => {
+  const hostile = { label: "a'; echo injected; echo '`$(id)`|\n", n: 3 };
+  const suffix = varsArgument(JSON.stringify(hostile));
+  const argv = execFileSync("sh", ["-c", `printf '%s\\0'${suffix}`])
+    .toString()
+    .split("\0");
+  assert.deepEqual(argv.slice(0, -1), ["--vars", JSON.stringify(hostile)]);
+});
+
+test("the install command keeps only variable-id keys with primitive values", () => {
+  assert.equal(varsArgument('{"speed":2,"on":true}'), ` --vars '{"speed":2,"on":true}'`);
+  assert.equal(varsArgument('{"a b":1,"nested":{"x":1},"list":[1]}'), "");
+  assert.equal(varsArgument('["speed"]'), "");
+  assert.equal(varsArgument(null), "");
+});
 
 test("the tabs are Preview, Code, Snippet, Docs with Preview selected", async () => {
   const html = await renderDetail(["install"]);
