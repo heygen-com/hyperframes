@@ -1,5 +1,5 @@
 import postcss from "postcss";
-import { gsapCallOffset, containingCallOffset } from "../scriptPositions";
+import { gsapCallOffset, containingCallOffset, gsapRunsWhenScriptRuns } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
     targetSelector: string;
@@ -1519,12 +1519,12 @@ export const gsapRules: LintRule<LintContext>[] = [
           readDecodedAttr(tag, "async") === null
         );
       };
-      // defer and async do nothing on an inline script; only a module waits.
+      // defer and async do nothing on an inline script; only a module waits. A use inside a listener runs later.
       const firstUse = scripts.find(
         (s) =>
           !/\bsrc\s*=/.test(s.attrs) &&
           (readDecodedAttr(`<script ${s.attrs}>`, "type") ?? "").toLowerCase() !== "module" &&
-          /gsap\.(to|from|fromTo|timeline|set|registerPlugin)\b/.test(s.content),
+          gsapRunsWhenScriptRuns(s),
       );
       const firstGsap = scripts.find(
         (s) => classic(s) && isGsapCoreSrc(readAttr(`<script ${s.attrs}>`, "src") || ""),

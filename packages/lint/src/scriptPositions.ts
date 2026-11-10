@@ -1,5 +1,5 @@
-import { parse, type CallExpression } from "acorn";
-import { simple } from "acorn-walk";
+import { parse, type CallExpression, type Node } from "acorn";
+import { ancestor, simple } from "acorn-walk";
 import type { ExtractedBlock } from "./utils";
 
 // Blocks belong to a single lint context. Weak keys release AST evidence after the pass.
@@ -39,6 +39,53 @@ export function gsapCallOffset(script: ExtractedBlock, method: string): number |
       callee.property.type === "Identifier" &&
       callee.property.name === method,
   )?.start;
+}
+
+const GSAP_ENTRY = new Set(["to", "from", "fromTo", "timeline", "set", "registerPlugin"]);
+const FUNCTION_TYPES = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
+/**
+ * Whether a gsap call runs while the script itself runs: at its top level or inside a function called on the spot.
+ * A call inside any other function (an event listener, a callback) runs later, so it returns false, as does a
+ * script that does not parse: undecidable means not proven early.
+ */
+export function gsapRunsWhenScriptRuns(script: ExtractedBlock): boolean {
+  let ast: Node;
+  try {
+    ast = parse(script.content, {
+      ecmaVersion: "latest",
+      sourceType: "script",
+      allowReturnOutsideFunction: true,
+    });
+  } catch {
+    return false;
+  }
+  let early = false;
+  ancestor(ast, {
+    CallExpression: (node, _state, ancestors) => {
+      const { callee } = node;
+      if (
+        early ||
+        callee.type !== "MemberExpression" ||
+        callee.computed ||
+        callee.object.type !== "Identifier" ||
+        callee.object.name !== "gsap" ||
+        callee.property.type !== "Identifier" ||
+        !GSAP_ENTRY.has(callee.property.name)
+      )
+        return;
+      early = ancestors.every((a, i) => {
+        if (!FUNCTION_TYPES.has(a.type)) return true;
+        const parent = ancestors[i - 1];
+        return parent?.type === "CallExpression" && (parent as CallExpression).callee === a;
+      });
+    },
+  });
+  return early;
 }
 
 /** The innermost call containing an already-detected token (for example repeat: -1). */

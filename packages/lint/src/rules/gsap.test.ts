@@ -1032,6 +1032,39 @@ describe("GSAP rules", () => {
     expect(result.findings.find((f) => f.code === "missing_gsap_script")).toBeUndefined();
   });
 
+  it.each([
+    [
+      "a defer tag and a DOMContentLoaded listener",
+      '<head><script defer src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script></head>',
+      '<script>window.__timelines={};document.addEventListener("DOMContentLoaded",()=>{window.__timelines.main=gsap.timeline({paused:true});});</script>',
+      "",
+    ],
+    [
+      "a later tag and a load listener",
+      "",
+      '<script>window.addEventListener("load", function () { window.__timelines = { main: gsap.timeline({ paused: true }) }; });</script>',
+      '<script src="./gsap.min.js"></script>',
+    ],
+  ])("does not report gsap_loaded_after_use for %s", async (_, head, body, after) => {
+    const html = `<html>${head}<body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  ${body}
+  ${after}
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "gsap_loaded_after_use")).toBeUndefined();
+  });
+
+  it("reports gsap_loaded_after_use for a function called on the spot before a later tag", async () => {
+    const html = `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"></div>
+  <script>(function () { window.__timelines = { main: gsap.timeline({ paused: true }) }; })();</script>
+  <script src="./gsap.min.js"></script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    expect(result.findings.find((f) => f.code === "gsap_loaded_after_use")?.severity).toBe("error");
+  });
+
   it("does not report gsap_loaded_after_use when GSAP loads in the head first", async () => {
     const html = `
 <html><head><script src="./gsap.min.js"></script></head><body>
