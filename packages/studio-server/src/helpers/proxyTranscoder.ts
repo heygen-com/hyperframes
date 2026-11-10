@@ -28,12 +28,7 @@ import {
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
-import {
-  isLinkFreeWithinProject,
-  mkdirWithinProject,
-  realpath,
-  realProjectRoot,
-} from "./safePath.js";
+import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -355,7 +350,6 @@ function forget(job: ProxyJob): void {
 
 function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
   try {
-    if (!isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) return;
     cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
