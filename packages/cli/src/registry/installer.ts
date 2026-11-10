@@ -137,7 +137,45 @@ function keptByProject(
  * install time so a registry that bypasses schema validation still can't write
  * outside the project.
  */
-function assertSafeTarget(destDir: string, target: string): void {
+// Project and tool configuration is never registry content: VCS metadata, package-manager and
+// agent or editor settings are executed or trusted by other tools. Only an example (a fresh `init`)
+// may bring its own package.json and HyperFrames config.
+const PROJECT_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
+const EXAMPLE_DOTFILES = new Set([".gitignore"]);
+
+const isGitSegment = (part: string): boolean => part === ".git" || /^git~\d+$/.test(part);
+
+function isHiddenConfigFile(file: string, example: boolean): boolean {
+  if (file === ".gitkeep" || (example && EXAMPLE_DOTFILES.has(file))) return false;
+  return file.startsWith(".");
+}
+
+type TargetRule = [
+  reason: string,
+  applies: (dirs: string[], file: string, example: boolean) => boolean,
+];
+
+const CONFIG_TARGET_RULES: TargetRule[] = [
+  ["it writes into git metadata", (dirs, file) => [...dirs, file].some(isGitSegment)],
+  ["it writes into a hidden tool directory", (dirs) => dirs.some((dir) => dir.startsWith("."))],
+  [
+    "it writes a hidden configuration file",
+    (_dirs, file, example) => isHiddenConfigFile(file, example),
+  ],
+  [
+    "it would replace project configuration",
+    (_dirs, file, example) => !example && PROJECT_FILES.has(file),
+  ],
+];
+
+function configTargetError(target: string, type: RegistryItem["type"]): string | null {
+  const parts = target.split(/[\\/]/).map((part) => part.toLowerCase());
+  const file = parts.pop() ?? "";
+  const example = type === "hyperframes:example";
+  return CONFIG_TARGET_RULES.find(([, applies]) => applies(parts, file, example))?.[0] ?? null;
+}
+
+function assertSafeTarget(destDir: string, target: string, type: RegistryItem["type"]): void {
   if (isAbsolute(target)) {
     throw new Error(`Unsafe target "${target}": absolute paths are not allowed.`);
   }
@@ -152,6 +190,8 @@ function assertSafeTarget(destDir: string, target: string): void {
   if (rel.startsWith("..") || isAbsolute(rel)) {
     throw new Error(`Unsafe target "${target}": resolves outside destDir ${destDir}.`);
   }
+  const configError = configTargetError(target, type);
+  if (configError) throw new Error(`Unsafe target "${target}": ${configError}.`);
 }
 
 /** A component's pasteable markup: the file whose declared defaults `--vars` edits. */
@@ -271,7 +311,7 @@ export async function prepareItem(
 
   // Validate all targets up-front so a malformed item fails before any write.
   for (const file of item.files) {
-    assertSafeTarget(destDir, file.target);
+    assertSafeTarget(destDir, file.target, item.type);
   }
 
   const root = registryRoot(destDir);
