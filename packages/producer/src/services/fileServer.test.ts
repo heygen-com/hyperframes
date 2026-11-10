@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server/media-range";
 import {
   closeFileServerSafely,
   createFileServer,
@@ -264,6 +265,30 @@ describe("parseRangeHeader", () => {
       kind: "satisfiable",
       start: 0,
       end: SIZE - 1,
+    });
+  });
+
+  it("bounds an open-ended audio or video range at one piece", () => {
+    const size = 8 * 1024 * 1024;
+    expect(parseRangeHeader("bytes=0-", size, "video/mp4")).toEqual({
+      kind: "satisfiable",
+      start: 0,
+      end: MAX_OPEN_MEDIA_RANGE_BYTES - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", size, "audio/mpeg")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: 100 + MAX_OPEN_MEDIA_RANGE_BYTES - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", SIZE, "video/mp4")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: SIZE - 1,
+    });
+    expect(parseRangeHeader("bytes=100-", size, "application/octet-stream")).toEqual({
+      kind: "satisfiable",
+      start: 100,
+      end: size - 1,
     });
   });
 
@@ -632,6 +657,28 @@ describe("createFileServer", () => {
         expect(multi.status).toBe(200);
         expect(multi.headers.get("accept-ranges")).toBe("bytes");
         await multi.body?.cancel();
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // Served to EOF, each <video> holds one of Chrome's six connections to the server (#6029).
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-open-range-"));
+    try {
+      writeEmptyIndex(projectDir);
+      const size = 8 * 1024 * 1024;
+      writeFileSync(join(projectDir, "clip.mp4"), Buffer.alloc(size, 0x61));
+
+      await withFileServer(projectDir, async (server) => {
+        const res = await fetch(`${server.url}/clip.mp4`, { headers: { Range: "bytes=1000-" } });
+        expect(res.status).toBe(206);
+        expect(res.headers.get("content-range")).toBe(
+          `bytes 1000-${1000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+        );
+        expect(res.headers.get("content-length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+        expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
       });
     } finally {
       rmSync(projectDir, { recursive: true, force: true });

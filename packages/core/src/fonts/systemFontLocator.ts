@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join, resolve } from "node:path";
+import { readSfntFaces } from "./sfntNames.js";
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
 const FC_MATCH_TIMEOUT_MS = 3000;
@@ -136,6 +137,7 @@ export function fontDirectories(): string[] {
       "/Library/Fonts",
       "/System/Library/Fonts",
       "/System/Library/Fonts/Supplemental",
+      "/System/Library/AssetsV2",
     ];
   }
   if (platform() === "win32") {
@@ -168,15 +170,15 @@ export interface FontFileEntry {
  * path, filename, and derived family name. Shared by the font listing route
  * and the per-family locator to avoid duplicating the directory scan loop.
  */
-export function collectFontFileEntries(dir: string, depth = 0): FontFileEntry[] {
-  if (!existsSync(dir) || depth > 2) return [];
+export function collectFontFileEntries(dir: string, depth = 0, maxDepth = 2): FontFileEntry[] {
+  if (!existsSync(dir) || depth > maxDepth) return [];
   const entries: FontFileEntry[] = [];
 
   try {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        entries.push(...collectFontFileEntries(fullPath, depth + 1));
+        entries.push(...collectFontFileEntries(fullPath, depth + 1, maxDepth));
         continue;
       }
       if (!FONT_EXT_RE.test(entry.name)) continue;
@@ -263,6 +265,7 @@ export function locateSystemFont(family: string): LocatedFont | null {
 export interface LocatedFontVariant extends LocatedFont {
   weight: string;
   style: "normal" | "italic";
+  face?: number;
 }
 
 const WEIGHT_TOKENS: Record<string, string> = {
@@ -297,7 +300,10 @@ function inferWeightAndStyle(fileName: string): { weight: string; style: "normal
   return { weight: "400", style };
 }
 
-export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
+export function locateSystemFontVariants(
+  family: string,
+  options: { byInnerName?: boolean } = {},
+): LocatedFontVariant[] {
   const normalized = normalizeName(family);
   if (!normalized) return [];
 
@@ -310,7 +316,59 @@ export function locateSystemFontVariants(family: string): LocatedFontVariant[] {
     const { weight, style } = inferWeightAndStyle(c.path);
     variants.push({ path: c.path, format: c.format, weight, style });
   }
+  if (variants.length === 0 && options.byInnerName) {
+    return regularAndBold(dedupeVariants(variantsByInnerName(normalized)));
+  }
   return dedupeVariants(variants);
+}
+
+const INNER_NAME_MAX_DEPTH = 4;
+let innerNameIndex: Map<string, LocatedFontVariant[]> | null = null;
+
+function innerNameVariants(entry: FontFileEntry): [string, LocatedFontVariant][] {
+  const ext = entry.fileName.match(FONT_EXT_RE)?.[1]?.toLowerCase() ?? "";
+  if (ext !== "ttf" && ext !== "otf" && ext !== "ttc") return [];
+  const collection = ext === "ttc";
+  return readSfntFaces(entry.path).flatMap((face) =>
+    face.families.map((family): [string, LocatedFontVariant] => [
+      normalizeName(family),
+      {
+        path: entry.path,
+        format: collection ? "ttc" : extensionToFormat(ext),
+        weight: face.weight,
+        style: face.style,
+        ...(collection && { face: face.offset }),
+      },
+    ]),
+  );
+}
+
+function buildInnerNameIndex(): Map<string, LocatedFontVariant[]> {
+  const index = new Map<string, LocatedFontVariant[]>();
+  const entries = fontDirectories().flatMap((dir) =>
+    collectFontFileEntries(dir, 0, INNER_NAME_MAX_DEPTH),
+  );
+  for (const [family, variant] of entries.flatMap(innerNameVariants)) {
+    index.set(family, [...(index.get(family) ?? []), variant]);
+  }
+  return index;
+}
+
+function regularAndBold(variants: LocatedFontVariant[]): LocatedFontVariant[] {
+  const nearest = (target: number) =>
+    variants.reduce<LocatedFontVariant | undefined>(
+      (best, v) =>
+        !best || Math.abs(Number(v.weight) - target) < Math.abs(Number(best.weight) - target)
+          ? v
+          : best,
+      undefined,
+    );
+  return [...new Set([nearest(400), nearest(700)])].filter((v): v is LocatedFontVariant => !!v);
+}
+
+function variantsByInnerName(normalized: string): LocatedFontVariant[] {
+  innerNameIndex ??= buildInnerNameIndex();
+  return innerNameIndex.get(normalized) ?? [];
 }
 
 function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
@@ -324,5 +382,6 @@ function dedupeVariants(variants: LocatedFontVariant[]): LocatedFontVariant[] {
 
 export function clearSystemFontCache(): void {
   cache.clear();
+  innerNameIndex = null;
   allowedDirsCache = null;
 }

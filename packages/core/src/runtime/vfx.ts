@@ -15,6 +15,7 @@
  * prefix as a composition script error, which fails a render whose timeline wait times out.
  */
 
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   HF_VFX_ATTR,
   VfxChainError,
@@ -552,13 +553,8 @@ function resolveCaptureSource(
  * Only the OUTPUT canvas is watched: `.hf-vfx-src` is a 2-D context and is
  * unaffected by GL context loss.
  *
- * Restore is deliberately unhandled — the entry stays lost for as long as this
- * registry does. `initVfx` already re-scans and re-registers every host when
- * the composition mounts and again when a sub-composition arrives, rebuilding
- * every program, texture and framebuffer from scratch; a second, narrower
- * rebuild path for `webglcontextrestored` alone would duplicate that one and
- * be free to drift from it. `preventDefault()` still runs, so the context is
- * restorable if a follow-up wants to take it.
+ * A lost entry stays lost for as long as its registry does; `rebuildLostVfx`
+ * re-runs `initVfx` once the context is restored, the one rebuild path.
  */
 function watchContextLoss(entry: VfxEntry): void {
   entry.out.addEventListener("webglcontextlost", (event) => {
@@ -570,6 +566,12 @@ function watchContextLoss(entry: VfxEntry): void {
     entry.contextLost = true;
     reportVfxError(`${describeHost(entry.host)}: WebGL context lost.`);
   });
+}
+
+/** Rebuilds every chain once none is still waiting on its context: a rebuild on a lost one drops the host for good. */
+export function rebuildLostVfx(root: HTMLElement): void {
+  if (!registry.some((entry) => entry.contextLost)) return;
+  if (registry.every((entry) => !entry.gl.isContextLost())) initVfx(root, registryFps);
 }
 
 /** The host's chain, or `null` once the reason it is unusable has been said. */
@@ -1209,14 +1211,14 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
     const finish = (outcome: "painted" | "timeout"): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      wallClearTimeout(timer);
       canvas.removeEventListener("paint", onPaint);
       resolve(outcome);
     };
     const onPaint = (): void => finish("painted");
     // Cleared by `finish`, so the common case adds no latency and leaves no
     // timer behind; on a canvas that never paints it is the only way out.
-    const timer = setTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
+    const timer = wallSetTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
     canvas.addEventListener("paint", onPaint, { once: true });
     try {
       (canvas as RequestPaintCanvas).requestPaint?.();
@@ -1412,5 +1414,8 @@ export function paintVfx(t: number, options?: { engineMode?: boolean }): void {
   // `__hf_page_composite_resolve` — so a `self` chain painted nothing there, in
   // silence. The runtime has to be able to finish its own frame.
   if (options?.engineMode) armPageComposite();
-  registerSeekCompletion(capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true));
+  registerSeekCompletion(
+    capturePreviewThenPaint(capturing, t, seq, options?.engineMode === true),
+    "vfx",
+  );
 }

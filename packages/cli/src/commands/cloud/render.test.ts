@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import {
   assertArchiveFits,
+  logsTick,
+  resolveCloudFpsArg,
+  parseAspectRatioFlag,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -34,6 +37,39 @@ function writeComposition(width: number, height: number): string {
   );
   return dir;
 }
+
+describe("resolveCloudFpsArg", () => {
+  const withFps = (fps: string) => {
+    const dir = writeComposition(1920, 1080);
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-fps="${fps}" data-width="1920" data-height="1080"></div></body></html>`,
+    );
+    return { kind: "dir", dir } as const;
+  };
+
+  it("reads the root data-fps when --fps is absent", () => {
+    expect(resolveCloudFpsArg(withFps("24"), undefined, undefined)).toBe("24");
+  });
+  it("lets an explicit --fps win", () => {
+    expect(resolveCloudFpsArg(withFps("24"), "60", undefined)).toBe("60");
+  });
+  it("leaves the server default when data-fps is absent or fractional", () => {
+    expect(
+      resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
+    ).toBeUndefined();
+    expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("logsTick", () => {
+  it("logs a long render once a minute while its status holds, so a slow render does not read as a hang", () => {
+    const logged = { status: "rendering", at: 2_000 };
+    expect(logsTick("rendering", 30_000, logged)).toBe(false);
+    expect(logsTick("rendering", 62_000, logged)).toBe(true);
+    expect(logsTick("completed", 3_000, logged)).toBe(true);
+  });
+});
 
 describe("validateDryRunSource", () => {
   it("accepts a local directory and rejects already-uploaded sources", () => {
@@ -111,7 +147,11 @@ describe("cloud render --dry-run with heavy media", () => {
       `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><video src="clip.mp4"></video></div></body></html>`,
       "utf-8",
     );
-    writeFileSync(join(dir, "clip.mp4"), Buffer.alloc(6 * 1024 * 1024, 1));
+    const mp4Header = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from("ftypisom")]);
+    writeFileSync(
+      join(dir, "clip.mp4"),
+      Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
+    );
     const result = spawnSync(
       "bun",
       ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
@@ -147,6 +187,11 @@ describe("cloud render --dry-run with heavy media", () => {
 describe("cloud render --dry-run with a file over 4 GiB left in the zip", () => {
   it("reports it as over the limit without reading it", () => {
     const dir = writeComposition(1920, 1080);
+    // A mention nothing can rewrite keeps the file in the zip.
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!-- raw/take.mov -->${readFileSync(join(dir, "index.html"), "utf-8")}`,
+    );
     mkdirSync(join(dir, "raw"));
     writeFileSync(join(dir, "raw", "take.mov"), "");
     truncateSync(join(dir, "raw", "take.mov"), 2 ** 32 + 1);
@@ -194,6 +239,15 @@ describe("assertArchiveFits", () => {
   });
 });
 
+describe("parseAspectRatioFlag", () => {
+  it("takes any W:H and refuses anything else as a usage error", () => {
+    expect(parseAspectRatioFlag("2:1")).toBe("2:1");
+    expect(parseAspectRatioFlag("16:9")).toBe("16:9");
+    expect(() => parseAspectRatioFlag("wide")).toThrow(CliUsageError);
+    expect(() => parseAspectRatioFlag("0:1")).toThrow(CliUsageError);
+  });
+});
+
 describe("resolveAspectRatioForSubmit — non-local sources", () => {
   it("trusts an explicit flag for asset_id / url", () => {
     const asset: ProjectInputSource = { kind: "asset_id", assetId: "a" };
@@ -233,6 +287,64 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     expect(() =>
       resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "9:16", true),
     ).toThrow(CliRuntimeError);
+  });
+
+  it("keeps a 2:1 composition's own size at 1080p and does not claim a 16:9 default", () => {
+    const dir = writeComposition(1920, 960);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, false)).toBe(
+      undefined,
+    );
+    const said = log.mock.calls.flat().join("\n");
+    expect(said).toContain("2:1");
+    expect(said).toContain("keeps that size");
+    expect(said).not.toContain("16:9");
+  });
+
+  it("accepts --aspect-ratio 2:1 for a 2:1 composition", () => {
+    const dir = writeComposition(1920, 960);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "2:1", true)).toBe(
+      undefined,
+    );
+  });
+
+  it("refuses a 4k render of a 2:1 composition before upload, since no 4K preset fits it", () => {
+    const dir = writeComposition(1920, 960);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+    ).toThrow(CliRuntimeError);
+  });
+
+  it.each([
+    [1920, 1055],
+    [1000, 980],
+    [1055, 1920],
+  ])(
+    "refuses a 4k render of %ix%i, near a preset ratio but not one the 4K preset fits",
+    (width, height) => {
+      const dir = writeComposition(width, height);
+      expect(() =>
+        resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+      ).toThrow(CliRuntimeError);
+    },
+  );
+
+  it.each([
+    [1920, 1080, "16:9"],
+    [1080, 1920, "9:16"],
+    [1080, 1080, "1:1"],
+  ])("sends %ix%i at 4k as %s", (width, height, ratio) => {
+    const dir = writeComposition(width, height);
+    expect(
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+    ).toBe(ratio);
+  });
+
+  it("keeps sending a near-16:9 composition's preset at 1080p, where the render keeps its own size", () => {
+    const dir = writeComposition(1920, 1055);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true)).toBe(
+      "16:9",
+    );
   });
 
   it("fails fast when the --composition entry is missing", () => {

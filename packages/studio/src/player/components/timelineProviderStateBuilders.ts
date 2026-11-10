@@ -43,7 +43,6 @@ export function shouldIgnoreTimelinePointerDown(target: EventTarget | null): boo
 type ContainerInputs = Omit<TimelineContainerProps, "className"> & {
   isDragOver: boolean;
   activeTool: string;
-  shiftHeld: boolean;
   accentClass: string;
 };
 
@@ -77,7 +76,7 @@ export function buildTimelineMeta({
   razorGuide,
 }: TimelineMetaBuilderInputs): TimelineMeta {
   const { labelMode, zoomMode, contentOrigin, ...viewportProps } = viewport;
-  const containerClassName = `relative border-t select-none h-full overflow-hidden ${container.isDragOver ? container.accentClass : ""} ${container.activeTool === "razor" ? "cursor-crosshair" : container.shiftHeld ? "cursor-crosshair" : "cursor-default"}`;
+  const containerClassName = `relative border-t select-none h-full overflow-hidden ${container.isDragOver ? container.accentClass : ""} ${container.activeTool === "razor" ? "cursor-crosshair" : "cursor-default data-[shift-held]:cursor-crosshair"}`;
   const viewportClassName = `${zoomMode === "fit" ? "overflow-x-hidden" : "overflow-x-auto"} overflow-y-auto h-full outline-hidden`;
   return {
     emptyState,

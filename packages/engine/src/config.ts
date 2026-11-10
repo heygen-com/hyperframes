@@ -70,6 +70,8 @@ export interface EngineConfig {
    * `HF_STATIC_DEDUP` in {false,0,off}. Only arms in screenshot capture mode.
    */
   staticFrameDedup: boolean;
+  /** Opt-in `HF_VIDEO_LAYER_PASSTHROUGH`: ffmpeg composites a full-canvas source video under the page capture. */
+  videoLayerPassthrough: boolean;
   /**
    * Use drawElementImage for frame capture (requires the CanvasDrawElement
    * Chrome flag, added globally in buildChromeArgs). Default ON, clamped in
@@ -88,6 +90,7 @@ export interface EngineConfig {
    * true. Kill switch: `HF_DE_WORKER_ENCODE=false`.
    */
   enableDrawElementWorkerEncode: boolean;
+  useInPageEncode: boolean;
   /**
    * INTERNAL. Set by resolveConfig when it disabled enablePageSideCompositing
    * solely because drawElement was on. Lets the producer's compile-time gates
@@ -301,8 +304,10 @@ export const DEFAULT_CONFIG: EngineConfig = {
   protocolTimeout: 300_000,
   forceScreenshot: false,
   staticFrameDedup: true,
+  videoLayerPassthrough: false,
   useDrawElement: true,
   enableDrawElementWorkerEncode: true,
+  useInPageEncode: false,
   // Auto-detected per host in `resolveConfig`; defaults off for the raw
   // DEFAULT_CONFIG (used directly by tests and worker-sizing fallbacks).
   lowMemoryMode: false,
@@ -354,8 +359,10 @@ const BOOLEAN_ENGINE_CONFIG_FIELDS = [
   "enableBrowserPool",
   "forceScreenshot",
   "staticFrameDedup",
+  "videoLayerPassthrough",
   "useDrawElement",
   "enableDrawElementWorkerEncode",
+  "useInPageEncode",
   "lowMemoryMode",
   "enablePageSideCompositing",
   "enableChunkedEncode",
@@ -876,11 +883,16 @@ export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
 
     forceScreenshot: envBool("PRODUCER_FORCE_SCREENSHOT", DEFAULT_CONFIG.forceScreenshot),
     staticFrameDedup: resolveStaticFrameDedup(),
+    videoLayerPassthrough: envBool(
+      "HF_VIDEO_LAYER_PASSTHROUGH",
+      DEFAULT_CONFIG.videoLayerPassthrough,
+    ),
     useDrawElement: envBool("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", DEFAULT_CONFIG.useDrawElement),
     enableDrawElementWorkerEncode: envBool(
       "HF_DE_WORKER_ENCODE",
       DEFAULT_CONFIG.enableDrawElementWorkerEncode,
     ),
+    useInPageEncode: envBool("HF_INPAGE_ENCODE", DEFAULT_CONFIG.useInPageEncode),
     lowMemoryMode: resolveLowMemoryMode(),
     enablePageSideCompositing: envBool(
       "HF_PAGE_SIDE_COMPOSITING",

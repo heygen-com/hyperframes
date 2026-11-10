@@ -175,3 +175,30 @@ function writeTempSibling(
 function errorCode(error: unknown): string {
   return String((error as NodeJS.ErrnoException)?.code);
 }
+
+const WIN32_LONG_PREFIX = "\\\\?\\";
+const WIN32_ABSOLUTE = /^([A-Za-z]:\\|\\\\)/;
+const WIN32_DOS_DEVICE = /^\\\\[.?]\\/;
+
+function toWin32LongPath(path: string): string {
+  const full = resolve(path);
+  if (!WIN32_ABSOLUTE.test(full) || WIN32_DOS_DEVICE.test(full)) return path;
+  return full.startsWith("\\\\")
+    ? `${WIN32_LONG_PREFIX}UNC\\${full.slice(2)}`
+    : `${WIN32_LONG_PREFIX}${full}`;
+}
+
+/** `prefix` + 6 random characters in `parent`, made private; Windows past 260 characters needs the long path. */
+export function createStagingDir(parent: string, prefix: string): string {
+  const requested = join(parent, prefix);
+  const long = toWin32LongPath(requested);
+  const created = fs.mkdtempSync(long);
+  return long === requested ? created : withoutAddedLongPrefix(created);
+}
+
+function withoutAddedLongPrefix(path: string): string {
+  const unc = `${WIN32_LONG_PREFIX}UNC\\`;
+  return path.startsWith(unc)
+    ? `\\\\${path.slice(unc.length)}`
+    : path.slice(WIN32_LONG_PREFIX.length);
+}

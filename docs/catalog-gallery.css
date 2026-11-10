@@ -17,7 +17,6 @@
 .hfc-gallery .hfc-media :is(img,video) { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; margin:0; border:0; border-radius:0; }
 .hfc-gallery .hfc-preview-host { position:absolute; inset:0; pointer-events:none; opacity:0; }
 .hfc-gallery .hfc-preview-host[data-ready="true"] { opacity:1; }
-.hfc-gallery .hfc-preview-host hyperframes-player { display:block; width:100%; height:100%; pointer-events:none; }
 .hfc-gallery .hfc-fallback { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:24px; height:100%; text-align:center; color:#ccc; background:#141414; }
 .hfc-gallery .hfc-fallback span { color:#999; font-size:10px; }
 .hfc-gallery .hfc-fallback strong { font-size:18px; line-height:1.2; }
@@ -79,3 +78,38 @@
 .hfc-gallery .mw .sq path{stroke-dasharray:220;stroke-dashoffset:220;}
 @media(prefers-reduced-motion:reduce){.hfc-gallery .mw .sq path{stroke-dashoffset:0;}}
 @media(max-width:600px){.hfc-gallery{padding:0 18px;}.hfc-gallery .hfc-hero{padding:28px 0;}}
+
+/* The catalog's own search: filters the cards below as you type. */
+.hfc-search {
+  display: block;
+  width: min(560px, 100%);
+  margin-top: 18px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+.hfc-search:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 40%, transparent);
+  outline-offset: 2px;
+}
+
+/* Pause previews: the visitor's stop for the looping cards. */
+.hfc-gallery .hfc-pause {
+  margin-top: 14px;
+  padding: 7px 14px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hfc-gallery .hfc-pause:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 45%, transparent);
+  outline-offset: 2px;
+}

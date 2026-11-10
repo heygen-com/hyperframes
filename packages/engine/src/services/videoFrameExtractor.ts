@@ -8,10 +8,11 @@
 
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
-import { basename, join } from "path";
+import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
 import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
@@ -34,10 +35,15 @@ import {
   parseStrictFiniteTimingNumber,
   readMediaStart,
   toFps,
+  type Fps,
   type FpsInput,
   firstFrameColourArgs,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -45,6 +51,7 @@ import {
   extractFinalVideoFrameTimestamp,
   extractMediaMetadata,
   ffmpegSeekSeconds,
+  formatFfmpegSeconds,
   keyframeGapSeconds,
   mediaFileIdentity,
   readMetadataCache,
@@ -104,6 +111,7 @@ export interface VideoElement {
   loop: boolean;
   hasAudio: boolean;
   hidden?: boolean;
+  graded?: boolean;
 }
 
 export interface ExtractedFrames {
@@ -139,14 +147,10 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
   return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
 }
 
+const SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES = 1e-4;
 /**
- * Resolve the frame count produced for a requested extraction duration.
- *
- * Both paths sample with FFmpeg's fps filter. A CFR window ends at the nearest
- * frame boundary; a VFR window rounds up, keeping the slot a trailing still
- * covers. Keep this calculation shared by superset slicing and
- * producer coverage accounting so a complete VFR extraction cannot be
- * rejected because the two paths disagree by one frame.
+ * Frames a window gets: one per output slot it covers (CFR), or rounded up (VFR).
+ * Superset slicing and the coverage gate share it, so they never disagree by a frame.
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
@@ -206,9 +210,11 @@ export function extractionFrameCountForDuration(
 
   const frameNumerator = microseconds * fpsNumerator;
   const frameDenominator = 1_000_000n * fpsDenominator;
+  const slotsPerTolerance = BigInt(Math.round(1 / SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES));
   const frameCount = isVFR
     ? (frameNumerator + frameDenominator - 1n) / frameDenominator
-    : (2n * frameNumerator + frameDenominator) / (2n * frameDenominator);
+    : (slotsPerTolerance * (frameNumerator + frameDenominator) - frameDenominator - 1n) /
+      (slotsPerTolerance * frameDenominator);
   const frames = Number(frameCount);
   return Math.max(1, Number.isSafeInteger(frames) ? frames : Number.MAX_SAFE_INTEGER);
 }
@@ -408,6 +414,7 @@ export type VideoExtractionFailureKind =
   | "ffmpeg_timeout"
   | "ffmpeg_transient"
   | "ffmpeg_failed"
+  | "disk_full"
   | "zero_output"
   | "internal";
 
@@ -427,6 +434,31 @@ export interface VideoExtractionFailure {
   error: string;
   /** ffmpeg's last stderr lines, without paths or URLs: what a producer-facing error may say. */
   ffmpegReason?: string;
+  /** The clip's file, project-relative; a remote source shows only its file name. Safe for producer-facing errors. */
+  source?: string;
+}
+
+const URL_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
+const WINDOWS_ABSOLUTE = /^([a-zA-Z]:[\\/]|\\\\)/;
+
+/** A clip's src as a producer-facing error may print it: no scheme payload, host, query, fragment or absolute path. */
+export function videoExtractionSourceLabel(src: string, baseDir: string): string {
+  if (/^(data|blob):/i.test(src)) return "inline video";
+  if (URL_SCHEME.test(src)) {
+    try {
+      return basename(decodeURIComponent(new URL(src).pathname)) || "remote video";
+    } catch {
+      return "remote video";
+    }
+  }
+  const path = src.split(/[?#]/)[0]!;
+  const lib = WINDOWS_ABSOLUTE.test(path) ? win32 : { isAbsolute, relative, basename, normalize };
+  const relativePath = lib.isAbsolute(path) ? lib.relative(baseDir, path) : lib.normalize(path);
+  const label =
+    relativePath.startsWith("..") || lib.isAbsolute(relativePath)
+      ? lib.basename(path)
+      : relativePath;
+  return label.replace(/\\/g, "/");
 }
 
 export type VideoExtractionFailureStatusClass =
@@ -527,6 +559,9 @@ function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
     .join(" | ")
     .slice(-FFMPEG_REASON_CHARS);
 }
+
+// ffmpeg ends a full disk with its last frames' summary, so the strerror text is the only sign of it
+const DISK_FULL = /no space left on device|disk quota exceeded/i;
 
 export function isVideoSourceExtractionError(error: unknown): error is VideoSourceExtractionError {
   return (
@@ -844,6 +879,7 @@ export function parseVideoElements(html: string): VideoElement[] {
       (isAudibleVideoElement(el) && isMemberGroupHidden(groupsById, el))
         ? { hidden: true }
         : {}),
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
     });
   }
 
@@ -855,6 +891,14 @@ export interface ImageElement {
   src: string;
   start: number;
   end: number;
+  graded?: boolean;
+}
+
+export function hasGradedCanvas(html: string): boolean {
+  return (
+    parseHTML(unwrapTemplate(html)).document.querySelector(`canvas[${HF_COLOR_GRADING_ATTR}]`) !==
+    null
+  );
 }
 
 export function parseImageElements(html: string): ImageElement[] {
@@ -894,31 +938,56 @@ export function parseImageElements(html: string): ImageElement[] {
       end = Infinity;
     }
 
-    images.push({ id, src, start, end });
+    images.push({
+      id,
+      src,
+      start,
+      end,
+      ...(el.hasAttribute(HF_COLOR_GRADING_ATTR) ? { graded: true } : {}),
+    });
   }
 
   return images;
 }
 
-const firstFrameColourCache = new Map<
-  string,
-  MediaProbeCacheEntry<ReturnType<typeof parseFirstFrameColour>>
->();
+const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
+
+/** A source's SPS transfers, read as the trace streams (a run keeps only stderr's tail); null when the read failed. */
+function readKeyframeTransfers(videoPath: string, codec: string) {
+  let traced = "";
+  let rest = "";
+  const onStderr = (chunk: string) => {
+    const lines = (rest + chunk).split("\n");
+    rest = lines.pop() ?? "";
+    for (const line of lines) if (line.includes("transfer_characteristics")) traced += `${line}\n`;
+  };
+  return inExtractionSlot(() =>
+    runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)], {
+      onStderr,
+    }),
+  ).then((result) => (result.success ? parseKeyframeTransfers(traced + rest) : null));
+}
 
 /** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
-function readFirstFrameColour(videoPath: string) {
+function readFirstFrameColour(videoPath: string, codec: string) {
   const identity = mediaFileIdentity(videoPath);
   const cached = readMetadataCache(firstFrameColourCache, videoPath, identity);
   if (cached) return cached;
   // In an extraction slot, so it never adds a decoder; unsignalled, so one cancel cannot cut it short for others.
   const probe = inExtractionSlot(() =>
     runFfmpeg([...urlInputArgs(videoPath), ...firstFrameColourArgs(videoPath)]),
-  ).then((result) => {
+  ).then(async (result): Promise<ToneMapFrameColour> => {
+    const forget = () => {
+      if (firstFrameColourCache.get(videoPath)?.promise === probe)
+        firstFrameColourCache.delete(videoPath);
+    };
     // A failed probe answers this cut only; the next one probes again.
-    if (!result.success && firstFrameColourCache.get(videoPath)?.promise === probe) {
-      firstFrameColourCache.delete(videoPath);
-    }
-    return parseFirstFrameColour(result.stderr);
+    if (!result.success) forget();
+    const first = parseFirstFrameColour(result.stderr);
+    if (!result.success || !readsKeyframeTransfers(first)) return first;
+    const keyframeTransfers = await readKeyframeTransfers(videoPath, codec);
+    if (!keyframeTransfers) forget();
+    return { ...first, keyframeTransfers: keyframeTransfers ?? [] };
   });
   writeMetadataCache(firstFrameColourCache, videoPath, identity, probe);
   return probe;
@@ -965,10 +1034,16 @@ async function leadInSecondsUnlessAborted(
 function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: number): number {
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
+const KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP = "tpad=stop_mode=clone:stop=1";
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
-function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): string[] {
+function undoTickRoundingOnTheSourceFrameGrid(
+  seek: number,
+  lead: number,
+  sourceFps: number,
+): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
+    ...(sourceFps > 0 ? [KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
@@ -1006,13 +1081,18 @@ function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
-function splitFrameRanges(ranges: readonly FrameRange[], segmentFrames: number): FrameRange[] {
+function splitFrameRanges(
+  ranges: readonly FrameRange[],
+  segmentFrames: number,
+  frameLimit: number,
+): FrameRange[] {
   const segments: FrameRange[] = [];
   for (const range of ranges) {
-    for (let offset = 0; offset < range.frames; offset += segmentFrames) {
+    const frames = Math.min(range.frames, frameLimit - range.firstFrame);
+    for (let offset = 0; offset < frames; offset += segmentFrames) {
       segments.push({
         firstFrame: range.firstFrame + offset,
-        frames: Math.min(segmentFrames, range.frames - offset),
+        frames: Math.min(segmentFrames, frames - offset),
       });
     }
   }
@@ -1042,12 +1122,12 @@ async function runSegmentedExtraction(job: SegmentedExtraction): Promise<RunFfmp
               ...decodeArgs,
               "-noaccurate_seek",
               "-ss",
-              String(job.ffmpegSeek(seek)),
+              formatFfmpegSeconds(job.ffmpegSeek(seek)),
               "-i",
               videoPath,
               // Read one frame past the segment and keep exactly its own frames.
               "-t",
-              String((frames + 1) / fps),
+              formatFfmpegSeconds((frames + 1) / fps),
               "-frames:v",
               String(frames),
               "-start_number",
@@ -1102,6 +1182,122 @@ export async function extractVideoFramesRange(
   } catch (error) {
     throw redactUrlQueriesInError(error);
   }
+}
+
+interface VideoFilterChainInput {
+  metadata: VideoMetadata;
+  format: CacheFrameFormat;
+  ffmpegFps: string;
+  sampleAtOutputFps: boolean;
+  keepsHdrForChrome: boolean;
+  /** The first frame's colour tags; set exactly when HDR is tone-mapped to SDR. */
+  toneMapFrom?: ToneMapFrameColour;
+  isHdr: boolean;
+  sdrToHdrTransfer?: ExtractionOptions["sdrToHdrTransfer"];
+  shownBox?: ExtractionOptions["shownBox"];
+}
+
+/** The one place that decides which source frame a slot shows and how its colour is converted. */
+function videoFilterChain(input: VideoFilterChainInput): (seek: number) => string[] {
+  const { metadata, format, ffmpegFps, sampleAtOutputFps, keepsHdrForChrome, toneMapFrom } = input;
+  const toneMappedToSdr = toneMapFrom !== undefined;
+  const head: string[] = [];
+  if (keepsHdrForChrome) head.push("format=nv12");
+  const tail: string[] = [];
+  if (metadata.sampleAspectRatio) {
+    tail.push("scale=trunc(iw*sar/2)*2:ih", "setsar=1");
+  }
+  // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
+  // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
+  const sampling = (seek: number): string[] =>
+    sampleAtOutputFps
+      ? [
+          ...(metadata.isVFR
+            ? []
+            : undoTickRoundingOnTheSourceFrameGrid(
+                seek,
+                videoStartOnMediaTimeline(metadata),
+                metadata.fps,
+              )),
+          "settb=intb/2",
+          "setpts=PTS-lte(TB\\,0.001)",
+          `fps=${ffmpegFps}:start_time=0:round=up`,
+        ]
+      : [];
+  if (input.sdrToHdrTransfer) {
+    // Fps sampling runs before the colorspace remap so only kept frames are converted. The
+    // remap is pointwise, so the result is identical either way for the SDR inputs it applies
+    // to (it never meets nv12, which is HDR-only); revisit if the two ever combine.
+    tail.push(SDR_TO_HDR_COLORSPACE_FILTER);
+  }
+  if (toneMapFrom) {
+    tail.push(hdrToSdrToneMapFilter(metadata.colorSpace ?? {}, toneMapFrom));
+  }
+  if (toneMappedToSdr || (!input.isHdr && !input.sdrToHdrTransfer)) {
+    tail.push(...sdrCanvasColourFilters(metadata, toneMappedToSdr));
+    if (format === "jpg") {
+      if (input.shownBox) tail.push(halveToCoverScaleFilter(input.shownBox));
+      tail.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
+    }
+  }
+  return (seek) => [...head, ...sampling(seek), ...tail];
+}
+
+export interface VideoLayerInput {
+  inputArgs: string[];
+  filters: string[];
+}
+
+const VIDEO_LAYER_TAIL_SLACK_SECONDS = 0.5;
+
+/** ffmpeg input and filters showing the same frames and colour as extraction; undefined if unsupported. */
+export async function buildVideoLayerInput(
+  videoPath: string,
+  startTime: number,
+  duration: number,
+  fps: Fps,
+  canvas: { width: number; height: number },
+  fit: "fill" | "cover" = "fill",
+): Promise<VideoLayerInput | undefined> {
+  const metadata = await extractMediaMetadata(videoPath);
+  if (
+    startTime + duration >
+      resolvePlayableVideoDuration(metadata) + VIDEO_LAYER_TAIL_SLACK_SECONDS ||
+    isHdrColorSpaceUtil(metadata.colorSpace) ||
+    metadata.isVFR ||
+    metadata.hasAlpha ||
+    codecMayHaveAlpha(metadata.videoCodec)
+  ) {
+    return undefined;
+  }
+  const chain = videoFilterChain({
+    metadata,
+    format: "png",
+    ffmpegFps: fpsToFfmpegArg(fps),
+    sampleAtOutputFps: true,
+    keepsHdrForChrome: false,
+    isHdr: false,
+  });
+  const filters = chain(startTime);
+  if (metadata.width !== canvas.width || metadata.height !== canvas.height) {
+    filters.push(
+      fit === "cover"
+        ? `scale=${canvas.width}:${canvas.height}:force_original_aspect_ratio=increase:flags=bicubic,crop=${canvas.width}:${canvas.height}`
+        : `scale=${canvas.width}:${canvas.height}:flags=bicubic`,
+    );
+  }
+  filters.push(`tpad=stop_mode=clone:stop_duration=${VIDEO_LAYER_TAIL_SLACK_SECONDS * 2}`);
+  return {
+    inputArgs: [
+      "-noaccurate_seek",
+      "-ss",
+      formatFfmpegSeconds(ffmpegSeekSeconds(metadata, startTime)),
+      ...urlInputArgs(videoPath),
+      "-i",
+      videoPath,
+    ],
+    filters,
+  };
 }
 
 async function extractVideoFramesRangeUnredacted(
@@ -1190,55 +1386,41 @@ async function extractVideoFramesRangeUnredacted(
     // sample. This is intentionally reserved for the one-frame path: input
     // seeking is faster, but valid unindexed transports (notably MPEG-TS with
     // a negative timestamp base) can seek to EOF and emit zero frames.
-    args.push("-i", videoPath, "-ss", String(Math.max(0, ffmpegSeek(startTime))), "-frames:v", "1");
+    args.push(
+      "-i",
+      videoPath,
+      "-ss",
+      formatFfmpegSeconds(Math.max(0, ffmpegSeek(startTime))),
+      "-frames:v",
+      "1",
+    );
   } else {
     // An accurate seek drops the frame on screen at startTime; the fps sampling below needs it.
     if (sampleAtOutputFps) args.push("-noaccurate_seek");
-    args.push("-ss", String(ffmpegSeek(startTime)), "-i", videoPath, "-t", String(duration));
+    args.push(
+      "-ss",
+      formatFfmpegSeconds(ffmpegSeek(startTime)),
+      "-i",
+      videoPath,
+      "-t",
+      formatFfmpegSeconds(duration),
+    );
   }
 
-  const vfFilters: string[] = [];
-  if (keepsHdrForChrome) {
-    vfFilters.push("format=nv12");
-  }
-  const samplingAt = vfFilters.length;
-  if (metadata.sampleAspectRatio) {
-    vfFilters.push("scale=trunc(iw*sar/2)*2:ih", "setsar=1");
-  }
-  // Each slot takes the last frame starting at or before its time. Ticks of 2 ms or finer
-  // first shift half a tick, absorbing container rounding (WebM/MKV use whole ms).
-  const samplingFilters = (seek: number): string[] =>
-    sampleAtOutputFps
-      ? [
-          ...(metadata.isVFR
-            ? []
-            : undoTickRoundingOnTheSourceFrameGrid(seek, videoStartOnMediaTimeline(metadata))),
-          "settb=intb/2",
-          "setpts=PTS-lte(TB\\,0.001)",
-          `fps=${ffmpegFps}:start_time=0:round=up`,
-        ]
-      : [];
-  if (options.sdrToHdrTransfer) {
-    // Ordering intent: fps sampling runs BEFORE the colorspace remap so only
-    // kept frames are converted. The remap is pointwise per-frame, so the
-    // output is identical either way for the SDR (BT.709, 8-bit) inputs this
-    // flag is set for. If format=nv12 (macOS HDR-source decode) ever combines
-    // with this flag, revisit: nv12 subsampling before a BT.2020 remap is an
-    // untested interaction (today the flags are mutually exclusive — the
-    // remap only applies to SDR sources, nv12 only to HDR sources).
-    vfFilters.push(SDR_TO_HDR_COLORSPACE_FILTER);
-  }
-  if (toneMappedToSdr) {
-    const frameColour = await readFirstFrameColour(videoPath);
-    vfFilters.push(hdrToSdrToneMapFilter(metadata.colorSpace ?? {}, frameColour));
-  }
-  if (toneMappedToSdr || (!isHdr && !options.sdrToHdrTransfer)) {
-    vfFilters.push(...sdrCanvasColourFilters(metadata, toneMappedToSdr));
-    if (format === "jpg") {
-      if (options.shownBox) vfFilters.push(halveToCoverScaleFilter(options.shownBox));
-      vfFilters.push(SDR_JPEG_AS_BT601_FULL_RANGE_FILTER);
-    }
-  }
+  const frameColour = toneMappedToSdr
+    ? await readFirstFrameColour(videoPath, metadata.videoCodec)
+    : undefined;
+  const filtersFor = videoFilterChain({
+    metadata,
+    format,
+    ffmpegFps,
+    sampleAtOutputFps,
+    keepsHdrForChrome,
+    toneMapFrom: frameColour,
+    isHdr,
+    sdrToHdrTransfer: options.sdrToHdrTransfer,
+    shownBox: options.shownBox,
+  });
   const encodeArgs = ["-q:v", format === "jpg" ? String(Math.ceil((100 - quality) / 3)) : "0"];
   // Render-scoped temp frames are read once; level 1 measured 3-5x faster for ~14% larger files.
   if (format === "png") encodeArgs.push("-compression_level", "1");
@@ -1246,18 +1428,21 @@ async function extractVideoFramesRangeUnredacted(
 
   const runOptions = { signal, timeout: ffmpegProcessTimeout };
   const filterArgsFor = (seek: number): string[] => {
-    const filters = [...vfFilters];
-    filters.splice(samplingAt, 0, ...samplingFilters(seek));
+    const filters = filtersFor(seek);
     return filters.length > 0 ? ["-vf", filters.join(",")] : [];
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
-  const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
-  // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
-  // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
-  // decimal rate counts zero frames here and keeps the `-t` window.
-  const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
+  const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const framesBeforeSourceEnd = extractionFrameCountForDuration(
+    playableDuration - startTime,
+    normalizedFps,
+    false,
+  );
+  const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
+  // A `-t` window ends at the nearest slot; segments read a frame past and keep exactly their own.
+  // A decimal rate counts zero frames here and keeps the `-t` window.
   const extract = (hwaccel: string[]) =>
-    sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
+    sampleAtOutputFps && (options.frameRanges || totalFrames > 0)
       ? runSegmentedExtraction({
           decodeArgs: [...hwaccel, ...decodeArgs],
           filterAndEncodeArgs: (seek) => [...filterArgsFor(seek), ...encodeArgs],
@@ -1270,6 +1455,7 @@ async function extractVideoFramesRangeUnredacted(
           segments: splitFrameRanges(
             options.frameRanges ?? [{ firstFrame: 0, frames: totalFrames }],
             segmentFrames,
+            totalFrames > 0 ? totalFrames : Number.POSITIVE_INFINITY,
           ),
           runOptions,
           onProgress: options.onProgress,
@@ -1300,7 +1486,8 @@ async function extractVideoFramesRangeUnredacted(
     !processResult.success &&
     !processResult.failureReason;
   const videoToolboxWasOptional = decodeWithVideoToolbox && !keepsHdrForChrome;
-  if (ffmpegExitedFailing && videoToolboxWasOptional) processResult = await extract([]);
+  if (ffmpegExitedFailing && videoToolboxWasOptional && !DISK_FULL.test(processResult.stderr))
+    processResult = await extract([]);
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
@@ -1338,6 +1525,15 @@ async function extractVideoFramesRangeUnredacted(
         "ffmpeg_timeout",
         true,
         "Video frame extraction timed out",
+        diagnostic,
+        ffmpegReason,
+      );
+    }
+    if (DISK_FULL.test(processResult.stderr)) {
+      throw new VideoSourceExtractionError(
+        "disk_full",
+        false,
+        "The disk filled up while video frames were extracted",
         diagnostic,
         ffmpegReason,
       );
@@ -1493,13 +1689,17 @@ export function isVideoPastTimelineEnd(video: Pick<VideoElement, "start">, timel
   return video.start >= timelineEnd;
 }
 
-function alignClipStartToFirstOutputFrame(video: VideoElement, fps: number): void {
+export function alignClipStartToFirstOutputFrame(video: VideoElement, fps: number): void {
   if (video.loop || !Number.isFinite(video.start) || video.start < 0 || !(fps > 0)) return;
   const position = exportClipWindow(video.start, Infinity, fps).start * fps;
   const firstFrame =
     Math.abs(position - Math.round(position)) < 1e-6 ? Math.round(position) : Math.ceil(position);
   const shift = firstFrame / fps - video.start;
-  if (shift === 0) return;
+  // Float dust (a sum landing a hair off the grid) snaps the start; it never reaches mediaStart.
+  if (Math.abs(shift) < 1e-9) {
+    video.start = firstFrame / fps;
+    return;
+  }
   const playbackRate = normalizeRateSpec(video.playbackRate);
   video.mediaStart += sourceTimeAt(playbackRate, shift);
   video.playbackRate = shiftRateLane(playbackRate, shift);
@@ -2781,10 +2981,16 @@ export async function extractAllVideoFrames(
     breakdown.cacheAgedPartialsCleared = gcStats.agedPartialsRemoved;
   }
 
+  const srcById = new Map(videos.map((video) => [video.id, video.src]));
   return {
     success: errors.length === 0,
     extracted,
-    errors,
+    errors: errors.map((failure) => {
+      const src = srcById.get(failure.videoId);
+      return src === undefined
+        ? failure
+        : { ...failure, source: videoExtractionSourceLabel(src, baseDir) };
+    }),
     totalFramesExtracted,
     durationMs: Date.now() - startTime,
     phaseBreakdown: breakdown,

@@ -81,11 +81,18 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const probing = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await probing;
 
-    expect(result.supported).toBe(false);
-    expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
-    expect(result.timedOut).toBe(true);
+      expect(result.supported).toBe(false);
+      expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
+      expect(result.timedOut).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports frames that are not a PNG as unsupported, not as a slow start", async () => {
@@ -102,10 +109,17 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.timedOut).toBe(false);
+      expect(result.supported).toBe(false);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {

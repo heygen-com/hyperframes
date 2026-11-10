@@ -284,32 +284,296 @@
     });
   }
 
+  function cropRect(rect, region) {
+    const left = Math.max(rect.left, region.left);
+    const right = Math.min(rect.right, region.right);
+    const top = Math.max(rect.top, region.top);
+    const bottom = Math.min(rect.bottom, region.bottom);
+    if (right - left <= 0.5 || bottom - top <= 0.5) return null;
+    return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
+  }
+
+  function overflowRegion(ancestor, style) {
+    const clipX = clipsOverflowValue(style.overflowX || style.overflow);
+    const clipY = clipsOverflowValue(style.overflowY || style.overflow);
+    if (!clipX && !clipY) return null;
+    const box = ancestor.getBoundingClientRect();
+    return {
+      left: clipX ? box.left : -Infinity,
+      right: clipX ? box.right : Infinity,
+      top: clipY ? box.top : -Infinity,
+      bottom: clipY ? box.bottom : Infinity,
+    };
+  }
+
   function visibleTextClientRects(element, directOnly) {
-    // Range rects stay geometrically present outside an overflow clip. Reduce
-    // them in viewport coordinates so overlap measures only paintable text.
+    // Range rects stay geometrically present outside an overflow clip, a clip-path or a mask.
+    // Reduce them in viewport coordinates so overlap measures only paintable text.
     let rects = textClientRects(element, directOnly).map(toRect);
-    for (
-      let ancestor = element.parentElement;
-      ancestor && rects.length > 0;
-      ancestor = ancestor.parentElement
-    ) {
-      const style = getComputedStyle(ancestor);
-      const clipX = clipsOverflowValue(style.overflowX || style.overflow);
-      const clipY = clipsOverflowValue(style.overflowY || style.overflow);
-      if (!clipX && !clipY) continue;
-      const clip = toRect(ancestor.getBoundingClientRect());
-      rects = rects
-        .map((rect) => {
-          const left = clipX ? Math.max(rect.left, clip.left) : rect.left;
-          const right = clipX ? Math.min(rect.right, clip.right) : rect.right;
-          const top = clipY ? Math.max(rect.top, clip.top) : rect.top;
-          const bottom = clipY ? Math.min(rect.bottom, clip.bottom) : rect.bottom;
-          if (right - left <= 0.5 || bottom - top <= 0.5) return null;
-          return toRect({ left, right, top, bottom, width: right - left, height: bottom - top });
-        })
-        .filter(Boolean);
+    for (let node = element; node && rects.length > 0; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const regions = [
+        node === element ? null : overflowRegion(node, style),
+        clipPathRegion(node, style),
+        maskRegion(node, style),
+      ].filter(Boolean);
+      for (const region of regions) {
+        rects = rects.map((rect) => cropRect(rect, region)).filter(Boolean);
+      }
     }
     return rects;
+  }
+
+  // Lengths in a clip-path or a gradient resolve against the border box; a scale transform scales them.
+  function lengthIn(value, size, scale) {
+    const text = String(value).trim();
+    const number = Number.parseFloat(text);
+    if (!Number.isFinite(number)) return Number.NaN;
+    if (text.endsWith("%")) return (size * number) / 100;
+    return text.endsWith("px") || number === 0 ? number * scale : Number.NaN;
+  }
+
+  function boxFrame(node) {
+    const box = node.getBoundingClientRect();
+    const scale = node.offsetWidth > 0 ? box.width / node.offsetWidth : 1;
+    return { box, scale };
+  }
+
+  function insideParens(value, name) {
+    const match = new RegExp(`^${name}\\((.*)\\)$`).exec(value.trim());
+    return match ? match[1] : null;
+  }
+
+  function topLevelSplit(text, separator) {
+    const parts = [];
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < text.length; index++) {
+      const char = text[index];
+      if (char === "(") depth++;
+      else if (char === ")") depth--;
+      else if (depth === 0 && char === separator) {
+        parts.push(text.slice(start, index).trim());
+        start = index + 1;
+      }
+    }
+    parts.push(text.slice(start).trim());
+    return parts.filter((part) => part.length > 0);
+  }
+
+  function ellipseRegion(center, radii) {
+    return {
+      left: center.x - radii.x,
+      right: center.x + radii.x,
+      top: center.y - radii.y,
+      bottom: center.y + radii.y,
+    };
+  }
+
+  function centerAt(position, frame) {
+    const [x = "50%", y = "50%"] = position ? position.trim().split(/\s+/) : [];
+    const { box, scale } = frame;
+    return {
+      x: box.left + lengthIn(x === "center" ? "50%" : x, box.width, scale),
+      y: box.top + lengthIn(y === "center" ? "50%" : y, box.height, scale),
+    };
+  }
+
+  // The bounds a clip-path lets paint, or null when its shape is not one read here (painting is then assumed).
+  function clipPathRegion(node, style) {
+    const value = style.clipPath;
+    if (!value || value === "none") return null;
+    const frame = boxFrame(node);
+    const { box, scale } = frame;
+    const inset = insideParens(value, "inset");
+    if (inset !== null) {
+      const sides = inset
+        .split(/\s+round\s+/)[0]
+        .trim()
+        .split(/\s+/);
+      const [top, right = top, bottom = top, left = right] = sides;
+      const region = {
+        top: box.top + lengthIn(top, box.height, scale),
+        right: box.right - lengthIn(right, box.width, scale),
+        bottom: box.bottom - lengthIn(bottom, box.height, scale),
+        left: box.left + lengthIn(left, box.width, scale),
+      };
+      return Object.values(region).every(Number.isFinite) ? region : null;
+    }
+    const polygon = insideParens(value, "polygon");
+    if (polygon !== null) {
+      const points = topLevelSplit(polygon, ",")
+        .filter((point) => !/^(nonzero|evenodd)$/.test(point))
+        .map((point) => {
+          const [x, y] = point.split(/\s+/);
+          return {
+            x: box.left + lengthIn(x, box.width, scale),
+            y: box.top + lengthIn(y, box.height, scale),
+          };
+        });
+      if (points.length === 0 || !points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)))
+        return null;
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      return {
+        left: Math.min(...xs),
+        right: Math.max(...xs),
+        top: Math.min(...ys),
+        bottom: Math.max(...ys),
+      };
+    }
+    for (const shape of ["circle", "ellipse"]) {
+      const args = insideParens(value, shape);
+      if (args === null) continue;
+      const [size, position] = args.split(/\s+at\s+/);
+      const lengths = size.trim().split(/\s+/);
+      const rx = lengthIn(lengths[0], box.width, scale);
+      const ry =
+        shape === "circle"
+          ? lengthIn(lengths[0], box.width, scale)
+          : lengthIn(lengths[1], box.height, scale);
+      const center = centerAt(position, frame);
+      return [rx, ry, center.x, center.y].every(Number.isFinite)
+        ? ellipseRegion(center, { x: rx, y: ry })
+        : null;
+    }
+    return null;
+  }
+
+  const MASK_PAINT_ALPHA = 0.35;
+  let colorProbe;
+
+  function colorAlphaOf(color) {
+    colorProbe = colorProbe || document.createElement("canvas").getContext("2d");
+    colorProbe.fillStyle = "#000";
+    colorProbe.fillStyle = color;
+    const match = /rgba?\([^)]*,\s*([\d.]+)\)$/.exec(colorProbe.fillStyle);
+    return match ? Number.parseFloat(match[1]) : 1;
+  }
+
+  // Gradient stops as [offset 0-1, alpha]; missing offsets are spread evenly, as the browser does.
+  function gradientStops(parts, length, scale) {
+    const stops = [];
+    for (const part of parts) {
+      const match = /^((?:[a-z-]+\([^)]*\))|#[0-9a-f]+|[a-z]+)\s*(.*)$/i.exec(part);
+      if (!match) return null;
+      const alpha = colorAlphaOf(match[1]);
+      const offsets = match[2].trim() ? match[2].trim().split(/\s+/) : [null];
+      for (const offset of offsets) {
+        const at = offset === null ? null : lengthIn(offset, length, scale) / length;
+        if (at !== null && !Number.isFinite(at)) return null;
+        stops.push({ at, alpha });
+      }
+    }
+    if (stops.length === 0) return null;
+    if (stops[0].at === null) stops[0].at = 0;
+    if (stops.at(-1).at === null) stops.at(-1).at = 1;
+    for (let index = 1; index < stops.length; index++) {
+      if (stops[index].at === null) {
+        let next = index;
+        while (stops[next].at === null) next++;
+        const from = stops[index - 1].at;
+        const step = (stops[next].at - from) / (next - index + 1);
+        for (let fill = index; fill < next; fill++)
+          stops[fill].at = from + step * (fill - index + 1);
+      }
+      stops[index].at = Math.max(stops[index].at, stops[index - 1].at);
+    }
+    return stops;
+  }
+
+  // The first and last offsets (0-1) at which the gradient paints at least MASK_PAINT_ALPHA.
+  function paintedSpan(stops) {
+    let first = Number.POSITIVE_INFINITY;
+    let last = Number.NEGATIVE_INFINITY;
+    const mark = (at) => {
+      first = Math.min(first, at);
+      last = Math.max(last, at);
+    };
+    if (stops[0].alpha >= MASK_PAINT_ALPHA) mark(Math.min(0, stops[0].at));
+    if (stops.at(-1).alpha >= MASK_PAINT_ALPHA) mark(Math.max(1, stops.at(-1).at));
+    for (let index = 0; index < stops.length; index++) {
+      const stop = stops[index];
+      if (stop.alpha >= MASK_PAINT_ALPHA) mark(stop.at);
+      const next = stops[index + 1];
+      if (!next || stop.alpha >= MASK_PAINT_ALPHA === next.alpha >= MASK_PAINT_ALPHA) continue;
+      const share = (MASK_PAINT_ALPHA - stop.alpha) / (next.alpha - stop.alpha);
+      mark(stop.at + (next.at - stop.at) * share);
+    }
+    return first <= last ? { first, last } : { first: 0, last: 0 };
+  }
+
+  const LINEAR_AXES = {
+    "to bottom": "down",
+    "180deg": "down",
+    "to top": "up",
+    "0deg": "up",
+    "to right": "right",
+    "90deg": "right",
+    "to left": "left",
+    "270deg": "left",
+  };
+
+  function linearMaskRegion(args, frame) {
+    const parts = topLevelSplit(args, ",");
+    const lead = parts[0];
+    const named = /^(to |-?[\d.]+(deg|turn|rad|grad))/.test(lead);
+    const axis = named ? LINEAR_AXES[lead.replace(/\s+/g, " ")] : "down";
+    if (!axis) return null;
+    const { box, scale } = frame;
+    const vertical = axis === "down" || axis === "up";
+    const length = vertical ? box.height : box.width;
+    const stops = gradientStops(named ? parts.slice(1) : parts, length / scale, 1);
+    if (!stops) return null;
+    const { first, last } = paintedSpan(stops);
+    const [from, to] = axis === "up" || axis === "left" ? [1 - last, 1 - first] : [first, last];
+    return vertical
+      ? {
+          left: -Infinity,
+          right: Infinity,
+          top: box.top + from * length,
+          bottom: box.top + to * length,
+        }
+      : {
+          top: -Infinity,
+          bottom: Infinity,
+          left: box.left + from * length,
+          right: box.left + to * length,
+        };
+  }
+
+  function radialMaskRegion(args, frame) {
+    const parts = topLevelSplit(args, ",");
+    const [size, position] = parts[0].split(/\s+at\s+/);
+    const lengths = size
+      .replace(/\b(ellipse|circle)\b/g, "")
+      .trim()
+      .split(/\s+/);
+    const { box, scale } = frame;
+    const rx = lengthIn(lengths[0], box.width, scale);
+    const ry = lengths.length > 1 ? lengthIn(lengths[1], box.height, scale) : rx;
+    const center = centerAt(position, frame);
+    if (![rx, ry, center.x, center.y].every(Number.isFinite) || rx <= 0 || ry <= 0) return null;
+    const stops = gradientStops(parts.slice(1), rx / scale, 1);
+    if (!stops || stops.at(-1).alpha >= MASK_PAINT_ALPHA) return null;
+    const { last } = paintedSpan(stops);
+    return ellipseRegion(center, { x: rx * last, y: ry * last });
+  }
+
+  // The bounds a single-layer gradient mask paints, or null when the mask is not read here (painting is then assumed).
+  function maskRegion(node, style) {
+    const value = style.maskImage || style.webkitMaskImage;
+    if (!value || value === "none" || topLevelSplit(value, ",").length !== 1) return null;
+    const size = style.maskSize || style.webkitMaskSize || "auto";
+    if (size !== "auto" && size !== "auto auto") return null;
+    const position = (style.maskPosition || style.webkitMaskPosition || "0% 0%").trim();
+    if (!/^0(%|px)? 0(%|px)?$/.test(position)) return null;
+    if ((style.maskOrigin || style.webkitMaskOrigin || "border-box") !== "border-box") return null;
+    const frame = boxFrame(node);
+    const linear = insideParens(value, "linear-gradient");
+    if (linear !== null) return linearMaskRegion(linear, frame);
+    const radial = insideParens(value, "radial-gradient");
+    return radial !== null ? radialMaskRegion(radial, frame) : null;
   }
 
   function textRectFor(element, directOnly) {
@@ -813,7 +1077,7 @@
       message: "Two text blocks overlap and may render unreadable.",
       rect: a.rect,
       fixHint:
-        "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply.",
+        "Give each block its own zone, or put data-layout-allow-overlap on the text or on a container inside the scene. A marker on the scene root does not apply. Decoration nobody needs to read can take data-layout-ignore.",
     };
   }
 

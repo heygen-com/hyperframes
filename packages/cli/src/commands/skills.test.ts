@@ -2,8 +2,11 @@
 // `node:child_process` at the loader level and inspect the spawned
 // child's env.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 async function commandExitCode(): Promise<number> {
   const { consumeCommandResult } = await import("../utils/commandResult.js");
@@ -177,8 +180,13 @@ function skillFlagValues(args: ReadonlyArray<string>): string[] {
   return values;
 }
 
+// Any test that plays a Mac gets developer tools, unless it says otherwise, wherever it runs.
+const developerDir = mkdtempSync(join(tmpdir(), "hf-developer-"));
+mkdirSync(join(developerDir, "usr", "bin"), { recursive: true });
+
 describe("hyperframes skills", () => {
   beforeEach(async () => {
+    vi.stubEnv("DEVELOPER_DIR", developerDir);
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
@@ -197,6 +205,7 @@ describe("hyperframes skills", () => {
 
   afterEach(async () => {
     setPlatform(originalPlatform);
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     await resetCommandResult();
   });
@@ -210,7 +219,7 @@ describe("hyperframes skills", () => {
     const first = state.spawnCalls[0];
     expect(first).toBeDefined();
     expect(first!.command).toBe("npx");
-    expect(first!.args).toContain("skills");
+    expect(first!.args).toContain("skills@1.5.13");
     expect(first!.args).toContain("add");
     expect(first!.env?.GIT_CLONE_PROTECTION_ACTIVE).toBe("0");
     // --full-depth clones the repo; skip LFS so we don't drag in unrelated blobs.
@@ -223,7 +232,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -240,7 +249,7 @@ describe("hyperframes skills", () => {
       "npx",
       ["--version"],
       [
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -261,7 +270,7 @@ describe("hyperframes skills", () => {
         "/s",
         "/c",
         "npx.cmd",
-        "skills",
+        "skills@1.5.13",
         "add",
         "https://github.com/heygen-com/hyperframes",
         "--skill",
@@ -320,6 +329,25 @@ describe("hyperframes skills", () => {
     // `--agent` must be followed by a concrete key, never the `'*'` wildcard
     const agentValue = args[args.indexOf("--agent") + 1];
     expect(agentValue).not.toBe("*");
+  });
+
+  // The install uses the ref the check compared against (the CLI's release
+  // tag), resolved once, through the pinned skills CLI.
+  it("skills update installs at the ref its check read, through the pinned skills CLI", async () => {
+    setPlatform("linux");
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({ ...DEFAULT_CHECK, ref: "v0.9.3" } as never);
+
+    await runSkillsUpdate();
+
+    expect(await commandExitCode()).toBe(0);
+    const args = state.spawnCalls[0]?.args ?? [];
+    expect(args.slice(0, 3)).toEqual([
+      "skills@1.5.13",
+      "add",
+      "https://github.com/heygen-com/hyperframes#v0.9.3",
+    ]);
+    expect(args).toContain("--full-depth");
   });
 
   it("skills update refreshes an outdated installed workflow (but never expands)", async () => {
@@ -423,6 +451,18 @@ describe("hyperframes skills", () => {
     expect(await commandExitCode()).toBe(0);
     // Diagnostic instrumentation: the skip records why, so rare boxes hitting
     // this (fresh Windows without git) are visible instead of silently no-op.
+    expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
+  });
+
+  it("bare `skills` on a Mac without the developer tools skips without running macOS's git stub", async () => {
+    setPlatform("darwin");
+    vi.stubEnv("PATH", "/usr/bin");
+    vi.stubEnv("DEVELOPER_DIR", "/nonexistent-developer-dir");
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+    expect(state.execCalls.map((call) => call.command)).not.toContain("git");
     expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
   });
 
@@ -590,6 +630,8 @@ describe("hyperframes skills", () => {
       expect(invalidateSkillsCache).toHaveBeenCalled();
     });
   });
+
+  afterAll(() => rmSync(developerDir, { recursive: true, force: true }));
 });
 
 // The router contract: `/hyperframes` picks a workflow, then runs

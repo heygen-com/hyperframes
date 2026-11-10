@@ -25,7 +25,7 @@ export interface RenderJobState {
    * stop an in-flight render; adapters that can't abort may omit it (the
    * route still marks the job cancelled so the SSE stream terminates).
    */
-  cancel?: () => void;
+  cancel?: () => void | Promise<void>;
 }
 
 export interface MediaProcessingJobState {
@@ -122,7 +122,7 @@ export interface StudioApiAdapter {
   ): Promise<string | null>;
 
   /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
-  getProjectSignature?: (projectDir: string) => string;
+  getProjectSignature?: (projectDir: string) => string | Promise<string>;
   invalidateProjectSignature?: (projectDir: string) => void;
 
   loadSharp?: () => Promise<typeof import("sharp").default>;

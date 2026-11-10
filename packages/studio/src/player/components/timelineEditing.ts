@@ -555,7 +555,7 @@ export function resolveTimelineDragEscape(input: TimelineDragEscapeInput): {
   cancel: boolean;
   suppressClick: boolean;
 } {
-  if (input.key !== "Escape" || (!input.drag && !input.resize && !input.blocked)) {
+  if (!input.cancelPressed || (!input.drag && !input.resize && !input.blocked)) {
     return { cancel: false, suppressClick: false };
   }
   return {
@@ -565,7 +565,7 @@ export function resolveTimelineDragEscape(input: TimelineDragEscapeInput): {
 }
 
 export interface TimelineDragEscapeInput {
-  key: string;
+  cancelPressed: boolean;
   drag: { started: boolean } | null;
   resize: { started: boolean } | null;
   blocked: { started: boolean } | null;

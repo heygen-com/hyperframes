@@ -7,6 +7,7 @@
  * pretty-printer churn. Consumes ParsedGsapAcornForWrite from gsapParserAcorn.ts.
  */
 import MagicString from "magic-string";
+import type { ExpressionStatement } from "acorn";
 import type {
   GsapAnimation,
   GsapPercentageKeyframe,
@@ -681,16 +682,79 @@ function removeCallFromMagicString(ms: MagicString, call: TweenCallInfo, script:
   const N = call.node;
   const exprStmt = findEnclosingExpressionStatement(call.ancestors);
   if (N.callee?.object?.type !== "CallExpression" && exprStmt?.expression === N) {
-    // Standalone `tl.method(...)` — remove the whole ExpressionStatement
-    const end =
-      exprStmt.end < script.length && script[exprStmt.end] === "\n"
-        ? exprStmt.end + 1
-        : exprStmt.end;
-    ms.remove(exprStmt.start, end);
+    removeStatementFromMagicString(ms, exprStmt, script);
   } else {
     // Chain link — splice out `.method(args)` from N.callee.object.end to N.end
     ms.remove(N.callee.object.end, N.end);
   }
+}
+
+function removeStatementFromMagicString(
+  ms: MagicString,
+  statement: ExpressionStatement,
+  script: string,
+): void {
+  const end = statement.end + (script[statement.end] === "\n" ? 1 : 0);
+  ms.remove(statement.start, end);
+}
+
+export function removeAnimationsForSelectors(
+  script: string,
+  selectors: ReadonlySet<string>,
+): string {
+  let current = script;
+  for (;;) {
+    const parsed = parseGsapScriptAcornForWrite(current);
+    if (!parsed) return current;
+    const selected = parsed.located.filter(({ animation }) =>
+      selectors.has(animation.targetSelector),
+    );
+    const first = selected[0];
+    if (!first) return current;
+    const declaration = parsed.timelineDeclaration;
+    if (
+      declaration &&
+      selected.some(
+        ({ call }) => call.node.start <= declaration.start && call.node.end >= declaration.end,
+      )
+    ) {
+      const updated = removeAnimationFromScript(current, first.id);
+      if (updated === current) return current;
+      current = updated;
+      continue;
+    }
+    return removeCallsFromScript(
+      current,
+      selected.map(({ call }) => call),
+    );
+  }
+}
+
+function removeCallsFromScript(script: string, calls: TweenCallInfo[]): string {
+  const removedNodes = new Set(calls.map(({ node }) => node));
+  const statements = new Set<ExpressionStatement>();
+  for (const call of calls) {
+    const statement = fullyRemovedStatement(call, removedNodes);
+    if (statement) statements.add(statement);
+  }
+  const ms = new MagicString(script);
+  for (const statement of statements) removeStatementFromMagicString(ms, statement, script);
+  for (const call of calls) {
+    if (statements.has(findEnclosingExpressionStatement(call.ancestors))) continue;
+    removeCallFromMagicString(ms, call, script);
+  }
+  return ms.toString();
+}
+
+function fullyRemovedStatement(
+  call: TweenCallInfo,
+  removedNodes: ReadonlySet<TweenCallInfo["node"]>,
+): ExpressionStatement | null {
+  const statement = findEnclosingExpressionStatement(call.ancestors);
+  if (statement?.expression !== call.node) return null;
+  let root = call.node;
+  while (root?.type === "CallExpression" && removedNodes.has(root)) root = root.callee.object;
+  return root && root.type !== "CallExpression" ? statement : null;
 }
 
 export function removeAnimationFromScript(script: string, animationId: string): string {

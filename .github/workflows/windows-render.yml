@@ -534,6 +534,11 @@ jobs:
         shell: pwsh
         run: bun run --cwd packages/studio-server test -- src/helpers/waveform.test.ts src/helpers/waveform.file-race.test.ts --maxWorkers=2
 
+      - name: Verify media src resolution on Windows
+        if: matrix.once_checks
+        shell: pwsh
+        run: bun run --cwd packages/parsers test -- src/assetResolution.test.ts --maxWorkers=2
+
       - name: Verify producer lint entry reads on Windows
         if: matrix.once_checks
         shell: pwsh

@@ -671,6 +671,27 @@ describe("GSAP rules", () => {
     expect(finding?.fixHint).toMatch(/xPercent/);
   });
 
+  it("warns for every selector of a comma list with a CSS scale transform, not only the last", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <div id="hero"></div><div id="badge"></div>
+  </div>
+  <style>
+    #hero, #badge { transform: scale(0.8); }
+  </style>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.to("#hero", { scale: 1, duration: 0.5 }, 1.0);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find((f) => f.code === "gsap_css_transform_conflict");
+    expect(finding?.selector).toBe("#hero");
+  });
+
   it("warns when tl.to animates scale on an element with CSS scale transform", async () => {
     const html = `
 <html><body>
@@ -1238,6 +1259,62 @@ describe("GSAP rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_infinite_repeat");
     expect(finding).toBeUndefined();
+  });
+
+  describe("a set that fires inside a running tween on the same property", () => {
+    const lint = (body: string) =>
+      lintHyperframeHtml(`
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <h1 id="w" class="clip" data-start="0" data-duration="5" data-track-index="0">IM</h1>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    ${body}
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`);
+    const overlap = (result: Awaited<ReturnType<typeof lint>>) =>
+      result.findings.find((f) => f.code === "overlapping_gsap_tweens");
+
+    it("reports a hide that lands in a pop-in's last frames, naming the element and both times", async () => {
+      const result = await lint(`
+    tl.fromTo("#w", { opacity: 0 }, { opacity: 1, duration: 0.16, ease: "expo.out" }, 0.54);
+    tl.set("#w", { opacity: 0 }, 0.69);`);
+      expect(overlap(result)).toMatchObject({
+        severity: "warning",
+        selector: "#w",
+        message: expect.stringMatching(/set on "#w" for opacity fires at 0\.69s.*0\.54s to 0\.70s/),
+        fixHint: expect.stringContaining("move the set to 0.70s or later"),
+      });
+    });
+
+    it.each([
+      [
+        "after the tween ends",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.7);`,
+      ],
+      [
+        "on the tween's first frame",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.54);`,
+      ],
+      [
+        "on another property",
+        `tl.to("#w", { scale: 1.2, duration: 0.16 }, 0.54); tl.set("#w", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "on another element",
+        `tl.to("#w", { opacity: 1, duration: 0.16 }, 0.54); tl.set("#x", { opacity: 0 }, 0.6);`,
+      ],
+      [
+        "with two sets and no tween",
+        `tl.set("#w", { opacity: 1 }, 0.5); tl.set("#w", { opacity: 0 }, 0.5);`,
+      ],
+    ])("does not report a set %s", async (_label, body) => {
+      expect(overlap(await lint(body))).toBeUndefined();
+    });
   });
 
   it("does NOT report overlapping_gsap_tweens when an object-target tween is interleaved (regression)", async () => {
@@ -3116,6 +3193,26 @@ describe("SVG draw-on rules", () => {
     const result = await lintHyperframeHtml(html);
     const finding = result.findings.find((f) => f.code === "gsap_timeline_set_initial_hide");
     expect(finding).toBeUndefined();
+  });
+
+  it("gsap_timeline_set_initial_hide: counts every selector of a comma list as hidden by authored CSS", async () => {
+    const html = `
+<html><head><style>#stroke-a, #stroke-b { opacity: 0; }</style></head><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <svg width="400" height="200"><path id="stroke-a" d="M0 0 L100 100" /><path id="stroke-b" d="M0 100 L100 0" /></svg>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.set("#stroke-a", { opacity: 0 }, 0);
+    tl.set("#stroke-b", { opacity: 0 }, 0);
+    tl.to(["#stroke-a", "#stroke-b"], { opacity: 1, duration: 1 }, 0.5);
+    window.__timelines["c1"] = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter((f) => f.code === "gsap_timeline_set_initial_hide");
+    expect(findings).toEqual([]);
   });
 
   it("gsap_timeline_set_initial_hide: does NOT warn when the target is already hidden by authored CSS", async () => {

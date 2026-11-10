@@ -272,6 +272,7 @@ jobs:
             fi
           }
 
+          publish_pkg "@hyperframes/share" "@hyperframes/share"
           publish_pkg "@hyperframes/parsers" "@hyperframes/parsers"
           publish_pkg "@hyperframes/lint" "@hyperframes/lint"
           publish_pkg "@hyperframes/studio-server" "@hyperframes/studio-server"

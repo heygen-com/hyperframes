@@ -9,7 +9,7 @@ export function oauthEnvironment(): "prod" | "dev" {
 }
 
 export function defaultClientId(): string {
-  return oauthEnvironment() === "prod" ? PROD_CLIENT_ID : "9QoaiwCZov9O0cAkC4OZbR4p";
+  return PROD_CLIENT_ID;
 }
 
 export function resolveClientId(): string {
@@ -19,32 +19,21 @@ export function resolveClientId(): string {
 }
 
 export function tokenEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] ||
-    `https://api2.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com/v1/oauth/token`
-  );
+  return process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] || "https://api2.heygen.com/v1/oauth/token";
 }
 
 export function authorizeEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] ||
-    (oauthEnvironment() === "dev"
-      ? "https://api2.dev.heygen.com/v1/oauth/authorize"
-      : "https://app.heygen.com/oauth/authorize")
-  );
+  return process.env["HYPERFRAMES_OAUTH_AUTHORIZE_URL"] || "https://app.heygen.com/oauth/authorize";
 }
 
 export function revokeEndpoint(): string {
-  return (
-    process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] ||
-    `https://api2.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com/v1/oauth/revoke`
-  );
+  return process.env["HYPERFRAMES_OAUTH_REVOKE_URL"] || "https://api2.heygen.com/v1/oauth/revoke";
 }
 
 export function deviceAuthorizationEndpoint(): string {
   return (
     process.env["HYPERFRAMES_OAUTH_DEVICE_URL"] ||
-    `https://api2.${oauthEnvironment() === "dev" ? "dev." : ""}heygen.com/v1/oauth/device_authorization`
+    "https://api2.heygen.com/v1/oauth/device_authorization"
   );
 }
 

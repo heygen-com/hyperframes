@@ -1,0 +1,117 @@
+name: motion-blur-nightly
+
+permissions:
+  contents: read
+
+env:
+  HYPERFRAMES_NO_TELEMETRY: "1"
+
+concurrency:
+  group: motion-blur-nightly
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Seeds to run, a comma list or a-b range (default: today's 200)."
+        type: string
+        default: ""
+  schedule:
+    # Daily at 08:41 UTC, off the :00 pile and away from regression.yml's 06:17.
+    - cron: "41 8 * * *"
+
+jobs:
+  plan:
+    name: Plan seeds
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      chunks: ${{ steps.plan.outputs.chunks }}
+    steps:
+      # Today's 200 seeds are days-since-2026-01-01 * 200 onward, in 4 chunks of 50.
+      - id: plan
+        env:
+          SEEDS: ${{ inputs.seeds }}
+        run: |
+          if [ -n "$SEEDS" ]; then
+            chunks="$(jq -cn --arg seeds "$SEEDS" '[{id: "custom", seeds: $seeds}]')"
+          else
+            days=$(( ($(date -u +%s) - $(date -u -d 2026-01-01 +%s)) / 86400 ))
+            start=$(( days * 200 ))
+            chunks="$(jq -cn --argjson start "$start" '[range(0; 4) | ($start + . * 50) as $from | {id: ($from | tostring), seeds: "\($from)-\($from + 49)"}]')"
+          fi
+          echo "chunks=$chunks" >> "$GITHUB_OUTPUT"
+          echo "$chunks"
+
+  generated:
+    name: Generated compositions (${{ matrix.flavour }}, ${{ matrix.chunk.seeds }})
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        flavour: [pin, stable]
+        chunk: ${{ fromJSON(needs.plan.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: workspace
+        uses: ./.github/actions/setup-test-workspace
+        with:
+          engine: "true"
+          headless-shell: "true"
+      - id: pin
+        if: matrix.flavour == 'pin'
+        shell: bash
+        run: |
+          dir="$RUNNER_TEMP/headless-shell-pin"
+          bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@153.0.8010.36 --path "$dir"
+          echo "path=$(find "$dir" -type f -name chrome-headless-shell | head -n 1)" >> "$GITHUB_OUTPUT"
+      - name: Run the generated compositions
+        working-directory: packages/engine
+        env:
+          HYPERFRAMES_BROWSER_PATH: ${{ matrix.flavour == 'pin' && steps.pin.outputs.path || steps.workspace.outputs.headless-shell-path }}
+          HF_BLUR_SEEDS: ${{ matrix.chunk.seeds }}
+          HF_BLUR_FAILURES_FILE: ${{ github.workspace }}/blur-nightly-failures.json
+          HF_BLUR_REQUIRED: "1"
+        run: bunx vitest run --project browser src/services/captureMotionBlur.generated.browser.test.ts
+      - name: Keep the failing seeds
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: blur-nightly-failures-${{ matrix.flavour }}-${{ matrix.chunk.id }}
+          path: blur-nightly-failures.json
+          if-no-files-found: ignore
+
+  report:
+    name: Report failures
+    needs: [plan, generated]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        continue-on-error: true
+        with:
+          pattern: blur-nightly-failures-*
+          path: failures
+      - name: Open issues, warn and summarize
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GENERATED_RESULT: ${{ needs.generated.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          node scripts/ci/motion-blur-nightly-report.mjs
+          --failures failures
+          --generated-result "$GENERATED_RESULT"
+          --date "$(date -u +%F)"
+          --run-url "$RUN_URL"
+          --summary "$GITHUB_STEP_SUMMARY"

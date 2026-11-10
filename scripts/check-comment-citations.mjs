@@ -141,6 +141,7 @@ const PROJECT_FILES = new Set([
   "assets/transcript.json",
   "transcript.json",
   "REVERSE.md",
+  ".hyperframes/credit-limit.json",
   "asset-descriptions.md",
   "extracted/page.html",
   "extracted/visible-text.txt",

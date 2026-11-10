@@ -6,10 +6,12 @@
  */
 
 import { swallow } from "../diagnostics";
-import { scanMovers } from "./discover";
+import { scanMovers, whileCallbacksMuted } from "./discover";
+import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { planFilter, type FilterPlan } from "./filterPlan";
-import { readMoverFrames } from "./frames";
+import { holdsFixedChild, readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
+import type { MotionBlurFingerprint } from "../../motionBlurFingerprint";
 import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -94,6 +96,23 @@ function aim(layer: Layer, plan: FilterPlan): void {
   layer.filter.setAttribute("height", h.toFixed(1));
 }
 
+const CONTAINING_BLOCK_PROPERTIES = [
+  "transform",
+  "translate",
+  "rotate",
+  "scale",
+  "perspective",
+] as const;
+
+function makesContainingBlock(el: HTMLElement): boolean {
+  const style = getComputedStyle(el);
+  return (
+    CONTAINING_BLOCK_PROPERTIES.some((p) => (style[p] || "none") !== "none") ||
+    /transform|perspective|filter/.test(style.willChange ?? "") ||
+    /paint|layout|strict|content/.test(style.contain ?? "")
+  );
+}
+
 const strip = (el: HTMLElement): string => el.style.filter.replace(OWN, "").trim();
 
 export function createFilterTier(
@@ -106,9 +125,11 @@ export function createFilterTier(
   const height = Number(root.getAttribute("data-height")) || root.offsetHeight;
   const seek = (t: number): void => host.seek(t, !config.events);
   let readEvents = false;
+  let fingerprint: MotionBlurFingerprint | null = null;
   const readSeek = (t: number): void => host.seek(t, !readEvents);
   let defs: SVGSVGElement | null = null;
   let movers: HTMLElement[] = [];
+  let fixedHolders = new Set<HTMLElement>();
   let pads = new Map<HTMLElement, number>();
   let reader: ReturnType<typeof createPoseReader> | null = null;
   let scanned: unknown;
@@ -122,18 +143,25 @@ export function createFilterTier(
 
   function discover(restoreTo: number): void {
     scanned = host.timeline();
+    const coverage = coverageSampler(root);
     const s0 = performance.now();
-    const found = scanMovers({
-      scene: root,
-      durationSeconds: host.durationSeconds(),
-      fps: host.fps,
-      seek: host.seek,
-      events: config.events,
+    const found = whileCallbacksMuted(host, config.events, () => {
+      const scan = scanMovers({
+        scene: root,
+        durationSeconds: host.durationSeconds(),
+        fps: host.fps,
+        seek: host.seek,
+        events: config.events,
+        onFast: coverage.sample,
+      });
+      seek(restoreTo);
+      return scan;
     });
-    seek(restoreTo);
     readEvents = found.readEvents;
     movers = found.movers;
+    fixedHolders = new Set(movers.filter(holdsFixedChild));
     pads = found.pads;
+    fingerprint = compositionFingerprint(root, movers, coverage.covered);
     reader = createPoseReader(root, found.dynamic);
     scanMs = Math.round(performance.now() - s0);
   }
@@ -160,7 +188,7 @@ export function createFilterTier(
       defs.setAttribute("data-hf-ignore", "");
       defs.style.cssText = "position:absolute;left:0;top:0;pointer-events:none";
       node(defs, "defs", {});
-      root.append(defs);
+      document.documentElement.append(defs);
     }
     layer = buildLayer(defs.querySelector("defs") ?? defs, layers.size, el);
     layers.set(el, layer);
@@ -179,21 +207,26 @@ export function createFilterTier(
   function plansAt(t: number, engineMode: boolean): Array<[HTMLElement, FilterPlan]> {
     if (!reader || host.timeline() !== scanned) discover(t);
     if (!reader) return [];
-    const read = readMoverFrames({
-      movers,
-      reader,
-      seek: readSeek,
-      restore: readEvents ? undefined : host.holdFrame?.(),
-      t,
-      reads: engineMode ? RENDER_READS : PREVIEW_READS,
-      shutterSeconds: config.shutterDeg / 360 / host.fps,
-      taps: COPIES,
-      frameW: width,
-      frameH: height,
-    });
+    const poseReader = reader;
+    const read = whileCallbacksMuted(host, readEvents, () =>
+      readMoverFrames({
+        movers,
+        reader: poseReader,
+        seek: readSeek,
+        restore: readEvents ? undefined : host.holdFrame?.(),
+        t,
+        reads: engineMode ? RENDER_READS : PREVIEW_READS,
+        ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
+        taps: COPIES,
+        frameW: width,
+        scene: root,
+        frameH: height,
+      }),
+    );
     const plans: Array<[HTMLElement, FilterPlan]> = [];
     read.els.forEach((el, i) => {
       const frame = read.frames[i];
+      if (fixedHolders.has(el) && !makesContainingBlock(el)) return;
       const plan = frame && planFilter(frame, pads.get(el) ?? 0, width);
       if (plan) plans.push([el, plan]);
     });
@@ -228,10 +261,13 @@ export function createFilterTier(
       moverNames: movers.map((el) => `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}`),
       scanMs,
       shutterDeg: config.shutterDeg,
+      phaseDeg: config.phaseDeg,
       frames,
       meanMs: frames ? Math.round((totalMs / frames) * 10) / 10 : 0,
       failures: 0,
       failedFrames: 0,
+      fingerprint,
+      readEvents,
     };
   }
 

@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 import { usePlayerStore } from "./playerStore";
 import { readStudioUiPreferences } from "../../utils/studioUiPreferences";
-import { parsePreviewCopies } from "./previewQualitySlice";
+import { parsePlaybackHealth, parsePreviewCopies } from "./previewQualitySlice";
 
 describe("preview quality in the player store", () => {
   it("starts at full quality with no copies, and counts retries", () => {
@@ -68,5 +68,50 @@ describe("preview quality in the player store", () => {
     expect(parsePreviewCopies(null)).toBeNull();
     expect(parsePreviewCopies({ total: "2", ready: 1, failed: 0, progress: 0 })).toBeNull();
     expect(parsePreviewCopies({ total: 2, ready: 1, failed: 0 })).toBeNull();
+  });
+
+  it("keeps the clock the runtime names, and only a clock it knows", () => {
+    const health = {
+      droppedShare: 0.4,
+      seconds: 3,
+      choppy: true,
+      fps: 40,
+      worstFrameMs: 90,
+      mode: "play",
+    };
+    expect(parsePlaybackHealth({ ...health, clockSource: "webaudio" })?.clockSource).toBe(
+      "webaudio",
+    );
+    expect(
+      parsePlaybackHealth({ ...health, clockSource: "/Users/a/film.mp3" })?.clockSource,
+    ).toBeUndefined();
+    expect(parsePlaybackHealth(health)?.clockSource).toBeUndefined();
+  });
+
+  it("keeps what held play when the runtime names it in its own shape, and drops any other shape", () => {
+    const health = {
+      droppedShare: 1,
+      seconds: 3,
+      choppy: true,
+      fps: 0,
+      worstFrameMs: 20,
+      mode: "play",
+    };
+    const heldBy = { kind: "audio", readyState: 1, networkState: 2, fetchMs: 3500 };
+    expect(parsePlaybackHealth({ ...health, heldBy })?.heldBy).toEqual(heldBy);
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, fetchMs: null } })?.heldBy,
+    ).toEqual({
+      ...heldBy,
+      fetchMs: null,
+    });
+    expect(parsePlaybackHealth({ ...health, heldBy: null })?.heldBy).toBeNull();
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, fetchMs: "3500" } })?.heldBy,
+    ).toBeUndefined();
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, kind: "/a/b.mp3" } })?.heldBy,
+    ).toBeUndefined();
+    expect(parsePlaybackHealth(health)?.heldBy).toBeUndefined();
   });
 });

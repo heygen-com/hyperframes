@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import { HF_AUDIO_FX_ATTR } from "../audioFx";
+import { locateSceneRoot } from "./htmlDocument";
 
 export { isTemplateEntry } from "./htmlDocument";
 
@@ -7,13 +8,8 @@ function normalizeCompositionSrcPath(srcPath: string): string {
   return srcPath.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
-// linkedom has no inert <template> content, so the template's innerHTML is re-parsed.
 function readSceneRoot(entryHtml: string | undefined): Element | null {
-  if (!entryHtml) return null;
-  const { document } = parseHTML(entryHtml);
-  const template = document.querySelector("template");
-  const scope = template ? parseHTML(template.innerHTML).document : document;
-  return scope.querySelector("[data-composition-id]") as Element | null;
+  return entryHtml ? locateSceneRoot(entryHtml).root : null;
 }
 
 // The scene's own chain replaces the index's, which belongs to the whole project.

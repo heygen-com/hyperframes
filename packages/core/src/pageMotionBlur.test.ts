@@ -56,4 +56,44 @@ describe("accelerated canvas tracker", () => {
     canvas.getContext("webgl");
     expect(isAcceleratedCanvas(canvas)).toBe(true);
   });
+
+  it("tracks a scene canvas that has the host page's prototype", () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    try {
+      const scene = frame.contentWindow as (Window & typeof globalThis) | null;
+      if (!scene) throw new Error("no iframe window");
+      const sceneProto = scene.HTMLCanvasElement.prototype as unknown as Proto;
+      expect(sceneProto === proto).toBe(false);
+      sceneProto.getContext = vi.fn(() => ({}));
+      // The host installs in its own window, as Studio does; the scene runs its own copy.
+      installAcceleratedCanvasTracker();
+      scene.eval(acceleratedCanvasTrackerSource());
+      const canvas = scene.document.createElement("canvas");
+      // Chrome gives a canvas the host's prototype when the host page reaches it first.
+      Object.setPrototypeOf(canvas, HTMLCanvasElement.prototype);
+      canvas.getContext("webgl2");
+      const tracked: unknown = Reflect.get(scene, "__hfAcceleratedCanvases");
+      expect((tracked as WeakSet<object>).has(canvas)).toBe(true);
+    } finally {
+      frame.remove();
+    }
+  });
+
+  it("leaves the page that embeds the scene alone", () => {
+    const frame = document.createElement("iframe");
+    document.body.append(frame);
+    try {
+      const scene = frame.contentWindow as (Window & typeof globalThis) | null;
+      if (!scene) throw new Error("no iframe window");
+      const hostGetContext = proto.getContext;
+      const hostSet = Object.getOwnPropertyDescriptor(window, "__hfAcceleratedCanvases");
+      scene.eval(acceleratedCanvasTrackerSource());
+      expect(Reflect.get(scene, "__hfAcceleratedCanvases")).toBeDefined();
+      expect(proto.getContext).toBe(hostGetContext);
+      expect(Object.getOwnPropertyDescriptor(window, "__hfAcceleratedCanvases")).toEqual(hostSet);
+    } finally {
+      frame.remove();
+    }
+  });
 });

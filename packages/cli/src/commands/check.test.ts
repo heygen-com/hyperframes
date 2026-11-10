@@ -1,8 +1,19 @@
+import type { CheckProgress } from "../utils/checkProgress.js";
 import { runCommand } from "citty";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
 
 const trackCheckReport = vi.fn();
 vi.mock("../telemetry/events.js", () => ({
@@ -12,8 +23,13 @@ vi.mock("../telemetry/events.js", () => ({
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange } from "./check.js";
+import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
-import { CheckDeadlineError, CheckStoppedError } from "../utils/checkDeadline.js";
+import {
+  CheckCopiesUnfinishedError,
+  CheckDeadlineError,
+  CheckStoppedError,
+} from "../utils/checkDeadline.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 import type { CommandDef } from "citty";
 
@@ -499,6 +515,64 @@ describe("skip contrast in motion", () => {
   });
 });
 
+it("waits for the composition as long as snapshot and render do unless --timeout says otherwise", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json"] });
+  await runCommand(command, { rawArgs: ["--json", "--timeout", "20s"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].timeout).toBe(DEFAULT_CONFIG.playerReadyTimeout);
+  expect(runPipeline.mock.calls[1]?.[1].timeout).toBe(20_000);
+});
+
+it("--budget sets when the whole check stops, its report time kept back, counted from the command's start", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  const startedAt = Date.now();
+  await runCommand(command, { rawArgs: ["--json", "--budget", "8m"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  const budget = runPipeline.mock.calls[0]?.[1].budget;
+  expect(budget?.ms).toBe(480_000);
+  expect(budget?.stopAt).toBeGreaterThanOrEqual(startedAt + 470_000);
+  expect(budget?.stopAt).toBeLessThanOrEqual(Date.now() + 470_000);
+  expect(runPipeline.mock.calls[1]?.[1].budget).toBeUndefined();
+});
+
+it("--no-craft reaches the pipeline as craft: false, and the craft pass is on without it", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: ["--json", "--no-craft"] });
+  await runCommand(command, { rawArgs: ["--json"] });
+
+  expect(runPipeline.mock.calls[0]?.[1].craft).toBe(false);
+  expect(runPipeline.mock.calls[1]?.[1].craft).toBe(true);
+});
+
 it("parses the caption-zone grammar and enables the frame gate", async () => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
@@ -752,12 +826,12 @@ it("fails the check on an audio error and reports it in its own section", async 
   expect(report.ok).toBe(false);
 });
 
-it("still checks audio when lint errors skip the browser pass", async () => {
+it("still checks audio when a lint error skips the browser pass", async () => {
   const { report, browser } = await runScenario(
     fakeDriver(),
     {},
     {
-      lint: lintWith("error", "missing_timeline_registry", "No timeline"),
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
       inspectAudio: vi.fn(async () => [
         {
           code: "audio_none",
@@ -1550,7 +1624,7 @@ describe("check pipeline", () => {
     });
   });
 
-  it("short-circuits on lint errors without launching a browser, and flags the skipped sections", async () => {
+  it("short-circuits on a lint error that leaves nothing to load, and flags the skipped sections", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1570,7 +1644,49 @@ describe("check pipeline", () => {
     expect(report.contrast).toMatchObject({ ok: true, errorCount: 0, findings: [] });
   });
 
-  it("says in plain words that a lint error is why the browser pass was skipped", async () => {
+  it("runs the browser checks past a lint error that still loads, and fails on the lint error", async () => {
+    const failingContrast = vi.fn(async (time: number) => ({
+      entries: time === 0.5 ? [contrastEntry()] : [],
+      pngBase64: PNG_BASE64,
+    }));
+    const lint = lintWith("error", "missing_timeline_registry", "No timeline registered.");
+    const { report, browser } = await runScenario(
+      fakeDriver({ collectContrast: failingContrast }),
+      {},
+      { lint },
+    );
+
+    expect(browser).toHaveBeenCalled();
+    expect(report.browserSkipped).toBe(false);
+    expect(report.lint.errorCount).toBe(1);
+    expect(report.contrast.errorCount).toBeGreaterThan(0);
+    expect(report.ok).toBe(false);
+    expect(checkExitCode(report)).toBe(1);
+  });
+
+  it("names the saved report file on stderr after a --json run", async () => {
+    const { report } = await runScenario(fakeDriver());
+    const saved = {
+      id: "r1",
+      revision: "rev",
+      report: "/p/.hyperframes/artifacts/checks/r1.json",
+      attribution: "recorded-revision" as const,
+    };
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => ({ ...report, saved })),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runCommand(command, { rawArgs: ["--json"] });
+
+    expect(err).toHaveBeenCalledWith(`[hyperframes] check: report saved to ${saved.report}`);
+  });
+
+  it("says in plain words that a lint error left no composition to load", async () => {
     const lint = lintWith(
       "error",
       "root_missing_composition_id",
@@ -1588,7 +1704,7 @@ describe("check pipeline", () => {
     await runViaCli(command, { rawArgs: [] });
 
     const said = log.mock.calls.map((call) => String(call[0])).join("\n");
-    expect(said).toContain("Browser validation skipped because of the lint error above");
+    expect(said).toContain("the lint error above leaves no composition to load");
     expect(said).not.toContain("Browser session never ran");
   });
 
@@ -1655,7 +1771,10 @@ describe("check pipeline", () => {
 
   it.each([
     { lint: cleanLint(), handed: true },
-    { lint: lintWith("error", "lint_error", "Lint error."), handed: false },
+    {
+      lint: lintWith("error", "root_missing_composition_id", "Root needs data-composition-id."),
+      handed: false,
+    },
   ])(
     "closes the browser started during lint unless the browser pass took it",
     async ({ lint, handed }) => {
@@ -2282,6 +2401,40 @@ describe("check pipeline", () => {
     }
   });
 
+  it("slow analysis calls that each finish keep the check alive past 120 s", async () => {
+    vi.useFakeTimers();
+    try {
+      let analysing = false;
+      const slowWhenAnalysing = async () => {
+        if (analysing) await new Promise((resolve) => setTimeout(resolve, 100_000));
+      };
+      const hasNoTimelineDeclaration = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return false;
+      });
+      const getCanvas = vi.fn(async () => {
+        await slowWhenAnalysing();
+        return { width: 1920, height: 1080 };
+      });
+      const driver = fakeDriver({ hasNoTimelineDeclaration, getCanvas });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        deadline!.start();
+        const report: CheckProgress = (phase) => {
+          if (phase === "analyze") analysing = true;
+        };
+        return runAuditGrid(driver, options, motion, undefined, deadline!.enter, report);
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(2_000_000);
+      const codes = (await pending).runtime.findings.map((finding) => finding.code);
+      expect(codes).not.toContain("check_runtime_failure");
+      expect(hasNoTimelineDeclaration).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a long overlap pass that keeps reporting progress finishes instead of hitting a wall clock", async () => {
     vi.useFakeTimers();
     try {
@@ -2336,6 +2489,29 @@ describe("check pipeline", () => {
         "while running the overlap pass (overlap probes from 0s).",
       );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a Chrome that never becomes ready ends the whole check with a named finding inside its window", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps } = dependencies(fakeDriver());
+      deps.runBrowserCheck = (_project, _options, _motion, deadline) => {
+        deadline!.enter("launch");
+        return new Promise<never>((_, reject) =>
+          deadline!.signal.addEventListener("abort", () => reject(deadline!.signal.reason)),
+        );
+      };
+      const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+      await vi.advanceTimersByTimeAsync(180_000);
+      const report = await pending;
+      const failure = report.runtime.findings.find(
+        (finding) => finding.code === "check_runtime_failure",
+      );
+      expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
+      expect(report.ok).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -2416,6 +2592,61 @@ describe("check pipeline", () => {
       expect(
         report.runtime.findings.some((finding) => finding.code === "check_runtime_failure"),
       ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("--budget ends a check that is still within its idle window and keeps what its finished samples found", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted!: AbortSignal;
+      const driver = fakeDriver({
+        collectLayout: vi.fn(async (time: number) => [
+          layoutIssue("warning", { time, code: "container_overflow" }),
+        ]),
+        collectOverlapGrid: vi.fn(
+          () =>
+            new Promise<never>((_, reject) =>
+              aborted.addEventListener("abort", () => reject(aborted.reason)),
+            ),
+        ),
+      });
+      const { deps } = dependencies(driver);
+      deps.runBrowserCheck = async (_project, options, motion, deadline) => {
+        aborted = deadline!.signal;
+        deadline!.start();
+        return runAuditGrid(
+          driver,
+          options,
+          motion,
+          undefined,
+          deadline!.enter,
+          undefined,
+          deadline!.keepPartial,
+        );
+      };
+      const budget = { ms: 70_000, stopAt: Date.now() + 60_000 };
+      const pending = runCheckPipeline(
+        PROJECT,
+        { ...DEFAULT_CHECK_OPTIONS, timeout: 400_000, budget },
+        deps,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      const report = await pending;
+      const reached = report.runtime.findings.find(
+        (finding) => finding.code === "check_budget_reached",
+      );
+      expect(reached?.message).toMatch(
+        /^Check reached its --budget of 70 s while running the overlap pass .*Seconds per phase: /,
+      );
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_budget_reached" }),
+      );
+      expect(report.ok).toBe(false);
+      expect(report.layout.findings.some((finding) => finding.code === "container_overflow")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -2844,6 +3075,15 @@ describe("check pipeline", () => {
       expect(checkExitCode(strict.report)).toBe(0);
     });
 
+    it("--no-craft never samples the craft frames and the report says the pass was skipped", async () => {
+      const driver = craftDriver();
+      const { report } = await runScenario(driver, { craft: false });
+
+      expect(driver.collectCraftFrame).not.toHaveBeenCalled();
+      expect(report.craft.enabled).toBe(false);
+      expect(report.craft.findings).toEqual([]);
+    });
+
     it("seeks each craft frame with WebGL draws on, so a redrawn canvas reads as moving", async () => {
       const driver = craftDriver();
       await runScenario(driver);
@@ -2866,6 +3106,24 @@ describe("check pipeline", () => {
       expect(line?.seconds).toBeCloseTo(0.7, 1);
       const sampled = vi.mocked(driver.collectCraftFrame!).mock.calls.map(([time]) => time);
       expect(sampled.some((time) => Math.round(time * 1000) % 125 !== 0)).toBe(true);
+    });
+
+    it("thins the craft grid when frames are slow, so the pass stays near its budget and still reaches the end", async () => {
+      let clock = 0;
+      vi.spyOn(performance, "now").mockImplementation(() => clock);
+      const driver = craftDriver({
+        getDuration: vi.fn(async () => 60),
+        collectCraftFrame: vi.fn(async (time: number) => {
+          clock += 1000;
+          return craftFrame(time);
+        }),
+      });
+      const { report } = await runScenario(driver);
+
+      expect(report.craft.samples).toBeGreaterThan(20);
+      expect(report.craft.samples).toBeLessThan(120);
+      expect(report.craft.step).toBeGreaterThan(0.5);
+      expect(report.craft.step).toBeLessThanOrEqual(1.5);
     });
 
     it("samples a long film at 8 fps, finer than the overlap pass's capped grid", async () => {
@@ -3441,6 +3699,22 @@ describe("check report telemetry", () => {
     expect(report.ok).toBe(true);
   });
 
+  it("a check stopped by the copy wait still sends the copy facts and stays browserSkipped", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async (_project, _options, _motion, deadline) => {
+      deadline?.keepPartial(() => ({
+        mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 },
+      }));
+      throw new CheckCopiesUnfinishedError(120_000, ["a.mp4 40%"]);
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+
+    expect(report.browserSkipped).toBe(true);
+    expect(trackCheckReport).toHaveBeenCalledWith(
+      expect.objectContaining({ mediaCopies: { total: 47, waitedMs: 120_000, unfinished: 12 } }),
+    );
+  });
+
   it("reports one failing contrast run with its section error count", async () => {
     const collectContrast = vi.fn(async (time: number) => ({
       entries: time === 0.5 ? [contrastEntry()] : [],
@@ -3458,6 +3732,7 @@ describe("check report telemetry", () => {
       }),
     );
     expect(report.contrast.errorCount).toBe(1);
+    expect(trackCheckReport.mock.calls[0]?.[0].stopCode).toBeUndefined();
   });
 
   it("reports zero browser samples and timings after a lint short circuit", async () => {
@@ -3947,6 +4222,178 @@ describe("golden gate wiring", () => {
   });
 });
 
+describe("check cache", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function setup(report: CheckReport) {
+    const browser: { identity: string | undefined } = { identity: "chrome:1" };
+    const dir = mkdtempSync(join(tmpdir(), "hf-check-cache-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+    const command = createCheckCommand({
+      resolveProject: () => ({ dir, name: "p", indexPath: join(dir, "index.html") }),
+      runPipeline,
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+      browserIdentity: async () => browser.identity,
+    });
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    return {
+      dir,
+      browser,
+      runPipeline,
+      run: (...flags: string[]) => runCommand(command, { rawArgs: ["--json", ...flags] }),
+    };
+  }
+
+  it("answers an unchanged tree from the last pass without running the pipeline", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-runs after one byte of the composition changes", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>onf</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a failure", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ ok: false }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a pass whose browser did not run", async () => {
+    const { runPipeline, run } = setup(reportWithFindings({ browserSkipped: true }));
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not store a pass for a tree that changed while it was being checked", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    runPipeline.mockImplementationOnce(async () => {
+      writeFileSync(join(dir, "index.html"), "<html>written by someone else</html>");
+      return reportWithFindings();
+    });
+    await run();
+    writeFileSync(join(dir, "index.html"), "<html>one</html>");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs a large file changed to the same size with its mtime put back", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const big = join(dir, "clip.bin");
+    const mtime = 1_700_000_000;
+    writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 1));
+    utimesSync(big, mtime, mtime);
+    await run();
+    const writtenAt = statSync(big).ctimeMs;
+    await vi.waitFor(
+      () => {
+        writeFileSync(big, Buffer.alloc(3 * 1024 * 1024, 2));
+        utimesSync(big, mtime, mtime);
+        if (statSync(big).ctimeMs === writtenAt) throw new Error("the clock has not ticked");
+      },
+      { interval: 1 },
+    );
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("never caches a project with node_modules or a linked directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "node_modules"));
+    await run();
+    await run();
+    rmSync(join(dir, "node_modules"), { recursive: true });
+    mkdirSync(join(dir, "real"));
+    symlinkSync(join(dir, "real"), join(dir, "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when --timeout or the runtime URL changes", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:1/runtime.js");
+    await run();
+    await run("--timeout", "20s");
+    vi.stubEnv("HYPERFRAME_RUNTIME_URL", "http://localhost:2/runtime.js");
+    await run();
+    vi.unstubAllEnvs();
+    expect(runPipeline).toHaveBeenCalledTimes(3);
+  });
+
+  it("re-runs when the browser binary changes, and never caches without one", async () => {
+    const { browser, runPipeline, run } = setup(reportWithFindings());
+    await run();
+    browser.identity = "chrome:2";
+    await run();
+    browser.identity = undefined;
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+
+  it("re-runs when a script under .hyperframes changes, but not when the CLI's own files do", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, ".hyperframes", "artifacts"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.log(1)");
+    await run();
+    writeFileSync(join(dir, ".hyperframes", "artifacts", "report.json"), "{}");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+    writeFileSync(join(dir, ".hyperframes", "probe.js"), "console.error(1)");
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("still hits when the check touches its video copies under .transcode-cache", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    const copy = join(dir, ".transcode-cache", "clip.mp4");
+    mkdirSync(join(dir, ".transcode-cache"));
+    writeFileSync(copy, Buffer.alloc(3 * 1024 * 1024, 1));
+    runPipeline.mockImplementationOnce(async () => {
+      utimesSync(copy, new Date(), new Date());
+      return reportWithFindings();
+    });
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it("never caches a project whose .hyperframes links to another directory", async () => {
+    const { dir, runPipeline, run } = setup(reportWithFindings());
+    mkdirSync(join(dir, "real"));
+    mkdirSync(join(dir, ".hyperframes"));
+    symlinkSync(join(dir, "real"), join(dir, ".hyperframes", "linked"), "dir");
+    await run();
+    await run();
+    expect(runPipeline).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-runs when the flags differ, or with --no-cache, or under --budget", async () => {
+    const { runPipeline, run } = setup(reportWithFindings());
+    await run();
+    await run("--strict");
+    await run("--no-cache");
+    await run("--budget", "8m");
+    expect(runPipeline).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe("check stopped by a signal", () => {
   it("SIGTERM prints the report so far, then exits 143", async () => {
     const { deps, runBrowserCheck } = dependencies(fakeDriver());
@@ -3980,5 +4427,13 @@ describe("check stopped by a signal", () => {
       "Check stopped before finishing (SIGTERM).",
     );
     expect(order).toEqual(["print {", "exit 143"]);
+  });
+});
+
+describe("check --lint-verbose", () => {
+  it("is a known flag, as render, preview and publish spell it, and a made-up one still is not", () => {
+    const check = createCheckCommand() as never;
+    expect(() => assertKnownFlags(check, ["--lint-verbose", "--json"], "check")).not.toThrow();
+    expect(() => assertKnownFlags(check, ["--lint-loud"], "check")).toThrow("Unknown flag");
   });
 });

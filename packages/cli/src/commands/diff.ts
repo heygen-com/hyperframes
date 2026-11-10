@@ -2,7 +2,7 @@ import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
+import { failCommand, scheduleCliExit, setCommandExitCode } from "../utils/commandResult.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { withMeta } from "../utils/updateCheck.js";
 import {
@@ -11,6 +11,7 @@ import {
   DEFAULT_MIN_P05,
   diffVideos,
   findLedger,
+  parseOffset,
   type DiffResult,
 } from "../measure/diff.js";
 import { Fix, formatJson, outDir, parseNumbers, parseRange } from "../measure/media.js";
@@ -98,7 +99,7 @@ function printHuman(r: DiffResult) {
     );
   if (r.duration)
     console.log(
-      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass ? "" : " (differ)"}`,
+      `   duration: original ${r.duration.reference} s, yours ${r.duration.yours} s${r.duration.pass === null ? ` (${r.duration.note})` : r.duration.pass ? "" : " (differ)"}`,
     );
   if (r.sound)
     console.log(
@@ -159,11 +160,15 @@ export default defineCommand({
     yours: {
       type: "positional",
       description:
-        "A rendered video, or a project folder (captured at the original's frame times, no render)",
-      required: true,
+        "A rendered video, or a project folder (captured at the original's frame times, no render) (required)",
+      required: false,
     },
     at: { type: "string", description: "Compare only these seconds, e.g. 0.5,2.4" },
     range: { type: "string", description: "Compare every frame of start,end seconds" },
+    offset: {
+      type: "string",
+      description: "Compare the original at t with yours at t + offset seconds (may be negative)",
+    },
     segments: {
       type: "string",
       description:
@@ -212,9 +217,15 @@ export default defineCommand({
   // fallow-ignore-next-line complexity
   async run({ args, rawArgs }) {
     const json = args.json === true;
+    let exitCode = 0;
     try {
       if (args.at !== undefined && args.range !== undefined)
         throw new Fix("--at and --range both given", "pass one of them");
+      if (args.yours === undefined)
+        throw new Fix(
+          "diff compares two: the original and yours",
+          "hyperframes diff <original.mp4> <your render.mp4 | your project folder>",
+        );
       const yours = resolve(String(args.yours));
       const stem = basename(yours, extname(yours)) || "project";
       const segmentsFile = args.segments === undefined ? undefined : resolve(String(args.segments));
@@ -230,6 +241,7 @@ export default defineCommand({
             : resolve(String(args.ledger)),
         project: args.project === undefined ? undefined : resolve(String(args.project)),
         drawn: repeated(rawArgs, "--drawn").map(parseDrawn),
+        offset: args.offset === undefined ? undefined : parseOffset(args.offset),
         thresholds: {
           mean: number(args["min-mean"], "--min-mean"),
           p05: number(args["min-p05"], "--min-p05"),
@@ -243,14 +255,20 @@ export default defineCommand({
       });
       if (json) console.log(formatJson(withMeta({ ok: true, ...result })));
       else printHuman(result);
-      if (!result.pass) setCommandExitCode(1);
+      if (!result.pass) {
+        exitCode = 1;
+        setCommandExitCode(1);
+      }
     } catch (err) {
+      exitCode = 1;
       const fix = err instanceof Fix ? err.fix : undefined;
       const message = normalizeErrorMessage(err);
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
       else console.error(`${c.error("✗")} ${message}${fix ? `\n  Fix: ${fix}` : ""}`);
-      failCommand();
+      failCommand(1, err);
+    } finally {
+      scheduleCliExit(exitCode);
     }
   },
 });

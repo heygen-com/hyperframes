@@ -17,6 +17,7 @@ import {
 import {
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
+  STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
 } from "@hyperframes/core/studio-preview-mark";
 import {
@@ -25,6 +26,7 @@ import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
   PREVIEW_PROXY_RETRY_PARAM,
+  PREVIEW_PROXY_STILL_PARAM,
   parsePreviewProxyBox,
 } from "@hyperframes/core";
 import {
@@ -44,6 +46,7 @@ import {
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
+import { openRangeEnd } from "../helpers/mediaRange.js";
 import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
 import { withRootImportMap } from "../helpers/rootImportMap.js";
 import { withRootPathsRelative } from "../helpers/rootPaths.js";
@@ -53,9 +56,8 @@ import {
   isGsapCoreUrl,
 } from "../helpers/gsapCoreScript.js";
 import {
-  createProjectSignature,
+  createProjectSignatureAsync,
   resolveProjectAndSignature,
-  resolveProjectSignature,
 } from "../helpers/projectSignature.js";
 import {
   createStudioMotionRenderBodyScript,
@@ -73,6 +75,7 @@ import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
   proxyCopyProgress,
   resolveProxy,
+  resolveStill,
   retryProxyCopy,
   waitForProxy,
   ProxyCapacityError,
@@ -147,10 +150,10 @@ function parseStudioMotionManifestContent(content: string): {
   }
 }
 
-/** Swaps any runtime already in the page for the preview runtime, placed as the bundler places it. */
+/** Preview hooks must install before authored head scripts register media consumers. */
 function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
-  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag);
+  return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
 }
 
 function injectScriptTagIntoHead(html: string, scriptTag: string): string {
@@ -270,7 +273,7 @@ const GSAP_FALLBACK_ATTR = "data-hf-gsap-fallback";
 function gsapCdnFallbackScript(baseUrl: string): string {
   return `<script ${GSAP_FALLBACK_ATTR}>
 (function(){
-  var cdnBase=${JSON.stringify(gsapCdnDist(undefined, baseUrl)).replace(/</g, "\\u003c")};
+  var cdnBase=${scriptJson(gsapCdnDist(undefined, baseUrl))};
   var loaded={};
   function loadFallback(file){
     if(loaded[file])return loaded[file];
@@ -346,13 +349,26 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
 
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
 // Studio's console capture attaches at the iframe's load; this keeps what was raised before it.
-const EARLY_ERRORS_SCRIPT = `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[];
-addEventListener("error",function(e){seen.push(e.message||String(e))});})();</script>`;
+const earlyErrorsScript = (
+  runtimeUrl: string,
+) => `<script>(function(){var seen=window.${STUDIO_PREVIEW_ERRORS}=[],kinds=window.${STUDIO_PREVIEW_ERROR_KINDS}=[],known={SyntaxError:1,TypeError:1,ReferenceError:1,RangeError:1},runtime=${scriptJson(new URL(runtimeUrl, "http://x").pathname)};
+addEventListener("error",function(e){seen.push(e.message||String(e));
+var name=e.error&&e.error.constructor&&e.error.constructor.name,path="";
+try{var url=e.filename&&new URL(e.filename,window.location.href);if(url&&url.origin===window.location.origin)path=url.pathname}catch(_){}
+kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runtime?"runtime":path.indexOf("/api/projects/")===0?"project":"studio"})});})();</script>`;
 
 function injectStudioPreviewAugmentations(
   html: string,
   adapter: StudioApiAdapter,
+  signature: string,
   projectDir: string,
   activeCompositionPath: string,
   options: { capture: boolean; gsapBaseUrl: string },
@@ -364,7 +380,7 @@ function injectStudioPreviewAugmentations(
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
-        `<meta name="${STUDIO_PREVIEW_MARK_META}">${EARLY_ERRORS_SCRIPT}`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(adapter.runtimeUrl)}`,
       );
   const withFallback = injectGsapCdnFallback(
     injectProjectSignature(
@@ -372,7 +388,7 @@ function injectStudioPreviewAugmentations(
         marked,
         `<meta name="${GSAP_BASE_URL_META}" content="${escapeGsapUrl(options.gsapBaseUrl)}">`,
       ),
-      resolveProjectSignature(adapter, projectDir),
+      signature,
     ),
     options.gsapBaseUrl,
   );
@@ -520,6 +536,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
         adapter,
+        signature,
         project.dir,
         mainCompositionPath,
         { capture, gsapBaseUrl },
@@ -533,7 +550,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         mediaCodecProbeCache,
       );
       bundled = addScenePartsManifest(bundled, [`meta[name="${PROJECT_SIGNATURE_META}"]`]);
-      if (createProjectSignature(project.dir) === signature) {
+      if ((await createProjectSignatureAsync(project.dir)) === signature) {
         rememberPreview(builtKey, bundled);
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       }
@@ -550,6 +567,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
           adapter,
+          signature,
           project.dir,
           fallback.compositionPath,
           { capture, gsapBaseUrl },
@@ -667,10 +685,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       gsapBaseUrl,
     );
     if (!html) return c.text("not found", 404);
-    html = withRootImportMap(html, baseHref);
+    html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
     recordPreviewReferences(project.dir, html);
     html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, project.dir, compPath, {
+    html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
     });
@@ -739,6 +757,24 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       }
     }
 
+    // One frame of the video stands in for its copy while that is made; same gate as the copy.
+    const stillParam = c.req.query(PREVIEW_PROXY_STILL_PARAM);
+    if (stillParam !== undefined) {
+      const at = Number(stillParam);
+      if (stillParam === "" || !Number.isFinite(at) || at < 0 || !proxyVariant) {
+        return c.text("not found", 404);
+      }
+      try {
+        const still = await resolveStill(project.dir, file, at, proxyBox);
+        return new Response(readFileSync(still), {
+          headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
+        });
+      } catch (err) {
+        if (isProjectRootMissing(err)) throw err;
+        return c.text("media still failed", 502);
+      }
+    }
+
     const tag = settledFileTag(stat);
     const etag = tag && `"${tag}${proxyEtagSalt(proxyVariant, proxyBox)}"`;
     const cacheHeaders: Record<string, string> = isText
@@ -764,9 +800,10 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         if (c.req.query(PREVIEW_PROXY_RETRY_PARAM) !== undefined) {
           retryProxyCopy(project.dir, file, proxyVariant, proxyBox);
         }
-        const priority = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER) === "1";
+        const asked = c.req.header(PREVIEW_PROXY_PRIORITY_HEADER);
+        const urgency = asked === "0" ? { background: true } : { priority: asked === "1" };
         servedPath = await waitForProxy(
-          resolveProxy(project.dir, file, proxyVariant, proxyBox, { priority }),
+          resolveProxy(project.dir, file, proxyVariant, proxyBox, urgency),
           0,
         );
       } catch (err) {
@@ -816,7 +853,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const match = rangeHeader ? /bytes=(\d+)-(\d*)/.exec(rangeHeader) : null;
     if (match) {
       const start = parseInt(match[1]!, 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const end = match[2]
+        ? parseInt(match[2], 10)
+        : openRangeEnd(start, totalSize - 1, servedContentType);
       const safeEnd = Math.min(end, totalSize - 1);
       if (start > safeEnd) {
         return new Response(null, {

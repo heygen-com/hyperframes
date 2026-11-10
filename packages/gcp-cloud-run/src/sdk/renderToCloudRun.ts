@@ -26,7 +26,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Storage } from "@google-cloud/storage";
-import type { CloudRunPlanProtocol, SerializableDistributedRenderConfig } from "../events.js";
+import type { SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatGcsUri } from "../gcsTransport.js";
 import { deploySite, type SiteHandle } from "./deploySite.js";
@@ -52,11 +52,6 @@ export interface RenderToCloudRunOptions {
   siteHandle?: SiteHandle;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
-  /**
-   * Distributed plan transport. Defaults to `"v2"`. Select `"v1"`
-   * explicitly only for deprecated compatibility with the monolithic plan.
-   */
-  planProtocol?: CloudRunPlanProtocol;
   /** GCS bucket from the Terraform output (`render_bucket_name`). */
   bucketName: string;
   /** GCP project id hosting the workflow. */
@@ -102,8 +97,20 @@ export interface RenderHandle {
   startedAt: string;
 }
 
+function rejectUnsupportedLegacyPlanProtocol(opts: object): void {
+  const planProtocol = Reflect.get(opts, "planProtocol");
+  if (planProtocol === undefined || planProtocol === "v2") return;
+
+  const error = new Error(
+    `[renderToCloudRun] planProtocol is no longer configurable; expected "v2" or absent, got ${JSON.stringify(planProtocol)}`,
+  );
+  error.name = "PLAN_PROTOCOL_UNSUPPORTED";
+  throw error;
+}
+
 // fallow-ignore-next-line complexity
 export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<RenderHandle> {
+  rejectUnsupportedLegacyPlanProtocol(opts);
   validateDistributedRenderConfig(opts.config);
 
   if (!opts.bucketName) throw new Error("[renderToCloudRun] bucketName is required");
@@ -149,7 +156,7 @@ export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<R
     OutputGcsUri: outputGcsUri,
     ServiceUrl: opts.serviceUrl,
     Config: opts.config,
-    PlanProtocol: opts.planProtocol ?? "v2",
+    PlanProtocol: "v2",
   };
 
   // Reject oversize input client-side. Cloud Workflows caps the execution

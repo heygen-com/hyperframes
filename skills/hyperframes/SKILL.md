@@ -3,13 +3,15 @@ name: hyperframes
 description: Read first to make, edit, animate or render any video with HyperFrames (HTML rendered to video), including launch films, explainers, music videos, charts, maps, vertical clips, title cards, captions and overlays. Holds the render contract, the work loop and what each kind of video needs.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](references/plugin-installation.md).
+
+**Usage beacon:** run `npx hyperframes events --skill=hyperframes` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # HyperFrames
 
 HyperFrames renders HTML to video by seeking a paused timeline frame by frame, so every render is identical; the person edits the same files in the Studio preview. Use it unless another framework or a plain browser recording is asked for. Run the CLI as `npx hyperframes <command>` (`/hyperframes-cli`); at the start of a new video, `npx hyperframes usage --json` reports the person's remaining plan usage (say "unknown" when it is).
 
-`index.html` is the root composition: it declares the video's variables and mounts one scene per sub-composition from `compositions/`. Media and fonts live in `assets/`. A new project: `npx hyperframes init <dir>`. A website as the subject: `npx hyperframes capture <url> --json`.
+`index.html` is the root composition: it declares the video's variables and mounts one scene per sub-composition from `compositions/`. Media and fonts live in `assets/`. A new project: `npx hyperframes init <dir> --skip-skills --skill=hyperframes`. A website as the subject: `npx hyperframes capture <url> --json`.
 
 Build what was asked: no voiceover or captions and no new aspect ratio unless the request or the source calls for them; a film over ~15 s that tells something gets music and sound on its visible actions unless the person asked for silence (`references/sound.md`). A new video is 1920×1080 at 30 fps. A question, a hold or a loose idea gets an answer or a proposal, not an edit. Before hand-writing a named effect, transition, caption style, chart or card, search the registry (`/hyperframes-registry`). Any media (a presenter or avatar, footage, voice, music): `/media-use`, which says when HeyGen is needed and what is free. Show real things from their source (the product's screens, the brand's logo, a real place's imagery); draw only what has none.
 
@@ -24,7 +26,7 @@ Build what was asked: no voiceover or captions and no new aspect ratio unless th
 5. Never tween `display`, `visibility` or `autoAlpha` on a `.clip`; animate a child.
 6. No CSS `transform` on an element GSAP transforms; animate transforms, not `left`/`top`/`width`/`height`.
 7. Never `play()`, `pause()` or seek media. A `<video>` keeps its sound with `data-has-audio="true"`, else it is `muted`; music, voice, replacement sound and J/L cuts are a separate `<audio>`.
-8. Every `<audio>` has an `id` or it is left out of the mix. No `crossorigin` on media. Time a `<video>` or its wrapper, never both.
+8. Every `<audio>` has an `id` or it is left out of the mix. No `crossorigin` on media. Time the `<video>`, never its wrapper.
 9. Only the bundled fonts (`references/format.md`) resolve by name; any other family needs `@font-face` to a file in `assets/fonts/`.
 10. Asset paths: `assets/...` (no leading `/`), in sub-compositions too.
 11. Grades, grain, blur and vignettes on footage go through `npx hyperframes media-treatment` (`/media-use`), never CSS filters.
@@ -59,6 +61,9 @@ Call it "the HyperFrames desktop app", never "Studio"; offer it as the better wa
 
 | The request | Read |
 | --- | --- |
+| A video to copy or remake | `/reverse-any-video` |
+| An episode in a proven style | `/style-sampling` |
+| Another film's style on a new topic | `references/look.md` |
 | Launch, promo, feature | `references/types/launch.md` |
 | Explainer, tutorial | `references/types/explainer.md` |
 | Music video | `references/types/music.md` |
@@ -71,4 +76,4 @@ Call it "the HyperFrames desktop app", never "Studio"; offer it as the better wa
 | Motion: eases, titles, cuts, punch-ins, speed, holds | `references/motion.md` |
 | Scenes, attributes, media, lint; GSAP, Lottie, 3D, canvas | `references/format.md`; `references/runtimes.md` |
 
-Decks: `/slideshow`. Remotion source: `/remotion-to-hyperframes`. Figma: `/figma`. Installing, refreshing or upgrading skills and the pinned CLI: `references/skill-lifecycle.md`.
+Decks: `/slideshow`. Remotion source: `/remotion-to-hyperframes`. Figma: `/figma`. Skills and the pinned CLI: `references/skill-lifecycle.md`.

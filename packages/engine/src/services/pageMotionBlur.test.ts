@@ -8,8 +8,10 @@ import {
   describePageMotionBlur,
   describePageMotionBlurAtEnd,
   installPageMotionBlur,
+  pageMotionBlurRecorder,
 } from "./pageMotionBlur";
-import { closeCaptureSession } from "./frameCapture";
+import { closeCaptureSession, getCapturePerfSummary } from "./frameCapture";
+import type { PageMotionBlurSummary } from "../types";
 
 const fakePage = () => ({ evaluateOnNewDocument: vi.fn(async () => ({ identifier: "1" })) });
 
@@ -118,6 +120,112 @@ describe("describePageMotionBlur", () => {
     vi.stubGlobal("window", {});
     expect(await describePageMotionBlur(inPage)).toBeNull();
   });
+
+  const counts = (over: Record<string, number>) => ({
+    canvas2d: 0,
+    webgl: 0,
+    video: 0,
+    iframe: 0,
+    customElement: 0,
+    svgClip: 0,
+    mask: 0,
+    scrollContainer: 0,
+    threeD: 0,
+    overflowingMover: 0,
+    frontOfMover: 0,
+    blendMode: 0,
+    fixedInMover: 0,
+    pseudoOutside: 0,
+    ...over,
+  });
+
+  it("lists what the composition holds, non-zero counts only, in the type's order", async () => {
+    vi.stubGlobal("window", {
+      __hfMotionBlur: {
+        report: () => ({
+          state: "on",
+          tier: "filter",
+          reasonCode: "accelerated-canvas",
+          movers: 2,
+          readEvents: true,
+          fingerprint: counts({ video: 2, webgl: 1 }),
+        }),
+      },
+    });
+    expect(await describePageMotionBlur(inPage)).toBe(
+      "[motion-blur] on reasonCode=accelerated-canvas movers=2 failedFrames=0 tier=filter readEvents=true fp=webgl:1,video:2",
+    );
+  });
+
+  it("leaves the line as it was when every count is zero and no events are read", async () => {
+    vi.stubGlobal("window", {
+      __hfMotionBlur: {
+        report: () => ({
+          state: "on",
+          reasonCode: null,
+          movers: 1,
+          readEvents: false,
+          fingerprint: counts({}),
+        }),
+      },
+    });
+    expect(await describePageMotionBlur(inPage)).toBe(
+      "[motion-blur] on reasonCode=null movers=1 failedFrames=0",
+    );
+  });
+
+  it("keeps only the known counts, as numbers, from whatever the page returns", async () => {
+    const seen: PageMotionBlurSummary[] = [];
+    vi.stubGlobal("window", {
+      __hfMotionBlur: {
+        report: () => ({
+          state: "on",
+          tier: "capture",
+          reasonCode: null,
+          movers: 1,
+          fingerprint: { ...counts({ mask: 3 }), id: "secret", video: "many" },
+        }),
+      },
+    });
+    await describePageMotionBlur(inPage, (summary) => seen.push(summary));
+    expect(seen).toEqual([
+      {
+        tier: "capture",
+        reasonCode: null,
+        movers: 1,
+        failedFrames: 0,
+        readEvents: false,
+        fingerprint: counts({ mask: 3 }),
+      },
+    ]);
+  });
+});
+
+describe("pageMotionBlurRecorder", () => {
+  const read = (over: Partial<PageMotionBlurSummary>): PageMotionBlurSummary => ({
+    tier: "filter",
+    reasonCode: null,
+    movers: 2,
+    failedFrames: 0,
+    readEvents: false,
+    fingerprint: null,
+    ...over,
+  });
+
+  it("updates one object in place and keeps the tier and counts a later read lacks", () => {
+    const session: { pageMotionBlur?: PageMotionBlurSummary } = {};
+    const record = pageMotionBlurRecorder(session);
+    record(read({ fingerprint: { webgl: 1 } as never }));
+    const held = session.pageMotionBlur;
+    record(read({ tier: null, failedFrames: 3, reasonCode: "capture-failures" }));
+    expect(session.pageMotionBlur).toBe(held);
+    expect(held).toMatchObject({
+      tier: "filter",
+      failedFrames: 3,
+      reasonCode: "capture-failures",
+      fingerprint: { webgl: 1 },
+    });
+  });
 });
 
 describe("describePageMotionBlurAtEnd", () => {
@@ -190,6 +298,49 @@ describe("closeCaptureSession", () => {
     ]);
     expect(order).toEqual(["read", "close"]);
     expect(stdout).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("writes the session's final failed frames into the summary a perf harvest already holds", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("window", {
+      __hfMotionBlur: {
+        report: () => ({
+          state: "off",
+          reasonCode: "capture-failures",
+          movers: 2,
+          failedFrames: 5,
+        }),
+      },
+    });
+    const session = {
+      page: { evaluate: async (fn: () => unknown) => fn(), close: async () => {} },
+      pageReleased: false,
+      browserReleased: true,
+      staticDedupCount: 0,
+      pageMotionBlur: {
+        tier: "capture",
+        reasonCode: null,
+        movers: 2,
+        failedFrames: 0,
+        readEvents: false,
+        fingerprint: null,
+      } as PageMotionBlurSummary,
+      options: {},
+      warnings: [],
+      capturePerf: {
+        frames: 1,
+        seekMs: 0,
+        beforeCaptureMs: 0,
+        screenshotMs: 0,
+        totalMs: 0,
+        frameMs: [],
+      },
+    };
+    const harvested = getCapturePerfSummary(session as never);
+    expect(harvested.motionBlur?.failedFrames).toBe(0);
+    await closeCaptureSession(session as never);
+    expect(harvested.motionBlur).toMatchObject({ tier: "capture", failedFrames: 5 });
     vi.unstubAllGlobals();
   });
 });

@@ -1,4 +1,5 @@
 import type { RuntimeDeterministicAdapter, RuntimeTimelineLike } from "../types";
+import { authoredOrderOf } from "./gsapAuthoredOrder";
 
 type GsapAdapterDeps = {
   getTimeline: () => RuntimeTimelineLike | null;
@@ -57,7 +58,12 @@ function renderOntoInAuthoredOrder(
   timeline.totalTime(below ? t - REDRAW_STEP : t + REDRAW_STEP, true);
   primeTweensStartingAt(children, t, below ? REDRAW_STEP : 0);
   timeline.totalTime(t, true);
-  if (!below) reapplyStepsInAuthoredOrder(timeline, structure ?? ownStructureOf(children), t);
+  const own = structure ?? ownStructureOf(children);
+  if (!below) {
+    reapplyStepsInAuthoredOrder(timeline, own, t);
+  } else if (own) {
+    settleOverlapsEndedBetween(own.owner as RuntimeTimelineLike, t - REDRAW_STEP, t, own.version);
+  }
 }
 
 function ownStructureOf(children: unknown[]): GsapStructureKey | undefined {
@@ -93,7 +99,13 @@ function gsapNeverRendered(timeline: RuntimeTimelineLike): boolean {
 }
 
 const lastRenderSeek = new WeakMap<object, number>();
-const sharedPropertySpans = new WeakMap<object, { version: string; spans: [number, number][] }>();
+type OverlapSpan = {
+  laterStart: number;
+  sharedEnd: number;
+  earlierEnd: number;
+  laterIsSet: boolean;
+};
+const sharedPropertySpans = new WeakMap<object, { version: string; spans: OverlapSpan[] }>();
 const NOT_PROPERTIES = new Set([
   "duration",
   "ease",
@@ -115,6 +127,7 @@ const NOT_PROPERTIES = new Set([
   "data",
   "inherit",
   "defaults",
+  "parent",
 ]);
 const EVERY_PROPERTY = new Set(["keyframes", "startAt", "transform"]);
 const SAME_PROPERTY: Record<string, string> = {
@@ -128,9 +141,24 @@ type PlacedTween = GsapPlaced & {
   vars?: Record<string, unknown>;
   targets?: () => object[];
 };
-type PropertyWrite = { start: number; end: number; properties: Set<string> | null };
+type PropertyWrite = {
+  start: number;
+  end: number;
+  properties: Set<string> | null;
+  order: number | undefined;
+};
 
-function propertiesWritten(vars: Record<string, unknown>): Set<string> | null {
+function propertiesWritten({ startAt, ...vars }: Record<string, unknown>): Set<string> | null {
+  const to = ownPropertiesWritten(vars);
+  if (startAt === undefined) return to;
+  const from =
+    startAt && typeof startAt === "object"
+      ? ownPropertiesWritten(startAt as Record<string, unknown>)
+      : null;
+  return to && from && new Set([...to, ...from]);
+}
+
+function ownPropertiesWritten(vars: Record<string, unknown>): Set<string> | null {
   const properties = new Set<string>();
   for (const key of Object.keys(vars)) {
     if (EVERY_PROPERTY.has(key)) return null;
@@ -153,9 +181,14 @@ function spanOnParent(
   return [Number(parent._start) + from / Math.abs(speed), span / Math.abs(speed)];
 }
 
+export function gsapTimelineOf(timeline: object): object {
+  return (timeline as { __hfReal?: object }).__hfReal ?? timeline;
+}
+
 function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWrite | null {
+  const owner = gsapTimelineOf(timeline);
   let span: [number, number] | null = [Number(tween._start), Number(tween.totalDuration?.() ?? 0)];
-  for (let parent = tween.parent; span && parent && parent !== timeline; parent = parent.parent) {
+  for (let parent = tween.parent; span && parent && parent !== owner; parent = parent.parent) {
     span = spanOnParent(span, parent);
   }
   return (
@@ -163,11 +196,12 @@ function writeOf(tween: PlacedTween, timeline: RuntimeTimelineLike): PropertyWri
       start: span[0],
       end: span[0] + span[1],
       properties: propertiesWritten(tween.vars ?? {}),
+      order: authoredOrderOf(tween, owner),
     }
   );
 }
 
-function spansWhereTweensShareAProperty(timeline: RuntimeTimelineLike): [number, number][] {
+function spansWhereTweensShareAProperty(timeline: RuntimeTimelineLike): OverlapSpan[] {
   const writes = new Map<object, PropertyWrite[]>();
   for (const child of timeline.getChildren?.(true, true, false) ?? []) {
     const tween = child as PlacedTween;
@@ -183,17 +217,54 @@ function sharesAProperty(a: PropertyWrite, b: PropertyWrite): boolean {
   return !a.properties || !b.properties || [...a.properties].some((p) => b.properties!.has(p));
 }
 
-function overlapsOnOneTarget(writes: PropertyWrite[]): [number, number][] {
-  const spans: [number, number][] = [];
+function writtenBefore(a: PropertyWrite, b: PropertyWrite): boolean {
+  return a.order !== undefined && b.order !== undefined && a.order < b.order;
+}
+
+function overlapsOnOneTarget(writes: PropertyWrite[]): OverlapSpan[] {
+  const spans: OverlapSpan[] = [];
   writes.sort((x, y) => x.start - y.start);
   writes.forEach((first, i) => {
     for (const second of writes.slice(i + 1)) {
       if (second.start >= first.end) break;
       if (sharesAProperty(first, second))
-        spans.push([second.start, Math.min(first.end, second.end)]);
+        spans.push({
+          laterStart: second.start,
+          sharedEnd: Math.min(first.end, second.end),
+          earlierEnd: first.end,
+          laterIsSet: second.end === second.start && !writtenBefore(second, first),
+        });
     }
   });
   return spans;
+}
+
+function overlapSpansOf(timeline: RuntimeTimelineLike, version: string): OverlapSpan[] {
+  let cached = sharedPropertySpans.get(timeline);
+  if (cached?.version !== version) {
+    cached = { version, spans: spansWhereTweensShareAProperty(timeline) };
+    sharedPropertySpans.set(timeline, cached);
+  }
+  return cached.spans;
+}
+
+const OVERLAP_RESTART = 1e-4;
+
+function settleOverlapsEndedBetween(
+  timeline: RuntimeTimelineLike,
+  from: number,
+  to: number,
+  version: string,
+): void {
+  if (!(to > from)) return;
+  let restart = Infinity;
+  for (const { laterStart, earlierEnd, laterIsSet } of overlapSpansOf(timeline, version)) {
+    if (laterIsSet && earlierEnd > from && earlierEnd <= to)
+      restart = Math.min(restart, laterStart);
+  }
+  if (restart === Infinity || restart >= from) return;
+  timeline.totalTime?.(Math.max(0, restart - OVERLAP_RESTART), true);
+  timeline.totalTime?.(to, true);
 }
 
 function framesSkippedSinceLastSeek(
@@ -207,18 +278,25 @@ function framesSkippedSinceLastSeek(
   const skipped =
     last === undefined ? Math.floor(t * fps + 1e-6) : Math.ceil((t - last) * fps - 1e-6) - 1;
   if (skipped < 1) return [];
-  let cached = sharedPropertySpans.get(timeline);
-  if (cached?.version !== version) {
-    cached = { version, spans: spansWhereTweensShareAProperty(timeline) };
-    sharedPropertySpans.set(timeline, cached);
-  }
   const replay = new Set<number>();
-  for (const [from, to] of cached.spans) {
+  for (const { laterStart: from, sharedEnd: to } of overlapSpansOf(timeline, version)) {
     const nearest = Math.max(1, Math.ceil((t - to) * fps - 1e-6) - 1);
     const farthest = Math.min(skipped, Math.floor((t - from) * fps + 1e-6) + 1);
     for (let back = nearest; back <= farthest; back++) replay.add(back);
   }
   return [...replay].sort((x, y) => y - x).map((back) => t - back / fps);
+}
+
+function landOn(
+  timeline: RuntimeTimelineLike,
+  t: number,
+  suppressEvents: boolean,
+  version: string,
+): number {
+  const from = Number(timeline.totalTime?.());
+  timeline.totalTime?.(t, suppressEvents);
+  settleOverlapsEndedBetween(timeline, from, t, version);
+  return from;
 }
 
 export function seekGsapTimeline(
@@ -232,13 +310,13 @@ export function seekGsapTimeline(
     if (typeof timeline.seek === "function") timeline.seek(t, suppressEvents);
     return false;
   }
+  const version = structure?.version ?? "";
   if (renderFps) {
-    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, structure?.version)) {
-      timeline.totalTime(time, suppressEvents);
+    for (const time of framesSkippedSinceLastSeek(timeline, t, renderFps, version)) {
+      landOn(timeline, time, suppressEvents, version);
     }
   }
-  const from = Number(timeline.totalTime());
-  timeline.totalTime(t, suppressEvents);
+  const from = landOn(timeline, t, suppressEvents, version);
   if (t < from && structure) reapplyStepsInAuthoredOrder(timeline, structure, t);
   if (from !== t || !gsapNeverRendered(timeline)) return false;
   rerenderGsapTimelineAt(
@@ -310,7 +388,7 @@ const landingMarksCache = new WeakMap<object, PlacedMarks>();
 
 const LANDING_MARK_REACH = 0.05;
 
-type GsapPlaced = {
+export type GsapPlaced = {
   _start?: number;
   _ts?: number;
   _repeat?: number;
@@ -320,8 +398,9 @@ type GsapPlaced = {
 };
 
 function startOnOwner(child: GsapPlaced, owner: object): number | null {
+  const timeline = gsapTimelineOf(owner);
   let at = Number(child._start);
-  for (let parent = child.parent; parent && parent !== owner; parent = parent.parent) {
+  for (let parent = child.parent; parent && parent !== timeline; parent = parent.parent) {
     if (parent._repeat || !parent._ts) return null;
     at = Number(parent._start) + at / parent._ts;
   }
@@ -427,6 +506,43 @@ export function holdFrameMarks({
       }
     }
     for (const put of marks) put();
+  };
+}
+
+type GsapCallbackHolder = {
+  vars?: Record<string, unknown>;
+  timeline?: { getChildren?: RuntimeTimelineLike["getChildren"] };
+  getChildren?: RuntimeTimelineLike["getChildren"];
+};
+
+const DISCRETE_CALLBACKS = ["onStart", "onComplete", "onReverseComplete", "onRepeat"] as const;
+
+const noOpInPlaceOfCallback = (): void => {};
+
+function eachAnimationIn(
+  animation: GsapCallbackHolder,
+  visit: (a: GsapCallbackHolder) => void,
+): void {
+  visit(animation);
+  for (const child of (animation.getChildren?.(false, true, true) ?? []) as GsapCallbackHolder[])
+    eachAnimationIn(child, visit);
+  if (animation.timeline) eachAnimationIn(animation.timeline as GsapCallbackHolder, visit);
+}
+
+export function muteDiscreteCallbacks(timelines: RuntimeTimelineLike[]): () => void {
+  const held: Array<[Record<string, unknown>, string, unknown]> = [];
+  for (const timeline of timelines) {
+    eachAnimationIn(gsapTimelineOf(timeline) as GsapCallbackHolder, ({ vars }) => {
+      if (!vars) return;
+      for (const name of DISCRETE_CALLBACKS) {
+        if (typeof vars[name] !== "function" || vars[name] === noOpInPlaceOfCallback) continue;
+        held.push([vars, name, vars[name]]);
+        vars[name] = noOpInPlaceOfCallback;
+      }
+    });
+  }
+  return () => {
+    for (const [vars, name, callback] of held) vars[name] = callback;
   };
 }
 

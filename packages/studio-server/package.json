@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.8.223",
+  "version": "0.9.30",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -32,6 +32,12 @@
       "node": "./dist/helpers/safePath.js",
       "import": "./src/helpers/safePath.ts",
       "types": "./src/helpers/safePath.ts"
+    },
+    "./request-identity": {
+      "bun": "./src/helpers/requestIdentity.ts",
+      "node": "./dist/helpers/requestIdentity.js",
+      "import": "./src/helpers/requestIdentity.ts",
+      "types": "./src/helpers/requestIdentity.ts"
     },
     "./hf-ids": {
       "bun": "./src/helpers/hfIdPersist.ts",
@@ -104,6 +110,12 @@
       "node": "./dist/helpers/encoderOptions.js",
       "import": "./src/helpers/encoderOptions.ts",
       "types": "./src/helpers/encoderOptions.ts"
+    },
+    "./media-range": {
+      "bun": "./src/helpers/mediaRange.ts",
+      "node": "./dist/helpers/mediaRange.js",
+      "import": "./src/helpers/mediaRange.ts",
+      "types": "./src/helpers/mediaRange.ts"
     }
   },
   "publishConfig": {
@@ -121,6 +133,10 @@
       "./safe-path": {
         "import": "./dist/helpers/safePath.js",
         "types": "./dist/helpers/safePath.d.ts"
+      },
+      "./request-identity": {
+        "import": "./dist/helpers/requestIdentity.js",
+        "types": "./dist/helpers/requestIdentity.d.ts"
       },
       "./hf-ids": {
         "import": "./dist/helpers/hfIdPersist.js",
@@ -169,6 +185,10 @@
       "./encoder-options": {
         "import": "./dist/helpers/encoderOptions.js",
         "types": "./dist/helpers/encoderOptions.d.ts"
+      },
+      "./media-range": {
+        "import": "./dist/helpers/mediaRange.js",
+        "types": "./dist/helpers/mediaRange.d.ts"
       }
     },
     "main": "./dist/index.js",

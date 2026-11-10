@@ -1,3 +1,5 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ADJUST_KEYS,
   HF_COLOR_GRADING_ANIMATABLE_PROPERTIES,
@@ -34,6 +36,7 @@ import {
 } from "../colorGradingCurves";
 import {
   DEFAULT_MAX_CUBE_LUT_SIZE,
+  fitCubeLutToTexture,
   packCubeLutToRgba8,
   parseCubeLut,
   unitFloatToByte,
@@ -46,6 +49,7 @@ import { mediaElementTime } from "./mediaClock";
 import { swallow } from "./diagnostics";
 import { createRecordFilter } from "./mutationRecords";
 import { findInjectedRenderFrame } from "./renderFrameSibling";
+import { getPausedVideoFrame } from "./pausedVideoFrames";
 import {
   isCanvasElement,
   isElementNode,
@@ -2057,13 +2061,14 @@ function uploadEntryLut(
   lut: CubeLut3D,
 ): RuntimeLutTexture | null {
   if (entry.lut?.src === src) return entry.lut;
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = entry;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   try {
     uploadLutTexture(gl, program.lutTexture, packed);
     entry.lut = {
       src,
-      size: lut.size,
+      size: fitted.size,
       domainMin: lut.domainMin,
       domainMax: lut.domainMax,
       textureWidth: packed.width,
@@ -2114,12 +2119,13 @@ function uploadPreviewLut(
   src: string,
   lut: CubeLut3D,
 ): RuntimeLutTexture {
-  const packed = packCubeLutToRgba8(lut);
   const { gl, program } = renderer;
+  const fitted = fitCubeLutToTexture(lut, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  const packed = packCubeLutToRgba8(fitted);
   uploadLutTexture(gl, program.lutTexture, packed);
   return {
     src,
-    size: lut.size,
+    size: fitted.size,
     domainMin: lut.domainMin,
     domainMax: lut.domainMax,
     textureWidth: packed.width,
@@ -2802,6 +2808,8 @@ function getDrawableSource(element: ColorGradingMediaElement): TexImageSource | 
   if (isVideoElement(element)) {
     const renderFrame = findRenderFrameImage(element);
     if (renderFrame) return renderFrame;
+    const previewFrame = getPausedVideoFrame(element);
+    if (previewFrame) return previewFrame;
   }
   return isDrawableSource(element) ? element : null;
 }
@@ -3344,11 +3352,19 @@ function readAnimatedGrading(entry: ColorGradingEntry): ResolvedHfColorGrading {
   return animated;
 }
 
+const CLI_SEEK_DRAW_GATE = Symbol.for("hyperframes.webglDrawGate");
+
+function drawsGated(): boolean {
+  const gate: unknown = Reflect.get(window, CLI_SEEK_DRAW_GATE);
+  return typeof gate === "object" && gate !== null && Reflect.get(gate, "skip") === true;
+}
+
 function uploadSourceTexture(
   gl: WebGLRenderingContext,
   texture: WebGLTexture,
   source: TexImageSource,
 ): void {
+  if (drawsGated()) return;
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -3407,6 +3423,7 @@ type DrawableFrame = {
 };
 
 function drawableFrame(entry: ColorGradingEntry): DrawableFrame | null {
+  if (document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)) return null;
   const source = getDrawableSource(entry.element);
   const pixels = source && readablePixels(source, entry);
   if (!source || !pixels) {
@@ -3528,7 +3545,7 @@ function placeCanvas(
   layout: { width: number; height: number };
   uv: ReturnType<typeof calculateObjectFitUv>;
 } | null {
-  const styleSource = isHtmlElement(source) ? source : entry.element;
+  const styleSource = isRenderFrameImage(source) ? source : entry.element;
   const layout = updateCanvasLayout(entry, styleSource);
   if (!layout) return null;
   const style = window.getComputedStyle(styleSource);
@@ -3928,7 +3945,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
     });
     canvas.addEventListener("webglcontextrestored", () => {
       if (shared?.canvas !== canvas) return;
-      clearTimeout(rebuildTimer);
+      wallClearTimeout(rebuildTimer);
       for (const entry of trackedEntries()) {
         entry.contextLost = !replaceProgramResources(entry);
         entry.drawError = entry.contextLost ? "WebGL context restore failed" : null;
@@ -3942,8 +3959,8 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   };
 
   const watchForRestore = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
-    clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(() => rebuildLostContext(canvas, gl), CONTEXT_RESTORE_GRACE_MS);
+    wallClearTimeout(rebuildTimer);
+    rebuildTimer = wallSetTimeout(() => rebuildLostContext(canvas, gl), CONTEXT_RESTORE_GRACE_MS);
   };
 
   const rebuildLostContext = (canvas: HTMLCanvasElement, gl: WebGLRenderingContext): void => {
@@ -4286,7 +4303,7 @@ export function createColorGradingRuntime(pausedMediaLease?: {
   const destroy = (): void => {
     if (destroyed) return;
     destroyed = true;
-    clearTimeout(rebuildTimer);
+    wallClearTimeout(rebuildTimer);
     observer?.disconnect();
     observer = null;
     for (const element of trackedElements) removeElement(element);

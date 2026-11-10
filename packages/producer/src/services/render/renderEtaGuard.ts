@@ -1,7 +1,7 @@
 const RENDER_TOO_SLOW = "RENDER_TOO_SLOW" as const;
 
-/** Fail only when the ETA clears the budget by this factor, so borderline renders survive. */
-const ETA_MARGIN = 1.2;
+/** Fail only at twice the budget: a film's per-frame cost varies, so early ETAs overshoot. */
+const ETA_MARGIN = 2;
 /** The measured rate needs this much capture time and frames; the first frame's warm-up is excluded. */
 const MIN_SAMPLE_MS = 60_000;
 const MIN_SAMPLE_FRAMES = 3;
@@ -48,6 +48,23 @@ export function checkRenderEta(
   const etaMs = Math.round(elapsedMs + (totalFrames - framesCompleted) * msPerFrame);
   if (etaMs <= maxRenderMs * ETA_MARGIN) return undefined;
   return new RenderTooSlowError(stage, { ...input, maxRenderMs, etaMs });
+}
+
+/** The pre-capture check. The typical calibration frame predicts the render; the slowest one over-refuses. */
+export function checkCalibratedRenderEta(input: {
+  maxRenderMs?: number;
+  elapsedMs: number;
+  totalFrames: number;
+  estimate?: { medianMs?: number };
+  workerCount: number;
+}): RenderTooSlowError | undefined {
+  return checkRenderEta("capture_calibration", {
+    maxRenderMs: input.maxRenderMs,
+    elapsedMs: input.elapsedMs,
+    framesCompleted: 0,
+    totalFrames: input.totalFrames,
+    msPerFrame: (input.estimate?.medianMs ?? 0) / input.workerCount,
+  });
 }
 
 interface RenderEtaGuardOptions {

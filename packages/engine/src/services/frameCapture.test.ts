@@ -453,6 +453,14 @@ describe("navigation diagnostics", () => {
     );
   });
 
+  it("keeps only the path of bare and dot-relative URLs", () => {
+    expect(sanitizeDiagnosticUrl("./assets/bg.webp?example=REDACT_ME#fragment")).toBe(
+      "/assets/bg.webp",
+    );
+    expect(sanitizeDiagnosticUrl("assets/bg.webp?example=REDACT_ME")).toBe("/assets/bg.webp");
+    expect(sanitizeDiagnosticUrl("//user:pw@cdn.test/bg.jpg?t=1")).toBe("/bg.jpg");
+  });
+
   it("formats page.goto failures with mode, timeout, elapsed time, and sanitized URL", () => {
     const diagnostic = formatNavigationFailureDiagnostic({
       captureMode: "screenshot",
@@ -663,6 +671,35 @@ describe("buildZeroDurationDiagnostic", () => {
   it("omits the buildReady hint entirely when nothing is pending or rejected", () => {
     const message = buildZeroDurationDiagnostic(baseDiag);
     expect(message).not.toContain("buildReady");
+  });
+
+  it("headlines a pending setup as a setup timeout, not a zero duration", () => {
+    const message = buildZeroDurationDiagnostic(
+      { ...baseDiag, pendingBuildReadyKeys: ["clockwork"] },
+      45000,
+    );
+    expect(message).toMatch(
+      /^\[FrameCapture\] Composition setup did not finish within 45000ms\.\n/,
+    );
+    expect(message).not.toContain("zero duration");
+    expect(message).toContain("data-duration: 6s");
+    expect(message).toContain("requestAnimationFrame callbacks wait until the first frame");
+    expect(message).toContain("Await the library's own readiness promise instead");
+  });
+
+  it("does not guess at duration inference while setup is still pending", () => {
+    const message = buildZeroDurationDiagnostic({ ...baseDiag, hasTimeline: false });
+    expect(message).toContain("Composition setup did not finish.");
+    expect(message).not.toContain("No GSAP timeline registered");
+  });
+
+  it("keeps the zero-duration headline once the runtime is ready", () => {
+    const message = buildZeroDurationDiagnostic(
+      { ...baseDiag, renderReady: true, hasTimeline: false, declaredDuration: -1 },
+      45000,
+    );
+    expect(message).toMatch(/^\[FrameCapture\] Composition has zero duration\.\n/);
+    expect(message).toContain("No GSAP timeline registered");
   });
 
   it("names a rejected buildReady key separately from a pending one", () => {

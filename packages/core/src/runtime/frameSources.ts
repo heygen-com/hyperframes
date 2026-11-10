@@ -1,8 +1,7 @@
-import { exportClipWindow } from "../inline-scripts/parityContract";
 import { sourceTimeAt } from "../speedRamp";
 import { readElementRateSpec, readMediaStart } from "./playbackRate";
 import { registerSeekCompletion } from "./adapters/seek-dispatch";
-import { isClipVisibleAt } from "./clipWindow";
+import { isClipOnScreenAt } from "./clipWindow";
 import type { RuntimeDeterministicAdapter } from "./types";
 
 export interface FrameSource {
@@ -93,7 +92,6 @@ export function createFrameSourceAdapter(timing: {
   duration: (element: Element) => number | null;
   compositionDuration: () => number;
   canonicalFps: () => number;
-  exportRenderSeek: () => boolean;
 }): RuntimeDeterministicAdapter {
   const owned = new Set<RegisteredSource>();
   let readySources: RegisteredSource[] = [];
@@ -111,7 +109,7 @@ export function createFrameSourceAdapter(timing: {
       if (!owned.has(source)) {
         owned.add(source);
         // Readiness trackers settle rejected setup; capture must also receive that failure.
-        registerSeekCompletion(source.ready);
+        registerSeekCompletion(source.ready, "frame-source");
       }
       connected.push([element, source]);
     }
@@ -132,15 +130,18 @@ export function createFrameSourceAdapter(timing: {
         const start = timing.start(element);
         const duration = timing.duration(element);
         const end = start + (duration ?? Infinity);
-        const clipWindow = timing.exportRenderSeek()
-          ? exportClipWindow(start, end, timing.canonicalFps())
-          : { start, end };
-        if (!isClipVisibleAt(time, clipWindow.start, clipWindow.end, timing.compositionDuration()))
-          continue;
+        const onScreen = isClipOnScreenAt(
+          time,
+          start,
+          end,
+          timing.canonicalFps(),
+          timing.compositionDuration(),
+        );
+        if (!onScreen) continue;
         const localTime = Math.max(0, time - start);
         const sourceTime =
           readMediaStart(element) + sourceTimeAt(readElementRateSpec(element), localTime);
-        registerSeekCompletion(source.seek(sourceTime));
+        registerSeekCompletion(source.seek(sourceTime), "frame-source");
       }
     },
     getReadyPromise: () => {

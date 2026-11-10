@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { installReactActEnvironment, makeSelection } from "./domSelectionTestHarness";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
 
@@ -23,7 +24,7 @@ interface HarnessProps {
     selection: DomEditSelection | null,
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
-  applyMarqueeSelection: (selections: DomEditSelection[], additive: boolean) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
   onSelectionNotFound: () => void;
 }
 
@@ -100,7 +101,10 @@ describe("useTimelineSelectionPreviewSync", () => {
       onSelectionNotFound: vi.fn(),
     });
 
-    expect(applyMarqueeSelection).toHaveBeenCalledWith([secondSelection, firstSelection], false);
+    expect(applyMarqueeSelection).toHaveBeenCalledWith(
+      [secondSelection, firstSelection],
+      "replace",
+    );
     expect(applyDomSelection).not.toHaveBeenCalled();
     harness.cleanup();
   });

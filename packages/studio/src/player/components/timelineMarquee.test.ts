@@ -7,6 +7,7 @@ import {
   getTimelineClipRect,
   getMarqueeClipCandidates,
   computeMarqueeSelection,
+  survivingPrimary,
 } from "./timelineMarquee";
 import { createTimelineClipIndex } from "../lib/timelineClipIndex";
 import type { TimelineElement } from "../store/playerStore";
@@ -242,6 +243,61 @@ describe("computeMarqueeSelection", () => {
     expect(primaryId).toBe("c");
   });
 
+  it("subtracts the hits from the base selection and names no new primary", () => {
+    const marquee = { left: ORIGIN, top: row0Top, width: 50, height: 10 };
+    const { ids, primaryId } = computeMarqueeSelection({
+      clips,
+      rowGeometry,
+      pps,
+      contentOrigin: ORIGIN,
+      marquee,
+      baseSelection: ["a", "b", "c"],
+      mode: "subtract",
+    });
+    expect(ids).toEqual(new Set(["b", "c"]));
+    expect(primaryId).toBeNull();
+  });
+
+  it("subtracting from an empty or unrelated base selects nothing", () => {
+    const marquee = { left: ORIGIN, top: row0Top, width: 50, height: 10 };
+    expect(
+      computeMarqueeSelection({
+        clips,
+        rowGeometry,
+        pps,
+        contentOrigin: ORIGIN,
+        marquee,
+        mode: "subtract",
+      }).ids,
+    ).toEqual(new Set());
+    expect(
+      computeMarqueeSelection({
+        clips,
+        rowGeometry,
+        pps,
+        contentOrigin: ORIGIN,
+        marquee,
+        baseSelection: ["b"],
+        mode: "subtract",
+      }).ids,
+    ).toEqual(new Set(["b"]));
+  });
+
+  it("add mode is the default when a base is given", () => {
+    const marquee = { left: ORIGIN, top: row0Top, width: 50, height: 10 };
+    const explicit = computeMarqueeSelection({
+      clips,
+      rowGeometry,
+      pps,
+      contentOrigin: ORIGIN,
+      marquee,
+      baseSelection: ["b"],
+      mode: "add",
+    });
+    expect(explicit.ids).toEqual(new Set(["a", "b"]));
+    expect(explicit.primaryId).toBe("a");
+  });
+
   it("shrinking the rect live drops clips it no longer covers", () => {
     const wide = { left: ORIGIN, top: row0Top, width: 320, height: 10 };
     const narrow = { left: ORIGIN, top: row0Top, width: 80, height: 10 };
@@ -265,6 +321,18 @@ describe("computeMarqueeSelection", () => {
       marquee,
     });
     expect(ids).toEqual(new Set());
+  });
+});
+
+describe("survivingPrimary", () => {
+  it("keeps the pre-drag primary while it is still selected", () => {
+    expect(survivingPrimary(new Set(["a", "b"]), "b")).toBe("b");
+  });
+
+  it("falls back to any remaining id, or null when nothing is left", () => {
+    expect(survivingPrimary(new Set(["a", "b"]), "c")).toBe("a");
+    expect(survivingPrimary(new Set(), "c")).toBeNull();
+    expect(survivingPrimary(new Set(["a"]), null)).toBe("a");
   });
 });
 

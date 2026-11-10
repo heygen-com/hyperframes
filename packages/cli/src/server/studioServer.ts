@@ -8,7 +8,7 @@
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
-import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -36,9 +36,15 @@ import {
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { startRenderCpuSampler } from "../telemetry/renderCpu.js";
 import { mountDesktopRoutes } from "./desktopRoutes.js";
+import {
+  hostHeaderAllowed,
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+} from "@hyperframes/studio-server/request-identity";
 import { isDevMode } from "../utils/env.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
@@ -60,7 +66,6 @@ import {
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
-  stampProjectHfIds,
   DEFAULT_HISTORY_ROOT,
   openProjectHistory,
   HistoryBusyError,
@@ -435,6 +440,14 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
   }
 }
 
+function createStateFolderBeforeWatching(projectDir: string): void {
+  try {
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+  } catch {
+    return;
+  }
+}
+
 export function createStudioServer(options: StudioServerOptions): StudioServer {
   const { projectDir, projectName } = options;
   const projectId = projectName || basename(projectDir);
@@ -442,7 +455,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const studioDir = resolveDistDir();
   const runtimePath = resolveRuntimePath();
   const gsapVendorDir = resolveGsapVendorDir();
-  stampProjectHfIds(projectDir);
+  createStateFolderBeforeWatching(projectDir);
   const watcher = createProjectWatcher(projectDir);
 
   // ── CLI adapter for the shared studio API ──────────────────────────────
@@ -586,7 +599,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     lintProject: (dir: string) =>
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
-        { projectDir: dir, host: "studio" },
+        { projectDir: dir, host: "studio", background: true },
         { maxBufferBytes: 8 * 1024 * 1024 },
       ),
 
@@ -667,13 +680,27 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(
-            job,
-            opts.project.dir,
-            opts.outputPath,
-            onProgress,
-            abortController.signal,
-          );
+          // The CLI's one-render-slot-per-account lock: a Studio render waits behind it, and Cancel ends the wait.
+          const releaseSlot = await acquireRenderLock({
+            project: opts.project.dir,
+            wait: true,
+            signal: abortController.signal,
+            onWait: (holder) => {
+              state.stage = `Waiting for another render (${describeRenderLockHolder(holder, Date.now())})`;
+            },
+          });
+          state.stage = undefined;
+          try {
+            await executeRenderJob(
+              job,
+              opts.project.dir,
+              opts.outputPath,
+              onProgress,
+              abortController.signal,
+            );
+          } finally {
+            releaseSlot();
+          }
           if (abortController.signal.aborted) {
             // Cancel landed just as the render finished: honor the cancel the
             // route already reported instead of resurrecting a completed job.
@@ -881,6 +908,23 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // ── Build the Hono app ─────────────────────────────────────────────────
 
   const app = new Hono();
+  // Extra hosts from HYPERFRAMES_PREVIEW_ALLOWED_HOSTS (Codespaces, tunnels).
+  const allowedHosts = previewAllowedHostsFromEnv();
+
+  // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.
+  app.use(async function refuseUnknownHost(c, next) {
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    if (hostHeaderAllowed(host, allowedHosts)) return next();
+    return c.json(
+      {
+        error:
+          `forbidden: host "${host}" is not allowed. ` +
+          `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+          `(comma separated for several hosts).`,
+      },
+      403,
+    );
+  });
 
   // Config probe endpoint — used by port detection to identify existing
   // HyperFrames instances and reuse them instead of spawning duplicates.
@@ -1066,7 +1110,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter);
+  const api = createStudioApi(adapter, { allowedHosts });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.slice(4); // Strip "/api" prefix

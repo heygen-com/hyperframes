@@ -2,11 +2,21 @@
 // The route runs inside the POST and takes an API key; the Idempotency-Key makes a re-run free.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { runFfmpeg } from "../measure/media.js";
-import { idempotencyKey, runJob } from "./v3.js";
+import { dirname, join } from "node:path";
+import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
+import { projectOf, runFfmpeg } from "../measure/media.js";
+import { idempotencyKey, runJob, type JobRoute } from "./v3.js";
 
-const ROUTE = "/v3/audio/transcriptions";
+const ROUTE: JobRoute = {
+  path: "/v3/audio/transcriptions",
+  start: (c, body, key, signal) =>
+    c.createTranscription({
+      body: body as TranscriptionCreateRequest,
+      idempotencyKey: key,
+      signal,
+    }),
+  status: (c, id, signal) => c.getTranscription({ transcription_id: id, signal }),
+};
 const MODEL = "scribe-v2";
 
 export interface HeygenTranscript {
@@ -43,7 +53,7 @@ export function wordsOf(job: Record<string, unknown>) {
 export async function transcribeWithHeygen(
   inputPath: string,
   transcriptPath: string,
-  opts: { diarize?: boolean; projectDir?: string; onStatus?: (message: string) => void } = {},
+  opts: { diarize?: boolean; onStatus?: (message: string) => void } = {},
 ): Promise<HeygenTranscript> {
   const work = mkdtempSync(join(tmpdir(), "hf-heygen-asr-"));
   try {
@@ -74,10 +84,12 @@ export async function transcribeWithHeygen(
         audio: { type: "base64", media_type: "audio/mpeg", data: audio.toString("base64") },
         diarize,
       },
-      idempotencyKey(ROUTE, [audio, String(diarize)]),
-      (id) => `${ROUTE}/${encodeURIComponent(id)}`,
+      idempotencyKey(ROUTE.path, [audio, String(diarize)]),
       {
-        log: { projectDir: opts.projectDir, what: `transcribe ${inputPath}` },
+        log: {
+          projectDir: projectOf(dirname(transcriptPath)) ?? process.cwd(),
+          what: `transcribe ${inputPath}`,
+        },
         timeoutMs: 10 * 60_000,
       },
     );

@@ -9,9 +9,10 @@ import {
   runFfmpeg,
   type VideoInfo,
 } from "../../measure/media.js";
+import { toneMapReferenceNits } from "@hyperframes/core";
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { makeOutputFolder } from "../../utils/outputFolder.js";
 
 export const examples: Example[] = [
   [
@@ -54,15 +55,60 @@ function normalize(info: VideoInfo, out: string): { path: string; fps: string } 
         "install an ffmpeg built with libzimg, e.g. brew install ffmpeg",
       );
     filters.push(
-      "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv",
+      `zscale=t=linear:npl=${toneMapReferenceNits(info.transfer ? [info.transfer] : [])},format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`,
     );
   }
-  mkdirSync(dirname(out), { recursive: true });
+  makeOutputFolder(dirname(out));
   runFfmpeg([
     ...["-y", "-i", info.path, "-vf", [...filters, "format=yuv420p"].join(",")],
     ...["-c:v", "libx264", "-crf", "12", "-preset", "medium", "-c:a", "aac", "-b:a", "192k", out],
   ]);
   return { path: out, fps };
+}
+
+// fallow-ignore-next-line complexity
+export function probeReport(video: string, normalizeTo?: string): object {
+  const info = probeVideo(video);
+  const notes: string[] = [];
+  if (info.vfr)
+    notes.push(
+      "variable frame rate: frame times drift, so measure and rebuild a constant-rate copy (--normalize)",
+    );
+  if (info.hdr) notes.push("HDR: --normalize tone-maps an SDR copy; the render is SDR");
+  if (info.duration > SECTION_S)
+    notes.push(
+      `longer than ${SECTION_S} s: analyse and check it in sections of at most ${SECTION_S} s, split at cuts (measure cuts)`,
+    );
+  if (!info.audio) notes.push("no sound: the rebuild has no <audio>");
+  const made = normalizeTo ? normalize(info, resolve(normalizeTo)) : undefined;
+  return {
+    video: info.path,
+    width: info.width,
+    height: info.height,
+    fps: round(info.fps, 3),
+    fps_text: info.fpsText,
+    duration: round(info.duration, 3),
+    frames: info.frames,
+    picture_duration: round(info.frames / info.fps, 3),
+    audio: info.audio,
+    vfr: info.vfr,
+    hdr: info.hdr,
+    codec: info.codec,
+    canvas: {
+      width: info.width,
+      height: info.height,
+      fps: made?.fps ?? info.fpsText,
+      duration: round(info.frames / info.fps, 3),
+      note: "data-width, data-height and data-duration (the picture's length) on the root composition; render with --fps at this rate",
+    },
+    ...(made ? { normalized: made.path } : {}),
+    notes,
+    ...((info.vfr || info.hdr) && !made
+      ? {
+          fix: `npx hyperframes measure probe ${video} --normalize <working-copy.mp4>`,
+        }
+      : {}),
+  };
 }
 
 export default defineCommand({
@@ -81,49 +127,8 @@ export default defineCommand({
     json: jsonArg,
   },
   async run({ args }) {
-    // fallow-ignore-next-line complexity
-    await runMeasure(() => {
-      const info = probeVideo(String(args.video));
-      const notes: string[] = [];
-      if (info.vfr)
-        notes.push(
-          "variable frame rate: frame times drift, so measure and rebuild a constant-rate copy (--normalize)",
-        );
-      if (info.hdr) notes.push("HDR: --normalize tone-maps an SDR copy; the render is SDR");
-      if (info.duration > SECTION_S)
-        notes.push(
-          `longer than ${SECTION_S} s: analyse and check it in sections of at most ${SECTION_S} s, split at cuts (measure cuts)`,
-        );
-      if (!info.audio) notes.push("no sound: the rebuild has no <audio>");
-      const made = args.normalize ? normalize(info, resolve(String(args.normalize))) : undefined;
-      return {
-        video: info.path,
-        width: info.width,
-        height: info.height,
-        fps: round(info.fps, 3),
-        fps_text: info.fpsText,
-        duration: round(info.duration, 3),
-        frames: info.frames,
-        picture_duration: round(info.frames / info.fps, 3),
-        audio: info.audio,
-        vfr: info.vfr,
-        hdr: info.hdr,
-        codec: info.codec,
-        canvas: {
-          width: info.width,
-          height: info.height,
-          fps: made?.fps ?? info.fpsText,
-          duration: round(info.frames / info.fps, 3),
-          note: "data-width, data-height and data-duration (the picture's length) on the root composition; render with --fps at this rate",
-        },
-        ...(made ? { normalized: made.path } : {}),
-        notes,
-        ...((info.vfr || info.hdr) && !made
-          ? {
-              fix: `npx hyperframes measure probe ${String(args.video)} --normalize <working-copy.mp4>`,
-            }
-          : {}),
-      };
-    });
+    await runMeasure(() =>
+      probeReport(String(args.video), args.normalize ? String(args.normalize) : undefined),
+    );
   },
 });

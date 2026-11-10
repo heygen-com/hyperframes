@@ -611,8 +611,7 @@ describe("mediaUrlSourceOptions", () => {
     expect(failure.retries).toBe(0);
   });
 
-  // mediabunny rethrows a failed read-ahead nobody awaits "so it doesn't get swallowed": that copy is typed too.
-  it("fails a real mediabunny read, and its unawaited read-ahead, with the typed error", async () => {
+  it("fails a real mediabunny read with the typed error without a duplicate unhandled rejection", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 404 })));
     const mb = await import("mediabunny");
     const runnerListeners = process.listeners("unhandledRejection");
@@ -629,8 +628,8 @@ describe("mediaUrlSourceOptions", () => {
       await new Promise(setImmediate);
 
       expect(error).toMatchObject({ name: "MediaFetchError", status: 404, retries: 0 });
-      expect(unhandled.length).toBeGreaterThan(0);
-      for (const reason of unhandled) expect(reason).toBeInstanceOf(MediaFetchError);
+      expect(error).toBeInstanceOf(MediaFetchError);
+      expect(unhandled).toEqual([]);
     } finally {
       process.removeAllListeners("unhandledRejection");
       for (const listener of runnerListeners) process.on("unhandledRejection", listener);

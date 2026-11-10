@@ -3,13 +3,17 @@
 // rather than paying twice; a failed job is asked again. Every job is logged to .hyperframes/heygen-jobs.jsonl.
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { configDir } from "../auth/paths.js";
 import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
+import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
-import { pageUrl } from "./plan.js";
+import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
+import { cliCheckoutLink, pageUrl } from "./plan.js";
+
+const MEDIA_USE_SKILL = "media-use";
 
 export interface Job {
   id: string;
@@ -22,6 +26,24 @@ export interface Job {
 const RUNNING = new Set(["pending", "processing", "queued", "running", "waiting", "in_progress"]);
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+const VENDOR_HEADROOM = 1.1;
+
+export const chargedCredits = (job: Job): number | undefined =>
+  isRecord(job.charged) &&
+  job.charged.pool === "hyperframes_credits" &&
+  typeof job.charged.amount === "number"
+    ? job.charged.amount
+    : undefined;
+
+export function limitCheck(credits: number, vendorPriced = false) {
+  const checked = vendorPriced ? Math.ceil(credits * VENDOR_HEADROOM - 1e-9) : credits;
+  return {
+    checked,
+    about: vendorPriced
+      ? `about ${credits} credits, ${checked} with 10% headroom because it is charged at the vendor's cost`
+      : `about ${credits} credits`,
+  };
+}
 
 /** The same request always gets the same key: a re-run is a resume, never a second charge. */
 export function idempotencyKey(route: string, parts: readonly (string | Buffer)[]): string {
@@ -90,26 +112,47 @@ function liveKey(key: string, scope: string | null): string {
 /** A refused call says what to do: sign in, subscribe, add credits, or change the request. `estimate` is the
  *  caller's own price for the call (what `--plan` prints), named when HeyGen does not say what the step needs. */
 // fallow-ignore-next-line complexity
-function refusal(status: number, body: unknown, estimate?: number): Refused {
+async function refusal(status: number, body: unknown, estimate?: number): Promise<Refused> {
   const err = isRecord(body) && isRecord(body.error) ? body.error : isRecord(body) ? body : {};
   const code = String(err.code ?? err.failure_code ?? "");
   const message = String(err.message ?? err.failure_message ?? "").slice(0, 300);
   const url = typeof err.url === "string" ? err.url : undefined;
+  const purchaseClosed = err.url === null;
   const given = Number(err.needed_credits) || undefined;
   const needed = given ?? (estimate || undefined);
   const needs = given ? `${given} in total` : needed ? `about ${needed} in total` : "more";
   const balance = err.balance === undefined ? "" : `, balance ${String(err.balance)}`;
   // The fix is the one line the agent relays as printed; the problem says how to wait for the person.
-  if (/hf_subscription_required/i.test(code))
+  if (/hf_subscription_required/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        "this is a HyperFrames Pro feature, and a plan can't be purchased right now; nothing was charged",
+        "tell the person a plan can't be purchased right now, and give no link",
+      );
+    const link = url
+      ? cliCheckoutLink(url, MEDIA_USE_SKILL)
+      : await pageUrl("plans", { needed, skill: MEDIA_USE_SKILL });
     return new Refused(
-      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe\`: it opens the page and waits`,
-      `Subscribe: ${url ?? pageUrl("plans", { needed })}`,
+      `this is a HyperFrames Pro feature; nothing was charged. Run \`npx hyperframes billing subscribe --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Subscribe: ${link}`,
+      link,
     );
-  if (/hf_usage_exhausted/i.test(code))
+  }
+  if (/hf_usage_exhausted/i.test(code)) {
+    if (purchaseClosed)
+      return new Refused(
+        `out of HyperFrames credits (this step needs ${needs}${balance}), and credits can't be purchased right now; nothing was charged`,
+        "tell the person credits can't be purchased right now, and give no link",
+      );
+    const link = url
+      ? cliCheckoutLink(url, MEDIA_USE_SKILL)
+      : await pageUrl("credits", { needed, skill: MEDIA_USE_SKILL });
     return new Refused(
-      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing top-up${needed ? ` --needed ${needed}` : ""}\`: it opens the page and waits`,
-      `Add credits: ${url ?? pageUrl("credits", { needed })}`,
+      `out of HyperFrames credits (this step needs ${needs}${balance}); nothing was charged. Run \`npx hyperframes billing add-credits${needed ? ` --needed ${needed}` : ""} --skill ${MEDIA_USE_SKILL}\`: it opens the page and waits`,
+      `Buy add-on credits: ${link}`,
+      link,
     );
+  }
   if (/api_key_required/i.test(code))
     return new Refused(
       "this HeyGen feature is not available with this sign-in yet; nothing was charged",
@@ -123,7 +166,7 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   if (status === 402 || /insufficient|credit|usage_exhausted|quota/i.test(code))
     return new Refused(
       `HeyGen says there is not enough credit (${code || status})`,
-      "top up at https://app.heygen.com, or sign in with npx hyperframes auth login to use the plan's allowance",
+      "buy add-on credits at https://app.heygen.com/?utm_source=cli, or sign in with npx hyperframes auth login to use the plan's allowance",
     );
   if (/content_policy/i.test(code))
     return new Refused(
@@ -136,50 +179,50 @@ function refusal(status: number, body: unknown, estimate?: number): Refused {
   );
 }
 
+export interface JobRoute {
+  path: string;
+  start: (
+    client: HyperframesCloudClient,
+    body: unknown,
+    key: string,
+    signal: AbortSignal,
+  ) => Promise<unknown>;
+  status?: (client: HyperframesCloudClient, id: string, signal: AbortSignal) => Promise<unknown>;
+}
+
+const clientFor = (auth: Record<string, string>) =>
+  new HyperframesCloudClient({ baseUrl: resolveCloudBaseUrl(), getAuthHeaders: () => auth });
+
+const resume = "run the same command again: it resumes the same job";
+
 // fallow-ignore-next-line complexity
 async function call(
-  method: "GET" | "POST",
   route: string,
-  body?: unknown,
-  key?: string,
+  send: (client: HyperframesCloudClient, signal: AbortSignal) => Promise<unknown>,
+  timeoutMs: number,
   estimate?: number,
   auth?: Record<string, string>,
 ): Promise<Job> {
-  const headers: Record<string, string> = {
-    ...(auth ?? (await resolveCloudAuthHeaders().catch(noSignIn))),
-    accept: "application/json",
-  };
-  if (body !== undefined) headers["content-type"] = "application/json";
-  if (key) headers["Idempotency-Key"] = key;
-  let res: Response;
+  const client = clientFor(auth ?? (await resolveCloudAuthHeaders().catch(noSignIn)));
+  let data: unknown;
   try {
-    res = await fetch(`${resolveCloudBaseUrl()}${route}`, {
-      method,
-      headers,
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(method === "POST" ? 180_000 : 30_000),
-    });
+    data = await send(client, AbortSignal.timeout(timeoutMs));
   } catch (err) {
-    throw new Fix(
-      `no answer from HeyGen for ${route} (${err instanceof Error ? err.message : String(err)})`,
-      "run the same command again: it resumes the same job",
-    );
-  }
-  const value: unknown = await res.json().catch(() => null);
-  if (res.status >= 500 || value === null)
-    throw new Fix(
-      `HeyGen ${res.status} for ${route} with no readable answer`,
-      "run the same command again: it resumes the same job",
-    );
-  if (!res.ok) {
-    const refused = refusal(res.status, value, estimate);
-    refused.status = res.status;
+    if (!(err instanceof HyperframesApiError))
+      throw new Fix(
+        `no answer from HeyGen for ${route} (${err instanceof Error ? err.message : String(err)})`,
+        resume,
+      );
+    if (err.status >= 500 || err.status < 300 || err.raw == null)
+      throw new Fix(`HeyGen ${err.status} for ${route} with no readable answer`, resume);
+    const refused = await refusal(err.status, err.raw, estimate);
+    refused.status = err.status;
     throw refused;
   }
-  const data = isRecord(value) && isRecord(value.data) ? value.data : value;
+  if (data == null) throw new Fix(`HeyGen answered ${route} with no readable answer`, resume);
   if (!isRecord(data))
     throw new Fix(`HeyGen answered ${route} with no job`, "run the same command again");
-  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id;
+  const id = data.id ?? data.job_id ?? data.video_id ?? data.generation_id ?? data.lipsync_id;
   return {
     ...data,
     id: typeof id === "string" ? id : "",
@@ -212,28 +255,77 @@ export interface RunOptions {
   log?: JobLog;
   /** What the call is priced at in credits, named in an out-of-credits refusal that does not say. */
   credits?: number;
+  vendorPriced?: boolean;
 }
 
-/** Starts a job (or picks up the one this key already started) and polls `pollRoute(id)` until it ends. */
+/** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
+ *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
+ *  Every paid call comes through runJob. True when this call reserved. */
+function withinLimit(
+  limitLog: JobLog | undefined,
+  sent: string,
+  credits: number | undefined,
+  vendorPriced?: boolean,
+): boolean {
+  if (!limitLog?.projectDir) return false;
+  const limit = creditLimit(limitLog.projectDir);
+  if (limit === undefined) return false;
+  const spent = creditsSpent(limitLog.projectDir);
+  if (spent.keys.has(sent)) return false;
+  const left = limit - spent.total;
+  const fix =
+    "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
+  if (credits === undefined)
+    throw new Fix(
+      `this call cannot be priced ahead, so it cannot be kept under the run's credit limit of ${limit}; nothing was made`,
+      fix,
+    );
+  const { checked, about } = limitCheck(credits, vendorPriced);
+  if (checked > left)
+    throw new Fix(
+      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
+      fix,
+    );
+  log(limitLog, { key: sent, status: "reserved", credits: checked });
+  return true;
+}
+
+/** Starts a job (or picks up the one this key already started) and polls its status until it ends. */
+// fallow-ignore-next-line complexity
 export async function runJob(
-  route: string,
+  jobRoute: JobRoute,
   body: unknown,
   key: string,
-  pollRoute: (id: string) => string,
   opts: RunOptions = {},
 ): Promise<Job> {
   const started = Date.now();
+  const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
+  const reserved = withinLimit(opts.log, sent, opts.credits, opts.vendorPriced);
+  const held =
+    opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
   try {
-    job = await call("POST", route, body, sent, opts.credits, auth);
+    job = await call(
+      route,
+      (client, signal) => jobRoute.start(client, body, sent, signal),
+      180_000,
+      opts.credits,
+      auth,
+    );
   } catch (err) {
-    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) markFailed(sent, scope);
+    if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
+      markFailed(sent, scope);
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 });
+    }
     throw err;
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
-  while (RUNNING.has(job.status.toLowerCase())) {
+  const waits = RUNNING.has(job.status.toLowerCase());
+  if (opts.log && waits)
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held });
+  const status = jobRoute.status;
+  while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
       throw new Fix(
         `HeyGen job ${job.id} is still ${job.status}`,
@@ -241,14 +333,97 @@ export async function runJob(
       );
     opts.onWait?.(job);
     await new Promise((r) => setTimeout(r, opts.intervalMs ?? 5000));
-    job = await call("GET", pollRoute(job.id));
+    const id = job.id;
+    job = await call(
+      `${route}/${encodeURIComponent(id)}`,
+      (client, signal) => status(client, id, signal),
+      30_000,
+    );
   }
-  if (opts.log) log(opts.log, { route, id: job.id, key: sent, status: job.status });
+  if (opts.log)
+    log(opts.log, {
+      route,
+      id: job.id,
+      key: sent,
+      status: job.status,
+      credits: chargedCredits(job) ?? opts.credits,
+    });
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
-    throw refusal(422, {
+    throw await refusal(422, {
       error: { code: job.failure_code ?? job.status, message: job.failure_message ?? "" },
     });
   }
   return job;
+}
+
+export interface Voice {
+  voice_id: string;
+  name: string;
+  language?: string;
+  gender?: string;
+}
+
+const isVoice = (v: unknown): v is Voice =>
+  isRecord(v) && typeof v.voice_id === "string" && typeof v.name === "string";
+
+async function listVoices(query: { type: "public" | "private"; language?: string }, limit: number) {
+  const client = clientFor(await resolveCloudAuthHeaders().catch(noSignIn));
+  const value = await client
+    .listVoicesV3({ ...query, limit, signal: AbortSignal.timeout(30_000) })
+    .catch((err: unknown) => {
+      if (err instanceof HyperframesApiError)
+        throw new Fix(
+          `HeyGen ${err.status} listing its voices`,
+          err.status === 401 || err.status === 403
+            ? "npx hyperframes auth login"
+            : "run the same command again",
+        );
+      throw new Fix(
+        `no answer from HeyGen for its voices (${err instanceof Error ? err.message : String(err)})`,
+        "run the same command again",
+      );
+    });
+  if (!isRecord(value) || !Array.isArray(value.data))
+    throw new Fix("HeyGen answered its voices with no list", "run the same command again");
+  return value.data
+    .filter(isVoice)
+    .map(({ voice_id, name, language, gender }) => ({ voice_id, name, language, gender }));
+}
+
+/** HeyGen's public voices for a language, best first; a language it does not know gets multilingual ones. */
+export const publicVoices = (language: string, limit: number): Promise<Voice[]> =>
+  listVoices({ type: "public", language }, limit);
+
+export const ownVoices = (limit: number): Promise<Voice[]> =>
+  listVoices({ type: "private" }, limit);
+
+/** Who a paid job bills: the same scope a job's failures and keys belong to. */
+export async function senderScope(): Promise<string | null> {
+  return (await jobSender()).scope;
+}
+
+const picksFile = (projectDir: string | null) =>
+  projectDir
+    ? join(projectDir, ".hyperframes", "heygen-jobs.jsonl")
+    : join(configDir(), "heygen-voice-picks.jsonl");
+
+/** The voice a request named by language was first given, so a re-run sends the same body and key. */
+export function keptVoice(projectDir: string | null, request: string): Voice | undefined {
+  const file = picksFile(projectDir);
+  if (!existsSync(file)) return undefined;
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    const entry: unknown = line ? JSON.parse(line) : null;
+    if (isRecord(entry) && entry.voice_pick === request && isVoice(entry.voice)) return entry.voice;
+  }
+  return undefined;
+}
+
+export function keepVoice(projectDir: string | null, request: string, voice: Voice): void {
+  const file = picksFile(projectDir);
+  mkdirSync(dirname(file), { recursive: true });
+  appendFileSync(
+    file,
+    `${JSON.stringify({ at: new Date().toISOString(), voice_pick: request, voice })}\n`,
+  );
 }

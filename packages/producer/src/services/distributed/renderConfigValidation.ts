@@ -222,6 +222,21 @@ export function validateDistributedRenderConfig(
     }
   }
 
+  if (config.minParallelChunks !== undefined) {
+    if (!Number.isInteger(config.minParallelChunks) || config.minParallelChunks < 1) {
+      throw new InvalidConfigError(
+        "config.minParallelChunks",
+        `must be a positive integer; got ${config.minParallelChunks}`,
+      );
+    }
+    if (config.minParallelChunks > MAX_PARALLEL_CHUNKS_CEILING) {
+      throw new InvalidConfigError(
+        "config.minParallelChunks",
+        `must be <= ${MAX_PARALLEL_CHUNKS_CEILING}; got ${config.minParallelChunks}`,
+      );
+    }
+  }
+
   for (const field of ["workerTimeoutSeconds", "workerConcurrency"] as const) {
     const value = config[field];
     if (value !== undefined && (!Number.isInteger(value) || value < 1)) {

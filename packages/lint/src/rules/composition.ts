@@ -1,5 +1,6 @@
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
+import { parseHTML } from "linkedom";
 import {
   findHtmlTag,
   extractTimelineRegistryKeys,
@@ -1945,6 +1946,32 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
         snippet: truncateSnippet(style.content.slice(0, 120)),
       }));
+  },
+
+  // multiple_scene_templates: the renderer takes the first scene template of a file with no live root.
+  ({ rawSource }) => {
+    const { document } = parseHTML(rawSource);
+    if (document.querySelector("[data-composition-id]")) return [];
+    const scenes = Array.from(document.querySelectorAll("template")).flatMap((template, index) => {
+      const compositionId = parseHTML(template.innerHTML)
+        .document.querySelector("[data-composition-id]")
+        ?.getAttribute("data-composition-id");
+      if (compositionId === undefined) return [];
+      const id = template.getAttribute("id");
+      return [
+        `template #${index + 1}${id ? ` (id="${id}")` : ""} holding composition "${compositionId}"`,
+      ];
+    });
+    if (scenes.length < 2) return [];
+    return [
+      {
+        code: "multiple_scene_templates",
+        severity: "warning",
+        message: `This file has more than one scene template and no live composition root, so only the first renders: ${scenes.join("; ")}.`,
+        fixHint:
+          "Keep one composition root per file, or move the other scenes into their own files.",
+      },
+    ];
   },
 ];
 

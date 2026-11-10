@@ -814,8 +814,22 @@ async function psnrForDiskSample(
   workerId: number,
   idx: number,
 ): Promise<number | null> {
+  const skipSample = (err: unknown): null => {
+    console.warn(
+      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
+        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  };
+  // Read apart from the compare: a frame file's ENOENT says nothing about ffmpeg.
+  let frame: Buffer;
   try {
-    return await psnrDb(await readFile(framePath), truth);
+    frame = await readFile(framePath);
+  } catch (err) {
+    return skipSample(err);
+  }
+  try {
+    return await psnrDb(frame, truth);
   } catch (err) {
     if (isFfmpegInfrastructureFailure(err)) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -828,11 +842,7 @@ async function psnrForDiskSample(
         { cause: err },
       );
     }
-    console.warn(
-      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
-        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+    return skipSample(err);
   }
 }
 

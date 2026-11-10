@@ -1,3 +1,5 @@
+import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
@@ -17,6 +19,7 @@ import { parseImportMap } from "../compiler/importMaps";
 import { hasSameLink } from "../compiler/scriptRuns";
 import {
   namespaceCollidingSvgIds,
+  sceneClipRoots,
   rewriteSvgIdReferencesInCss,
 } from "../compiler/svgIdNamespacing";
 import { waitForFonts } from "./afterFonts";
@@ -184,6 +187,11 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   }
 }
 
+function sceneOrFirstTemplate(doc: Document): HTMLTemplateElement | null {
+  const templates = Array.from(doc.querySelectorAll<HTMLTemplateElement>("template"));
+  return findSceneTemplate(templates) ?? templates[0] ?? null;
+}
+
 function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
@@ -194,12 +202,12 @@ const waitForExternalScriptLoad = (
   new Promise((resolve) => {
     let settled = false;
     const startedAt = Date.now();
-    let timeoutId: number | null = null;
+    let timeoutId: ReturnType<typeof wallSetTimeout> | null = null;
     const settle = (status: "load" | "error" | "timeout") => {
       if (settled) return;
       settled = true;
       if (timeoutId != null) {
-        window.clearTimeout(timeoutId);
+        wallClearTimeout(timeoutId);
       }
       resolve({
         status,
@@ -208,7 +216,7 @@ const waitForExternalScriptLoad = (
     };
     scriptEl.addEventListener("load", () => settle("load"), { once: true });
     scriptEl.addEventListener("error", () => settle("error"), { once: true });
-    timeoutId = window.setTimeout(() => settle("timeout"), EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS);
+    timeoutId = wallSetTimeout(() => settle("timeout"), EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS);
   });
 
 function resetCompositionHost(host: Element) {
@@ -799,7 +807,7 @@ async function mountExternalCompositions(
             ? doc.querySelector<HTMLTemplateElement>(
                 `template#${CSS.escape(authoredCompositionId)}-template`,
               )
-            : null) ?? doc.querySelector<HTMLTemplateElement>("template");
+            : null) ?? sceneOrFirstTemplate(doc);
         const sourceNode = template ? template.content : doc.body;
         return await mount({
           host,
@@ -888,9 +896,20 @@ export async function loadCompositions(params: LoadCompositionsParams): Promise<
 
 /** Reuse one finalization set across authored mounting and initial-script discovery. */
 function namespaceMountedSvgIds(
-  mounted: readonly MountedSvgScope[],
+  composed: readonly MountedSvgScope[],
   finalizedIds: Set<Element>,
 ): void {
+  const hosts = composed
+    .filter((scope) => scope.referenceTarget !== "document")
+    .map(({ host }) => host);
+  const mounted: MountedSvgScope[] = [
+    ...composed,
+    ...sceneClipRoots(document, hosts).map((host, index) => ({
+      host,
+      namespace: `clip-${index}`,
+      styles: [],
+    })),
+  ];
   for (const { styles } of mounted) {
     for (const style of styles) {
       const current = style.element.textContent ?? "";

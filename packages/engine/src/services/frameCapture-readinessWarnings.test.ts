@@ -11,6 +11,7 @@ function makePage(input: {
     readyState: number;
     networkState?: number;
     error?: unknown;
+    sourceChild?: boolean;
   }>;
 }): Page {
   return {
@@ -40,7 +41,8 @@ function makePage(input: {
             readyState: media.readyState,
             networkState: media.networkState ?? 1,
             error: media.error ?? null,
-            getAttribute: (name: string) => (name === "src" ? media.src : null),
+            getAttribute: (name: string) => (name === "src" && media.src ? media.src : null),
+            querySelector: () => (media.sourceChild ? {} : null),
           }));
         },
       });
@@ -76,6 +78,21 @@ describe("collectMediaReadinessWarnings", () => {
       ["media_load_failed", "video"],
     ]);
     expect(warnings.every((warning) => warning.details?.timeoutMs === 45000)).toBe(true);
+  });
+
+  it("does not warn about a video with no source to load, but still about a <source> child that stalls", async () => {
+    const page = makePage({
+      media: [
+        { id: "empty", tagName: "VIDEO", src: "", readyState: 0, networkState: 0 },
+        { id: "child", tagName: "VIDEO", src: "/child.mp4", readyState: 1, sourceChild: true },
+      ],
+    });
+
+    const warnings = await collectMediaReadinessWarnings(page, [], 45000);
+
+    expect(warnings.map((warning) => [warning.code, warning.details?.sources])).toEqual([
+      ["media_readiness_timeout", ["/child.mp4"]],
+    ]);
   });
 
   it("returns no warnings when every relevant resource is ready", async () => {

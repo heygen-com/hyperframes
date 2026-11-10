@@ -1,0 +1,8 @@
+{
+  "name": "hyperframes-aws-lambda-bundled",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "puppeteer-core": "25.11.0"
+  }
+}

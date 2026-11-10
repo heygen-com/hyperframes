@@ -85,6 +85,25 @@ describe("readingWords", () => {
     expect(readingWords("今天天气很好")).toBeGreaterThan(1);
   });
 
+  it("counts Korean by its spaces and a number with its counter as one unit", () => {
+    expect(readingWords("실패 12회")).toBe(2);
+    expect(readingWords("오류 3건 발생")).toBe(3);
+    expect(readingWords("테스트 실패 12/40")).toBe(4);
+    expect(readingWords("커피12잔")).toBe(1);
+  });
+
+  it("still segments scripts written without spaces", () => {
+    expect(readingWords("ฉันรักภาษาไทยมาก")).toBeGreaterThan(1);
+    expect(readingWords("ខ្ញុំស្រលាញ់ភាសាខ្មែរ")).toBeGreaterThan(1);
+    expect(readingWords("ຂ້ອຍຮັກພາສາລາວຫຼາຍ")).toBeGreaterThan(1);
+    expect(readingWords("ကျွန်တော်မြန်မာစကားကိုချစ်တယ်")).toBeGreaterThan(1);
+  });
+
+  it("keeps counting a Japanese number and its counter as two", () => {
+    expect(readingWords("12回")).toBe(2);
+    expect(readingWords("実行12回失敗")).toBe(4);
+  });
+
   it("counts a contraction as one word", () => {
     expect(readingWords("a tooth can't get in")).toBe(5);
     expect(readingWords("a tooth can’t get in")).toBe(5);
@@ -117,6 +136,34 @@ describe("line_unread", () => {
     expect(finding?.floorSeconds).toBeCloseTo(1.95);
     expect(finding?.message).toContain("0.5 s + 0.3 s a word");
     expect(finding?.message).toContain("references/motion.md");
+  });
+
+  // fails without the fix: a finding carried no measured frames, so a report of a line read late could not show why.
+  it("carries the frames it measured at both ends of the line, with none painted before or after it", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "Every team gets one shared calendar now", from: 6.2, to: 6.9 },
+      { key: 2, text: "Try it today", from: 13, to: 20 },
+    ];
+    const [finding] = await detectLineUnread(film(20, shown), 20, CANVAS, probeFor(shown));
+    const measured = finding?.measured ?? [];
+    expect(measured.map((frame) => frame.opacity)).toEqual([
+      null,
+      null,
+      null,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      null,
+      null,
+      null,
+    ]);
+    expect(measured[3]).toMatchObject({ time: 6.25, heightPx: 115 });
+    expect(measured.map((frame) => frame.time)).toEqual([
+      5.875, 6, 6.125, 6.25, 6.375, 6.5, 6.625, 6.75, 6.875, 7, 7.125, 7.25,
+    ]);
   });
 
   it("does not warn on a landed title held 1.5 s, a 0.4 s chapter word, captions or a 2.5 s end card", async () => {

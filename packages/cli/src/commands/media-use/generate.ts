@@ -6,7 +6,9 @@ import {
   GENERATE_TYPES,
   checkRequest,
   generate,
+  isVendorPriced,
   parseMask,
+  voiceFor,
   type GenerateRequest,
   type GenerateType,
 } from "../../heygen/generate.js";
@@ -24,6 +26,18 @@ export const examples: Example[] = [
   [
     "The original's presenter re-shot clean, saying an 8 s stretch of the original voice",
     'hyperframes media-use generate --type video --reference assets/presenter-clean.png --audio assets/s02-voice.m4a --motion assets/s02-original.mp4 --mask 110,615,390,165 --prompt "the woman talks to camera, seated, soft daylight" --seconds 8 --aspect 9:16 --out assets/s02-presenter.mp4',
+  ],
+  [
+    "That shot's mouth redone to the exact voice, which stays as it is",
+    "hyperframes media-use generate --type lipsync --video assets/s02-presenter.mp4 --audio assets/s02-voice.mp3 --out assets/s02-lips.mp4",
+  ],
+  [
+    "The presenter cut out of their room, on a transparent background",
+    "hyperframes media-use generate --type cutout --video assets/presenter.mp4 --out assets/presenter-cutout.webm",
+  ],
+  [
+    "The person in a photo saying a finished voice, which stays as it is",
+    'hyperframes media-use generate --type avatar --photo assets/presenter.png --audio assets/vo.mp3 --prompt "seated, talks with both hands" --aspect 16:9 --out assets/host.mp4',
   ],
   [
     "The person in a photo saying a script in a chosen voice",
@@ -48,7 +62,7 @@ export default defineCommand({
   meta: {
     name: "generate",
     description:
-      "Make new media on HeyGen: an image (edited from references), a video shot (from a first frame), a person speaking from a photo, a voice, or music. --plan prices it first",
+      "Make new media on HeyGen: an image (edited from references), a video shot (from a first frame), a shot's mouth redone to a voice, a person speaking from a photo, a voice, or music. --plan prices it first",
   },
   args: {
     type: {
@@ -61,7 +75,10 @@ export default defineCommand({
       description: "The project file to write, e.g. assets/plate.png",
       required: true,
     },
-    prompt: { type: "string", description: "What it shows or sounds like (image, video, music)" },
+    prompt: {
+      type: "string",
+      description: "What it shows or sounds like (image, video, music); avatar: how a photo moves",
+    },
     reference: {
       type: "string",
       description:
@@ -69,11 +86,22 @@ export default defineCommand({
     },
     audio: {
       type: "string",
-      description: "video: speech the referenced person says, lips in sync (5–15 s)",
+      description:
+        "video: speech the referenced person says (5–15 s), a reference the model re-paces; lipsync, avatar: the exact voice",
+    },
+    video: {
+      type: "string",
+      description:
+        "lipsync: the shot whose mouth is redone; cutout: the shot cut out of its background",
     },
     motion: {
       type: "string",
       description: "video: a clip whose camera and body motion the shot follows (up to 15 s)",
+    },
+    "allow-cuts": {
+      type: "boolean",
+      description: "video: send a --motion clip that reads as several shots (one you have checked)",
+      default: false,
     },
     mask: {
       type: "string",
@@ -82,8 +110,16 @@ export default defineCommand({
     },
     "first-frame": { type: "string", description: "video: the picture the shot starts from" },
     photo: { type: "string", description: "avatar: the person's photo" },
+    avatar: {
+      type: "string",
+      description: "avatar: the person's own HeyGen avatar look id, instead of --photo",
+    },
     script: { type: "string", description: "avatar, voice: the words spoken" },
-    voice: { type: "string", description: "avatar, voice: a HeyGen voice id" },
+    voice: {
+      type: "string",
+      description:
+        "avatar, voice: a HeyGen voice id, or a language (English, Chinese, en, zh-CN) for its first voice in it",
+    },
     seconds: {
       type: "string",
       description: "video 5–15 (default 5); music: 30, 60, 120 or 180 (default 30)",
@@ -92,7 +128,11 @@ export default defineCommand({
       type: "string",
       description: "Aspect ratio, e.g. 9:16 (image, video without a first frame, avatar)",
     },
-    model: { type: "string", description: "image: nano-banana-2 (default) or gpt-image-2.5" },
+    model: {
+      type: "string",
+      description:
+        "image: nano-banana-2 (default), nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare",
+    },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
       type: "boolean",
@@ -102,7 +142,7 @@ export default defineCommand({
     "max-credits": {
       type: "string",
       description:
-        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more",
+        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image call is charged at the vendor's cost, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over. The project's credit-limit.json follows the same rule",
     },
     plan: {
       type: "boolean",
@@ -126,9 +166,12 @@ export default defineCommand({
           .filter(Boolean),
         firstFrame: args["first-frame"],
         audio: args.audio,
+        video: args.video,
         motion: args.motion,
+        allowCuts: args["allow-cuts"],
         masks: repeated(rawArgs, "--mask").map(parseMask),
         photo: args.photo,
+        avatar: args.avatar,
         script: args.script,
         voice: args.voice,
         seconds: num(args.seconds, "--seconds"),
@@ -137,6 +180,8 @@ export default defineCommand({
         bpm: num(args.bpm, "--bpm"),
         instrumental: !args.vocals,
       };
+      const voice = await voiceFor(request);
+      if (voice) request.voice = voice.voice_id;
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {
@@ -147,16 +192,17 @@ export default defineCommand({
           out: request.out,
           price,
           credits,
+          ...(voice ? { voice } : {}),
           next: "run the same command without --plan to make it",
         };
       }
-      checkLimit(credits, num(args["max-credits"], "--max-credits"));
+      checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
         (status) => console.error(`generate: ${status}…`),
         credits ?? undefined,
       );
-      return { ...made, price, credits };
+      return { ...made, price, credits, ...(voice ? { voice } : {}) };
     });
   },
 });

@@ -6,6 +6,7 @@
   "prConcurrentLimit": 5,
   "prHourlyLimit": 2,
   "rangeStrategy": "bump",
+  "labels": ["dependencies"],
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 6am on monday"]
@@ -37,6 +38,12 @@
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
       "pinDigests": true
+    },
+    {
+      "description": "The Lambda runtime locks take puppeteer-core and @sparticuz/chromium from bun.lock (lock-runtime.ts), so Renovate only refreshes their transitive tree, on lockFileMaintenance's schedule",
+      "matchFileNames": ["packages/aws-lambda/scripts/runtime-lock/**"],
+      "matchUpdateTypes": ["major", "minor", "patch", "pin", "digest"],
+      "enabled": false
     },
     {
       "enabled": false,

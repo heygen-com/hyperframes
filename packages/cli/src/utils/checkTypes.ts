@@ -1,6 +1,6 @@
 import type { CheckDeadline } from "./checkDeadline.js";
 import type { CheckProgress } from "./checkProgress.js";
-import type { ProjectLintResult } from "./lintProject.js";
+import type { ProjectLintOptions, ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
@@ -23,6 +23,7 @@ export interface CheckOptions {
   collapseStatic: boolean;
   tolerance: number;
   timeout: number;
+  budget?: { ms: number; stopAt: number };
   contrast: boolean;
   skipContrastInMotion?: boolean;
   strict: boolean;
@@ -36,6 +37,9 @@ export interface CheckOptions {
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  includeUnmounted?: boolean;
+  cache?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {
@@ -321,7 +325,14 @@ export interface CheckTimings {
   overlapMs: number;
 }
 
+export interface MediaCopyFacts {
+  total: number;
+  waitedMs: number;
+  unfinished: number;
+}
+
 export interface CheckBrowserResult {
+  mediaCopies?: MediaCopyFacts;
   duration: number;
   layoutSamples: number[];
   transitionSamples: number[];
@@ -349,6 +360,7 @@ export interface CraftFinding extends CheckFinding {
   fontPx?: number;
   floorPx?: number;
   until?: number;
+  measured?: { time: number; opacity: number | null; heightPx: number | null }[];
   elements?: { selector: string; text: string; fontPx: number; time: number; seconds: number }[];
 }
 
@@ -386,6 +398,7 @@ export interface CheckReport {
     notes: string[];
   };
   ok: boolean;
+  cached?: { at: string };
   strict: boolean;
   browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
@@ -413,7 +426,7 @@ export interface CheckReport {
 }
 
 export interface CheckDependencies {
-  lintProject(projectDir: string): Promise<ProjectLintResult>;
+  lintProject(projectDir: string, options?: ProjectLintOptions): Promise<ProjectLintResult>;
   resolveMotionSpec(projectDir: string): MotionSpecResolution;
   runBrowserCheck(
     project: ProjectDir,

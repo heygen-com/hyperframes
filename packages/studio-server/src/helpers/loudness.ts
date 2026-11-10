@@ -74,6 +74,7 @@ export interface AudioNormalizationPlan {
   changeDb: number;
   projectedLufs: number;
   projectedTruePeakDbfs: number;
+  limitedBy: LoudnessLimit | null;
 }
 
 function authoredNumber(
@@ -381,7 +382,7 @@ export function gainDb(volume: number): number {
   return volume > 0 ? 20 * Math.log10(volume) : Number.NEGATIVE_INFINITY;
 }
 
-/** Calculate the target's absolute authored gain while keeping the reference unchanged. */
+/** The target's gain that matches the reference's played loudness; past a ceiling it stops as fittedGain does. */
 export function audioNormalizationPlan(
   referenceTrack: NormalizationTrack,
   targetTrack: NormalizationTrack,
@@ -391,32 +392,24 @@ export function audioNormalizationPlan(
   }
   const referenceLufs = referenceTrack.integratedLufs + gainDb(referenceTrack.volume);
   const targetLufs = targetTrack.integratedLufs + gainDb(targetTrack.volume);
-  const wantedGainDb = referenceLufs - targetTrack.integratedLufs;
-  if (wantedGainDb > MAX_AUDIO_GAIN_DB + 1e-9) {
-    throw new Error(
-      `Matching #${targetTrack.id} needs ${wantedGainDb.toFixed(1)} dB, beyond the +${MAX_AUDIO_GAIN_DB} dB authoring ceiling. ` +
-        `A gap this large belongs in the source file, not the mixer: mixer gain raises the noise floor with the signal. ` +
-        `Normalize ${targetTrack.id}'s asset offline (e.g. ffmpeg loudnorm), or lower #${referenceTrack.id} instead.`,
-    );
-  }
-  const volume = 10 ** (wantedGainDb / 20);
-  const projectedTruePeakDbfs = targetTrack.truePeakDbfs + wantedGainDb;
-  if (projectedTruePeakDbfs > 0) {
-    throw new Error(
-      `Matching #${targetTrack.id} would clip at +${projectedTruePeakDbfs.toFixed(1)} dBFS; limit or preprocess the source first`,
-    );
-  }
+  const previousGainDb = gainDb(targetTrack.volume);
+  const { appliedGainDb, limitedBy } = fittedGain(
+    referenceLufs - targetTrack.integratedLufs,
+    targetTrack.truePeakDbfs,
+    previousGainDb,
+  );
   return {
     referenceId: referenceTrack.id,
     targetId: targetTrack.id,
     referenceLufs,
     targetLufs,
     previousVolume: targetTrack.volume,
-    volume,
-    gainDb: wantedGainDb,
-    changeDb: wantedGainDb - gainDb(targetTrack.volume),
-    projectedLufs: targetTrack.integratedLufs + wantedGainDb,
-    projectedTruePeakDbfs,
+    volume: 10 ** (appliedGainDb / 20),
+    gainDb: appliedGainDb,
+    changeDb: appliedGainDb - previousGainDb,
+    projectedLufs: targetTrack.integratedLufs + appliedGainDb,
+    projectedTruePeakDbfs: targetTrack.truePeakDbfs + appliedGainDb,
+    limitedBy,
   };
 }
 
@@ -522,9 +515,8 @@ export interface AbsoluteLoudnessPlan {
 
 /**
  * The authored gain that brings one clip's played window to an absolute
- * loudness. Unlike reference matching it never refuses: past the +12 dB
- * authoring ceiling or the true-peak ceiling it applies the most that fits and
- * names which limit stopped it.
+ * loudness; past the +12 dB authoring ceiling or the true-peak ceiling it
+ * applies the most that fits and names which limit stopped it (fittedGain).
  */
 export function absoluteLoudnessPlan(
   track: NormalizationTrack,
@@ -533,21 +525,12 @@ export function absoluteLoudnessPlan(
   if (track.integratedLufs <= SILENCE_LUFS) {
     throw new Error(`#${track.id} is silent in the played window; there is nothing to normalize`);
   }
-  const wantedGainDb = targetLufs - track.integratedLufs;
-  const peakRoomDb = NORMALIZE_TRUE_PEAK_CEILING_DBFS - track.truePeakDbfs;
-  const limits: Array<[LoudnessLimit | null, number]> = [
-    [null, wantedGainDb],
-    ["gain-ceiling", MAX_AUDIO_GAIN_DB],
-    ["true-peak", peakRoomDb],
-  ];
-  const [limitedBy, limitedGainDb] = limits.reduce((lowest, candidate) =>
-    candidate[1] < lowest[1] - 1e-9 ? candidate : lowest,
-  );
   const previousGainDb = track.volume > 0 ? gainDb(track.volume) : 0;
-  const limitCannotCutAWantedBoost = wantedGainDb > previousGainDb;
-  const appliedGainDb = limitCannotCutAWantedBoost
-    ? Math.max(limitedGainDb, previousGainDb)
-    : limitedGainDb;
+  const { appliedGainDb, limitedBy } = fittedGain(
+    targetLufs - track.integratedLufs,
+    track.truePeakDbfs,
+    previousGainDb,
+  );
   return {
     targetId: track.id,
     targetLufs,
@@ -560,6 +543,21 @@ export function absoluteLoudnessPlan(
     projectedTruePeakDbfs: track.truePeakDbfs + appliedGainDb,
     limitedBy,
   };
+}
+
+/** The most of `wantedGainDb` under both ceilings and the limit that stopped it; never cuts a gain asked to rise. */
+function fittedGain(wantedGainDb: number, truePeakDbfs: number, previousGainDb: number) {
+  const limits: Array<[LoudnessLimit | null, number]> = [
+    [null, wantedGainDb],
+    ["gain-ceiling", MAX_AUDIO_GAIN_DB],
+    ["true-peak", NORMALIZE_TRUE_PEAK_CEILING_DBFS - truePeakDbfs],
+  ];
+  const [limitedBy, limitedGainDb] = limits.reduce((lowest, candidate) =>
+    candidate[1] < lowest[1] - 1e-9 ? candidate : lowest,
+  );
+  const appliedGainDb =
+    wantedGainDb > previousGainDb ? Math.max(limitedGainDb, previousGainDb) : limitedGainDb;
+  return { appliedGainDb, limitedBy };
 }
 
 export type AbsoluteOutcome = "matched" | "held" | "change";

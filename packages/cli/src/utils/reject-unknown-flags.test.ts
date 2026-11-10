@@ -78,6 +78,20 @@ describe("assertKnownFlags", () => {
     );
   });
 
+  it("names the flag that means the same here when an agent brings one from another command", () => {
+    const cuts = {
+      args: { start: { type: "string" }, end: { type: "string" }, out: { type: "string" } },
+    } as unknown as CommandDef<ArgsDef>;
+    const hint = (flag: string) =>
+      `Did you mean --${flag}? Run 'hyperframes measure cuts --help' to see its flags.`;
+    expect(() => assertKnownFlags(cuts, ["--from", "1"], "measure cuts")).toThrow(
+      expect.objectContaining({ hint: hint("start") }),
+    );
+    expect(() => assertKnownFlags(cuts, ["-o", "x"], "measure cuts")).toThrow(
+      expect.objectContaining({ hint: hint("out") }),
+    );
+  });
+
   it("checks each char of a combined short group", () => {
     expect(ok(["-ow"])).not.toThrow(); // both known aliases
     expect(ok(["-ox"])).toThrow(/Unknown flag: -x/); // x unknown

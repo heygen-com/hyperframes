@@ -50,6 +50,15 @@ npx hyperframes skills update
 
 This installs or refreshes the core set and any HyperFrames skills already present in the global install, then links those bundles into compatible installed agents. It does not add every optional skill.
 
+Updates check the Claude global store (`~/.claude/skills`, or the `skills/` folder
+under `CLAUDE_CONFIG_DIR`) that the installer writes to. Skills found only in
+another agent's directory do not make a missing core skill count as installed
+there, and optional skills in that other directory are not automatically added
+to the managed store. Name an optional skill explicitly to add it. The install
+record's publisher attribution is respected even before the managed store exists.
+An explicit update request for a skill owned by another publisher fails without
+overwriting it, including when the freshness check is unavailable offline.
+
 Check freshness without changing anything:
 
 ```bash
@@ -122,6 +131,8 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 | `/hyperframes-cli` | The CLI by job: scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history. |
 | `/hyperframes-registry` | About 450 ready-made blocks and components installed as editable source: transitions, overlays, titles, kinetic type, captions, charts, maps, 3D, camera moves. |
 | `/media-use` | Music, sound effects, images, icons, logos, voiceover, avatar and generated video, transcripts, cutouts, colour grades and looks, with HeyGen or free local tools; mixes placed audio. |
+| `/reverse-any-video` | Rebuilding any video file as an editable HyperFrames project (motion graphics, talking heads, live action, AI-generated footage), checked frame by frame against the original. HyperFrames Pro. |
+| `/style-sampling` | Making a new episode on your topic in one of five proven styles: Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime. HyperFrames Pro. |
 | `/figma` | A Figma file or frame: rendered assets, brand tokens, components, and storyboard frames as reconstructed motion. |
 | `/slideshow` | A presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4. |
 | `/remotion-to-hyperframes` | Bringing existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, other tools' renders), verified frame by frame. |
@@ -155,6 +166,47 @@ Use the full set for an environment that must work across many HyperFrames tasks
 
 The individual skill definitions remain the source of truth for agents and are
 available in the [HyperFrames repository](https://github.com/heygen-com/hyperframes/tree/main/skills).
+
+## If an update says no installed skills match
+
+With `skills@1.7.x`, `npx skills update heygen-com/hyperframes` treats
+`heygen-com/hyperframes` as an installed skill name. It reports
+`No installed skills found matching` even when HyperFrames skills are installed.
+Use the HyperFrames updater to refresh the core set and the HyperFrames skills
+already installed globally:
+
+```bash
+npx hyperframes skills update
+```
+
+The standalone `skills update` command accepts skill names, such as
+`npx skills update hyperframes -g` to update only the global `/hyperframes` skill.
+The repository name belongs in `skills add`, as shown in the install steps above.
+
+## If an installed skill has a YAML parse error
+
+A `Skipped .../SKILL.md — YAML parse error` warning names the installed file that
+cannot be read. Back up that file before editing it, especially if it contains
+custom instructions. A multiline description needs indented continuation lines;
+for example:
+
+```yaml
+---
+name: seam-craft
+description: >-
+  Render-correctness doctrine for scene-to-scene seams.
+  Load when assembling the master timeline.
+---
+```
+
+Keep the file's existing description text and skill body; the example shows only
+the YAML format. Run `npx skills list -g` afterwards to verify global discovery,
+or `npx skills list` for a project install.
+
+Repo-internal skills such as `seam-craft` are excluded from the published set.
+Refreshing the core skills does not repair an old, separately installed copy of
+an internal skill. A YAML warning and a name-matching error can occur in the same
+run and need these separate fixes.
 
 ## Related topics
 

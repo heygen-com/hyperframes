@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.8.223",
+  "version": "0.9.30",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -9,6 +9,8 @@
   },
   "files": [
     "dist",
+    "!dist/services/__fixtures__/blurDifferential.*",
+    "!dist/services/__fixtures__/motionBlur",
     "README.md"
   ],
   "type": "module",

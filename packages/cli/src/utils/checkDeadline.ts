@@ -17,12 +17,15 @@ const PHASE_LABELS = {
   load: "loading the page",
   settle: "waiting for the page to be ready",
   samples: "checking samples",
+  analysis: "analyzing the samples",
   overlap: "running the overlap pass",
   crops: "capturing finding crops",
   frames: "capturing finding frames",
 } as const;
 export type CheckPhase = keyof typeof PHASE_LABELS;
-const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies", "launch"]);
+const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies"]);
+
+const CHROME_START_WINDOW_MS = 180_000;
 
 export class CheckDeadlineError extends Error {
   constructor(
@@ -37,9 +40,38 @@ export class CheckDeadlineError extends Error {
   }
 }
 
+export const COPY_BUDGET_MS = 120_000;
+const HEARTBEAT_MS = 30_000;
+
+export class CheckCopiesUnfinishedError extends Error {
+  constructor(budgetMs: number, unfinished: readonly string[]) {
+    super(
+      `Making browser-playable video copies took longer than ${budgetMs / 1000} s: ${unfinished.join(", ")}. ` +
+        "Finished pieces are kept. Run `hyperframes check --prepare-media` (no time limit) to finish them, then run check again.",
+    );
+  }
+}
+
+export class CheckBudgetError extends Error {
+  constructor(budgetMs: number, where: string) {
+    super(
+      `Check reached its --budget of ${budgetMs / 1000} s${where || "."} The report holds what it found before then.`,
+    );
+  }
+}
+
 export class CheckStoppedError extends Error {
   constructor(signal: string) {
     super(`Check stopped before finishing (${signal}).`);
+  }
+}
+
+export class CheckChromeStartError extends Error {
+  constructor(waitedMs: number, where: string) {
+    super(
+      `Chrome did not start within ${waitedMs / 1000} s${where || "."} ` +
+        "On a first run it may still be downloading: run `hyperframes browser ensure`, then run check again.",
+    );
   }
 }
 
@@ -59,10 +91,29 @@ export class CheckDeadline {
   private readonly spent = new Map<CheckPhase, number>();
   private readonly partials: Array<() => Partial<CheckBrowserResult>> = [];
 
-  constructor(private readonly idleMs = CHECK_IDLE_MS) {
+  private heartbeat: NodeJS.Timeout | undefined;
+  private readonly budgetTimer: NodeJS.Timeout | undefined;
+  private readonly stopAt: number | undefined;
+
+  constructor(
+    private readonly idleMs = CHECK_IDLE_MS,
+    budget?: { ms: number; stopAt: number },
+  ) {
     this.expiry = new Promise((_, reject) => {
       this.rejectExpiry = reject;
     });
+    this.expiry.catch(() => undefined);
+    this.budgetTimer =
+      budget &&
+      setTimeout(
+        () => this.expire(new CheckBudgetError(budget.ms, this.where())),
+        Math.max(0, budget.stopAt - Date.now()),
+      );
+    this.stopAt = budget?.stopAt;
+  }
+
+  remainingMs(): number | undefined {
+    return this.stopAt === undefined ? undefined : Math.max(0, this.stopAt - Date.now());
   }
 
   keepPartial = (read: () => Partial<CheckBrowserResult>): void => {
@@ -76,24 +127,35 @@ export class CheckDeadline {
   enter = (phase: CheckPhase, detail?: string): void => {
     if (this.expired) return;
     const now = Date.now();
+    if (this.work?.phase !== phase) this.announce(phase, PHASE_LABELS[phase]);
     if (this.work) this.spend(this.work.phase, now - this.work.since);
     this.work = { phase, since: now, detail };
     this.spend(phase, 0);
+    this.beat();
     this.rearm();
   };
+
+  private announce(phase: CheckPhase, text: string): void {
+    if (phase !== "copies") console.error(`[hyperframes] check: ${text}`);
+  }
 
   private spend(phase: CheckPhase, ms: number): void {
     this.spent.set(phase, (this.spent.get(phase) ?? 0) + ms);
   }
 
   private describe(): string {
+    const where = this.where();
+    return where && ` (no progress for ${this.idleMs / 1000} s after Chrome was ready),${where}`;
+  }
+
+  private where(): string {
     if (!this.work) return "";
     const open = Date.now() - this.work.since;
     const parts = [...this.spent].map(([phase, ms]) => {
       const seconds = ((phase === this.work?.phase ? ms + open : ms) / 1000).toFixed(1);
       return `${PHASE_LABELS[phase]} ${seconds}${BEFORE_DEADLINE.has(phase) ? " (before the deadline)" : ""}`;
     });
-    return ` (no progress for ${this.idleMs / 1000} s after Chrome was ready), while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
+    return ` while ${PHASE_LABELS[this.work.phase]}${this.work.detail ? ` (${this.work.detail})` : ""}. Seconds per phase: ${parts.join(", ")}.`;
   }
 
   start = (): void => {
@@ -102,17 +164,39 @@ export class CheckDeadline {
     this.enter("load");
   };
 
+  private beat(): void {
+    if (this.heartbeat || this.phase === "closed" || this.expired) return;
+    this.heartbeat = setInterval(() => {
+      if (this.work) {
+        const seconds = Math.round((Date.now() - this.work.since) / 1000);
+        const { phase } = this.work;
+        this.announce(phase, `still ${PHASE_LABELS[phase]} (${seconds} s in this step)`);
+      }
+    }, HEARTBEAT_MS);
+    this.heartbeat.unref();
+  }
+
   private rearm(): void {
-    if (this.phase !== "started" || this.expired) return;
+    if (this.phase === "closed" || this.expired) return;
+    const launching = this.work?.phase === "launch" && this.phase === "waiting";
+    if (this.phase !== "started" && !launching) return;
     clearTimeout(this.timer);
+    const window = launching ? Math.max(CHROME_START_WINDOW_MS, this.idleMs) : this.idleMs;
     this.timer = setTimeout(
-      () => this.expire(new CheckDeadlineError(this.scripts.at(-1), this.describe())),
-      this.idleMs,
+      () =>
+        this.expire(
+          launching
+            ? new CheckChromeStartError(window, this.where())
+            : new CheckDeadlineError(this.scripts.at(-1), this.describe()),
+        ),
+      window,
     );
   }
 
   private expire(error: Error): void {
+    clearInterval(this.heartbeat);
     clearTimeout(this.timer);
+    clearTimeout(this.budgetTimer);
     this.expired = error;
     this.rejectExpiry(error);
     this.abort.abort(error);
@@ -160,7 +244,9 @@ export class CheckDeadline {
 
   async close(): Promise<void> {
     this.phase = "closed";
+    clearInterval(this.heartbeat);
     clearTimeout(this.timer);
+    clearTimeout(this.budgetTimer);
     const closes = await Promise.allSettled([...this.browsers].map(closeManagedBrowser));
     const errors = closes
       .filter((entry) => entry.status === "rejected")

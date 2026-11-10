@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
-import { lintProject } from "./project.js";
+import { lintProject, unmountedNotice } from "./project.js";
 
 // Keep project lint tests independent of the host's ffprobe installation.
 vi.mock("node:child_process", () => {
@@ -34,6 +34,7 @@ function makeProject(indexHtml: string, subComps?: Record<string, string>): stri
     const compsDir = join(dir, "compositions");
     mkdirSync(compsDir, { recursive: true });
     for (const [name, html] of Object.entries(subComps)) {
+      mkdirSync(dirname(join(compsDir, name)), { recursive: true });
       writeFileSync(join(compsDir, name), html);
     }
   }
@@ -112,6 +113,24 @@ describe("blank_root_with_standalone_composition", () => {
     expect(finding?.message).toContain("publish");
     expect(finding?.fixHint).toContain("data-composition-src");
     expect(finding?.suggestedComposition).toBe("compositions/index.html");
+  });
+
+  it("does not count a composition in a folder the project's .hyperframesignore leaves out", async () => {
+    const project = makeProject(validHtml(), {
+      "archive/index.html": `<!doctype html><html><body>
+  <div data-composition-id="old-cut" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <div class="clip" data-start="0" data-duration="5">Old cut</div>
+  </div>
+</body></html>`,
+    });
+    writeFileSync(join(project, ".hyperframesignore"), "compositions/archive/\n");
+
+    const { results } = await lintProject(project);
+
+    expect(results.map((entry) => entry.file)).toEqual(["index.html"]);
+    expect(
+      results.flatMap((entry) => entry.result.findings).map((finding) => finding.code),
+    ).not.toContain("blank_root_with_standalone_composition");
   });
 
   it("treats non-rendering script, style, link, meta, and template children as blank", async () => {
@@ -591,6 +610,32 @@ describe("local script files", () => {
     expect(await registryFindings(projectWithScript("console.log('no timeline')"))).toHaveLength(1);
   });
 
+  it("does not flag a helper file whose timeline the page nests into its registered one", async () => {
+    const project = makeProject(
+      `<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <script src="card.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const host = gsap.timeline({ paused: true });
+    host.add(window.Demo.card().tl, 0);
+    window.__timelines["root"] = host;
+  </script>
+</body></html>`,
+    );
+    writeFileSync(
+      join(project, "card.js"),
+      "window.Demo = { card() { var tl = gsap.timeline(); tl.to('#a', { x: 1 }); return { tl }; } };",
+    );
+
+    const codes = (await lintProject(project)).results
+      .flatMap((entry) => entry.result.findings)
+      .map((finding) => finding.code);
+
+    expect(codes).not.toContain("gsap_timeline_not_registered");
+    expect(codes).not.toContain("missing_timeline_registry");
+  });
+
   it("reads a module script file as a module", async () => {
     const project = projectWithScript(
       'import { gsap } from "gsap";\nwindow.__timelines = window.__timelines || {};\nwindow.__timelines["main"] = gsap.timeline({ paused: true });',
@@ -631,7 +676,7 @@ describe("sub-composition stylesheet links", () => {
   }
 
   async function fontFaceFindings(project: string): Promise<HyperframeLintFinding[]> {
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     return results
       .flatMap((entry) => entry.result.findings)
       .filter((finding) => finding.code === "font_family_without_font_face");
@@ -1350,8 +1395,9 @@ describe("audio-aware project rules", () => {
 
 describe("sub-composition files", () => {
   const sceneFindings = async (project: string) =>
-    (await lintProject(project)).results.find((result) => result.file === "compositions/scene.html")
-      ?.result.findings ?? [];
+    (await lintProject(project, undefined, {}, { includeUnmounted: true })).results.find(
+      (result) => result.file === "compositions/scene.html",
+    )?.result.findings ?? [];
 
   it("resolves a scene's ../assets/ path from its own folder, as preview and render do", async () => {
     const project = makeProject(validHtml(), {
@@ -1392,7 +1438,7 @@ describe("sub-composition files", () => {
       join(project, "styles", "escape.css"),
       ".a { background: url('../../outside.png'); }",
     );
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     const traversal = (file: string) =>
       results
         .find((result) => result.file === file)
@@ -1448,4 +1494,86 @@ describe("a media file whose own name holds # or ?", () => {
     );
     expect(finding?.fixHint).toContain("Add the file");
   });
+});
+
+describe("a page saved as UTF-16", () => {
+  it("lints as the same page saved as UTF-8", async () => {
+    const page = `<!doctype html><html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="5">
+    <h1>Café</h1>
+  </div>
+  <script>window.__timelines["root"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const utf8 = makeProject(page);
+    const utf16 = makeProject(page);
+    writeFileSync(
+      join(utf16, "index.html"),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(page, "utf16le")]),
+    );
+    const codes = async (dir: string) =>
+      (await lintProject(dir)).results.flatMap((r) => r.result.findings.map((f) => f.code)).sort();
+    expect(await codes(utf16)).toEqual(await codes(utf8));
+  });
+});
+
+describe("compositions the entry never mounts", () => {
+  const mounting = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="5"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  const broken =
+    '<div data-composition-id="unused"><section data-composition-id="bare"></section></div>';
+
+  it("are not linted and are named in unmountedCompositions", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+      "nested/also-unused.html": broken,
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toEqual([
+      "index.html",
+      "compositions/used.html",
+    ]);
+    expect(result.unmountedCompositions).toEqual([
+      "compositions/nested/also-unused.html",
+      "compositions/unused.html",
+    ]);
+  });
+
+  it("are linted again with includeUnmounted", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+    });
+
+    const result = await lintProject(project, undefined, {}, { includeUnmounted: true });
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/unused.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+
+  it("follows mounts made by a mounted composition", async () => {
+    const project = makeProject(mounting("compositions/outer.html"), {
+      "outer.html": `<div data-composition-id="scene"><div data-composition-id="inner" data-composition-src="compositions/inner.html"></div></div>`,
+      "inner.html": validHtml("inner"),
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/inner.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+});
+
+it("names the unmounted count in one line", () => {
+  expect(unmountedNotice(1)).toBe(
+    "1 file in compositions/ is not mounted from index.html, so not checked; --include-unmounted adds them.",
+  );
+  expect(unmountedNotice(3)).toContain("3 files in compositions/ are not mounted");
 });

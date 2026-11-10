@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.223",
+  "version": "0.9.30",
   "description": "",
   "repository": {
     "type": "git",
@@ -80,6 +80,12 @@
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
     },
+    "./cache-dir": {
+      "bun": "./src/cacheDir.ts",
+      "node": "./dist/cacheDir.js",
+      "import": "./src/cacheDir.ts",
+      "types": "./src/cacheDir.ts"
+    },
     "./remove-tree": {
       "bun": "./src/removeTree.ts",
       "node": "./dist/removeTree.js",
@@ -139,6 +145,12 @@
       "node": "./dist/studioPreviewMark.js",
       "import": "./src/studioPreviewMark.ts",
       "types": "./src/studioPreviewMark.ts"
+    },
+    "./page-motion-blur": {
+      "bun": "./src/pageMotionBlur.ts",
+      "node": "./dist/pageMotionBlur.js",
+      "import": "./src/pageMotionBlur.ts",
+      "types": "./src/pageMotionBlur.ts"
     },
     "./keyframe-defaults": {
       "bun": "./src/keyframeDefaults.ts",
@@ -662,6 +674,10 @@
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
       },
+      "./cache-dir": {
+        "import": "./dist/cacheDir.js",
+        "types": "./dist/cacheDir.d.ts"
+      },
       "./remove-tree": {
         "import": "./dist/removeTree.js",
         "types": "./dist/removeTree.d.ts"
@@ -701,6 +717,10 @@
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
         "types": "./dist/studioPreviewMark.d.ts"
+      },
+      "./page-motion-blur": {
+        "import": "./dist/pageMotionBlur.js",
+        "types": "./dist/pageMotionBlur.d.ts"
       },
       "./keyframe-defaults": {
         "import": "./dist/keyframeDefaults.js",
