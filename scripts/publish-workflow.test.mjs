@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,13 +133,23 @@ test("stable release tag creation survives retries and rejects a mismatched comm
   }
 });
 
+test("the Lambda handler zip is built apart from the release credentials", () => {
+  const build = config.jobs["lambda-handler-zip"];
+  assert.deepEqual(build.permissions, { contents: "read" });
+  assert.equal(build.environment, undefined);
+  assert.doesNotMatch(JSON.stringify(build), /secrets\./);
+  const buildCheckout = build.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
+  assert.equal(buildCheckout.with["persist-credentials"], false);
+  assert.ok(publish.needs.includes("lambda-handler-zip"));
+});
+
 test("the Lambda handler zip is pinned and attached to the release before npm publish", () => {
   const names = publish.steps.map((step) => step.name);
   const at = (name) => {
     assert.ok(names.includes(name), `missing step ${name}`);
     return names.indexOf(name);
   };
-  assert.ok(at("Build Lambda handler zip") < at("Create GitHub Release"));
+  assert.ok(at("Pin Lambda handler zip") < at("Create GitHub Release"));
   assert.ok(at("Create GitHub Release") < at("Attach Lambda handler zip to release"));
   assert.ok(at("Attach Lambda handler zip to release") < at("Publish packages"));
   const attach = publish.steps[at("Attach Lambda handler zip to release")];
@@ -146,14 +157,19 @@ test("the Lambda handler zip is pinned and attached to the release before npm pu
   assert.doesNotMatch(attach.run, /--clobber/);
 });
 
-test("a retried release reuses the attached handler zip instead of building a new one", () => {
-  const step = publish.steps.find((s) => s.name === "Build Lambda handler zip");
-  const run = (ghExit) => {
+test("the pin step reuses an attached zip and otherwise takes only the built zip's hash", () => {
+  const step = publish.steps.find((s) => s.name === "Pin Lambda handler zip");
+  const builtZip = "built handler zip";
+  const builtSha256 = createHash("sha256").update(builtZip).digest("hex");
+  const run = ({ ghExit, expectedSha256 }) => {
     const root = mkdtempSync(join(tmpdir(), "hyperframes-lambda-zip-step-"));
     try {
       const bin = join(root, "bin");
       mkdirSync(bin);
+      mkdirSync(join(root, "dist", "lambda-handler-build"), { recursive: true });
+      writeFileSync(join(root, "dist", "lambda-handler-build", "handler.zip"), builtZip);
       const log = join(root, "calls.log");
+      writeFileSync(log, "");
       for (const [name, exit] of [
         ["gh", ghExit],
         ["bun", 0],
@@ -172,27 +188,47 @@ test("a retried release reuses the attached handler zip instead of building a ne
           GITHUB_OUTPUT: output,
           VERSION: "9.8.7",
           REPO: "o/r",
+          EXPECTED_SHA256: expectedSha256,
         },
         timeout: 5_000,
       });
-      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-      return { calls: readFileSync(log, "utf8"), output: readFileSync(output, "utf8") };
+      let pinned = null;
+      try {
+        pinned = readFileSync(join(root, "dist", "hyperframes-lambda-handler.zip"), "utf8");
+      } catch {}
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        calls: readFileSync(log, "utf8"),
+        output: readFileSync(output, "utf8"),
+        pinned,
+      };
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   };
 
-  const retried = run(0);
+  const retried = run({ ghExit: 0, expectedSha256: builtSha256 });
+  assert.equal(retried.status, 0, retried.stdout);
   assert.match(
     retried.calls,
     /^gh release download v9\.8\.7 --repo o\/r --pattern hyperframes-lambda-handler\.zip --dir dist$/m,
   );
-  assert.doesNotMatch(retried.calls, /build:zip/);
   assert.match(retried.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
   assert.equal(retried.output, "attached=true\n");
 
-  const fresh = run(1);
-  assert.match(fresh.calls, /^bun run --cwd packages\/aws-lambda build:zip$/m);
+  const fresh = run({ ghExit: 1, expectedSha256: builtSha256 });
+  assert.equal(fresh.status, 0, fresh.stdout);
+  assert.doesNotMatch(fresh.calls, /build:zip/);
   assert.match(fresh.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
   assert.equal(fresh.output, "");
+  assert.equal(fresh.pinned, builtZip);
+
+  for (const expectedSha256 of ["0".repeat(64), ""]) {
+    const rejected = run({ ghExit: 1, expectedSha256 });
+    assert.equal(rejected.status, 1, rejected.stdout);
+    assert.match(rejected.stdout, /::error::Lambda handler zip sha256/);
+    assert.doesNotMatch(rejected.calls, /pin-handler-zip/);
+    assert.equal(rejected.pinned, null);
+  }
 });
