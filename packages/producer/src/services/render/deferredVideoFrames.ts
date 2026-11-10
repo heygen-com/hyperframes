@@ -6,6 +6,7 @@ import {
   type ExtractedFrames,
   extractVideoFramesRange,
   type FrameRange,
+  mediaIdPathSegment,
   runVideoExtractionWithRetry,
   type ShownBox,
   type VideoElement,
@@ -71,7 +72,7 @@ export async function extractDeferredFrames(input: {
   const shown = shownDeferredFrameIndexes(input, input.frames, input.fps);
   return Promise.all(
     deferred.map(async (video) => {
-      const outputDir = join(input.outputRoot, video.videoId);
+      const outputDir = join(input.outputRoot, mediaIdPathSegment(video.videoId));
       const indexes = [...(shown.get(video.videoId) ?? [])].sort((a, b) => a - b);
       if (indexes.length === 0) {
         return { ...video, outputDir, framePaths: new Map<number, string>(), ownedByLookup: false };

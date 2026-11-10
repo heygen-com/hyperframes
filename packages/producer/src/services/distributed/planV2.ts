@@ -30,7 +30,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
-import { createFrameLookupTable, type ExtractedFrames, renameWithRetry } from "@hyperframes/engine";
+import {
+  createFrameLookupTable,
+  type ExtractedFrames,
+  mediaIdPathSegment,
+  renameWithRetry,
+} from "@hyperframes/engine";
 import {
   readPlanRemoteFiles,
   planFileSha256,
@@ -276,7 +281,7 @@ function isExtractionCacheCompleteSentinelPath(path: string): boolean {
 
 function resolveExtractedVideoOutputDir(planDir: string, videoId: string): string {
   const videoRoot = resolve(planDir, "video-frames");
-  const outputDir = resolve(videoRoot, videoId);
+  const outputDir = resolve(videoRoot, mediaIdPathSegment(videoId));
   if (outputDir === videoRoot || !outputDir.startsWith(`${videoRoot}${sep}`)) {
     throw new PlanV2IntegrityError(`unsafe extracted video id: ${JSON.stringify(videoId)}`);
   }

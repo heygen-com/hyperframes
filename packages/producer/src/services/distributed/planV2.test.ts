@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
+import { mediaIdPathSegment } from "@hyperframes/engine";
 import { planFileSha256, recomputePlanHashFromPlanDir } from "../render/stages/freezePlan.js";
 import { canonicalJsonStringify, sha256Hex } from "../render/stages/planHash.js";
 import { chunkAudioSlicePath } from "./chunkAudio.js";
@@ -776,13 +777,13 @@ describe("Plan v2 manifest", () => {
     });
   }
 
-  it("rejects an extracted video identifier that escapes the video-frame root", () => {
+  it("reads an extracted video identifier with parent segments only inside the video-frame root", () => {
     const root = tempPath("hf-plan-v2-unsafe-video-id-");
     const v1 = createV1Plan(root, { video: true, videoId: "../escape" });
+    const frameRoot = join(v1, "video-frames", mediaIdPathSegment("../escape"));
 
-    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(
-      'unsafe extracted video id: "../escape"',
-    );
+    expect(() => createPlanV2FromV1(v1, join(root, "v2"))).toThrow(frameRoot);
+    expect(existsSync(join(v1, "escape"))).toBe(false);
   });
 
   it("falls back to the full source frame pack when video metadata is absent", () => {

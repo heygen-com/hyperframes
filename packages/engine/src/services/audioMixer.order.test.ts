@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -108,3 +108,35 @@ it.each(["flat", "one bus", "two buses"])(
     }
   },
 );
+
+it("keeps intermediate files for an id with parent segments inside the work directory", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-audio-id-path-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "clip.wav"), "RIFF0000WAVE");
+  const workDir = join(dir, "project", "work");
+  const outputs: string[] = [];
+  runFfmpegMock.mockImplementation(async (args: string[]) => {
+    const out = args.at(-1)!;
+    outputs.push(out);
+    writeFileSync(out, "RIFF0000WAVE");
+    return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+  });
+  const element: AudioElement = {
+    id: "../../escaped",
+    src: "clip.wav",
+    type: "audio",
+    start: 0,
+    end: 1,
+    mediaStart: 0,
+    layer: 0,
+    volume: 1,
+  };
+
+  const result = await processCompositionAudio([element], dir, workDir, join(dir, "out.m4a"), 1);
+
+  expect(result.success).toBe(true);
+  const trimmed = outputs.filter((out) => out.endsWith("-trimmed.wav"));
+  expect(trimmed).toHaveLength(1);
+  expect(dirname(trimmed[0]!)).toBe(workDir);
+  expect(existsSync(join(dir, "escaped-trimmed.wav"))).toBe(false);
+});

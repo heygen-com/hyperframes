@@ -83,6 +83,7 @@ import {
 } from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import {
   FRAME_FILENAME_PREFIX,
   gcExtractionCache,
@@ -1317,7 +1318,7 @@ async function extractVideoFramesRangeUnredacted(
   const fps = fpsToNumber(normalizedFps);
   const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
-  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, mediaIdPathSegment(videoId));
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   let metadata: VideoMetadata;
@@ -2571,7 +2572,7 @@ export async function extractAllVideoFrames(
   ): Promise<ExtractedFrames> {
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       const attempted = await runVideoExtractionWithRetry(
         () =>
           extractVideoFramesRange(
@@ -2650,7 +2651,7 @@ export async function extractAllVideoFrames(
     const tailFrames = Math.min(expectedFrames, Math.ceil(fps));
     if (expectedFrames <= tailFrames) return null;
     const deferred = (totalFrames: number): ExtractedFrames => {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       mkdirSync(outputDir, { recursive: true });
       return {
         videoId: work.video.id,
@@ -2694,7 +2695,7 @@ export async function extractAllVideoFrames(
       const totalFrames = firstTailFrame + storedTailFrames;
       return totalFrames <= expectedFrames * 0.6 ? null : deferred(totalFrames);
     }
-    const probeDir = join(options.outputDir, `${work.video.id}.tail-probe`);
+    const probeDir = join(options.outputDir, `${mediaIdPathSegment(work.video.id)}.tail-probe`);
     try {
       const tail = await extractVideoFramesRange(
         work.videoPath,
@@ -2742,7 +2743,7 @@ export async function extractAllVideoFrames(
       return sliceSupersetMember(
         member,
         superset,
-        join(options.outputDir, work.video.id),
+        join(options.outputDir, mediaIdPathSegment(work.video.id)),
         fps,
         configuredFps,
       );

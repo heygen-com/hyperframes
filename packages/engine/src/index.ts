@@ -399,6 +399,8 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
+export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
+
 export {
   NOT_MEDIA_PAYLOAD,
   NotMediaPayloadError,
