@@ -432,15 +432,15 @@ export function privateMediaDir(parent: string): string {
     stat.isDirectory() &&
     (process.platform === "win32" ||
       (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
-  return ours ? dir : createStagingDir(parent, "hyperframes-snapshot-media-");
+  if (ours) return dir;
+  const staging = createStagingDir(parent, "hyperframes-snapshot-media-");
+  process.once("exit", () => rmSync(staging, { recursive: true, force: true }));
+  return staging;
 }
 
 let remoteVideoDir: string | undefined;
 
-const refusedByDownloadPolicy = (error: unknown): boolean =>
-  typeof error === "object" && error !== null && "kind" in error && error.kind === "http_rejected";
-
-/** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
+/** A local copy of a remote clip, or null: FFmpeg never gets the URL, since it would follow redirects unchecked. */
 export async function remoteVideoInput(
   url: string,
   download = downloadToTemp,
@@ -453,8 +453,8 @@ export async function remoteVideoInput(
   try {
     remoteVideoDir ??= privateMediaDir(tmpdir());
     return await download(url, remoteVideoDir, FFMPEG_EXTRACT_TIMEOUT_MS);
-  } catch (error) {
-    return refusedByDownloadPolicy(error) ? null : url;
+  } catch {
+    return null;
   }
 }
 
@@ -1207,8 +1207,13 @@ export async function captureSnapshots(
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
       const remoteCopies = new Map<string, Promise<string | null>>();
+      const leaveOutUnreadable = (href: string) => (path: string | null) => {
+        if (!path) warnings.push(`Remote video from ${new URL(href).host} could not be downloaded`);
+        return path;
+      };
       const localCopy = (href: string): Promise<string | null> => {
-        const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
+        const copy =
+          remoteCopies.get(href) ?? remoteVideoInput(href).then(leaveOutUnreadable(href));
         remoteCopies.set(href, copy);
         return copy;
       };
@@ -1326,7 +1331,7 @@ export async function captureSnapshots(
             active,
             VIDEO_FRAME_EXTRACT_CONCURRENCY,
             async (v) => {
-              // Prefer the project-local file; remote http(s) clips go to FFmpeg directly,
+              // Prefer the project-local file; remote http(s) clips go to FFmpeg as a downloaded copy,
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
@@ -1339,7 +1344,7 @@ export async function captureSnapshots(
                   const url = new URL(v.src);
                   if (url.protocol === "http:" || url.protocol === "https:") {
                     ffmpegInput = await localCopy(url.href);
-                    inputIsLocal = ffmpegInput !== url.href;
+                    inputIsLocal = true;
                   }
                 } catch {
                   /* unresolvable src (e.g. blob:, data:) — skip */

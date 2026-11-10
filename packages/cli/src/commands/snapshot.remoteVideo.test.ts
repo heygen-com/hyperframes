@@ -25,13 +25,13 @@ describe("remoteVideoInput", () => {
     expect(download.mock.calls[0]).toEqual([url, expect.any(String), 30_000]);
   });
 
-  it("keeps the URL when the clip cannot be downloaded", async () => {
+  it("gives FFmpeg nothing when the clip cannot be downloaded, so FFmpeg never follows the host's redirects", async () => {
     const download = vi.fn(
       async (_url: string, _dir: string, _timeoutMs?: number): Promise<string> =>
         Promise.reject(new Error("socket hang up")),
     );
 
-    await expect(remoteVideoInput(url, download)).resolves.toBe(url);
+    await expect(remoteVideoInput(url, download)).resolves.toBeNull();
   });
 
   it.each([
