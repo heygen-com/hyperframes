@@ -47,7 +47,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAsCommand } from "./entrypoint.ts";
 // Import from source, like every other script here: bun workspace linking does
@@ -131,8 +131,7 @@ function needsHosting(file: FileTarget): boolean {
 function itemSource(itemName: string, itemDir: string, path: string): string {
   const root = realpathSync(itemDir);
   const source = resolve(root, path);
-  const rel = relative(root, source);
-  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+  if (!source.startsWith(root + sep)) {
     throw new Error(`${itemName}: files[] declares "${path}", which is outside the item.`);
   }
   if (realpathSync(source) !== source) {
