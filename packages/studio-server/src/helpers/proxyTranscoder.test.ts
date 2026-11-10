@@ -1080,7 +1080,7 @@ describe("resolveProxy", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "neither writes nor sweeps a .transcode-cache that links outside the project",
+    "still makes a copy in a .transcode-cache that links outside the project, but never sweeps it",
     async () => {
       const { spawn, calls } = createSpawnSpy();
       const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
@@ -1097,11 +1097,12 @@ describe("resolveProxy", () => {
       utimesSync(stale, longAgo, longAgo);
       symlinkSync(outside, join(projectDir, ".transcode-cache"));
 
-      const [result] = await resolveProxies(projectDir, [{ sourcePath, variant: "h264" }]);
+      const batch = resolveProxies(projectDir, [{ sourcePath, variant: "h264" }]);
+      await answerUntilIdle(calls, (call) => succeed(call));
+      const [result] = await batch;
 
-      expect(result?.status).toBe("rejected");
-      expect(calls).toHaveLength(0);
-      expect(readdirSync(outside)).toEqual([basename(stale)]);
+      expect(result?.status).toBe("fulfilled");
+      expect(existsSync(stale)).toBe(true);
       rmSync(outside, { recursive: true, force: true });
     },
   );
