@@ -73,7 +73,10 @@ export default defineCommand({
       await presentResult(result, input, Boolean(args.json));
     } catch (error) {
       const failure = shareError(error);
-      if (args.json) console.log(JSON.stringify(jsonFailure(failure.code, failure.message)));
+      if (args.json)
+        console.log(
+          JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
+        );
       else console.error(failure.message);
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }

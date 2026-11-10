@@ -1,3 +1,4 @@
+import { ReviewFailed } from "@hyperframes/share";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
@@ -96,3 +97,22 @@ it("deduplicates progress and terminates each message before the friendly error"
   ]);
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
 });
+
+it.each(["owner@example.com", "another@example.com"])(
+  "keeps the owner error code stable for %s",
+  async (owner) => {
+    mocks.run.mockRejectedValue(new ReviewFailed(403, `owner_signed_out:${owner}`));
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--status", "--json"] });
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(out).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(out.mock.calls[0]?.[0]))).toEqual({
+      ok: false,
+      error: {
+        code: "owner_signed_out",
+        owner,
+        message: `This review belongs to ${owner}. Switch to that account to manage it.`,
+      },
+    });
+  },
+);

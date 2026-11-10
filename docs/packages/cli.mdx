@@ -3095,6 +3095,10 @@ failed update; `url` remains null. Use `--update` to explicitly retry with the
 current project. Signing into a different account while a share is running
 stops that operation; start it again after sign-in.
 
+When another account owns the review, JSON errors use the fixed code
+`owner_signed_out` with the owner email in `error.owner`. The human-readable
+message also identifies the account to sign into.
+
 The standard production CLI includes exact trusted storage origins for review
 videos and editable project sources; no upload configuration is required.
 Development environments, custom API/OAuth endpoints or clients, and custom
