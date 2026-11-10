@@ -179,16 +179,17 @@ export function giveBackWhenDue(el: HTMLMediaElement): void {
   el.setAttribute("src", written);
 }
 
-function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean): void {
+function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean, opened: () => void): void {
   const src = el.getAttribute("src");
   if (!isWebKit() || !inPlayerFrame(document) || !src) return;
   void bytesOfSource(src).then((bytes) => {
     if (bytes === null || bytes < LONG_SOURCE_BYTES || el.getAttribute("src") !== src) return;
-    // preload none: the runtime has not yet asked for this clip, whatever WebKit read of it at parse.
-    const unclaimed = later && el.preload === "none";
-    if (unclaimed && !src.includes("#") && !el.loop && !el.querySelector("source"))
-      holdUntilDue(el);
-    else openAtInPoint(el);
+    // One WebKit began reading at parse opens at its in-point instead: its metadata then costs little.
+    const idle = el.preload === "none" && el.networkState !== 2;
+    if (later && idle && !src.includes("#") && !el.loop && !el.querySelector("source"))
+      return holdUntilDue(el);
+    openAtInPoint(el);
+    opened();
   });
 }
 
@@ -205,9 +206,10 @@ export function deferMediaUntilDue(): void {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
     if (start == null || !lengthIsAuthored(el)) return;
     const media = el as HTMLMediaElement;
+    const authoredPreload = media.preload;
     const later = startInFilm(el) > 0;
     if (later) media.preload = "none";
-    openLongSourceAtInPoint(media, later);
+    openLongSourceAtInPoint(media, later, () => (media.preload = authoredPreload));
   };
   win.__hfMediaDeferral = new MutationObserver((records) => {
     const startInFilm = createRuntimeStartTimeResolver({}).resolveMediaStartForElement;

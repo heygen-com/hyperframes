@@ -334,10 +334,11 @@ describe("a clip of a long file opening at its in-point on Safari", () => {
     expect(v.getAttribute("src")).toBe(`${authored}#t=30`);
   });
 
-  it("holds a later clip WebKit already began reading when it parsed", async () => {
+  it("opens a later clip WebKit already began reading at its in-point, and gives its preload back", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "networkState", "get").mockReturnValue(2);
     const v = await added(later());
-    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+    await vi.waitFor(() => expect(opened(v)).toBe(true));
+    expect(v.preload).not.toBe("none");
   });
 
   it("holds a later clip again when it is released after playing", async () => {
