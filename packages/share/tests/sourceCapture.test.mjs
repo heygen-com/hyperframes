@@ -272,9 +272,9 @@ test("explicit exclusions remove scratch files from capture and render fingerpri
 test("ignore rules fail closed for unsupported patterns, entrypoint exclusions, and symlinks", async (t) => {
   const root = await project({ "index.html": "<html></html>" });
   t.after(() => rm(root, { recursive: true, force: true }));
-  for (const rule of ["index.html", "../secret", "*.json", "!out.json"]) {
+  for (const rule of ["index.html", "../secret", "*.html", "**/*.json", "!out.json"]) {
     await writeFile(join(root, ".hyperframesignore"), rule);
-    await assert.rejects(captureProject(root), /literal project-relative/);
+    await assert.rejects(captureProject(root), /project-relative/);
   }
   await rm(join(root, ".hyperframesignore"));
   await symlink(join(root, "index.html"), join(root, ".hyperframesignore"));
@@ -293,4 +293,21 @@ test("ignore configuration rejects oversized files, directories and dangling sym
   await rm(file, { recursive: true });
   await symlink(join(root, "missing"), file);
   await assert.rejects(captureProject(root), /regular file/);
+});
+
+test("scratch files and wildcard exclusions do not change the snapshot", async (t) => {
+  const { projectFingerprint } = await import("../src/projectSnapshot.mjs");
+  const root = await project({
+    "index.html": "<html></html>",
+    ".hyperframesignore": "*.scratch\n",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const before = await projectFingerprint(root);
+  const first = captured(await captureProject(root));
+  await writeFile(join(root, "other.log"), "diagnostic");
+  await writeFile(join(root, "notes.scratch"), "temporary");
+  assert.equal(await projectFingerprint(root), before);
+  assert.deepEqual(captured(await captureProject(root)).manifest, first.manifest);
+  await writeFile(join(root, "data.json"), "{}");
+  assert.notEqual(await projectFingerprint(root), before);
 });

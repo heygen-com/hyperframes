@@ -1,4 +1,4 @@
-import { ReviewFailed } from "@hyperframes/share";
+import { SourceIgnoreError, ReviewFailed } from "@hyperframes/share";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
@@ -131,5 +131,15 @@ it("reports an unchanged update in human and JSON output", async () => {
   expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
     ok: true,
     upToDate: true,
+  });
+});
+
+it("reports a specific code for an invalid ignore file", async () => {
+  mocks.run.mockRejectedValue(new SourceIgnoreError("Invalid ignore pattern"));
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--public", "--json"] });
+  expect(JSON.parse(String(out.mock.calls[0]?.[0]))).toMatchObject({
+    ok: false,
+    error: { code: "invalid_source_ignore" },
   });
 });

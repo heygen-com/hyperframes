@@ -3074,7 +3074,9 @@ audience flag (for example, `share --public`) changes an existing share’s audi
 without uploading a version, just like Studio’s audience selector. Without an
 audience flag, access stays unchanged. Use
 `--update` to publish a new rendered version. If nothing changed, the command says
-“Already up to date” (`upToDate: true` in JSON). The previous ready version remains
+“Already up to date” (`upToDate: true` in JSON). A successful new version
+sets `updated: true`; Studio confirms “Shared version updated.” Status reads
+omit `upToDate` because they do not render or compare all inputs. The previous ready version remains
 visible while an update processes. Interrupted first uploads can resume when
 the source is unchanged; if it changed, explicitly use `--update`. If the
 project's review or audience changes while rendering, check the current share
@@ -3114,3 +3116,6 @@ OAuth client. Storage URLs outside the selected origins are rejected.
 
 Existing `/p/...` publications remain separate and reachable. Sharing does not
 convert a legacy publication or change its URL, visibility or ownership.
+
+Share renders keep warnings and failures visible. Routine compiler, browser-launch,
+and runtime-FPS diagnostics require `HF_DEBUG_RENDER=1`.

@@ -9,6 +9,7 @@ export function presentShare(value: ShareState): LocalShareState {
     value.share?.sharingState?.state === "subscription_required";
   return {
     upToDate: value.upToDate,
+    updated: value.updated,
     state: presentedState(value, Boolean(held)),
     url: held ? null : (value.url ?? value.previousUrl),
     failure: value.state === "failed" ? value.version.failure : null,

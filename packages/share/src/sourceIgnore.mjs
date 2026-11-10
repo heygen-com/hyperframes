@@ -3,12 +3,19 @@ import { constants } from "node:fs";
 import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 
+export class SourceIgnoreError extends Error {
+  code = "invalid_source_ignore";
+}
+const scratch = (/** @type {string} */ path) => /(?:^|\/)[^/]+\.(?:log|swp)$/.test(path);
+
 /** Explicit, project-relative exclusions. This only removes files; it cannot override safety exclusions.
  * @param {string} root @returns {Promise<(path: string) => boolean>} */
 export async function readSourceIgnore(root) {
   const file = join(root, ".hyperframesignore");
   const invalid = () =>
-    new Error(".hyperframesignore must be a regular file inside the project, smaller than 64 KiB.");
+    new SourceIgnoreError(
+      ".hyperframesignore must be a regular file inside the project, smaller than 64 KiB.",
+    );
   const handle = await open(
     file,
     constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
@@ -22,7 +29,7 @@ export async function readSourceIgnore(root) {
     if (named) throw invalid();
     return null;
   });
-  if (!handle) return () => false;
+  if (!handle) return scratch;
   let text;
   try {
     // Validate the opened descriptor before reading. lstat additionally rejects links on
@@ -52,18 +59,34 @@ export async function readSourceIgnore(root) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"));
-  const entries = paths.map((entry) => {
-    const path = entry.replace(/\/$/, "");
-    if (
-      path === "index.html" ||
-      /[\\*?![\]:]/.test(path) ||
-      path.includes("\0") ||
-      path.split("/").some((part) => !part || part === "." || part === "..")
-    )
-      throw new Error(
-        ".hyperframesignore accepts literal project-relative file or folder paths, one per line. Wildcards and excluding index.html are not supported.",
-      );
-    return path;
-  });
-  return (path) => entries.some((entry) => path === entry || path.startsWith(`${entry}/`));
+  const entries = paths.map(ignorePattern);
+  return (path) => scratch(path) || entries.some((entry) => entry.test(path));
+}
+
+/** @param {string} entry */
+function ignorePattern(entry) {
+  const path = entry.replace(/\/$/, "");
+  const invalid = () =>
+    new SourceIgnoreError(
+      ".hyperframesignore accepts project-relative paths or patterns with one * wildcard. Negation, traversal, and excluding index.html are not supported.",
+    );
+  if (!validPatternPath(path)) throw invalid();
+  const escaped = path
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("[^/]*");
+  const prefix = path.includes("*") && !path.includes("/") ? "(?:^|/)" : "^";
+  const pattern = new RegExp(`${prefix}${escaped}(?:/|$)`);
+  if (pattern.test("index.html")) throw invalid();
+  return pattern;
+}
+
+/** @param {string} path */
+function validPatternPath(path) {
+  return (
+    !/[\\?![\]:]/.test(path) &&
+    !path.includes("\0") &&
+    !path.split("/").some((part) => !part || part === "." || part === "..") &&
+    path.split("*").length <= 2
+  );
 }

@@ -3068,7 +3068,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const text = msg.text();
     const locationUrl = msg.location()?.url ?? "";
     const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
-    if (!diagnostic.suppressHostLog && !loggedEarlierInRender(session, text)) {
+    if (
+      !diagnostic.suppressHostLog &&
+      !quietRuntimeDetail(text) &&
+      !loggedEarlierInRender(session, text)
+    ) {
       console.error(diagnostic.text);
     }
     appendBrowserDiagnostic(session, diagnostic.text);
@@ -5936,4 +5940,8 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     deNcprFallbacks: ncprFallbacks,
     deFrameTimeouts: session.deFrameTimeouts ?? 0,
   };
+}
+
+function quietRuntimeDetail(text: string): boolean {
+  return process.env.HF_DEBUG_RENDER !== "1" && text.startsWith("[hyperframes] render runtime fps");
 }

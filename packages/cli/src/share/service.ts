@@ -64,7 +64,6 @@ async function readStatus(
   const failed = hasFailedVersion(version);
   const ready = Boolean(activeUrl && latest && !processing && !failed);
   return {
-    upToDate: false,
     share,
     version,
     pending,
@@ -179,7 +178,7 @@ export function createShareService(
   const dir = bindCliShareProject(projectPath);
   const auth = createShareAccess(options.pinIdentity);
   const client = reviewClient(auth);
-  const status = async (expectedProjectId?: string) => {
+  const status = async (expectedProjectId?: string): Promise<ShareState> => {
     await auth.access();
     return readStatus(dir, client, expectedProjectId);
   };
@@ -220,6 +219,7 @@ export function createShareService(
     return {
       ...result,
       upToDate: isUnchangedUpdate(input, added, result),
+      updated: input.action === "update" && added,
     };
   };
   const uploadTarget = async (current: ReviewShare | null, input: ShareAction, space?: string) => {
@@ -251,7 +251,7 @@ export function createShareService(
       audience: target.audience,
     });
   };
-  const mutate = async (input: ShareAction, attempt: ShareAttempt) => {
+  const mutate = async (input: ShareAction, attempt: ShareAttempt): Promise<ShareState> => {
     await auth.access();
     attempt.authenticated();
     let current = await readStatus(dir, client, undefined, attempt.recover);
@@ -312,7 +312,10 @@ export function createShareService(
   };
 }
 export type ShareService = ReturnType<typeof createShareService>;
-export type ShareState = Awaited<ReturnType<typeof readStatus>>;
+export type ShareState = Awaited<ReturnType<typeof readStatus>> & {
+  upToDate?: boolean;
+  updated?: boolean;
+};
 
 function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): boolean {
   return Boolean(version.failure && !version.held);
