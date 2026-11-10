@@ -13,6 +13,7 @@ import {
 } from "@hyperframes/core/compiler";
 import { findStartTags, isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
+import { resolveWithinProject } from "@hyperframes/core/safe-path";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
 
@@ -273,8 +274,8 @@ export function buildSubCompositionHtml(
   rawOverride?: string,
   gsapBaseUrl?: string,
 ): string | null {
-  const compFile = join(projectDir, compPath);
-  if (!existsSync(compFile)) return null;
+  const compFile = resolveWithinProject(projectDir, compPath);
+  if (!compFile || !existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
   // directly, so the build uses ids minted from the raw file, which is never
@@ -332,10 +333,11 @@ export function buildSubCompositionHtml(
   rewrittenContent = tagRootCompositionFile(rewrittenContent, compPath);
 
   // Use the project's index.html <head> to preserve all dependencies
-  const indexPath = join(projectDir, "index.html");
+  const indexPath = resolveWithinProject(projectDir, "index.html");
   let headContent = "";
 
-  if (existsSync(indexPath)) headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
+  if (indexPath && existsSync(indexPath))
+    headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
 
   // Inject <base> for relative asset resolution (before other tags)
   if (baseHref && !hasBaseElement(headContent)) {
