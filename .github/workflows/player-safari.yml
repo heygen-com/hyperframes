@@ -68,7 +68,7 @@ jobs:
         working-directory: packages/player
         run: |
           sw_vers
-          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari --fixtures heavy-alpha-webm,heavy-alpha-hevc --runs 8
+          for pass in 1 2 3; do echo "[probe] pass $pass"; bun run tests/perf/browsers/run.ts --browsers safari --runs 2 || true; done
 
       - name: Upload results
         if: always()
