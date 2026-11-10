@@ -1074,7 +1074,6 @@ export async function renderChunk(
                 verifyFirstSession:
                   forceScreenshot || !verifyInWorker ? undefined : verifyFirstWorker,
               }),
-            // Chunks keep the fixed first-frame window: a multi-worker chunk measures no start-up before it captures.
             { stall: frameStallRule(job, framesInChunk, undefined) },
           ).catch(async (captureError: unknown) => {
             await overlap.current?.abort();
