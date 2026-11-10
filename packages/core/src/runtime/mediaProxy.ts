@@ -763,24 +763,7 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
   if (el.videoWidth !== 0) return;
-  const src = currentSrcValue(el);
-  if (swappedElements.has(el)) {
-    emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
-    return;
-  }
-  const map = window.__HF_MEDIA_CODEC_MAP__;
-  if (!map) return;
-  const key = deriveCodecMapKey(el);
-  if (key === null) {
-    emitUnavailableDiagnostic(el, "cross_origin", src);
-    return;
-  }
-  const entry = lookupCodecMapEntry(key, map);
-  if (entry && !entry.browserHostile) {
-    emitUnavailableDiagnostic(el, "browser_safe_codec", src);
-    return;
-  }
-  swapToProxy(el, entry, "reactive");
+  swapOrDiagnose(el, "reactive");
 }
 
 /**
@@ -794,6 +777,10 @@ export function handleMetadataForProxy(el: HTMLMediaElement): void {
 export function handleErrorForProxy(el: HTMLMediaElement): void {
   if (isRenderMode(el)) return;
   if (!isVideoElement(el)) return;
+  swapOrDiagnose(el, "tertiary");
+}
+
+function swapOrDiagnose(el: HTMLMediaElement, trigger: ProxyTrigger): void {
   const src = currentSrcValue(el);
   if (swappedElements.has(el)) {
     emitUnavailableDiagnostic(el, "proxy_playback_failed", src);
@@ -811,5 +798,5 @@ export function handleErrorForProxy(el: HTMLMediaElement): void {
     emitUnavailableDiagnostic(el, "browser_safe_codec", src);
     return;
   }
-  swapToProxy(el, entry, "tertiary");
+  swapToProxy(el, entry, trigger);
 }

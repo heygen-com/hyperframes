@@ -23,7 +23,7 @@ export function holdsWhenIdle(el: Element): boolean {
 }
 
 /** True while the src is still the one the runtime wrote: a script or binding that sets another ends it. */
-export function isOpenedAtInPoint(el: Element): boolean {
+function isOpenedAtInPoint(el: Element): boolean {
   const record = openedAtInPoint.get(el);
   return record !== undefined && record.written === el.getAttribute("src");
 }

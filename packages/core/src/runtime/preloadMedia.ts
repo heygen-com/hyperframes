@@ -179,7 +179,7 @@ export function giveBackWhenDue(el: HTMLMediaElement): void {
   el.setAttribute("src", written);
 }
 
-export function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean): void {
+function openLongSourceAtInPoint(el: HTMLMediaElement, later: boolean): void {
   const src = el.getAttribute("src");
   if (!isWebKit() || !inPlayerFrame(document) || !src) return;
   void bytesOfSource(src).then((bytes) => {
