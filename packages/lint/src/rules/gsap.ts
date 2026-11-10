@@ -1509,6 +1509,39 @@ export const gsapRules: LintRule<LintContext>[] = [
         /\b_gsScope\b/.test(t),
     );
 
+    if (usesGsap && hasGsapScript && !hasInlineGsap && !canInheritGsapFromHost) {
+      // A classic script runs where it sits, so GSAP must load earlier: a deferred, async or later tag is too late.
+      const classic = (s: { attrs: string }) => {
+        const tag = `<script ${s.attrs}>`;
+        return (
+          (readDecodedAttr(tag, "type") ?? "").toLowerCase() !== "module" &&
+          readDecodedAttr(tag, "defer") === null &&
+          readDecodedAttr(tag, "async") === null
+        );
+      };
+      // defer and async do nothing on an inline script; only a module waits.
+      const firstUse = scripts.find(
+        (s) =>
+          !/\bsrc\s*=/.test(s.attrs) &&
+          (readDecodedAttr(`<script ${s.attrs}>`, "type") ?? "").toLowerCase() !== "module" &&
+          /gsap\.(to|from|fromTo|timeline|set|registerPlugin)\b/.test(s.content),
+      );
+      const firstGsap = scripts.find(
+        (s) => classic(s) && isGsapCoreSrc(readAttr(`<script ${s.attrs}>`, "src") || ""),
+      );
+      if (firstUse && (!firstGsap || firstGsap.index > firstUse.index)) {
+        return [
+          {
+            code: "gsap_loaded_after_use",
+            severity: "error",
+            message:
+              "A script calls gsap before the GSAP script has run, so gsap is not there yet and its timeline never registers.",
+            fixHint:
+              "Move the GSAP <script src> above the first script that uses gsap, without defer or async; the <head> is safest.",
+          },
+        ];
+      }
+    }
     if (!usesGsap || hasGsapScript || hasInlineGsap || canInheritGsapFromHost) return [];
     return [
       {
