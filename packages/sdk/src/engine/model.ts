@@ -301,16 +301,6 @@ export function getElementStyles(el: Element): Record<string, string> {
 }
 
 export function setElementStyles(el: Element, updates: Record<string, string | null>): void {
-  // Patch the authored declaration list instead of rebuilding it from the
-  // collapsed property map (#6267). A duplicate declaration — an earlier
-  // `color: red !important` followed by `color: blue` — is what the browser
-  // renders from, and parseStyleAttr's last-wins map drops it, so rebuilding
-  // silently changed the element's color during an unrelated edit.
-  // Declarations the update does not name keep their value, priority, position
-  // and spacing. A named property is rewritten at its first declaration (as
-  // CSSOM setProperty does): the set value replaces it without priority, later
-  // duplicates of the same property are dropped, and a property the attribute
-  // did not declare is appended at the end.
   const updatesByCamel = new Map(Object.entries(updates).map(([p, v]) => [toCamel(p), v] as const));
   const declared = new Set<string>();
   const kept = splitStyleDeclarations(el.getAttribute("style") ?? "")
