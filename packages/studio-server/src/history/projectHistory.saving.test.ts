@@ -4,7 +4,7 @@ import { open as openFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fileContentVersion, hashOfVersion } from "../helpers/fileVersion";
+import { fileContentVersion, hashOfVersion, recordFileWriteReceipt } from "../helpers/fileVersion";
 import { SETTLE_MS } from "./blobStore";
 import { START, type HistoryWho } from "./historyLog";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
@@ -171,5 +171,38 @@ describe("a file still being written when the history first opens", () => {
     expect(history.list()).toEqual([]);
     await history.step("back", you);
     expect(existsSync(media)).toBe(true);
+  });
+
+  it("waits for that first copy when claimed, so the claim keeps the edit and undo restores the copy", async () => {
+    const projectDir = tempDir("hf-history-project-");
+    const historyRoot = tempDir("hf-history-root-");
+    const media = join(projectDir, "media.txt");
+    writeFileSync(media, "recorded");
+    changing.set("media.txt", 2);
+    const history = await openProjectHistory({ projectDir, historyRoot });
+    cleanup.push(() => history.close());
+    writeFileSync(media, "edited");
+    recordFileWriteReceipt(media, {
+      path: "media.txt",
+      version: fileContentVersion("edited"),
+      writeToken: "studio",
+      overwrote: "recorded",
+    });
+    const edit = await history.claim(you, "Edited", ["media.txt"]);
+    expect(history.peek(START)).toHaveProperty("media.txt");
+    expect(history.list().map((entry) => entry.label)).toEqual(["Edited"]);
+    expect((await history.undo(edit!.id, { who: you })).ok).toBe(true);
+    expect(readFileSync(media, "utf-8")).toBe("recorded");
+  });
+
+  it("holds a claim for one retry only, when the file is still changing after it", async () => {
+    const projectDir = tempDir("hf-history-project-");
+    const historyRoot = tempDir("hf-history-root-");
+    writeFileSync(join(projectDir, "media.txt"), "recorded");
+    changing.set("media.txt", 4);
+    const history = await openProjectHistory({ projectDir, historyRoot });
+    cleanup.push(() => history.close());
+    expect(await history.claim(you, "Edited", ["media.txt"])).toBeNull();
+    expect(history.peek(START)).not.toHaveProperty("media.txt");
   });
 });

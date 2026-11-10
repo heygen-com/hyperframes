@@ -216,6 +216,13 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
 type Copied = { hash: string } | "gone" | "changing";
 const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
+/** Owed until a whole copy is recorded, the file is gone or history closes; retryNow waits for a fresh try. */
+interface Adoption {
+  firstTry: Promise<unknown>;
+  ended: Promise<void>;
+  retryNow(): Promise<void>;
+}
+
 const FIRST_COPY_SLOTS_IN_PROCESS = 4;
 let firstCopiesRunning = 0;
 const firstCopiesWaiting: (() => void)[] = [];
@@ -394,7 +401,7 @@ class Engine {
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
-  adopting = new Map<string, Promise<void>>();
+  adopting = new Map<string, Adoption>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -614,10 +621,11 @@ class Engine {
   }
 
   adoptMediaInBackground(files: ListedFile[], sweptAt: number): void {
-    let copied = Promise.resolve();
+    let turn: Promise<unknown> = Promise.resolve();
     for (const file of files) {
-      copied = copied.then(() => this.adopt(file, sweptAt));
-      this.adopting.set(file.path, copied);
+      const adoption = this.adopt(file, sweptAt, turn);
+      turn = adoption.firstTry;
+      this.adopting.set(file.path, adoption);
     }
     this.saveAdopting();
   }
@@ -629,30 +637,56 @@ class Engine {
     replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
   }
 
-  async adopt(file: ListedFile, sweptAt: number, tries = 0) {
+  /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
+  adopt(file: ListedFile, sweptAt: number, turn: Promise<unknown>): Adoption {
+    let asked: Array<() => void> = [];
+    let wake = () => {};
+    const tryOnce = async () => {
+      const served = asked;
+      asked = [];
+      const tried = await this.tryAdopting(file, sweptAt);
+      for (const answer of served) answer();
+      return tried === "over";
+    };
+    const firstTry = turn.then(tryOnce);
+    const ended = firstTry.then(async (done) => {
+      for (let tries = 1; !done && !this.closing; tries += 1) {
+        const ms = Math.min(SETTLE_MS * 2 ** tries, ADOPT_RETRY_AT_MOST_MS);
+        if (!asked.length)
+          await new Promise<void>((retry) => {
+            const timer = setTimeout(retry, ms);
+            timer.unref?.();
+            wake = () => {
+              clearTimeout(timer);
+              retry();
+            };
+          });
+        done = this.closing !== undefined || (await tryOnce());
+      }
+    });
+    const retryNow = () => {
+      const next = new Promise<void>((answer) => asked.push(answer));
+      wake();
+      return Promise.race([ended, next]);
+    };
+    return { firstTry, ended, retryNow };
+  }
+
+  async tryAdopting(file: ListedFile, sweptAt: number): Promise<"over" | "changing"> {
     try {
-      if (this.whereFolder() !== "here") return;
+      if (this.whereFolder() !== "here") return "over";
       const copied = await this.storeIfPresent(file.path);
-      await this.queue(async () => {
+      return await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
-        if ((await this.recordAdopted(file, sweptAt, copied)) === "changing")
-          return this.adoptLater(file, sweptAt, tries + 1);
+        if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
         this.adopting.delete(file.path);
         this.saveAdopting();
+        return "over";
       });
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
+      return "over";
     }
-  }
-
-  /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
-  adoptLater(file: ListedFile, sweptAt: number, tries: number): void {
-    if (this.closing) return;
-    const timer = setTimeout(
-      () => void this.adopt(file, sweptAt, tries),
-      Math.min(SETTLE_MS * 2 ** tries, ADOPT_RETRY_AT_MOST_MS),
-    );
-    timer.unref?.();
   }
 
   async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
@@ -1376,7 +1410,7 @@ class Engine {
           options.exclusive === true,
         ),
       claim: async (who, label, paths, options = {}) => {
-        await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))));
+        await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
         return this.queue(() => this.claimNow(who, label, paths, options));
       },
       noteChange: (path) => {
@@ -1447,7 +1481,9 @@ class Engine {
       close: () =>
         (this.closing ??= (async () => {
           // A copy cut short would leave its media out of the baseline, so a change made while closed is lost.
-          await Promise.all(this.adopting.values());
+          const owed = [...this.adopting.values()];
+          for (const adoption of owed) void adoption.retryNow();
+          await Promise.all(owed.map((adoption) => adoption.ended));
           if (this.notedTimer) clearTimeout(this.notedTimer);
           this.stopHearing?.();
           const settled = this.queue(() => this.settleAll());
