@@ -1,5 +1,6 @@
 import {
   DEFAULT_CONFIG,
+  assertPublicHttpsUrl,
   buildZeroDurationDiagnostic,
   downloadToTemp,
   evaluateHfDiagnostic,
@@ -44,6 +45,7 @@ import {
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -420,14 +422,38 @@ const processStderr = (error: unknown) =>
     ? error.stderr
     : "";
 
-const REMOTE_VIDEO_DIR = join(tmpdir(), "hyperframes-snapshot-media");
+/** `parent`'s folder for remote clips kept across runs, or a fresh one when that folder is not this user's alone. */
+export function privateMediaDir(parent: string): string {
+  const dir = join(parent, `hyperframes-snapshot-media-${process.getuid?.() ?? "u"}`);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  const ours =
+    stat.isDirectory() &&
+    (process.platform === "win32" ||
+      (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
+  return ours ? dir : mkdtempSync(join(parent, "hyperframes-snapshot-media-"));
+}
+
+let remoteVideoDir: string | undefined;
+
+const refusedByDownloadPolicy = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "kind" in error && error.kind === "http_rejected";
 
 /** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
-export async function remoteVideoInput(url: string, download = downloadToTemp): Promise<string> {
+export async function remoteVideoInput(
+  url: string,
+  download = downloadToTemp,
+): Promise<string | null> {
   try {
-    return await download(url, REMOTE_VIDEO_DIR, FFMPEG_EXTRACT_TIMEOUT_MS);
+    assertPublicHttpsUrl(url);
   } catch {
-    return url;
+    return null;
+  }
+  try {
+    remoteVideoDir ??= privateMediaDir(tmpdir());
+    return await download(url, remoteVideoDir, FFMPEG_EXTRACT_TIMEOUT_MS);
+  } catch (error) {
+    return refusedByDownloadPolicy(error) ? null : url;
   }
 }
 
@@ -1179,8 +1205,8 @@ export async function captureSnapshots(
         );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
-      const remoteCopies = new Map<string, Promise<string>>();
-      const localCopy = (href: string): Promise<string> => {
+      const remoteCopies = new Map<string, Promise<string | null>>();
+      const localCopy = (href: string): Promise<string | null> => {
         const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
         remoteCopies.set(href, copy);
         return copy;
