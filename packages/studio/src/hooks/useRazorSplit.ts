@@ -9,6 +9,7 @@ import { isLinkedSelectionOn } from "../utils/linkedClipPreferences";
 import { buildAtomicCutIntents, runAtomicCutTransaction } from "../utils/razorSplitTransaction";
 import type { RecordEditInput } from "./timelineEditingHelpers";
 import { useFreezeFrame } from "./useFreezeFrame";
+import { countOf } from "../utils/countOf";
 
 interface UseRazorSplitOptions {
   projectId: string | null;
@@ -138,7 +139,10 @@ export function useRazorSplit({
         const result = await runCut(splittable, splitTime, "all");
         if (!result) return;
         if (result.syncFailed) return;
-        showToast(`Split ${result.splitCount} clips at ${splitTime.toFixed(2)}s`, "info");
+        showToast(
+          `Split ${countOf(result.splitCount, "clip")} at ${splitTime.toFixed(2)}s`,
+          "info",
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to split clips";
         showToast(message, "error");
