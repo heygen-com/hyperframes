@@ -1,13 +1,32 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion, hashOfVersion } from "../helpers/fileVersion";
 import { SETTLE_MS } from "./blobStore";
-import type { HistoryWho } from "./historyLog";
+import { START, type HistoryWho } from "./historyLog";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory";
+
+// Per file name, how many more copies find it changing during every read.
+const changing = vi.hoisted(() => new Map<string, number>());
+vi.mock("./blobStore", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./blobStore")>();
+  return {
+    ...real,
+    openBlobStore: async (dir: string) => {
+      const store = await real.openBlobStore(dir);
+      const put = async (path: string) => {
+        const left = changing.get(basename(path)) ?? 0;
+        if (left === 0) return store.put(path);
+        changing.set(basename(path), left - 1);
+        return null;
+      };
+      return { ...store, put };
+    },
+  };
+});
 
 const you: HistoryWho = { kind: "person", name: "You" };
 const agent: HistoryWho = { kind: "agent", name: "Agent" };
@@ -15,6 +34,7 @@ const cleanup: Array<() => unknown> = [];
 
 afterEach(async () => {
   for (const step of cleanup.splice(0).reverse()) await step();
+  changing.clear();
 });
 
 function tempDir(prefix: string): string {
@@ -131,5 +151,25 @@ describe("a file an outside save has emptied but not yet written", () => {
     changedNow();
     expect((await history.undo(mine.id, { who: you })).ok).toBe(false);
     expect(read()).toBe("");
+  });
+});
+
+describe("a file still being written when the history first opens", () => {
+  it("is not filed as added outside: its first whole copy is where its history starts", async () => {
+    const projectDir = tempDir("hf-history-project-");
+    const historyRoot = tempDir("hf-history-root-");
+    const media = join(projectDir, "media.txt");
+    writeFileSync(media, "recorded");
+    changing.set("media.txt", 3);
+    const history = await openProjectHistory({ projectDir, historyRoot });
+    cleanup.push(() => history.close());
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty("media.txt"), {
+      timeout: 5000,
+      interval: 20,
+    });
+    await history.flush();
+    expect(history.list()).toEqual([]);
+    await history.step("back", you);
+    expect(existsSync(media)).toBe(true);
   });
 });
