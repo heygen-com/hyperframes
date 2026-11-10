@@ -48,11 +48,8 @@ const FUNCTION_TYPES = new Set([
   "ArrowFunctionExpression",
 ]);
 
-/**
- * Whether a gsap call runs while the script itself runs: at its top level or inside a function called on the spot.
- * A call inside any other function (an event listener, a callback) runs later, so it returns false, as does a
- * script that does not parse: undecidable means not proven early.
- */
+// A gsap call runs with the script at its top level or in a function called on the spot; a listener runs later.
+// A script that does not parse returns false, so lint reports nothing it cannot prove.
 export function gsapRunsWhenScriptRuns(script: ExtractedBlock): boolean {
   let ast: Node;
   try {
