@@ -9,22 +9,33 @@ export async function readSourceIgnore(root) {
   const file = join(root, ".hyperframesignore");
   const invalid = () =>
     new Error(".hyperframesignore must be a regular file inside the project, smaller than 64 KiB.");
-  const before = await lstat(file).catch((/** @type {NodeJS.ErrnoException} */ error) => {
-    if (error.code === "ENOENT") return null;
-    throw invalid();
-  });
-  if (!before) return () => false;
-  if (!before.isFile() || before.size >= 65536) throw invalid();
   const handle = await open(
     file,
     constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-  ).catch(() => {
-    throw invalid();
+  ).catch(async (/** @type {NodeJS.ErrnoException} */ error) => {
+    if (error.code !== "ENOENT") throw invalid();
+    // An absent file means no exclusions; a dangling symlink is invalid.
+    const named = await lstat(file).catch((/** @type {NodeJS.ErrnoException} */ missing) => {
+      if (missing.code === "ENOENT") return null;
+      throw invalid();
+    });
+    if (named) throw invalid();
+    return null;
   });
+  if (!handle) return () => false;
   let text;
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.ino !== before.ino || stat.dev !== before.dev) throw invalid();
+    // Validate the opened descriptor before reading. lstat additionally rejects links on
+    // platforms without O_NOFOLLOW; it never authorizes a later open of this path.
+    const [stat, named] = await Promise.all([handle.stat(), lstat(file)]);
+    if (
+      !stat.isFile() ||
+      stat.size >= 65536 ||
+      !named.isFile() ||
+      stat.ino !== named.ino ||
+      stat.dev !== named.dev
+    )
+      throw invalid();
     const buffer = Buffer.alloc(65536);
     let length = 0;
     while (length < buffer.length) {

@@ -280,3 +280,17 @@ test("ignore rules fail closed for unsupported patterns, entrypoint exclusions, 
   await symlink(join(root, "index.html"), join(root, ".hyperframesignore"));
   await assert.rejects(captureProject(root), /regular file/);
 });
+
+test("ignore configuration rejects oversized files, directories and dangling symlinks", async (t) => {
+  const root = await project({ "index.html": "<html></html>" });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, ".hyperframesignore");
+  await writeFile(file, "a".repeat(65536));
+  await assert.rejects(captureProject(root), /regular file/);
+  await rm(file);
+  await mkdir(file);
+  await assert.rejects(captureProject(root), /regular file/);
+  await rm(file, { recursive: true });
+  await symlink(join(root, "missing"), file);
+  await assert.rejects(captureProject(root), /regular file/);
+});

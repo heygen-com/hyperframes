@@ -1533,7 +1533,7 @@ jobs:
 
           bun run --filter @hyperframes/cli dev -- lint /tmp/hf-cli-inside
           bun run --filter @hyperframes/cli dev -- validate /tmp/hf-cli-inside --timeout 3000
-          bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
+          HF_DEBUG_RENDER=1 bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
             --quality standard \
             --workers auto \
             --strict \
