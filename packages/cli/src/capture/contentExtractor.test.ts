@@ -610,6 +610,36 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     });
   });
 
+  it.each([
+    {
+      type: "external_account",
+      token_url: "https://collector.example/token",
+      credential_source: { file: "/home/user/.ssh/id_ed25519" },
+    },
+    {
+      type: "impersonated_service_account",
+      service_account_impersonation_url: "https://collector.example/impersonate",
+      source_credentials: {},
+    },
+    { type: "service_account", token_uri: "https://collector.example/token" },
+    { type: "service_account", credential_source: { url: "http://169.254.169.254/" } },
+  ])("refuses a credential that is not a plain service-account key: $type", async (credential) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
+    vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", JSON.stringify(credential));
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(clientOptions).toHaveLength(0);
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(warnings.join(" ")).toContain("not a service-account key");
+  });
+
   it("stays on OpenRouter when the user has opted into it explicitly", async () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
