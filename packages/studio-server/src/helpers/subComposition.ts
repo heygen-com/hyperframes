@@ -333,10 +333,11 @@ export function buildSubCompositionHtml(
   rewrittenContent = tagRootCompositionFile(rewrittenContent, compPath);
 
   // Use the project's index.html <head> to preserve all dependencies
-  const indexPath = join(projectDir, "index.html");
+  const indexPath = resolveWithinProject(projectDir, "index.html");
   let headContent = "";
 
-  if (existsSync(indexPath)) headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
+  if (indexPath && existsSync(indexPath))
+    headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
 
   // Inject <base> for relative asset resolution (before other tags)
   if (baseHref && !hasBaseElement(headContent)) {

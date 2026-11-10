@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -28,6 +28,20 @@ describe("buildSubCompositionHtml", () => {
     const escape = `../${outside.split("/").pop()}/secret.txt`;
     expect(buildSubCompositionHtml(dir, escape, "/runtime.js")).toBeNull();
     expect(buildSubCompositionHtml(dir, join(outside, "secret.txt"), "/runtime.js")).toBeNull();
+  });
+
+  it("leaves out an index.html head that a symlink points outside the project", () => {
+    const outside = makeTempProject({
+      "index.html":
+        '<!doctype html><html><head><meta name="outside-head"></head><body></body></html>',
+    });
+    const dir = makeTempProject({
+      "scenes/scene.html": '<template><div id="scene"></div></template>',
+    });
+    symlinkSync(join(outside, "index.html"), join(dir, "index.html"));
+    const html = buildSubCompositionHtml(dir, "scenes/scene.html", "/runtime.js");
+    expect(html).toContain('id="scene"');
+    expect(html).not.toContain("outside-head");
   });
 
   it.each([
