@@ -9,7 +9,8 @@ type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeS
 
 // Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
-const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"]);
+// EACCES: Android app data (Termux, SELinux) denies link() in a folder the temp file was just written to.
+const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR", "EACCES"]);
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
 const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;

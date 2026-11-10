@@ -16,7 +16,8 @@ export class HistoryBusyError extends Error {
 }
 
 const WINDOWS_BUSY = new Set(["EPERM", "EBUSY", "EACCES"]);
-const NO_HARD_LINKS = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM"]);
+// EACCES: Android app data (Termux, SELinux) denies link() where the draft was just written.
+const NO_HARD_LINKS = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES"]);
 const TAKING_MS = 2_000;
 const BOOT_SLACK_MS = 60_000;
 
