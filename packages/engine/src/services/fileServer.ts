@@ -52,7 +52,6 @@ export interface FileServerOptions {
   bodyScripts?: string[];
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
-  /** Interface to listen on. Default: 127.0.0.1, reachable from this machine only. */
   hostname?: string;
 }
 
