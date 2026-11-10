@@ -61,6 +61,7 @@ export function ShareAudience({
         {choices.map((value) => {
           const option = AUDIENCES[value];
           const OptionIcon = option.icon;
+          const needsPro = requiresPro(space, value, snapshot.share.audience);
           return (
             <MenuRadioItem
               key={value}
@@ -77,9 +78,16 @@ export function ShareAudience({
                   <OptionIcon size={15} aria-hidden="true" />
                 </span>
                 <span className="min-w-0 leading-snug">
-                  <span className="block font-semibold">{option.label}</span>
+                  <span className="flex items-center gap-2 font-semibold">
+                    {option.label}
+                    {needsPro ? (
+                      <span className="rounded bg-press px-1.5 py-0.5 text-step-10 font-semibold">
+                        Pro
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="block whitespace-normal text-step-11 text-text-3">
-                    {option.detail}
+                    {needsPro ? "Upgrade to Pro to use this option" : option.detail}
                   </span>
                 </span>
               </span>
@@ -87,6 +95,26 @@ export function ShareAudience({
           );
         })}
       </MenuRadioGroup>
+      {space?.plan === "free" &&
+      (!space.audiences.includes("team") || !space.audiences.includes("invite")) ? (
+        <p className="mx-2 mt-1 border-t border-border px-1 py-2 text-step-11 text-text-2">
+          Free includes anyone-with-the-link sharing. Upgrade to Pro for workspace and invite-only
+          sharing.
+        </p>
+      ) : null}
     </Menu>
+  );
+}
+
+function requiresPro(
+  space: LocalShareSnapshot["spaces"][number] | undefined,
+  value: LocalShareAudience,
+  current: LocalShareAudience | null,
+) {
+  return (
+    space?.plan === "free" &&
+    !space.audiences.includes(value) &&
+    value !== current &&
+    (value === "team" || value === "invite")
   );
 }

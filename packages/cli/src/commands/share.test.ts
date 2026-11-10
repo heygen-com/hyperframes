@@ -116,3 +116,20 @@ it.each(["owner@example.com", "another@example.com"])(
     });
   },
 );
+
+it("reports an unchanged update in human and JSON output", async () => {
+  mocks.run.mockResolvedValue({
+    state: "ready",
+    ready: true,
+    upToDate: true,
+    source: { at: "ready" },
+  });
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--update"] });
+  expect(out).toHaveBeenCalledWith("Already up to date.");
+  await runCommand(command, { rawArgs: ["--update", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
+    ok: true,
+    upToDate: true,
+  });
+});

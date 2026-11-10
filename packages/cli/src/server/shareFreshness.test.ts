@@ -10,6 +10,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 const state: ShareState = {
+  upToDate: false,
   share: {
     projectId: "project",
     url: "https://hyperframes.dev/r/test",

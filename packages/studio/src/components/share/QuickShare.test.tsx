@@ -497,7 +497,9 @@ it("refuses an upgrade destination outside the public pricing flow", async () =>
   snapshot.spaces[0]!.plan = "free";
   snapshot.spaces[0]!.upgradeUrl = "https://example.com/checkout";
   await mount();
-  expect(host.textContent).not.toContain("Upgrade to Pro");
+  expect(
+    [...host.querySelectorAll("a")].some((link) => link.textContent?.includes("Upgrade to Pro")),
+  ).toBe(false);
 });
 
 it.each([false, true])(
@@ -545,4 +547,39 @@ it("bootstraps sharing when the CLI advertises its bridge", async () => {
   } finally {
     marker.remove();
   }
+});
+
+it("acknowledges an unchanged update", async () => {
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/r/test",
+    audience: "public",
+    spaceId: "team1",
+  };
+  job = { ...job, state: "done", result: { ...snapshot.share, upToDate: true } };
+  await act(async () => root.render(<QuickShareContent token={token} />));
+  await act(async () => button("Update shared version")?.click());
+  expect(host.textContent).toContain("Already up to date.");
+});
+it("resets the copied acknowledgement after two seconds", async () => {
+  vi.useFakeTimers();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
+  snapshot.share = {
+    ...snapshot.share,
+    state: "ready",
+    url: "https://hyperframes.dev/r/test",
+    audience: "public",
+    spaceId: "team1",
+  };
+  await act(async () => root.render(<QuickShareContent token={token} />));
+  await act(async () => button("Copy link")?.click());
+  expect(button("Copied")).toBeDefined();
+  await act(async () => vi.advanceTimersByTime(2000));
+  expect(button("Copied")).toBeUndefined();
+  expect(button("Copy link")).toBeDefined();
+  vi.useRealTimers();
 });

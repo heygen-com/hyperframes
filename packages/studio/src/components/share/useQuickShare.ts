@@ -29,7 +29,8 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   const reconnectOnReturn = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, setCopied, acknowledgeCopy } = useCopyAcknowledgement();
+  const [notice, setNotice] = useState("");
   const opened = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,6 +60,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     const result = job.result;
     if (result) setSnapshot((prior) => (prior ? { ...prior, share: result, job } : prior));
     await refresh(signal, job.state === "failed");
+    if (!signal.aborted) setNotice(completionNotice(job));
   }
   async function refresh(signal: AbortSignal, preserveSelection = false) {
     setError(null);
@@ -108,6 +110,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     setError(null);
     setErrorCode(null);
     setCopied(false);
+    setNotice("");
     setProgress("Preparing share…");
     try {
       if (["share", "update"].includes(action.action)) await beforeShare?.();
@@ -166,7 +169,8 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   async function copy(url: string) {
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
+      if (lifetime.current?.signal.aborted) return;
+      acknowledgeCopy();
       shareInteraction(token, { event: "share_link_copied", via: "copy" });
     } catch {
       setError("Couldn’t copy. Open the shared page and copy its address.");
@@ -181,9 +185,26 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     error,
     errorCode,
     copied,
+    notice,
     progress,
     run,
     copy,
   };
 }
 export type QuickShareModel = ReturnType<typeof useQuickShare>;
+
+function completionNotice(job: LocalShareJob) {
+  return job.state === "done" && job.result?.upToDate ? "Already up to date." : "";
+}
+
+function useCopyAcknowledgement() {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useMountEffect(() => () => clearTimeout(timer.current));
+  function acknowledgeCopy() {
+    clearTimeout(timer.current);
+    setCopied(true);
+    timer.current = setTimeout(() => setCopied(false), 2000);
+  }
+  return { copied, setCopied, acknowledgeCopy };
+}
