@@ -21,7 +21,7 @@
 # Unlike the AWS Lambda adapter there is no ZIP-size ceiling and no runtime
 # Chrome decompression step — the binary lives in the image at a fixed path.
 
-FROM node:22.23.4-bookworm-slim AS beginframe-contract
+FROM node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS beginframe-contract
 
 # ── System dependencies (identical set to the producer's render image) ───────
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -79,13 +79,22 @@ RUN case "$TARGETARCH" in \
 # ── chrome-headless-shell (deterministic BeginFrame capture) ─────────────────
 # Pinned deliberately. The build-stage contract probe below launches this
 # exact executable and requires a renderer-ready warm-up plus a PNG-returning
-# HeadlessExperimental.beginFrame before the image can build.
-RUN npx --yes @puppeteer/browsers install chrome-headless-shell@152.0.7977.30 \
-      --path /opt/puppeteer \
-    && CHS="$(find /opt/puppeteer/chrome-headless-shell -name chrome-headless-shell -type f | head -n1)" \
+# HeadlessExperimental.beginFrame before the image can build. Chrome for Testing
+# publishes no linux arm64 headless shell and no checksums, so the sha256 below
+# was taken from the archive itself; bump the version and hash together.
+ARG CHROME_HEADLESS_SHELL_VERSION=152.0.7977.30
+ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=1b150320178ecabe39726bcf3198ebb896ba2b7a07d870db1710914c42d55221
+RUN case "$TARGETARCH" in \
+      amd64) CHS_SHA256="$CHROME_HEADLESS_SHELL_SHA256_AMD64" ;; \
+      *) echo "no pinned chrome-headless-shell for TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/chs.zip "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_HEADLESS_SHELL_VERSION/linux64/chrome-headless-shell-linux64.zip" \
+    && echo "$CHS_SHA256  /tmp/chs.zip" | sha256sum -c - \
+    && unzip -q /tmp/chs.zip -d /opt \
+    && rm /tmp/chs.zip \
     && mkdir -p /opt/chrome \
-    && ln -s "$CHS" /opt/chrome/chrome-headless-shell \
-    && /opt/chrome/chrome-headless-shell --version
+    && ln -s /opt/chrome-headless-shell-linux64/chrome-headless-shell /opt/chrome/chrome-headless-shell \
+    && /opt/chrome/chrome-headless-shell --version | grep -F "$CHROME_HEADLESS_SHELL_VERSION"
 
 # The chromium.ts resolver reads this first; pointing the engine straight at
 # the symlinked binary avoids the runtime cache scan.
@@ -99,8 +108,22 @@ WORKDIR /app
 # Install bun (the repo's package manager / build driver). Pin the version:
 # the container runs `bun dist/server.js` and relies on bun's ESM `require`
 # interop to load the producer bundle, so a future bun release changing that
-# behaviour shouldn't silently break the next image rebuild. Bump deliberately.
-RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.4"
+# behaviour shouldn't silently break the next image rebuild. The sha256s are
+# from the release's SHASUMS256.txt; bump the version and both hashes together.
+ARG BUN_VERSION=1.4.4
+ARG BUN_SHA256_AMD64=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+ARG BUN_SHA256_ARM64=baa6bb36f51d6e58561e02bbea825038a9df454f673d6d776e8bbf86f8c7850e
+RUN case "$TARGETARCH" in \
+      amd64) BUN_ARCH=x64; BUN_SHA256="$BUN_SHA256_AMD64" ;; \
+      arm64) BUN_ARCH=aarch64; BUN_SHA256="$BUN_SHA256_ARM64" ;; \
+      *) echo "unsupported TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL -o /tmp/bun.zip "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-linux-$BUN_ARCH.zip" \
+    && echo "$BUN_SHA256  /tmp/bun.zip" | sha256sum -c - \
+    && mkdir -p /root/.bun/bin \
+    && unzip -q -j /tmp/bun.zip "bun-linux-$BUN_ARCH/bun" -d /root/.bun/bin \
+    && rm /tmp/bun.zip \
+    && /root/.bun/bin/bun --version | grep -Fx "$BUN_VERSION"
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install workspace dependencies. Copy manifests first for layer caching.
