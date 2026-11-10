@@ -388,9 +388,8 @@ class Engine {
   readonly folder: FolderIdentity & { dev: number };
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
-  // Only a change rewrites video-state.json: a sweep that finds nothing skips rebuilding it file by file.
-  owesState = true;
-  tracked = new TrackedFiles(() => (this.owesState = true));
+  owesVideoState = true;
+  tracked = new TrackedFiles(() => (this.owesVideoState = true));
   windows: Group[] = [];
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
@@ -444,8 +443,8 @@ class Engine {
       try {
         return await task();
       } finally {
-        if (this.owesState && this.whereFolder() === "here") {
-          this.owesState = false;
+        if (this.owesVideoState && this.whereFolder() === "here") {
+          this.owesVideoState = false;
           await writeHistoryState(
             this.dir,
             this.projectId,
@@ -454,7 +453,7 @@ class Engine {
             this.manifest(),
             manifestAt(this.log, this.log.entries.at(-1)?.id ?? START) ?? new Map(),
           ).catch((error) => {
-            this.owesState = true;
+            this.owesVideoState = true;
             this.options.onError?.(error);
           });
         }
@@ -479,7 +478,7 @@ class Engine {
   }
 
   persistLog(record?: LogRecord): void {
-    this.owesState = true;
+    this.owesVideoState = true;
     if (record) saveRecord(this.logFile, this.log, record);
     else writeLog(this.logFile, this.log);
     if (!existsSync(join(this.home, "project.json")))
