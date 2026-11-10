@@ -1113,3 +1113,83 @@ describe("createStudioServer /api write guard allowed hosts", () => {
     }
   });
 });
+
+describe("createStudioServer Host check on every route", () => {
+  const FOREIGN_HOST = "rebound.example:3002";
+
+  function read(path: string, host: string, extra: Record<string, string> = {}): Promise<Response> {
+    return Promise.resolve(
+      server!.app.request(`http://${host}${path}`, { headers: { Host: host, ...extra } }),
+    );
+  }
+
+  function routes(projectDir: string): string[] {
+    const id = encodeURIComponent(basename(projectDir));
+    return [
+      "/__hyperframes_config",
+      "/api/projects",
+      `/api/projects/${id}/files/index.html`,
+      "/api/events",
+      "/",
+    ];
+  }
+
+  it("refuses reads on every route for a Host the server does not answer on", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    server = createStudioServer({ projectDir });
+
+    for (const path of routes(projectDir)) {
+      const res = await read(path, FOREIGN_HOST);
+      expect(res.status, path).toBe(403);
+      const text = await res.text();
+      expect(text, path).not.toContain("secret-body");
+      expect(text, path).not.toContain(projectDir);
+      expect(text, path).toContain("HYPERFRAMES_PREVIEW_ALLOWED_HOSTS");
+    }
+  });
+
+  it("does not let X-Forwarded-Host stand in for the Host header", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    server = createStudioServer({ projectDir });
+
+    const res = await read("/__hyperframes_config", FOREIGN_HOST, {
+      "X-Forwarded-Host": "localhost:3002",
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("answers loopback names", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    server = createStudioServer({ projectDir });
+
+    for (const host of ["localhost:3002", "127.0.0.1:3002", "[::1]:3002"]) {
+      const config = await read("/__hyperframes_config", host);
+      expect(config.status, host).toBe(200);
+      const file = await read(
+        `/api/projects/${encodeURIComponent(basename(projectDir))}/files/index.html`,
+        host,
+      );
+      expect(file.status, host).toBe(200);
+      expect(await file.text(), host).toContain("secret-body");
+    }
+  });
+
+  it("answers a host named in HYPERFRAMES_PREVIEW_ALLOWED_HOSTS", async () => {
+    const projectDir = tmpProject();
+    writeFileSync(join(projectDir, "index.html"), "<html>secret-body</html>");
+    process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS = "demo.tunnels.example";
+    try {
+      server = createStudioServer({ projectDir });
+      const res = await read("/__hyperframes_config", "demo.tunnels.example");
+      expect(res.status).toBe(200);
+      const other = await read("/__hyperframes_config", FOREIGN_HOST);
+      expect(other.status).toBe(403);
+    } finally {
+      delete process.env.HYPERFRAMES_PREVIEW_ALLOWED_HOSTS;
+    }
+  });
+});

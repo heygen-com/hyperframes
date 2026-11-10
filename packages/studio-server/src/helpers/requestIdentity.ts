@@ -6,7 +6,6 @@ export function isLoopbackHost(host: string | undefined): boolean {
   const bracketed = /^\[([^\]]+)\]/.exec(host);
   const hostname = (bracketed ? bracketed[1] : host.split(":")[0])?.toLowerCase() ?? "";
   if (hostname === "localhost" || hostname === "::1" || hostname === "0:0:0:0:0:0:0:1") return true;
-  // 127.0.0.0/8, the whole loopback block, not just 127.0.0.1.
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname);
 }
 
@@ -49,10 +48,7 @@ function hostMatchesBind(host: string | undefined, bind: string): boolean {
     : false;
 }
 
-// Extra hosts whose writes the studio API accepts, comma separated. The CLI
-// preview server and the Studio dev server read it and pass the names to
-// createStudioApi as allowedHosts, so a Codespaces or tunnel user allows
-// their public host name in one step. A refused write names this variable.
+// Extra hosts (Codespaces, tunnels) the preview server and studio API accept, comma separated.
 export const PREVIEW_ALLOWED_HOSTS_ENV = "HYPERFRAMES_PREVIEW_ALLOWED_HOSTS";
 
 export function previewAllowedHostsFromEnv(
@@ -64,8 +60,7 @@ export function previewAllowedHostsFromEnv(
     .filter((host) => host !== "");
 }
 
-// The host a request is addressed to, for checks and for refusal messages:
-// the first forwarded host wins, since that is the name the browser used.
+// The first forwarded host wins: it is the name the browser used.
 export function requestHost(headers: {
   host?: string;
   forwardedHost?: string;
@@ -86,6 +81,14 @@ function hostAllowed(host: string, allowedHosts: readonly string[] | undefined):
   if (!allowedHosts) return false;
   const name = hostnameOf(host);
   return name !== "" && allowedHosts.some((allowed) => hostnameOf(allowed) === name);
+}
+
+// Reads included. Only Host counts: a page can set X-Forwarded-Host, and a read has no Origin to check.
+export function hostHeaderAllowed(
+  host: string | undefined,
+  allowedHosts?: readonly string[],
+): boolean {
+  return host !== undefined && host !== "" && hostAllowed(host, allowedHosts);
 }
 
 function firstForwarded(value: string | undefined): string | undefined {

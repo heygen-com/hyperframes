@@ -55,10 +55,6 @@ function urlScheme(url: string): string | undefined {
 }
 
 export interface StudioApiOptions {
-  /**
-   * Extra host names the write guard accepts as this server, for hosts
-   * mounting the API on their own domain or behind a tunnel or proxy.
-   */
   allowedHosts?: readonly string[];
 }
 
@@ -80,9 +76,6 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
       allowedHosts: options.allowedHosts,
     });
     if (!allowed) {
-      // Name the refused host and the variable that allows it, so a user
-      // behind a proxy or tunnel can fix the 403 in one step instead of
-      // silently losing every save.
       const refusedHost =
         requestHost({
           host: c.req.header("host") ?? urlHost(c.req.url),
