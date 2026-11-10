@@ -1,4 +1,4 @@
-import { ReviewFailed, reviewSentence } from "@hyperframes/share";
+import { ownerOf, ReviewFailed, reviewSentence } from "@hyperframes/share";
 import { ShareSourceError } from "./sources.js";
 import { isAuthError } from "../auth/errors.js";
 import { CliUsageError } from "../utils/commandResult.js";
@@ -19,7 +19,7 @@ const HINTS: Record<string, string> = {
   not_shared:
     "This project has no shared review yet. Run hyperframes share with an explicit audience.",
 };
-export function shareError(error: unknown): { code: string; message: string } {
+export function shareError(error: unknown): { code: string; message: string; owner?: string } {
   if (error instanceof CliUsageError) return { code: error.code, message: error.message };
   if (error instanceof ShareSourceError)
     return { code: "source_unavailable", message: error.message };
@@ -28,11 +28,14 @@ export function shareError(error: unknown): { code: string; message: string } {
       code: error.code.toLowerCase(),
       message: `${error.message} ${error.hint ?? ""}`.trim(),
     };
-  if (error instanceof ReviewFailed)
+  if (error instanceof ReviewFailed) {
+    const owner = error.status === 401 ? null : ownerOf(error.reason);
+    if (owner !== null) return { code: "owner_signed_out", owner, message: reviewSentence(error) };
     return {
       code: error.status === 401 ? "login_expired" : error.reason || "share_failed",
       message: HINTS[error.reason] ?? reviewSentence(error),
     };
+  }
   return {
     code: "share_failed",
     message: error instanceof Error ? error.message : "Sharing failed. Try again.",
