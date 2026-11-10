@@ -335,8 +335,8 @@ test("linked media changes invalidate the rendered source and link cycles termin
   assert.notEqual(await projectFingerprint(dir), before);
 });
 
-for (const code of ["EPERM", "ENOTSUP", "EXDEV", "EINVAL", "EISDIR"]) {
-  test(`exclusive-create fallback serializes operations when hard links fail with ${code}`, async (t) => {
+for (const code of ["EPERM", "ENOTSUP", "EXDEV", "EINVAL", "EISDIR", "EACCES"]) {
+  test(`directory fallback serializes operations when hard links fail with ${code}`, async (t) => {
     const dir = await folder(t);
     t.mock.method(fs, "link", async () => {
       throw Object.assign(new Error("unsupported"), { code });
