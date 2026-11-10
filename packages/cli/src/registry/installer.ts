@@ -169,7 +169,13 @@ const CONFIG_TARGET_RULES: TargetRule[] = [
 ];
 
 function configTargetError(target: string, type: RegistryItem["type"]): string | null {
-  const parts = target.split(/[\\/]/).map((part) => part.toLowerCase());
+  // Windows drops trailing dots and spaces and reads `name:stream` as `name`, so compare that name.
+  const parts = target.split(/[\\/]/).map((part) =>
+    part
+      .toLowerCase()
+      .replace(/:.*$/, "")
+      .replace(/(?<=.)[. ]+$/, ""),
+  );
   const file = parts.pop() ?? "";
   const example = type === "hyperframes:example";
   return CONFIG_TARGET_RULES.find(([, applies]) => applies(parts, file, example))?.[0] ?? null;

@@ -2,7 +2,8 @@ import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, spawn } from "node:child_process";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
@@ -38,7 +39,8 @@ export const examples: Example[] = [
 
 // The install is global, so npm never reads the project's node_modules or .npmrc.
 function npxCwd(): string {
-  return homedir();
+  const home = homedir();
+  return existsSync(home) ? home : tmpdir();
 }
 
 function hasNpx(): boolean {
