@@ -18,7 +18,7 @@ import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { heygenAuthHeaders, heygenCredential, heygenJSON, heygenMessage } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
@@ -146,6 +146,14 @@ export function resolveNpxCliPath(
   return pathExists(besideNode) ? besideNode : null;
 }
 
+// A HyperFrames CLI that launches this code hands over its own entry file, so `npx hyperframes`
+// runs that same build with the same Node instead of whatever npx resolves from the project.
+function launchingCliCommand(cmd, args, env = process.env) {
+  const entry = env.HYPERFRAMES_CLI_ENTRY;
+  if (cmd !== "npx" || args[0] !== "hyperframes" || !entry || !isAbsolute(entry)) return null;
+  return { cmd: process.execPath, args: [entry, ...args.slice(1).map((arg) => String(arg))] };
+}
+
 export function resolveSpawnCommand(
   cmd,
   args,
@@ -154,6 +162,8 @@ export function resolveSpawnCommand(
   env = process.env,
   pathExists = existsSync,
 ) {
+  const cli = launchingCliCommand(cmd, args, env);
+  if (cli) return { ...cli, opts: { stdio: "ignore", windowsHide: true, ...opts } };
   if (cmd !== "npx" || platform !== "win32") {
     return { cmd, args, opts: { stdio: "ignore", ...opts } };
   }

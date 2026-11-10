@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
+import { isolatedPythonCode } from "../../../tts/python.js";
 import {
   AVAILABLE,
   downbeatsWithMeter,
@@ -23,16 +24,17 @@ function checkpointPath(): string {
   return join(torchHome, "hub", "checkpoints", "beat_this-small0.ckpt");
 }
 
-const FIND_PACKAGE =
-  "import importlib.util,sys; sys.exit(importlib.util.find_spec('beat_this') is None)";
+const FIND_PACKAGE = isolatedPythonCode(
+  "import importlib.util,sys; sys.exit(importlib.util.find_spec('beat_this') is None)",
+);
 
 // The checkpoint is a local file path, so Beat This! loads it from disk and never downloads.
-const TRACK = `
+const TRACK = isolatedPythonCode(`
 import json, sys
 from beat_this.inference import File2Beats
 beats, downbeats = File2Beats(checkpoint_path=sys.argv[2], device="cpu", dbn=False)(sys.argv[1])
 print(json.dumps({"beats": [float(t) for t in beats], "downbeats": [float(t) for t in downbeats]}))
-`;
+`);
 
 const installed = new Map<string, Promise<boolean>>();
 

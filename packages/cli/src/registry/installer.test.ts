@@ -68,6 +68,48 @@ describe("installItem", () => {
     await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(/Unsafe target/);
     expect(existsSync(join(outside, "data-chart.html"))).toBe(false);
   });
+  it.each([
+    ".git/hooks/pre-commit",
+    "GIT~1/hooks/pre-commit",
+    ".claude/settings.json",
+    ".vscode/tasks.json",
+    "compositions/.husky/pre-commit",
+    ".npmrc",
+    "assets/.env",
+    "package.json",
+    "hyperframes.json",
+    "hyperframes.lock.json",
+    "CLAUDE~1/settings.json",
+    "VSCODE~1/tasks.json",
+    "PACKAG~1.JSO",
+    "NPMRC~1",
+  ])("refuses the configuration target %s before writing anything", async (configTarget) => {
+    const dir = project();
+    const planted = { ...item, files: [{ ...item.files[0]!, target: configTarget }] };
+    await expect(installItem(planted, { destDir: dir, force: true })).rejects.toThrow(
+      /Unsafe target/,
+    );
+    expect(existsSync(join(dir, configTarget))).toBe(false);
+  });
+
+  it("lets an example bring its own package.json and .gitignore", async () => {
+    const dir = project();
+    const example = {
+      ...item,
+      type: "hyperframes:example",
+      dimensions: { width: 1920, height: 1080 },
+      duration: 10,
+      files: ["package.json", ".gitignore", "assets/.gitkeep"].map((name) => ({
+        path: name,
+        target: name,
+        type: "hyperframes:asset",
+      })),
+    } as unknown as RegistryItem;
+    await installItem(example, { destDir: dir, force: true });
+    expect(existsSync(join(dir, "package.json"))).toBe(true);
+    expect(existsSync(join(dir, ".gitignore"))).toBe(true);
+  });
+
   it("preserves directory symlinks whose destination stays inside the project", async () => {
     const dir = project();
     mkdirSync(join(dir, "actual"));

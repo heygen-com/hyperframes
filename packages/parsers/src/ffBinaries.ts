@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, closeSync, constants, existsSync, openSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, dirname, join, resolve } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
@@ -91,10 +91,8 @@ function isExecutablePathCandidate(candidate: string): boolean {
 
 function scanPath(name: FfBinaryName): string | undefined {
   const pathValue = process.env.PATH;
-  const searchDirs = [
-    ...(process.platform === "win32" ? [process.cwd()] : []),
-    ...(pathValue ? pathValue.split(delimiter) : []),
-  ].filter(Boolean);
+  // Only absolute PATH entries: the working directory is project content, not an install location.
+  const searchDirs = (pathValue ? pathValue.split(delimiter) : []).filter((dir) => isAbsolute(dir));
   if (searchDirs.length === 0) return undefined;
 
   const extensions =
@@ -171,9 +169,8 @@ function searchSystem(name: FfBinaryName): string | undefined {
   let found: string | undefined;
   if (process.platform === "win32") {
     // `where.exe` writes bytes in the active console code page, while Node
-    // decodes its stdout using a caller-selected encoding. Enumerating the
-    // same current-directory + PATH search space from Node keeps Unicode
-    // paths as native JS strings and avoids mojibake entirely.
+    // decodes its stdout using a caller-selected encoding. Enumerating PATH
+    // from Node keeps Unicode paths as native JS strings and avoids mojibake.
     found = scanPath(name);
   } else {
     try {
@@ -220,7 +217,7 @@ export interface FindFfBinaryOptions {
 
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
- * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
+ * PATH scan on Windows or `which` plus PATH scan on Unix,
  * then a project-local `.hyperframes/bin`, then well-known Unix install dirs, then an
  * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder.
  * A found binary is cached for the process lifetime; a miss only for a few

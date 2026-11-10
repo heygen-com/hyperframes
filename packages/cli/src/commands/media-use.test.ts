@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   createMediaUseCommand,
   MEDIA_USE_VERBS,
+  mediaUseEngineEnv,
   mediaUsePassthroughArgs,
   mediaUseVerbFlags,
   resolveMediaUseEnginePath,
@@ -13,6 +14,18 @@ import {
 function tempCommandDir(): string {
   return mkdtempSync(join(tmpdir(), "hyperframes-media-use-command-"));
 }
+
+describe("mediaUseEngineEnv", () => {
+  it("hands the running CLI entry to the engine", () => {
+    const env = mediaUseEngineEnv({ HOME: "/home/u" }, "dist/cli.js");
+    expect(env).toEqual({ HOME: "/home/u", HYPERFRAMES_CLI_ENTRY: resolve("dist/cli.js") });
+  });
+
+  it("hands nothing over from a TypeScript source entry, which plain node cannot run", () => {
+    expect(mediaUseEngineEnv({}, "src/cli.ts")).toEqual({});
+    expect(mediaUseEngineEnv({}, "")).toEqual({});
+  });
+});
 
 describe("media-use command wiring", () => {
   it("uses the bundled engine when the first candidate exists", () => {
