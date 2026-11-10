@@ -751,6 +751,27 @@ describe("media rules", () => {
     ).toEqual(expected);
   });
 
+  it("warns when a querySelectorAll loop sets a video src", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="clip" data-clip src="video-a.mp4"></video>
+  </div>
+  <script>
+    document.querySelectorAll("[data-clip]").forEach((el) => {
+      el.src = "video-b.mp4";
+    });
+  </script>
+</body></html>`;
+
+    const result = await lintHyperframeHtml(html);
+    const findings = result.findings.filter(
+      (finding) => finding.code === "media_runtime_src_mutation",
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ severity: "warning", elementId: "clip" });
+  });
+
   it("does not flag img or script src mutations", async () => {
     const html = `
 <html><body>

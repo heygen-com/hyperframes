@@ -16,6 +16,7 @@ afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
 import {
   hasAutoStartVideos,
+  hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
   reportedLengthSource,
@@ -367,6 +368,38 @@ describe("hasAutoStartVideos", () => {
 
   it("returns false when there is no media", () => {
     expect(hasAutoStartVideos(`<div class="clip"></div>`)).toBe(false);
+  });
+});
+
+describe("hasRuntimeMediaChanges", () => {
+  it("detects a src write inside a querySelectorAll loop (issue #7504)", () => {
+    const html = `<video data-clip src="video-a.mp4"></video>
+      <script>
+        document.querySelectorAll("[data-clip]").forEach((el) => {
+          el.src = "video-b.mp4";
+        });
+      </script>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(true);
+  });
+
+  it("returns false when the loop writes no media src", () => {
+    const html = `<video data-clip src="video-a.mp4"></video>
+      <script>
+        document.querySelectorAll("[data-clip]").forEach((el) => {
+          el.dataset.seen = "yes";
+        });
+      </script>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(false);
+  });
+
+  it("returns false when there is no media element to mutate", () => {
+    const html = `<div class="clip"></div>
+      <script>
+        document.querySelectorAll("[data-clip]").forEach((el) => {
+          el.src = "video-b.mp4";
+        });
+      </script>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(false);
   });
 });
 
