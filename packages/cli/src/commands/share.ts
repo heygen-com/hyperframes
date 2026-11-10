@@ -73,7 +73,10 @@ export default defineCommand({
       await presentResult(result, input, Boolean(args.json));
     } catch (error) {
       const failure = shareError(error);
-      if (args.json) console.log(JSON.stringify(jsonFailure(failure.code, failure.message)));
+      if (args.json)
+        console.log(
+          JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
+        );
       else console.error(failure.message);
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }
@@ -114,7 +117,7 @@ function validateActionOptions(
 ) {
   if (action !== "share" && audience)
     throw new CliUsageError(
-      "Audience flags are only valid for a first share. Use --manage to change access.",
+      "Use audience flags with hyperframes share, without --update, --status or --manage.",
     );
   if ((action === "status" || action === "manage") && (args.space || args["video-only"]))
     throw new CliUsageError("--space and --video-only cannot be used with --status or --manage.");
@@ -126,7 +129,7 @@ function requestedAudience(args: ShareArgs) {
   if (args.team) audiences.push("team");
   if (args["invite-only"]) audiences.push("invite");
   if (args.private) audiences.push("private");
-  if (audiences.length > 1) throw new CliUsageError("Choose one first-share audience.");
+  if (audiences.length > 1) throw new CliUsageError("Choose one audience.");
   return audiences[0];
 }
 
@@ -172,6 +175,7 @@ async function presentResult(result: ShareState, input: ShareAction, json: boole
 
 async function presentSuccessfulResult(result: ShareState, input: ShareAction, json: boolean) {
   if (json) console.log(JSON.stringify({ ok: true, ...result }));
+  else if (result.upToDate) console.log("Already up to date.");
   else if (input.action === "manage") {
     console.log(result.manageUrl);
     if (!isUnattended()) await (await import("open")).default(result.manageUrl);

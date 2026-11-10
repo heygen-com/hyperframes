@@ -64,6 +64,7 @@ async function readStatus(
   const failed = hasFailedVersion(version);
   const ready = Boolean(activeUrl && latest && !processing && !failed);
   return {
+    upToDate: false,
     share,
     version,
     pending,
@@ -216,7 +217,10 @@ export function createShareService(
       return { ...result, state: "processing", ready: false, url: null };
     }
     attempt.complete(result.ready, added);
-    return result;
+    return {
+      ...result,
+      upToDate: isUnchangedUpdate(input, added, result),
+    };
   };
   const uploadTarget = async (current: ReviewShare | null, input: ShareAction, space?: string) => {
     const share = current
@@ -250,7 +254,16 @@ export function createShareService(
   const mutate = async (input: ShareAction, attempt: ShareAttempt) => {
     await auth.access();
     attempt.authenticated();
-    const current = await readStatus(dir, client, undefined, attempt.recover);
+    let current = await readStatus(dir, client, undefined, attempt.recover);
+    if (current.share && changesAudience(input, current.share)) {
+      assertExistingIntent(current.share, { ...input, audience: undefined });
+      const projectId = current.share.projectId;
+      await setReviewAccess({ projectPath: dir, client, change: { access: input.audience } });
+      current = await readStatus(dir, client, projectId);
+      assertExistingIntent(current.share, input);
+      attempt.retrieved();
+      return current;
+    }
     assertExistingIntent(current.share, input);
     if (retrievesExisting(current, input)) {
       attempt.retrieved();
@@ -303,4 +316,13 @@ export type ShareState = Awaited<ReturnType<typeof readStatus>>;
 
 function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): boolean {
   return Boolean(version.failure && !version.held);
+}
+
+function changesAudience(input: ShareAction, share: ReviewShare) {
+  return input.action === "share" && Boolean(input.audience) && share.access !== input.audience;
+}
+function isUnchangedUpdate(input: ShareAction, added: boolean, result: ShareState) {
+  return (
+    input.action === "update" && !added && Boolean(result.version.last?.current) && !result.pending
+  );
 }

@@ -11,6 +11,7 @@ export interface LocalShareSpace {
   limit: number | null;
 }
 export interface LocalShareState {
+  upToDate?: boolean;
   state: "not_shared" | "link_off" | "ready" | "processing" | "failed" | "unavailable";
   url: string | null;
   manageUrl: string;

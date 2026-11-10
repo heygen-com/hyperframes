@@ -3069,8 +3069,12 @@ Adding versions uses the same project. Turning off its link does not free a slot
 remove a project in web management or upgrade when the workspace is full.
 The server enforces the limit even when clients create projects simultaneously.
 
-Running `share` again returns the existing link without uploading edits. Use
-`--update` to publish a new rendered version. The previous ready version remains
+Running `share` again returns the existing link without uploading edits. An explicit
+audience flag (for example, `share --public`) changes an existing share’s audience
+without uploading a version, just like Studio’s audience selector. Without an
+audience flag, access stays unchanged. Use
+`--update` to publish a new rendered version. If nothing changed, the command says
+“Already up to date” (`upToDate: true` in JSON). The previous ready version remains
 visible while an update processes. Interrupted first uploads can resume when
 the source is unchanged; if it changed, explicitly use `--update`. If the
 project's review or audience changes while rendering, check the current share
@@ -3093,6 +3097,10 @@ and exit code 1. `previousUrl` keeps the earlier ready version available after a
 failed update; `url` remains null. Use `--update` to explicitly retry with the
 current project. Signing into a different account while a share is running
 stops that operation; start it again after sign-in.
+
+When another account owns the review, JSON errors use the fixed code
+`owner_signed_out` with the owner email in `error.owner`. The human-readable
+message also identifies the account to sign into.
 
 The standard production CLI includes exact trusted storage origins for review
 videos and editable project sources; no upload configuration is required.

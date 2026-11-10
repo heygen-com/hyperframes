@@ -1,3 +1,4 @@
+import { ReviewFailed } from "@hyperframes/share";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
@@ -95,4 +96,40 @@ it("deduplicates progress and terminates each message before the friendly error"
     "Sharing: uploading\n",
   ]);
   expect(friendly).toHaveBeenCalledWith("Sharing blocked.");
+});
+
+it.each(["owner@example.com", "another@example.com"])(
+  "keeps the owner error code stable for %s",
+  async (owner) => {
+    mocks.run.mockRejectedValue(new ReviewFailed(403, `owner_signed_out:${owner}`));
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--status", "--json"] });
+    expect(consumeCommandResult().exitCode).toBe(1);
+    expect(out).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(out.mock.calls[0]?.[0]))).toEqual({
+      ok: false,
+      error: {
+        code: "owner_signed_out",
+        owner,
+        message: `This review belongs to ${owner}. Switch to that account to manage it.`,
+      },
+    });
+  },
+);
+
+it("reports an unchanged update in human and JSON output", async () => {
+  mocks.run.mockResolvedValue({
+    state: "ready",
+    ready: true,
+    upToDate: true,
+    source: { at: "ready" },
+  });
+  const out = vi.spyOn(console, "log").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--update"] });
+  expect(out).toHaveBeenCalledWith("Already up to date.");
+  await runCommand(command, { rawArgs: ["--update", "--json"] });
+  expect(JSON.parse(String(out.mock.calls.at(-1)?.[0]))).toMatchObject({
+    ok: true,
+    upToDate: true,
+  });
 });

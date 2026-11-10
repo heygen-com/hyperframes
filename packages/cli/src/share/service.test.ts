@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   event: vi.fn(),
   access: vi.fn(),
+  setAccess: vi.fn(),
 }));
 vi.mock("@hyperframes/share", () => ({
   reviewClient: () => ({ project: mocks.project, spaces: mocks.spaces, reviewFlags: mocks.flags }),
@@ -23,7 +24,7 @@ vi.mock("@hyperframes/share", () => ({
   addVersion: mocks.add,
   pendingReviewExport: mocks.pending,
   refreshReviewExport: mocks.refresh,
-  setReviewAccess: vi.fn(),
+  setReviewAccess: mocks.setAccess,
   turnOffReviewLink: vi.fn(),
   ReviewFailed: class extends Error {
     constructor(
@@ -104,15 +105,20 @@ describe("share operation consent and identity", () => {
     ).rejects.toMatchObject({ reason: "review_project_limit_reached" });
     expect(mocks.render).not.toHaveBeenCalled();
   });
-  it("preserves existing workspace and audience", async () => {
+  it("preserves existing workspace and changes an explicitly requested audience", async () => {
     mocks.status.mockResolvedValue(shared);
     const service = createShareService("/project");
     await expect(service.run({ action: "update", space: "other" })).rejects.toMatchObject({
       reason: "workspace_mismatch",
     });
-    await expect(service.run({ action: "share", audience: "private" })).rejects.toMatchObject({
-      reason: "manage_existing_audience",
-    });
+    mocks.setAccess.mockImplementation(async () =>
+      mocks.status.mockResolvedValue({ ...shared, access: "private" }),
+    );
+    await service.run({ action: "share", audience: "private" });
+    expect(mocks.setAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ change: { access: "private" } }),
+    );
+    expect(mocks.add).not.toHaveBeenCalled();
     expect(mocks.render).not.toHaveBeenCalled();
   });
   it("refuses a public share opened while a private first share was rendering", async () => {
@@ -422,4 +428,37 @@ it("retries an uncreated first version after refusal even when local files chang
   expect(mocks.render).toHaveBeenCalledOnce();
   expect(mocks.add).toHaveBeenCalledOnce();
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("reports an unchanged completed update without claiming a new version", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.version.mockResolvedValue({ last: { current: true }, source: "ready" });
+  mocks.add.mockResolvedValue(null);
+  const result = await createShareService("/project").run({ action: "update" });
+  expect(result.upToDate).toBe(true);
+});
+it("propagates a refused audience change without rendering", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.setAccess.mockRejectedValue(new Error("Restricted sharing requires a subscription"));
+  await expect(
+    createShareService("/project").run({ action: "share", audience: "team" }),
+  ).rejects.toThrow("subscription");
+  expect(mocks.render).not.toHaveBeenCalled();
+});
+
+it("does not label a newly published version as already up to date", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.version.mockResolvedValue({ last: { current: true }, source: "ready" });
+  mocks.add.mockImplementation(async ({ onAdded }) => {
+    onAdded();
+    return null;
+  });
+  expect((await createShareService("/project").run({ action: "update" })).upToDate).toBe(false);
+});
+it("does not label a still-processing update as already up to date", async () => {
+  mocks.status.mockResolvedValue(shared);
+  mocks.version.mockResolvedValue({ last: { current: true }, source: "ready" });
+  mocks.pending.mockResolvedValue({ projectId: "project" });
+  mocks.add.mockResolvedValue(null);
+  expect((await createShareService("/project").run({ action: "update" })).upToDate).toBe(false);
 });

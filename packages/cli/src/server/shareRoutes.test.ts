@@ -7,6 +7,7 @@ import { AuthError } from "../auth/errors.js";
 import { createShareCsrf, localShareRequestAllowed } from "./shareBoundary.js";
 
 const state: ShareState = {
+  upToDate: false,
   source: { at: "not_checked" },
   share: null,
   version: { last: null, source: "none", exporting: null, failure: null },
