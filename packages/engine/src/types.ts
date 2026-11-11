@@ -240,9 +240,7 @@ export interface CaptureOptions {
   compositionHash?: string;
   /** The frames this session captures, [start, end): a shared dedup set is spot-checked inside it. */
   staticDedupFrameRange?: { start: number; end: number };
-  /** Skip the still-frame check at init; it runs if the session is reused to capture (see `armDeferredStaticDedup`). */
   deferStaticDedup?: boolean;
-  /** Called on every still-frame check screenshot, so a stall watcher can tell the check from a stall. */
   onStaticDedupActivity?: () => void;
   /**
    * Render-time variable overrides for the composition. The engine injects
