@@ -157,13 +157,19 @@ const AGENT_INSTRUCTIONS = /^(agents?|claude|gemini|copilot-instructions)(\.[a-z
 const EXECUTABLE =
   /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
 
+function withoutTrailingDotsOrSpaces(part: string): string {
+  let end = part.length;
+  while (end > 0 && (part[end - 1] === "." || part[end - 1] === " ")) end--;
+  return part.slice(0, end);
+}
+
 /** Path segments as a case-insensitive file system compares them, either separator, no trailing dots or spaces. */
 function targetSegments(path: string): string[] {
   return path
     .normalize("NFC")
     .toLowerCase()
     .split(/[\\/]/)
-    .map((part) => part.replace(/[. ]+$/, ""))
+    .map(withoutTrailingDotsOrSpaces)
     .filter((part, at, parts) => part !== "" || at === parts.length - 1);
 }
 

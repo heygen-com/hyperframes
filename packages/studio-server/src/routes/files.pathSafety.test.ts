@@ -18,7 +18,11 @@ import { registerFileRoutes } from "./files";
 import { createStudioApi } from "../createStudioApi";
 import { fileContentVersion } from "../helpers/fileVersion";
 import { ProjectRootMissingError } from "@hyperframes/core";
-import { mkdirWithinProject } from "../helpers/safePath";
+import {
+  isPrivateProjectPath,
+  isWritableProjectPath,
+  mkdirWithinProject,
+} from "../helpers/safePath";
 import type { StudioApiAdapter } from "../types";
 
 const tempDirs: string[] = [];
@@ -932,6 +936,17 @@ describe("git, env and tool files", () => {
     expect(readFileSync(join(project, "node_modules", "pkg", "index.js"), "utf8")).toBe(
       "module.exports = 1;",
     );
+  });
+
+  it("checks a long run of spaces, dots or colons in linear time", () => {
+    const started = performance.now();
+    for (const filler of [" ", ".", ":"]) {
+      const long = `a${filler.repeat(200_000)}b`;
+      expect(isPrivateProjectPath(long)).toBe(false);
+      expect(isWritableProjectPath(`${long}/x.html`)).toBe(true);
+      expect(isWritableProjectPath(`.git${filler.repeat(200_000)}/config`)).toBe(false);
+    }
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   it("still reads node_modules and writes Studio's own hidden files", async () => {

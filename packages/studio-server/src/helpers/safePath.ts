@@ -52,7 +52,13 @@ function segmentsOf(relPath: string): string[] {
   return relPath
     .toLowerCase()
     .split(/[\\/]/)
-    .map((segment) => segment.replace(/:.*$/, "").replace(/[. ]+$/, ""));
+    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
+}
+
+function withoutTrailingDotsOrSpaces(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
+  return segment.slice(0, end);
 }
 
 // Git metadata and env files hold commands other tools run and secrets: no route reads or writes them.
