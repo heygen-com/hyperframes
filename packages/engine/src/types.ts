@@ -238,7 +238,7 @@ export interface CaptureOptions {
   staticDedupMemo?: StaticDedupMemo;
   /** Hash of the composition HTML this session loads; part of the static dedup sharing key. */
   compositionHash?: string;
-  /** The frames this session captures, [start, end): a shared dedup set is spot-checked inside it. */
+  /** The frames of this session's task, [start, end); an interleaved task captures only some of them. */
   staticDedupFrameRange?: { start: number; end: number };
   deferStaticDedup?: boolean;
   onStaticDedupActivity?: () => void;
