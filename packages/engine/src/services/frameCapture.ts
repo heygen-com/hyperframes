@@ -3929,12 +3929,12 @@ export async function computeStaticFrameSet(
 const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 
 // Wall budget for verification: 15 s is the floor; above it the budget is 1.5x
-// planned shots x the first shot's seek+capture time, capped at 300 s (nothing
-// was gained past 600 s on a 4K job). Exhaustion fails closed: dedup is
-// disabled for the unverified runs and normal capture proceeds.
+// planned shots x the first shot's seek+capture time, capped at 60 s so it ends before
+// the producer's 300 s first-frame stall that every worker's verification runs inside.
+// Exhaustion fails closed: dedup is disabled for unverified runs and capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
-const STATIC_VERIFY_CEILING_MS = 300_000;
+const STATIC_VERIFY_CEILING_MS = 60_000;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
 const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
