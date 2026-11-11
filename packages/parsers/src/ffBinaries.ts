@@ -1,5 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { accessSync, closeSync, constants, existsSync, openSync, readSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  existsSync,
+  openSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
@@ -91,7 +98,7 @@ function isExecutablePathCandidate(candidate: string): boolean {
   if (process.platform === "win32") return existsSync(candidate);
   try {
     accessSync(candidate, constants.X_OK);
-    return runsOnThisMac(candidate);
+    return statSync(candidate).isFile() && runsOnThisMac(candidate);
   } catch {
     return false;
   }
@@ -125,9 +132,9 @@ function scanPath(name: FfBinaryName): string | undefined {
 }
 
 // GUI/Dock/launchd-spawned processes on macOS don't inherit the shell PATH, so
-// `which ffmpeg` fails even when ffmpeg is installed via Homebrew. Probe the
-// well-known install dirs as a last resort. (No-op on Windows, where `where`
-// and installer-added PATH entries cover it.)
+// a PATH lookup fails even when ffmpeg is installed via Homebrew. Probe the
+// well-known install dirs as a last resort. (No-op on Windows, where
+// installer-added PATH entries cover it.)
 const COMMON_BIN_DIRS =
   process.platform === "win32"
     ? []
@@ -171,31 +178,9 @@ function findInInstallerPackage(name: FfBinaryName): string | undefined {
     : undefined;
 }
 
+// No lookup program (`which`, `where`) runs by name: it could itself come from the project.
 function searchSystem(name: FfBinaryName): string | undefined {
-  let found: string | undefined;
-  if (process.platform === "win32") {
-    // `where.exe` writes bytes in the active console code page, while Node
-    // decodes its stdout using a caller-selected encoding. Enumerating PATH
-    // from Node keeps Unicode paths as native JS strings and avoids mojibake.
-    found = scanPath(name);
-  } else {
-    try {
-      const output = execFileSync("which", [name], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      });
-      const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
-      found =
-        candidate && isTrustedExecutablePath(candidate) && isExecutablePathCandidate(candidate)
-          ? candidate
-          : scanPath(name);
-    } catch {
-      found = scanPath(name);
-    }
-  }
-  found ??= findInCommonDirsOrInstallerPackage(name);
-  return found;
+  return scanPath(name) ?? findInCommonDirsOrInstallerPackage(name);
 }
 
 function lookupOnSystem(name: FfBinaryName): string | undefined {
@@ -225,7 +210,7 @@ export interface FindFfBinaryOptions {
 
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
- * PATH scan on Windows or `which` plus PATH scan on Unix, then well-known Unix install dirs,
+ * in-process PATH scan, then well-known Unix install dirs,
  * then an `@ffmpeg-installer`/`@ffprobe-installer` package installed next to HyperFrames.
  * Discovery never returns a file in the working directory (see trustedExecutable.ts).
  * A found binary is cached for the process lifetime; a miss only for a few

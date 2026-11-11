@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { accessSync, constants, existsSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -39,9 +38,14 @@ export function isTrustedExecutablePath(file: string): boolean {
   return isAbsolute(file) && isTrustedDirectory(dirname(file));
 }
 
+function expandHome(dir: string): string {
+  if (process.platform === "win32" || !(dir === "~" || dir.startsWith("~/"))) return dir;
+  return join(homedir(), dir.slice(1));
+}
+
 /** The PATH folders a helper program may come from, in PATH order. */
 export function trustedPathDirs(pathValue = process.env.PATH ?? ""): string[] {
-  const entries = pathValue.split(delimiter);
+  const entries = pathValue.split(delimiter).map(expandHome);
   return [...new Set(entries.filter((dir) => isTrustedDirectory(dir)))];
 }
 
@@ -57,13 +61,13 @@ function isExecutableFile(file: string): boolean {
   if (process.platform === "win32") return existsSync(file);
   try {
     accessSync(file, constants.X_OK);
-    return true;
+    return statSync(file).isFile();
   } catch {
     return false;
   }
 }
 
-function scanTrustedPath(name: string): string | undefined {
+export function findTrustedExecutable(name: string): string | undefined {
   const extensions = process.platform === "win32" ? windowsExtensions() : [""];
   for (const dir of trustedPathDirs()) {
     for (const ext of extensions) {
@@ -72,25 +76,4 @@ function scanTrustedPath(name: string): string | undefined {
     }
   }
   return undefined;
-}
-
-/** Windows walks PATH itself: `where` lists the working directory first. Elsewhere `which`
- * answers, and an untrusted first hit falls through to the PATH walk. */
-export function findTrustedExecutable(name: string): string | undefined {
-  if (process.platform === "win32") return scanTrustedPath(name);
-  let listed: string | undefined;
-  try {
-    listed = execFileSync("which", [name], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    })
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .find(Boolean);
-  } catch {
-    return undefined;
-  }
-  if (!listed) return undefined;
-  return isTrustedExecutablePath(listed) ? listed : scanTrustedPath(name);
 }

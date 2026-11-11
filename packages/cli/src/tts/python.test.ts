@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Regression coverage for a silent HYPERFRAMES_PYTHON override rejection:
@@ -75,7 +75,6 @@ describe("findPython / describeRejectedPythonOverride", () => {
       if (args[0] === "--version" && cmd === "/nonexistent/python") {
         throw new Error("ENOENT: no such file or directory");
       }
-      if (cmd === "which") return `${join(bin, "python3")}\n`;
       if (args[0] === "--version") return "Python 3.11.0";
       throw new Error(`unexpected call: ${cmd} ${args.join(" ")}`);
     });
@@ -89,12 +88,11 @@ describe("findPython / describeRejectedPythonOverride", () => {
     }
   });
 
-  it("findPython never runs a python that the lookup finds in the working directory", () => {
+  it("findPython never runs a python from the working directory", () => {
     delete process.env.HYPERFRAMES_PYTHON;
-    vi.stubEnv("PATH", "");
+    vi.stubEnv("PATH", ["", "."].join(delimiter));
     const planted = join(process.cwd(), "python3");
     execFileSyncMock.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === "which" || cmd === "where") return `${planted}\n`;
       if (args[0] === "--version") return "Python 3.11.0";
       throw new Error(`unexpected call: ${cmd} ${args.join(" ")}`);
     });

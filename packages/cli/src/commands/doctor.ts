@@ -1,11 +1,12 @@
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
-import { execFileSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname } from "node:path";
 import { resolveExtractCacheDir } from "@hyperframes/engine";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import type { Example } from "./_examples.js";
 import { CONFIG_PATH } from "../telemetry/config.js";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
@@ -233,12 +234,7 @@ function sourceLabel(source: "env" | "default"): string {
 }
 
 function commandExists(command: string): boolean {
-  try {
-    execFileSync("which", [command], { stdio: "ignore", timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+  return findTrustedExecutable(command) !== undefined;
 }
 
 /**
