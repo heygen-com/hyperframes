@@ -1547,7 +1547,7 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--labels`  | Comma-separated labels, one per input path         |
 | `--out`     | Output path (default `./compare.png`)              |
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
-| `--timeout` | Render-ready timeout per variant (default 5000 ms) |
+| `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
