@@ -215,6 +215,41 @@ describe("RenderObservabilityRecorder", () => {
     vi.useRealTimers();
   });
 
+  it("keeps the first-frame window open while bounded check work goes on, and stalls once it stops", async () => {
+    vi.useFakeTimers();
+    const recorder = new RenderObservabilityRecorder({
+      pipelineStartMs: Date.now(),
+      log: makeLog(),
+      renderJobId: "render-stall-activity",
+    });
+    let activity = 0;
+    const checking = setInterval(() => (activity += 1), 1_000);
+    let outcome: unknown = "pending";
+    const stage = observeRenderStage(
+      recorder,
+      "capture_disk",
+      undefined,
+      () => new Promise<void>(() => {}),
+      {
+        stall: {
+          progress: () => 0,
+          noProgressMs: 10_000,
+          firstProgressMs: 10_000,
+          activity: () => activity,
+        },
+      },
+    );
+    stage.catch((error: unknown) => (outcome = error));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outcome).toBe("pending");
+    clearInterval(checking);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect((outcome as Error).message).toBe(
+      "[Render] capture_disk stalled: no progress for 10000ms (stuck at 0).",
+    );
+    vi.useRealTimers();
+  });
+
   describe("the stall watchdog across a system sleep", () => {
     const watch = () => {
       const recorder = new RenderObservabilityRecorder({

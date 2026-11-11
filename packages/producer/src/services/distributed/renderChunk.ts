@@ -132,6 +132,7 @@ export {
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
 } from "./chunkFrames.js";
+import { noteStaticDedupActivity } from "../render/shared.js";
 
 const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
@@ -749,6 +750,7 @@ export async function renderChunk(
         deferredVideos.filter((video) => remoteVideoIds.has(video.videoId)),
       ),
     });
+    captureOptions.onStaticDedupActivity = () => noteStaticDedupActivity(job);
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
     // session below. Parallel BeginFrame capture pays one bounded preflight

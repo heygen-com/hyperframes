@@ -214,6 +214,8 @@ export interface CaptureSession {
    * Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
+  /** Init skipped the still-frame check (`deferStaticDedup`); `armDeferredStaticDedup` runs it. */
+  staticDedupDeferred?: boolean;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -4229,6 +4231,7 @@ export async function verifyStaticFramesSafe(
     await seekToFrame(frameIdx);
     stats.screenshots++;
     const buf = await capture(page, session.options);
+    session.options.onStaticDedupActivity?.();
     if (stats.screenshots === 1) firstShotMs = now() - shotStart;
     return buf;
   };
@@ -4434,6 +4437,32 @@ async function armStaticDedup(
     );
     session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
+  if (session.options.deferStaticDedup) {
+    session.staticDedupDeferred = true;
+    logInitPhase("static-frame dedup: deferred until this session captures");
+    return;
+  }
+  await armStaticDedupFrames(session, page, logInitPhase, sharedStaticFrameStats);
+}
+
+/** Runs the still-frame check a session deferred at init; a no-op for any other session. */
+export async function armDeferredStaticDedup(session: CaptureSession): Promise<void> {
+  if (!session.staticDedupDeferred) return;
+  session.staticDedupDeferred = false;
+  const startedAt = Date.now();
+  await armStaticDedupFrames(session, session.page, (phase) =>
+    console.error(
+      `[initSession:${session.captureMode}] ${phase} (deferred, ${Date.now() - startedAt}ms)`,
+    ),
+  );
+}
+
+async function armStaticDedupFrames(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+  sharedStaticFrameStats?: Awaited<ReturnType<typeof computeStaticFrameSet>>,
+): Promise<void> {
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
   // (verification screenshots need the un-injected DOM), and initializeSession
   // calls this again unconditionally afterwards. Once staticFrames is
@@ -5814,11 +5843,11 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
   session.isInitialized = false;
 }
 
-export function prepareCaptureSessionForReuse(
+export async function prepareCaptureSessionForReuse(
   session: CaptureSession,
   outputDir: string,
   onBeforeCapture: BeforeCaptureHook | null,
-): void {
+): Promise<void> {
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }
@@ -5841,6 +5870,7 @@ export function prepareCaptureSessionForReuse(
   session.lastFrameBuffer = undefined;
   session.lastFrameAbsoluteIndex = undefined;
   session.staticDedupCount = 0;
+  await armDeferredStaticDedup(session);
 }
 
 export async function getCompositionDuration(session: CaptureSession): Promise<number> {

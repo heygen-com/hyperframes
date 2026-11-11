@@ -355,8 +355,13 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
       };
       const session = probeSession ?? (await openSession());
       if (probeSession) {
-        openSegmentedSessionReuse(input, probeSession, injector);
+        // Released before the await: workers open together, and only one may borrow the probe session.
+        const reused = probeSession;
         probeSession = null;
+        await openSegmentedSessionReuse(input, reused, injector).catch(async (error: unknown) => {
+          await closeCaptureSession(reused).catch(() => {});
+          throw error;
+        });
       }
       try {
         if (!session.isInitialized) await withinInitBudget(initializeSession(session), session);
@@ -370,12 +375,12 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
   };
 }
 
-function openSegmentedSessionReuse(
+async function openSegmentedSessionReuse(
   input: CaptureSegmentedStageInput,
   session: CaptureSession,
   injector: () => BeforeCaptureHook | null,
-): void {
-  prepareCaptureSessionForReuse(session, input.framesDir, injector());
+): Promise<void> {
+  await prepareCaptureSessionForReuse(session, input.framesDir, injector());
 }
 
 async function openSegmentedSession(

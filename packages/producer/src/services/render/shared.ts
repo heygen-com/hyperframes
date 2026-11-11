@@ -401,6 +401,17 @@ export function forgetWorkerPhases(job: object): void {
   workerPhasesByJob.delete(job);
 }
 
+const staticDedupActivityByJob = new WeakMap<object, number>();
+
+/** Counts a render's still-frame check screenshots; the capture stall watcher reads it as activity. */
+export function noteStaticDedupActivity(job: object): void {
+  staticDedupActivityByJob.set(job, (staticDedupActivityByJob.get(job) ?? 0) + 1);
+}
+
+export function staticDedupActivity(job: object): number {
+  return staticDedupActivityByJob.get(job) ?? 0;
+}
+
 export function describeWorkerPhases(job: object): string | undefined {
   const phases = workerPhasesByJob.get(job);
   if (!phases?.size) return undefined;

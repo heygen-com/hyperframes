@@ -453,6 +453,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         subTimelineWaitMemo,
         staticDedupMemo,
         compositionHash: computeCompositionObservabilityHash(compiled.html),
+        deferStaticDedup: true,
       };
 
       const PROBE_MAX_ATTEMPTS = 2;
