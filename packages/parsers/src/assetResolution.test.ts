@@ -307,7 +307,10 @@ describe("resolveExistingLocalAsset stays inside the project", () => {
     expect(resolveCompositionSrc(project, "/assets/a.css")).toBe(join(project, "assets", "a.css"));
     expect(resolveCompositionSrc(project, "../secret.env")).toBeNull();
     expect(resolveCompositionSrc(project, "%2E%2E/secret.env")).toBeNull();
-    expect(resolveCompositionSrc(project, outside)).toBe(join(project, outside));
+    const driveLetterPathLeavesProject = process.platform === "win32";
+    expect(resolveCompositionSrc(project, outside)).toBe(
+      driveLetterPathLeavesProject ? null : join(project, outside),
+    );
   });
 });
 
