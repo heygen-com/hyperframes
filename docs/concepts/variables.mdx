@@ -60,7 +60,7 @@ Variables live on the composition declaration:
 ></html>
 ```
 
-## What can be a variable
+### What can be a variable
 
 A variable has one of seven kinds. The kind sets the control the browser editor
 shows and what a render accepts for it.
@@ -76,7 +76,7 @@ shows and what a render accepts for it.
 | `image`   | A link to a picture                            | A customer logo                  |
 
 Video and sound have no kind of their own. Declare the link as a `string`, then
-bind it to a `<video>` or `<audio>` element (next section).
+bind it to a `<video>` or `<audio>` element, as in [Swap in a video or a sound](#swap-in-a-video-or-a-sound).
 
 ### Say what a slot means, not where it sits
 
@@ -145,7 +145,7 @@ document.querySelector(".badge").hidden = !featured;
 Bind a link to a media element with `data-var-src`. Keep a `src` on the element
 as the placeholder:
 
-```html compositions/welcome.html
+```html index.html
 <html
   data-composition-variables='[
   {"id":"welcomeClip","type":"string","label":"Welcome clip","default":"assets/placeholder.mp4"}
@@ -177,7 +177,7 @@ Limits:
 
 - `data-var-src` works on `<video>`, `<audio>`, `<img>`, and `<source>`. On any
   other element it is ignored.
-- The link must be a relative path or an `http`, `https`, or `blob` URL. Any
+- The link must be a path or an `http`, `https`, or `blob` URL. Any
   other value, including a `data:` video, is dropped and the placeholder
   renders instead, with a warning.
 - A clip inside a nested composition that receives its own `data-variable-values`
