@@ -433,6 +433,38 @@ export function inlineSubCompositions(
   const scopeCssToComposition = createCompositionCssScoper();
 
   const sceneHosts = new Map<string, Element>();
+
+  // Ids minted by this pass, by owner element. A nested mount discovered
+  // later must defer to a mount that claimed its authored id first; authored
+  // duplicates that were already in the document keep their ids as before.
+  const passClaimedIds = new Map<string, Element>();
+  // Ids already present in the DOM, lazily seeded on first claim — most
+  // projects mount no anonymous hosts, so the scan should not run
+  // unconditionally.
+  let compositionIdOwners: Map<string, Element> | null = null;
+  const isCompositionIdTaken = (id: string): boolean => {
+    if (!compositionIdOwners) {
+      compositionIdOwners = new Map();
+      for (const el of document.querySelectorAll("[data-composition-id]")) {
+        const ownerId = el.getAttribute("data-composition-id") || "";
+        if (ownerId && !compositionIdOwners.has(ownerId)) compositionIdOwners.set(ownerId, el);
+      }
+    }
+    return compositionIdOwners.has(id) || passClaimedIds.has(id);
+  };
+  const claimRuntimeCompositionId = (hostEl: Element, base: string): string => {
+    let candidate = base;
+    for (let suffix = 1; isCompositionIdTaken(candidate); suffix += 1) {
+      candidate = `${base}__hf${suffix}`;
+    }
+    passClaimedIds.set(candidate, hostEl);
+    return candidate;
+  };
+  // A mount processed after the scan holds its id as surely as one the scan saw.
+  const holdCompositionId = (id: string, hostEl: Element): void => {
+    if (compositionIdOwners && !compositionIdOwners.has(id)) compositionIdOwners.set(id, hostEl);
+  };
+
   const queue = hosts.map((element) => ({
     element,
     ancestry: [] as string[],
@@ -481,6 +513,19 @@ export function inlineSubCompositions(
       runtimeCompId = compId || "";
     }
 
+    // A mount discovered after its id was claimed by this pass — a nested host
+    // whose file only became visible once a parent inlined — takes a unique
+    // runtime id instead, the same rename named duplicates get.
+    const idClaimer = runtimeCompId ? passClaimedIds.get(runtimeCompId) : undefined;
+    if (runtimeCompId && idClaimer && idClaimer !== hostEl) {
+      const authoredId = runtimeCompId;
+      runtimeCompId = claimRuntimeCompositionId(hostEl, authoredId);
+      hostEl.setAttribute("data-composition-id", runtimeCompId);
+      if (runtimeCompId !== authoredId) {
+        hostEl.setAttribute("data-hf-original-composition-id", authoredId);
+      }
+    }
+
     const { contentHtml, hasTemplate } = resolveSubCompositionContent(compHtml, compDoc);
     if (!contentHtml.trim()) {
       onMissingComposition?.(src);
@@ -507,6 +552,17 @@ export function inlineSubCompositions(
     const authoredRootId = plan.authoredRootId;
     const scopeCompId = plan.authoredCompositionId || "";
     const scriptCompositionId = plan.scriptCompositionId || "";
+    if (!runtimeCompId && scopeCompId) {
+      // An anonymous mount needs a scope of its own, or its variables, scripts
+      // and styles all land in the declared composition's scope — where they
+      // clobber (and are clobbered by) any named mount of the same file.
+      runtimeCompId = claimRuntimeCompositionId(hostEl, scopeCompId);
+      hostEl.setAttribute("data-composition-id", runtimeCompId);
+      if (runtimeCompId !== scopeCompId) {
+        hostEl.setAttribute("data-hf-original-composition-id", scopeCompId);
+      }
+    }
+    if (runtimeCompId) holdCompositionId(runtimeCompId, hostEl);
     const runtimeScope = runtimeCompId ? buildScopeSelector(runtimeCompId) : "";
     const scene = tagScenes ? (parentScene ?? (runtimeCompId || src)) : undefined;
     if (scene && !parentScene) {
@@ -525,14 +581,15 @@ export function inlineSubCompositions(
     // document element (full-document sub-comps) AND the inner composition root
     // (template/fragment sub-comps store their schema on the root div, not a
     // synthetic <html>), then let per-instance host values override.
-    if (readVariableDefaults && parseHostVariables && runtimeCompId) {
+    const variablesCompId = runtimeCompId;
+    if (readVariableDefaults && parseHostVariables && variablesCompId) {
       const mergedVariables: Record<string, unknown> = {};
       for (const carrier of plan.variableDefaultCarriers) {
         Object.assign(mergedVariables, readVariableDefaults(carrier));
       }
       Object.assign(mergedVariables, parseHostVariables(hostEl));
       if (Object.keys(mergedVariables).length > 0) {
-        variablesByComp[runtimeCompId] = mergedVariables;
+        variablesByComp[variablesCompId] = mergedVariables;
       }
       // Compile time is the only place this defect is visible on the sub-comp
       // path: the instance value is baked into `__hfVariablesByComp` right
@@ -540,8 +597,8 @@ export function inlineSubCompositions(
       // runtime's identical guard never runs. Same helper, so the message and
       // the per-process dedupe set are shared with the runtime path and the
       // author sees one warning either way.
-      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, runtimeCompId);
-      warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
+      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, variablesCompId);
+      warnUnknownEnumValues(innerRoot, mergedVariables, variablesCompId);
     }
 
     // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
@@ -714,16 +771,6 @@ export function inlineSubCompositions(
       for (const child of extractedCompositionAssets(innerRoot)) child.remove();
       if (flattenInnerRoot) {
         const prepared = flattenInnerRoot(innerRoot);
-        if (!compId && scopeCompId) {
-          // Anonymous host: flattenInnerRoot strips data-composition-id,
-          // assuming the host already carries the composition's identity.
-          // When the host has none, nothing in the render DOM matches the
-          // composition's own root-styling CSS or self-referencing scripts
-          // (e.g. document.querySelector('[data-composition-id="X"]')).
-          // Restore it on the wrapper so both keep resolving, same as
-          // before flattening preserved it via outerHTML.
-          prepared.setAttribute("data-composition-id", scopeCompId);
-        }
         hostEl.innerHTML = prepared.outerHTML || "";
       } else {
         hostEl.innerHTML = compId ? innerRoot.innerHTML || "" : innerRoot.outerHTML || "";
