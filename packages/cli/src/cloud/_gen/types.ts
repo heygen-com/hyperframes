@@ -129,7 +129,7 @@ export interface CreateBackgroundRemovalRequest {
 
 export interface CreateHyperframesRenderRequest {
   project: AssetUrl | AssetId | AssetBase64;
-  fps?: number | null;
+  fps?: number | "24000/1001" | "30000/1001" | "60000/1001" | null;
   quality?: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   crf?: number | null;
@@ -411,7 +411,7 @@ export interface HyperframesRenderDetail {
   video_url?: string | null;
   thumbnail_url?: string | null;
   duration?: number | null;
-  fps?: number | null;
+  fps?: number | "24000/1001" | "30000/1001" | "60000/1001" | null;
   quality?: "draft" | "standard" | "high" | null;
   format: "mp4" | "webm" | "mov";
   resolution?: HyperframesResolution | null;

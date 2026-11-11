@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertArchiveFits,
   logsTick,
+  parseCloudFps,
   resolveCloudFpsArg,
   parseAspectRatioFlag,
   resolveAspectRatioForSubmit,
@@ -54,11 +55,28 @@ describe("resolveCloudFpsArg", () => {
   it("lets an explicit --fps win", () => {
     expect(resolveCloudFpsArg(withFps("24"), "60", undefined)).toBe("60");
   });
-  it("leaves the server default when data-fps is absent or fractional", () => {
+  it("leaves the server default when data-fps is absent", () => {
     expect(
       resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
     ).toBeUndefined();
-    expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
+  });
+  it("keeps an exact fractional data-fps instead of letting the server render it at 30", () => {
+    expect(resolveCloudFpsArg(withFps("30000/1001"), undefined, undefined)).toBe("30000/1001");
+  });
+});
+
+describe("parseCloudFps", () => {
+  it("sends a whole rate as a number and an NTSC rate as its exact fraction", () => {
+    expect(parseCloudFps(undefined)).toBeUndefined();
+    expect(parseCloudFps("30")).toBe(30);
+    expect(parseCloudFps("24000/1001")).toBe("24000/1001");
+    expect(parseCloudFps("30000/1001")).toBe("30000/1001");
+    expect(parseCloudFps("60000/1001")).toBe("60000/1001");
+  });
+  it("refuses a decimal rate rather than rounding it", () => {
+    for (const raw of ["29.97", "0", "241", "abc"]) {
+      expect(() => parseCloudFps(raw)).toThrow(CliUsageError);
+    }
   });
 });
 
