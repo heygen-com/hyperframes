@@ -11,6 +11,11 @@ import errno
 import os
 import sys
 
+# Same UTF-8 stdio pin as the scripts that import this module, so it holds on its own too.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors=_stream.errors)
+
 
 def _comparable(path):
     return os.path.normcase(os.path.realpath(os.path.abspath(path)))

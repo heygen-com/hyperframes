@@ -91,7 +91,7 @@ test(
     const planted = join(project, "node_modules", ".bin", "ffprobe");
     writeFileSync(planted, `#!/bin/sh\ntouch "${marker}"\n`);
     chmodSync(planted, 0o755);
-    const script = "require('node:child_process').spawnSync('ffprobe', ['-version']);";
+    const script = 'require("node:child_process").spawnSync("ffprobe", ["-version"]);';
     const run = (guard) =>
       spawnSync(
         process.execPath,
