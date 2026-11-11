@@ -783,12 +783,10 @@ export function paintCaptureMotionBlur(
   return done;
 }
 
-/** The host's preview quality: below Full, the filter tier draws fewer copies in preview. */
 export function setMotionBlurPreviewQuality(level: number): void {
   setFilterPreviewQuality(level);
 }
 
-/** The levels below Full at which blur draws lighter: the filter tier's, once it has movers. */
 export function motionBlurLighterLevels(): readonly number[] {
   if (!instance || !onFallback || suspended) return [];
   return instance.report().movers > 0 ? FILTER_LIGHTER_LEVELS : [];

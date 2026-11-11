@@ -17,15 +17,12 @@ import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 const NS = "http://www.w3.org/2000/svg";
 /** Copies per mover; the softening along the motion closes the steps between them. */
 const COPIES = 32;
-/** Levels below Full at which preview blur draws fewer copies (renders always draw COPIES). */
 export const FILTER_LIGHTER_LEVELS = [0.5, 0.25] as const;
-/** Preview copies by the host's preview quality. The raster cost follows the copies; 16 stays within
- * the sub-frame oracle's noise of 32, 8 shows on turning content, so it waits for a lower level. */
-const copiesAt = (level: number): number => (level >= 1 ? COPIES : level >= 0.5 ? 16 : 8);
+const previewCopiesAt = (level: number): number => (level >= 1 ? COPIES : level >= 0.5 ? 16 : 8);
 let previewCopies = COPIES;
 
 export function setFilterPreviewQuality(level: number): void {
-  if (level > 0) previewCopies = copiesAt(level);
+  if (level > 0) previewCopies = previewCopiesAt(level);
 }
 const PREVIEW_READS = 4;
 const RENDER_READS = 8;
@@ -186,7 +183,6 @@ export function createFilterTier(
     for (const el of [...styled]) drop(el);
   }
 
-  /** The mover's filter with this many copies; a level change rebuilds it under the same id. */
   function layerOf(el: HTMLElement, copies: number): Layer {
     const kept = layers.get(el);
     if (kept?.offsets.length === copies) return kept;
