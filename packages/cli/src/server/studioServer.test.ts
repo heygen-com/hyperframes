@@ -761,6 +761,18 @@ describe("Studio thumbnail capture", () => {
     expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
   });
 
+  it("serves thumbnail capture documents in an opaque origin", async () => {
+    const dir = tmpProject();
+    writeFileSync(join(dir, "index.html"), '<div data-composition-id="main"></div>');
+    server = createStudioServer({ projectDir: dir, projectName: "demo" });
+    const capture = await server.app.request(
+      "http://localhost/api/projects/demo/preview?hf-capture=1",
+    );
+    expect(capture.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+    const preview = await server.app.request("http://localhost/api/projects/demo/preview");
+    expect(preview.headers.get("content-security-policy")).toBeNull();
+  });
+
   it("grants the capture page's loads on its own session before it navigates", async () => {
     const calls: string[] = [];
     const session = {

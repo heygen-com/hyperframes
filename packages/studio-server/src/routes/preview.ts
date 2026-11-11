@@ -102,6 +102,7 @@ import {
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
+import { corsProjectVideos } from "../helpers/captureVideos.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
 function escapeGsapUrl(url: string): string {
@@ -372,11 +373,11 @@ function injectStudioPreviewAugmentations(
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
-  options: { capture: boolean; gsapBaseUrl: string },
+  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean },
 ): string {
   const marked = options.capture
     ? injectTagsAtHeadStart(
-        html,
+        options.sandboxedCapture ? corsProjectVideos(html) : html,
         `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
       )
     : injectTagsAtHeadStart(
@@ -482,7 +483,11 @@ function resolvePreviewGsapBaseUrl(adapter: PreviewApiAdapter): string {
   return normalizeGsapLocalRoot(adapter.gsapLocalRoot);
 }
 
-export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
+export function registerPreviewRoutes(
+  api: Hono,
+  adapter: PreviewApiAdapter,
+  { sandboxThumbnailCaptures = false }: { sandboxThumbnailCaptures?: boolean } = {},
+): void {
   const gsapBaseUrl = resolvePreviewGsapBaseUrl(adapter);
   const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapBaseUrl).digest("hex").slice(0, 12)}`;
   const previewCacheHeaders = (etag: string) => ({
@@ -540,7 +545,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         signature,
         project.dir,
         mainCompositionPath,
-        { capture, gsapBaseUrl },
+        { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
       );
       if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
       bundled = await injectMediaCodecMap(
@@ -571,7 +576,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
           signature,
           project.dir,
           fallback.compositionPath,
-          { capture, gsapBaseUrl },
+          { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
         );
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
@@ -695,6 +700,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
+      sandboxedCapture: sandboxThumbnailCaptures,
     });
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
     html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);

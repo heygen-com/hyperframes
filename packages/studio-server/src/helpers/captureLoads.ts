@@ -1,20 +1,12 @@
 import { PREVIEW_PROXY_PRIORITY_HEADER, PREVIEW_PROXY_PROGRESS_HEADER } from "@hyperframes/core";
 
 /**
- * A capture document is sandboxed (createStudioApi), so its CORS-mode loads fail. The trusted renderer
- * adds the CORS headers for its own page, by each load's kind: what a frame draws, and what the runtime
- * fetches (`.html` scenes, `.json`, `.cube` LUTs, a video's `?hf-proxy=` copy and its preflight).
+ * A sandboxed capture document's CORS-mode loads fail, so the trusted renderer adds CORS headers for
+ * its own page: every GET of the project's preview files except a dotfile or dot-folder (`.env`,
+ * `.git/`), and the preflight of the runtime's wait for a video's `?hf-proxy=` copy.
  */
-const RUNTIME_READS = /\.(html?|json|cube)$/i;
-
 // Chrome reports a page's `fetch()`, and its preflight, as `XHR`.
-const CAPTURE_LOADS = new Map<string, RegExp>([
-  ["Font", /\.(woff2?|ttf|otf)$/i],
-  ["Script", /\.m?js$/i],
-  ["Image", /\.(png|jpe?g|gif|webp|avif|svg)$/i],
-  ["Fetch", RUNTIME_READS],
-  ["XHR", RUNTIME_READS],
-]);
+const GRANTED_TYPES = new Set(["Font", "Script", "Stylesheet", "Image", "Media", "Fetch", "XHR"]);
 
 const PROXY_PARAM = "hf-proxy";
 const VIDEO_FILE = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts)$/i;
@@ -30,27 +22,49 @@ function capturePreviewPrefix(captureUrl: string): string | null {
   return path ? `${url.origin}${path}/` : null;
 }
 
+export interface CaptureSandboxOption {
+  /**
+   * Serve thumbnail capture documents (`?hf-capture`) in an opaque origin. Default off. Turn it on
+   * only with a thumbnail renderer that calls `grantCaptureLoads` on each capture page before loading
+   * it; without that grant its captures lose fonts, module scripts, nested scenes and video pixels.
+   */
+  sandboxThumbnailCaptures?: boolean;
+}
+
 export interface CaptureLoad {
   url: string;
   method: string;
   resourceType: string;
 }
 
+const decodedSegment = (segment: string) => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return ".";
+  }
+};
+
+const isDotPath = (url: URL, prefix: string) =>
+  url.pathname
+    .slice(new URL(prefix).pathname.length)
+    .split("/")
+    .some((segment) => decodedSegment(segment).startsWith("."));
+
 export function captureLoadGrant(
   load: CaptureLoad,
   captureUrl: string,
-): "read" | "proxy" | "preflight" | null {
+): "read" | "preflight" | null {
   const prefix = capturePreviewPrefix(captureUrl);
   if (!prefix || !load.url.startsWith(prefix)) return null;
   const url = new URL(load.url);
-  const fetched = load.resourceType === "XHR" || load.resourceType === "Fetch";
-  if (fetched && url.searchParams.has(PROXY_PARAM) && VIDEO_FILE.test(url.pathname)) {
-    if (load.method === "OPTIONS") return "preflight";
-    if (load.method === "GET") return "proxy";
-    return null;
-  }
-  if (load.method !== "GET") return null;
-  return CAPTURE_LOADS.get(load.resourceType)?.test(url.pathname) ? "read" : null;
+  if (isDotPath(url, prefix) || !GRANTED_TYPES.has(load.resourceType)) return null;
+  const proxyWait =
+    (load.resourceType === "XHR" || load.resourceType === "Fetch") &&
+    url.searchParams.has(PROXY_PARAM) &&
+    VIDEO_FILE.test(url.pathname);
+  if (load.method === "OPTIONS") return proxyWait ? "preflight" : null;
+  return load.method === "GET" ? "read" : null;
 }
 
 type Header = { name: string; value: string };
@@ -72,8 +86,6 @@ export interface CaptureCdpSession {
 const OPAQUE_CALLER: Header[] = [
   { name: "Access-Control-Allow-Origin", value: "null" },
   { name: "X-Content-Type-Options", value: "nosniff" },
-];
-const PROXY_HEADERS: Header[] = [
   {
     name: "Access-Control-Expose-Headers",
     value: `Retry-After, ${PREVIEW_PROXY_PROGRESS_HEADER}, Content-Range`,
@@ -112,17 +124,13 @@ export async function grantCaptureLoads(cdp: CaptureCdpSession, captureUrl: stri
           ? cdp.send("Fetch.continueResponse", {
               requestId,
               responseCode: status,
-              responseHeaders: [
-                ...headers,
-                ...OPAQUE_CALLER,
-                ...(grant === "proxy" ? PROXY_HEADERS : []),
-              ],
+              responseHeaders: [...headers, ...OPAQUE_CALLER],
             })
           : cdp.send("Fetch.continueRequest", { requestId });
     void sent.catch(() => undefined);
   });
   await cdp.send("Fetch.enable", {
-    patterns: [...CAPTURE_LOADS.keys()].map((resourceType) => ({
+    patterns: [...GRANTED_TYPES].map((resourceType) => ({
       urlPattern: `${prefix}*`,
       resourceType,
       requestStage: "Response",

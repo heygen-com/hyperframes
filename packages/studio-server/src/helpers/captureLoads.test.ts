@@ -8,19 +8,22 @@ const CAPTURE = `${PREVIEW}/comp/compositions/intro.html?hf-capture=1`;
 describe("captureLoadGrant", () => {
   it.each([
     ["Font", `${PREVIEW}/assets/brand.woff2`],
-    ["Font", `${PREVIEW}/fonts/Display.ttf?v=2`],
     ["Script", `${PREVIEW}/assets/scene.mjs`],
+    ["Stylesheet", `${PREVIEW}/style.css`],
     ["Image", `${PREVIEW}/assets/logo.png`],
+    ["Media", `${PREVIEW}/assets/clip.mp4`],
+    ["Media", `${PREVIEW}/assets/clip.mov?hf-proxy=h264`],
     ["XHR", `${PREVIEW}/compositions/scene.html`],
-    ["Fetch", `${PREVIEW}/caption-overrides.json`],
-    ["XHR", `${PREVIEW}/luts/warm.cube`],
+    ["Fetch", `${PREVIEW}/models/device.glb`],
+    ["XHR", `${PREVIEW}/assets/fonts/Geist-Bold.ttf`],
+    ["XHR", `${PREVIEW}/notes.txt`],
+    ["XHR", `${PREVIEW}/assets/clip.mov?hf-proxy=h264&hf-proxy-box=1448x724`],
   ])("lets the frame read a %s load of %s", (resourceType, url) => {
     expect(captureLoadGrant({ url, method: "GET", resourceType }, CAPTURE)).toBe("read");
   });
 
-  it("answers the runtime's wait for a video's preview copy and its preflight", () => {
+  it("answers the preflight of the runtime's wait for a video's preview copy", () => {
     const url = `${PREVIEW}/assets/clip.mov?hf-proxy=h264&hf-proxy-box=1448x724`;
-    expect(captureLoadGrant({ url, method: "GET", resourceType: "XHR" }, CAPTURE)).toBe("proxy");
     expect(captureLoadGrant({ url, method: "OPTIONS", resourceType: "XHR" }, CAPTURE)).toBe(
       "preflight",
     );
@@ -29,21 +32,21 @@ describe("captureLoadGrant", () => {
   it.each([
     ["XHR", `${PREVIEW}/.env`, "GET"],
     ["XHR", `${PREVIEW}/.git/config`, "GET"],
-    ["Fetch", `${PREVIEW}/notes.txt`, "GET"],
+    ["XHR", `${PREVIEW}/assets/.npmrc`, "GET"],
+    ["XHR", `${PREVIEW}/%2Eenv`, "GET"],
+    ["XHR", `${PREVIEW}/%E0%A4%A.html`, "GET"],
     ["Script", `${PREVIEW}/.env`, "GET"],
-    ["Font", `${PREVIEW}/secrets.txt`, "GET"],
-    ["Stylesheet", `${PREVIEW}/style.css`, "GET"],
+    ["Image", `${PREVIEW}/.git/logo.png`, "GET"],
+    ["Document", `${PREVIEW}/compositions/scene.html`, "GET"],
     ["XHR", `${ORIGIN}/api/projects/demo/files/index.html`, "GET"],
     ["XHR", `${ORIGIN}/api/projects/other/preview/index.html`, "GET"],
     ["XHR", `http://127.0.0.1:9999/api/projects/demo/preview/index.html`, "GET"],
     ["XHR", `${PREVIEW}/compositions/scene.html`, "PUT"],
     ["XHR", `${PREVIEW}/compositions/scene.html`, "POST"],
     ["XHR", `${PREVIEW}/compositions/scene.html`, "OPTIONS"],
-    ["XHR", `${PREVIEW}/assets/clip.mov`, "GET"],
-    ["XHR", `${PREVIEW}/.env?hf-proxy=h264`, "GET"],
     ["XHR", `${PREVIEW}/.env?hf-proxy=h264`, "OPTIONS"],
+    ["XHR", `${PREVIEW}/notes.txt?hf-proxy=h264`, "OPTIONS"],
     ["XHR", `${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "PUT"],
-    ["Media", `${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "GET"],
   ])("refuses a %s load of %s (%s)", (resourceType, url, method) => {
     expect(captureLoadGrant({ url, method, resourceType }, CAPTURE)).toBeNull();
   });
@@ -85,7 +88,9 @@ describe("grantCaptureLoads", () => {
     const enable = send.mock.calls.find(([method]) => method === "Fetch.enable");
     expect(enable).toBeDefined();
     const { patterns } = enable![1] as { patterns: Array<Record<string, string>> };
-    expect(patterns.length).toBeGreaterThan(0);
+    expect(patterns.map((pattern) => pattern.resourceType)).toEqual(
+      expect.arrayContaining(["Font", "Image", "Media", "XHR"]),
+    );
     for (const pattern of patterns) {
       expect(pattern.urlPattern).toBe(`${PREVIEW}/*`);
       expect(pattern.requestStage).toBe("Response");
@@ -103,6 +108,7 @@ describe("grantCaptureLoads", () => {
         { name: "Content-Type", value: "font/woff2" },
         { name: "Access-Control-Allow-Origin", value: "null" },
         { name: "X-Content-Type-Options", value: "nosniff" },
+        expect.objectContaining({ name: "Access-Control-Expose-Headers" }),
       ],
     });
   });
