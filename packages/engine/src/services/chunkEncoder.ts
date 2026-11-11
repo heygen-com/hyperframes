@@ -59,6 +59,8 @@ export const ENCODER_PRESETS = {
   high: { preset: "fast", quality: 15, codec: "h264" as const },
 };
 
+export type ChromaSubsampling = "420" | "444";
+
 export interface EncoderPreset {
   preset: string;
   quality: number;
@@ -160,6 +162,7 @@ export function getEncoderPreset(
   format: "mp4" | "webm" | "mov" = "mp4",
   hdr?: { transfer: HdrTransfer },
   proresProfile: ProresProfile = "4444",
+  chromaSubsampling: ChromaSubsampling = "420",
 ): EncoderPreset {
   const base = ENCODER_PRESETS[quality];
   if (format === "webm") {
@@ -183,7 +186,7 @@ export function getEncoderPreset(
       hdr,
     };
   }
-  return { ...base, pixelFormat: "yuv420p" };
+  return { ...base, pixelFormat: chromaSubsampling === "444" ? "yuv444p" : "yuv420p" };
 }
 
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.

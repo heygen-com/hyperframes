@@ -3,6 +3,7 @@ const VIDEO_BITRATE = /^\d+(\.\d+)?[kKmMgG]?$/;
 const VIDEO_FRAME_FORMATS = ["auto", "jpg", "png"] as const;
 const HDR_MODES = ["auto", "force-hdr", "force-sdr"] as const;
 const PRORES_PROFILES = ["4444", "hq", "422", "lt", "proxy"] as const;
+const CHROMA_SUBSAMPLINGS = ["420", "444"] as const;
 
 interface EncoderOptions {
   gifLoop?: number;
@@ -14,6 +15,7 @@ interface EncoderOptions {
   keyframeIntervalSeconds?: number;
   maxBitrate?: string;
   bufferSize?: string;
+  chromaSubsampling?: (typeof CHROMA_SUBSAMPLINGS)[number];
 }
 
 export interface EncoderOptionsBody {
@@ -26,6 +28,8 @@ export interface EncoderOptionsBody {
   keyframeIntervalSeconds?: unknown;
   maxBitrate?: unknown;
   bufferSize?: unknown;
+  chromaSubsampling?: unknown;
+  gpu?: unknown;
 }
 
 type Parsed = { ok: true; options: EncoderOptions } | { ok: false; error: string };
@@ -107,15 +111,41 @@ function parseProres(value: unknown, format: string): Parsed {
   return { ok: true, options: format === "mov" ? { proresProfile: value } : {} };
 }
 
+function parseChromaSubsampling(body: EncoderOptionsBody, format: string): Parsed {
+  const chromaSubsampling = body.chromaSubsampling;
+  if (!isSet(chromaSubsampling)) return { ok: true, options: {} };
+  if (!oneOf(chromaSubsampling, CHROMA_SUBSAMPLINGS)) {
+    return {
+      ok: false,
+      error: `chromaSubsampling must be one of ${CHROMA_SUBSAMPLINGS.join(", ")}`,
+    };
+  }
+  if (chromaSubsampling === "444") {
+    if (format !== "mp4") {
+      return { ok: false, error: `chromaSubsampling "444" supports mp4 only (got ${format})` };
+    }
+    if (body.gpu === true) {
+      return { ok: false, error: 'chromaSubsampling "444" requires the software encoder, not gpu' };
+    }
+    if (body.hdrMode === "force-hdr") {
+      return { ok: false, error: 'chromaSubsampling "444" is SDR only, not force-hdr' };
+    }
+  }
+  return { ok: true, options: { chromaSubsampling } };
+}
+
 /** Explicit encoder overrides from a render request. MOV (ProRes) takes no rate control. */
 export function parseEncoderOptions(body: EncoderOptionsBody, format: string): Parsed {
-  const rate = parseRateControl(body, format);
-  if (!rate.ok) return rate;
-  const delivery = parseDelivery(body, format);
-  if (!delivery.ok) return delivery;
-  const prores = parseProres(body.proresProfile, format);
-  if (!prores.ok) return prores;
-  const options: EncoderOptions = { ...rate.options, ...delivery.options, ...prores.options };
+  const options: EncoderOptions = {};
+  for (const parsed of [
+    parseRateControl(body, format),
+    parseDelivery(body, format),
+    parseProres(body.proresProfile, format),
+    parseChromaSubsampling(body, format),
+  ]) {
+    if (!parsed.ok) return parsed;
+    Object.assign(options, parsed.options);
+  }
   if (isSet(body.gifLoop)) {
     if (
       typeof body.gifLoop !== "number" ||
@@ -155,5 +185,6 @@ export function encoderJobOptions(opts: EncoderOptions): Omit<EncoderOptions, "g
     ...(bufferSize ? { bufferSize } : {}),
     ...(opts.videoFrameFormat ? { videoFrameFormat: opts.videoFrameFormat } : {}),
     ...(opts.hdrMode ? { hdrMode: opts.hdrMode } : {}),
+    ...(opts.chromaSubsampling ? { chromaSubsampling: opts.chromaSubsampling } : {}),
   };
 }

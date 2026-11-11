@@ -43,6 +43,7 @@
   "src/services/render/blurDifferential.offsets.integration.test.ts",
   "src/services/render/blurDifferential.once.integration.test.ts",
   "src/services/render/blurDifferential.stateful.integration.test.ts",
+  "src/services/render/chromaSubsampling.integration.test.ts",
   "src/services/render/deliveryRender.integration.test.ts",
   "src/services/render/firstFrameStartingState.integration.test.ts",
   "src/services/render/hlsRender.integration.test.ts",
