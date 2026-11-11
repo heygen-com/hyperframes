@@ -1,9 +1,10 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * The port goes to `window.parent` once, when the parent asks for it, so only
- * the parent holds a channel. A connect posted by anything else, including the
- * page itself, is ignored and does not use up the handoff. Requests on the port
+ * The port goes to `window.parent` when the parent asks for it, so only the
+ * parent holds a channel. Each later ask from the parent (a remounted client)
+ * closes the port it had and hands over a fresh one. A connect posted by
+ * anything else, including the page itself, is ignored. Requests on the port
  * are validated before they run; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
@@ -107,7 +108,8 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    window.removeEventListener("message", onMessage);
+    // The parent's earlier client is gone or replaced; only the newest holds a channel.
+    port?.close();
     const channel = new MessageChannel();
     port = channel.port1;
     serve(port);
@@ -121,6 +123,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     } catch (err) {
       swallow("editingAgent.handoff", err);
       port.close();
+      port = null;
     }
   };
   window.addEventListener("message", onMessage);
@@ -128,6 +131,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     dispose() {
       window.removeEventListener("message", onMessage);
       port?.close();
+      port = null;
     },
   };
 }

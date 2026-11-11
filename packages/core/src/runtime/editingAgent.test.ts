@@ -48,14 +48,30 @@ describe("installEditingAgent", () => {
     return (handoff.mock.calls[0][2] as MessagePort[])[0];
   };
 
-  it("hands one port to the parent, once", () => {
-    post(parent, CONNECT);
+  it("hands a port to the parent on its connect", () => {
     post(parent, CONNECT);
     expect(handoff).toHaveBeenCalledOnce();
     const [message, targetOrigin, transfer] = handoff.mock.calls[0];
     expect(message).toEqual({ source: "hf-preview", type: "editing-port", v: 1 });
     expect(targetOrigin).toBe("*");
     expect(transfer).toHaveLength(1);
+  });
+
+  it("hands a fresh port to a later connect from the parent and closes the old one", async () => {
+    const old = connectedPort();
+    const oldClosed = new Promise<void>((resolve) =>
+      old.addEventListener("close", () => resolve(), { once: true }),
+    );
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledTimes(2);
+    const fresh = (handoff.mock.calls[1][2] as MessagePort[])[0];
+    expect(fresh).not.toBe(old);
+    await oldClosed;
+    const unanswered = vi.fn();
+    old.onmessage = unanswered;
+    old.postMessage({ v: 1, id: 1, kind: "hello" });
+    expect(await ask(fresh, { v: 1, id: 2, kind: "hello" })).toMatchObject({ id: 2, ok: true });
+    expect(unanswered).not.toHaveBeenCalled();
   });
 
   it("ignores a connect from the page itself or another frame, without using up the handoff", () => {
@@ -67,6 +83,14 @@ describe("installEditingAgent", () => {
     expect(handoff).not.toHaveBeenCalled();
     post(parent, CONNECT);
     expect(handoff).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the parent's port when another frame asks after it", async () => {
+    const port = connectedPort();
+    post(frameWindow(), CONNECT);
+    post(window, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
+    expect(await ask(port, { v: 1, id: 1, kind: "hello" })).toMatchObject({ id: 1, ok: true });
   });
 
   it("never hands off on a top-level page, where the page is its own parent", () => {

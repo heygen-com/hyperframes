@@ -67,6 +67,32 @@ describe("createEditingPortClient", () => {
     }
   });
 
+  it("serves a new client for the same frame after the first is disposed", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    parent.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) => {
+      ports.push(...transfer);
+      deliver({ source: frame, data, ports: transfer });
+    }) as Window["postMessage"];
+    frame.postMessage = ((data: unknown) =>
+      window.dispatchEvent(
+        new MessageEvent("message", { source: parent, data }),
+      )) as Window["postMessage"];
+    const agent = installEditingAgent(parent);
+    try {
+      const first = createEditingPortClient({ iframe, host });
+      await first.ready;
+      first.dispose();
+      const second = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      clients.push(second);
+      await second.ready;
+      expect(await second.request("wait-for-seek", {})).toEqual({ waited: false });
+    } finally {
+      agent.dispose();
+    }
+  });
+
   it("asks for the port at once and on ready, and takes it only from its own frame", async () => {
     const { iframe, frame, connects } = previewFrame();
     const { host, deliver } = fakeHost();
