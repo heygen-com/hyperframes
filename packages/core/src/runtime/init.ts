@@ -39,6 +39,7 @@ import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime } from "./mediaClock";
@@ -6743,6 +6744,7 @@ export function initSandboxRuntimeModular(): void {
     onClearRuntimeData: clearRuntimeData,
     getCanonicalFps: () => state.canonicalFps,
   });
+  runtimeCleanupCallbacks.push(installEditingAgent().dispose);
 
   const teardown = () => {
     if (state.tornDown) return;
