@@ -422,6 +422,7 @@ export interface HyperframesRenderDetail {
   completed_at?: number | null;
   failure_message?: string | null;
   failure_code?: string | null;
+  failure_detail?: string | null;
 }
 
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
