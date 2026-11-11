@@ -9,6 +9,32 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.35"
+  description="Released - 2026-11-11"
+  tags={["Release", "Security", "Share", "CLI", "Studio App"]}
+>
+Private files like `.env` and git data stay out of preview bundles, and local sharing only answers your own machine. Sharing also keeps tracking changes when `.hyperframesignore` uses gitignore patterns.
+
+## Fixes
+
+- **Security:** Preview bundles never include `.env` files or git data, even through a link. A render that names one of these files now stops with an error. Local sharing only answers this machine, so sharing from Studio in a container now gets a 403 ([a243169f8](https://github.com/heygen-com/hyperframes/commit/a243169f8a10fa26fe9e9d1d1623d68445e2a3c7), [#7563](https://github.com/heygen-com/hyperframes/pull/7563)).
+- **Security:** Helper programs are found by walking your trusted `PATH` folders directly. On Windows, the working folder is never searched ([9a048ac01](https://github.com/heygen-com/hyperframes/commit/9a048ac019e919f9e9c37b1b764172676434511e), [#7562](https://github.com/heygen-com/hyperframes/pull/7562)).
+- **Share:** Change detection keeps working when `.hyperframesignore` uses gitignore patterns such as `/exports/` or `**/*.mov`. Before, those patterns stopped it with an error ([c07468d6a](https://github.com/heygen-com/hyperframes/commit/c07468d6a7155d28828eef1058896b7aa74114a1), [#7568](https://github.com/heygen-com/hyperframes/pull/7568)).
+- **CLI:** Durations and sizes roll over to the next unit when rounded, so you see `1m 0.0s` and `1.0 MB`, not `60.0s` and `1024.0 KB` ([182608311](https://github.com/heygen-com/hyperframes/commit/182608311ad9781669b26288a944cc85f28ab1cd), [#7565](https://github.com/heygen-com/hyperframes/pull/7565)).
+
+## Docs & Examples
+
+- **Studio App:** The brand kits page says kits are shared with your workspace only ([c218b37a3](https://github.com/heygen-com/hyperframes/commit/c218b37a319661280f337a3304bb7a4f566bddf5), [#7570](https://github.com/heygen-com/hyperframes/pull/7570)).
+
+## Internal
+
+- **Core:** The preview runtime offers its parent a typed message port. This prepares Studio for a sealed preview frame and changes nothing yet ([ef5cdeb0a](https://github.com/heygen-com/hyperframes/commit/ef5cdeb0a02afc993980809cc359dd68a1c4944d), [#7556](https://github.com/heygen-com/hyperframes/pull/7556)).
+- **CLI:** Local Studio's share window counts button clicks and choices. Only fixed categories are recorded, never links, paths or email addresses ([2a70733c1](https://github.com/heygen-com/hyperframes/commit/2a70733c15798430e1fae817bc65f1bf90acbed6), [#7566](https://github.com/heygen-com/hyperframes/pull/7566)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.34...v0.9.35).
+</Update>
+
+<Update
   label="HyperFrames v0.9.34"
   description="Released - 2026-11-11"
   tags={["Release", "Studio Server", "Skills", "CLI"]}
