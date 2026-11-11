@@ -76,3 +76,32 @@ describe("a revalidated preview", () => {
     expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
   });
 });
+
+describe("a thumbnail capture document", () => {
+  const captures = [
+    ["the bundled preview", "/projects/demo/preview?hf-capture=1"],
+    ["a sub-composition preview", "/projects/demo/preview/comp/page.html?hf-capture=1"],
+  ] as const;
+
+  describe.each(captures)("%s", (_name, path) => {
+    it.each([["same-origin"], ["none"], [undefined]])(
+      "is sandboxed even when Sec-Fetch-Site is %s",
+      async (site) => {
+        const res = await get(path, site);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+      },
+    );
+  });
+
+  it("carries the sandbox on a 304", async () => {
+    const path = "/projects/demo/preview?hf-capture=1";
+    const etag = (await get(path, "none")).headers.get("etag");
+    expect(etag).toBeTruthy();
+    const res = await api.request(`http://localhost${path}`, {
+      headers: { "sec-fetch-site": "none", "if-none-match": etag! },
+    });
+    expect(res.status).toBe(304);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+});

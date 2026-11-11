@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
-import { registerPreviewRoutes } from "./routes/preview.js";
+import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
@@ -43,10 +43,16 @@ const fromAnotherSite = (c: Context) => {
   return site === "cross-site" || site === "same-site";
 };
 
-async function sandboxPreviewOpenedFromAnotherSite(c: Context, next: Next) {
+// A thumbnail capture runs every composition with no user action, so its document gets an opaque
+// origin too: its scripts reach nothing of this API. The renderer grants the loads it still needs
+// (grantCaptureLoads).
+const forCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+
+async function sandboxPreviewForAnotherSiteOrCapture(c: Context, next: Next) {
   await next();
   c.header("Vary", "Sec-Fetch-Site", { append: true });
-  if (fromAnotherSite(c)) c.header("Content-Security-Policy", "sandbox allow-scripts");
+  if (fromAnotherSite(c) || forCapture(c))
+    c.header("Content-Security-Policy", "sandbox allow-scripts");
 }
 
 async function refuseThumbnailForAnotherSite(c: Context, next: Next) {
@@ -77,7 +83,7 @@ export interface StudioApiOptions {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
-  api.use("/projects/:id/preview/*", sandboxPreviewOpenedFromAnotherSite);
+  api.use("/projects/:id/preview/*", sandboxPreviewForAnotherSiteOrCapture);
   api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.

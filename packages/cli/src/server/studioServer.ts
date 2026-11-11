@@ -63,6 +63,7 @@ import {
   PREVIEW_BUNDLE_OPTIONS,
   createPreviewDocumentStore,
   thumbnailDeviceScaleFactor,
+  grantCaptureLoads,
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
@@ -804,6 +805,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           opts.seekTime,
           async (page) => {
             await page.setViewport(viewport);
+            // The capture document runs in an opaque origin; this page's session grants its fonts and scenes.
+            await grantCaptureLoads(await page.createCDPSession(), opts.previewUrl);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
             await assertWebGpuAdapterAvailable(
               page,
