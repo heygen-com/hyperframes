@@ -152,7 +152,8 @@ const STANDARD_INSTALL_DIRS = ["compositions", "assets", "models", "lib"];
 // The one file a block may leave at the project root: the catalog's usage note. Any other name could be one a tool loads.
 const ROOT_NOTES = new Set(["template.md"]);
 // Coding agents load these on their own, wherever they sit.
-const AGENT_INSTRUCTIONS = /^(agents?|claude|gemini|copilot-instructions)(\.[a-z]+)?\.md$/;
+const AGENT_INSTRUCTIONS =
+  /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
 // Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
 const EXECUTABLE =
   /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
