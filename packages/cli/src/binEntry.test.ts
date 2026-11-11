@@ -26,9 +26,10 @@ function runBin(handover: (project: string) => string | undefined) {
   );
   writeFileSync(
     join(root, "pkg/dist/cli.js"),
-    "console.log(JSON.stringify({ cwd: process.cwd(), passedOn: process.env.HYPERFRAMES_PLUGIN_CWD ?? null }));\n",
+    "console.log(JSON.stringify({ cwd: process.cwd(), pwd: process.env.PWD, passedOn: process.env.HYPERFRAMES_PLUGIN_CWD ?? null }));\n",
   );
-  const env = { ...process.env };
+  // npm's shell sets PWD to the folder npx started in.
+  const env = { ...process.env, PWD: outside };
   delete env.HYPERFRAMES_PLUGIN_CWD;
   const named = handover(project);
   if (named !== undefined) env.HYPERFRAMES_PLUGIN_CWD = named;
@@ -41,18 +42,20 @@ function runBin(handover: (project: string) => string | undefined) {
   return {
     seen: JSON.parse(result.stdout),
     project: realpathSync(project),
+    projectNamed: project,
     outside: realpathSync(outside),
+    outsideNamed: outside,
   };
 }
 
 describe("bin/hyperframes.mjs", () => {
   it("runs in the project the plugin launcher names, and does not pass that on", () => {
-    const { seen, project } = runBin((dir) => dir);
-    expect(seen).toEqual({ cwd: project, passedOn: null });
+    const { seen, project, projectNamed } = runBin((dir) => dir);
+    expect(seen).toEqual({ cwd: project, pwd: projectNamed, passedOn: null });
   });
 
   it("stays in its working folder without a launcher", () => {
-    const { seen, outside } = runBin(() => undefined);
-    expect(seen).toEqual({ cwd: outside, passedOn: null });
+    const { seen, outside, outsideNamed } = runBin(() => undefined);
+    expect(seen).toEqual({ cwd: outside, pwd: outsideNamed, passedOn: null });
   });
 });

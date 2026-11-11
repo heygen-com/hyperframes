@@ -2,7 +2,7 @@
 // Run from the user's project; locate the release from this installed file.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainModule } from "./lib/main-module.mjs";
@@ -35,9 +35,11 @@ export function pluginVersion(pluginRoot = root) {
 }
 
 // npm takes the package, bin links and .npmrc from the folder it starts in, so npx starts
-// in the home folder and the CLI moves into the project before it runs a command.
-function npmFolder(home = homedir(), pathExists = existsSync) {
-  return home && pathExists(home) ? home : tmpdir();
+// in the home folder and the CLI moves into the project before it runs a command. A shared
+// folder such as the temp folder is no substitute, so there is no fallback.
+export function npmFolder(home = homedir(), pathExists = existsSync) {
+  if (home && pathExists(home)) return home;
+  throw new Error("Cannot find your home folder. Set HOME (USERPROFILE on Windows) and retry.");
 }
 
 export function invocation(
@@ -49,7 +51,7 @@ export function invocation(
     node = process.execPath,
     pathExists = existsSync,
     cwd = process.cwd(),
-    npmCwd = npmFolder(),
+    npmCwd,
     launcher = fileURLToPath(import.meta.url),
   } = {},
 ) {
@@ -72,7 +74,8 @@ export function invocation(
   }
   const cliArgs = ["--yes", `hyperframes@${version}`, ...args];
   const cliEnv = { ...childEnv, HYPERFRAMES_PLUGIN_CWD: cwd };
-  if (platform !== "win32") return { command: "npx", args: cliArgs, env: cliEnv, cwd: npmCwd };
+  const npxCwd = npmCwd ?? npmFolder();
+  if (platform !== "win32") return { command: "npx", args: cliArgs, env: cliEnv, cwd: npxCwd };
   const candidates = [
     env.npm_execpath && win32.join(win32.dirname(env.npm_execpath), "npx-cli.js"),
     win32.join(win32.dirname(node), "node_modules", "npm", "bin", "npx-cli.js"),
@@ -82,7 +85,7 @@ export function invocation(
     throw new Error(
       "Cannot find npx-cli.js. Install Node.js with npm or run from an npm environment.",
     );
-  return { command: node, args: [npx, ...cliArgs], env: cliEnv, cwd: npmCwd };
+  return { command: node, args: [npx, ...cliArgs], env: cliEnv, cwd: npxCwd };
 }
 
 if (isMainModule(import.meta.url)) {

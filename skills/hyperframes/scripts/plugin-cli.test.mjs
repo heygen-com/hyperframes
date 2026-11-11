@@ -12,7 +12,7 @@ import {
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
-import { invocation, pluginVersion } from "./plugin-cli.mjs";
+import { invocation, npmFolder, pluginVersion } from "./plugin-cli.mjs";
 
 function fixture(t, manifest = "plugin.json", version = "1.2.3") {
   const root = mkdtempSync(join(tmpdir(), "hf-plugin-"));
@@ -162,3 +162,18 @@ test(
     });
   },
 );
+
+test("starts npx in the home folder and never falls back to a shared folder", () => {
+  assert.equal(
+    npmFolder("/home/person", () => true),
+    "/home/person",
+  );
+  assert.throws(() => npmFolder("", () => true), /Cannot find your home folder/);
+  assert.throws(() => npmFolder("/home/gone", () => false), /Cannot find your home folder/);
+  // Helper scripts never start npx, so they run without a home folder.
+  const script = invocation(["--script", "helper.mjs"], {
+    version: "1.2.3",
+    cwd: "/project",
+  });
+  assert.equal(script.cwd, "/project");
+});

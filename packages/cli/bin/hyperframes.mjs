@@ -7,7 +7,11 @@ import { runtimeVersionError } from "../dist/runtimeVersion.js";
 // and names the project here. Nested CLI runs keep the working folder their caller gives them.
 const projectDir = process.env.HYPERFRAMES_PLUGIN_CWD;
 delete process.env.HYPERFRAMES_PLUGIN_CWD;
-if (projectDir) process.chdir(projectDir);
+if (projectDir) {
+  process.chdir(projectDir);
+  // npm's shell resets PWD to the folder npx started in; commands read the project name from it.
+  process.env.PWD = projectDir;
+}
 
 const error = runtimeVersionError(process.versions.node);
 if (error) {
