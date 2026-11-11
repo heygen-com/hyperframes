@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import {
   bindShareHost,
   shareForReview,
+  reviewClient,
   reviewRecord,
   addVersion,
   reviewVersion,
@@ -94,6 +95,132 @@ test("a lost registration response retries the persisted operation and identity"
   assert.equal(api.calls(), 2);
   assert.deepEqual(api.body[0], api.body[1]);
   assert.equal((await reviewRecord(dir)).projectId, "p1");
+});
+
+test("preparing a review can fail before opening and retry its saved registration", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const read = api.share;
+  api.share = async () => ({ ...(await read()), access_mode: "private" });
+  const opened = [];
+  api.updateShare = async (id, body) => {
+    opened.push(id);
+    return { ...(await read()), access_mode: body.access_mode };
+  };
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  await assert.rejects(
+    shareForReview({
+      ...request,
+      beforeOpen: async (id) => {
+        assert.equal((await reviewRecord(dir)).projectId, id);
+        throw new Error("Content unavailable");
+      },
+    }),
+    /Content unavailable/,
+  );
+  assert.deepEqual(opened, []);
+  assert.equal((await reviewRecord(dir)).opened, false);
+  await shareForReview({
+    ...request,
+    beforeOpen: async (id) => {
+      assert.equal(id, "p1");
+      assert.deepEqual(opened, []);
+    },
+  });
+  assert.deepEqual(opened, ["p1"]);
+  assert.equal(api.calls(), 1);
+  assert.equal((await reviewRecord(dir)).opened, true);
+});
+
+test("an already-open link returns status without rerunning content preparation", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  const first = await shareForReview(request);
+  const again = await shareForReview({
+    ...request,
+    beforeOpen: async () => {
+      throw new Error("Content temporarily unavailable");
+    },
+  });
+  assert.deepEqual(again, first);
+  assert.equal(api.calls(), 1);
+});
+
+test("reopening a revoked link prepares content before enabling it and retries safely", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  await shareForReview(request);
+  const read = api.share;
+  api.share = async () => ({ ...(await read()), revoked: true, link_generation: 2 });
+  const events = [];
+  api.linkOn = async () => {
+    events.push("open");
+    return read();
+  };
+  await assert.rejects(
+    shareForReview({
+      ...request,
+      beforeOpen: async () => {
+        throw new Error("Content unavailable");
+      },
+    }),
+    /Content unavailable/,
+  );
+  assert.deepEqual(events, []);
+  await shareForReview({
+    ...request,
+    beforeOpen: async (id) => {
+      assert.equal(id, "p1");
+      events.push("prepare");
+    },
+  });
+  assert.deepEqual(events, ["prepare", "open"]);
+  assert.equal(api.calls(), 1);
+});
+
+test("a taken-down review does not prepare content or reopen its link", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const read = api.share;
+  api.share = async () => ({
+    ...(await read()),
+    moderation_hold: true,
+    moderation_hold_kind: "takedown",
+    revoked: true,
+  });
+  const status = await shareForReview({
+    projectPath: dir,
+    title: "Review",
+    client: api,
+    beforeOpen: async () => assert.fail("A taken-down review cannot open"),
+  });
+  assert.equal(status.held, true);
+  assert.equal((await reviewRecord(dir)).opened, false);
+});
+
+test("storyboard reads and composition binding use the signed-in review routes", async () => {
+  const sent = [];
+  const api = reviewClient({
+    access: async () => ({ token: "t", heygen: "https://review.test", heygenApi: "" }),
+    fetchImpl: async (url, init) => {
+      assert.equal(new Headers(init.headers).get("authorization"), "Bearer t");
+      sent.push([init.method, new URL(url).pathname, new URL(url).search, init.body]);
+      return Response.json({ data: {} });
+    },
+  });
+  await api.storyboard("project/id");
+  await api.bindComposition("project/id", "composition");
+  assert.deepEqual(sent, [
+    ["GET", "/v1/hyperframes/projects/project%2Fid/storyboard", "", null],
+    [
+      "PUT",
+      "/v1/hyperframes/review-projects/project%2Fid/composition",
+      "",
+      '{"composition_id":"composition"}',
+    ],
+  ]);
 });
 test("corrupt identity fails instead of consuming a new share slot", async (t) => {
   const dir = await folder(t);

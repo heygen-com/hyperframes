@@ -114,6 +114,12 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
     linkOff: (id) => call("DELETE", `${project(id)}/share`),
     /** @param {string} id @returns {Promise<ProjectDTO>} */
     project: (id) => call("GET", project(id)),
+    /** @param {string} id @returns {Promise<{frames: unknown[]}>} */
+    storyboard: (id) =>
+      call("GET", `/v1/hyperframes/projects/${encodeURIComponent(id)}/storyboard`),
+    /** @param {string} id @param {string} compositionId @returns {Promise<{composition_id: string}>} */
+    bindComposition: (id, compositionId) =>
+      call("PUT", `${project(id)}/composition`, { composition_id: compositionId }),
     /** One page of the project's comments, every state. @param {string} id @param {URLSearchParams} query
      * @returns {Promise<import("./types/reviewWire.js").FeedbackPage>} */
     feedback: (id, query) => call("GET", `${project(id)}/feedback?${query}`),
