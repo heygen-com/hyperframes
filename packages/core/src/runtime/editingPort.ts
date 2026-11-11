@@ -162,9 +162,13 @@ function readHandoff(
     return null;
   }
   if (data.type === "ready") return "ready";
-  const isHandoff = data.type === EDITING_PORT && data.v === EDITING_PROTOCOL_VERSION;
-  return isHandoff && event.ports.length === 1 ? event.ports[0] : null;
+  return data.type === EDITING_PORT && data.v === EDITING_PROTOCOL_VERSION
+    ? onlyPort(event.ports)
+    : null;
 }
+
+const onlyPort = (ports: readonly MessagePort[]): MessagePort | null =>
+  ports.length === 1 ? (ports[0] ?? null) : null;
 
 type Pending = {
   resolve: (result: unknown) => void;
