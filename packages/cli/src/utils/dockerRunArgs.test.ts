@@ -203,6 +203,7 @@ describe("buildDockerRunArgs", () => {
         quiet: true,
         debug: true,
         bestEffort: false,
+        strictVariables: true,
         entryFile: "compositions/intro.html",
         experimentalFastCapture: true,
       },
@@ -223,6 +224,7 @@ describe("buildDockerRunArgs", () => {
     expect(args).toContain("--quiet");
     expect(args).toContain("--debug");
     expect(args).toContain("--no-best-effort");
+    expect(args).toContain("--strict-variables");
     expect(args).toContain("--gpu");
     expect(args).toContain("--no-browser-gpu");
     expect(args).toContain("--hdr");
@@ -244,6 +246,20 @@ describe("buildDockerRunArgs", () => {
       options: { ...BASE, bestEffort: false },
     });
     expect(strict).toContain("--no-best-effort");
+  });
+
+  it("forwards --strict-variables only when enabled", () => {
+    const on = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, strictVariables: true },
+    });
+    expect(on).toContain("--strict-variables");
+
+    const off = buildDockerRunArgs({
+      ...FIXED_INPUT,
+      options: { ...BASE, strictVariables: false },
+    });
+    expect(off).not.toContain("--strict-variables");
   });
 
   it("forwards --experimental-fast-capture only when enabled", () => {
