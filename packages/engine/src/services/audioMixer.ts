@@ -777,7 +777,6 @@ async function extractAudioSegment(
     }
   }
   const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
-  // A seek by a misstated PCM byte rate lands at the wrong time, so that source is cut by decoded timestamps.
   const inputSeek =
     ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0) && !metadata?.misstatedByteRate;
   const start = formatFilterNumber(ffmpegStart);
