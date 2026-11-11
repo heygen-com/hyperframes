@@ -126,7 +126,6 @@ function durationToFrameCount(duration: number, fps: number): number {
 }
 
 export interface ProbeStageResult {
-  /** See `strictVariablesAttestation`. */
   strictVariablesChecked: boolean | undefined;
   /** May be reassigned from `recompileWithResolutions`. */
   compiled: CompiledComposition;
@@ -332,10 +331,7 @@ function checksVariablesInBrowser(config: RenderConfig): boolean {
   return config.strictVariables === true && Object.keys(config.variables ?? {}).length > 0;
 }
 
-/**
- * `strictVariables` as reported: undefined when not asked; true when the loaded page was checked or there were
- * no variables to check; false otherwise. A caller that asked must treat anything but true as unchecked.
- */
+/** Reported `strictVariables`: undefined if not asked; true if checked or nothing needed checking; else false. */
 export function strictVariablesAttestation(
   config: RenderConfig,
   probeSession: CaptureSession | null,
@@ -351,7 +347,6 @@ export function probeRequiresBrowser(args: {
   hasScriptedAudio: boolean;
   hasVariableMedia: boolean;
   hasInsertedMedia: boolean;
-  /** The render checks its variables against the loaded page, which only a browser can read. */
   requiresVariablesCheck?: boolean;
 }): boolean {
   return (

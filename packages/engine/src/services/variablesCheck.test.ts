@@ -80,7 +80,9 @@ describe("variablesIssues", () => {
 describe("VariablesInvalidError", () => {
   it("is a user-owned, non-retryable VARIABLES_INVALID the producer can transport", () => {
     const error = new VariablesInvalidError([{ kind: "undeclared", variableId: "titel" }]);
-    expect(error).toMatchObject({ code: "VARIABLES_INVALID", owner: "user", retryable: false });
+    expect(error.code).toBe("VARIABLES_INVALID");
+    expect(error.owner).toBe("user");
+    expect(error.retryable).toBe(false);
     expect(error.message).toBe('Variable "titel" is not declared in data-composition-variables.');
   });
 

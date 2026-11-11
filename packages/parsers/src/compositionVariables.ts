@@ -76,17 +76,12 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
   return true;
 }
 
-/** What one `data-composition-variables` attribute declares, and whether all of it could be read. */
 export interface ReadCompositionVariables {
   declarations: CompositionVariable[];
-  /** False when the JSON is invalid, is not an array, or holds an entry that is not a valid declaration. */
   complete: boolean;
 }
 
-/**
- * Valid declarations in the raw attribute text. `complete` is false when the JSON is invalid, is not an array,
- * or has an entry that is not a valid declaration (dropped).
- */
+/** Valid declarations in the raw attribute text; `complete` is false when anything in it was dropped or unreadable. */
 export function readCompositionVariables(raw: string | null | undefined): ReadCompositionVariables {
   if (!raw) return { declarations: [], complete: true };
   try {

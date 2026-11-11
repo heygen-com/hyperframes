@@ -51,8 +51,10 @@ function describeIssue(issue: VariablesIssue): string {
 
 /** A name the caller chose, cut and stripped of control characters before it is echoed anywhere. */
 function boundedId(id: string): string {
-  // oxlint-disable-next-line no-control-regex -- control characters are the target here
-  return id.replace(/[\u0000-\u001f\u007f]/g, "?").slice(0, MAX_ID_CHARS);
+  return Array.from(id.slice(0, MAX_ID_CHARS), (ch) => {
+    const code = ch.charCodeAt(0);
+    return code < 32 || code === 127 ? "?" : ch;
+  }).join("");
 }
 
 function toIssue(issue: VariableValidationIssue): VariablesIssue {

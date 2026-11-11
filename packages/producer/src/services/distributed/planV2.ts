@@ -160,10 +160,6 @@ export interface PlanV2WithPublisherOptions {
   readonly remoteFiles?: BuildLocalExecutionPlanOptions["remoteFiles"];
   readonly chunksCarryAudio?: boolean;
   readonly deferAudio?: boolean;
-  /**
-   * Called once planning has finished, before publishing. Carries `strictVariablesChecked` when it was asked;
-   * not in the manifest, whose content address must not depend on it.
-   */
   readonly onPlanned?: (summary: { readonly strictVariablesChecked?: boolean }) => void;
 }
 

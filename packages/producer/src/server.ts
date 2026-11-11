@@ -114,10 +114,7 @@ interface RenderInput {
    * composition's declared defaults, ignoring per-request overrides.
    */
   variables?: Record<string, unknown>;
-  /**
-   * Check `variables` against the page's declarations before any frame; a mismatch fails the render with
-   * `VARIABLES_INVALID`. Responses report `strictVariablesChecked`. Off by default.
-   */
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
   strictVariables?: boolean;
   /**
    * Output resolution preset (e.g. `landscape-4k`). Drives the same
@@ -171,7 +168,6 @@ export function extractSafeRenderErrorMetadata(
   };
 }
 
-/** `strictVariablesChecked` for a response, present only when the request asked for strict variables. */
 function strictVariablesResult(job: RenderJob): { strictVariablesChecked?: boolean } {
   return job.strictVariablesChecked === undefined
     ? {}

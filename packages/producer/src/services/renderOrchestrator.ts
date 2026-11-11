@@ -481,10 +481,6 @@ export interface RenderConfig {
    * `--variables-file <path>`. Must be a JSON-serializable plain object.
    */
   variables?: Record<string, unknown>;
-  /**
-   * Check `variables` against the page's declarations before any frame; a mismatch fails the render with
-   * `VARIABLES_INVALID`. Responses report `strictVariablesChecked`. Off by default.
-   */
   strictVariables?: boolean;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
@@ -796,7 +792,6 @@ export interface RenderStageProgress {
 
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
-  /** Set when `config.strictVariables` was asked: whether this producer honoured it (see `RenderConfig`). */
   strictVariablesChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;

@@ -308,10 +308,7 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * rather than mid-plan; the producer-side throw is the fallback.
    */
   variables?: Record<string, unknown>;
-  /**
-   * Check `variables` against the page's declarations before any frame; a mismatch fails the render with
-   * `VARIABLES_INVALID`. Responses report `strictVariablesChecked`. Off by default.
-   */
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
   strictVariables?: boolean;
 }
 
