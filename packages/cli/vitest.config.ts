@@ -61,6 +61,7 @@ export default defineConfig({
     // hang. Prefer this one config knob over per-test/per-hook timeout bandaids.
     testTimeout: 20_000,
     hookTimeout: 30_000,
+    setupFiles: ["./scripts/test-file-home.mjs"],
     // Tests that drive a real Chrome (the four *.process.test.ts named here start one) run alone, after
     // everything else: a Chrome beside hundreds of parallel files was starved past its 30 s launch limit.
     projects: [
