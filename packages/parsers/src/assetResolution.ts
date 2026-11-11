@@ -138,6 +138,11 @@ export function namesAnotherNetworkRoot(base: string, target: string): boolean {
   return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
 }
 
+export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolean {
+  const path = fileUrlAsPath(cleanAssetUrl(src));
+  return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
+}
+
 const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
 
 function staysInsideProject(projectDir: string, path: string): boolean {

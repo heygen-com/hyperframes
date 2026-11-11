@@ -35,6 +35,7 @@ import {
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
+  srcOnAnotherNetworkRoot,
   readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { encodeUrlPath } from "@hyperframes/parsers";
@@ -555,6 +556,7 @@ function lintAudioSrcNotFound(
       const rootRelative = compSrcPath
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
+      if (srcOnAnotherNetworkRoot(projectDir, rootRelative)) continue;
       if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
         const safe = urlSafeSrcOf(projectDir, rootRelative);
         if (safe) urlSafe.set(src, safe);
