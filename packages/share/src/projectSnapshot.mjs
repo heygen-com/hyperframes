@@ -1,7 +1,7 @@
 // @ts-check
 // A project's files as change detection sees them: every file the film can use (isOutsideFilm), keyed by mtime and
 // size, except html, keyed by content without the data-hf-id stamps. A run's change set and the watcher both read it.
-import { readSourceIgnore } from "./sourceIgnore.mjs";
+import { readChangeIgnore } from "./sourceIgnore.mjs";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
@@ -61,7 +61,7 @@ async function entryKind(entry, full, followSymlinks) {
 export async function snapshotProject(dir, { byContent = false, followSymlinks = false } = {}) {
   /** @type {Snapshot} */
   const result = new Map();
-  const ignored = await readSourceIgnore(dir);
+  const ignored = await readChangeIgnore(dir);
   /** @param {string} current @param {Set<string>} ancestors */
   async function walk(current, ancestors) {
     const real = await fs.realpath(current).catch(() => null);
@@ -102,7 +102,7 @@ export function snapshotFingerprint(snapshot) {
 export async function snapshotFiles(dir, files) {
   /** @type {Map<string, unknown>} */
   const result = new Map();
-  const ignored = await readSourceIgnore(dir);
+  const ignored = await readChangeIgnore(dir);
   for (const file of files) {
     const full = path.join(dir, file);
     const stat = await fs.lstat(full).catch(() => null);
