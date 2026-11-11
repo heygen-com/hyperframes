@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import {
   thumbnailScheduler,
@@ -9,11 +9,10 @@ import {
 import {
   buildCompositionThumbnailUrl,
   compositionThumbnailRequest,
-  resolveThumbnailSeekTime,
   THUMBNAIL_SEEK_TIME_SECONDS,
 } from "../../player/components/CompositionThumbnail";
 import { setPreviewMediaMuted } from "../../player/lib/timelineIframeHelpers";
-import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
+import { postFrameDisplayScale, postRuntimeControlMessage } from "../../player/lib/runtimeProtocol";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { thumbnailRevisionOf } from "../../player/store/thumbnailSlice";
 import { encodePreviewPath } from "../../player/components/thumbnailUtils";
@@ -36,16 +35,8 @@ interface CompositionsTabProps {
 const DEFAULT_PREVIEW_STAGE = { width: 1920, height: 1080 };
 const CARD_W = 80;
 const CARD_H = 45;
-const THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS = 10;
 
-type PreviewWindow = Window & {
-  __player?: {
-    play?: () => void;
-    pause?: () => void;
-    seek?: (time: number) => void;
-    getDuration?: () => number;
-  };
-};
+const OPAQUE_ORIGIN_SCRIPTS_ONLY_SANDBOX = "allow-scripts";
 
 export function resolveCompositionPreviewScale(input: {
   cardWidth: number;
@@ -84,53 +75,26 @@ export function compositionCardThumbnailUrl(
   });
 }
 
-function parsePositiveNumber(value: string | null): number | null {
-  if (value == null) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+function positiveDimension(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-// fallow-ignore-next-line complexity
-function resolveIframeDuration(iframe: HTMLIFrameElement | null): number | null {
-  try {
-    const win = iframe?.contentWindow as PreviewWindow | null;
-    const playerDuration = win?.__player?.getDuration?.();
-    if (Number.isFinite(playerDuration) && playerDuration != null && playerDuration > 0) {
-      return playerDuration;
-    }
-  } catch {
-    /* cross-origin iframe */
-  }
-
-  try {
-    const doc = iframe?.contentDocument;
-    const root = doc?.querySelector("[data-composition-id]") ?? doc?.documentElement ?? null;
-    return (
-      parsePositiveNumber(root?.getAttribute("data-composition-duration") ?? null) ??
-      parsePositiveNumber(root?.getAttribute("data-duration") ?? null)
-    );
-  } catch {
-    return null;
-  }
+function stageSizeFromRuntimeTimelineMessage(
+  data: unknown,
+): { width: number; height: number } | null {
+  if (typeof data !== "object" || data === null) return null;
+  const message = data as Record<string, unknown>;
+  if (message.source !== "hf-preview" || message.type !== "timeline") return null;
+  return {
+    width: positiveDimension(message.compositionWidth, DEFAULT_PREVIEW_STAGE.width),
+    height: positiveDimension(message.compositionHeight, DEFAULT_PREVIEW_STAGE.height),
+  };
 }
 
-export function syncIframePlayback(iframe: HTMLIFrameElement | null, shouldPlay: boolean): boolean {
-  try {
-    const player = (iframe?.contentWindow as PreviewWindow | null)?.__player;
-    if (!player) return false;
-
-    if (shouldPlay) {
-      setPreviewMediaMuted(iframe, true);
-      player.play?.();
-      return true;
-    }
-
-    player.pause?.();
-    player.seek?.(resolveThumbnailSeekTime(resolveIframeDuration(iframe)));
-    return true;
-  } catch {
-    return false;
-  }
+function muteThenPlayOverRuntimeBridge(iframe: HTMLIFrameElement | null): void {
+  if (!iframe) return;
+  setPreviewMediaMuted(iframe, true);
+  postRuntimeControlMessage(iframe.contentWindow, "play");
 }
 
 const imageUrlOf = (snapshot: ThumbnailSnapshot) =>
@@ -195,23 +159,7 @@ function CompCard({
   const [livePreviewLoaded, setLivePreviewLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draggedRef = useRef(false);
-
-  const requestIframePlaybackSync = useCallback((shouldPlay: boolean) => {
-    if (syncTimer.current) {
-      clearTimeout(syncTimer.current);
-      syncTimer.current = null;
-    }
-
-    const sync = (remainingAttempts: number) => {
-      if (syncIframePlayback(iframeRef.current, shouldPlay) || remainingAttempts <= 0) return;
-
-      syncTimer.current = setTimeout(() => sync(remainingAttempts - 1), 100);
-    };
-
-    sync(THUMBNAIL_PLAYBACK_SYNC_ATTEMPTS);
-  }, []);
 
   const handleEnter = () => {
     hoverTimer.current = setTimeout(() => setHovered(true), 300);
@@ -220,10 +168,6 @@ function CompCard({
     if (hoverTimer.current) {
       clearTimeout(hoverTimer.current);
       hoverTimer.current = null;
-    }
-    if (syncTimer.current) {
-      clearTimeout(syncTimer.current);
-      syncTimer.current = null;
     }
     setHovered(false);
     setLivePreviewLoaded(false);
@@ -256,29 +200,34 @@ function CompCard({
   const thumbnailOffsetY = (CARD_H - stageSize.height * previewScale) / 2;
 
   useEffect(() => {
-    if (hovered) requestIframePlaybackSync(true);
-  }, [hovered, requestIframePlaybackSync]);
-
-  useEffect(() => {
     if (livePreviewLoaded) postFrameDisplayScale(iframeRef.current);
   }, [livePreviewLoaded, previewScale]);
 
   useEffect(() => {
     if (!hovered) return;
-    const onRuntimeReady = (event: MessageEvent) => {
+    const onRuntimeMessage = (event: MessageEvent) => {
       const frame = iframeRef.current;
-      if (frame && event.source === frame.contentWindow && event.data?.type === "ready") {
+      if (!frame || event.source !== frame.contentWindow) return;
+      const runtimeControlListenerInstalled =
+        event.data?.source === "hf-preview" && event.data.type === "ready";
+      if (runtimeControlListenerInstalled) {
         postFrameDisplayScale(frame);
+        muteThenPlayOverRuntimeBridge(frame);
+        return;
       }
+      const stage = stageSizeFromRuntimeTimelineMessage(event.data);
+      if (!stage) return;
+      setStageSize((current) =>
+        current.width === stage.width && current.height === stage.height ? current : stage,
+      );
     };
-    window.addEventListener("message", onRuntimeReady);
-    return () => window.removeEventListener("message", onRuntimeReady);
+    window.addEventListener("message", onRuntimeMessage);
+    return () => window.removeEventListener("message", onRuntimeMessage);
   }, [hovered]);
 
   useEffect(() => {
     return () => {
       if (hoverTimer.current) clearTimeout(hoverTimer.current);
-      if (syncTimer.current) clearTimeout(syncTimer.current);
     };
   }, []);
 
@@ -342,7 +291,7 @@ function CompCard({
           <iframe
             ref={iframeRef}
             src={previewUrl}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox={OPAQUE_ORIGIN_SCRIPTS_ONLY_SANDBOX}
             className="absolute border-none pointer-events-none"
             style={{
               transformOrigin: "0 0",
@@ -352,21 +301,7 @@ function CompCard({
               top: thumbnailOffsetY,
               transform: `scale(${previewScale})`,
             }}
-            onLoad={(e) => {
-              try {
-                const iframe = e.currentTarget;
-                const root = iframe.contentDocument?.querySelector("[data-composition-id]");
-                const width =
-                  Number(root?.getAttribute("data-width")) || DEFAULT_PREVIEW_STAGE.width;
-                const height =
-                  Number(root?.getAttribute("data-height")) || DEFAULT_PREVIEW_STAGE.height;
-                setStageSize({ width, height });
-                setLivePreviewLoaded(true);
-                requestIframePlaybackSync(true);
-              } catch {
-                setStageSize(DEFAULT_PREVIEW_STAGE);
-              }
-            }}
+            onLoad={() => setLivePreviewLoaded(true)}
             title={`${name} preview`}
             tabIndex={-1}
           />
