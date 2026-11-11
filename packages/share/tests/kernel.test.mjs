@@ -659,9 +659,10 @@ test("change detection keeps working when .hyperframesignore uses gitignore synt
     // The CLI's syntax is not this reader's: nothing is excluded beyond scratch, so a change still counts.
     const files = await snapshotProject(dir);
     assert.deepEqual([...files.keys()].sort(), ["assets/clip.mov", "index.html"], rule);
-    assert.equal(
-      (await snapshotFiles(dir, ["assets/clip.mov"])).has("assets/clip.mov"),
-      true,
+    // snapshotFiles names every file asked for; an excluded one is keyed undefined.
+    assert.notEqual(
+      (await snapshotFiles(dir, ["assets/clip.mov"])).get("assets/clip.mov"),
+      undefined,
       rule,
     );
     const before = await projectFingerprint(dir);
