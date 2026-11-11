@@ -235,18 +235,22 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
-  it("leaves a file canRead refuses as an authored reference", async () => {
+  it("refuses the app's records only under the studio private-file policy", async () => {
     const dir = makeTempProject({
-      "index.html": `<!doctype html><html><head><link rel="stylesheet" href="private.css"></head><body>
-        <div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
-      "private.css": ".kept-out { color: red; }",
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".hyperframes/handoff.css">
+        <link rel="stylesheet" href=".hyperframes/prepared-assets/fonts.css">
+      </head><body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+      ".hyperframes/handoff.css": ".app-record { color: red; }",
+      ".hyperframes/prepared-assets/fonts.css": ".prepared { color: blue; }",
     });
     try {
-      const bundled = await bundleToSingleHtml(dir, {
-        canRead: (file) => file !== join(dir, "private.css"),
-      });
-      expect(bundled).not.toContain(".kept-out");
-      expect(bundled).toContain('href="private.css"');
+      const studio = await bundleToSingleHtml(dir, { privateFiles: "studio" });
+      expect(studio).not.toContain(".app-record");
+      expect(studio).toContain('href=".hyperframes/handoff.css"');
+      expect(studio).toContain(".prepared { color: blue; }");
+      const plain = await bundleToSingleHtml(dir);
+      expect(plain).toContain(".app-record { color: red; }");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -70,7 +70,13 @@ import {
   isLibraryCopy,
   refuseSwapsReachedByRootScripts,
 } from "./inlineSubCompositions";
-import { isSafePath, isVcsOrSecretFile, resolveWithinProject } from "../safePath.js";
+import {
+  isPrivateFileUnder,
+  isSafePath,
+  isStudioPrivatePath,
+  isVcsOrSecretPath,
+  resolveWithinProject,
+} from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
@@ -113,7 +119,7 @@ function isRelativeUrl(url: string): boolean {
 
 interface BundleReadScope {
   projectDir: string;
-  canRead?: (filePath: string) => boolean;
+  privateFiles: BundlePrivateFiles;
   noteRead: (filePath: string) => void;
 }
 
@@ -126,7 +132,8 @@ function noteRead(filePath: string): void {
 function readAllowed(filePath: string): boolean {
   const scope = bundleReads.getStore();
   if (!scope) return true;
-  return !isVcsOrSecretFile(scope.projectDir, filePath) && (scope.canRead?.(filePath) ?? true);
+  const isPrivate = scope.privateFiles === "studio" ? isStudioPrivatePath : isVcsOrSecretPath;
+  return !isPrivateFileUnder(scope.projectDir, filePath, isPrivate);
 }
 
 function safeReadFile(filePath: string): string | null {
@@ -924,9 +931,15 @@ export interface BundleOptions {
   staticGuard?: boolean;
   /** Called once per build for each project file the build reads or looks for. */
   onRead?: (filePath: string) => void;
-  /** Project files the build may read; a refused file keeps its authored reference, not inlined. */
-  canRead?: (filePath: string) => boolean;
+  /**
+   * Project files the build never reads; a refused file keeps its authored reference. Git metadata and env files
+   * always; `"studio"` also refuses the app's records under `.hyperframes/`, as Studio's file routes do.
+   */
+  privateFiles?: BundlePrivateFiles;
 }
+
+/** Plain data, so the option crosses to a build thread and keys a shared build. */
+export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 /**
  * Bundle a project's index.html into a single self-contained HTML file.
@@ -1059,7 +1072,11 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
     noted.add(filePath);
     onRead?.(filePath);
   };
-  const scope: BundleReadScope = { projectDir, canRead: options?.canRead, noteRead };
+  const scope: BundleReadScope = {
+    projectDir,
+    privateFiles: options?.privateFiles ?? "vcs-and-secrets",
+    noteRead,
+  };
   return bundleReads.run(scope, () => bundleProject(projectDir, options));
 }
 

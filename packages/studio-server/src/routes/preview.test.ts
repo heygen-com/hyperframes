@@ -683,6 +683,47 @@ describe("registerPreviewRoutes", () => {
     expect(html).not.toContain("PRIVATE_ENV");
   });
 
+  it("asks for private files to be refused with plain data, so a build thread can join same-content builds", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div data-composition-id="root"></div></body></html>`,
+    );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    // A host that builds on another thread: only plain data crosses, and builds with equal data are shared.
+    const shared = new Map<string, Promise<string>>();
+    const sent: unknown[] = [];
+    let builds = 0;
+    const threaded: StudioApiAdapter["bundle"] = (dir, options = {}) => {
+      const { onRead: _onRead, ...data } = options;
+      expect(Object.values(data).some((value) => typeof value === "function")).toBe(false);
+      sent.push(structuredClone(data));
+      const key = `${dir}\0${JSON.stringify(data)}`;
+      let build = shared.get(key);
+      if (!build) {
+        builds++;
+        build = bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...data });
+        shared.set(key, build);
+      }
+      return build;
+    };
+    const first = new Hono();
+    const second = new Hono();
+    registerPreviewRoutes(first, createAdapter(projectDir, { bundle: threaded }));
+    registerPreviewRoutes(second, createAdapter(projectDir, { bundle: threaded }));
+
+    await Promise.all([
+      first.request("http://localhost/projects/demo/preview"),
+      second.request("http://localhost/projects/demo/preview"),
+    ]);
+
+    expect(sent).toEqual([
+      { stampHfIds: true, privateFiles: "studio" },
+      { stampHfIds: true, privateFiles: "studio" },
+    ]);
+    expect(builds).toBe(1);
+  });
+
   async function previewScriptSrcs(bodyGsapTag: string) {
     const projectDir = createProjectDir();
     writeFileSync(

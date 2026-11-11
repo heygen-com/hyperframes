@@ -1,15 +1,13 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { lstatSync, readdirSync, type Dirent } from "node:fs";
 import {
-  isVcsOrSecretPath,
+  isStudioPrivatePath,
   mkdirWithinProject,
   projectPathSegments,
   realpath,
   resolveWithinProject as resolveInProject,
 } from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
-import { STUDIO_MANUAL_EDITS_PATH } from "./manualEditsRenderScript.js";
-import { STUDIO_MOTION_PATH } from "./studioMotionRenderScript.js";
 
 // `isSafePath` lives at the package root so non-studio-api layers (compiler,
 // CLI, engine) can share it without a backwards dependency on studio-api.
@@ -44,21 +42,8 @@ export function realFilePath(filePath: string): string {
   }
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no route
-// reaches any of it, the folder itself included, but Studio's own files and the app's request pictures.
-const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
-
-/** For a project-relative path with `/` separators. */
-export function isPrivateProjectPath(relPath: string): boolean {
-  const path = relPath.toLowerCase();
-  if (isVcsOrSecretPath(path)) return true;
-  return (
-    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
-    !STUDIO_FILES.has(path) &&
-    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
-  );
-}
+/** For a project-relative path with `/` separators; the bundler applies the same rule to preview builds. */
+export const isPrivateProjectPath = isStudioPrivatePath;
 
 const projectRelatives = (projectDir: string, filePath: string): string[] => {
   const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");

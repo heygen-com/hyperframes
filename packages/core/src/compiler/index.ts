@@ -33,6 +33,7 @@ export {
   type BundledHostCompositionIdentity,
   bundleToSingleHtml,
   type BundleOptions,
+  type BundlePrivateFiles,
   type BundleScriptProvenance,
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,

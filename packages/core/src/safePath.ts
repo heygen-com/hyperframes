@@ -126,11 +126,35 @@ export function isVcsOrSecretPath(relPath: string): boolean {
   );
 }
 
-/** `isVcsOrSecretPath` for a file under `projectDir`, spelled as given and with its links resolved. */
-export function isVcsOrSecretFile(projectDir: string, filePath: string): boolean {
-  if (isVcsOrSecretPath(relative(resolve(projectDir), resolve(filePath)))) return true;
+// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): Studio
+// reaches none of it, the folder itself included, but its own files and the app's request pictures.
+const STUDIO_FILES = new Set([
+  ".hyperframes/studio-motion.json",
+  ".hyperframes/studio-manual-edits.json",
+]);
+const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
+
+/** Studio's private files, for a project-relative path with `/` separators: git, env, and the app's records. */
+export function isStudioPrivatePath(relPath: string): boolean {
+  const path = relPath.toLowerCase();
+  if (isVcsOrSecretPath(path)) return true;
+  return (
+    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
+    !STUDIO_FILES.has(path) &&
+    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
+  );
+}
+
+/** Whether `isPrivate` holds for a file under `projectDir`, spelled as given or with its links resolved. */
+export function isPrivateFileUnder(
+  projectDir: string,
+  filePath: string,
+  isPrivate: (relPath: string) => boolean,
+): boolean {
+  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
+  if (isPrivate(rel(resolve(projectDir), resolve(filePath)))) return true;
   try {
-    return isVcsOrSecretPath(relative(realpath(resolve(projectDir)), realpath(filePath)));
+    return isPrivate(rel(realpath(resolve(projectDir)), realpath(filePath)));
   } catch {
     return false;
   }
