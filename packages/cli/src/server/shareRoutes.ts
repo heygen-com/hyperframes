@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
+import type { HttpBindings } from "@hono/node-server";
 import { bodyLimit } from "hono/body-limit";
 import type {
   LocalShareAction,
@@ -93,7 +94,7 @@ export function mountShareRoutes(
   login: () => Promise<void> = defaultLogin,
   track: typeof trackShareInteraction = trackShareInteraction,
 ): void {
-  const routes = new Hono();
+  const routes = new Hono<{ Bindings: Partial<HttpBindings> }>();
   let job: LocalShareJob | null = null;
   const hasRunningJob = () => job?.state === "running";
   let jobOwner: string | null = null;
@@ -112,7 +113,7 @@ export function mountShareRoutes(
   };
   routes.use("*", async (c, next) => {
     c.header("Cache-Control", "no-store");
-    if (!localShareRequestAllowed(c.req.raw))
+    if (!localShareRequestAllowed(c.req.raw, c.env?.incoming?.socket.remoteAddress))
       return c.json({ code: "forbidden", message: "Open sharing from this local Studio." }, 403);
     if (
       c.req.path !== "/api/share/bootstrap" &&
