@@ -26,6 +26,7 @@ import {
 } from "./helpers/requestIdentity.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
+import { createFrameTokens, serveTokenPreviewPaths } from "./helpers/opaqueFrameLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -83,10 +84,25 @@ export interface StudioApiOptions extends CaptureSandboxOption {
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
+  const frameTokens = createFrameTokens();
+  const resolveProjectId = (id: string) =>
+    Promise.resolve()
+      .then(() => adapter.resolveProject(id))
+      .then(
+        (project) => project?.id,
+        () => undefined,
+      );
+  api.use("/projects/:id/preview/*", serveTokenPreviewPaths(api, frameTokens, resolveProjectId));
   api.use(
     "/projects/:id/preview/*",
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
   );
+  api.get("/projects/:id/frame-token", async (c) => {
+    if (fromAnotherSite(c)) return c.json({ error: "forbidden: requested by another site" }, 403);
+    const projectId = await resolveProjectId(c.req.param("id"));
+    if (!projectId) return c.json({ error: "not found" }, 404);
+    return c.json({ token: frameTokens.tokenFor(projectId) }, 200, { "Cache-Control": "no-store" });
+  });
   api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
