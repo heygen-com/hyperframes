@@ -1577,3 +1577,93 @@ it("names the unmounted count in one line", () => {
   );
   expect(unmountedNotice(3)).toContain("3 files in compositions/ are not mounted");
 });
+
+describe("references that leave the project", () => {
+  const findingsOf = async (project: string) =>
+    (await lintProject(project)).results.flatMap((entry) => entry.result.findings);
+
+  function hostOf(srcPath: string): string {
+    return `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-src="${srcPath}" data-composition-id="scene" data-start="0" data-duration="5"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  }
+
+  function outsideScene(project: string): string {
+    const outside = join(dirname(project), `${project.split(/[\\/]/).pop()}-scene.html`);
+    writeFileSync(
+      outside,
+      `<html><body><div data-composition-id="scene" data-width="1920" data-height="1080">
+  <audio id="leak" src="outside-audio.mp3" data-start="0" data-duration="1"></audio>
+</div></body></html>`,
+    );
+    dirs.push(outside);
+    return outside;
+  }
+
+  it.each([
+    (outside: string) => `../${outside.split(/[\\/]/).pop()}`,
+    (outside: string) => outside,
+  ])(
+    "reports a sub-composition outside the project folder without reading it (%#)",
+    async (srcOf) => {
+      const project = makeProject("");
+      const outside = outsideScene(project);
+      writeFileSync(join(project, "index.html"), hostOf(srcOf(outside)));
+      const findings = await findingsOf(project);
+      const sub = findings.find((f) => f.code === "missing_or_empty_sub_composition");
+      expect(sub?.message ?? "").toMatch(/outside the project folder|does not exist/);
+      expect(JSON.stringify(findings)).not.toContain("outside-audio.mp3");
+    },
+  );
+
+  it("reads a sub-composition written with a leading slash from the project root, as the render does", async () => {
+    const project = makeProject(hostOf("/compositions/scene.html"), {
+      "scene.html": `<html><body><div data-composition-id="scene" data-width="1920" data-height="1080"></div></body></html>`,
+    });
+    const findings = await findingsOf(project);
+    expect(findings.find((f) => f.code === "missing_or_empty_sub_composition")).toBeUndefined();
+  });
+
+  it("does not read an import map through an encoded absolute path", async () => {
+    const project = makeProject("");
+    const secret = join(dirname(project), `${project.split(/[\\/]/).pop()}-secret.txt`);
+    writeFileSync(secret, "TOP-SECRET-VALUE not json");
+    dirs.push(secret);
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<script type="importmap" src="/%2F${secret.slice(1)}"></script>\n<link rel="stylesheet" href="/%2F${secret.slice(1)}">\n</body>`,
+      ),
+    );
+    expect(JSON.stringify(await findingsOf(project))).not.toContain("TOP-SECRET-VALUE");
+  });
+});
+
+describe("missing_timeline_registry with a script outside the project", () => {
+  const rootWithScript = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <script src="${src}"></script>
+</body></html>`;
+  const registryErrors = async (project: string) =>
+    (await lintProject(project)).results
+      .flatMap((result) => result.result.findings)
+      .filter((finding) => finding.code === "missing_timeline_registry");
+
+  it("is not reported when the timeline may be registered in a script lint did not read", async () => {
+    const project = makeProject(rootWithScript("../shared/timeline.js"));
+
+    expect(await registryErrors(project)).toEqual([]);
+  });
+
+  it("is still reported when every script is in the project and none registers", async () => {
+    const project = makeProject(rootWithScript("scene.js"));
+    writeFileSync(join(project, "scene.js"), "console.log('no timeline');");
+
+    expect(await registryErrors(project)).toHaveLength(1);
+  });
+});

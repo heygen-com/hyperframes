@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
 import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { encoderFailureError } from "./render/encoderInterruption.js";
 
@@ -92,9 +93,13 @@ export function resolveLocalImageSourcePath(
   if (mapped && existsSync(mapped)) return mapped;
   if (isHttpUrl(trimmed)) return null;
 
+  const protocolRelativeUrlOnShare =
+    basePath.startsWith("/") && namesAnotherNetworkRoot(options.projectDir, basePath);
   const projectRelative = basePath.startsWith("/") ? basePath.slice(1) : basePath;
   const candidates = [
-    isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative),
+    ...(protocolRelativeUrlOnShare
+      ? []
+      : [isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative)]),
     resolve(options.downloadDir, normalizedBase),
   ];
 

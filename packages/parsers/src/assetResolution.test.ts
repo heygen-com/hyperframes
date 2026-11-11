@@ -11,6 +11,8 @@ import {
   maskNonScannableRanges,
   readProjectFile,
   readTextFile,
+  resolveCompositionSrc,
+  resolveExistingLocalAsset,
   resolveProjectRelativeSrc,
 } from "./assetResolution.js";
 
@@ -267,6 +269,48 @@ describe("resolveProjectRelativeSrc — the one src resolver for lint and render
     for (const src of ["assets/foo.mp4?v=2", "assets/foo.mp4#t=5", " assets/foo.mp4 "]) {
       expect(resolveProjectRelativeSrc(src, projectDir)).toBe(join(projectDir, "assets/foo.mp4"));
     }
+  });
+});
+
+describe("resolveExistingLocalAsset stays inside the project", () => {
+  let dir: string;
+  let project: string;
+  let outside: string;
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "hf-asset-confine-"));
+    project = join(dir, "project");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    writeFileSync(join(project, "assets", "a.css"), "a{}");
+    outside = join(dir, "secret.env");
+    writeFileSync(outside, "TOKEN=1");
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([
+    (path: string) => `/%2F${path.slice(1)}`,
+    (path: string) => `%2F${path}`,
+    (path: string) => `/${encodeURIComponent(path)}`,
+  ])("finds no file outside the project for an encoded absolute path (%#)", (encode) => {
+    expect(resolveExistingLocalAsset(project, encode(outside))).toBeNull();
+  });
+
+  it("still finds a project file by its root-absolute URL or a clamped ../", () => {
+    expect(resolveExistingLocalAsset(project, "/assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+    expect(resolveExistingLocalAsset(project, "../assets/a.css")?.rootRelativePath).toBe(
+      join("assets", "a.css"),
+    );
+  });
+
+  it("resolves a sub-composition src like the render, and refuses one that leaves", () => {
+    expect(resolveCompositionSrc(project, "/assets/a.css")).toBe(join(project, "assets", "a.css"));
+    expect(resolveCompositionSrc(project, "../secret.env")).toBeNull();
+    expect(resolveCompositionSrc(project, "%2E%2E/secret.env")).toBeNull();
+    const driveLetterPathLeavesProject = process.platform === "win32";
+    expect(resolveCompositionSrc(project, outside)).toBe(
+      driveLetterPathLeavesProject ? null : join(project, outside),
+    );
   });
 });
 

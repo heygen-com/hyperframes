@@ -625,6 +625,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       return [];
     }
     if (/(?:^|\s)data-no-timeline(?=[\s=/]|$)/i.test(rootTag?.attrs || "")) return [];
+    if (options.scriptsOutsideProjectUnread?.length) return [];
     const findings: HyperframeLintFinding[] = [];
     const registered = [source, ...(options.externalScripts ?? []).map((script) => script.content)];
     if (
