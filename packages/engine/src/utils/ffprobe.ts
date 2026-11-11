@@ -483,13 +483,7 @@ let runtimeFfprobeMajor: Promise<number | undefined> | undefined;
 function ffprobeMajor(): Promise<number | undefined> {
   runtimeFfprobeMajor ??= new Promise((resolve) => {
     let out = "";
-    let binary: string;
-    try {
-      binary = getFfprobeBinary();
-    } catch {
-      resolve(undefined);
-      return;
-    }
+    const binary = getFfprobeBinary();
     const proc = spawn(binary, ["-version"], {
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,

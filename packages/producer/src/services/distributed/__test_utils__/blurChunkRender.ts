@@ -3,8 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect } from "vitest";
-import { decodePng, resolveConfig } from "@hyperframes/engine";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { decodePng, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
 import {
   compareTiles,
   type Differential,
@@ -23,9 +22,8 @@ import { assemble } from "../assemble.js";
 import { plan, type DistributedRenderConfig } from "../plan.js";
 import { renderChunk } from "../renderChunk.js";
 
-const FFMPEG = findFfBinary("ffmpeg");
 export const HAS_FFMPEG =
-  FFMPEG !== undefined && spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status === 0;
+  spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 const FPS = 30;
 /** Four workers over 60 frames start at 0, 15, 30 and 45, so no block starts where a 20-frame chunk does. */
 export const WHOLE_WORKERS = 4;

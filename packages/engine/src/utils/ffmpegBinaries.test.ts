@@ -71,10 +71,7 @@ describe("ffmpeg binary env resolution", () => {
       vi.resetModules();
       vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => {
         const actual = await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>();
-        const missing = (name: string): never => {
-          throw Object.assign(new Error(`[FFmpeg] ${name} not found.`), { code: "ENOENT" });
-        };
-        return { ...actual, findFfBinary: () => undefined, requireFfBinary: missing };
+        return { ...actual, findFfBinary: () => undefined };
       });
       return { marker };
     }
@@ -82,6 +79,8 @@ describe("ffmpeg binary env resolution", () => {
     it("reports ffmpeg as missing instead of running the one PATH finds by name", async () => {
       const { marker } = plantTools("ffmpeg");
       const { runFfmpeg } = await import("./runFfmpeg.js");
+      const { getFfmpegBinary: binary } = await import("./ffmpegBinaries.js");
+      expect(binary()).toMatch(/ffmpeg-not-found-set-HYPERFRAMES_FFMPEG_PATH[\\/]ffmpeg$/);
 
       const result = await runFfmpeg(["-version"]);
 
@@ -102,9 +101,9 @@ describe("ffmpeg binary env resolution", () => {
       const { marker } = plantTools("ffprobe");
       const { runFfprobe } = await import("./ffprobe.js");
 
-      await expect(runFfprobe("/no/such/clip.mp4", ["-show_format"])).rejects.toMatchObject({
-        code: "ENOENT",
-      });
+      await expect(runFfprobe("/no/such/clip.mp4", ["-show_format"])).rejects.toThrow(
+        /ffprobe not found/,
+      );
       expect(existsSync(marker)).toBe(false);
     });
   });

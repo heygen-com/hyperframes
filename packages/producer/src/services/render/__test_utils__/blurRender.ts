@@ -9,8 +9,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { decodePng, distributeFrames, resolveConfig } from "@hyperframes/engine";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { decodePng, distributeFrames, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
 import {
   compareTiles,
   trailMask,
@@ -27,9 +26,8 @@ import {
 } from "../../../../../engine/src/services/__fixtures__/motionBlur/thresholds.js";
 import { createRenderJob, executeRenderJob } from "../../renderOrchestrator.js";
 
-const FFMPEG = findFfBinary("ffmpeg") ?? "";
-const HAS_FFMPEG =
-  FFMPEG !== "" && spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status === 0;
+const FFMPEG = getFfmpegBinary();
+const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status === 0;
 const ON_CI = Boolean(process.env.CI);
 
 const FPS = 30;

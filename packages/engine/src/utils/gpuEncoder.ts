@@ -61,24 +61,13 @@ export async function selectUsableGpuEncoder(
   return null;
 }
 
-/** No ffmpeg means no GPU encoder, not a failed probe. */
-function ffmpegOrNull(): string | null {
-  try {
-    return getFfmpegBinary();
-  } catch {
-    return null;
-  }
-}
-
 /** ffmpeg's stdout, or null when it did not exit cleanly within the deadline. */
 async function ffmpegStdout(
   args: string[],
   deadlineMs: number,
   terminationGraceMs?: number,
 ): Promise<string | null> {
-  const binary = ffmpegOrNull();
-  if (!binary) return null;
-  const ffmpeg = spawn(binary, args, {
+  const ffmpeg = spawn(getFfmpegBinary(), args, {
     stdio: ["ignore", "pipe", "pipe"],
     // See runFfmpeg.ts: keeps a console window off the user's desktop on Windows.
     windowsHide: true,
@@ -201,9 +190,7 @@ export function getProbeArgs(encoder: ConcreteGpuEncoder): string[] {
 }
 
 async function canUseGpuEncoder(encoder: ConcreteGpuEncoder): Promise<boolean> {
-  const binary = ffmpegOrNull();
-  if (!binary) return false;
-  const ffmpeg = spawn(binary, getProbeArgs(encoder), {
+  const ffmpeg = spawn(getFfmpegBinary(), getProbeArgs(encoder), {
     stdio: ["ignore", "ignore", "pipe"],
     windowsHide: true,
   });

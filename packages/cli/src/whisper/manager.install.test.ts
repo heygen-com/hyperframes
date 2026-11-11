@@ -9,6 +9,9 @@ vi.mock("node:os", async (original) => ({
   ...(await original<typeof import("node:os")>()),
   platform: () => "darwin",
 }));
+// Windows walks PATH itself, so there the lookup returns the real install's path, not `/bin/<name>`.
+const isTool = (command: string, name: string) =>
+  new RegExp(`(^|[\\\\/])${name}(\\.exe)?$`, "i").test(command);
 afterEach(() => {
   vi.unstubAllEnvs();
   calls.exec.mockReset();
@@ -30,7 +33,9 @@ it("never installs when the runtime vanishes after discovery and installation is
       WhisperUnavailableError,
     );
     expect(
-      calls.exec.mock.calls.filter(([command]) => /(?:^|\/)(?:brew|git|cmake)$/.test(command)),
+      calls.exec.mock.calls.filter(([command]) =>
+        ["brew", "git", "cmake"].some((name) => isTool(command, name)),
+      ),
     ).toEqual([]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -48,12 +53,12 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
     if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
       throw new Error("not available");
     if (lookup) return `/bin/${args[0]}\n`;
-    if (command === "/bin/git" && args[0] === "clone") throw new Error("stop after the clone");
+    if (isTool(command, "git") && args[0] === "clone") throw new Error("stop after the clone");
     return "";
   });
   try {
     await expect(ensure()).rejects.toBeInstanceOf(Unavailable);
-    const clone = calls.exec.mock.calls.find(([c, a]) => c === "/bin/git" && a[0] === "clone");
+    const clone = calls.exec.mock.calls.find(([c, a]) => isTool(c, "git") && a[0] === "clone");
     const [, args, options] = clone as [string, string[], { cwd?: string }];
     expect(args.some((arg) => arg.includes(cache))).toBe(false);
     expect(options.cwd).toBe(join(cache, "whisper", "whisper.cpp"));
@@ -72,39 +77,42 @@ it("builds only the reviewed whisper.cpp commit", async () => {
     if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
       throw new Error("not available");
     if (lookup) return `/bin/${args[0]}\n`;
-    if (command === "/bin/git" && args[0] === "rev-parse") return "0123456789abcdef\n";
+    if (isTool(command, "git") && args[0] === "rev-parse") return "0123456789abcdef\n";
     return "";
   });
   try {
     await expect(ensure()).rejects.toThrow();
-    const clone = calls.exec.mock.calls.find(([c, a]) => c === "/bin/git" && a[0] === "clone");
+    const clone = calls.exec.mock.calls.find(([c, a]) => isTool(c, "git") && a[0] === "clone");
     expect((clone as [string, string[]])[1]).toEqual(expect.arrayContaining(["--branch"]));
-    expect(calls.exec.mock.calls.some(([command]) => command === "/bin/cmake")).toBe(false);
+    expect(calls.exec.mock.calls.some(([command]) => isTool(command, "cmake"))).toBe(false);
   } finally {
     rmSync(cache, { recursive: true, force: true });
   }
 });
 
-it("installs with the brew the trusted lookup approved, by its path", async () => {
-  const cache = mkdtempSync(join(tmpdir(), "hf-whisper-cache-"));
-  vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
-  vi.stubEnv("HYPERFRAMES_WHISPER_PATH", "");
-  vi.resetModules();
-  const { ensureWhisper: ensure } = await import("./manager.js");
-  calls.exec.mockImplementation((command: string, args: string[]) => {
-    const lookup = command === "which" || command === "where";
-    if (lookup && args[0] === "brew") return "/opt/homebrew/bin/brew\n";
-    throw new Error("not available");
-  });
-  try {
-    await expect(ensure()).rejects.toThrow();
-    const runs = calls.exec.mock.calls.map(([command]) => command as string);
-    expect(runs).toContain("/opt/homebrew/bin/brew");
-    expect(runs).not.toContain("brew");
-  } finally {
-    rmSync(cache, { recursive: true, force: true });
-  }
-});
+it.skipIf(process.platform === "win32")(
+  "installs with the brew the trusted lookup approved, by its path",
+  async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-whisper-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.stubEnv("HYPERFRAMES_WHISPER_PATH", "");
+    vi.resetModules();
+    const { ensureWhisper: ensure } = await import("./manager.js");
+    calls.exec.mockImplementation((command: string, args: string[]) => {
+      const lookup = command === "which" || command === "where";
+      if (lookup && args[0] === "brew") return "/opt/homebrew/bin/brew\n";
+      throw new Error("not available");
+    });
+    try {
+      await expect(ensure()).rejects.toThrow();
+      const runs = calls.exec.mock.calls.map(([command]) => command as string);
+      expect(runs).toContain("/opt/homebrew/bin/brew");
+      expect(runs).not.toContain("brew");
+    } finally {
+      rmSync(cache, { recursive: true, force: true });
+    }
+  },
+);
 
 it("names the missing build tool when whisper.cpp cannot be built", async () => {
   vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
