@@ -681,6 +681,11 @@
           : {};
       const content = (id, fallback) =>
         typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+      const graphemes = (value) =>
+        Array.from(
+          new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value),
+          (part) => part.segment,
+        );
 
       const CONFIG = {
         status: { clock: "2:36", clockLate: "2:37", net: "5G+", battery: 87 },
@@ -1138,7 +1143,7 @@
         curEls.push(a);
       };
       mkCursor();
-      CONFIG.prompt.split("").forEach((c) => {
+      graphemes(CONFIG.prompt).forEach((c) => {
         const sp = text("ch", c === " " ? "\u00a0" : c, "span");
         typedEl.appendChild(sp);
         chEls.push(sp);
@@ -1366,7 +1371,7 @@
 
         /* ---- 2. typing */
         const t0 = T.typeStart;
-        const chars = CONFIG.prompt.split("");
+        const chars = graphemes(CONFIG.prompt);
         const charT = [];
         let t = t0;
         chars.forEach((c) => {

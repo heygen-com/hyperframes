@@ -400,13 +400,16 @@
         var speed = clampNumber(vars.speed, 0.5, 2, 1);
 
         var linesEl = document.getElementById("nty-lines");
+        var segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
         var chars = [];
         lines.forEach(function (line, li) {
           var p = document.createElement("div");
           p.className = "nty-line";
           p.setAttribute("data-layout-allow-overlap", "");
           p.setAttribute("data-layout-allow-occlusion", "");
-          line.split("").forEach(function (ch) {
+          Array.from(segmenter.segment(line), function (part) {
+            return part.segment;
+          }).forEach(function (ch) {
             var s = document.createElement("span");
             s.className = "nty-ch";
             s.textContent = ch;
