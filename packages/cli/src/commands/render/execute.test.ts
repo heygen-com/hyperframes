@@ -40,6 +40,13 @@ describe("renderOptionsFromPlan", () => {
     },
   );
 
+  it.each([true, false])("carries --strict-variables=%s into the single-render options", (value) => {
+    // A dropped flag here silently skipped the in-browser undeclared-variable
+    // check for local renders while batch and remote renders ran it.
+    const plan = createRenderPlan({ dir: projectDir, "strict-variables": value });
+    expect(renderOptionsFromPlan(plan, undefined, { title: "x" }).strictVariables).toBe(value);
+  });
+
   it("carries the segmented resume flags from the plan into the render options", () => {
     // The hop that once dropped --resume / --keep-segments silently; the plan
     // -> options -> request -> config chain is otherwise only exercised by a

@@ -62,6 +62,8 @@ export interface DockerRenderOptions {
   debug?: boolean;
   bestEffort?: boolean;
   variables?: Record<string, unknown>;
+  /** Forwarded as `--strict-variables` so the in-container render runs the in-browser check. */
+  strictVariables?: boolean;
   entryFile?: string;
   /** Output resolution preset (e.g. "landscape-4k"). Forwarded as `--resolution`. */
   outputResolution?: string;
@@ -179,6 +181,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.variables && Object.keys(options.variables).length > 0
       ? ["--variables", JSON.stringify(options.variables)]
       : []),
+    ...(options.strictVariables ? ["--strict-variables"] : []),
     ...(options.entryFile ? ["--composition", options.entryFile] : []),
     ...(options.outputResolution ? ["--resolution", options.outputResolution] : []),
     ...(options.pageSideCompositing === false ? ["--no-page-side-compositing"] : []),

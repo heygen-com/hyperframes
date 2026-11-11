@@ -246,6 +246,13 @@ describe("buildDockerRunArgs", () => {
     expect(strict).toContain("--no-best-effort");
   });
 
+  it("forwards --strict-variables only when enabled", () => {
+    const on = buildDockerRunArgs({ ...FIXED_INPUT, options: { ...BASE, strictVariables: true } });
+    expect(on.filter((arg) => arg === "--strict-variables")).toHaveLength(1);
+    const off = buildDockerRunArgs({ ...FIXED_INPUT, options: { ...BASE, strictVariables: false } });
+    expect(off).not.toContain("--strict-variables");
+  });
+
   it("forwards --experimental-fast-capture only when enabled", () => {
     const on = buildDockerRunArgs({
       ...FIXED_INPUT,

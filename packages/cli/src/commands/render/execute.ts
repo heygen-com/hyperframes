@@ -207,6 +207,7 @@ export function renderOptionsFromPlan(
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     variables,
+    strictVariables: plan.strictVariables,
     entryFile: plan.entryFile,
     outputResolution: plan.outputResolution,
     outputResolutionAspectAgnostic: plan.outputResolutionAspectAgnostic,
