@@ -354,3 +354,31 @@ describe("a runtime seek while the prewarm runs", () => {
     expect(tl.totalTime()).toBe(1);
   });
 });
+
+describe("a document without IndexedDB access", () => {
+  it("prepares its transitions without the snapshot cache", async () => {
+    stubGsap();
+    stubWebGl();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const denied = new DOMException(
+      "access to the Indexed Database API is denied",
+      "SecurityError",
+    );
+    const open = vi.fn(() => {
+      throw denied;
+    });
+    vi.stubGlobal("indexedDB", { open });
+    // The cache's connection is module state, so a fresh module opens it under this stub.
+    vi.resetModules();
+    const { init: initFresh } = await import("./hyper-shader.js");
+    mountScenes(["s1", "s2"]);
+    initFresh({
+      bgColor: "#000",
+      scenes: ["s1", "s2"],
+      transitions: [{ time: 2, duration: 0.8, shader: "domain-warp" }],
+    });
+    await prewarmDone();
+    expect(open).toHaveBeenCalled();
+    expect(warn.mock.calls.flat()).not.toContain(denied);
+  });
+});

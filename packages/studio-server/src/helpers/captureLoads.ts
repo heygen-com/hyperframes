@@ -104,14 +104,13 @@ export async function grantCaptureLoads(cdp: CaptureCdpSession, captureUrl: stri
   cdp.on("Fetch.requestPaused", (event) => {
     const { requestId } = event;
     const headers = event.responseHeaders ?? [];
-    const status = event.responseStatusCode ?? 0;
+    const status = event.responseStatusCode;
     const grant = captureLoadGrant(
       { url: event.request.url, method: event.request.method, resourceType: event.resourceType },
       captureUrl,
     );
     const answered =
-      status >= 200 &&
-      status < 300 &&
+      status !== undefined &&
       !headers.some((header) => header.name.toLowerCase() === "access-control-allow-origin");
     const sent =
       grant === "preflight"

@@ -113,6 +113,16 @@ describe("grantCaptureLoads", () => {
     });
   });
 
+  it("lets the frame read a missing file's status, as a same-origin page would", async () => {
+    const { session, send, pause } = fakeSession();
+    await grantCaptureLoads(session, CAPTURE);
+    pause(response(`${PREVIEW}/assets/fonts/Missing.ttf`, "XHR", { responseStatusCode: 404 }));
+    expect(send).toHaveBeenLastCalledWith(
+      "Fetch.continueResponse",
+      expect.objectContaining({ responseCode: 404 }),
+    );
+  });
+
   it("exposes the preview copy's progress headers to the runtime's wait", async () => {
     const { session, send, pause } = fakeSession();
     await grantCaptureLoads(session, CAPTURE);
@@ -152,8 +162,8 @@ describe("grantCaptureLoads", () => {
   it.each([
     ["a file fetch() may not read", response(`${PREVIEW}/.env`, "XHR")],
     [
-      "a failed load",
-      response(`${PREVIEW}/assets/brand.woff2`, "Font", { responseStatusCode: 404 }),
+      "a request paused before its response",
+      response(`${PREVIEW}/assets/brand.woff2`, "Font", { responseStatusCode: undefined }),
     ],
     [
       "a load that already answers CORS",
