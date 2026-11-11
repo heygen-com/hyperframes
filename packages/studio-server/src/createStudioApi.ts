@@ -26,6 +26,7 @@ import {
 } from "./helpers/requestIdentity.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
+import { grantOpaqueFrameLoads } from "./helpers/opaqueFrameLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -87,6 +88,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     "/projects/:id/preview/*",
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
   );
+  api.use("/projects/:id/preview/*", grantOpaqueFrameLoads);
   api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
