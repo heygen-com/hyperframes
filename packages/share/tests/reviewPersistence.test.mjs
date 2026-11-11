@@ -16,6 +16,7 @@ import {
   reviewDestination,
   reviewFiles,
   reviewVersion,
+  ReviewFailed,
   shareForReview,
 } from "../src/index.mjs";
 
@@ -27,7 +28,7 @@ const ready = (id) => ({
   version_id: `version-${id}`,
   exported_at: "2026-11-04T00:00:00Z",
 });
-const bind = (dir) =>
+const bind = (dir, exportId = "render") =>
   bindShareHost({
     normalize: realpathSync,
     channelSite: site,
@@ -36,7 +37,7 @@ const bind = (dir) =>
     latestExportFile: () => ({
       path: join(dir, ".hyperframes", "video.mp4"),
       fingerprint: "rendered",
-      id: "render",
+      id: exportId,
     }),
   });
 const probe = async () => ({ width: 1920, height: 1080, duration: 1 });
@@ -126,6 +127,59 @@ async function retry(dir, operationId) {
   assert.equal(await addVersion(request(dir, { createExport })), null);
   assert.equal(await pendingReviewExport(dir), null);
 }
+
+test("a refused replay keeps its original operation and offers to export a new video", async (t) => {
+  const { dir, render, stateFile } = await project(t);
+  const sends = [];
+  const snapshot = { space_id: "space", composition_id: "comp", snapshot_id: "snap" };
+  const client = {
+    createExport: async (_id, body) => {
+      sends.push(body);
+      if (sends.length === 1) throw new ReviewFailed(503, "unavailable");
+      if (sends.length < 4) throw new ReviewFailed(422, "snapshot_mismatch");
+      return ready("new");
+    },
+  };
+  const version = { ...request(dir, client), filesForExport: async () => snapshot };
+  assert.match(await addVersion(version), /Try again/);
+  for (let replay = 0; replay < 2; replay++) {
+    assert.match(await addVersion(version), /change the export settings and export again/i);
+    const failure = await reviewVersion(dir);
+    assert.equal(failure.retryable, false);
+    assert.equal(failure.exportHelps, true);
+    assert.equal(JSON.parse(await readFile(stateFile, "utf8")).pending.unanswered, true);
+  }
+  assert.deepEqual(sends, [sends[0], sends[0], sends[0]]);
+  assert.deepEqual(sends[0].snapshot, snapshot);
+
+  await writeFile(render, "new export with different settings");
+  bind(dir, "re-export");
+  assert.equal((await reviewVersion(dir)).failure, null);
+  assert.equal(await addVersion(version), null);
+  assert.notEqual(sends[3].client_operation_id, sends[0].client_operation_id);
+  assert.equal(await pendingReviewExport(dir), null);
+});
+
+test("a snapshot refusal on the first send still adds the video without files", async (t) => {
+  const { dir } = await project(t);
+  const snapshot = { space_id: "space", composition_id: "comp", snapshot_id: "snap" };
+  const sends = [];
+  const client = {
+    createExport: async (_id, body) => {
+      sends.push(body);
+      if (sends.length === 1) throw new ReviewFailed(422, "snapshot_mismatch");
+      return ready("fallback");
+    },
+  };
+  assert.equal(
+    await addVersion({ ...request(dir, client), filesForExport: async () => snapshot }),
+    null,
+  );
+  assert.equal(sends.length, 2);
+  assert.deepEqual(sends[0].snapshot, snapshot);
+  assert.equal(sends[1].snapshot, undefined);
+  assert.notEqual(sends[1].client_operation_id, sends[0].client_operation_id);
+});
 
 for (const whileLocked of [true, false]) {
   test(
