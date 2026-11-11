@@ -1208,6 +1208,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(input.cfg.forceScreenshot).toBe(false);
   });
 
+  it("defers the probe's still-frame check and gives its session the render's memo and page hash", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const staticDedupMemo = {};
+    await runProbeStage({ ...makeProbeInput({}), staticDedupMemo });
+    const options = capturedOptions[0] as {
+      deferStaticDedup?: boolean;
+      staticDedupMemo?: object;
+      compositionHash?: string;
+    };
+    expect(options.deferStaticDedup).toBe(true);
+    expect(options.staticDedupMemo).toBe(staticDedupMemo);
+    expect(options.compositionHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
   it("passes forceScreenshot:false through unchanged when neither cfg nor stage input forces it", async () => {
     capturedCfgs.length = 0;
 

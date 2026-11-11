@@ -618,6 +618,8 @@ export interface StageStallRule {
   tailMs?: number;
   detail?: () => string | undefined;
   attemptOpened?: () => void;
+  /** Bounded work that is not progress but not a stall either: a change keeps the current window open. */
+  activity?: () => number;
 }
 
 /**
@@ -648,26 +650,26 @@ const STALL_POLL_MS = 5_000;
 function watchStall(phase: string, rule: StageStallRule) {
   const detail = rule.detail ?? (() => undefined);
   let last = rule.progress();
+  let lastActivity = rule.activity?.();
   let budgetMs = rule.firstProgressMs;
   const silence = createStallClock();
   const pollMs = Math.min(STALL_POLL_MS, rule.noProgressMs, rule.firstProgressMs);
   let attempt: AbortController | undefined;
   let timer: ReturnType<typeof setInterval> | undefined;
   let inTail = false;
+  const activityMoved = (): boolean => {
+    const activity = rule.activity?.();
+    if (activity === lastActivity) return false;
+    lastActivity = activity;
+    return true;
+  };
   const restartWindow = (ms: number) => {
     last = rule.progress();
     budgetMs = ms;
     silence.reset();
   };
   const tripped = new Promise<never>((_, reject) => {
-    timer = setInterval(() => {
-      const current = rule.progress();
-      if (rule.complete?.() && !inTail) {
-        inTail = true;
-        return restartWindow(rule.tailMs ?? rule.noProgressMs);
-      }
-      if (current !== last) return restartWindow(rule.noProgressMs);
-      if (silence.idle(pollMs) < budgetMs) return;
+    const trip = (current: number) => {
       const error = new RenderStageStalledError(phase, budgetMs, current, detail());
       if (attempt && !attempt.signal.aborted) {
         attempt.abort(error);
@@ -675,6 +677,16 @@ function watchStall(phase: string, rule: StageStallRule) {
       }
       clearInterval(timer);
       reject(error);
+    };
+    timer = setInterval(() => {
+      const current = rule.progress();
+      if (rule.complete?.() && !inTail) {
+        inTail = true;
+        return restartWindow(rule.tailMs ?? rule.noProgressMs);
+      }
+      if (current !== last) return restartWindow(rule.noProgressMs);
+      if (activityMoved()) return silence.reset();
+      if (silence.idle(pollMs) >= budgetMs) trip(current);
     }, pollMs);
   });
   const openAttempt: OpenStallAttempt = (parent) => {

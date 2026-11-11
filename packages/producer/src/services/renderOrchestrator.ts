@@ -149,6 +149,8 @@ import {
   createMemorySampler,
   describeWorkerPhases,
   forgetWorkerPhases,
+  noteStaticDedupActivity,
+  staticDedupActivity,
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
@@ -1252,6 +1254,7 @@ export function frameStallRule(
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
     attemptOpened: () => forgetWorkerPhases(job),
+    activity: () => staticDedupActivity(job),
   };
 }
 
@@ -3834,6 +3837,7 @@ async function executeRenderPipeline(input: {
       subTimelineWaitMemo,
       staticDedupMemo,
       compositionHash,
+      onStaticDedupActivity: () => noteStaticDedupActivity(job),
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
