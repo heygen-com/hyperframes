@@ -40,6 +40,7 @@ export {
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {
   extractCompiledHtmlParityContract,

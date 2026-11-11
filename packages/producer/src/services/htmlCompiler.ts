@@ -56,6 +56,7 @@ import {
   emitRootCompositionVariableStyles,
   readDeclaredDefaults,
   parseHostVariableValues,
+  boundMediaSrc,
   headStyleRuns,
   isAlwaysAppliedStyle,
   dedupeFontFaceRules,
@@ -2079,6 +2080,29 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
 }
 
 /**
+ * Point each `data-var-src` video/audio at the clip its variable names, so the length and sound read below
+ * are the bound clip's. Media under a per-instance `data-variable-values` host keeps the browser's answer.
+ */
+function bindVariableMediaSources(html: string, variables: Record<string, unknown>): string {
+  if (!html.includes("data-var-src")) return html;
+  const { document } = parseHTML(html);
+  const declared: Record<string, unknown> = {};
+  for (const el of document.querySelectorAll("[data-composition-variables]")) {
+    Object.assign(declared, readDeclaredDefaults(el));
+  }
+  const values = { ...declared, ...variables };
+  let changed = false;
+  for (const el of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
+    if (el.closest("[data-variable-values]")) continue;
+    const src = boundMediaSrc(el, values);
+    if (src === null || el.getAttribute("src") === src) continue;
+    el.setAttribute("src", src);
+    changed = true;
+  }
+  return changed ? document.toString() : html;
+}
+
+/**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
  */
@@ -2090,9 +2114,9 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
-  const rawHtml = normalizeCompositionSrcs(
-    rewriteUnresolvableGsapToCdn(entryHtml, projectDir),
-    projectDir,
+  const rawHtml = bindVariableMediaSources(
+    normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
+    options.variables ?? {},
   );
 
   // Pre-flight: every data-composition-src reference must resolve to a
