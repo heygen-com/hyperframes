@@ -5,6 +5,7 @@ vi.mock("./activity.js", () => ({
     run(async () => {}),
 }));
 const mocks = vi.hoisted(() => ({
+  source: vi.fn(),
   activity: vi.fn(),
   status: vi.fn(),
   version: vi.fn(),
@@ -48,6 +49,10 @@ vi.mock("./auth.js", () => ({
 vi.mock("./host.js", () => ({
   assertReviewUploadStorage: vi.fn(),
   bindCliShareProject: (path: string) => path,
+}));
+vi.mock("./sources.js", () => ({
+  prepareCliShareSource: mocks.source,
+  uncheckedSource: () => ({ at: "not_checked" }),
 }));
 vi.mock("./render.js", () => ({ prepareShareRender: mocks.render }));
 vi.mock("../telemetry/client.js", () => ({
@@ -501,3 +506,17 @@ it("reports the first share while it has no server project yet", async () => {
     url: null,
   });
 });
+
+it.each([false, true])(
+  "only prepares source after affirmative consent (%s)",
+  async (includeSource) => {
+    mocks.status.mockResolvedValue(shared);
+    mocks.flags.mockResolvedValue({ versionSharing: true, shareFiles: true });
+    mocks.source.mockResolvedValue({
+      source: { at: "video_only", reason: "source_plan_required" },
+      requireSource: false,
+    });
+    await createShareService("/project").run({ action: "update", includeSource });
+    expect(mocks.source).toHaveBeenCalledTimes(includeSource ? 1 : 0);
+  },
+);

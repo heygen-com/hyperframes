@@ -30,7 +30,12 @@ beforeEach(() => {
 it("eligible source requires attachment on the version", async () => {
   const snapshot = { space_id: "space", composition_id: "composition", snapshot_id: "snapshot" };
   mocks.prepare.mockResolvedValue({ at: "ready", snapshot });
-  expect(await prepareCliShareSource("/project", access, "space", { shareFiles: true })).toEqual({
+  expect(
+    await prepareCliShareSource("/project", access, "space", {
+      shareFiles: true,
+      includeSource: true,
+    }),
+  ).toEqual({
     source: { at: "ready", snapshot },
     requireSource: true,
     filesForExport: mocks.filesForExport,
@@ -46,28 +51,37 @@ it("refuses source bytes that differ from the rendered assets even when metadata
     return { at: "unavailable", reason: "source_render_changed" };
   });
   await expect(
-    prepareCliShareSource("/project", access, "space", { shareFiles: true }),
+    prepareCliShareSource("/project", access, "space", { shareFiles: true, includeSource: true }),
   ).rejects.toThrow("source_render_changed");
 });
 it("free plan ineligibility preserves video sharing and reports source unavailable", async () => {
   mocks.prepare.mockResolvedValue({ at: "unavailable", reason: "source_plan_required" });
-  expect(await prepareCliShareSource("/project", access, "space", { shareFiles: true })).toEqual({
+  expect(
+    await prepareCliShareSource("/project", access, "space", {
+      shareFiles: true,
+      includeSource: true,
+    }),
+  ).toEqual({
     source: { at: "video_only", reason: "source_plan_required" },
     requireSource: false,
   });
 });
 it("explicit video-only skips source network requests", async () => {
-  await prepareCliShareSource("/project", access, "space", { shareFiles: true, videoOnly: true });
+  await prepareCliShareSource("/project", access, "space", {
+    shareFiles: true,
+    includeSource: true,
+    videoOnly: true,
+  });
   expect(mocks.factory).not.toHaveBeenCalled();
 });
 it("unexpected upload errors and stale source block with an explicit video-only retry", async () => {
   mocks.prepare.mockRejectedValueOnce(new Error("network failed"));
   await expect(
-    prepareCliShareSource("/project", access, "space", { shareFiles: true }),
+    prepareCliShareSource("/project", access, "space", { shareFiles: true, includeSource: true }),
   ).rejects.toThrow("--video-only");
   mocks.prepare.mockResolvedValue({ at: "unavailable", reason: "source_render_changed" });
   await expect(
-    prepareCliShareSource("/project", access, "space", { shareFiles: true }),
+    prepareCliShareSource("/project", access, "space", { shareFiles: true, includeSource: true }),
   ).rejects.toThrow("--video-only");
 });
 
@@ -76,4 +90,10 @@ it("source failure has a stable bridge and JSON error code", () => {
     code: "source_unavailable",
     message: "Retry or choose video-only",
   });
+});
+
+it("defaults to video only even when source sharing is available", async () => {
+  const result = await prepareCliShareSource("/project", access, "space", { shareFiles: true });
+  expect(result.requireSource).toBe(false);
+  expect(mocks.factory).not.toHaveBeenCalled();
 });

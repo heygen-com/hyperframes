@@ -117,7 +117,9 @@ it("requires explicit audience, uses the bound workspace and permits server-auth
   await choose("public");
   expect(button("Create share link")?.disabled).toBe(false);
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
+  expect(calls).toEqual([
+    { action: "share", audience: "public", space: "team1", includeSource: false },
+  ]);
 });
 it("drains pending editor saves before creating or uploading", async () => {
   let resolveSave = () => {};
@@ -157,14 +159,14 @@ it("shows stale copy separately and never uploads merely by opening", async () =
   expect(button("Copy current shared link")).toBeDefined();
   expect(calls).toEqual([]);
   await act(async () => button("Update shared version")?.click());
-  expect(calls).toEqual([{ action: "update" }]);
+  expect(calls).toEqual([{ action: "update", includeSource: false }]);
 });
 it("keeps link-off updates separate from explicit re-enabling", async () => {
   snapshot.share = { ...snapshot.share, state: "link_off", audience: "private", spaceId: "team1" };
   await mount();
   expect(button("Turn link on")).toBeDefined();
   await act(async () => button("Update shared version")?.click());
-  expect(calls).toEqual([{ action: "update" }]);
+  expect(calls).toEqual([{ action: "update", includeSource: false }]);
 });
 it("recovers a running job on reopening, and stops browser polling on close", async () => {
   vi.useFakeTimers();
@@ -213,7 +215,7 @@ it("offers video-only recovery explicitly after a failed source upload", async (
   await mount();
   expect(calls).toEqual([]);
   await act(async () => button("Retry with video only")?.click());
-  expect(calls).toEqual([{ action: "update", videoOnly: true }]);
+  expect(calls).toEqual([{ action: "update", videoOnly: true, includeSource: false }]);
 });
 it("labels files as included only after a ready upload result", async () => {
   snapshot.job = {
@@ -435,7 +437,9 @@ it("uses the OAuth-selected workspace among several without a dropdown", async (
   expect(host.querySelector('[aria-label="Sharing workspace"]')).toBeNull();
   await choose("public");
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([{ action: "share", audience: "public", space: "team1" }]);
+  expect(calls).toEqual([
+    { action: "share", audience: "public", space: "team1", includeSource: false },
+  ]);
 });
 it("refuses to substitute another workspace when the OAuth selection is missing", async () => {
   snapshot.spaces[0]!.bound = false;
@@ -477,7 +481,7 @@ it("resumes a failed first creation without presenting an uploaded version", asy
   expect(button("Update shared version")).toBeUndefined();
   expect(host.textContent).not.toContain("still being prepared");
   await act(async () => button("Create share link")?.click());
-  expect(calls).toEqual([{ action: "update" }]);
+  expect(calls).toEqual([{ action: "update", includeSource: false }]);
 });
 
 it.each(["free", "subscribed", null] as const)(
@@ -523,7 +527,7 @@ it.each([false, true])(
     expect(action?.disabled).toBe(false);
     if (previous) expect(button("Copy current shared link")).toBeDefined();
     await act(async () => action?.click());
-    expect(calls).toEqual([{ action: "update" }]);
+    expect(calls).toEqual([{ action: "update", includeSource: false }]);
   },
 );
 
@@ -602,4 +606,17 @@ it("confirms a newly published version", async () => {
   await mount();
   await act(async () => button("Update shared version")?.click());
   expect(host.textContent).toContain("Shared version updated.");
+});
+
+it("discloses source scope and uploads files only after checking the option", async () => {
+  await mount();
+  expect(host.textContent).toContain("including unused and Git-ignored files");
+  const choice = host.querySelector<HTMLInputElement>('input[type="checkbox"]');
+  expect(choice?.checked).toBe(false);
+  await act(async () => choice?.click());
+  await choose("public");
+  await act(async () => button("Create share link")?.click());
+  expect(calls).toEqual([
+    { action: "share", audience: "public", space: "team1", includeSource: true },
+  ]);
 });

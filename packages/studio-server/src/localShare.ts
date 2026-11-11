@@ -41,6 +41,7 @@ export type LocalShareAction = {
   audience?: LocalShareAudience;
   space?: string;
   videoOnly?: boolean;
+  includeSource?: boolean;
 };
 export type LocalShareInteraction =
   | { event: "share_opened"; link: "none" | "live" | "changed" }

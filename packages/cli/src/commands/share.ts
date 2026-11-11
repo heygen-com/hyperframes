@@ -38,6 +38,10 @@ export default defineCommand({
       type: "boolean",
       description: "Render and add a new video version to the existing share",
     },
+    "include-source": {
+      type: "boolean",
+      description: "Upload editable project files, including unused and Git-ignored files",
+    },
     "video-only": {
       type: "boolean",
       description: "Share only the rendered video, without editable source",
@@ -96,6 +100,7 @@ interface ShareArgs {
   "wait-seconds"?: string;
   space?: string;
   "video-only"?: boolean;
+  "include-source"?: boolean;
 }
 function parseInput(args: ShareArgs): ShareAction {
   const waitSeconds = Number(args["wait-seconds"]);
@@ -107,7 +112,14 @@ function parseInput(args: ShareArgs): ShareAction {
   const action = args.status ? "status" : args.manage ? "manage" : args.update ? "update" : "share";
 
   validateActionOptions(action, audience, args);
-  return { action, audience, space: args.space, waitSeconds, videoOnly: args["video-only"] };
+  return {
+    action,
+    audience,
+    space: args.space,
+    waitSeconds,
+    videoOnly: args["video-only"],
+    includeSource: args["include-source"] === true,
+  };
 }
 
 function validateActionOptions(
@@ -115,12 +127,23 @@ function validateActionOptions(
   audience: ShareAction["audience"],
   args: ShareArgs,
 ) {
+  validateSourceOptions(args);
   if (action !== "share" && audience)
     throw new CliUsageError(
       "Use audience flags with hyperframes share, without --update, --status or --manage.",
     );
-  if ((action === "status" || action === "manage") && (args.space || args["video-only"]))
-    throw new CliUsageError("--space and --video-only cannot be used with --status or --manage.");
+  if (
+    (action === "status" || action === "manage") &&
+    (args.space || args["video-only"] || args["include-source"])
+  )
+    throw new CliUsageError(
+      "--space, --include-source and --video-only cannot be used with --status or --manage.",
+    );
+}
+
+function validateSourceOptions(args: ShareArgs) {
+  if (args["include-source"] && args["video-only"])
+    throw new CliUsageError("Choose only one of --include-source or --video-only.");
 }
 
 function requestedAudience(args: ShareArgs) {
@@ -205,6 +228,6 @@ function sourceNotice(reason: string): string {
   if (reason === "source_plan_required")
     return "Your video is shared without editable project files. Upgrade to Pro to include source files: https://hyperframes.studio/pricing";
   if (reason === "requested")
-    return "Sharing the video without editable project files (--video-only).";
+    return "Sharing the video without editable project files. Use --include-source to upload project files.";
   return "Sharing the video without editable project files; source sharing is unavailable in this workspace.";
 }

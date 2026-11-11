@@ -24,14 +24,16 @@ function actionInput(value: unknown): LocalShareAction | null {
   if (!isRecord(value)) return null;
   const record = Object.fromEntries(Object.entries(value));
   if (
-    Object.keys(record).some((key) => !["action", "audience", "space", "videoOnly"].includes(key))
+    Object.keys(record).some(
+      (key) => !["action", "audience", "space", "videoOnly", "includeSource"].includes(key),
+    )
   )
     return null;
-  const { action, audience, space, videoOnly } = record;
+  const { action, audience, space, videoOnly, includeSource } = record;
   if (!isAction(action)) return null;
   const chosen = AUDIENCES.find((mode) => mode === audience);
   if (audience !== undefined && !chosen) return null;
-  const options = actionOptions(space, videoOnly);
+  const options = actionOptions(space, videoOnly, includeSource);
   if (!options) return null;
   if (["share", "access"].includes(action) && !chosen) return null;
   return {
@@ -51,13 +53,19 @@ function isAction(value: unknown): value is LocalShareAction["action"] {
 function actionOptions(
   space: unknown,
   videoOnly: unknown,
-): Pick<LocalShareAction, "space" | "videoOnly"> | null {
+  includeSource: unknown,
+): Pick<LocalShareAction, "space" | "videoOnly" | "includeSource"> | null {
   if (!validSpace(space)) return null;
-  if (videoOnly !== undefined && typeof videoOnly !== "boolean") return null;
-  const options: Pick<LocalShareAction, "space" | "videoOnly"> = {};
+  if (![videoOnly, includeSource].every(optionalBoolean)) return null;
+  if (includeSource === true && videoOnly === true) return null;
+  const options: Pick<LocalShareAction, "space" | "videoOnly" | "includeSource"> = {};
   if (typeof space === "string") options.space = space;
   if (videoOnly === true) options.videoOnly = true;
+  if (includeSource === true) options.includeSource = true;
   return options;
+}
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
 }
 function validSpace(value: unknown): boolean {
   return value === undefined || (typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
@@ -251,6 +259,7 @@ function executeAction(sharing: ShareService, input: LocalShareAction) {
     audience: input.audience,
     space: input.space,
     videoOnly: input.videoOnly,
+    includeSource: input.includeSource,
   });
 }
 

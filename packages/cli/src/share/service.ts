@@ -35,6 +35,7 @@ export interface ShareAction {
   space?: string;
   waitSeconds?: number;
   videoOnly?: boolean;
+  includeSource?: boolean;
 }
 function linkState(share: ReviewShare | null, ready: boolean, failed: boolean): string {
   if (!share) return "not_shared";
@@ -303,10 +304,13 @@ export function createShareService(
     await prepareShareRender(dir);
     const target = await uploadTarget(current.share, input, space);
     await phase("uploading_source");
-    const sources = await prepareCliShareSource(dir, auth.access, target.spaceId, {
-      videoOnly: input.videoOnly,
-      shareFiles: flags.shareFiles,
-    });
+    const sources = await prepareSelectedSource(
+      dir,
+      auth.access,
+      target.spaceId,
+      input,
+      flags.shareFiles,
+    );
     if (sources.requireSource) await checkPreparedTarget(target);
     await phase("uploading_video");
     return upload(input, target.projectId, sources, attempt, phase);
@@ -355,4 +359,16 @@ function isUnchangedUpdate(input: ShareAction, added: boolean, result: ShareStat
   return (
     input.action === "update" && !added && Boolean(result.version.last?.current) && !result.pending
   );
+}
+
+async function prepareSelectedSource(
+  dir: string,
+  access: Parameters<typeof prepareCliShareSource>[1],
+  spaceId: string | undefined,
+  input: ShareAction,
+  shareFiles: boolean,
+): Promise<PreparedShareSource> {
+  if (input.includeSource !== true || input.videoOnly)
+    return { source: { at: "video_only", reason: "requested" }, requireSource: false };
+  return prepareCliShareSource(dir, access, spaceId, { includeSource: true, shareFiles });
 }

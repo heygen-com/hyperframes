@@ -3053,11 +3053,15 @@ comments and version history as HyperFrames Desktop. Sign in with
 `hyperframes auth login` first; API keys cannot own review projects.
 
 ```bash
-hyperframes share --public         # Explicitly allow anyone with the link
+hyperframes share --public         # Video only; anyone with the link
+hyperframes share --public --include-source # Also upload editable project files
 hyperframes share --status --json  # Read status; never upload local edits
 hyperframes share --update         # Render and upload the current project
 hyperframes share --manage         # Open web sharing settings
 ```
+
+Sharing uploads video only by default. `--include-source` explicitly includes portable project files, including unused and Git-ignored files; review your folder and `.hyperframesignore` first. `--video-only` remains available and cannot be combined with `--include-source`. Source inclusion must be chosen for each upload, including `--update`; `--yes` does not consent to source upload.
+
 
 The first share requires an explicit audience: `--public`, `--team`,
 `--invite-only`, or `--private`. In an attended terminal, `share` asks you to

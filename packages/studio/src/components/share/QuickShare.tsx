@@ -46,7 +46,8 @@ export function QuickShareContent({
   token: string;
   beforeShare?: () => Promise<void>;
 }) {
-  const model = useQuickShare(token, beforeShare);
+  const [includeSource, setIncludeSource] = useState(false);
+  const model = { ...useQuickShare(token, beforeShare), includeSource, setIncludeSource };
   const { snapshot, progress, error } = model;
   const url = safeShareUrl(snapshot?.share.url ?? "");
   const manageUrl = safeShareUrl(snapshot?.share.manageUrl ?? "");

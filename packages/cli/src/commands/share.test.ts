@@ -143,3 +143,24 @@ it("reports a specific code for an invalid ignore file", async () => {
     error: { code: "invalid_source_ignore" },
   });
 });
+
+it.each([[[]], [["--json"]], [["--yes"]], [["--video-only"]]])(
+  "defaults to video-only without source consent %j",
+  async (flags) => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--public", ...flags] });
+    expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource: false }));
+  },
+);
+it("accepts explicit source inclusion and rejects conflicting choices", async () => {
+  vi.spyOn(console, "log").mockImplementation(() => {});
+  await runCommand(command, { rawArgs: ["--public", "--include-source", "--json"] });
+  expect(mocks.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource: true }));
+  mocks.run.mockClear();
+  await runCommand(command, {
+    rawArgs: ["--public", "--include-source", "--video-only", "--json"],
+  });
+  expect(consumeCommandResult().exitCode).toBe(2);
+  expect(mocks.run).not.toHaveBeenCalled();
+});

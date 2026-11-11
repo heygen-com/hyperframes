@@ -217,7 +217,7 @@ for (const update of [false, true]) {
         },
       },
     });
-    assert.match(failure, /moderation strikes/);
+    assert.equal(failure, "Adding videos to review pages isn't available for this account.");
     const fresh = await readFromAnotherProcess(dir);
     assert.equal(fresh.failure, failure);
     assert.equal(fresh.retryable, false);
@@ -231,3 +231,21 @@ for (const update of [false, true]) {
     assert.equal((await readFromAnotherProcess(dir)).failure, null);
   });
 }
+
+test("hourly registration limit retains its retry guidance after recovery", async (t) => {
+  const dir = await fixture(t);
+  const failure = await addVersion({
+    projectPath: dir,
+    projectId: "project",
+    title: "Video",
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    client: {
+      createExport: async () => {
+        throw new ReviewFailed(429, "export_hourly_limit", undefined, 90_000);
+      },
+    },
+  });
+  assert.match(failure, /this hour.*in 2 minutes/);
+  const recovered = await readFromAnotherProcess(dir);
+  assert.equal(recovered.failure, failure);
+});

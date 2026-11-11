@@ -426,3 +426,16 @@ it("shows a completed login's admission failure to its initiating panel", async 
     });
   });
 });
+
+it.each([undefined, true])("forwards only explicit source consent (%s)", async (includeSource) => {
+  const { app, service } = fixture();
+  const csrf = await token(app);
+  const response = await request(app, "actions", csrf, {
+    action: "share",
+    audience: "public",
+    includeSource,
+  });
+  expect(response.status).toBe(202);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(service.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource }));
+});

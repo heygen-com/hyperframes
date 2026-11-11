@@ -191,7 +191,10 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     copy,
   };
 }
-export type QuickShareModel = ReturnType<typeof useQuickShare>;
+export type QuickShareModel = ReturnType<typeof useQuickShare> & {
+  includeSource: boolean;
+  setIncludeSource: (value: boolean) => void;
+};
 
 function completionNotice(job: LocalShareJob) {
   if (job.state !== "done") return "";

@@ -4,12 +4,18 @@ description: "Choose whether a CLI review includes the project files used by its
 ---
 
 `hyperframes share` can attach editable project files to the same review page
-used by Desktop. Source is available when the workspace's sharing and
+used by Desktop. Source upload requires `--include-source` for each upload, including updates.
+Without it, terminal, JSON and unattended commands share video only.
+Local Studio offers an unchecked **Include editable project files** option with
+a disclosure of the upload scope before creating or updating a share.
+
+Source is available when the workspace's sharing and
 Composition Sync permissions allow it. The recipient's access still depends on
 the share's settings and their plan.
 
 ```bash
-hyperframes share --public               # Video and source when eligible
+hyperframes share --public               # Video only (default)
+hyperframes share --public --include-source # Also upload editable project files
 hyperframes share --update               # Update the existing review
 hyperframes share --update --video-only  # Explicitly omit editable source
 ```

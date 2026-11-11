@@ -25,9 +25,9 @@ export async function prepareCliShareSource(
   dir: string,
   access: ReturnType<typeof createShareAccess>["access"],
   spaceId: string | undefined,
-  options: { videoOnly?: boolean; shareFiles: boolean },
+  options: { includeSource?: boolean; videoOnly?: boolean; shareFiles: boolean },
 ): Promise<PreparedShareSource> {
-  if (options.videoOnly) return videoOnly("requested");
+  if (options.includeSource !== true || options.videoOnly) return videoOnly("requested");
   if (!options.shareFiles) return videoOnly("source_disabled");
   if (!spaceId) throw new Error("The owning workspace could not be verified. Retry sharing.");
   try {
