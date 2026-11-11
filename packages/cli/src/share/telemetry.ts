@@ -7,7 +7,10 @@ import type { ReviewExportProgress } from "@hyperframes/share";
 
 export type ShareSurface = "cli" | "local_studio";
 export type ShareInteraction =
-  | { event: "share_opened"; link: "none" | "live" | "changed" }
+  | Exclude<
+      import("@hyperframes/studio-server").LocalShareInteraction,
+      { event: "share_link_copied" }
+    >
   | { event: "share_link_copied"; via: "copy" | "publish" | "update" };
 const REASONS = new Set([
   "feature_unavailable",
@@ -45,10 +48,25 @@ function emit(event: string, properties: Record<string, string | boolean>): void
   }
 }
 export function trackShareInteraction(input: ShareInteraction, surface: ShareSurface = "cli") {
-  if (input.event === "share_opened")
-    emit(input.event, { client_surface: surface, link: input.link });
-  else emit(input.event, { client_surface: surface, via: input.via });
+  const base = { client_surface: surface };
+  switch (input.event) {
+    case "share_opened":
+      return emit(input.event, { ...base, link: input.link });
+    case "share_link_copied":
+      return emit(input.event, { ...base, via: input.via });
+    case "share_upgrade_clicked":
+      return emit(input.event, { ...base, reason: input.reason });
+    case "share_audience_selected":
+      return emit(input.event, { ...base, audience: input.audience });
+    case "share_source_toggled":
+      return emit(input.event, { ...base, enabled: input.enabled });
+    case "share_navigation_clicked":
+      return emit(input.event, { ...base, destination: input.destination });
+    case "share_action_clicked":
+      return emit(input.event, { ...base, action: input.action });
+  }
 }
+
 function shareAttempt(action: "share" | "update", surface: ShareSurface) {
   const base = { client_surface: surface, action, attempt_id: randomUUID() };
   let admitted = false;

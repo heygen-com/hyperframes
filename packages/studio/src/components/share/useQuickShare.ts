@@ -3,6 +3,7 @@ import type {
   LocalShareAction,
   LocalShareAudience,
   LocalShareJob,
+  LocalShareInteraction,
   LocalShareSnapshot,
 } from "@hyperframes/studio-server";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -106,6 +107,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   async function run(action: LocalShareAction) {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || working.current) return;
+    track({ event: "share_action_clicked", action: action.action });
     setWorking(true);
     setError(null);
     setErrorCode(null);
@@ -176,10 +178,15 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       setError("Couldn’t copy. Open the shared page and copy its address.");
     }
   }
+  const track = (event: LocalShareInteraction) => shareInteraction(token, event);
   return {
+    track,
     snapshot,
     audience,
-    setAudience,
+    setAudience: (value: LocalShareAudience) => {
+      setAudience(value);
+      track({ event: "share_audience_selected", audience: value });
+    },
     spaceId,
     busy,
     error,

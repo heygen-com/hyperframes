@@ -179,7 +179,10 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
           type="checkbox"
           checked={model.includeSource}
           disabled={model.busy}
-          onChange={(event) => model.setIncludeSource(event.target.checked)}
+          onChange={(event) => {
+            model.setIncludeSource(event.target.checked);
+            model.track({ event: "share_source_toggled", enabled: event.target.checked });
+          }}
         />
         <span>
           Include editable project files
@@ -252,6 +255,15 @@ export function SharePlan({ model, snapshot }: Props) {
       {space?.plan === "free" && allowed ? (
         <a
           href={upgrade}
+          onClick={() =>
+            model.track({
+              event: "share_upgrade_clicked",
+              reason:
+                space.limit !== null && space.used !== null && space.used >= space.limit
+                  ? "project_limit"
+                  : "sharing_permissions",
+            })
+          }
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-8 items-center gap-1 rounded-full px-2 font-semibold text-accent hover:bg-hover"

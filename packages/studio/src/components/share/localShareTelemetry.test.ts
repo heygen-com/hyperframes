@@ -20,3 +20,11 @@ it("obeys browser opt-out before calling the guarded local bridge", async () => 
     }),
   );
 });
+
+it("does not send upgrade clicks when telemetry is disabled", () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  policy.mockReturnValue(false);
+  shareInteraction("token", { event: "share_upgrade_clicked", reason: "project_limit" });
+  expect(fetch).not.toHaveBeenCalled();
+});

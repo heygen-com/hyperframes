@@ -45,4 +45,9 @@ export type LocalShareAction = {
 };
 export type LocalShareInteraction =
   | { event: "share_opened"; link: "none" | "live" | "changed" }
-  | { event: "share_link_copied"; via: "copy" };
+  | { event: "share_link_copied"; via: "copy" }
+  | { event: "share_upgrade_clicked"; reason: "project_limit" | "sharing_permissions" }
+  | { event: "share_audience_selected"; audience: LocalShareAudience }
+  | { event: "share_source_toggled"; enabled: boolean }
+  | { event: "share_navigation_clicked"; destination: "manage" | "shared_page" }
+  | { event: "share_action_clicked"; action: LocalShareAction["action"] };
