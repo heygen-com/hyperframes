@@ -30,6 +30,7 @@ import {
   isWithinProjectRoot,
   maskNonScannableRanges,
   readProjectFile,
+  resolveCompositionSrc,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
@@ -841,7 +842,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       const inner = { ...at, ...scope };
       const src = el.getAttribute("data-composition-src")?.trim();
       const file = src && !isUnresolvedAssetPlaceholder(src) && !isRemoteOrInlineUrl(src);
-      const filePath = file ? resolve(projectDir, src) : null;
+      const filePath = file ? resolveCompositionSrc(projectDir, src) : null;
       if (filePath && !at.mounting.includes(filePath)) {
         const read = readProjectFile(filePath);
         if (read.kind === "file")
@@ -959,7 +960,13 @@ function lintMissingOrEmptySubComposition(
       // nested sub-composition) — matches the resolution the renderer uses
       // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
       // / assertSubCompositionsUsable).
-      const filePath = resolve(projectDir, srcPath);
+      const filePath = resolveCompositionSrc(projectDir, srcPath);
+      if (filePath === null) {
+        if (!checked.has(srcPath)) {
+          checked.set(srcPath, { srcPath, problem: "it is outside the project folder" });
+        }
+        continue;
+      }
 
       // Circular reference guard — same as assertSubCompositionsUsable.
       // Already-visited files were already checked (or are mid-walk); skip

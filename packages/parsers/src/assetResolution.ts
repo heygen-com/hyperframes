@@ -1,8 +1,9 @@
 import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, parse, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeUrlPathVariants } from "./composition.js";
+import { decodedUrlPath } from "./utils/urlPath.js";
 import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
 
 /** The subset of `node:path` that `isWithinProjectRoot` needs to run under
@@ -122,12 +123,36 @@ export function resolveLocalAssetCandidates(projectDir: string, url: string): st
 
     const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
     const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
-      addCandidate(candidates, resolve(projectRoot, clamped));
-    }
+    if (!clamped || clamped.startsWith("..")) continue;
+    const reanchored = resolve(projectRoot, clamped);
+    if (isWithinProjectRoot(projectRoot, reanchored)) addCandidate(candidates, reanchored);
   }
 
   return candidates;
+}
+
+// On Windows even a stat of a UNC or device path (\\host\share, \\?\, \\.\) connects to that host.
+export function namesAnotherNetworkRoot(base: string, target: string): boolean {
+  const root = parse(resolve(target)).root;
+  return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
+}
+
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
+function staysInsideProject(projectDir: string, path: string): boolean {
+  const relativePath = relative(resolve(projectDir), path);
+  return !LEADING_PARENT_SEGMENT.test(relativePath) && !isAbsolute(relativePath);
+}
+
+/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
+export function resolveCompositionSrc(projectDir: string, src: string): string | null {
+  const rooted = (value: string) => resolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
+  const decoded = rooted(decodedUrlPath(src));
+  if (!staysInsideProject(projectDir, decoded)) return null;
+  const raw = rooted(src);
+  return !existsSync(decoded) && staysInsideProject(projectDir, raw) && existsSync(raw)
+    ? raw
+    : decoded;
 }
 
 export function resolveExistingLocalAsset(
