@@ -132,6 +132,54 @@ test("preparing a review can fail before opening and retry its saved registratio
   assert.equal((await reviewRecord(dir)).opened, true);
 });
 
+test("an already-open link returns status without rerunning content preparation", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  const first = await shareForReview(request);
+  const again = await shareForReview({
+    ...request,
+    beforeOpen: async () => {
+      throw new Error("Content temporarily unavailable");
+    },
+  });
+  assert.deepEqual(again, first);
+  assert.equal(api.calls(), 1);
+});
+
+test("reopening a revoked link prepares content before enabling it and retries safely", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  await shareForReview(request);
+  const read = api.share;
+  api.share = async () => ({ ...(await read()), revoked: true, link_generation: 2 });
+  const events = [];
+  api.linkOn = async () => {
+    events.push("open");
+    return read();
+  };
+  await assert.rejects(
+    shareForReview({
+      ...request,
+      beforeOpen: async () => {
+        throw new Error("Content unavailable");
+      },
+    }),
+    /Content unavailable/,
+  );
+  assert.deepEqual(events, []);
+  await shareForReview({
+    ...request,
+    beforeOpen: async (id) => {
+      assert.equal(id, "p1");
+      events.push("prepare");
+    },
+  });
+  assert.deepEqual(events, ["prepare", "open"]);
+  assert.equal(api.calls(), 1);
+});
+
 test("a taken-down review does not prepare content or reopen its link", async (t) => {
   const dir = await folder(t);
   const api = client();

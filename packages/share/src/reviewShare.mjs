@@ -466,7 +466,7 @@ export const shareForReview = ({
     if (!read.projectId) await writeJsonAtomic(recordPath(projectPath), record);
     const share = await readShare(client, id, projectPath);
     if (takenDown(share)) return shown(client, share);
-    await beforeOpen?.(id);
+    if (!record.opened || share.revoked) await beforeOpen?.(id);
     return openLink(client, projectPath, record, id, share, audience).then(
       (opened) => shown(client, opened),
       heldInstead(client, id),
