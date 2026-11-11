@@ -9,6 +9,32 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.33"
+  description="Released - 2026-11-11"
+  tags={["Release", "Engine", "Share", "Parsers,lint,producer,cli"]}
+>
+Clips that start partway into a voice recording now keep their sound to the end, even when the WAV file misreports its own byte rate. Variable-bound media also renders at the right length and loudness.
+
+## Fixes
+
+- **Engine:** A clip that starts partway into a WAV whose header gives the wrong byte rate now plays the right sound to its end, instead of going quiet early or staying silent ([7ae1ae649](https://github.com/heygen-com/hyperframes/commit/7ae1ae64942f036a18c546bef024121d8df76ef2), [#7541](https://github.com/heygen-com/hyperframes/pull/7541)).
+- **Share:** When you reach the hourly limit on review versions, the message now explains that limit ([8a15d9fee](https://github.com/heygen-com/hyperframes/commit/8a15d9feedc62dc9695246dceda9271a6d0a08e9), [#7539](https://github.com/heygen-com/hyperframes/pull/7539)).
+- **Projects:** A composition can only look up files inside its own project folder ([5a88c9938](https://github.com/heygen-com/hyperframes/commit/5a88c9938edaf464f7953e762bb40f604623f1b1), [#7534](https://github.com/heygen-com/hyperframes/pull/7534)).
+- **Capture:** A wrong captioning region or model name is reported before captioning starts ([bcc1437d7](https://github.com/heygen-com/hyperframes/commit/bcc1437d77f592d33b794b5544ae98bb3647c6ad), [#7533](https://github.com/heygen-com/hyperframes/pull/7533)).
+- **Producer:** A video or sound set through a variable now renders at its clip's length and loudness ([789d28121](https://github.com/heygen-com/hyperframes/commit/789d28121183f72976834d3693329e956f88de88), [#7529](https://github.com/heygen-com/hyperframes/pull/7529)).
+
+## Docs & Examples
+
+- **Variables:** Say what can be a variable, including a video or sound per account ([28d69d9a9](https://github.com/heygen-com/hyperframes/commit/28d69d9a94c13b2b39e99d207c2ee595b59781c9), [#7530](https://github.com/heygen-com/hyperframes/pull/7530)).
+
+## Internal
+
+- **CLI:** Give each test file its own home so renders never wait on another file's lock ([2b86c49dc](https://github.com/heygen-com/hyperframes/commit/2b86c49dc2cb067051eca1ccf9d0b1d22054719a), [#7526](https://github.com/heygen-com/hyperframes/pull/7526)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.32...v0.9.33).
+</Update>
+
+<Update
   label="HyperFrames v0.9.32"
   description="Released - 2026-11-11"
   tags={["Release", "Share", "Studio", "Inspector"]}
