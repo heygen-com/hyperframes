@@ -248,6 +248,8 @@ export interface AudioMetadata {
   audioStreamLeadSeconds?: number;
   mediaTimeOffsetSeconds?: number;
   audioStreamCount?: number;
+  /** PCM whose header byte rate is not sample rate x channels x sample size: a seek by it lands at the wrong time. */
+  misstatedByteRate?: boolean;
   /** The track read for these facts and for the mix, by its place among the audio streams (decodableAudioStream). */
   audioStream: number;
 }
@@ -270,6 +272,8 @@ interface FFProbeStream {
   avg_frame_rate?: string;
   sample_rate?: string;
   channels?: number;
+  bit_rate?: string;
+  bits_per_sample?: number;
   color_range?: string;
   color_transfer?: string;
   color_primaries?: string;
@@ -1343,7 +1347,18 @@ async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promi
     mediaTimeOffsetSeconds: mediaTimeOffsetSeconds(output),
     audioStreamCount: audioStreams.length,
     audioStream: audioStreamIndex,
+    misstatedByteRate: misstatesPcmByteRate(audioStream),
   };
+}
+
+function misstatesPcmByteRate(stream: FFProbeStream): boolean {
+  const declared = Number(stream.bit_rate);
+  const { channels, bits_per_sample: bits } = stream;
+  const rate = Number(stream.sample_rate);
+  if (!stream.codec_name?.startsWith("pcm_") || !declared || !channels || !bits || !rate) {
+    return false;
+  }
+  return declared !== rate * channels * bits;
 }
 
 /** A stream starting after the earliest of these plays that much after it. */

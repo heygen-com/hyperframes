@@ -777,7 +777,8 @@ async function extractAudioSegment(
     }
   }
   const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
-  const inputSeek = ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0);
+  const inputSeek =
+    ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0) && !metadata?.misstatedByteRate;
   const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
