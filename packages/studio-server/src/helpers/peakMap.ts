@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
 
 export const PEAK_BIN_SECONDS = 0.05;
@@ -64,9 +64,10 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
   const track = await probeAudioTrack(mediaPath);
   if (!track || track.channels < 1) throw new Error("no audio stream");
   const { stream, channels } = track;
+  const ffmpeg = requireFfBinary("ffmpeg");
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
-      findFfBinary("ffmpeg") ?? "ffmpeg",
+      ffmpeg,
       [
         "-v",
         "error",

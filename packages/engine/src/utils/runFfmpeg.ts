@@ -189,6 +189,19 @@ function toResult(outcome: ManagedChildProcessOutcome, stderr = outcome.stderr):
   return result;
 }
 
+/** No ffmpeg to start: the same result a spawn that failed with this error reports. */
+function spawnFailure(error: Error): RunFfmpegResult {
+  return {
+    success: false,
+    exitCode: null,
+    signal: null,
+    stderr: error.message,
+    durationMs: 0,
+    terminationReason: "spawn_error",
+    error,
+  };
+}
+
 /** A run whose signal had already aborted starts no process. */
 const ABORTED_BEFORE_START: RunFfmpegResult = {
   success: false,
@@ -201,6 +214,12 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
 
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
+  let ffmpeg: ChildProcess;
+  try {
+    ffmpeg = spawnFfmpeg(args);
+  } catch (error) {
+    return spawnFailure(error as Error);
+  }
   let framesWritten = 0;
   let secondsWritten = 0;
   const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
@@ -209,7 +228,7 @@ export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promis
     secondsWritten = Math.max(seconds, secondsWritten);
     managed.markActivity();
   });
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
+  const managed = new ManagedChildProcess(ffmpeg, {
     signal: opts?.signal,
     inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
     onStderr: (chunk) => {

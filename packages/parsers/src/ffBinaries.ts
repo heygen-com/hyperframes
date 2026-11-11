@@ -14,6 +14,7 @@ export {
   findTrustedExecutable,
   isTrustedDirectory,
   isTrustedExecutablePath,
+  trustedPathDirs,
 } from "./trustedExecutable.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
@@ -241,6 +242,14 @@ export function findFfBinary(
     return resolve(configured);
   }
   return lookupOnSystem(name);
+}
+
+/** {@link findFfBinary}, or an ENOENT error naming the override. Never the bare name for the OS to look up. */
+export function requireFfBinary(name: FfBinaryName): string {
+  const found = findFfBinary(name);
+  if (found) return found;
+  const message = `[FFmpeg] ${name} not found. Install FFmpeg or set ${ENV_BY_NAME[name]} to its absolute path.`;
+  throw Object.assign(new Error(message), { code: "ENOENT" });
 }
 
 /** Test hook: drop cached system lookups so resolution can be re-exercised. */

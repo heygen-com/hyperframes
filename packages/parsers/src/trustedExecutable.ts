@@ -40,8 +40,8 @@ export function isTrustedExecutablePath(file: string): boolean {
 }
 
 /** The PATH folders a helper program may come from, in PATH order. */
-export function trustedPathDirs(): string[] {
-  const entries = (process.env.PATH ?? "").split(delimiter);
+export function trustedPathDirs(pathValue = process.env.PATH ?? ""): string[] {
+  const entries = pathValue.split(delimiter);
   return [...new Set(entries.filter((dir) => isTrustedDirectory(dir)))];
 }
 

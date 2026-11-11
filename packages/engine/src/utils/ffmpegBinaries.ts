@@ -1,17 +1,20 @@
 import { existsSync } from "fs";
-import { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import {
+  FFMPEG_PATH_ENV,
+  FFPROBE_PATH_ENV,
+  requireFfBinary,
+} from "@hyperframes/parsers/ff-binaries";
 
 export { FFMPEG_PATH_ENV, FFPROBE_PATH_ENV };
 
-// The engine hands spawn a bare binary name as the last resort so the spawn
-// error names what the user must install; a configured-but-missing override
-// is surfaced separately by assertConfiguredFfmpegBinariesExist below.
+// Throws an ENOENT-coded "not found" error when no trusted copy exists, so callers that classify a
+// missing binary keep working; a configured-but-missing override is reported by the assert below.
 export function getFfmpegBinary(): string {
-  return findFfBinary("ffmpeg") ?? "ffmpeg";
+  return requireFfBinary("ffmpeg");
 }
 
 export function getFfprobeBinary(): string {
-  return findFfBinary("ffprobe") ?? "ffprobe";
+  return requireFfBinary("ffprobe");
 }
 
 export function assertConfiguredFfmpegBinariesExist(): void {

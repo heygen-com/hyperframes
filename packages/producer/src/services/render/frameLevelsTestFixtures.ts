@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { getFfmpegBinary } from "@hyperframes/engine";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 
-export const FFMPEG = getFfmpegBinary();
-export const HAS_FFMPEG = spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status === 0;
+export const FFMPEG = findFfBinary("ffmpeg") ?? "";
+export const HAS_FFMPEG =
+  FFMPEG !== "" && spawnSync(FFMPEG, ["-version"], { encoding: "utf-8" }).status === 0;
 
 /** Mean grey level of every frame of an encoded video, 0-255. */
 export function frameLevels(videoPath: string, width: number, height: number): number[] {

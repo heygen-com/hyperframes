@@ -62,7 +62,13 @@ function planSegments(totalDuration: number, count: number) {
 const settsDurationSupport = new Map<string, Promise<boolean>>();
 
 /** FFmpeg before 5.0 (Ubuntu 22.04 ships 4.4) has no `duration` option on the setts filter. */
-function supportsSettsDuration(binary = getFfmpegBinary()): Promise<boolean> {
+function supportsSettsDuration(): Promise<boolean> {
+  let binary: string;
+  try {
+    binary = getFfmpegBinary();
+  } catch {
+    return Promise.resolve(true);
+  }
   let supported = settsDurationSupport.get(binary);
   if (!supported) {
     supported = new Promise((resolve) => {

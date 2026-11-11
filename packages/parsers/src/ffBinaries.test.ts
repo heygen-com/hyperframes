@@ -380,6 +380,37 @@ describe("findFfBinary", () => {
     expect(execFileSync).toHaveBeenCalledTimes(2);
   });
 
+  it("requireFfBinary throws an ENOENT naming the override instead of returning a bare name", async () => {
+    delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    process.env.PATH = "";
+    vi.resetModules();
+    const execFileSync = vi.fn(() => {
+      throw new Error("not found");
+    });
+    vi.doMock("node:child_process", () => ({ execFileSync, default: { execFileSync } }));
+    vi.doMock("node:fs", () => {
+      const mocked = {
+        existsSync: () => false,
+        accessSync: () => {
+          throw new Error("not executable");
+        },
+        constants: { X_OK: 1 },
+      };
+      return { ...mocked, default: mocked };
+    });
+    const { requireFfBinary } = await importFresh();
+
+    expect(() => requireFfBinary("ffmpeg")).toThrow(
+      expect.objectContaining({
+        code: "ENOENT",
+        message: expect.stringMatching(/HYPERFRAMES_FFMPEG_PATH/),
+      }),
+    );
+    process.env.HYPERFRAMES_FFMPEG_PATH = "/tools/ffmpeg";
+    expect(requireFfBinary("ffmpeg")).toBe(resolve("/tools/ffmpeg"));
+  });
+
   it("finds a binary installed in a common dir shortly after an earlier miss, then caches the hit", async () => {
     vi.useFakeTimers();
     onTestFinished(() => {

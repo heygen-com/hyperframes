@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 const fakeBin = vi.hoisted(() => ({ dir: "" }));
 vi.mock("@hyperframes/parsers/ff-binaries", () => ({
   findFfBinary: (name: string) => join(fakeBin.dir, name),
+  requireFfBinary: (name: string) => join(fakeBin.dir, name),
 }));
 
 import { decodePeakMap } from "./peakMap";

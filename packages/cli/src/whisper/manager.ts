@@ -135,8 +135,8 @@ const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 const WHISPER_TAG = "v1.9.5";
 const WHISPER_COMMIT = "d1be6fde11ac6e0407606b4e42fe72d34add8037";
 
-function assertPinnedCheckout(): void {
-  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+function assertPinnedCheckout(git: string): void {
+  const head = execFileSync(git, ["rev-parse", "HEAD"], {
     cwd: BUILD_DIR,
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "ignore"],
@@ -163,6 +163,7 @@ function findBuiltBinary(): WhisperResult | undefined {
 }
 
 async function buildFromSource(
+  { git, cmake }: BuildTools,
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
 ): Promise<WhisperResult> {
@@ -175,7 +176,7 @@ async function buildFromSource(
     onProgress?.("Downloading whisper.cpp...");
     mkdirSync(BUILD_DIR, { recursive: true });
     await stoppableExecFile(
-      "git",
+      git,
       ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],
       {
         cwd: BUILD_DIR,
@@ -185,18 +186,18 @@ async function buildFromSource(
         signal,
       },
     );
-    assertPinnedCheckout();
+    assertPinnedCheckout(git);
   }
 
   onProgress?.("Building whisper.cpp (this may take a minute)...");
   try {
-    await stoppableExecFile("cmake", ["-B", "build"], {
+    await stoppableExecFile(cmake, ["-B", "build"], {
       cwd: BUILD_DIR,
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 120_000,
       signal,
     });
-    await stoppableExecFile("cmake", ["--build", "build", "--config", "Release", "-j"], {
+    await stoppableExecFile(cmake, ["--build", "build", "--config", "Release", "-j"], {
       cwd: BUILD_DIR,
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 300_000,
@@ -250,17 +251,14 @@ export function getInstallInstructions(): string {
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
 
-function hasBrew(): boolean {
-  return findTrustedExecutable("brew") !== undefined;
+interface BuildTools {
+  git: string;
+  cmake: string;
 }
 
-function hasGit(): boolean {
+function trustedGit(): string | undefined {
   const git = findTrustedExecutable("git");
-  return git !== undefined && runsWithoutInstallPrompt(git);
-}
-
-function hasCmake(): boolean {
-  return findTrustedExecutable("cmake") !== undefined;
+  return git !== undefined && runsWithoutInstallPrompt(git) ? git : undefined;
 }
 
 export async function ensureWhisper(options?: {
@@ -284,10 +282,11 @@ export async function ensureWhisper(options?: {
   const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).trim();
 
   // 2. Try brew (macOS, fastest — pre-built bottle)
-  if (platform() === "darwin" && hasBrew()) {
+  const brew = platform() === "darwin" ? findTrustedExecutable("brew") : undefined;
+  if (brew) {
     options?.onProgress?.("Installing whisper-cpp via Homebrew...");
     try {
-      await stoppableExecFile("brew", ["install", "whisper-cpp"], {
+      await stoppableExecFile(brew, ["install", "whisper-cpp"], {
         stdio: "ignore",
         timeout: 300_000,
         signal,
@@ -301,15 +300,17 @@ export async function ensureWhisper(options?: {
   }
 
   // 3. Build from source (needs git + cmake + C compiler)
-  if (hasGit() && hasCmake() && runsWithoutInstallPrompt("cc")) {
+  const git = trustedGit();
+  const cmake = findTrustedExecutable("cmake");
+  if (git && cmake && runsWithoutInstallPrompt("cc")) {
     try {
-      return await buildFromSource(options?.onProgress, signal);
+      return await buildFromSource({ git, cmake }, options?.onProgress, signal);
     } catch (err) {
       causes.push(why(err));
     }
     signal?.throwIfAborted();
   } else {
-    const missing = [!hasGit() && "git", !hasCmake() && "cmake"].filter(Boolean).join(" and ");
+    const missing = [!git && "git", !cmake && "cmake"].filter(Boolean).join(" and ");
     causes.push(`cannot build whisper.cpp: ${missing} not found on PATH`);
   }
 
