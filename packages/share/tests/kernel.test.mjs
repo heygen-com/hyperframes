@@ -649,3 +649,39 @@ test("a video-only retry never replays an unanswered source-bearing export", asy
   );
   assert.equal(creates, 1);
 });
+test("change detection keeps working when .hyperframesignore uses gitignore syntax", async (t) => {
+  for (const rule of ["/renders/", "**/*.mov", "!keep.mp4", "assets/*/raw-*.mp4", "a[bc].png"]) {
+    const dir = await folder(t);
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+    await writeFile(join(dir, "assets/clip.mov"), "clip");
+    await writeFile(join(dir, ".hyperframesignore"), `${rule}\n`);
+    // The CLI's syntax is not this reader's: nothing is excluded beyond scratch, so a change still counts.
+    const files = await snapshotProject(dir);
+    assert.deepEqual([...files.keys()].sort(), ["assets/clip.mov", "index.html"], rule);
+    // snapshotFiles names every file asked for; an excluded one is keyed undefined.
+    assert.notEqual(
+      (await snapshotFiles(dir, ["assets/clip.mov"])).get("assets/clip.mov"),
+      undefined,
+      rule,
+    );
+    const before = await projectFingerprint(dir);
+    await writeFile(join(dir, "assets/clip.mov"), "edited clip");
+    assert.notEqual(await projectFingerprint(dir), before, rule);
+  }
+});
+test("change detection keeps working when .hyperframesignore is a link", async (t) => {
+  const dir = await folder(t);
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await symlink(join(dir, "index.html"), join(dir, ".hyperframesignore"));
+  assert.deepEqual([...(await snapshotProject(dir)).keys()], ["index.html"]);
+});
+test("change detection still applies a .hyperframesignore it can read", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, "assets"));
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await writeFile(join(dir, "assets/raw.mov"), "raw");
+  await writeFile(join(dir, "debug.log"), "log");
+  await writeFile(join(dir, ".hyperframesignore"), "assets/raw.mov\n");
+  assert.deepEqual([...(await snapshotProject(dir)).keys()], ["index.html"]);
+});

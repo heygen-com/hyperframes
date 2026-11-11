@@ -63,6 +63,14 @@ export async function readSourceIgnore(root) {
   return (path) => scratch(path) || entries.some((entry) => entry.test(path));
 }
 
+/** The exclusions change detection applies. Change detection must keep working whatever the file holds: the CLI
+ * reads `.hyperframesignore` as gitignore syntax (`/renders/`, `**`, `!keep`), which this reader refuses. An
+ * unreadable file then excludes only scratch files, so a scan sees more files, never fewer. Source capture keeps
+ * the strict reader and still refuses the file. @param {string} root @returns {Promise<(path: string) => boolean>} */
+export async function readChangeIgnore(root) {
+  return readSourceIgnore(root).catch(() => scratch);
+}
+
 /** @param {string} entry */
 function ignorePattern(entry) {
   const path = entry.replace(/\/$/, "");
