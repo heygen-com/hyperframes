@@ -434,13 +434,15 @@ function resolveProjectMainHtml(
   const blockHtmlPath = join(projectDir, `${projectId}.html`);
   recordPreviewRead(projectDir, indexPath);
   recordPreviewRead(projectDir, blockHtmlPath);
-  if (existsSync(indexPath)) {
+  const existsAndNotPrivate = (file: string) =>
+    existsSync(file) && !isPrivateProjectFile(projectDir, file);
+  if (existsAndNotPrivate(indexPath)) {
     return {
       html: readFileSync(indexPath, "utf-8"),
       compositionPath: "index.html",
     };
   }
-  if (existsSync(blockHtmlPath)) {
+  if (existsAndNotPrivate(blockHtmlPath)) {
     return {
       html: readFileSync(blockHtmlPath, "utf-8"),
       compositionPath: `${projectId}.html`,

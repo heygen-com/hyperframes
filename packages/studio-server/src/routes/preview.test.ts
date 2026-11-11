@@ -683,6 +683,47 @@ describe("registerPreviewRoutes", () => {
     expect(html).not.toContain("PRIVATE_ENV");
   });
 
+  it.skipIf(process.platform === "win32")(
+    "does not serve an env file that index.html links to, but still serves a main file linked from outside",
+    async () => {
+      const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+      const preview = async (projectDir: string) => {
+        const app = new Hono();
+        registerPreviewRoutes(
+          app,
+          createAdapter(projectDir, {
+            bundle: async (dir, options) => {
+              try {
+                return await bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options });
+              } catch {
+                return null;
+              }
+            },
+          }),
+        );
+        return (await app.request("http://localhost/projects/demo/preview")).text();
+      };
+
+      const linkedToEnv = createProjectDir();
+      writeFileSync(join(linkedToEnv, ".env"), "TOKEN=LINKED_ENV_SECRET");
+      rmSync(join(linkedToEnv, "index.html"));
+      if (!tryCreateSymlink(".env", join(linkedToEnv, "index.html"), "file")) return;
+      expect(await preview(linkedToEnv)).not.toContain("LINKED_ENV_SECRET");
+
+      const shared = mkdtempSync(join(tmpdir(), "hf-preview-shared-main-"));
+      tempDirs.push(shared);
+      writeFileSync(
+        join(shared, "main.html"),
+        "<html><head></head><body>SHARED_MAIN</body></html>",
+      );
+      const linkedOut = createProjectDir();
+      rmSync(join(linkedOut, "index.html"));
+      if (!tryCreateSymlink(join(shared, "main.html"), join(linkedOut, "index.html"), "file"))
+        return;
+      expect(await preview(linkedOut)).toContain("SHARED_MAIN");
+    },
+  );
+
   it("asks for private files to be refused with plain data, so a build thread can join same-content builds", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
