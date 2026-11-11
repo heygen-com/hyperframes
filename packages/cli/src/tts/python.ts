@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { dirname, resolve } from "node:path";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 type PythonOverrideValidation = { ok: true } | { ok: false; reason: string };
 
@@ -29,29 +29,13 @@ function validatePythonOverride(override: string): PythonOverrideValidation {
   }
 }
 
-function inWorkingDirectory(candidate: string): boolean {
-  return (
-    process.platform === "win32" &&
-    dirname(resolve(candidate)).toLowerCase() === resolve(process.cwd()).toLowerCase()
-  );
-}
-
 /** Locate a Python 3: `HYPERFRAMES_PYTHON` env override first, then PATH. */
 export function findPython(): string | undefined {
   const override = process.env.HYPERFRAMES_PYTHON;
   if (override && validatePythonOverride(override).ok) return override;
   for (const name of ["python3", "python"]) {
     try {
-      const cmd = process.platform === "win32" ? "where" : "which";
-      const output = execFileSync(cmd, [name], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      });
-      const first = output
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find((s) => s && !inWorkingDirectory(s));
+      const first = findTrustedExecutable(name);
       if (!first) continue;
 
       // Verify it's Python 3

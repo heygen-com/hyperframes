@@ -294,8 +294,12 @@ export async function probeAudioTrack(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
 ): Promise<{ stream: number; channels: number } | null> {
+  const ffprobePath =
+    findFfBinary("ffprobe", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffprobe");
+  if (!ffprobePath) return null;
   const result = await runner(
-    findFfBinary("ffprobe") ?? "ffprobe",
+    ffprobePath,
     [
       ...["-v", "error", "-select_streams", "a"],
       ...["-show_entries", "stream=codec_type,codec_name,channels", "-of", "json", "--", filePath],

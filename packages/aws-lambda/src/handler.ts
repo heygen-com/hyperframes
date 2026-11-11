@@ -322,20 +322,30 @@ function summarizeEvent(
   }
 }
 
-/**
- * Lambda sets `TMPDIR` to `/tmp` already, but the bundled binaries (Chrome
- * + ffmpeg) live alongside the handler at `/var/task/bin/`. Add that to
- * PATH the first time the handler runs so spawn("ffmpeg", …) inside the
- * OSS primitives resolves to the bundled binary.
- */
 let runtimeEnvPrimed = false;
 function primeRuntimeEnv(): void {
   if (runtimeEnvPrimed) return;
   runtimeEnvPrimed = true;
-  const taskRoot = process.env.LAMBDA_TASK_ROOT ?? "/var/task";
+  useBundledBinaries(process.env.LAMBDA_TASK_ROOT ?? "/var/task");
+}
+
+const BUNDLED_FF_BINARIES = [
+  ["ffmpeg", "HYPERFRAMES_FFMPEG_PATH"],
+  ["ffprobe", "HYPERFRAMES_FFPROBE_PATH"],
+] as const;
+
+/**
+ * The bundled binaries live in `<task root>/bin`. The task root is Lambda's working directory,
+ * which FFmpeg discovery never takes a program from, so ffmpeg and ffprobe are named by path.
+ * An override already set wins.
+ */
+export function useBundledBinaries(taskRoot: string, env: NodeJS.ProcessEnv = process.env): void {
   const bin = join(taskRoot, "bin");
-  if (existsSync(bin)) {
-    process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
+  if (!existsSync(bin)) return;
+  env.PATH = `${bin}:${env.PATH ?? ""}`;
+  for (const [name, setting] of BUNDLED_FF_BINARIES) {
+    const binary = join(bin, name);
+    if (!env[setting]?.trim() && existsSync(binary)) env[setting] = binary;
   }
 }
 

@@ -1,13 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, closeSync, constants, existsSync, openSync, readSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
  * to them (engine, cli, lint, studio-server). Node-only: import via the
  * `@hyperframes/parsers/ff-binaries` subpath, never from a browser bundle.
  */
+
+export {
+  findTrustedExecutable,
+  isTrustedDirectory,
+  isTrustedExecutablePath,
+  trustedPathDirs,
+} from "./trustedExecutable.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
@@ -90,9 +98,7 @@ function isExecutablePathCandidate(candidate: string): boolean {
 }
 
 function scanPath(name: FfBinaryName): string | undefined {
-  const pathValue = process.env.PATH;
-  // Only absolute PATH entries: the working directory is project content, not an install location.
-  const searchDirs = (pathValue ? pathValue.split(delimiter) : []).filter((dir) => isAbsolute(dir));
+  const searchDirs = trustedPathDirs();
   if (searchDirs.length === 0) return undefined;
 
   const extensions =
@@ -109,7 +115,7 @@ function scanPath(name: FfBinaryName): string | undefined {
         ]
       : [""];
   const candidates: string[] = [];
-  for (const dir of new Set(searchDirs)) {
+  for (const dir of searchDirs) {
     for (const ext of extensions) {
       const candidate = join(dir, `${name}${ext}`);
       if (isExecutablePathCandidate(candidate)) candidates.push(candidate);
@@ -131,18 +137,15 @@ const COMMON_BIN_DIRS =
 function findInCommonDirsOrInstallerPackage(name: FfBinaryName): string | undefined {
   for (const dir of COMMON_BIN_DIRS) {
     const candidate = `${dir}/${name}`;
-    if (existsSync(candidate) && runsOnThisMac(candidate)) return candidate;
+    if (isTrustedExecutablePath(candidate) && existsSync(candidate) && runsOnThisMac(candidate)) {
+      return candidate;
+    }
   }
   return findInInstallerPackage(name);
 }
 
 function binaryFileName(name: FfBinaryName): string {
   return process.platform === "win32" ? `${name}.exe` : name;
-}
-
-function findInProjectLocalBin(name: FfBinaryName): string | undefined {
-  const candidate = resolve(".hyperframes", "bin", binaryFileName(name));
-  return existsSync(candidate) && runsOnThisMac(candidate) ? candidate : undefined;
 }
 
 function tryResolve(fromFile: string, request: string): string | undefined {
@@ -153,16 +156,19 @@ function tryResolve(fromFile: string, request: string): string | undefined {
   }
 }
 
-// An @ffmpeg-installer / @ffprobe-installer package reachable from the current folder, located
-// but never loaded. The platform package is resolved via the installer package first (pnpm layout).
+// An @ffmpeg-installer / @ffprobe-installer package installed next to HyperFrames itself (a global
+// or npx install), located but never loaded. A copy in the working directory is project content,
+// so it is skipped. The platform package is resolved via the installer package first (pnpm layout).
 function findInInstallerPackage(name: FfBinaryName): string | undefined {
-  const project = resolve("package.json");
+  const project = import.meta.url;
   const platformManifest = `@${name}-installer/${process.platform}-${process.arch}/package.json`;
   const installer = tryResolve(project, `@${name}-installer/${name}/package.json`);
   const manifest =
     (installer && tryResolve(installer, platformManifest)) ?? tryResolve(project, platformManifest);
   const candidate = manifest && join(dirname(manifest), binaryFileName(name));
-  return candidate && isExecutablePathCandidate(candidate) ? candidate : undefined;
+  return candidate && isTrustedExecutablePath(candidate) && isExecutablePathCandidate(candidate)
+    ? candidate
+    : undefined;
 }
 
 function searchSystem(name: FfBinaryName): string | undefined {
@@ -180,12 +186,14 @@ function searchSystem(name: FfBinaryName): string | undefined {
         timeout: 5000,
       });
       const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
-      found = candidate && isExecutablePathCandidate(candidate) ? candidate : scanPath(name);
+      found =
+        candidate && isTrustedExecutablePath(candidate) && isExecutablePathCandidate(candidate)
+          ? candidate
+          : scanPath(name);
     } catch {
       found = scanPath(name);
     }
   }
-  found ??= findInProjectLocalBin(name);
   found ??= findInCommonDirsOrInstallerPackage(name);
   return found;
 }
@@ -217,9 +225,9 @@ export interface FindFfBinaryOptions {
 
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
- * PATH scan on Windows or `which` plus PATH scan on Unix,
- * then a project-local `.hyperframes/bin`, then well-known Unix install dirs, then an
- * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder.
+ * PATH scan on Windows or `which` plus PATH scan on Unix, then well-known Unix install dirs,
+ * then an `@ffmpeg-installer`/`@ffprobe-installer` package installed next to HyperFrames.
+ * Discovery never returns a file in the working directory (see trustedExecutable.ts).
  * A found binary is cached for the process lifetime; a miss only for a few
  * seconds, so a long-running server sees an install made after it started. The env
  * override is re-read on every call.
@@ -234,6 +242,14 @@ export function findFfBinary(
     return resolve(configured);
   }
   return lookupOnSystem(name);
+}
+
+/** {@link findFfBinary}, or an ENOENT error naming the override. Never the bare name for the OS to look up. */
+export function requireFfBinary(name: FfBinaryName): string {
+  const found = findFfBinary(name);
+  if (found) return found;
+  const message = `[FFmpeg] ${name} not found. Install FFmpeg or set ${ENV_BY_NAME[name]} to its absolute path.`;
+  throw Object.assign(new Error(message), { code: "ENOENT" });
 }
 
 /** Test hook: drop cached system lookups so resolution can be re-exercised. */
