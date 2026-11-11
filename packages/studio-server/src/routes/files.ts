@@ -238,7 +238,6 @@ async function resolveProjectPath(
     }
     return { error: c.json({ error: "forbidden", why: "outside_project" }, 403) } as const;
   }
-  // A write never lands on the project folder itself, in node_modules, or in a hidden tool file or folder.
   if (opts?.write && !isWritableProjectFile(project.dir, absPath)) {
     return { error: c.json({ error: "forbidden", why: "protected_path" }, 403) } as const;
   }

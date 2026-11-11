@@ -440,7 +440,6 @@ export async function addToProject(
     opts.force ?? false,
     item.name,
     variableValues,
-    // Items write only into the project's own blocks, components and assets folders.
     [config.paths.blocks, config.paths.components, config.paths.assets],
   );
 

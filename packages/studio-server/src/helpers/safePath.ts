@@ -47,7 +47,7 @@ export function realFilePath(filePath: string): string {
 const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
-/** One path segment as Windows opens it: any case, no trailing dots or spaces, no `:stream` suffix. */
+/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
 function segmentsOf(relPath: string): string[] {
   return relPath
     .toLowerCase()
@@ -55,8 +55,7 @@ function segmentsOf(relPath: string): string[] {
     .map((segment) => segment.replace(/:.*$/, "").replace(/[. ]+$/, ""));
 }
 
-// Git's own files (a folder, or a file in a linked work tree) and env files hold commands other tools run and
-// secrets: no route reads or writes them.
+// Git metadata and env files hold commands other tools run and secrets: no route reads or writes them.
 const isVcsOrSecretSegment = (segment: string): boolean =>
   segment === ".git" || segment.startsWith(".env");
 
@@ -80,14 +79,9 @@ export function isPrivateProjectFile(projectDir: string, filePath: string): bool
   return projectRelatives(projectDir, filePath).some(isPrivateProjectPath);
 }
 
-// The only hidden folders a request may write into: Studio's own records (still closed by `isPrivateProjectPath`
-// past its own files) and the media ledger's folder.
 const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
 
-/**
- * May a request create, change, rename or delete this project-relative path? Not the project folder itself, nothing
- * under `node_modules`, and no hidden file or folder (tool settings, hooks, git and env files) but the ones above.
- */
+/** Writes refuse the project folder, node_modules, and hidden paths but Studio's records and the media ledger. */
 export function isWritableProjectPath(relPath: string): boolean {
   if (!relPath || isPrivateProjectPath(relPath)) return false;
   const segments = segmentsOf(relPath);
@@ -99,18 +93,15 @@ export function isWritableProjectPath(relPath: string): boolean {
   );
 }
 
-/** `isWritableProjectPath` for an absolute path, spelled as asked and with every link resolved. */
 export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
   return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
 }
 
-/** `resolveWithinProject` for a path a request writes, renames or deletes. */
 export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
   const resolved = resolveWithinProject(base, relativePath);
   return resolved && isWritableProjectFile(base, resolved) ? resolved : null;
 }
 
-/** `pinWithinProject` for a path a request writes. */
 export function pinWritableWithinProject(base: string, relativePath: string): string | null {
   return pinResolved(base, resolveWritableWithinProject(base, relativePath));
 }
