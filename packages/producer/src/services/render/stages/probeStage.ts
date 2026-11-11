@@ -313,19 +313,6 @@ function hasRuntimeMediaChanges(html: string): boolean {
   return false;
 }
 
-/**
- * Does this render need a browser probe at all?
- *
- * Extracted as a pure predicate because whether a probe runs decides whether
- * a LIVE DOM element count is available downstream, and the short-comp
- * inversion band fails closed without one (see
- * `resolveCompositionElementCount` / `resolveDeShortBand`). Notably NONE of
- * these conditions fire for a known-duration, media-free composition that
- * builds thousands of `div`/`span` nodes in its own init script —
- * `hasRuntimeMediaChanges` matches only media creation/source changes — so
- * that shape is measured statically and must never reach the band's `applied`
- * cohort (review finding, R4).
- */
 /** A strict render with variables to check needs the loaded page; with none there is nothing to read. */
 function checksVariablesInBrowser(config: RenderConfig): boolean {
   return config.strictVariables === true && Object.keys(config.variables ?? {}).length > 0;
@@ -340,6 +327,10 @@ export function strictVariablesAttestation(
   return !checksVariablesInBrowser(config) || probeSession?.strictVariablesChecked === true;
 }
 
+/**
+ * Does this render need a browser probe at all? A pure predicate, because a probe decides whether a LIVE DOM element
+ * count exists downstream, and the short-comp inversion band fails closed without one.
+ */
 export function probeRequiresBrowser(args: {
   durationSeconds: number;
   unresolvedCompositionCount: number;
