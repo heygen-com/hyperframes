@@ -10,7 +10,7 @@
  */
 
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import type { ClipManifestClip, IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
+import type { ClipManifestClip, PlaybackAdapter } from "../lib/playbackTypes";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { acceptStudioRuntimeMessage, postRuntimeControlMessage } from "../lib/runtimeProtocol";
 import {
@@ -23,6 +23,7 @@ import {
   parsePreviewFacts,
 } from "../store/previewQualitySlice";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
+import { previewClipManifest } from "../lib/previewChannel";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
 export interface ClipManifestMessage {
@@ -83,23 +84,41 @@ function enrichDue(lastTimelineMessage: number, enriched: { at: number }): boole
   return true;
 }
 
+/** Asks the runtime for its clip manifest, one request at a time, while the store has no elements. */
+function recoverClipManifest(
+  deps: PreviewMessageRouterDeps,
+  iframe: HTMLIFrameElement,
+  recovery: { asking: boolean },
+): void {
+  if (recovery.asking) return;
+  recovery.asking = true;
+  previewClipManifest(iframe)
+    .then((manifest) => {
+      const stillWanted =
+        usePlayerStore.getState().elements.length === 0 &&
+        deps.iframeRef.current === iframe &&
+        !hasTimelinePerformanceFixtureLease();
+      if (manifest && manifest.clips.length > 0 && stillWanted)
+        deps.processTimelineMessageRef.current(manifest);
+    })
+    .catch(() => {})
+    .finally(() => (recovery.asking = false));
+}
+
 /**
  * A `state` tick doubles as a recovery hook: if the store still has no
- * elements, read the manifest straight off the iframe, and if no `timeline`
- * message has arrived recently, re-run enrichment (at most every 500 ms: it queries the whole document).
+ * elements, ask the runtime for its manifest, and if no `timeline` message has arrived
+ * recently, re-run enrichment (at most every 500 ms: it queries the whole document).
  */
 function handleStateMessage(
   deps: PreviewMessageRouterDeps,
   iframe: HTMLIFrameElement | null,
   playingHoldsClipListPosts: boolean,
-  enriched: { at: number },
+  enriched: { at: number; asking: boolean },
 ): void {
   try {
-    if (usePlayerStore.getState().elements.length === 0) {
-      const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
-      if (manifest && manifest.clips.length > 0) {
-        deps.processTimelineMessageRef.current(manifest);
-      }
+    if (iframe && usePlayerStore.getState().elements.length === 0) {
+      recoverClipManifest(deps, iframe, enriched);
     }
     if (!playingHoldsClipListPosts && enrichDue(deps.lastTimelineMessageRef.current, enriched)) {
       deps.enrichMissingCompositionsRef.current();
@@ -156,7 +175,7 @@ function applyStoreReport(data: PreviewMessage): boolean {
 export function createPreviewMessageHandler(
   deps: PreviewMessageRouterDeps,
 ): (e: MessageEvent) => void {
-  const enriched = { at: 0 };
+  const enriched = { at: 0, asking: false };
   return (e: MessageEvent) => {
     const iframe = deps.iframeRef.current;
     const data = acceptedPreviewMessage(e, iframe);
