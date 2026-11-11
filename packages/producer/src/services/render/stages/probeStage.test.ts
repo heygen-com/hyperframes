@@ -212,7 +212,9 @@ mock.module("../../htmlCompiler.js", () => ({
   resolveCompositionDurations: async () => [],
 }));
 
+const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
+  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,
@@ -1221,6 +1223,17 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(options.deferStaticDedup).toBe(true);
     expect(options.staticDedupMemo).toBe(staticDedupMemo);
     expect(options.compositionHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("reports the deferred check's screenshots to the render's stall watcher when its session is reused", async () => {
+    capturedOptions.length = 0;
+    notedStaticDedupActivity.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    await runProbeStage(input);
+    const options = capturedOptions[0] as { onStaticDedupActivity?: () => void };
+    options.onStaticDedupActivity?.();
+    expect(notedStaticDedupActivity).toEqual([input.job]);
   });
 
   it("passes forceScreenshot:false through unchanged when neither cfg nor stage input forces it", async () => {
