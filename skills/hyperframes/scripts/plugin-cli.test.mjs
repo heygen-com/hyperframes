@@ -12,6 +12,7 @@ import {
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { invocation, npmFolder, pluginVersion } from "./plugin-cli.mjs";
 
 function fixture(t, manifest = "plugin.json", version = "1.2.3") {
@@ -139,18 +140,19 @@ test("on Windows, a helper and the programs it starts skip the working-directory
   const asWindows = join(root, "as-windows.mjs");
   writeFileSync(asWindows, 'Object.defineProperty(process, "platform", { value: "win32" });');
   const run = (env) =>
-    spawnSync(process.execPath, ["--import", asWindows, launcher, "--script", helper], {
-      cwd: root,
-      encoding: "utf8",
-      env: { ...env, NODE_OPTIONS: "" },
-    });
+    spawnSync(
+      process.execPath,
+      ["--import", pathToFileURL(asWindows).href, launcher, "--script", helper],
+      { cwd: root, encoding: "utf8", env: { ...env, NODE_OPTIONS: "" } },
+    );
+  const stdoutOf = (result) => {
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
   const { NoDefaultCurrentDirectoryInExePath: _, ...env } = process.env;
 
-  assert.equal(JSON.parse(run(env).stdout), "1");
-  assert.equal(
-    JSON.parse(run({ ...env, NoDefaultCurrentDirectoryInExePath: "yes" }).stdout),
-    "yes",
-  );
+  assert.equal(stdoutOf(run(env)), "1");
+  assert.equal(stdoutOf(run({ ...env, NoDefaultCurrentDirectoryInExePath: "yes" })), "yes");
 });
 
 test(
