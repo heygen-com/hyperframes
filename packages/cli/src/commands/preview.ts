@@ -33,7 +33,15 @@ export const examples: Example[] = [
     "hyperframes preview --lint-verbose",
   ],
 ];
-import { existsSync, lstatSync, mkdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
 import { resolve, dirname, basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -492,7 +500,7 @@ export default defineCommand({
       foreground: Boolean(args.foreground),
       interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
       devMode: isDevMode(),
-      localStudio: hasLocalStudio(dir),
+      localStudio: localStudioDir(dir) !== null,
     });
 
     const hostAppError = previewHostAppError(launchMode);
@@ -1517,25 +1525,35 @@ export async function runDevMode(dir: string, options?: StudioLaunchOptions): Pr
   return waitForStudioChildClose(child);
 }
 
-/**
- * Whether the project's local @hyperframes/studio can actually be SERVED.
- *
- * Local mode runs `vite` with the studio package as its cwd, so it needs that
- * package's own `vite.config.ts` — which the published tarball does not carry
- * (`files: ["src", "dist"]`). Resolving the package alone therefore is not
- * enough: an npm-installed studio would send `preview` down a path that can
- * never come up, and since `--background` re-execs this same CLI, it would time
- * out after ten seconds instead of falling back. Fall back to embedded mode,
- * which serves the same studio and does work from a published install.
- */
-function hasLocalStudio(dir: string): boolean {
+/** Set to 1 to let `preview` serve the project's own @hyperframes/studio with Vite. */
+export const LOCAL_STUDIO_ENV = "HYPERFRAMES_LOCAL_STUDIO";
+
+function studioPackageDir(from: string): string | null {
   try {
-    const req = createRequire(join(dir, "package.json"));
-    const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
-    return existsSync(join(studioPkgPath, "vite.config.ts"));
+    const req = createRequire(from);
+    return realpathSync(dirname(req.resolve("@hyperframes/studio/package.json")));
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * The @hyperframes/studio folder local mode may serve with Vite, or null for embedded mode.
+ * It needs the package's own `vite.config.ts`, which the published tarball lacks, so an
+ * npm-installed studio falls back to embedded instead of a launch that never comes up.
+ * Vite runs that config and the `vite` beside it as code, and a project folder (or a
+ * parent's node_modules) must not choose that code: the project's Studio is used only when
+ * it is the one the CLI itself resolves (a source checkout) or HYPERFRAMES_LOCAL_STUDIO=1.
+ */
+export function localStudioDir(
+  dir: string,
+  env: NodeJS.ProcessEnv = process.env,
+  cliStudioDir: string | null = studioPackageDir(fileURLToPath(import.meta.url)),
+): string | null {
+  const studioDir = studioPackageDir(join(dir, "package.json"));
+  if (!studioDir || !existsSync(join(studioDir, "vite.config.ts"))) return null;
+  if (env[LOCAL_STUDIO_ENV] === "1") return studioDir;
+  return studioDir === cliStudioDir ? studioDir : null;
 }
 
 /**
@@ -1546,8 +1564,16 @@ export async function runLocalStudioMode(
   dir: string,
   options?: StudioLaunchOptions,
 ): Promise<void> {
-  const req = createRequire(join(dir, "package.json"));
-  const studioPkgPath = dirname(req.resolve("@hyperframes/studio/package.json"));
+  const studioPkgPath = localStudioDir(dir);
+  if (!studioPkgPath) {
+    reportPreviewFailure(
+      Boolean(options?.json),
+      "start",
+      "preview-start-failed",
+      `No local Studio to run for this project; set ${LOCAL_STUDIO_ENV}=1 to use the project's own @hyperframes/studio.`,
+    );
+    return;
+  }
   const pName = options?.projectName ?? basename(dir);
 
   // Symlink project into studio's data directory

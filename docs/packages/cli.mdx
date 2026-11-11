@@ -1065,8 +1065,11 @@ sub-compositions refresh live. Preview and render share the same runtime.
 
 The server picks one of three modes by itself: **embedded** (the default for
 `npx` — Studio bundled in the CLI, no extra dependencies), **local studio**
-(Vite with full HMR, when `@hyperframes/studio` is in your `node_modules`), or
-**monorepo** (the studio dev server, when you run from the source repo).
+(Vite with full HMR, from a `@hyperframes/studio` source checkout), or
+**monorepo** (the studio dev server, when you run from the source repo). Local
+studio mode runs only when the project resolves to the same Studio checkout as
+the CLI itself, or when you set `HYPERFRAMES_LOCAL_STUDIO=1`; a Studio in the
+project's own `node_modules` is not used otherwise.
 `--background` works with the embedded server only.
 
 The CLI ships GSAP, CustomEase, and MotionPathPlugin, so the GSAP scripts
