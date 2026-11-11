@@ -2,6 +2,7 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 // Timeline clip deletion: the marquee/multi path and the single-clip wrapper
 // the context menu uses. Extracted verbatim from useTimelineEditing.ts to keep
 // it under the studio 600-line cap, following useTimelineAssetDropOps.
+import { keyHint } from "../player/components/studioShortcuts";
 import { useCallback, useRef, type MutableRefObject, type RefObject } from "react";
 import type { TimelineElement } from "../player";
 import { usePlayerStore } from "../player";
@@ -24,6 +25,7 @@ import type {
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { countOf } from "../utils/countOf";
 
 /** Apply already-resolved ripple changes to the surviving elements for the
  *  optimistic store update after a delete. Pure — no IO. */
@@ -138,7 +140,9 @@ export function useTimelineDeleteOps({
                 },
               );
               if (!removeResponse.ok) {
-                throw new Error(`Failed to delete ${sameFile.length} clips from ${targetPath}`);
+                throw new Error(
+                  `Failed to delete ${countOf(sameFile.length, "clip")} from ${targetPath}`,
+                );
               }
               const removeData = (await removeResponse.json()) as { content?: string };
               const removedContent =
@@ -216,7 +220,7 @@ export function useTimelineDeleteOps({
         if (rippleChanges && !rippleFailed && !rippleNoticeShownRef.current) {
           rippleNoticeShownRef.current = true;
           showToast(
-            "Ripple closed the gap on the main track. Undo (⌘Z) restores it, or turn off " +
+            `Ripple closed the gap on the main track. Undo (${keyHint("undo")}) restores it, or turn off ` +
               "Ripple in the timeline toolbar.",
             "info",
           );

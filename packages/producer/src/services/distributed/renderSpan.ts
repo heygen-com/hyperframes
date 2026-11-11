@@ -1,3 +1,8 @@
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+} from "@hyperframes/engine";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -7,7 +12,7 @@ import { plan, type DistributedRenderConfig } from "./plan.js";
 import { renderChunk } from "./renderChunk.js";
 import { RenderCancelledError } from "../renderOrchestrator.js";
 
-export interface RenderSpanResult {
+export interface RenderSpanResult extends ReferenceBackgroundResult {
   startFrame: number;
   endFrame: number;
   framesEncoded: number;
@@ -94,7 +99,12 @@ export async function renderSpan(
     }
     throwIfAborted(config.abortSignal);
     await writeStitchedMp4(parts, outputPath);
-    return { startFrame, endFrame, framesEncoded: endFrame - startFrame };
+    return {
+      ...referenceBackgroundResult(planned[REFERENCE_BACKGROUND_FIELD]),
+      startFrame,
+      endFrame,
+      framesEncoded: endFrame - startFrame,
+    };
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }

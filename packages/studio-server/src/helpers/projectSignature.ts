@@ -242,13 +242,16 @@ async function collectProjectFilesAsync(
   return collected;
 }
 
+export type ListedProjectFile = { path: string; size: number; mtimeMs: number; ctimeMs: number };
+
 /** The files a project is made of (the signature's set: source plus Studio's two manifests), paths with `/`. */
-export function listProjectFiles(
-  projectDir: string,
-): Array<{ path: string; size: number; mtimeMs: number; ctimeMs: number }> {
+export async function listProjectFilesAsync(projectDir: string): Promise<ListedProjectFile[]> {
   const normalizedProjectDir = resolve(projectDir);
-  return collectProjectFiles(normalizedProjectDir).map((entry) => ({
-    path: relative(normalizedProjectDir, entry.file).split(sep).join("/"),
+  const everyFileStartsWith = normalizedProjectDir.endsWith(sep)
+    ? normalizedProjectDir
+    : normalizedProjectDir + sep;
+  return (await collectProjectFilesAsync(normalizedProjectDir)).map((entry) => ({
+    path: entry.file.slice(everyFileStartsWith.length).split(sep).join("/"),
     size: entry.size,
     mtimeMs: entry.mtimeMs,
     ctimeMs: entry.ctimeMs,
@@ -260,8 +263,13 @@ export function listProjectFiles(
  * provides one (the CLI invalidates its cache from the file watcher), falling
  * back to a direct computation.
  */
-export function resolveProjectSignature(adapter: StudioApiAdapter, projectDir: string): string {
-  return adapter.getProjectSignature?.(projectDir) ?? createProjectSignature(projectDir);
+export async function resolveProjectSignature(
+  adapter: StudioApiAdapter,
+  projectDir: string,
+): Promise<string> {
+  return (
+    (await adapter.getProjectSignature?.(projectDir)) ?? createProjectSignatureAsync(projectDir)
+  );
 }
 
 /** The shared route opening: resolve the project (null → caller 404s) with its signature. */
@@ -271,7 +279,7 @@ export async function resolveProjectAndSignature(
 ): Promise<{ project: ResolvedProject; signature: string } | null> {
   const project = await adapter.resolveProject(projectId);
   if (!project) return null;
-  return { project, signature: resolveProjectSignature(adapter, project.dir) };
+  return { project, signature: await resolveProjectSignature(adapter, project.dir) };
 }
 
 interface SignaturePlan {

@@ -190,6 +190,33 @@ describe("validateCompletedSegments", () => {
     expect((await validateCompletedSegments(manifest, "h", async () => 3)).size).toBe(0);
   });
 
+  it("a resume whose segment files were removed after a join captures them again rather than failing", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const joined = [0, 1].map((index) => join(dir, `segment_0000${index}.mp4`));
+    const manifest: SegmentManifest = {
+      version: 1,
+      planHash: "h",
+      totalFrames: 6,
+      segmentFrames: 3,
+      completed: joined.map((path, index) => ({
+        index,
+        startFrame: index * 3,
+        endFrame: index * 3 + 3,
+        path,
+        bytes: 2,
+        completedAt: "",
+      })),
+    };
+    // The manifest still lists them, but the join deleted the files.
+    let probed = 0;
+    const probe = async () => {
+      probed += 1;
+      return 3;
+    };
+    expect((await validateCompletedSegments(manifest, "h", probe)).size).toBe(0);
+    expect(probed).toBe(0);
+  });
+
   it("skips nothing when the plan hash differs", async () => {
     // The entry is otherwise perfectly reusable — present, right size, right
     // frame count — so only the hash check can reject it. With an empty

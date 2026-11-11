@@ -1,11 +1,16 @@
 // fallow-ignore-file complexity code-duplication
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from "fs";
+import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { join, dirname, isAbsolute, relative } from "path";
 import { parseHTML } from "linkedom";
-import { extractAudioMetadata, ffmpegSeekSeconds, type AudioMetadata } from "../utils/ffprobe.js";
+import {
+  extractAudioMetadata,
+  ffmpegSeekSeconds,
+  formatFfmpegSeconds,
+  type AudioMetadata,
+} from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
@@ -67,7 +72,9 @@ import {
 } from "@hyperframes/core";
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { AudioElement, MixResult } from "./audioMixer.types.js";
 
@@ -711,7 +718,7 @@ async function extractAudioSegment(
       });
   const loopDuration = (metadata?.durationSeconds ?? 0) - mediaStart;
   if (options?.loop && loopDuration > 0 && sourceDuration > loopDuration) {
-    const cycleDir = mkdtempSync(join(outputDir, ".audio-loop-"));
+    const cycleDir = createStagingDir(outputDir, ".audio-loop-");
     const cyclePath = join(cycleDir, "cycle.wav");
     try {
       const cycle = await extractAudioSegment(
@@ -739,7 +746,7 @@ async function extractAudioSegment(
           "-stream_loop",
           "-1",
           "-t",
-          String(sourceDuration),
+          formatFfmpegSeconds(sourceDuration),
           "-i",
           cyclePath,
           "-vn",
@@ -749,7 +756,7 @@ async function extractAudioSegment(
           "48000",
           ...outputArgs,
           "-t",
-          String(duration),
+          formatFfmpegSeconds(duration),
           "-y",
           outputPath,
         ],
@@ -770,7 +777,8 @@ async function extractAudioSegment(
     }
   }
   const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
-  const inputSeek = ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0);
+  const inputSeek =
+    ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0) && !metadata?.misstatedByteRate;
   const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
@@ -795,13 +803,19 @@ async function extractAudioSegment(
     ...(readsUrl ? FAIL_ON_READ_ERROR_INSTEAD_OF_ENDING_THERE : []),
     ...urlInputArgs(readFrom),
     ...(inputSeek
-      ? ["-ss", String(ffmpegStart - warmUp), "-t", String(sourceDuration + warmUp)]
+      ? [
+          "-ss",
+          formatFfmpegSeconds(ffmpegStart - warmUp),
+          "-t",
+          formatFfmpegSeconds(sourceDuration + warmUp),
+        ]
       : []),
     "-i",
     readFrom,
   ];
   args.push("-vn", "-acodec", "pcm_s16le", "-ar", "48000", ...outputArgs);
-  if (normalizedPlaybackRate !== 1 || options?.padToDuration) args.push("-t", String(duration));
+  if (normalizedPlaybackRate !== 1 || options?.padToDuration)
+    args.push("-t", formatFfmpegSeconds(duration));
   args.push("-y", outputPath);
 
   const result = await runFfmpeg(args, { signal, timeout: ffmpegProcessTimeout });
@@ -870,7 +884,7 @@ async function generateSilence(
     "-i",
     "anullsrc=r=48000:cl=stereo",
     "-t",
-    String(duration),
+    formatFfmpegSeconds(duration),
     "-acodec",
     "pcm_s16le",
     "-y",
@@ -964,7 +978,7 @@ async function mixAudioTracksFlat(
   const runMix = async (ignoreAutomation: boolean, useNormalize: boolean) => {
     const inputs: string[] = [];
     tracks.forEach((track) => inputs.push("-i", track.srcPath));
-    const scriptDir = mkdtempSync(join(outputDir, ".filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -983,7 +997,7 @@ async function mixAudioTracksFlat(
       "-ar",
       "48000",
       "-t",
-      String(totalDuration),
+      formatFfmpegSeconds(totalDuration),
       "-y",
       outputPath,
     ];
@@ -1139,7 +1153,7 @@ async function mixGroupMembersFlat(
         // global track count.
         `${mixInputs}amix=inputs=${memberTracks.length}:duration=longest:dropout_transition=0[mixed];[mixed]volume=${formatFilterNumber(memberTracks.length)}[out]`;
     const filterComplex = [...inputFilters, mixFilter].join(";");
-    const scriptDir = mkdtempSync(join(outputDir, ".group-filter-complex-"));
+    const scriptDir = createStagingDir(outputDir, ".group-filter-complex-");
     const scriptPath = join(scriptDir, "graph.txt");
     const fd = openSync(scriptPath, "wx", 0o600);
     try {
@@ -1168,7 +1182,7 @@ async function mixGroupMembersFlat(
         "-ar",
         "48000",
         "-t",
-        String(totalDuration),
+        formatFfmpegSeconds(totalDuration),
         "-y",
         outputPath,
       ];
@@ -1286,7 +1300,7 @@ async function mixGroupMembers(
     return mixGroupMembersFlat(memberTracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(memberTracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) return summed;
@@ -1308,7 +1322,7 @@ async function mixAudioTracks(
     return mixAudioTracksFlat(tracks, outputPath, totalDuration, signal, config);
   }
   mkdirSync(dirname(outputPath), { recursive: true });
-  const scratchDir = mkdtempSync(join(dirname(outputPath), ".mix-batches-"));
+  const scratchDir = createStagingDir(dirname(outputPath), ".mix-batches-");
   try {
     const summed = await sumInSlices(tracks, scratchDir, totalDuration, signal, config);
     if (!summed.success) {
@@ -1560,7 +1574,7 @@ export async function processCompositionAudio(
 
           let audioSrcPath = srcPath;
           if (element.type === "video") {
-            const extractedPath = join(workDir, `${element.id}-extracted.wav`);
+            const extractedPath = join(workDir, `${mediaIdPathSegment(element.id)}-extracted.wav`);
             const extractResult = await extractAudioSegment(
               srcPath,
               extractedPath,
@@ -1590,7 +1604,7 @@ export async function processCompositionAudio(
             }
             audioSrcPath = extractedPath;
           } else {
-            const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
+            const trimmedPath = join(workDir, `${mediaIdPathSegment(element.id)}-trimmed.wav`);
             const prepResult = await extractAudioSegment(
               srcPath,
               trimmedPath,
@@ -1659,7 +1673,7 @@ export async function processCompositionAudio(
             const fxResult = await applyAudioFxChain(
               audioSrcPath,
               chain,
-              join(workDir, `${element.id}-fx.wav`),
+              join(workDir, `${mediaIdPathSegment(element.id)}-fx.wav`),
               {
                 trackId: element.id,
                 signal: effectiveSignal,

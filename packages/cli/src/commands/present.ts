@@ -29,6 +29,7 @@ import {
   listenOnFreePort,
   assetContentType,
 } from "../utils/compositionServer.js";
+import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
 
 export default defineCommand({
   meta: {
@@ -318,7 +319,9 @@ export async function registerPresentCompositionRoute(
     // Security: canonicalizes symlinks + guards the trailing separator so neither
     // an in-project symlink nor a sibling dir sharing the prefix can escape.
     if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-    if (!existsSync(filePath)) return ctx.text("Not found", 404);
+    if (isPrivateCompositionFile(project.dir, filePath) || !existsSync(filePath)) {
+      return ctx.text("Not found", 404);
+    }
     if (filePath.endsWith(".html")) return ctx.html(readFileSync(filePath, "utf-8"));
     return ctx.body(readFileSync(filePath), 200, { "Content-Type": assetContentType(filePath) });
   });

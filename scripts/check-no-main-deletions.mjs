@@ -737,69 +737,41 @@ const RETIRED_ROUTING_FILES = [
   "skills/hyperframes/references/workflow-catalog.md",
 ];
 
-const REVERT_6754_REASON =
-  "the revert of #6754 keeps the reverse-any-video skill out of main until web subscriptions are live; it re-lands with #6833";
-
-const REVERT_6754_FILES = [
-  "packages/cli/src/commands/billing.ts",
-  "packages/cli/src/commands/diff.ts",
-  "packages/cli/src/commands/measure.ts",
-  "packages/cli/src/commands/measure/curve.ts",
-  "packages/cli/src/commands/measure/cuts.ts",
-  "packages/cli/src/commands/measure/energy.ts",
-  "packages/cli/src/commands/measure/events.ts",
-  "packages/cli/src/commands/measure/extract.ts",
-  "packages/cli/src/commands/measure/face.ts",
-  "packages/cli/src/commands/measure/frames.ts",
-  "packages/cli/src/commands/measure/look.ts",
-  "packages/cli/src/commands/measure/probe.ts",
-  "packages/cli/src/commands/measure/sync.ts",
-  "packages/cli/src/commands/media-use/generate.ts",
-  "packages/cli/src/heygen/generate.test.ts",
-  "packages/cli/src/heygen/generate.ts",
-  "packages/cli/src/heygen/plan.test.ts",
-  "packages/cli/src/heygen/plan.ts",
-  "packages/cli/src/heygen/pricing.ts",
-  "packages/cli/src/heygen/transcribe.test.ts",
-  "packages/cli/src/heygen/transcribe.ts",
-  "packages/cli/src/heygen/v3.test.ts",
-  "packages/cli/src/heygen/v3.ts",
-  "packages/cli/src/measure/command.ts",
-  "packages/cli/src/measure/compare.test.ts",
-  "packages/cli/src/measure/curve.test.ts",
-  "packages/cli/src/measure/curve.ts",
-  "packages/cli/src/measure/cuts.test.ts",
-  "packages/cli/src/measure/cuts.ts",
-  "packages/cli/src/measure/diff-people.test.ts",
-  "packages/cli/src/measure/diff-segments.test.ts",
-  "packages/cli/src/measure/diff.test-helpers.ts",
-  "packages/cli/src/measure/diff.test.ts",
-  "packages/cli/src/measure/diff.ts",
-  "packages/cli/src/measure/drawn.test.ts",
-  "packages/cli/src/measure/drawn.ts",
-  "packages/cli/src/measure/energy.ts",
-  "packages/cli/src/measure/events.test.ts",
-  "packages/cli/src/measure/events.ts",
-  "packages/cli/src/measure/face.test.ts",
-  "packages/cli/src/measure/face.ts",
-  "packages/cli/src/measure/faceVerdict.test.ts",
-  "packages/cli/src/measure/look.ts",
-  "packages/cli/src/measure/media.ts",
-  "packages/cli/src/measure/opencv.ts",
-  "packages/cli/src/measure/person.ts",
-  "packages/cli/src/measure/segments.ts",
-  "packages/cli/src/measure/sync.test.ts",
-  "packages/cli/src/measure/sync.ts",
-  "packages/cli/src/media-use/lib/index-gen.d.mts",
-  "skills/media-use/references/heygen.md",
-  "skills/reverse-any-video/SKILL.md",
-  "skills/reverse-any-video/references/match.md",
-  "skills/reverse-any-video/references/people.md",
-  "skills/reverse-any-video/references/start.md",
-];
-
 const FALLOW_PRUNE_REASON =
   "fallow 3 reuses one audit snapshot per checkout and the hook prunes with `fallow audit-cache prune`, replacing this script";
+
+const PLAN_V1_SAMPLE_REASON =
+  "Plan v1 is no longer a supported cloud transport; the adapters, workflows and smoke tests now accept Plan v2 only";
+
+const PLAN_V1_SAMPLE_FILES = [
+  "examples/aws-lambda/sample-events/assemble-v1.json",
+  "examples/aws-lambda/sample-events/plan-v1.json",
+  "examples/aws-lambda/sample-events/render-chunk-v1.json",
+  "examples/gcp-cloud-run/sample-events/assemble-v1.json",
+  "examples/gcp-cloud-run/sample-events/plan-v1.json",
+  "examples/gcp-cloud-run/sample-events/render-chunk-v1.json",
+];
+
+const PLAN_PARITY_HARNESS_REASON =
+  "the completed Plan v1-to-v2 rollout harness has no supported v1 cloud path left to exercise";
+
+const PLAN_PARITY_HARNESS_FILES = [
+  "examples/aws-lambda/scripts/_semantic-compare.sh",
+  "examples/aws-lambda/scripts/semantic-compare.test.sh",
+  "packages/producer/fixtures/plan-parity-size-pressure/.plan-parity-fixture.json",
+  "packages/producer/fixtures/plan-parity-size-pressure/index.html",
+  "packages/producer/fixtures/plan-parity-visual-audio/.plan-parity-fixture.json",
+  "packages/producer/fixtures/plan-parity-visual-audio/index.html",
+  "packages/producer/src/plan-parity-analysis.test.ts",
+  "packages/producer/src/plan-parity-analysis.ts",
+  "packages/producer/src/plan-parity-contract.test.ts",
+  "packages/producer/src/plan-parity-contract.ts",
+  "packages/producer/src/plan-parity-fixture.test.ts",
+  "packages/producer/src/plan-parity-fixture.ts",
+  "packages/producer/src/plan-parity-harness.test.ts",
+  "packages/producer/src/plan-parity-harness.ts",
+  "packages/producer/src/plan-parity-lambda-local-driver.ts",
+];
 
 export const ALLOWED_DELETIONS = new Map([
   // Prompt Guide as six topic pages
@@ -2127,13 +2099,14 @@ export const ALLOWED_DELETIONS = new Map([
   ...RETIRED_WORKFLOW_FILES.map((path) => [path, RETIRED_WORKFLOW_REASON]),
   ...RETIRED_GUIDE_FILES.map((path) => [path, RETIRED_GUIDE_REASON]),
   ...RETIRED_ROUTING_FILES.map((path) => [path, RETIRED_ROUTING_REASON]),
-  ...REVERT_6754_FILES.map((path) => [path, REVERT_6754_REASON]),
   [
     "packages/producer/src/services/audioExtractor.ts",
     "imported by nothing; its own ffmpeg spawn quoted stderr unredacted, outside ManagedChildProcess",
   ],
   ["scripts/prune-fallow-audit-caches.mjs", FALLOW_PRUNE_REASON],
   ["scripts/prune-fallow-audit-caches.test.mjs", FALLOW_PRUNE_REASON],
+  ...PLAN_V1_SAMPLE_FILES.map((path) => [path, PLAN_V1_SAMPLE_REASON]),
+  ...PLAN_PARITY_HARNESS_FILES.map((path) => [path, PLAN_PARITY_HARNESS_REASON]),
   [
     "packages/engine/src/services/frameCapture-releaseInjectedVideoMedia.browser.test.ts",
     "the revert of #5795 removes releaseInjectedVideoMedia, the only code this file tested",
@@ -2141,6 +2114,18 @@ export const ALLOWED_DELETIONS = new Map([
   [
     ".github/workflows/lambda-ffmpeg.yml",
     "the ffmpeg build moves into lambda-arm64-image.yml, which also builds and smokes the image",
+  ],
+  [
+    "skills/remotion-to-hyperframes/scripts/frame_strip.sh",
+    "remotion-to-hyperframes now compares with `hyperframes diff` instead of its own shell scripts",
+  ],
+  [
+    "skills/remotion-to-hyperframes/scripts/render_diff.sh",
+    "remotion-to-hyperframes now compares with `hyperframes diff` instead of its own shell scripts",
+  ],
+  [
+    "packages/cli/src/commands/cloud/render.pageMotionBlur.test.ts",
+    "tests for the removed cloud render --page-motion-blur flag; the hosted render API never accepted the field",
   ],
 ]);
 

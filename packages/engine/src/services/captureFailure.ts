@@ -55,6 +55,7 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /ECONNREFUSED/i,
   /net::ERR_NETWORK_CHANGED/i,
   /Composition has zero duration[\s\S]*Runtime ready: false/,
+  /Composition setup did not finish/,
   // CDP can refuse a capture call outright with this exact wording; timed-out
   // variants of the same call hit PROTOCOL_TIMEOUT_PATTERNS, checked first.
   // Anchored to this literal reason (not just the CDP method) so an unrelated,

@@ -195,6 +195,33 @@ describe("WebAudioTransport", () => {
       expect([transport.routesElement(gone), transport.routesElement(kept)]).toEqual([false, true]);
     });
 
+    it("keeps a routed element silent once a decoded buffer plays in its place", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      node.connect.mockClear();
+      node.disconnect.mockClear();
+
+      transport.releaseRouted(mockEl);
+
+      expect(node.disconnect).toHaveBeenCalled();
+      expect(node.connect).not.toHaveBeenCalled();
+    });
+
+    it("sounds a handed-over element through the output again once playback stops", async () => {
+      const { transport, mock, gen } = setupTransport(100);
+      const node = { connect: vi.fn(), disconnect: vi.fn() };
+      mock.ctx.createMediaElementSource = vi.fn(() => node) as never;
+      await transport.scheduleMediaElementPlayback(mockEl, 0, 0, 0, 1, gen, 1);
+      transport.releaseRouted(mockEl);
+      node.connect.mockClear();
+
+      transport.stopAll();
+
+      expect(node.connect).toHaveBeenCalledWith(mock.ctx.destination);
+    });
+
     it("creates one MediaElementAudioSourceNode per element and context", async () => {
       const { transport, mock } = setupTransport(100);
 
@@ -1767,6 +1794,44 @@ describe("WebAudioTransport", () => {
     });
   });
 
+  describe("decode budget", () => {
+    const audio = (src: string, duration: number) =>
+      ({
+        tagName: "AUDIO",
+        getAttribute: (name: string) => (name === "src" ? src : null),
+        currentSrc: "",
+        duration,
+      }) as unknown as HTMLMediaElement;
+    const transport = () => {
+      const t = new WebAudioTransport();
+      (t as unknown as { _ctx: unknown })._ctx = { sampleRate: 48000, decodeAudioData: vi.fn() };
+      return t;
+    };
+
+    it("takes a ten minute source and refuses a one hour one", () => {
+      const t = transport();
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 3600))).toBe(false);
+    });
+
+    it("counts a source that is decoding against the next one", async () => {
+      const t = transport();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => new Promise(() => {})),
+      );
+      void t.decodeAudioElement(audio("a.mp4", 600));
+      expect(t.fitsDecodeBudget(audio("a.mp4", 600))).toBe(true);
+      expect(t.fitsDecodeBudget(audio("b.mp4", 100))).toBe(false);
+      expect(t.fitsDecodeBudget(audio("c.mp4", 10))).toBe(true);
+      vi.unstubAllGlobals();
+    });
+
+    it("leaves a clip that has not loaded to its source", () => {
+      expect(transport().fitsDecodeBudget(audio("a.mp4", Number.NaN))).toBe(false);
+    });
+  });
+
   describe("decodeAudioElement retry policy (late-asset self-heal)", () => {
     function transportWithDecode(decodeImpl: () => Promise<AudioBuffer>) {
       const transport = new WebAudioTransport();
@@ -1803,6 +1868,22 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    it("decodes a file once for clips that open at different in-points of it", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await Promise.all([
+        transport.decodeAudioElement(el("take.wav#t=10")),
+        transport.decodeAudioElement(el("take.wav#t=90")),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]![0]).toBe(key("take.wav"));
+      vi.unstubAllGlobals();
+    });
+
     it("DOES blacklist genuinely undecodable bytes — not retried", async () => {
       const transport = transportWithDecode(async () => {
         throw new Error("unsupported codec");
@@ -1819,6 +1900,25 @@ describe("WebAudioTransport", () => {
       const second = await transport.decodeAudioElement(el("corrupt.wav"));
       expect(second).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(1); // short-circuited, no re-fetch
+      vi.unstubAllGlobals();
+    });
+
+    it("hands a clip that decodes short to its element, and keeps one short only by its priming", async () => {
+      // Measured in Chromium 156 and WebKit 27.2: a 4 s AAC file whose mdhd timescale says 44.1 kHz over a
+      // 48 kHz stream decodes to 3.669 s; Apple's HE-AAC of the same tone decodes to 4.0 s under a 4.133 s element.
+      const withDuration = (src: string, duration: number) =>
+        Object.assign(el(src), { duration }) as HTMLMediaElement;
+      const transport = transportWithDecode(async () => ({ duration: 3.669 }) as AudioBuffer);
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) });
+      vi.stubGlobal("fetch", fetchMock);
+      expect(await transport.decodeAudioElement(withDuration("vo.m4a", 4))).toBeNull();
+      expect(failedSrcs(transport).has(key("vo.m4a"))).toBe(true);
+
+      const primed = transportWithDecode(async () => ({ duration: 4 }) as AudioBuffer);
+      expect(await primed.decodeAudioElement(withDuration("he.m4a", 4.133))).not.toBeNull();
+      expect(await primed.decodeAudioElement(withDuration("rec.webm", Infinity))).not.toBeNull();
       vi.unstubAllGlobals();
     });
 

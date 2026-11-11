@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readStore, writeStore } from "../../auth/store.js";
 import { setupTempAuthEnv, type EnvFixture } from "../../auth/_test-utils.js";
-import { CliRuntimeError } from "../../utils/commandResult.js";
+import { CliRuntimeError, registerRootExitRequester } from "../../utils/commandResult.js";
 
 // heygenUserId("alice"): the sha256-derived UUID the web app and Desktop also use.
 const ALICE_USER_ID = "2bd806c9-7f0e-50af-9a1f-c3328fa763a9";
@@ -109,6 +109,9 @@ describe("auth login", () => {
         "REMOTE_CONTAINERS",
         "GITPOD_WORKSPACE_ID",
         "container",
+        "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_ENTRYPOINT",
       ].map((key) => [key, process.env[key]]),
     );
     for (const key of Object.keys(runtimeEnv)) delete process.env[key];
@@ -130,6 +133,7 @@ describe("auth login", () => {
     for (const token of Object.keys(usersByToken)) delete usersByToken[token];
     for (const fn of Object.values(telemetry)) fn.mockClear();
     for (const fn of Object.values(deviceAuth)) fn.mockClear();
+    for (const fn of Object.values(browserAuth)) fn.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -317,6 +321,21 @@ describe("auth login", () => {
     expect(deviceAuth.start).not.toHaveBeenCalled();
   });
 
+  it("lets a coding agent on this machine open the browser sign-in without a terminal", async () => {
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await runCommand({});
+    expect(browserAuth.start).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a coding agent in CI off the browser sign-in", async () => {
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
+    process.env["CI"] = "true";
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);
+    expect(browserAuth.start).not.toHaveBeenCalled();
+  });
+
   it("opens verification_uri_complete without asking the user to re-enter the code", async () => {
     deviceChallenge.verificationUriComplete =
       "https://app.heygen.com/oauth/device?user_code=ABCD-2345";
@@ -373,6 +392,43 @@ describe("auth login", () => {
     expect(telemetry.trackAuthLoginCompleted).toHaveBeenCalledWith("oauth", "b@example.com");
   });
 
+  it("tells a timed-out browser login how to recover", async () => {
+    browserAuth.start.mockRejectedValueOnce(new Error("OAuth callback timed out after 60 minutes"));
+    await expect(runCommand({})).rejects.toThrow();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Run `hyperframes auth login` again"),
+    );
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_timeout");
+  });
+
+  it("does not offer the recovery line for other browser login failures", async () => {
+    browserAuth.start.mockRejectedValueOnce(
+      new Error("OAuth state mismatch — possible CSRF, aborting."),
+    );
+    await expect(runCommand({})).rejects.toThrow();
+    expect(console.error).not.toHaveBeenCalledWith(
+      expect.stringContaining("hyperframes auth login"),
+    );
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_error");
+  });
+
+  it("records Ctrl+C during the browser wait as aborted and exits", async () => {
+    const exit = vi.fn();
+    registerRootExitRequester(exit);
+    const before = process.listeners("SIGINT");
+    browserAuth.start.mockImplementationOnce(async () => {
+      const added = process.listeners("SIGINT").filter((listener) => !before.includes(listener));
+      added[0]?.("SIGINT");
+      throw new Error("interrupted");
+    });
+
+    await expect(runCommand({})).rejects.toThrow();
+
+    expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "aborted");
+    expect(exit).toHaveBeenCalledWith(130);
+    expect(process.listeners("SIGINT")).toEqual(before);
+  });
+
   it("refuses device authorization in CI", async () => {
     process.env["CI"] = "true";
     await expect(runCommand({ device: true })).rejects.toThrow(/Invalid command usage/);
@@ -385,12 +441,10 @@ describe("auth login", () => {
     expect(deviceAuth.start).toHaveBeenCalledOnce();
   });
 
-  it("refuses device authorization when either terminal stream is not a TTY", async () => {
-    Object.defineProperty(process.stdout, "isTTY", {
-      configurable: true,
-      value: undefined,
-    });
-    await expect(runCommand({ device: true })).rejects.toThrow(/Invalid command usage/);
-    expect(deviceAuth.start).not.toHaveBeenCalled();
+  it("runs device authorization without a terminal, where only a URL and code are printed", async () => {
+    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: undefined });
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
+    await runCommand({ device: true });
+    expect(deviceAuth.start).toHaveBeenCalledOnce();
   });
 });

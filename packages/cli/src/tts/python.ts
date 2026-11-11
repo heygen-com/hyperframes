@@ -7,6 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 type PythonOverrideValidation = { ok: true } | { ok: false; reason: string };
 
@@ -34,16 +35,7 @@ export function findPython(): string | undefined {
   if (override && validatePythonOverride(override).ok) return override;
   for (const name of ["python3", "python"]) {
     try {
-      const cmd = process.platform === "win32" ? "where" : "which";
-      const output = execFileSync(cmd, [name], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      });
-      const first = output
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .find(Boolean);
+      const first = findTrustedExecutable(name);
       if (!first) continue;
 
       // Verify it's Python 3
@@ -82,9 +74,22 @@ function withoutPythonPath(): NodeJS.ProcessEnv {
   return env;
 }
 
+// `python -c` puts the working directory first on sys.path; `sys` itself is built in.
+const WITHOUT_WORKING_DIRECTORY =
+  "import sys\nif sys.path and sys.path[0] == '': del sys.path[0]\n";
+
+/** `code` for `python -c`, importing only installed modules, never ones in the working directory. */
+export function isolatedPythonCode(code: string): string {
+  return WITHOUT_WORKING_DIRECTORY + code;
+}
+
 function runs(python: string, code: string, env: NodeJS.ProcessEnv): boolean {
   try {
-    execFileSync(python, ["-c", code], { stdio: ["pipe", "pipe", "pipe"], timeout: 10_000, env });
+    execFileSync(python, ["-c", isolatedPythonCode(code)], {
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 10_000,
+      env,
+    });
     return true;
   } catch {
     return false;

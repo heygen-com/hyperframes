@@ -81,11 +81,18 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const probing = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await probing;
 
-    expect(result.supported).toBe(false);
-    expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
-    expect(result.timedOut).toBe(true);
+      expect(result.supported).toBe(false);
+      expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
+      expect(result.timedOut).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports frames that are not a PNG as unsupported, not as a slow start", async () => {
@@ -102,10 +109,17 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.timedOut).toBe(false);
+      expect(result.supported).toBe(false);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {
@@ -1610,22 +1624,28 @@ describe("browser pool", () => {
     _setPuppeteerForTests(undefined);
   });
 
-  it("keeps the launch diagnostic on stderr when a command emits JSON", async () => {
-    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const result = await acquireBrowser(["--no-sandbox"], poolCfg);
-      await result.release();
+  it.each([undefined, "1"])(
+    "emits the launch diagnostic only in debug mode (%s)",
+    async (debug) => {
+      vi.stubEnv("HF_DEBUG_RENDER", debug);
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+        await result.release();
 
-      expect(stderr).toHaveBeenCalledWith(
-        expect.stringMatching(/^\[BrowserManager\] Browser launched/),
-      );
-      expect(stdout).not.toHaveBeenCalled();
-    } finally {
-      stdout.mockRestore();
-      stderr.mockRestore();
-    }
-  });
+        const launches = stderr.mock.calls.filter(([line]) =>
+          String(line).startsWith("[BrowserManager] Browser launched"),
+        );
+        expect(launches.length).toBe(debug ? 1 : 0);
+        expect(stdout).not.toHaveBeenCalled();
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("sequential acquires with pool enabled return the same browser", async () => {
     const first = await acquireBrowser(["--no-sandbox"], poolCfg);

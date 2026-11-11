@@ -1,4 +1,5 @@
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
+import type { StopCode } from "../utils/checkPipeline.js";
 import type { OutputResolutionIssueKind } from "@hyperframes/core";
 import { redactTelemetryString } from "@hyperframes/core/telemetry-redaction";
 import type { SubTimelineWaitOutcome } from "@hyperframes/engine";
@@ -8,6 +9,10 @@ import { flush, shouldTrack, trackEvent } from "./client.js";
 import { readConfig } from "./config.js";
 import { getPowerState } from "./system.js";
 import type { RenderCpuTelemetryPayload } from "./renderCpu.js";
+import {
+  type RenderMotionBlurTelemetryPayload,
+  renderMotionBlurEventProperties,
+} from "./renderMotionBlur.js";
 import { CliRuntimeError } from "../utils/commandResult.js";
 
 // Power state is volatile (a laptop docks/undocks mid-session), so it is
@@ -274,7 +279,17 @@ export function trackCommand(command: string, runId?: string): void {
   trackEvent("cli_command", {
     command,
     ...runIdField(runId),
+    ...installedSkillsFields(),
   });
+}
+
+function installedSkillsFields(): Record<string, string> {
+  const config = readConfig();
+  if (!config.skillsInstalled) return {};
+  return {
+    skills_installed: config.skillsInstalled.join(","),
+    skills_outdated: (config.skillsOutdated ?? []).join(","),
+  };
 }
 
 /**
@@ -488,7 +503,8 @@ export function trackRenderComplete(
   } & RenderObservabilityTelemetryPayload &
     RenderOutputShapeTelemetryPayload &
     RenderEnvironmentTelemetryPayload &
-    RenderCpuTelemetryPayload,
+    RenderCpuTelemetryPayload &
+    RenderMotionBlurTelemetryPayload,
 ): void {
   trackEvent(
     "render_complete",
@@ -614,6 +630,7 @@ export function trackRenderComplete(
       ...renderOutputShapeEventProperties(props),
       ...renderEnvironmentEventProperties(props),
       ...renderCpuEventProperties(props),
+      ...renderMotionBlurEventProperties(props),
       composition_duration_ms: props.compositionDurationMs,
       composition_width: props.compositionWidth,
       composition_height: props.compositionHeight,
@@ -859,7 +876,7 @@ export type AuthLoginFailureReason =
   | "flow_timeout" // OAuth callback wait elapsed (user closed the tab / walked away)
   | "rejected" // backend rejected the supplied API key (401)
   | "invalid_input" // key was empty, header-unsafe, or too short
-  | "aborted"; // prompt cancelled, or no key arrived on stdin before timeout
+  | "aborted"; // prompt or browser wait cancelled, or no key arrived on stdin before timeout
 
 export function trackAuthLoginStarted(method: AuthLoginMethod, distinctId?: string): void {
   trackEvent("auth_login_started", { method }, distinctId);
@@ -991,6 +1008,53 @@ export function trackCommandFailure(
 // the caller (init / skill pipeline) treated captions as skippable.
 export function trackTranscribeUnavailable(props: { optional: boolean }): void {
   trackEvent("transcribe_unavailable", { optional: props.optional });
+}
+
+// A reverse session could not be recorded. `cause` is a closed set (never free text) so an
+// alert can page on a failing start route; `status` is the HTTP status when there was one.
+export type ReverseUnrecordedCause =
+  | "not_signed_in"
+  | "http_4xx"
+  | "http_5xx"
+  | "http_other"
+  | "network"
+  | "bad_body";
+
+export function trackReverseStartUnrecorded(props: {
+  cause: ReverseUnrecordedCause;
+  status?: number;
+}): void {
+  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+}
+
+export function trackSkillCommandRan(props: {
+  skill: string;
+  command: string;
+  signedIn?: boolean;
+  sessionId?: string;
+}): void {
+  trackEvent("skill_command_ran", {
+    authoring_skill: props.skill,
+    command: props.command,
+    signed_in: props.signedIn,
+    session_id: props.sessionId,
+  });
+}
+
+// `billing` could not open a checkout. `reason` is the closed CheckoutFailure class, never the message.
+export function trackBillingCheckoutFailed(props: {
+  reason: "checkout_unavailable" | "checkout_network" | "checkout_rejected";
+}): void {
+  trackEvent("cli_billing_checkout_failed", { reason: props.reason });
+}
+
+export function trackBillingCheckoutReturnRefused(): void {
+  trackEvent("cli_billing_checkout_return_refused", {});
+}
+
+// `billing` waited out its timeout with no payment: the person did not finish, nothing is broken.
+export function trackBillingWaitTimeout(props: { action: "subscribe" | "add-credits" }): void {
+  trackEvent("cli_billing_wait_timeout", { action: props.action });
 }
 
 // grade-compare / compare stand up headless Chrome and render up to 16 cells.
@@ -1160,6 +1224,9 @@ export function trackCheckReport(props: {
   contrastPoints: number;
   ok: boolean;
   exitCode: number;
+  stopCode?: StopCode;
+  /** Present when the project had videos Chrome cannot decode: counts and milliseconds only. */
+  mediaCopies?: { total: number; waitedMs: number; unfinished: number };
   runId?: string;
 }): void {
   trackEvent("check_report", {
@@ -1191,6 +1258,12 @@ export function trackCheckReport(props: {
     contrast_points: props.contrastPoints,
     ok: props.ok,
     exit_code: props.exitCode,
+    ...(props.stopCode && { stop_code: props.stopCode }),
+    ...(props.mediaCopies && {
+      copies_total: props.mediaCopies.total,
+      copies_waited_ms: props.mediaCopies.waitedMs,
+      copies_unfinished: props.mediaCopies.unfinished,
+    }),
     ...runIdField(props.runId),
   });
 }

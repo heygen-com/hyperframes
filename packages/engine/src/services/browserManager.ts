@@ -46,6 +46,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -64,17 +65,19 @@ interface WebGlProbeInfo {
   renderer: string;
 }
 
+export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
+  "swiftshader",
+  "llvmpipe",
+  "lavapipe",
+  "softpipe",
+  "mesa offscreen",
+  "microsoft basic render driver",
+  "software rasterizer",
+];
+
 function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
   const renderer = rendererInfo.trim().toLowerCase();
-  return (
-    renderer.includes("swiftshader") ||
-    renderer.includes("llvmpipe") ||
-    renderer.includes("lavapipe") ||
-    renderer.includes("softpipe") ||
-    renderer.includes("mesa offscreen") ||
-    renderer.includes("microsoft basic render driver") ||
-    renderer.includes("software rasterizer")
-  );
+  return SOFTWARE_WEBGL_RENDERER_TOKENS.some((token) => renderer.includes(token));
 }
 
 async function getPuppeteer(): Promise<PuppeteerNode> {
@@ -271,7 +274,7 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
     findManagedHeadlessShell(ours) ??
@@ -952,9 +955,10 @@ async function launchBrowser(
     const gpuFlags = fingerprint.args.filter(
       (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
     );
-    console.error(
-      `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
-    );
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(
+        `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
+      );
 
     if (captureMode === "beginframe") {
       let result = await probe(browser);
@@ -1296,10 +1300,13 @@ export async function assertWebGpuAdapterAvailable(
         return await Promise.race([
           probe(),
           new Promise<false>((resolve) => {
-            timer = setTimeout(() => {
-              expired = true;
-              resolve(false);
-            }, timeoutMs);
+            timer = (globalThis.window?.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(
+              () => {
+                expired = true;
+                resolve(false);
+              },
+              timeoutMs,
+            );
           }),
         ]);
       } catch {

@@ -25,6 +25,7 @@ import {
 } from "./gsapShared";
 import { useStableHandlers } from "./useStableHandlers";
 import { progressAtTime, runEaseOf, timeAtProgress, warpsTime } from "../utils/gsapKeyframeEases";
+import { countOf } from "../utils/countOf";
 
 type RecordedKeyframe = {
   percentage: number;
@@ -375,7 +376,7 @@ export function useGestureCommit({
         }
         trackPreviewEditResult("gesture_recording", recordingMethodRef.current, outcome.finish());
       }
-      showToast(`Recorded ${sortedPcts.length} keyframes`, "info");
+      showToast(`Recorded ${countOf(sortedPcts.length, "keyframe")}`, "info");
     } catch (err) {
       console.error("[GR:error]", err);
       showToast(`Gesture commit failed: ${err}`, "error");

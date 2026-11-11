@@ -22,14 +22,21 @@ import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import {
+  STUDIO_PREVIEW_ERROR_KINDS,
   STUDIO_PREVIEW_ERRORS,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
 } from "@hyperframes/core/studio-preview-mark";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
-import { PREVIEW_BUNDLE_OPTIONS, PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./preview";
+import {
+  PREVIEW_BUNDLE_OPTIONS,
+  PREVIEW_CAPTURE_PARAM,
+  registerPreviewRoutes,
+  scriptJson,
+} from "./preview";
 import { registerFileRoutes } from "./files";
 import { createPreviewDocumentStore } from "../helpers/previewDocumentStore";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "../helpers/mediaRange";
 import type { StudioApiAdapter } from "../types";
 import {
   affectsPreview,
@@ -275,6 +282,24 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("window.AUTHOR_SEEN = 1");
   });
 
+  it("keeps the accelerated-canvas tracker before authored scripts in blur previews", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><script>window.AUTHOR_CANVAS = 1</script></head><body data-motion-blur="on"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.indexOf("data-hf-accel-tracker")).toBeGreaterThan(-1);
+    expect(html.indexOf("data-hf-accel-tracker")).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+    expect(html.indexOf('src="/api/runtime.js"')).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+  });
+
   it("serves one preview runtime when the page on disk already links one", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -371,6 +396,63 @@ describe("registerPreviewRoutes", () => {
     );
     raise({ message: "Uncaught Error: GSAP could not load" });
     expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["Uncaught Error: GSAP could not load"]);
+  });
+
+  it("writes a value into a script so it cannot close the tag or end the line", () => {
+    const out = scriptJson("</script><!--\u2028\u2029");
+    expect(out).not.toMatch(/<|\u2028|\u2029/);
+    expect(JSON.parse(out)).toBe("</script><!--\u2028\u2029");
+  });
+
+  it("records the kind and origin of each early error, never its text, and leaves the messages as they were", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<!DOCTYPE html><html><head></head><body></body></html>",
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    const body =
+      new RegExp(`<script>([^<]*${STUDIO_PREVIEW_ERROR_KINDS}[^<]*)</script>`).exec(html)?.[1] ??
+      "";
+
+    const previewWindow: Record<string, unknown> = {
+      location: { href: "http://localhost/api/projects/demo/preview/", origin: "http://localhost" },
+    };
+    let raise: (event: object) => void = () => undefined;
+    new Function("window", "addEventListener", body)(
+      previewWindow,
+      (_type: string, listener: typeof raise) => (raise = listener),
+    );
+    class Custom extends Error {}
+    raise({
+      message: "a",
+      error: new SyntaxError("secret one"),
+      filename: "http://localhost/api/runtime.js",
+    });
+    raise({
+      message: "b",
+      error: new TypeError("secret two"),
+      filename: "http://localhost/api/projects/demo/preview/app.js",
+    });
+    raise({
+      message: "c",
+      error: new Custom("secret three"),
+      filename: "http://localhost/assets/studio.js",
+    });
+    raise({ message: "d", filename: "https://cdn.example.com/lib.js" });
+    raise({ message: "e", error: new ReferenceError("secret four"), filename: "" });
+
+    expect(previewWindow[STUDIO_PREVIEW_ERRORS]).toEqual(["a", "b", "c", "d", "e"]);
+    expect(previewWindow[STUDIO_PREVIEW_ERROR_KINDS]).toEqual([
+      { name: "SyntaxError", origin: "runtime" },
+      { name: "TypeError", origin: "project" },
+      { name: "other", origin: "studio" },
+      { name: "other", origin: "unknown" },
+      { name: "ReferenceError", origin: "unknown" },
+    ]);
+    expect(JSON.stringify(previewWindow[STUDIO_PREVIEW_ERROR_KINDS])).not.toContain("secret");
   });
 
   it("serves a later scene's image lazy, and captures every image eager under a capture-mode mark", async () => {
@@ -1476,6 +1558,12 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       variant?: "h264" | "vp8",
       box?: { width: number; height: number },
     ) => Promise<string>;
+    resolveStillImpl?: (
+      projectDir: string,
+      absoluteSourcePath: string,
+      at: number,
+      box?: { width: number; height: number },
+    ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
       codecName: string;
@@ -1501,6 +1589,11 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
+      resolveStill:
+        opts.resolveStillImpl ??
+        (async () => {
+          throw new Error("no resolveStill impl configured for this test");
+        }),
       waitForProxy,
       ProxyWaitTimeoutError,
       PROXY_PENDING_RETRY_AFTER_SECONDS,
@@ -1551,6 +1644,71 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     return import("./preview.js");
   }
 
+  it.each(["bundled", "disk after null bundle", "disk after failed bundle"])(
+    "installs preview hooks before authored head consumers with flags, facts and error capture already present (%s)",
+    async (path) => {
+      const projectDir = createProjectDir();
+      const authored = `<!doctype html><html><head>
+        <script data-hf-accel-tracker>window.TRACKER_KEPT = true;</script>
+        <script data-hyperframes-preview-runtime="1" src="/stale-runtime.js"></script>
+        <script id="head-consumer">window.HEAD_CONSUMER = document.createElement("video").requestVideoFrameCallback;</script>
+        <script id="head-library" src="assets/head-library.js"></script>
+      </head><body><main data-composition-id="main" data-duration="2" data-motion-blur="on"></main>
+        <script id="body-consumer">window.BODY_CONSUMER = true;</script>
+      </body></html>`;
+      writeFileSync(join(projectDir, "index.html"), authored);
+      writeFileSync(
+        join(projectDir, "scene.html"),
+        `<template><main data-composition-id="scene" data-duration="2"></main><script id="body-consumer">window.BODY_CONSUMER = true;</script></template>`,
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({
+          "/clip.webm": {
+            codecName: "vp9",
+            browserHostile: true,
+            representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+          },
+        }),
+      });
+      const app = new Hono();
+      register(
+        app,
+        createAdapter(projectDir, {
+          bundle: async () => {
+            if (path === "disk after failed bundle") throw new Error("bundler unavailable");
+            return path === "bundled" ? authored : null;
+          },
+        }),
+      );
+      for (const suffix of ["", "/comp/scene.html"]) {
+        const response = await app.request("http://localhost/projects/demo/preview" + suffix);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        const runtime = html.indexOf('src="/api/runtime.js"');
+        expect(runtime).toBeGreaterThan(-1);
+        for (const early of [
+          `name="${STUDIO_PREVIEW_MARK_META}"`,
+          `window.${STUDIO_PREVIEW_ERRORS}=`,
+          "window.__HF_MEDIA_CODEC_MAP__=",
+          "window.__HF_MEDIA_SOURCE_FACTS__=",
+        ]) {
+          expect(html.indexOf(early)).toBeGreaterThan(-1);
+          expect(html.indexOf(early)).toBeLessThan(runtime);
+        }
+        for (const authoredId of ["head-consumer", "head-library", "body-consumer"])
+          expect(runtime).toBeLessThan(html.indexOf(`id="${authoredId}"`));
+        expect(html).not.toContain("stale-runtime.js");
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hyperframes-preview-runtime]"),
+        ).toHaveLength(1);
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hf-accel-tracker]"),
+        ).toHaveLength(1);
+        expect(html).toContain("window.TRACKER_KEPT = true;");
+      }
+    },
+  );
+
   describe("?hf-proxy=h264 on the static asset route", () => {
     it("serves proxy bytes with Accept-Ranges on a full request, and a 206 range slice on a Range request", async () => {
       const projectDir = createProjectDir();
@@ -1594,6 +1752,32 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(ranged.headers.get("Content-Range")).toBe("bytes 0-9/20");
     });
 
+    it("makes the copy at background priority when the request says it is for later", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveProxyMock = vi.fn(async () => {
+        const proxyPath = join(projectDir, "proxy.mp4");
+        writeFileSync(proxyPath, "proxybytes");
+        return proxyPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveProxyImpl: resolveProxyMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264", {
+        headers: { "X-HF-Proxy-Priority": "0" },
+      });
+      expect(resolveProxyMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        "h264",
+        undefined,
+        { background: true },
+      );
+    });
+
     it("puts the copy ahead of the queue when the request says the video is at the playhead", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -1618,6 +1802,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         undefined,
         { priority: true },
       );
+    });
+
+    it("serves one frame of the video as a JPEG while its copy is made, behind the same gate", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const resolveStillMock = vi.fn(async () => {
+        const stillPath = join(projectDir, "still.jpg");
+        writeFileSync(stillPath, "jpegbytes");
+        return stillPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264";
+
+      const still = await app.request(`${url}&hf-proxy-still=12.34`);
+      expect(still.status).toBe(200);
+      expect(still.headers.get("Content-Type")).toBe("image/jpeg");
+      expect(await still.text()).toBe("jpegbytes");
+      expect(resolveStillMock).toHaveBeenCalledWith(
+        projectDir,
+        join(projectDir, "clip.mp4"),
+        12.34,
+        undefined,
+      );
+
+      expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
+      expect((await app.request(`${url}&hf-proxy-still=abc`)).status).toBe(404);
+      expect(
+        (await app.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy-still=1"))
+          .status,
+      ).toBe(404);
+      expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
@@ -2663,6 +2882,29 @@ describe("preview asset byte ranges", () => {
     });
     expect(res.status).toBe(416);
     expect(res.headers.get("Content-Range")).toBe("bytes */3");
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // A media element reads `bytes=N-` until its buffer is full, then leaves the response open.
+    // Served to EOF, each <video> held one of the browser's six connections, so seven clips on
+    // one file left every other request queued (#6029).
+    const projectDir = createProjectDir();
+    const size = 3 * 1024 * 1024 * 1024;
+    const fd = openSync(join(projectDir, "clip.mp4"), "w");
+    ftruncateSync(fd, size);
+    closeSync(fd);
+
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const res = await app.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { Range: "bytes=5000000-" },
+    });
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe(
+      `bytes 5000000-${5000000 + MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect(res.headers.get("Content-Length")).toBe(String(MAX_OPEN_MEDIA_RANGE_BYTES));
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 });
 

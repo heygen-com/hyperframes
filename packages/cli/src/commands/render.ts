@@ -1,5 +1,7 @@
+import type { ReferenceBackgroundResult } from "@hyperframes/producer";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { recordRenderSuccess, registerRenderOutput } from "@hyperframes/studio-server/history";
+import { resolveGsapVendorDir } from "../server/gsapVendor.js";
 import { failCommand, requestCliExit, scheduleCliExit } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -14,6 +16,7 @@ import { seedProjectAuthoringSkill } from "../utils/projectConfig.js";
 import { deliveryFlagArgs } from "../utils/deliveryFlags.js";
 import type { CatalogUsage } from "../utils/catalogUsage.js";
 import { presentRenderPlan } from "./render/present.js";
+import { acquireRenderSlot } from "./render/renderSlot.js";
 import { executeRenderPlan, renderLintContinuationHint, runRenderLint } from "./render/execute.js";
 // Test-only seams retained at the command boundary for render behavior tests.
 export { resolveBrowserGpuForCli, renderLintContinuationHint, runRenderLint };
@@ -91,6 +94,7 @@ import {
   type RenderEnvironmentTelemetryPayload,
 } from "../telemetry/events.js";
 import { maybePromptRenderFeedback } from "../telemetry/feedback.js";
+import { renderMotionBlurTelemetryPayload } from "../telemetry/renderMotionBlur.js";
 import {
   readConfigFresh,
   releaseDeParallelRouterLatch,
@@ -137,6 +141,7 @@ import { macosOldChromeCrashRemediation } from "../browser/macosOldChromeCrash.j
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { killOrphanedProcessesForRender } from "../utils/orphanCleanup.js";
 import { createRenderCancellationScope } from "../utils/renderCancellation.js";
+import { audioLoweredWarning } from "../utils/audioLoweredWarning.js";
 import {
   markRenderSucceeded,
   runPostRenderStep,
@@ -146,6 +151,7 @@ import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
+  type PageMotionBlurSummary,
   type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
@@ -289,6 +295,14 @@ export default defineCommand({
       description:
         "libvpx-vp9 -cpu-used value for WebM encodes (-8 to 8). Higher is faster with a larger quality/size tradeoff. Env: PRODUCER_VP9_CPU_USED.",
     },
+    "chroma-subsampling": {
+      type: "string",
+      description:
+        "MP4 chroma: 420 (default) or 444. 444 keeps full-resolution colour for thin coloured " +
+        "text and UI (yuv444p, lossless PNG capture, slower). Software encoder and SDR MP4 only; " +
+        "many players cannot decode 4:4:4.",
+      default: "420",
+    },
     gpu: { type: "boolean", description: "Use GPU encoding", default: false },
     "browser-gpu": {
       type: "boolean",
@@ -315,6 +329,15 @@ export default defineCommand({
       type: "boolean",
       description:
         "Allow output with structured capture-readiness warnings (default). Use --no-best-effort to fail on missing or unready media.",
+      default: true,
+    },
+    wait: {
+      type: "boolean",
+      description:
+        "Wait while another render of this user account runs, then start (default): renders side by " +
+        "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
+        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
+        "across user accounts.",
       default: true,
     },
     strict: {
@@ -371,7 +394,7 @@ export default defineCommand({
     resolution: {
       type: "string",
       description:
-        "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; the scale must be an integer multiple. Not yet supported with --hdr.",
+        "Output resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160), landscape-1440p (2560x1440), portrait-1440p (1440x2560), square-1440p (1440x1440). Aliases: 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square. The composition is unchanged — Chrome renders at higher DPR (deviceScaleFactor) so the captured screenshot lands at the requested dimensions. Aspect ratio must match the composition; upscaling requires an integer multiple. Not yet supported with --hdr.",
     },
     "page-side-compositing": {
       type: "boolean",
@@ -477,6 +500,7 @@ export default defineCommand({
           renderDocker,
           renderLocal,
           checkResolution: checkRenderResolutionPreflight,
+          acquireRenderSlot,
         },
         cancellation,
       );
@@ -494,7 +518,8 @@ export default defineCommand({
   },
 });
 
-export interface SingleRenderResult {
+export interface SingleRenderResult extends Partial<ReferenceBackgroundResult> {
+  motionBlur?: PageMotionBlurSummary;
   durationMs?: number;
   renderTimeMs: number;
   outcome?: "completed" | "completed_with_warnings";
@@ -546,6 +571,8 @@ export interface RenderOptions {
   maxBitrate?: string;
   bufferSize?: string;
   videoFrameFormat?: VideoFrameFormat;
+  /** "444" opts an SDR MP4 render into full-resolution chroma. Absent means 4:2:0. */
+  chromaSubsampling?: "420" | "444";
   pageMotionBlur?: "off";
   quiet: boolean;
   debug?: boolean;
@@ -558,6 +585,7 @@ export interface RenderOptions {
   variables?: Record<string, unknown>;
   entryFile?: string;
   exitAfterComplete?: boolean;
+  embedded?: boolean;
   /** Output resolution preset; see `resolveDeviceScaleFactor` for constraints. */
   outputResolution?: CanvasResolution;
   /** Whether the resolution names a tier without fixing an orientation. */
@@ -882,6 +910,7 @@ async function renderDocker(
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       pageMotionBlur: options.pageMotionBlur,
       quiet: options.quiet,
       variables: options.variables,
@@ -930,7 +959,7 @@ async function renderDocker(
   // AND committed the artifact. Mirror renderLocal's post-success guarantee
   // so any late throw here (telemetry flush, feedback prompt) cannot flip
   // the exit code.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(projectDir, outputPath, "completed", capture).then(() => {}),
   );
@@ -972,7 +1001,7 @@ async function renderDocker(
   runPostRenderStep("warnIfWebmAlphaDropped", () =>
     warnIfWebmAlphaDropped(outputPath, options.format, options.quiet),
   );
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return { renderTimeMs: elapsed };
 }
 
@@ -1114,6 +1143,10 @@ async function executeLocalRender(
 
   cancellation.checkAncestors();
   cancellation.signal.throwIfAborted();
+  const gsapVendorDir = resolveGsapVendorDir();
+  if (gsapVendorDir && !process.env.HYPERFRAMES_GSAP_VENDOR_DIR) {
+    process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
+  }
   const producer = await loadProducer();
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
@@ -1168,6 +1201,7 @@ async function executeLocalRender(
       maxBitrate: options.maxBitrate,
       bufferSize: options.bufferSize,
       videoFrameFormat: options.videoFrameFormat,
+      chromaSubsampling: options.chromaSubsampling,
       pageMotionBlur: options.pageMotionBlur,
       variables: options.variables,
       entryFile: options.entryFile,
@@ -1236,7 +1270,7 @@ async function executeLocalRender(
   // point on, ANY thrown teardown error must not be allowed to override
   // the exit code. Field signal ts=1784169760 / ts=1784171150 / ts=1784172467
   // (win32/x64, CLI 0.7.58): valid MP4 on disk, exited 1 with no error print.
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   await runPostRenderStepAsync("recordRenderSuccess", () =>
     recordRenderSuccess(
       projectDir,
@@ -1254,6 +1288,8 @@ async function executeLocalRender(
       console.warn(c.warn(`  [${warning.code}] ${warning.message}`));
     }
   }
+  const audioLowered = audioLoweredWarning(job.audioLoweredDb);
+  if (audioLowered) console.warn(c.warn(`  [${audioLowered.code}] ${audioLowered.message}`));
   runPostRenderStep("trackRenderMetrics", () =>
     trackRenderMetrics(job, elapsed, options, false, cpuUsage),
   );
@@ -1280,17 +1316,22 @@ async function executeLocalRender(
       }),
     );
   }
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   const durationMs = job.perfSummary
     ? Math.round(job.perfSummary.compositionDurationSeconds * 1000)
     : undefined;
   const outcome =
     job.outcome === "completed_with_warnings" ? "completed_with_warnings" : "completed";
   return {
+    ...producer.referenceBackgroundResult(job[producer.REFERENCE_BACKGROUND_FIELD]),
+    motionBlur: job.perfSummary?.motionBlur,
     renderTimeMs: elapsed,
     durationMs,
     outcome,
-    warnings: job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+    warnings: [
+      ...job.warnings.map((warning) => ({ code: warning.code, message: warning.message })),
+      ...(audioLowered ? [audioLowered] : []),
+    ],
   };
 }
 
@@ -1308,21 +1349,24 @@ async function renderRange(input: {
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
+  let reference = producer.referenceBackgroundResult(undefined);
   try {
     const config = producer.distributedConfigFromRequest(input.request, {
       logger: input.logger,
       abortSignal: input.signal,
     });
-    ({ framesEncoded } = await producer.renderSpan(
+    const spanResult = await producer.renderSpan(
       input.projectDir,
       config,
       input.range,
       input.outputPath,
-    ));
+    );
+    framesEncoded = spanResult.framesEncoded;
+    reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
   } catch (error: unknown) {
     handleRenderError(error, options, input.startTime, input.cpu, false, "");
   }
-  markRenderSucceeded();
+  if (!options.embedded) markRenderSucceeded();
   const elapsed = Date.now() - input.startTime;
   input.cpu.stop();
   printRenderComplete({
@@ -1333,9 +1377,10 @@ async function renderRange(input: {
     quiet: options.quiet,
     format: options.format,
   });
-  if (options.exitAfterComplete) scheduleCliExit();
+  if (options.exitAfterComplete && !options.embedded) scheduleCliExit();
   return {
     renderTimeMs: elapsed,
+    ...reference,
     durationMs: Math.round((framesEncoded / fpsToNumber(options.fps)) * 1000),
     outcome: "completed",
     warnings: [],
@@ -1830,7 +1875,7 @@ const KNOWN_STAGE_CODES: Readonly<Record<string, string>> = {
 };
 
 // Live counts in a progress label ("Capturing frame 120/600 (6 workers)") would make a code per render.
-const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+/g;
+const STAGE_COUNTS = /\([^)]*\)|\d+\/\d+|\d+ of \d+/g;
 
 export function normalizeStageCode(stage: string): string {
   const base = stage.replace(STAGE_COUNTS, "").trim();
@@ -1968,6 +2013,7 @@ function trackRenderMetrics(
     catalogUsage: options.catalogUsage,
     ...renderOutputShapeTelemetryPayload(options),
     ...renderEnvironmentTelemetryPayload(options),
+    ...renderMotionBlurTelemetryPayload(perf?.motionBlur),
     chromeBrowserRssPeakMb: perf?.chromeMemory?.browserRssPeakMb,
     chromeRendererRssPeakMb: perf?.chromeMemory?.rendererRssPeakMb,
     chromeRssLastMb: perf?.chromeMemory?.rssLastMb,

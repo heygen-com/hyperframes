@@ -13,6 +13,7 @@ import { runtimeProtocolMetadata } from "./protocol";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
+import { bytesOfSource } from "./preloadMedia";
 import type { RuntimeTimelineChildLike, RuntimeTimelineLike } from "./types";
 import {
   registerRuntimeDataHandler,
@@ -1980,6 +1981,22 @@ describe("initSandboxRuntimeModular", () => {
 
       expect(timeline.duration()).toBe(10);
       expect(window.__hf?.animationEnd?.()).toBe(4);
+    });
+
+    it("reports a clip's window with its start reference resolved", () => {
+      mountRoot("20");
+      const intro = document.createElement("div");
+      intro.id = "intro";
+      intro.setAttribute("data-start", "0");
+      intro.setAttribute("data-duration", "3");
+      const next = document.createElement("div");
+      next.setAttribute("data-start", "intro + 1");
+      next.setAttribute("data-duration", "4");
+      document.querySelector("[data-root]")!.append(intro, next);
+      window.__timelines = { main: createPaddableMockTimeline(4) };
+      initSandboxRuntimeModular();
+
+      expect(window.__hf?.clipWindow?.(next)).toEqual({ start: 4, end: 8 });
     });
 
     it("keeps the animation end when a longer declared length pads the timeline again", () => {
@@ -4524,6 +4541,91 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  // GH #5603: a rejected hold must fail render, snapshot and check rather than let them capture a
+  // scene that was never built.
+  describe("a rejected window.__hf.buildReady promise", () => {
+    const mountRoot = () => {
+      const root = document.createElement("div");
+      root.setAttribute("data-composition-id", "main");
+      root.setAttribute("data-root", "true");
+      root.setAttribute("data-start", "0");
+      root.setAttribute("data-width", "1920");
+      root.setAttribute("data-height", "1080");
+      document.body.appendChild(root);
+      window.__timelines = { main: createMockTimeline(10) };
+    };
+    const flush = async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    };
+
+    afterEach(() => {
+      delete window.__hfStartupError;
+    });
+
+    it("records a startup error naming the key and the reason", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        mesh: Promise.resolve(),
+        scene: Promise.reject(new Error("build failed: bad baked data")),
+      };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__hfStartupError).toContain('window.__hf.buildReady["scene"] rejected');
+      expect(window.__hfStartupError).toContain("Error: build failed: bad baked data");
+      expect(window.__hfStartupError).not.toContain('"mesh"');
+    });
+
+    it("holds render-ready until the rejection, then releases it with the error set", async () => {
+      mountRoot();
+      let rejectBuild: (reason: unknown) => void = () => {};
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = {
+        scene: new Promise<void>((_, reject) => {
+          rejectBuild = reject;
+        }),
+      };
+
+      initSandboxRuntimeModular();
+      expect(window.__renderReady).toBe(false);
+      expect(window.__hfStartupError).toBeUndefined();
+
+      rejectBuild("no WebGPU adapter");
+      await flush();
+
+      // The error lands in the same tick as render-ready, so no readiness poll sees one without the other.
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toContain('["scene"] rejected: no WebGPU adapter');
+    });
+
+    it("leaves no startup error when every hold resolves", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.resolve() };
+
+      initSandboxRuntimeModular();
+      await flush();
+
+      expect(window.__renderReady).toBe(true);
+      expect(window.__hfStartupError).toBeUndefined();
+    });
+
+    it("does not fail the next composition loaded after teardown", async () => {
+      mountRoot();
+      window.__hf = window.__hf || {};
+      window.__hf.buildReady = { scene: Promise.reject(new Error("first build failed")) };
+      initSandboxRuntimeModular();
+      await flush();
+      expect(window.__hfStartupError).toContain("first build failed");
+
+      window.__hfRuntimeTeardown?.();
+
+      expect(window.__hfStartupError).toBeUndefined();
+    });
+  });
+
   it("clears a stale buildReady entry on teardown so the next init isn't blocked by it", async () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
@@ -5739,6 +5841,23 @@ describe("initSandboxRuntimeModular", () => {
       expect(card.style.height).toBe("100%");
     });
 
+    it("leaves a still-loading image at its own size instead of filling the frame", () => {
+      const root = makeRoot();
+      const logo = document.createElement("img");
+      logo.setAttribute("data-start", "0");
+      logo.setAttribute("data-duration", "5");
+      logo.style.width = "340px";
+      root.appendChild(logo);
+      // Before its file loads, a width-only <img> measures 0px tall.
+      modelBrowserLayout(logo, { width: "340px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(logo.style.height).toBe("");
+      expect(logo.style.width).toBe("340px");
+    });
+
     it("puts back an author's display:none !important after measuring the clip", () => {
       const root = makeRoot();
       const card = document.createElement("div");
@@ -5923,6 +6042,103 @@ describe("initSandboxRuntimeModular", () => {
   // returns a node that outputs silence per the Web Audio spec rather than
   // throwing, so the composition played through with visuals animating and no
   // sound, and nothing was logged.
+  describe("bare audio in WebKit", () => {
+    useMockAudioContext();
+
+    const SAFARI =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
+
+    const startRouted = async (userAgent?: string, duration = 10, src = "/assets/track.mp3") => {
+      if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+      const audio = mountAudio(src);
+      Object.defineProperty(audio, "duration", { value: duration });
+      const capture = vi
+        .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
+        .mockResolvedValue({ el: audio } as never);
+      vi.spyOn(WebAudioTransport.prototype, "decodeAudioElement").mockResolvedValue(
+        {} as AudioBuffer,
+      );
+      const schedule = vi
+        .spyOn(WebAudioTransport.prototype, "schedulePlayback")
+        .mockResolvedValue({} as never);
+      const release = vi.spyOn(WebAudioTransport.prototype, "releaseRouted");
+      await startPlayback();
+      return { audio, schedule, release, capture };
+    };
+
+    it("hands the sound to a decoded buffer on the context clock once it is decoded", async () => {
+      const { audio, schedule, release } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      expect(schedule).toHaveBeenCalledTimes(1);
+    });
+
+    it("hands a 10 minute source to a decoded buffer", async () => {
+      const { audio, release } = await startRouted(SAFARI, 600);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("hands a 650 s source to a decoded buffer, past the old 600 s limit", async () => {
+      const { audio, release } = await startRouted(SAFARI, 650);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("leaves an hour-long source on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, 3600);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("leaves a clip of a long file on its element: decoding it would fetch the whole file first", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(null, { status: 206, headers: { "content-range": "bytes 0-0/68000000" } }),
+        ),
+      );
+      await bytesOfSource("/assets/long-film.mp4");
+      vi.unstubAllGlobals();
+      const { schedule, release } = await startRouted(SAFARI, 321, "/assets/long-film.mp4");
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("gives a clip that has not loaded its source's verdict", async () => {
+      vi.spyOn(WebAudioTransport.prototype, "fitsDecodeBudget").mockReturnValue(true);
+      const { audio, release } = await startRouted(SAFARI, Number.NaN);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+    });
+
+    it("keeps a clip that has not loaded, of a source nobody decodes, on its element", async () => {
+      const { schedule, release } = await startRouted(SAFARI, Number.NaN);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("returns a handed-over track to its element when the speed changes, to hold its pitch", async () => {
+      const { audio, schedule, release, capture } = await startRouted(SAFARI);
+      await vi.waitFor(() => expect(release).toHaveBeenCalledWith(audio));
+      vi.spyOn(WebAudioTransport.prototype, "hasHandedOverSources").mockReturnValue(true);
+      schedule.mockClear();
+      capture.mockClear();
+
+      setRate(1.5);
+
+      await vi.waitFor(() => expect(capture).toHaveBeenCalled());
+      expect(schedule).not.toHaveBeenCalled();
+    });
+
+    it("leaves the element on its route elsewhere", async () => {
+      const { schedule, release } = await startRouted();
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+  });
+
   describe("cross-origin audio without a CORS opt-in", () => {
     useMockAudioContext();
 
@@ -6382,6 +6598,30 @@ describe("initSandboxRuntimeModular", () => {
 
       expect(window.__player?.getTime()).toBeLessThan(0.1);
       expect(seeks.filter((t) => t > 0.1)).toEqual([]);
+    });
+  });
+  describe("a video the browser never starts loading", () => {
+    it("moves the film on past it after the wait and names it", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const video = mountAudio("/assets/clip.mp4", { muted: "" }, "video");
+      // What Safari reports for a video it never requested: loading, with no data and no bytes.
+      Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(video, "networkState", { value: 2, configurable: true });
+
+      await startPlayback();
+      for (let frame = 0; frame < 60 * 7; frame++) raf.step(1000 / 60);
+
+      expect(window.__player?.getTime()).toBeGreaterThan(1);
+      expect(
+        warn.mock.calls.some(([line]) =>
+          String(line).includes('clip.mp4": the browser never started loading it'),
+        ),
+      ).toBe(true);
     });
   });
   describe("an audible <video> routed through Web Audio", () => {

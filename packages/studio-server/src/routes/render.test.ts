@@ -44,6 +44,36 @@ function buildApp(spy: ReturnType<typeof vi.fn>): {
   return { app, rendersDir, cleanup: () => rmSync(rendersDir, { recursive: true, force: true }) };
 }
 
+describe("POST /projects/:id/render — job ids", () => {
+  it("gives two exports started in the same second their own job and output file", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-02T12:00:00Z"));
+    const spy = vi.fn();
+    const { app, rendersDir, cleanup } = buildApp(spy);
+    try {
+      const start = () =>
+        app.request("http://localhost/projects/demo/render", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ fps: 30, quality: "standard", format: "mp4" }),
+        });
+      const [first, second] = await Promise.all([start(), start()]);
+      const ids = [
+        ((await first.json()) as { jobId: string }).jobId,
+        ((await second.json()) as { jobId: string }).jobId,
+      ];
+
+      expect(new Set(ids).size).toBe(2);
+      expect(spy.mock.calls.map(([opts]) => opts.outputPath)).toEqual(
+        ids.map((id) => join(rendersDir, `${id}.mp4`)),
+      );
+    } finally {
+      vi.useRealTimers();
+      cleanup();
+    }
+  });
+});
+
 describe("GET /projects/:id/renders — stale sidecar status", () => {
   it("does not mark an existing output failed from stale metadata", async () => {
     const spy = vi.fn();
@@ -406,6 +436,23 @@ describe("POST /projects/:id/render — crf", () => {
     expect(res.status).toBe(400);
     expect(opts).toBeUndefined();
   });
+
+  it("forwards 4:4:4 chroma for mp4 and omits it when not requested", async () => {
+    const chroma = await post({ format: "mp4", chromaSubsampling: "444" });
+    expect(chroma.res.status).toBe(200);
+    expect(chroma.opts.chromaSubsampling).toBe("444");
+    expect((await post({ format: "mp4" })).opts).not.toHaveProperty("chromaSubsampling");
+  });
+
+  it.each([
+    { format: "webm", chromaSubsampling: "444" },
+    { format: "mp4", chromaSubsampling: "444", gpu: true },
+    { format: "mp4", chromaSubsampling: "422" },
+  ])("rejects chroma request %j with 400 and does not start a render", async (body) => {
+    const { res, opts } = await post(body);
+    expect(res.status).toBe(400);
+    expect(opts).toBeUndefined();
+  });
 });
 
 describe("POST /projects/:id/render — composition path safety", () => {
@@ -704,6 +751,34 @@ describe("POST /render/:jobId/cancel", () => {
       // SSE progress for a cancelled job must terminate (status is terminal).
       const progress = await app.request(`http://localhost/render/${jobId}/progress`);
       expect(progress.status).toBe(200);
+    } finally {
+      rmSync(rendersDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replies only once the adapter's stop has settled", async () => {
+    const { adapter, rendersDir } = createAdapter(vi.fn());
+    const baseStartRender = adapter.startRender.bind(adapter);
+    let settled = false;
+    adapter.startRender = (opts) => {
+      const state = baseStartRender(opts);
+      state.cancel = () =>
+        new Promise<void>((done) =>
+          setTimeout(() => {
+            settled = true;
+            state.status = "failed";
+            done();
+          }, 30),
+        );
+      return state;
+    };
+    const app = new Hono();
+    registerRenderRoutes(app, adapter);
+    try {
+      const jobId = await startJob(app);
+      const res = await app.request(`http://localhost/render/${jobId}/cancel`, { method: "POST" });
+      expect(settled).toBe(true);
+      expect(((await res.json()) as { status: string }).status).toBe("failed");
     } finally {
       rmSync(rendersDir, { recursive: true, force: true });
     }

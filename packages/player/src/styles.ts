@@ -202,6 +202,93 @@ export const PLAYER_STYLES = /* css */ `
     text-align: right;
   }
 
+  /* Loading assets and Buffering: the frame softly blurred, the mark alone over it with a light
+     passing over. filter, transform and opacity only, no backdrop-filter, which drops frames on
+     Safari; the frame is still while it waits, so the blur is painted once. */
+  .hfp-iframe,
+  .hfp-poster {
+    transition: filter 400ms ease-out;
+  }
+
+  :host([assets-loading]:not([assets-loading-ui="none"])) .hfp-iframe,
+  :host([assets-loading]:not([assets-loading-ui="none"])) .hfp-poster,
+  :host([buffering]:not([assets-loading-ui="none"])) .hfp-iframe,
+  :host([buffering]:not([assets-loading-ui="none"])) .hfp-poster {
+    filter: blur(6px) saturate(0.85);
+    transition-duration: 180ms;
+  }
+
+  .hfp-shader-loader.hfp-assets {
+    background: transparent;
+  }
+
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-panel {
+    grid-template-rows: auto;
+    width: auto;
+  }
+
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-title,
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-detail,
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-track,
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-progress {
+    display: none;
+  }
+
+  .hfp-shader-loader-mark {
+    position: relative;
+  }
+
+  .hfp-shader-loader-sheen {
+    display: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    mask-size: contain;
+    mask-repeat: no-repeat;
+    mask-position: center;
+    -webkit-mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+  }
+
+  .hfp-shader-loader.hfp-assets .hfp-shader-loader-sheen {
+    display: block;
+  }
+
+  .hfp-shader-loader-sheen::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 -60%;
+    width: 60%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+    animation: hfp-shader-loader-sweep 1700ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  .hfp-shader-loader:not(.hfp-visible):not(.hfp-hiding) .hfp-shader-loader-sheen::before {
+    animation-play-state: paused;
+  }
+
+  @keyframes hfp-shader-loader-sweep {
+    0% {
+      transform: translateX(0);
+    }
+    55%,
+    100% {
+      transform: translateX(280%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hfp-iframe,
+    .hfp-poster {
+      transition: none;
+    }
+
+    .hfp-shader-loader-sheen::before {
+      animation: none;
+    }
+  }
+
   @keyframes hfp-shader-loader-sheen {
     from {
       background-position: 140% 0;

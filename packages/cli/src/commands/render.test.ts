@@ -101,6 +101,7 @@ const browserManagerState = vi.hoisted(() => ({
 
 vi.mock("../utils/producer.js", () => ({
   loadProducer: vi.fn(async () => ({
+    ...(await import("../../../engine/src/services/referenceBackground.js")),
     createConsoleLogger: vi.fn((level: string) => {
       producerState.loggerLevels.push(level);
       return { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
@@ -532,6 +533,51 @@ describe("renderLocal browser GPU config", () => {
     expect(vi.mocked(trackRenderComplete).mock.calls[0]?.[0]).toMatchObject(cpu);
     expect(vi.mocked(trackRenderError).mock.calls[0]?.[0]).toMatchObject(cpu);
     expect(cpuSamplerState.samplers.map((s) => s.stopped)).toEqual([true, true]);
+  });
+
+  it.each([
+    { kind: "solid", rgb: [10, 46, 138] },
+    { kind: "none" },
+    { kind: "unsupported_non_solid" },
+    { kind: "unknown" },
+  ])("returns the same $kind background object as the remote receipt", async (background) => {
+    producerState.executeImpl = async (job) => {
+      job.reference_background = background;
+    };
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+    expect(result?.reference_background).toEqual(background);
+  });
+
+  it("warns that the whole mix was lowered, and the render still completes", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (job: { audioLoweredDb?: number }) => {
+      job.audioLoweredDb = 7.3;
+    };
+
+    const result = await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[audio_lowered] Audio lowered 7.3"));
+    expect(result?.outcome).toBe("completed");
+    expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
+    warn.mockRestore();
   });
 
   it("cleans orphaned browser trees before starting a local render", async () => {
@@ -1171,6 +1217,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
+  it("forwards chromaSubsampling to createRenderJob", async () => {
+    await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      chromaSubsampling: "444",
+    });
+
+    expect(producerState.createdJobs[0]?.chromaSubsampling).toBe("444");
+  });
+
   it("forwards debug mode to createRenderJob", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -1374,6 +1435,35 @@ describe("renderLocal browser GPU config", () => {
 
     vi.advanceTimersByTime(100);
     expect(consumeCommandResult().exitCode).toBe(0);
+  });
+
+  it("does not finalize the host command or mask a later upload failure when embedded", async () => {
+    const success = await import("../utils/render-success-state.js");
+    const lifecycle = await import("../utils/commandResult.js");
+    const exit = vi.spyOn(lifecycle, "scheduleCliExit");
+    success._resetRenderSuccessForTests();
+    const uploadFailure = new Error("upload failed after render");
+    try {
+      const share = async () => {
+        await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+          embedded: true,
+          exitAfterComplete: true,
+        });
+        throw uploadFailure;
+      };
+      await expect(share()).rejects.toBe(uploadFailure);
+      expect(exit).not.toHaveBeenCalled();
+      expect(success.isRunDelivered()).toBe(false);
+    } finally {
+      success._resetRenderSuccessForTests();
+    }
   });
 
   it("still completes the render when the output registry cannot be written", async () => {
@@ -2043,6 +2133,21 @@ describe("checkRenderResolutionPreflight", () => {
       ).toBeUndefined();
     });
 
+    it("clears a landscape-1440p preset on a portrait 720p composition (an exact 2×)", async () => {
+      expect(
+        await checkRenderResolutionPreflight(comp(720, 1280), "landscape-1440p", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("refuses `--resolution 1440p` on a 1920×1080 composition: 4/3 is not an integer scale", async () => {
+      const result = await checkRenderResolutionPreflight(
+        landscapeHtml,
+        "landscape-1440p",
+        agnostic,
+      );
+      expect(result?.kind).toBe("non-integer-scale");
+    });
+
     it("clears a landscape preset on a square composition", async () => {
       // aspect > 1 → landscape, aspect = 1 → square. Both self-heal.
       expect(
@@ -2324,6 +2429,9 @@ describe("normalizeStageCode", () => {
     expect(normalizeStageCode("Encoding frame 600/600")).toBe("encoding_video");
     expect(normalizeStageCode("Encoding frame 12/90")).toBe("encoding_video");
     expect(normalizeStageCode("Capturing frame 120/600 (6 workers)")).toBe("capturing_frame");
+    expect(normalizeStageCode("Checking effects, 240 of 240 frames")).toBe(
+      normalizeStageCode("Checking effects, 12 of 90 frames"),
+    );
     expect(normalizeStageCode("Streaming frame 3/40 (segment 1/2, 2 workers)")).toBe(
       "streaming_frame",
     );

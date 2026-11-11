@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
-import { registerPreviewRoutes } from "./routes/preview.js";
+import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
@@ -19,7 +19,13 @@ import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
 import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
+import {
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  requestHost,
+  sameOriginPost,
+} from "./helpers/requestIdentity.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
+import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -33,14 +39,88 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
-/**
- * Create a Hono sub-app with all studio API routes.
- *
- * Both the vite dev server and CLI embedded server mount this app
- * under /api, each providing their own adapter for host-specific behavior.
- */
-export function createStudioApi(adapter: StudioApiAdapter): Hono {
+const fromAnotherSite = (c: Context) => {
+  const site = c.req.header("sec-fetch-site");
+  return site === "cross-site" || site === "same-site";
+};
+
+const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+
+const sandboxPreviewForAnotherSiteOrCapture =
+  (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
+    await next();
+    c.header("Vary", "Sec-Fetch-Site", { append: true });
+    if (fromAnotherSite(c) || (sandboxCaptures && isThumbnailCapture(c)))
+      c.header("Content-Security-Policy", "sandbox allow-scripts");
+  };
+
+async function refuseThumbnailForAnotherSite(c: Context, next: Next) {
+  if (fromAnotherSite(c))
+    return c.json({ error: "forbidden: thumbnail requested by another site" }, 403);
+  return next();
+}
+
+function urlHost(url: string): string | undefined {
+  try {
+    return new URL(url).host || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function urlScheme(url: string): string | undefined {
+  try {
+    return new URL(url).protocol.replace(/:$/, "") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface StudioApiOptions extends CaptureSandboxOption {
+  allowedHosts?: readonly string[];
+}
+
+export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
+  api.use(
+    "/projects/:id/preview/*",
+    sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
+  );
+  api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
+  // This API is unauthenticated and simple cross-origin POSTs need no
+  // preflight, so the guard rejects writes the shared predicate refuses.
+  api.use(async function rejectCrossOriginWrites(c, next) {
+    if (c.req.method === "GET" || c.req.method === "HEAD" || c.req.method === "OPTIONS") {
+      return next();
+    }
+    const allowed = sameOriginPost({
+      host: c.req.header("host") ?? urlHost(c.req.url),
+      origin: c.req.header("origin"),
+      fetchSite: c.req.header("sec-fetch-site"),
+      proto: urlScheme(c.req.url),
+      forwardedProto: c.req.header("x-forwarded-proto"),
+      forwardedHost: c.req.header("x-forwarded-host"),
+      allowedHosts: options.allowedHosts,
+    });
+    if (!allowed) {
+      const refusedHost =
+        requestHost({
+          host: c.req.header("host") ?? urlHost(c.req.url),
+          forwardedHost: c.req.header("x-forwarded-host"),
+        }) ?? "unknown host";
+      return c.json(
+        {
+          error:
+            `forbidden: writes from host "${refusedHost}" are not allowed. ` +
+            `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${refusedHost} to allow it ` +
+            `(comma separated for several hosts).`,
+        },
+        403,
+      );
+    }
+    return next();
+  });
   api.use("/projects/:id/preview/*", answerRefusedFrameWithPage);
   api.use("/projects/:id/preview", answerRefusedFrameWithPage);
   api.use(async function answerProjectDirMissingAfterErrorHandlers(c, next) {
@@ -80,7 +160,7 @@ export function createStudioApi(adapter: StudioApiAdapter): Hono {
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
-  registerPreviewRoutes(api, adapter);
+  registerPreviewRoutes(api, adapter, { sandboxThumbnailCaptures });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);

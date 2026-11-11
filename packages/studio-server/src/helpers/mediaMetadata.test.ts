@@ -168,6 +168,20 @@ describe("probeMediaMetadata", () => {
         .source?.bitDepth,
     ).toBe(12);
     expect((await probe({ pix_fmt: "yuv420p" })).source).toBeUndefined();
+    expect(
+      (
+        await probe({
+          width: 1920,
+          height: 1080,
+          r_frame_rate: "30000/1001",
+          avg_frame_rate: "30000/1001",
+        })
+      ).source,
+    ).toMatchObject({ frameRate: 30000 / 1001, variableFrameRate: false });
+    expect(
+      (await probe({ width: 1920, height: 1080, r_frame_rate: "60/1", avg_frame_rate: "24/1" }))
+        .source,
+    ).toMatchObject({ frameRate: 60, variableFrameRate: true });
   });
 
   it("lists every stream with its flags, for a failure report", async () => {

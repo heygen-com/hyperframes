@@ -97,6 +97,7 @@ describe("preview quality messages", () => {
       worstFrameMs: 90,
       skippedShare: 0.1,
       waitingShare: 0.4,
+      frozenShare: 0.2,
       gapP50Ms: 17,
       gapP95Ms: 66,
       mode: "play",

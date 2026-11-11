@@ -2,12 +2,13 @@
 // 64-bit mdat header); the payloads follow it unchanged and in order (a separate audio file's
 // first, then the chunks'), so storage can copy them into place.
 
-import { createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createReadStream, createWriteStream, mkdirSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { renameWithRetry } from "@hyperframes/engine";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Writable } from "node:stream";
 import { finished, pipeline } from "node:stream/promises";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 // ── Box reading ─────────────────────────────────────────────────────────────
 
@@ -494,7 +495,7 @@ export async function writeStitchedMp4(
     ? buildStitchedHeader(layouts.slice(1), layouts[0])
     : buildStitchedHeader(layouts);
   mkdirSync(dirname(outputPath), { recursive: true });
-  const workDir = mkdtempSync(`${outputPath}.stitch-`);
+  const workDir = createStagingDir(dirname(outputPath), `${basename(outputPath)}.stitch-`);
   const out = createWriteStream(join(workDir, "out.mp4"));
   try {
     out.write(header);

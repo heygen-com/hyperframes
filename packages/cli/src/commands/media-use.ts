@@ -1,32 +1,39 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
+import { trustedPathDirs } from "@hyperframes/parsers/ff-binaries";
 
 const MEDIA_USE_ARGS = {
-  type: { type: "string" },
-  intent: { type: "string" },
-  entity: { type: "string" },
-  project: { type: "string", alias: "p" },
-  adopt: { type: "boolean" },
-  candidates: { type: "boolean" },
+  type: { type: "string", description: "What to find: bgm, sfx, image, icon, logo, voice" },
+  intent: { type: "string", description: "What it should be, in plain words" },
+  entity: { type: "string", description: "The brand or thing a logo belongs to" },
+  project: { type: "string", alias: "p", description: "The project folder (default: here)" },
+  adopt: { type: "boolean", description: "Keep a file you found yourself, with --from" },
+  candidates: { type: "boolean", description: "List reusable assets instead of resolving one" },
   doctor: { type: "boolean" },
   stats: { type: "boolean" },
   days: { type: "string" },
   "dry-run": { type: "boolean" },
-  reuse: { type: "string" },
-  from: { type: "string" },
+  reuse: {
+    type: "string",
+    description: "Import the global-cache asset with this sha, from --candidates",
+  },
+  from: { type: "string", description: "Bring in this file or URL instead of searching" },
   params: { type: "string" },
   for: { type: "string" },
   analyze: { type: "boolean" },
   "local-only": { type: "boolean" },
-  provider: { type: "string" },
+  provider: {
+    type: "string",
+    description: "Skip the caches and use this provider only, e.g. heygen",
+  },
   "avatar-id": { type: "string" },
   "voice-id": { type: "string" },
-  json: { type: "boolean" },
+  json: { type: "boolean", description: "One JSON result on stdout" },
   help: { type: "boolean", alias: "h" },
 } as const;
 
@@ -69,6 +76,21 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
+function withOnlyTrustedPathFolders(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const pathKey = Object.keys(env).find((name) => name.toUpperCase() === "PATH");
+  if (!pathKey) return env;
+  return { ...env, [pathKey]: trustedPathDirs(env[pathKey]).join(delimiter) };
+}
+
+export function mediaUseEngineEnv(
+  env: NodeJS.ProcessEnv,
+  entry: string | undefined = process.argv[1],
+): NodeJS.ProcessEnv {
+  const scoped = withOnlyTrustedPathFolders(env);
+  if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
+  return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
+}
+
 type InvokeMediaUse = (verb: MediaUseVerb) => never | Promise<never>;
 
 async function invokeEngine(verb: MediaUseVerb): Promise<never> {
@@ -78,7 +100,7 @@ async function invokeEngine(verb: MediaUseVerb): Promise<never> {
   const result = await withMediaAuthEnvironment((env) =>
     spawnSync(process.execPath, [resolveMediaUseEnginePath(here), ...flag, ...passed], {
       stdio: "inherit",
-      env,
+      env: mediaUseEngineEnv(env),
     }),
   );
   if (result.error) throw result.error;
@@ -94,13 +116,19 @@ function subcommand(name: MediaUseVerb, invoke: InvokeMediaUse) {
 }
 
 export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
-  const subCommands = Object.fromEntries(
-    MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)]),
-  );
+  const subCommands = {
+    ...Object.fromEntries(MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)])),
+    generate: () => import("./media-use/generate.js").then((m) => m.default),
+    voices: () => import("./media-use/voices.js").then((m) => m.default),
+    avatars: () => import("./media-use/avatars.js").then((m) => m.default),
+  };
   return defineCommand({
     meta: { name: "media-use", description: "Resolve and operate on project media" },
     subCommands,
-    run: () => console.log("Run `hyperframes media-use <resolve|doctor|stats|...> --help`"),
+    run: ({ args }) => {
+      if (!args._?.[0])
+        console.log("Run `hyperframes media-use <resolve|generate|doctor|stats|...> --help`");
+    },
   });
 }
 

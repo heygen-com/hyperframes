@@ -1,0 +1,9 @@
+{
+  "name": "hyperframes-aws-lambda-bundled",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@sparticuz/chromium": "148.0.0",
+    "puppeteer-core": "25.11.0"
+  }
+}

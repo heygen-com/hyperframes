@@ -1,7 +1,8 @@
 import { CLIP_HIDDEN_ATTR, olderShaderBuildOnPage, revealClip } from "./clipReveal";
 import {
+  capturePageIn,
+  defersMediaIn,
   RUNTIME_STAMPED_ATTR,
-  STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "../studioPreviewMark";
@@ -60,7 +61,7 @@ function appendStyle(parent: Element, attr: string, css: string): void {
 }
 
 export function defersMedia(): boolean {
-  return document.querySelector(STUDIO_PREVIEW_MARK) !== null;
+  return defersMediaIn(document);
 }
 
 /** True in Studio's preview, where hidden clips' images are neither fetched nor decoded until due. */
@@ -72,9 +73,8 @@ export function hideTimedClipsUntilFirstPass(): void {
   if (typeof document === "undefined") return;
   const parent = document.head ?? document.documentElement;
   if (!parent) return;
-  const mark = document.querySelector(STUDIO_PREVIEW_MARK);
-  const preview = mark !== null;
-  const capture = mark?.getAttribute("content") === STUDIO_PREVIEW_CAPTURE_MODE;
+  const preview = document.querySelector(STUDIO_PREVIEW_MARK) !== null;
+  const capture = capturePageIn(document);
   if (preview && !capture && !skipsHiddenImages())
     appendStyle(parent, SKIP_ATTR, skipHiddenImages(HIDDEN_CLIP_DOUBLED_FOR_WEIGHT));
   if (!document.querySelector(`style[${CONTENTS_ATTR}]`))

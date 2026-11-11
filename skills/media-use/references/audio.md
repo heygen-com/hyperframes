@@ -9,9 +9,12 @@ shot), use the shared engine at `audio/scripts/audio.mjs`. It takes a neutral
 node <SKILL_DIR>/audio/scripts/audio.mjs --request ./audio_request.json --out ./audio_meta.json
 ```
 
+Kokoro voices and word timings by transcription run the HyperFrames CLI. Helpers never look it up in the project: run them through the plugin launcher's `--script`, or set `HYPERFRAMES_CLI_ENTRY` to the absolute path of your installed CLI's `bin/hyperframes.mjs`. Without one, those steps stop and say so.
+
 - **Request** `{ provider?, voice?, lang?, speed?, tts_model?, style?, lines: [{ id, text, style?, sfx?: [names] }], bgm: { mode?, query?, prompt? } }`: `id` joins each line back to your model; `bgm.mode` = `retrieve | generate | none` (omit for auto). `--only tts,bgm,sfx` runs a subset and merges into an existing `--out`.
+- **Your own recording**: a line with `audio` (a path in the project) instead of `text` is used as the voice: `{ id, audio: "take.m4a", words?: [{ text, start, end }] }`. It is converted to `assets/voice/<id>.wav`, `speed` stretches it with the pitch kept and scales `words` the same (without `words` the recording is transcribed). Its `audio_meta.json` voice has `source: "recording"`; with only recording lines `tts_provider` is `"recording"` and no provider or HeyGen sign-in is needed.
 - **Gemini narration** is opt-in with `provider: "gemini"` and an API key or service-account credentials. `tts_model` defaults to `gemini-3.8-flash-tts`; 3.8 Flash-Lite, 3.1 Flash Preview, and 2.5 Pro/Flash Preview TTS are also supported. `style` directs delivery; a line's style overrides the request's style. CLI overrides: `--tts-model`, `--style`. See `audio/references/tts.md` for a complete request. The existing automatic provider order is unchanged.
-- **Output** `audio_meta.json` (id-keyed): `voices[].{path,duration_s,words[]}` (word timestamps for captions), `sfx[]`, `bgm`, `total_duration_s`.
+- **Output** `audio_meta.json` (id-keyed): `voice_credit` (the credits line for the voices, naming where they really came from: your recording or the vendor; use it as is), `voices[].{path,duration_s,words[]}` (word timestamps for captions), `sfx[]`, `bgm`, `total_duration_s`.
 - **HeyGen free-usage path**: HeyGen CLI auth unlocks TTS plus music retrieval; SFX come from Openverse with no account (`audio/references/sfx.md`). Local/provider-specific generators are explicit alternatives where installed; run `npx hyperframes media-use resolve --doctor` before assuming retrieval or TTS will work.
 - If BGM took the generate path (`bgm_pending: true`), run `audio/scripts/wait-bgm.mjs` before final render.
 

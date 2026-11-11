@@ -48,6 +48,7 @@ export interface MessageHandlerCallbacks extends PlaybackStateCallbacks {
    *  player uses this as the cross-origin readiness signal because the
    *  same-origin composition probe cannot inspect CDN iframes. */
   onRuntimeTimelineReady: (duration: number, assetsReady: boolean | undefined) => void;
+  setBuffering?: (buffering: boolean) => void;
   setRuntimeFps?: (fps: number) => void;
   setRuntimeOwnsPlayRange?: (owns: boolean) => void;
   /** Called with the scene list whenever a "timeline" message is received. */
@@ -130,6 +131,7 @@ export function handleRuntimeMessage(
         callbacks,
       ),
     );
+    callbacks.setBuffering?.(data["buffering"] === true);
     return;
   }
 

@@ -503,11 +503,11 @@ samp {
     color: var(--hf-heading);
   }
 
-  #navbar .nav-tabs-item[aria-current] {
-    background: var(--hf-brand-soft);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hf-brand) 55%, transparent);
+  /* Mintlify marks the current tab with aria-current, except the Docs dropdown, which gets .text-primary instead */
+  #navbar .nav-tabs-item[aria-current],
+  #navbar .nav-tabs-item.text-primary {
+    background: color-mix(in srgb, var(--hf-heading) 9%, transparent);
     color: var(--hf-heading) !important;
-    font-weight: 600;
   }
 
   #navbar .nav-tabs-item:focus:not(:focus-visible) {
@@ -589,11 +589,20 @@ samp {
   background: color-mix(in srgb, var(--hf-text) 46%, transparent);
 }
 
-/* Preserve a useful search field on smaller desktop widths. */
-@media (min-width: 1024px) and (max-width: 1199px) {
+/*
+ * Ask Assistant already sits in the ⌘K search window and in the "Ask a question" bar at the foot of every
+ * page, so the desktop bar drops its own copy (⌘I still opens it; phones keep theirs). #assistant-entry is
+ * Mintlify's markup, not a setting: re-check after Mintlify updates.
+ */
+@media (min-width: 1024px) {
   #navbar #assistant-entry {
     display: none;
   }
+}
+
+/* Top-bar Docs menu: titles in the heading colour so they stand apart from their grey one-line descriptions. */
+.nav-dropdown-item .font-medium {
+  color: var(--hf-heading);
 }
 
 /* Every structural hairline (header bottom, content rules, footer) is the palette's line,
@@ -1336,7 +1345,7 @@ div.h-px.bg-gray-100 {
 /* ── UX-pass tweaks (Ular): brand the Playground CTA, align the logo ── */
 @media (min-width: 1024px) {
   /* Line the logo up with the sidebar text (was flush at the navbar padding, 16px further left). */
-  #navbar a[href*="/introduction"] {
+  #navbar a:has(> img.nav-logo) {
     margin-left: 16px;
   }
 
@@ -1410,12 +1419,6 @@ h2 { clear: both; }
   background: var(--hf-glass) !important;
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-}
-
-@media (min-width: 1024px) {
-  #navbar .nav-tabs-item.text-primary {
-    background: var(--hf-chip);
-  }
 }
 
 /* Headlines: hyperframes.dev's heavy, tight TT Norms. */

@@ -55,6 +55,21 @@ const HOSTILE_CASES: Array<[label: string, input: string, mustNotContain: string
     ["evil.example"],
   ],
   [
+    "CSS-escaped image-set() followed by CR LF in a style element",
+    `<svg><style>.a{background:image-se\\74\r\n('https://evil.example/b' 1x)}</style></svg>`,
+    ["evil.example"],
+  ],
+  [
+    "CSS-escaped image-set() followed by CR LF in style=",
+    `<svg><rect style="background:image-se\\74\r\n('https://evil.example/b' 1x)"/></svg>`,
+    ["evil.example"],
+  ],
+  [
+    "CSS-escaped url() followed by a form feed in a presentation attribute (guards the line-ending fold, not a base bypass)",
+    `<svg><rect fill="\\75\frl(https://evil.example/b)"/></svg>`,
+    ["evil.example"],
+  ],
+  [
     "CSS-escaped image-set() in style=",
     String.raw`<svg><rect style="background:\69mage-set('https://evil.example/b' 1x)"/></svg>`,
     ["evil.example"],

@@ -71,6 +71,29 @@ describe("GET /projects/:id/signature", () => {
     expect(await response.json()).toEqual({ signature: "cached-sig" });
   });
 
+  // fails without the fix: the polled signature walked every file synchronously, holding a host's event loop (a
+  // desktop app's main process) for the whole walk.
+  it("lets the event loop run while it walks a project", async () => {
+    const projectDir = createProjectDir();
+    for (let i = 0; i < 300; i++)
+      writeFileSync(join(projectDir, `clip-${i}.html`), COMPOSITION_HTML);
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+    let turns = 0;
+    let answered = false;
+    const turn = () => {
+      if (answered) return;
+      turns++;
+      setImmediate(turn);
+    };
+    setImmediate(turn);
+
+    const response = await app.request("http://localhost/projects/demo/signature");
+    answered = true;
+    expect(response.status).toBe(200);
+    expect(turns).toBeGreaterThan(0);
+  });
+
   it("computes a signature that moves when project files change", async () => {
     const projectDir = createProjectDir();
     const app = new Hono();

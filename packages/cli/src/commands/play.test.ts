@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { ProjectDir } from "../utils/project.js";
+import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server";
 
 // `registerCompositionRoute` reaches these two studio-server helpers via a
 // module, since both files sit at the same depth under packages/cli/src/.
@@ -152,6 +153,24 @@ async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> 
 }
 
 describe("registerCompositionRoute", () => {
+  it("does not serve env files, Git data or the tools' own records", async () => {
+    const project = tmpProject();
+    mkdirSync(join(project.dir, ".git"));
+    mkdirSync(join(project.dir, ".hyperframes"));
+    writeFileSync(join(project.dir, ".env"), "KEY=secret");
+    writeFileSync(join(project.dir, ".env.local"), "KEY=secret");
+    writeFileSync(join(project.dir, ".git", "config"), "[core]");
+    writeFileSync(join(project.dir, ".hyperframes", "lambda-stack-x.json"), "{}");
+    writeFileSync(join(project.dir, "logo.png"), "png");
+    const app = await buildApp(project, false);
+
+    for (const path of [".env", ".ENV", ".env.local", ".git/config"]) {
+      expect((await app.request(`/composition/${path}`)).status).toBe(404);
+    }
+    expect((await app.request("/composition/.hyperframes/lambda-stack-x.json")).status).toBe(404);
+    expect((await app.request("/composition/logo.png")).status).toBe(200);
+  });
+
   it("lets a browser revalidate the composition and its assets instead of refetching them", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
@@ -247,6 +266,22 @@ describe("registerCompositionRoute", () => {
     expect(res.headers.get("accept-ranges")).toBe("bytes");
     expect(res.headers.get("content-range")).toBe("bytes 2-5/10");
     expect(await res.text()).toBe("2345");
+  });
+
+  it("answers an open-ended media range with a bounded piece, not the rest of the file", async () => {
+    // Served to EOF, each <video> holds one of the browser's six connections (#6029).
+    const project = tmpProject();
+    const size = 8 * 1024 * 1024;
+    writeFileSync(join(project.dir, "clip.mp4"), Buffer.alloc(size, 0x61));
+    const app = await buildApp(project, false);
+
+    const res = await app.request("/composition/clip.mp4", { headers: { Range: "bytes=0-" } });
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe(
+      `bytes 0-${MAX_OPEN_MEDIA_RANGE_BYTES - 1}/${size}`,
+    );
+    expect((await res.arrayBuffer()).byteLength).toBe(MAX_OPEN_MEDIA_RANGE_BYTES);
   });
 
   it("serves the resolved proxy's bytes for ?hf-proxy=h264 on a hostile asset", async () => {

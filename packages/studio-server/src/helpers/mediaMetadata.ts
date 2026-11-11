@@ -2,9 +2,12 @@ import { execFile } from "node:child_process";
 import { extname } from "node:path";
 import {
   firstFrameColourArgs,
+  keyframeTransferArgs,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
+  parseKeyframeTransfers,
   type PreviewSourceFacts,
-  type ToneMapSourceColour,
+  type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
@@ -98,6 +101,8 @@ interface FfprobeStream {
   width?: number;
   height?: number;
   bit_rate?: string;
+  r_frame_rate?: string;
+  avg_frame_rate?: string;
   disposition?: Record<string, number | undefined>;
   tags?: Record<string, string | undefined>;
 }
@@ -188,8 +193,9 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
 /** The first shown frame's colour tags, which zscale reads per frame. Empty when unread. */
 export async function probeFirstFrameColour(
   filePath: string,
+  codec?: string,
   runner: FfprobeRunner = execFileRunner,
-): Promise<ToneMapSourceColour> {
+): Promise<ToneMapFrameColour> {
   const ffmpegPath =
     findFfBinary("ffmpeg", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffmpeg");
@@ -198,7 +204,15 @@ export async function probeFirstFrameColour(
     timeout: 15_000,
     maxBuffer: 1024 * 1024,
   });
-  return result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
+  const first = result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
+  if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
+  const keyframes = await runner(ffmpegPath, keyframeTransferArgs(filePath, codec), {
+    timeout: 30_000,
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const keyframeTransfers =
+    keyframes.status === 0 ? parseKeyframeTransfers(String(keyframes.stderr)) : [];
+  return { ...first, keyframeTransfers };
 }
 
 function bitDepthOf(stream: FfprobeStream): number {
@@ -214,11 +228,25 @@ function sourceFactsOf(
 ): PreviewSourceFacts | undefined {
   if (!stream?.width || !stream.height) return undefined;
   const bitrate = Number(stream.bit_rate ?? formatBitrate);
+  const rate = (raw: string | undefined) => {
+    const [numerator, denominator = "1"] = (raw ?? "0").split("/");
+    const value = Number(numerator) / Number(denominator);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const nominal = rate(stream.r_frame_rate);
+  const average = rate(stream.avg_frame_rate);
   return {
     width: stream.width,
     height: stream.height,
     bitDepth: bitDepthOf(stream),
     bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+    ...(nominal > 0
+      ? {
+          frameRate: nominal,
+          variableFrameRate:
+            average > 0 && Math.abs(nominal - average) / Math.max(nominal, average) > 0.1,
+        }
+      : {}),
   };
 }
 
@@ -266,8 +294,12 @@ export async function probeAudioTrack(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
 ): Promise<{ stream: number; channels: number } | null> {
+  const ffprobePath =
+    findFfBinary("ffprobe", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffprobe");
+  if (!ffprobePath) return null;
   const result = await runner(
-    findFfBinary("ffprobe") ?? "ffprobe",
+    ffprobePath,
     [
       ...["-v", "error", "-select_streams", "a"],
       ...["-show_entries", "stream=codec_type,codec_name,channels", "-of", "json", "--", filePath],
@@ -305,7 +337,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
       "--",

@@ -22,7 +22,7 @@ import { sha256File } from "./modelFile.js";
 import { initialModelForLanguage } from "./modelForLanguage.js";
 import { TRANSCRIPT_FILE } from "./transcriptFile.js";
 import { findWavChunk } from "./wav.js";
-import type { Word } from "./normalize.js";
+import { parseWhisperJson, type Word } from "./normalize.js";
 import { emitWords } from "./progress.js";
 import { probeAudio } from "../audio/analysis/decode.js";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
@@ -578,7 +578,7 @@ export async function transcribe(
     throw new Error("Whisper did not produce output. Check the input file.");
   }
 
-  const transcript = JSON.parse(readFileSync(transcriptPath, "utf-8"));
+  const transcript = parseWhisperJson(readFileSync(transcriptPath, "utf-8"));
   const reportedLanguage: unknown = transcript.result?.language;
   const detectedLanguage =
     automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0

@@ -19,6 +19,7 @@ import { renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
+import { readFrames } from "./frameReader.js";
 import { createSession, type Session } from "./inference.js";
 import { type Device, type ModelId } from "./manager.js";
 import {
@@ -271,22 +272,6 @@ export function buildEncoderArgs(
     ];
   }
   return [...base, "-frames:v", "1", "-pix_fmt", "rgba", "-update", "1", outputPath];
-}
-
-async function* readFrames(
-  stream: NodeJS.ReadableStream,
-  frameBytes: number,
-): AsyncGenerator<Buffer> {
-  let buffered: Buffer = Buffer.alloc(0);
-  for await (const chunk of stream) {
-    buffered =
-      buffered.length === 0 ? (chunk as Buffer) : Buffer.concat([buffered, chunk as Buffer]);
-    while (buffered.length >= frameBytes) {
-      // Copy because the next concat would clobber the underlying memory.
-      yield Buffer.from(buffered.subarray(0, frameBytes));
-      buffered = buffered.subarray(frameBytes);
-    }
-  }
 }
 
 export interface RenderTargets {

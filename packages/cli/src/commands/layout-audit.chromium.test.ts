@@ -427,6 +427,75 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes.includes("content_overlap")).toBe(overlap);
   });
 
+  // The upper heading paints 100-220 px; the lower one sits at 150-270 px, so only its top 60% can touch it.
+  const upper = heading(100, "Upper");
+  const lower = (style: string) => heading(150, "Lower", style);
+  it.each([
+    { name: "unmasked, the control", html: upper + lower(""), overlap: true },
+    {
+      name: "masked transparent where it meets the other text",
+      html: upper + lower("mask-image:linear-gradient(to bottom, transparent 62%, #000 62%)"),
+      overlap: false,
+    },
+    {
+      name: "masked by a wrapper whose mask fades out the top",
+      html:
+        upper +
+        '<div style="position:absolute;left:0;top:150px;width:1920px;height:120px;mask-image:linear-gradient(#0000 0 62%, #000 62%)">' +
+        '<h1 style="position:absolute;left:100px;top:0;margin:0;font:120px/1 Arial">Lower</h1></div>',
+      overlap: false,
+    },
+    {
+      name: "masked by a radial mask that paints only its bottom",
+      html:
+        upper +
+        lower(
+          "mask-image:radial-gradient(400px 30px at 50% 100%, #000 0%, #000 90%, transparent 100%)",
+        ),
+      overlap: false,
+    },
+    {
+      name: "masked, but still painted where it meets the other text",
+      html: upper + lower("mask-image:linear-gradient(to bottom, #000 62%, transparent 62%)"),
+      overlap: true,
+    },
+    {
+      name: "masked by a mask moved up onto the other text",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-repeat:no-repeat;mask-position:0 -75px",
+        ),
+      overlap: true,
+    },
+    {
+      name: "masked from the content box, which this check does not read",
+      html:
+        upper +
+        lower(
+          "mask-image:linear-gradient(transparent 62%, #000 62%);mask-origin:content-box;padding:1px",
+        ),
+      overlap: true,
+    },
+    {
+      name: "clipped by an inset clip-path to its bottom",
+      html: upper + lower("clip-path:inset(62% 0 0 0)"),
+      overlap: false,
+    },
+    {
+      name: "clipped by an overflow-hidden wrapper to its bottom",
+      html:
+        upper +
+        '<div style="position:absolute;left:0;top:225px;width:1920px;height:60px;overflow:hidden">' +
+        '<h1 style="position:absolute;left:100px;top:-75px;margin:0;font:120px/1 Arial">Lower</h1></div>',
+      overlap: false,
+    },
+  ])("judges text overlap on what is painted: $name", async ({ html, overlap }) => {
+    const codes = await auditCodes(`
+        <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px">${html}</div>`);
+    expect(codes.includes("content_overlap")).toBe(overlap);
+  });
+
   it.each([
     { name: "closed", open: "", overlap: false },
     { name: "open", open: " open", overlap: true },

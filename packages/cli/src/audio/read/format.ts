@@ -1,6 +1,7 @@
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { semitones } from "./pitch.js";
 import type {
+  AudibleStem,
   Ambience,
   Effect,
   Effects,
@@ -10,6 +11,7 @@ import type {
   Pause,
   ReadAudio,
   Sentence,
+  StemSpan,
   Voice,
 } from "./types.js";
 
@@ -27,6 +29,8 @@ interface Line {
 }
 
 const s = (t: number) => t.toFixed(1);
+const at = (t: number) => String(Math.round(t * 100) / 100);
+const spanText = (span: Span) => `${at(span.start)}–${at(span.end)}`;
 const signed = (db: number) => `${db >= 0 ? "+" : ""}${db} dB`;
 const dbfs = (db: number) => `${db} dBFS`;
 const lufs = (db: number) => `${Math.round(db)} LUFS`;
@@ -80,8 +84,9 @@ function standing(effect: Effect): string {
 }
 
 function effectLine(effect: Effect, pauses: readonly Span[]): Line {
+  const from = effect.stem ? `${effect.stem}, ` : "";
   const parts = [
-    `${effect.kind}${effect.count > 1 ? ` ×${effect.count}` : ""} (${effect.group}): ${effect.band}`,
+    `(${from}${effect.group})${effect.count > 1 ? ` ×${effect.count}` : ""}: ${effect.band}`,
     `attack ${effect.attackMs} ms`,
     `tail ${effect.tail.toFixed(1)} s`,
     standing(effect),
@@ -98,11 +103,29 @@ const ENTRY: Record<Entry, string> = {
   returns: ", returns",
 };
 
+const EDGE = 0.5;
+
+function stemsPlaying(segment: MusicSegment): string {
+  const byStem = new Map<string, StemSpan[]>();
+  for (const span of segment.stems) byStem.set(span.name, [...(byStem.get(span.name) ?? []), span]);
+  return [...byStem]
+    .map(([name, spans]) => {
+      const first = spans[0]!;
+      const last = spans[spans.length - 1]!;
+      const fromStart = first.start - segment.start <= EDGE;
+      const toEnd = segment.end - last.end <= EDGE;
+      if (spans.length === 1 && fromStart && toEnd) return name;
+      if (spans.length === 1 && fromStart) return `${name} until ${at(last.end)}`;
+      if (spans.length === 1 && toEnd) return `${name} from ${at(first.start)}`;
+      return `${name} ${spans.map(spanText).join(", ")}`;
+    })
+    .join("; ");
+}
+
 function musicLine(segment: MusicSegment, analysis: ReadAudio): Line {
   const piece = analysis.music!.pieces.find((p) => p.id === segment.piece)!;
-  const about = [piece.instruments.join(", "), segment.bpm ? `${segment.bpm} BPM` : null]
-    .filter(Boolean)
-    .join(" · ");
+  const playing = segment.stems?.length ? stemsPlaying(segment) : piece.instruments.join(", ");
+  const about = [playing, segment.bpm ? `${segment.bpm} BPM` : null].filter(Boolean).join(" · ");
   const afterBreak =
     (segment.entry === "new" || segment.entry === "resumes") &&
     analysis.music!.breaks.some((gap) => gap.end === segment.start)
@@ -119,11 +142,8 @@ function musicLine(segment: MusicSegment, analysis: ReadAudio): Line {
 
 function effectsIn(events: readonly Effect[]): string | null {
   if (!events.length) return null;
-  const counts = new Map<string, number>();
-  for (const e of events) counts.set(e.kind, (counts.get(e.kind) ?? 0) + e.count);
-  const kinds = [...counts].map(([kind, n]) => (n > 1 ? `${kind} ×${n}` : kind)).join(", ");
   const total = events.reduce((n, e) => n + e.count, 0);
-  return `${total} ${total === 1 ? "effect" : "effects"} (${kinds})`;
+  return `${total} ${total === 1 ? "effect" : "effects"}`;
 }
 
 function pauseLine(pause: Pause, analysis: ReadAudio): Line {
@@ -164,12 +184,6 @@ function overlaps(line: Line, range?: [number, number]): boolean {
   return line.start < range[1] && (line.end ?? line.start) >= range[0];
 }
 
-function separation(analysis: ReadAudio): string {
-  if (analysis.separation !== "stems") return "not separated";
-  const heard = analysis.stems.map((stem) => `${stem.name} ${stem.db} dB`).join(", ");
-  return `stems: ${heard || "all silent"}`;
-}
-
 function voiceSummary(voice: Voice): string {
   const rate = voice.meanRate !== null ? `mean ${voice.meanRate} ${voice.unit}/s` : null;
   const pitch = voice.medianPitchHz !== null ? `median pitch ${voice.medianPitchHz} Hz` : null;
@@ -182,10 +196,10 @@ function voiceSummary(voice: Voice): string {
 function effectsSummary(effects: Effects): string {
   const top = effects.groups
     .slice(0, 6)
-    .map((g) => `${g.id} ${g.kind} ×${g.count}`)
+    .map((g) => `${g.id} ×${g.count}`)
     .join(", ");
   return `effects: ${effects.events.length} in ${effects.groups.length} sounds${top ? ` (${top})` : ""}${
-    effects.drumHits ? `; ${effects.drumHits} drum hits on the beat left out` : ""
+    effects.drumHits ? `; ${effects.drumHits} hits of the music's own drums left out` : ""
   }`;
 }
 
@@ -194,10 +208,41 @@ const musicSummary = (music: Music) =>
     ? `music: ${music.pieces.length} pieces, ${music.breaks.length} breaks`
     : "music: none";
 
+function stemBlock(stem: AudibleStem, width: number): string[] {
+  const head = `${stem.name.padEnd(width)}  ${stem.db} dB · ${stem.spans.map(spanText).join(", ")}`;
+  return stem.description ? [head, `  ${stem.description}`] : [head];
+}
+
+const DESCRIPTIONS_NOTE =
+  "(descriptions are a model listening to each stem: what the sound is and what its effects sound like. Their times are approximate; the measured spans above and the timed lines below are exact.)";
+
+function byStem(analysis: ReadAudio): string[] {
+  const { description } = analysis;
+  const width = Math.max(0, ...analysis.stems.map((stem) => stem.name.length));
+  return [
+    `${analysis.file} · ${s(analysis.duration)} s${analysis.bpm ? ` · ${analysis.bpm} BPM` : ""}`,
+    ...(description ? [`overall: ${description.overall}`] : []),
+    ...(analysis.voiceFreeMix ? [`voice-free mix: ${analysis.voiceFreeMix}`] : []),
+    ...(analysis.stemsDir ? [`stems: ${analysis.stemsDir}`] : []),
+    "",
+    ...(analysis.stems.length
+      ? analysis.stems.flatMap((stem) => stemBlock(stem, width))
+      : ["stems: all silent"]),
+    ...(analysis.stems.some((stem) => stem.description) ? [DESCRIPTIONS_NOTE] : []),
+    ...(description
+      ? ["", `bgm prompt: ${description.bgmPrompt ?? "none, the recording has no music"}`]
+      : []),
+    "",
+  ];
+}
+
 function header(analysis: ReadAudio): string[] {
   const { voice, effects, music, ambience } = analysis;
+  const separated = analysis.separation === "stems";
   return [
-    `${analysis.file} · ${s(analysis.duration)} s · ${separation(analysis)}`,
+    ...(separated
+      ? byStem(analysis)
+      : [`${analysis.file} · ${s(analysis.duration)} s · not separated`]),
     voice && voiceSummary(voice),
     effects && effectsSummary(effects),
     music && musicSummary(music),

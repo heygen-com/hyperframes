@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_EFFECT_KEYS,
@@ -32,11 +33,20 @@ LUT_3D_SIZE 2
 1 1 1
 `;
 
+const IDENTITY_3 = `
+LUT_3D_SIZE 3
+${Array.from({ length: 27 }, (_, i) => {
+  const [r, g, b] = [i % 3, Math.floor(i / 3) % 3, Math.floor(i / 9)];
+  return `${r / 2} ${g / 2} ${b / 2}`;
+}).join("\n")}
+`;
+
 function createMockWebGl(
   options: {
     failMediaUpload?: boolean;
     halfFloatSupported?: boolean;
     drawingBuffer?: { width: number; height: number };
+    maxTextureSize?: number;
   } = {},
 ): WebGLRenderingContext {
   const shader = {};
@@ -58,6 +68,8 @@ function createMockWebGl(
     TEXTURE_MIN_FILTER: 0x2801,
     TEXTURE_MAG_FILTER: 0x2800,
     CLAMP_TO_EDGE: 0x812f,
+    MAX_TEXTURE_SIZE: 0x0d33,
+    getParameter: vi.fn(() => options.maxTextureSize ?? 16384),
     LINEAR: 0x2601,
     NEAREST: 0x2600,
     RGBA: 0x1908,
@@ -341,6 +353,26 @@ describe("createColorGradingRuntime", () => {
     expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
   });
 
+  it("keeps graded layers on the committed picture until a preview seek lands", () => {
+    const { video } = startRuntimeWithVideo();
+    const drawsBefore = texImage2DCalls.length;
+    const canvas = document.querySelector("[data-hf-color-grading-canvas]");
+    document.documentElement.setAttribute(PREVIEW_SEEK_HOLD_ATTR, "");
+    try {
+      video.dispatchEvent(new Event("seeked"));
+      video.style.setProperty("--hf-color-grading-exposure", "1");
+      runtime?.refresh();
+      expect(runtime?.redraw()).toBe(0);
+      expect(texImage2DCalls).toHaveLength(drawsBefore);
+      expect(document.querySelector("[data-hf-color-grading-canvas]")).toBe(canvas);
+      expect(canvas?.isConnected).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute(PREVIEW_SEEK_HOLD_ATTR);
+    }
+    expect(runtime?.redraw()).toBe(1);
+    expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
   it("does not redraw-loop on its own hide writes (opacity/visibility only)", async () => {
     const { video } = startRuntimeWithVideo();
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -566,6 +598,24 @@ describe("createColorGradingRuntime", () => {
       { id: "kuwahara", dataUrl: "data:image/png;base64,lut-preview" },
     ]);
     toDataUrl.mockRestore();
+  });
+
+  it("shrinks a LUT whose packed width exceeds the GPU texture limit", async () => {
+    getContextSpy.mockImplementation((type: string) =>
+      type === "webgl" ? createMockWebGl({ maxTextureSize: 4 }) : mock2d(),
+    );
+    const video = makeDrawableVideo();
+    video.removeAttribute(HF_COLOR_GRADING_ATTR);
+    document.body.appendChild(video);
+    stubCubeLutFetch(IDENTITY_3);
+    runtime = createColorGradingRuntime();
+
+    await runtime.renderPreviews("#hero-video", [
+      { id: "lut", grading: { lut: { src: "/looks/test.cube", intensity: 1 } } },
+    ]);
+
+    const lutUpload = texImage2DCalls.filter((args) => args.length === 9).at(-1);
+    expect(lutUpload?.slice(3, 5)).toEqual([4, 2]);
   });
 
   it("serializes preview batches while a LUT is loading", async () => {

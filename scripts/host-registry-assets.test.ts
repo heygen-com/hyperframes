@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -68,4 +69,65 @@ test("source replacement between planning and staging aborts before manifest pub
     syncBuiltinESMExports();
     fs.rmSync(f.root, { recursive: true, force: true });
   }
+});
+
+test("a manifest path outside the item is refused before anything is staged or removed", async () => {
+  const f = await fixture();
+  try {
+    const outside = join(f.root, "registry/blocks/secret.png");
+    fs.writeFileSync(outside, "outside bytes");
+    fs.writeFileSync(
+      f.manifestPath,
+      JSON.stringify({ name: "test-item", files: [{ path: "../secret.png" }] }),
+    );
+    await assert.rejects(f.main(["test-item", "--no-upload"]), /outside the item/);
+    assert.equal(fs.readFileSync(outside, "utf8"), "outside bytes");
+    assert.equal(fs.existsSync(join(f.root, ".registry-assets-staging")), false);
+  } finally {
+    fs.rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("an asset that is a symlink is refused before its target is read", async () => {
+  const f = await fixture();
+  try {
+    const outside = join(f.root, "secret.txt");
+    fs.writeFileSync(outside, "outside bytes");
+    fs.rmSync(f.source);
+    fs.symlinkSync(outside, f.source);
+    const manifest = fs.readFileSync(f.manifestPath, "utf8");
+    await assert.rejects(f.main(["test-item", "--no-upload"]), /symlink/);
+    assert.equal(fs.readFileSync(f.manifestPath, "utf8"), manifest);
+    assert.equal(fs.readFileSync(outside, "utf8"), "outside bytes");
+    assert.equal(fs.existsSync(join(f.root, ".registry-assets-staging")), false);
+  } finally {
+    fs.rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("the registry tracks no symlinks and every manifest path stays inside its item", () => {
+  const listing = execFileSync("git", ["ls-files", "-s", "-z", "registry"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  const entries = listing.split("\0").filter(Boolean);
+  const symlinks = entries.filter((entry) => entry.startsWith("120000 "));
+  assert.deepEqual(symlinks, []);
+  const escaping = entries
+    .map((entry) => entry.slice(entry.indexOf("\t") + 1))
+    .filter((file) => file.endsWith("/registry-item.json") && fs.existsSync(join(repoRoot, file)))
+    .flatMap((file) => {
+      const itemDir = join(repoRoot, dirname(file));
+      const manifest = JSON.parse(fs.readFileSync(join(repoRoot, file), "utf8")) as {
+        files?: Array<{ path: string }>;
+      };
+      return (manifest.files ?? [])
+        .filter(({ path }) => {
+          const rel = relative(itemDir, resolve(itemDir, path));
+          return rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+        })
+        .map(({ path }) => `${file}: ${path}`);
+    });
+  assert.deepEqual(escaping, []);
 });

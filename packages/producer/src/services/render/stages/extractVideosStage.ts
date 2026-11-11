@@ -16,7 +16,7 @@
  *   - `perfStages.videoExtractMs` is set at the same end-of-stage point.
  *   - `materializeExtractedFramesForCompiledDir` is still called once
  *     when `extractionResult.extracted` is non-empty.
- *   - `force-sdr` mode still skips ALL ffprobe overhead.
+ *   - `force-sdr` mode, and auto mode with graded media, still skip ALL ffprobe overhead.
  *
  * New for distributed mode:
  *   - `materializeSymlinks` (default `false`) — when `true`, the stage
@@ -44,6 +44,7 @@ import {
   detectTransfer,
   extractAllVideoFrames,
   extractMediaMetadata,
+  gradingKeepsSdr,
   isVideoPastTimelineEnd,
   isHdrColorSpace,
   rebaseVideoToWindow,
@@ -96,6 +97,7 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   onProgress?: ProgressCallback;
 }
@@ -213,6 +215,8 @@ export function resolveVideoExtractionPolicy(
   return { failureMode, maxTransientRetries };
 }
 
+const MAX_NAMED_SOURCES = 5;
+
 /**
  * Producer-safe terminal error for per-source extraction failures.
  *
@@ -240,29 +244,44 @@ export class VideoExtractionStageError extends Error {
       })),
     ),
     ffmpegReason?: string,
+    sources: readonly string[] = [],
   ) {
     const total = failures.reduce((sum, failure) => sum + failure.count, 0);
     const breakdown = failures.map((failure) => `${failure.kind}=${failure.count}`).join(",");
     const reason = ffmpegReason ? `: ffmpeg said: ${ffmpegReason}` : "";
-    super(`Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${reason}`);
+    const shown = sources.slice(0, MAX_NAMED_SOURCES).join(", ");
+    const more =
+      sources.length > MAX_NAMED_SOURCES ? ` and ${sources.length - MAX_NAMED_SOURCES} more` : "";
+    const files = sources.length > 0 ? ` (${shown}${more})` : "";
+    super(
+      `Video extraction failed for ${total} source(s) [${code}; ${breakdown}]${files}${reason}`,
+    );
     this.name = "VideoExtractionStageError";
     this.publicMetadata = { extractionFailure };
   }
 }
 
 export function assertVideoExtractionSucceeded(result: ExtractionResult): void {
-  throwIfEncoderInterrupted(result);
+  throwIfHostFailure(result);
   const error = buildVideoExtractionStageError(result);
   if (error) throw error;
 }
 
-function throwIfEncoderInterrupted(result: ExtractionResult): void {
+/** Failures of the machine, not of a source: an interrupted encoder, or a disk that filled up. */
+function throwIfHostFailure(result: ExtractionResult): void {
   const interrupted = result.errors.find((failure) => failure.kind === "external_interruption");
-  if (!interrupted) return;
-  throw encoderFailureError("Video frame extraction failed", {
-    error: String(interrupted.error),
-    failureReason: "external_interruption",
-  });
+  if (interrupted) {
+    throw encoderFailureError("Video frame extraction failed", {
+      error: String(interrupted.error),
+      failureReason: "external_interruption",
+    });
+  }
+  const full = result.errors.filter((failure) => failure.kind === "disk_full").length;
+  if (full === 0) return;
+  throw Object.assign(
+    new Error(`ENOSPC: no space left on device, extracting the frames of ${full} video source(s)`),
+    { code: "ENOSPC" },
+  );
 }
 
 function buildVideoExtractionStageError(
@@ -285,6 +304,9 @@ function buildVideoExtractionStageError(
     failures,
     extractionFailureMetadataFromResult(result),
     result.errors.find((failure) => failure.ffmpegReason)?.ffmpegReason,
+    [
+      ...new Set(result.errors.flatMap((failure) => (failure.source ? [failure.source] : []))),
+    ].sort(),
   );
 }
 
@@ -402,6 +424,7 @@ export async function runExtractVideosStage(
     materializeSymlinks,
     deferRangeExtraction,
     urlByAbsentLocalPath,
+    skipFrameExtractionIds = [],
   } = input;
 
   const stage2Start = Date.now();
@@ -418,12 +441,14 @@ export async function runExtractVideosStage(
 
   // Probe ORIGINAL color spaces before extraction (which may convert SDR→HDR).
   // This is needed to identify which videos are natively HDR vs converted-SDR
-  // for the two-pass compositing path. Skipped only in force-sdr mode to
-  // avoid ffprobe overhead when the user has explicitly opted out.
+  // for the two-pass compositing path. Skipped when the render is SDR anyway:
+  // force-sdr, or auto mode with graded media (grading is SDR-only).
+  const probesHdr =
+    job.config.hdrMode !== "force-sdr" && !gradingKeepsSdr(job.config.hdrMode, composition);
   const nativeHdrVideoIds = new Set<string>();
   const videoTransfers = new Map<string, HdrTransfer>();
   let hdrProbeTransientRetries = 0;
-  if (job.config.hdrMode !== "force-sdr" && composition.videos.length > 0) {
+  if (probesHdr && composition.videos.length > 0) {
     log?.info("Probing video color spaces...", { videoCount: composition.videos.length });
     const probeFailures = await Promise.all(
       composition.videos.map(async (v) => {
@@ -473,14 +498,13 @@ export async function runExtractVideosStage(
 
   // Probe images for HDR color spaces (16-bit PNGs tagged BT.2020 PQ/HLG).
   // Mirrors the video probe loop above so image-only compositions can
-  // trigger HDR output without any video sources present. Skipped only in
-  // force-sdr mode to avoid ffprobe overhead when the user has explicitly
-  // opted out.
+  // trigger HDR output without any video sources present. Skipped when the
+  // video probe is.
   const nativeHdrImageIds = new Set<string>();
   const imageTransfers = new Map<string, HdrTransfer>();
   const hdrImageSrcPaths = new Map<string, string>();
   const imageColorSpaces: (VideoColorSpace | null)[] = [];
-  if (job.config.hdrMode !== "force-sdr" && composition.images.length > 0) {
+  if (probesHdr && composition.images.length > 0) {
     const probed = await Promise.all(
       composition.images.map(async (img) => {
         // Same shared resolver as the video probe above — a percent-encoded
@@ -501,7 +525,10 @@ export async function runExtractVideosStage(
     imageColorSpaces.push(...probed);
   }
 
-  if (composition.videos.length > 0) {
+  if (skipFrameExtractionIds.length > 0) {
+    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    videoReadinessSkipIds = [...skipFrameExtractionIds];
+  } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
     for (let i = 0; i < totalVideos; i++) {
       const v = composition.videos[i]!;
@@ -522,7 +549,7 @@ export async function runExtractVideosStage(
         fps: job.config.fps,
         outputDir: join(compiledDir, "__hyperframes_video_frames"),
         format: job.config.videoFrameFormat ?? "auto",
-        toneMapHdrToSdr: rendersSdrOnly(job.config),
+        toneMapHdrToSdr: rendersSdrOnly(job.config, composition),
         timelineEnd: composition.duration,
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
@@ -542,7 +569,7 @@ export async function runExtractVideosStage(
     extractionResult.phaseBreakdown.transientRetries =
       (extractionResult.phaseBreakdown.transientRetries ?? 0) + hdrProbeTransientRetries;
     assertNotAborted();
-    throwIfEncoderInterrupted(extractionResult);
+    throwIfHostFailure(extractionResult);
     failureToEnforce = applyVideoExtractionFailurePolicy(extractionResult, extractionPolicy, log);
 
     materializeExtractedFramesForCompiledDir(extractionResult.extracted, compiledDir, {

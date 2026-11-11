@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig, type WorkerTask } from "@hyperframes/engine";
 import { formatCaptureFrameName } from "../utils/paths.js";
-import { createRenderJob, executeRenderJob, type ProgressCallback } from "./renderOrchestrator.js";
+import {
+  createRenderJob,
+  executeRenderJob,
+  firstFrameWindowMs,
+  type ProgressCallback,
+} from "./renderOrchestrator.js";
 import { OrderedRenderEventPublisher } from "./render/renderEventPublisher.js";
 
 // Entry: executeRenderJob with the real disk capture stage and retry ladder. Each parallel attempt is
@@ -21,6 +26,7 @@ const capture = vi.hoisted(() => ({
   workerCount: 4,
   shaderTransitions: false,
   blocked: 0,
+  probeMs: 0,
 }));
 
 // The 250 ms memory sampler is a faked interval: left running it is the next timer on every jump.
@@ -177,7 +183,7 @@ vi.mock("./render/stages/probeStage.js", () => ({
     lastBrowserConsole: [],
     duration: 40 / 30,
     totalFrames: 40,
-    browserProbeMs: 0,
+    browserProbeMs: capture.probeMs,
     beginFrameStalled: false,
   }),
 }));
@@ -233,6 +239,9 @@ const PENDING = Symbol("pending");
 const dirs: string[] = [];
 // A test over SLOW_TEST_MS prints where its real time went, so a slow CI run names the step.
 const SLOW_TEST_MS = 2_000;
+// A render's cold start (module loads, temp dirs) can take over a second on a loaded CI runner. Fake time that
+// moves before the first attempt is held spends the test's window early. Kept under vitest's 5 s test timeout.
+const START_BUDGET_MS = 4_000;
 const spent = new Map<string, number>();
 let testStarted = 0;
 let budgetRanOut = 0;
@@ -255,6 +264,7 @@ beforeEach(() => {
   capture.shaderTransitions = false;
   capture.workerCount = 4;
   capture.blocked = 0;
+  capture.probeMs = 0;
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
   });
@@ -332,8 +342,8 @@ async function untilHeld(outcome: () => unknown, budget: { ms: number }): Promis
 
 /** Jumps fake time to the next timer while the scripted attempt waits, with real IO between steps. */
 async function runFor(ms: number, outcome: () => unknown): Promise<void> {
+  await timed("wait for held", () => untilHeld(outcome, { ms: START_BUDGET_MS }));
   const budget = { ms: 1_000 };
-  await timed("wait for held", () => untilHeld(outcome, budget));
   for (let elapsed = 0; elapsed < ms && outcome() === PENDING; ) {
     await timed("io turns", ioTurns);
     await timed("wait for held", () => untilHeld(outcome, budget));
@@ -420,6 +430,53 @@ it("still fails a capture whose tail outlasts the tail budget", async () => {
   const outcome = startRender();
   await runFor(40 * 1_000 + 2 * 300_000 + 20_000, outcome);
   expect(outcome()).toMatchObject({ code: "RENDER_STAGE_STALLED", retryable: false });
+});
+
+it("waits for a first frame that comes after a start-up as slow as the probe's", async () => {
+  capture.probeMs = 304_000;
+  capture.scripts = [{ firstFrameAfterMs: 304_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(304_000 + 40 * 1_000 + 10_000, outcome);
+  expect(capture.retriedWithWorkers).toEqual([]);
+  expect(await settled(outcome)).toBe("completed");
+});
+
+it("after a slow start, still retries a capture that stops once frames flow, on the same window", async () => {
+  capture.probeMs = 304_000;
+  capture.scripts = ["stall", { firstFrameAfterMs: 1_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(3_000 + 60_000 + 10_000, outcome);
+  expect(capture.retriedWithWorkers).toEqual([2]);
+});
+
+it("with no probe start-up, treats a first frame later than 300 s as a stall", async () => {
+  capture.scripts = [{ firstFrameAfterMs: 400_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(290_000, outcome);
+  expect(outcome()).toBe(PENDING);
+  await runFor(20_000 + 60_000 + 10_000, outcome);
+  expect(await settled(outcome)).toMatchObject({ code: "RENDER_STAGE_STALLED" });
+});
+
+it("never waits past the ceiling for a first frame, however slow the probe was", async () => {
+  capture.probeMs = 600_000;
+  capture.scripts = [{ firstFrameAfterMs: 1_300_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(880_000, outcome);
+  expect(outcome()).toBe(PENDING);
+  await runFor(30_000 + 60_000 + 10_000, outcome);
+  expect(await settled(outcome)).toMatchObject({ code: "RENDER_STAGE_STALLED" });
+});
+
+it.each([
+  [undefined, 300_000],
+  [0, 300_000],
+  [Number.NaN, 300_000],
+  [100_000, 300_000],
+  [304_000, 608_000],
+  [600_000, 900_000],
+])("gives a probe start-up of %s ms a first-frame window of %s ms", (probeMs, windowMs) => {
+  expect(firstFrameWindowMs(probeMs)).toBe(windowMs);
 });
 
 it("completes even when the progress sink never drains", async () => {

@@ -55,9 +55,9 @@ describe("docs topics", () => {
     "utf8",
   );
 
-  it("has a file for every topic it lists, including motion-blur", () => {
+  it("has a file for every topic it lists, including motion-blur, audio and transcribe", () => {
     const files = [...source.matchAll(/file: "([^"]+)"/g)].map((match) => match[1] ?? "");
-    expect(files).toContain("motion-blur.md");
+    expect(files).toEqual(expect.arrayContaining(["motion-blur.md", "audio.md", "transcribe.md"]));
     for (const file of files) {
       expect(readdirSync(join(REPO_ROOT, "packages", "cli", "src", "docs"))).toContain(file);
     }

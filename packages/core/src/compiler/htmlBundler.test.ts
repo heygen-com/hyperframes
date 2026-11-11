@@ -201,6 +201,45 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it.each([
+    [
+      "UTF-16LE",
+      (text: string) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, "utf16le")]),
+    ],
+    [
+      "UTF-16BE",
+      (text: string) =>
+        Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from(text, "utf16le").swap16()]),
+    ],
+    [
+      "UTF-8 with a BOM",
+      (text: string) => Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]),
+    ],
+  ])(
+    "reads a page saved as %s by its byte order mark, as a browser does",
+    async (_name, encode) => {
+      const dir = makeTempProject({});
+      writeFileSync(
+        join(dir, "index.html"),
+        encode(`<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="2">
+          <div data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+        </div></body></html>`),
+      );
+      writeFileSync(
+        join(dir, "scene.html"),
+        encode(`<template><div data-composition-id="scene"><h1>Café scene</h1></div></template>`),
+      );
+
+      const bundled = await bundleToSingleHtml(dir);
+
+      expect(bundled).not.toContain("\u0000");
+      expect(bundled).not.toContain("\uFEFF");
+      expect(bundled).toContain('data-composition-id="root"');
+      expect(bundled).toContain("Café scene");
+    },
+  );
+
   it("bundles a direct composition entry with paths relative to its file", async () => {
     const dir = makeTempProject({
       "index.html": "<html><body>wrong entry</body></html>",
@@ -245,6 +284,53 @@ describe("bundleToSingleHtml", () => {
       expect(bundled).not.toContain("intro scene");
     },
   );
+
+  it("bundles the first scene template of a file with two scene templates and no live root", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="6">
+          <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-duration="6"><h1>first scene</h1></div></template>
+        <template><div data-composition-id="other"><h1>second scene</h1></div></template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("first scene");
+    expect(bundled).not.toContain("second scene");
+  });
+
+  it.each([
+    [
+      "a card template before the scene",
+      `<template id="card"><div class="card">card</div></template>`,
+      "mounted scene",
+      "",
+    ],
+    [
+      "two scene templates",
+      "",
+      "mounted scene",
+      `<template><div data-composition-id="other"><h1>second scene</h1></div></template>`,
+    ],
+  ])("mounts the scene template of a file with %s", async (_label, before, expected, after) => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="6">
+          <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "compositions/scene.html": `${before}<template><div data-composition-id="scene" data-duration="6"><h1>mounted scene</h1></div></template>${after}`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain(expected);
+    expect(bundled).not.toContain("second scene");
+    expect(bundled).not.toContain(">card<");
+  });
 
   it("rebases direct-entry authored asset paths before inlining", async () => {
     const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';
@@ -2627,6 +2713,27 @@ describe("bundleToSingleHtml", () => {
   <script>window.__timelines = {};</script>
 </body></html>`,
       "fonts.css": `@font-face { font-family: 'Hiragino Sans'; src: local('Hiragino Sans W3'); }`,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bundleToSingleHtml(dir);
+      const guard = warnSpy.mock.calls
+        .map((call) => String(call[0] ?? ""))
+        .filter((line) => line.includes("[StaticGuard]"));
+      expect(guard).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("reads a timeline registered by a local script, as hyperframes lint does", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head></head><body>
+  <div id="root" data-composition-id="root" data-width="320" data-height="180" data-duration="1"></div>
+  <script src="timeline.js"></script>
+</body></html>`,
+      "timeline.js": `window.__timelines = window.__timelines || {};
+window.__timelines.root = { duration: () => 1, seek() {}, pause() {} };`,
     });
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

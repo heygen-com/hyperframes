@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isCompositionVariable, parseCompositionVariables } from "./compositionVariables.js";
+import {
+  isCompositionVariable,
+  parseCompositionVariables,
+  readCompositionVariables,
+} from "./compositionVariables.js";
 import type { CompositionVariable } from "./types.js";
 
 describe("font/image declaration defaults", () => {
@@ -49,5 +53,36 @@ describe("font/image declaration defaults", () => {
     const element = document.createElement("div");
     element.setAttribute("data-composition-variables", JSON.stringify([declaration]));
     expect(parseCompositionVariables(element)).toEqual([]);
+  });
+});
+
+describe("readCompositionVariables", () => {
+  const title = { id: "title", type: "string", label: "Title", default: "x" };
+
+  it("reads every declaration of a well-formed attribute as complete", () => {
+    expect(readCompositionVariables(JSON.stringify([title]))).toEqual({
+      declarations: [title],
+      complete: true,
+    });
+  });
+
+  it("treats an absent attribute as complete and empty", () => {
+    expect(readCompositionVariables(null)).toEqual({ declarations: [], complete: true });
+    expect(readCompositionVariables("")).toEqual({ declarations: [], complete: true });
+  });
+
+  it("keeps the valid entries and reports incomplete when one is malformed", () => {
+    expect(readCompositionVariables(JSON.stringify([title, { id: "broken" }]))).toEqual({
+      declarations: [title],
+      complete: false,
+    });
+  });
+
+  it("reports incomplete for invalid JSON and for a payload that is not an array", () => {
+    expect(readCompositionVariables("{")).toEqual({ declarations: [], complete: false });
+    expect(readCompositionVariables('{"id":"title"}')).toEqual({
+      declarations: [],
+      complete: false,
+    });
   });
 });

@@ -3350,6 +3350,34 @@ describe("HyperframesPlayer video mode", () => {
     expect(withControls.duration).toBe(0);
   });
 
+  it.each([null, ""])("unloads a playing video when src is cleared to %s", (src) => {
+    const withControls = createPlayer({ type: "video/mp4", src: FILM, controls: "" });
+    const video = videoOf(withControls);
+    loadMetadata(video);
+    withControls.seek(3);
+    withControls.play();
+
+    if (src === null) withControls.removeAttribute("src");
+    else withControls.setAttribute("src", src);
+
+    expect(video.getAttribute("src")).toBeNull();
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledOnce();
+    expect(withControls.ready).toBe(false);
+    expect(withControls.paused).toBe(true);
+    expect(withControls.currentTime).toBe(0);
+    expect(withControls.duration).toBe(0);
+    expect(withControls.shadowRoot?.textContent).toContain("0:00 / 0:00");
+    expect(withControls.shadowRoot?.querySelector('[aria-label="Play"]')).not.toBeNull();
+
+    withControls.setAttribute("src", FILM);
+    loadMetadata(video);
+    withControls.play();
+
+    expect(withControls.ready).toBe(true);
+    expect(withControls.paused).toBe(false);
+    expect(video.getAttribute("src")).toBe(FILM);
+  });
+
   it("shows a playback rate configured before controls are created", () => {
     player = createPlayer({ type: "video/mp4", src: FILM, "playback-rate": "2", controls: "" });
 
@@ -4232,6 +4260,32 @@ describe("HyperframesPlayer asset-ready gate", () => {
 
     expect(player.getAttribute("assets-loading-ui")).toBe("none");
     expect(hideSpy).toHaveBeenCalled();
+
+    player.remove();
+  });
+
+  it("shows Buffering while the runtime holds playback for a track, and hides it on resume", async () => {
+    const player = (await createConnectedPlayer()) as PlayerInternal & {
+      _onMessage: (event: MessageEvent) => void;
+      paused: boolean;
+    };
+    const showSpy = vi.spyOn(player.shaderLoader, "showAssetsLoading");
+    const post = (buffering: boolean) =>
+      player._onMessage(
+        new MessageEvent("message", {
+          source: player.iframe.contentWindow,
+          data: { source: "hf-preview", type: "state", frame: 30, isPlaying: true, buffering },
+        }),
+      );
+
+    post(true);
+    await new Promise((resolve) => setTimeout(resolve, 160));
+    expect(player.hasAttribute("buffering")).toBe(true);
+    expect(showSpy).toHaveBeenCalledWith("Buffering", "");
+    expect(player.paused).toBe(false);
+
+    post(false);
+    expect(player.hasAttribute("buffering")).toBe(false);
 
     player.remove();
   });

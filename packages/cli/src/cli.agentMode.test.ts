@@ -81,7 +81,7 @@ function runAsAgent(args: string[], { ci = true } = {}): Promise<Run> {
         HOME: home,
         USERPROFILE: home,
         ...(ci ? { CI: "1" } : {}),
-        CLAUDECODE: "1",
+        CLAUDE_CODE_CHILD_SESSION: "1",
       },
     });
     let stdout = "";
@@ -353,7 +353,9 @@ describe("agent-mode contract", () => {
     expect(run.code, run.stderr).toBe(1);
     expectJsonFailure(run, "runtime_error");
     const { message } = JSON.parse(run.stdout).error as { message: string };
-    expect(message).toMatch(/Aborting render due to lint issues in --strict mode: [1-9]\d* error/);
+    expect(message).toMatch(/Cannot render: [1-9]\d* error/);
+    expect(message).toContain("root_missing_dimensions");
+    expect(message).toContain("Run hyperframes lint for details.");
     expect(run.stderr).toContain(message);
   });
 
@@ -362,6 +364,22 @@ describe("agent-mode contract", () => {
     expect(run.code).toBe(2);
     expectJsonFailure(run, "unknown_command");
     expect(JSON.parse(run.stdout).error.hint).toBe("Did you mean 'hyperframes render'?");
+  });
+
+  it("an unknown command answers in a few lines, never the full help", async () => {
+    const captions = await runAsAgent(["captions"]);
+    const typo = await runAsAgent(["rendr"]);
+    expect(captions.code).toBe(2);
+    expect(captions.stderr).toContain("Unknown command: captions");
+    expect(captions.stderr).toContain(
+      "Run 'hyperframes transcribe', then read ../hyperframes/references/captions.md",
+    );
+    expect(typo.code).toBe(2);
+    expect(typo.stderr).toContain("Did you mean 'hyperframes render'?");
+    for (const run of [captions, typo]) {
+      expect(run.stderr).toContain("Run 'hyperframes --help' to list every command.");
+      expect(run.stderr.split("\n").length).toBeLessThan(8);
+    }
   });
 
   it("an unknown flag suggests the flag it most likely means", async () => {
@@ -380,6 +398,16 @@ describe("agent-mode contract", () => {
       expect(run.stderr).toContain("--yes");
     },
   );
+
+  // Updating is the person's decision: the hint states that and names no step for the agent.
+  it("update without --yes refuses to prompt, exits 2, and leaves updating to the person", async () => {
+    const run = await runAsAgent(["update"]);
+    expectQuiet(run);
+    expect(run.code, run.stderr).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("Updating is the person's call; `update --check` only reports.");
+    expect(run.stderr).not.toContain("--yes");
+  });
 
   it("only the prompt wrapper loads @clack/prompts, statically or dynamically", () => {
     const offenders = (readdirSync(srcDir, { recursive: true }) as string[]).filter(

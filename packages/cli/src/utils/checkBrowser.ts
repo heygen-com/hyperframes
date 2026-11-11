@@ -1,4 +1,6 @@
-import type { CheckDeadline } from "./checkDeadline.js";
+import { DEFAULT_CONFIG } from "@hyperframes/engine";
+import { CheckCopiesUnfinishedError, COPY_BUDGET_MS, type CheckDeadline } from "./checkDeadline.js";
+import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "../capture/captureTimeout.js";
 import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
@@ -41,6 +43,7 @@ import {
 } from "./contrastMotion.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { findStageProxyBox } from "./compositionViewport.js";
+import { mediaUsedSeconds } from "./mediaUsedSeconds.js";
 import type { PreviewProxyBox } from "@hyperframes/core";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import {
@@ -51,14 +54,16 @@ import {
   decideMediaProxyEligibility,
   proxyVariantFor,
   scanProjectMediaCodecMap,
+  shouldPrewarmProxy,
 } from "@hyperframes/studio-server/media-codec-map";
 import {
   FfmpegUnavailableError,
   getProxyCachePath,
+  proxyWindowSeconds,
   resolveProxies,
   type ProxyProgress,
 } from "@hyperframes/studio-server/proxy-transcoder";
-import { rectToBbox } from "./checkTypes.js";
+import { rectToBbox, type MediaCopyFacts } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
   CheckAnchor,
@@ -89,6 +94,8 @@ import type {
   SeekClock,
 } from "./checkTypes.js";
 import type { ProjectDir } from "./project.js";
+
+export const RENDER_READY_WARNING_SUFFIX = `the scene may still be building, so results can miss late content; raise --timeout (for example ${(DEFAULT_CONFIG.playerReadyTimeout * 2) / 1000}s)`;
 
 interface RuntimeDraft {
   code: string;
@@ -163,9 +170,11 @@ function startCopyHeartbeat(
   progress: (index: number, progress: ProxyProgress) => void;
   settled: (index: number) => void;
   stop: () => void;
+  percent: (index: number) => string;
 } {
   const startedAt = Date.now();
   const latest = new Map<number, ProxyProgress>();
+  const last = new Map<number, ProxyProgress>();
   const total = cached.filter((isCached) => !isCached).length;
   let finished = 0;
   const timer = setInterval(() => {
@@ -181,7 +190,16 @@ function startCopyHeartbeat(
   }, COPY_HEARTBEAT_MS);
   timer.unref();
   return {
-    progress: (index, progress) => void latest.set(index, progress),
+    progress: (index, progress) => {
+      latest.set(index, progress);
+      last.set(index, progress);
+    },
+    percent: (index) => {
+      const { doneSeconds = 0, totalSeconds } = last.get(index) ?? {};
+      return totalSeconds
+        ? `${Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))}%`
+        : "not started";
+    },
     settled: (index) => {
       latest.delete(index);
       if (!cached[index]) finished += 1;
@@ -190,10 +208,30 @@ function startCopyHeartbeat(
   };
 }
 
+/** Absolute path -> seconds of it the composition plays, for the given files worth copying only in part. */
+async function copyWindows(
+  projectDir: string,
+  html: string,
+  pathnames: Iterable<string>,
+): Promise<Map<string, number>> {
+  const used = mediaUsedSeconds(html);
+  const windows = new Map<string, number>();
+  await Promise.all(
+    [...pathnames].map(async (pathname) => {
+      const seconds = used.get(pathname);
+      if (seconds === undefined) return;
+      const sourcePath = resolve(projectDir, pathname.replace(/^\/+/, ""));
+      const window = await proxyWindowSeconds(sourcePath, seconds);
+      if (window !== undefined) windows.set(sourcePath, window);
+    }),
+  );
+  return windows;
+}
+
 /**
  * Awaits the H.264 authoring proxy for every browser-hostile local video
  * asset in `html` BEFORE the timed render-ready wait starts. `check`'s
- * render-ready wait defaults to 3000ms (`DEFAULT_CHECK_OPTIONS.timeout`,
+ * render-ready wait defaults to 45 s (`DEFAULT_CHECK_OPTIONS.timeout`,
  * passed through as `renderReadyTimeoutMs`), and a cold `.transcode-cache`
  * cannot fit inside that window — without this, a project's first
  * hostile-asset check (e.g. a fresh CI checkout) would race the timeout
@@ -206,8 +244,15 @@ export async function preResolveHostileMediaProxies(
   projectDir: string,
   html: string,
   autoProxyOverride?: boolean,
+  budgetMs?: number,
+  record?: (facts: MediaCopyFacts) => void,
 ): Promise<ProxyPreResolution> {
-  const none: ProxyPreResolution = { findings: [], failedPaths: new Set(), files: [] };
+  const none: ProxyPreResolution = {
+    findings: [],
+    failedPaths: new Set(),
+    files: [],
+    limits: new Map(),
+  };
   if (!resolveAutoProxy(projectDir, autoProxyOverride)) return none;
   let codecMap: Awaited<ReturnType<typeof scanProjectMediaCodecMap>>;
   try {
@@ -219,13 +264,20 @@ export async function preResolveHostileMediaProxies(
     return none;
   }
   const hostileEntries = Object.entries(codecMap).filter(
-    ([, facts]) => decideMediaProxyEligibility(facts).eligible,
+    ([, facts]) => decideMediaProxyEligibility(facts).eligible && shouldPrewarmProxy(facts),
   );
   if (hostileEntries.length === 0) return none;
 
   const startedAt = Date.now();
   const stageBox = findStageProxyBox(html);
-  const sources = hostileEntries.map(([pathname, facts]) => {
+  const sources: Array<{
+    pathname: string;
+    file: string;
+    sourcePath: string;
+    variant: ReturnType<typeof proxyVariantFor>;
+    box: PreviewProxyBox | undefined;
+    limitSeconds?: number;
+  }> = hostileEntries.map(([pathname, facts]) => {
     const file = pathname.replace(/^\/+/, "");
     return {
       pathname,
@@ -235,6 +287,15 @@ export async function preResolveHostileMediaProxies(
       box: stageBox,
     };
   });
+  const windows =
+    mediaUsedSeconds(html).size > 0
+      ? await copyWindows(
+          projectDir,
+          html,
+          sources.map(({ pathname }) => pathname),
+        )
+      : new Map<string, number>();
+  for (const source of sources) source.limitSeconds = windows.get(source.sourcePath);
   const total = hostileEntries.length;
   const cached = sources.map((source) => proxyCached(projectDir, source));
   const toMake = cached.filter((isCached) => !isCached).length;
@@ -247,6 +308,14 @@ export async function preResolveHostileMediaProxies(
   const heartbeat = startCopyHeartbeat(sources, cached);
   const stopped = new AbortController();
   const forgetStop = onStopSignal(() => stopped.abort());
+  let overBudget: number | undefined;
+  const budget =
+    budgetMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          overBudget = budgetMs;
+          stopped.abort();
+        }, budgetMs);
   const results = await resolveProxies(
     projectDir,
     sources,
@@ -260,7 +329,19 @@ export async function preResolveHostileMediaProxies(
   ).finally(() => {
     heartbeat.stop();
     forgetStop();
+    clearTimeout(budget);
   });
+  const unfinished = sources.flatMap(({ file }, index) =>
+    results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
+  );
+  record?.({
+    total,
+    waitedMs: Date.now() - startedAt,
+    unfinished: overBudget === undefined ? 0 : unfinished.length,
+  });
+  if (overBudget !== undefined && unfinished.length > 0) {
+    throw new CheckCopiesUnfinishedError(overBudget, unfinished);
+  }
   const failures = sources.flatMap((source, index) => {
     const result = results[index]!;
     return result.status === "rejected" ? [{ ...source, reason: result.reason }] : [];
@@ -290,7 +371,12 @@ export async function preResolveHostileMediaProxies(
     }
     return { file, state: cached[index] ? "cached" : "ready" };
   });
-  return { findings, failedPaths: new Set(failures.map(({ pathname }) => pathname)), files };
+  return {
+    findings,
+    failedPaths: new Set(failures.map(({ pathname }) => pathname)),
+    files,
+    limits: windows,
+  };
 }
 
 function proxyCached(
@@ -299,10 +385,19 @@ function proxyCached(
     sourcePath: string;
     variant: ReturnType<typeof proxyVariantFor>;
     box?: PreviewProxyBox;
+    limitSeconds?: number;
   },
 ): boolean {
   try {
-    return existsSync(getProxyCachePath(projectDir, source.sourcePath, source.variant, source.box));
+    return existsSync(
+      getProxyCachePath(
+        projectDir,
+        source.sourcePath,
+        source.variant,
+        source.box,
+        source.limitSeconds,
+      ),
+    );
   } catch {
     return false;
   }
@@ -320,6 +415,8 @@ interface ProxyPreResolution {
   failedPaths: Set<string>;
   /** One entry per browser-hostile video, in project order. */
   files: PreparedMediaFile[];
+  /** Absolute path -> seconds from the start that the composition plays, for the copies made short. */
+  limits: Map<string, number>;
 }
 
 function proxyFailedDraft(message: string): RuntimeDraft {
@@ -348,10 +445,20 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const html = await loadCheckHtmlWithDeferredMedia(project.dir);
   deadline?.enter("copies");
-  const { findings: drafts, failedPaths } = await preResolveHostileMediaProxies(
+  let mediaCopies: MediaCopyFacts | undefined;
+  deadline?.keepPartial(() => (mediaCopies ? { mediaCopies } : {}));
+  const {
+    findings: drafts,
+    failedPaths,
+    limits,
+  } = await preResolveHostileMediaProxies(
     project.dir,
     html,
     options.autoProxy,
+    Math.min(COPY_BUDGET_MS, deadline?.remainingMs() ?? COPY_BUDGET_MS),
+    (facts) => {
+      mediaCopies = facts;
+    },
   );
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
@@ -360,6 +467,7 @@ export async function runBrowserCheck(
     "Failed to bind check server",
     [],
     options.autoProxy,
+    limits,
   );
   const clock = createRuntimeClock();
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
@@ -379,8 +487,7 @@ export async function runBrowserCheck(
     const session = await openSettledCompositionPage(html, server.url, {
       navigationTimeoutMs: options.timeout,
       renderReadyTimeoutMs: options.timeout,
-      renderReadyWarningSuffix:
-        "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+      renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
       prelaunched,
       browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
       signal: deadline?.signal,
@@ -437,6 +544,7 @@ export async function runBrowserCheck(
     const unreachable = await networkChangesStillFailing(merged);
     return {
       ...result,
+      ...(mediaCopies && { mediaCopies }),
       timings: { ...result.timings, launchSettleMs },
       renderReadyTimedOut: session.renderReadyTimedOut,
       runtimeFindings: dropFailedProxyEchoes(
@@ -536,8 +644,7 @@ async function openHelperSession(
   const session = await openSettledCompositionPage(html, url, {
     navigationTimeoutMs: options.timeout,
     renderReadyTimeoutMs: options.timeout,
-    renderReadyWarningSuffix:
-      "the scene may still be building, so results can miss late content; raise --timeout (for example 20s)",
+    renderReadyWarningSuffix: RENDER_READY_WARNING_SUFFIX,
     browserGpuMode: options.browserGpuMode ?? resolveCliChromeGpuMode(),
     signal: owner.signal,
     onBrowser: owner.onBrowser,
@@ -664,6 +771,7 @@ async function withFindingCapturePage<T>(
     "Failed to bind check server",
     [],
     options.autoProxy,
+    await copyWindows(project.dir, html, mediaUsedSeconds(html).keys()),
   );
   let chromeBrowser: import("puppeteer-core").Browser | undefined;
   let failure: { kind: "none" } | { kind: "failed"; error: unknown } = { kind: "none" };
@@ -1269,6 +1377,7 @@ async function overlapGridInPage(
     fallback: boolean;
     skipDraws: boolean;
     videoFrames: boolean;
+    timeoutMs: number;
   },
   seek: typeof seekInPage,
   anchors: typeof anchorsInPage,
@@ -1276,11 +1385,15 @@ async function overlapGridInPage(
   const audit = Reflect.get(window, "__hyperframesOverlapAudit");
   const waitForCompletion = Reflect.get(window, "__hfWaitForSeekCompletion");
   const samples: OverlapGridSample[] = [];
+  const deadline = performance.now() + grid.timeoutMs;
   for (const time of grid.times) {
     console.debug(`${grid.marker}${time}`);
     seek(time, grid.fallback, false, grid.skipDraws);
     if (typeof waitForCompletion === "function") {
-      await Reflect.apply(waitForCompletion, window, [{ videoFrames: grid.videoFrames }]);
+      const timeoutMs = Math.max(0, deadline - performance.now());
+      await Reflect.apply(waitForCompletion, window, [
+        { videoFrames: grid.videoFrames, timeoutMs },
+      ]);
     }
     const result: unknown =
       typeof audit === "function" ? Reflect.apply(audit, window, [{ time }]) : [];
@@ -1304,6 +1417,7 @@ async function collectOverlapGrid(page: Page, times: number[]): Promise<Anchored
     fallback: DENSE_GEOMETRY_SEEK_OPTIONS.fallbackToBridgeAndTimelines,
     skipDraws: DENSE_GEOMETRY_SEEK_OPTIONS.skipWebglDraws,
     videoFrames: DENSE_GEOMETRY_SEEK_OPTIONS.waitForVideoFrames,
+    timeoutMs: SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS,
   };
   const samples = (await page.evaluate(
     `(${overlapGridInPage})(${JSON.stringify(grid)}, ${seekInPage}, ${anchorsInPage})`,

@@ -1,13 +1,15 @@
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { extname, join } from "node:path";
-import { PROXY_VARIANT_CONFIG } from "./mediaCodecMap.js";
+import { dirname, extname, join } from "node:path";
+import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG } from "./mediaCodecMap.js";
+import { isLinkFreeWithinProject } from "./safePath.js";
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024 * 1024;
 const DEFAULT_STALE_TEMP_MS = 60 * 60 * 1000;
 const DEFAULT_MIN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-const PROXY_EXTENSIONS: ReadonlySet<string> = new Set(
-  Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
-);
+const PROXY_EXTENSIONS: ReadonlySet<string> = new Set([
+  ...Object.values(PROXY_VARIANT_CONFIG).map(({ extension }) => extension),
+  PROXY_STILL_EXTENSION,
+]);
 const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
 const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-(?:\.part-[0-9a-f]{64}-\d+|[0-9a-f]{64})\.\w+$/;
 const TRANSCODER_PIECE_NAME = /^\.part-([0-9a-f]{64})-\d+(\.\w+)$/;
@@ -166,7 +168,7 @@ export function cleanupProxyCache(
   if (shouldSkipSweep(cacheDir, now, minSweepIntervalMs)) {
     return { removed: [], bytesBefore: 0, bytesAfter: 0, skipped: true };
   }
-  if (!existsSync(cacheDir)) {
+  if (!existsSync(cacheDir) || !isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) {
     return { removed: [], bytesBefore: 0, bytesAfter: 0, skipped: false };
   }
 

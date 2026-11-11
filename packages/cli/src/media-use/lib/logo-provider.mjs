@@ -169,18 +169,21 @@ export async function thesvgSearch(intent, ctx = {}) {
   const hit = thesvgMatch(icons, entity);
   if (!hit) return null;
   // theSVG also ships mono, light/dark and wordmark variants; default is the full-color mark.
-  const route = hit.variants.default;
+  // A named variant the brand lacks is a miss, never the mark in its place.
+  const variant = ctx.variant || "default";
+  const route = hit.variants[variant];
+  if (!route) return null;
   return {
     url: `${THESVG_CDN}/public${route.startsWith("/") ? "" : "/"}${route}`,
     ext: ".svg",
     source: "search",
     metadata: {
-      description: `${hit.title} logo (official mark)`,
+      description: `${hit.title} ${variant === "default" ? "logo (official mark)" : `logo (${variant})`}`,
       provider: "thesvg",
       provenance: {
         entity,
         slug: hit.slug,
-        variant: "default",
+        variant,
         variants: Object.keys(hit.variants),
         collection: hit.collection,
         license: hit.license,
@@ -191,6 +194,7 @@ export async function thesvgSearch(intent, ctx = {}) {
 }
 
 export async function githubAvatarSearch(intent, ctx = {}) {
+  if (ctx.variant) return null; // an avatar or favicon is never a named variant
   const entity = entityFrom(intent, ctx.entity);
   const org = githubOrgFor(entity);
   if (!org) return null;
@@ -213,6 +217,7 @@ export async function githubAvatarSearch(intent, ctx = {}) {
 }
 
 export async function faviconSearch(intent, ctx = {}) {
+  if (ctx.variant) return null;
   const entity = entityFrom(intent, ctx.entity);
   const domain = faviconDomainFor(entity);
   const url = `https://icons.duckduckgo.com/ip3/${domain}.ico`;

@@ -40,6 +40,14 @@ describe("detectFormat", () => {
     expect(detectFormat(path)).toBe("vtt");
   });
 
+  it("detects a JSON transcript saved with a UTF-8 BOM", () => {
+    const path = tmpFile(
+      "bom.json",
+      `\uFEFF${JSON.stringify({ transcription: [{ offsets: { from: 0, to: 1000 }, text: " Hi", tokens: [{ text: " Hi", offsets: { from: 0, to: 1000 }, p: 0.9 }] }] })}`,
+    );
+    expect(detectFormat(path)).toBe("whisper-cpp");
+  });
+
   it("detects whisper-cpp JSON", () => {
     const path = tmpFile(
       "transcript.json",
@@ -114,6 +122,41 @@ describe("loadTranscript", () => {
     expect(() => loadTranscript(tmpFile("transcript.json", '[{"foo":1}]'))).toThrow(
       /Unrecognized JSON transcript format/,
     );
+  });
+
+  it("reads whisper-cli output whose floats are nan, -nan, inf or MSVC's -nan(ind)", () => {
+    // Token objects as whisper.cpp's cli.cpp writes them: tab-indented, floats via iostream.
+    const token = (text: string, from: number, to: number, p: string) =>
+      [
+        "\t\t\t{",
+        `\t\t\t\t"text": "${text}",`,
+        `\t\t\t\t"timestamps": {`,
+        `\t\t\t\t\t"from": "00:00:00.000",`,
+        `\t\t\t\t\t"to": "00:00:00.500"`,
+        `\t\t\t\t},`,
+        `\t\t\t\t"offsets": {`,
+        `\t\t\t\t\t"from": ${from},`,
+        `\t\t\t\t\t"to": ${to}`,
+        `\t\t\t\t},`,
+        `\t\t\t\t"id": 50364,`,
+        `\t\t\t\t"p": ${p},`,
+        `\t\t\t\t"t_dtw": -1`,
+        "\t\t\t}",
+      ].join("\n");
+    const raw = `{\n\t"transcription": [\n\t\t{\n\t\t\t"tokens": [\n${[
+      token(" nan", 0, 500, "nan"),
+      token(" world", 600, 1200, "-nan"),
+      token(" again", 1300, 1800, "inf"),
+      token(" later", 1900, 2400, "-nan(ind)"),
+    ].join(",\n")}\n\t\t\t]\n\t\t}\n\t]\n}\n`;
+    const { words, format } = loadTranscript(tmpFile("transcript.json", raw));
+    expect(format).toBe("whisper-cpp");
+    expect(words).toEqual([
+      { text: "nan", start: 0, end: 0.5, id: "w0" },
+      { text: "world", start: 0.6, end: 1.2, id: "w1" },
+      { text: "again", start: 1.3, end: 1.8, id: "w2" },
+      { text: "later", start: 1.9, end: 2.4, id: "w3" },
+    ]);
   });
 
   it("parses whisper-cpp JSON with punctuation merging", () => {

@@ -27,15 +27,7 @@ export function getVariables<
 >(): Partial<T> {
   if (typeof document === "undefined") return {} as Partial<T>;
 
-  // <html> first, then any element carrying the attribute (later declarers win), then render-time
-  // overrides. A sub-composition's declaration is its own scope's, read from its scoped table.
-  const declarers = new Set<Element>();
-  if (document.documentElement?.hasAttribute("data-composition-variables")) {
-    declarers.add(document.documentElement);
-  }
-  for (const el of Array.from(document.querySelectorAll("[data-composition-variables]"))) {
-    if (!scopedVariablesFor(el)) declarers.add(el);
-  }
+  const declarers = topLevelDeclarers();
   const declaredDefaults: Record<string, unknown> = {};
   for (const el of declarers) {
     Object.assign(declaredDefaults, readDeclaredDefaults(el));
@@ -45,6 +37,30 @@ export function getVariables<
   const merged = { ...declaredDefaults, ...overrides };
   for (const el of declarers) warnUnknownEnumValues(el, merged);
   return merged as Partial<T>;
+}
+
+/**
+ * Top-level declarers: `<html>` first, then others outside a sub-composition's scope; a later one wins.
+ * `getVariables` merges these, and `getDeclaredVariableSources` hands the same elements to a strict render.
+ */
+function topLevelDeclarers(): Set<Element> {
+  const declarers = new Set<Element>();
+  if (document.documentElement?.hasAttribute("data-composition-variables")) {
+    declarers.add(document.documentElement);
+  }
+  for (const el of Array.from(document.querySelectorAll("[data-composition-variables]"))) {
+    if (!scopedVariablesFor(el)) declarers.add(el);
+  }
+  return declarers;
+}
+
+/** The raw `data-composition-variables` text of each top-level declarer, in precedence order (later wins). */
+export function getDeclaredVariableSources(): string[] {
+  if (typeof document === "undefined") return [];
+  return Array.from(
+    topLevelDeclarers(),
+    (el) => el.getAttribute("data-composition-variables") ?? "",
+  );
 }
 
 /**

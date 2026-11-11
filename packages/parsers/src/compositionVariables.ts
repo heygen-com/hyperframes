@@ -76,6 +76,24 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
   return true;
 }
 
+export interface ReadCompositionVariables {
+  declarations: CompositionVariable[];
+  complete: boolean;
+}
+
+/** Valid declarations in the raw attribute text; `complete` is false when anything in it was dropped or unreadable. */
+export function readCompositionVariables(raw: string | null | undefined): ReadCompositionVariables {
+  if (!raw) return { declarations: [], complete: true };
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { declarations: [], complete: false };
+    const declarations = parsed.filter(isCompositionVariable);
+    return { declarations, complete: declarations.length === parsed.length };
+  } catch {
+    return { declarations: [], complete: false };
+  }
+}
+
 /**
  * Parse the typed variable declarations from an element's
  * `data-composition-variables` attribute. Malformed entries (wrong shape,
@@ -83,20 +101,7 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
  * absent attribute, invalid JSON, or a non-array payload yields `[]`.
  */
 export function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
-  const variablesAttr = htmlEl.getAttribute("data-composition-variables");
-  if (!variablesAttr) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(variablesAttr);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isCompositionVariable);
-  } catch {
-    return [];
-  }
+  return readCompositionVariables(htmlEl.getAttribute("data-composition-variables")).declarations;
 }
 
 /**

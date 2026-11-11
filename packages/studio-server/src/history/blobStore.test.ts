@@ -1,5 +1,14 @@
 // @vitest-environment node
-import { createReadStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  createReadStream,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +19,12 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, rename: vi.fn(actual.rename), copyFile: vi.fn(actual.copyFile) };
+  return {
+    ...actual,
+    rename: vi.fn(actual.rename),
+    copyFile: vi.fn(actual.copyFile),
+    open: vi.fn(actual.open),
+  };
 });
 
 import * as fs from "node:fs";
@@ -19,8 +33,11 @@ import { onRestoredInPlace, openBlobStore } from "./blobStore.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 
 const { renameSync: realRenameSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
-const { rename: realRename, copyFile: realCopyFile } =
-  await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+const {
+  rename: realRename,
+  copyFile: realCopyFile,
+  open: realOpen,
+} = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 const busy = () => Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
 const platform = process.platform;
 
@@ -107,14 +124,17 @@ describe("the history store on Windows, while another process briefly holds a fi
     const store = await openBlobStore(join(root, "history", "blobs"));
     let refused = 0;
     vi.mocked(fsp.rename).mockImplementation(async (from, to) => {
-      if (refused++ < 2) throw busy();
+      if (refused < 2) {
+        refused += 1;
+        throw busy();
+      }
       return realRename(from, to);
     });
 
     const hash = await store.put(source);
 
     expect((await store.read(hash)).toString("utf8")).toBe("<p>kept</p>");
-    expect(refused).toBe(3);
+    expect(refused).toBe(2);
   });
 });
 
@@ -168,5 +188,95 @@ describe("a restore of a file the preview is serving", () => {
 
     expect(readFileSync(target, "utf8")).toBe("<p>after</p>");
     expect(heard).toEqual([]);
+  });
+});
+
+describe("the history store's count of what it holds", () => {
+  it("counts a file once when two copies of it are filed together", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-count-"));
+    try {
+      const small = join(root, "small.txt");
+      const large = join(root, "large.txt");
+      writeFileSync(small, "same bytes");
+      writeFileSync(large, "x".repeat(200 * 1024));
+      const store = await openBlobStore(join(root, "history", "blobs"));
+      await Promise.all([store.put(small), store.put(small), store.put(large), store.put(large)]);
+      expect(store.bytes()).toBe("same bytes".length + 200 * 1024);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a file written to while the history reads it", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-blob-moving-"));
+  });
+  afterEach(() => {
+    vi.mocked(fsp.open).mockImplementation(realOpen);
+    vi.mocked(fsp.copyFile).mockImplementation(realCopyFile);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+  const stored = () => readdirSync(join(root, "blobs"), { recursive: true }).map(String);
+
+  /** A saved file, dated a minute back, and the half and whole of the save about to replace it. */
+  function savedFile(name: string, size: number) {
+    const path = join(root, name);
+    writeFileSync(path, "a".repeat(size));
+    const minuteAgo = new Date(Date.now() - 60_000);
+    utimesSync(path, minuteAgo, minuteAgo);
+    return { path, half: "b".repeat(size / 2), whole: "b".repeat(size) };
+  }
+
+  it("reads a small file again when a save lands during the read, and files only the whole save", async () => {
+    const { path, half, whole } = savedFile("index.html", 1024);
+    vi.mocked(fsp.open).mockImplementationOnce(async (file, flags) => {
+      const handle = await realOpen(file, flags);
+      const read = handle.readFile.bind(handle);
+      handle.readFile = (async () => {
+        writeFileSync(path, half);
+        const bytes = await read();
+        writeFileSync(path, whole);
+        return bytes;
+      }) as typeof handle.readFile;
+      return handle;
+    });
+    const store = await openBlobStore(join(root, "blobs"));
+
+    expect(await store.put(path)).toBe(sha(whole));
+    expect(store.has(sha(half))).toBe(false);
+  });
+
+  it("copies a large file again when a save lands during the copy, and files only the whole save", async () => {
+    const { path, half, whole } = savedFile("clip.bin", 256 * 1024);
+    vi.mocked(fsp.copyFile).mockImplementationOnce(async (from, to) => {
+      writeFileSync(path, half);
+      await realCopyFile(from, to);
+      writeFileSync(path, whole);
+    });
+    const store = await openBlobStore(join(root, "blobs"));
+
+    expect(await store.put(path)).toBe(sha(whole));
+    expect(store.has(sha(half))).toBe(false);
+    expect(stored().filter((name) => name.includes("incoming-"))).toEqual([]);
+  });
+
+  it("files nothing, and leaves it for the next sweep, while every read is cut into", async () => {
+    const { path } = savedFile("clip.bin", 256 * 1024);
+    let saves = 0;
+    vi.mocked(fsp.copyFile).mockImplementation(async (from, to) => {
+      await realCopyFile(from, to);
+      saves += 1;
+      // A new size each time: a same-size rewrite within one clock tick of the disk keeps its stat.
+      writeFileSync(path, "b".repeat(256 * 1024 + saves));
+    });
+    const store = await openBlobStore(join(root, "blobs"));
+
+    expect(await store.put(path)).toBeNull();
+    expect(saves).toBe(3);
+    expect(stored()).toEqual([]);
   });
 });

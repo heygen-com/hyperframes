@@ -12,6 +12,7 @@ import { analyzeTargets, previewTarget } from "../audio/analysis/run.js";
 import { filmTargets, type AudioTarget, type FilmQuery } from "../audio/analysis/targets.js";
 import { formatRead } from "../audio/read/format.js";
 import { readAudio } from "../audio/read/read.js";
+import { LAYERS, type Layer } from "../audio/read/types.js";
 import { describeProject } from "../timeline/describeProject.js";
 import { CliUsageError } from "../utils/commandResult.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -122,6 +123,7 @@ interface AudioFlags {
   "silence-db"?: string;
   read?: boolean;
   transcript?: string;
+  layer?: string;
   json?: boolean;
 }
 
@@ -181,13 +183,23 @@ function readQuality(files: string[], flags: AudioFlags): AnalysisQuality {
   return parseQuality(flags);
 }
 
+function parseLayer(flags: AudioFlags): Layer | undefined {
+  if (flags.layer === undefined) return undefined;
+  if (!flags.read) throw new CliUsageError("--layer only works with --read");
+  if (!LAYERS.includes(flags.layer as Layer))
+    throw new CliUsageError(`--layer is ${LAYERS.join(", ")}; got ${flags.layer}`);
+  return flags.layer as Layer;
+}
+
 async function read(files: string[], flags: AudioFlags) {
   const quality = readQuality(files, flags);
   const range = pair("range", flags.range);
+  const layer = parseLayer(flags);
   const result = await readAudio(resolve(process.cwd(), files[0]!), files[0]!, {
     cacheDir: join(resolve(flags.dir ?? process.cwd()), ".hyperframes", "read-audio"),
     transcript: flags.transcript ? resolve(process.cwd(), flags.transcript) : undefined,
     quality,
+    layer,
   });
   if (flags.json) {
     console.log(JSON.stringify(withMeta(result)));
@@ -259,6 +271,11 @@ export default defineCommand({
       type: "string",
       description: "With --read: the recording's transcript (default <file>.transcript.json)",
     },
+    layer: {
+      type: "string",
+      description:
+        "With --read: the file holds only this layer (music, sfx or voice); it is read whole, with no separation",
+    },
     json: { type: "boolean", description: "Output as JSON", default: false },
   },
   setup({ rawArgs, cmd }) {
@@ -268,6 +285,7 @@ export default defineCommand({
     const flags = args as unknown as AudioFlags;
     const files = args._.map(String);
     if (flags.read) return read(files, flags);
+    if (flags.layer !== undefined) throw new CliUsageError("--layer only works with --read");
     if (flags.transcript) throw new CliUsageError("--transcript only works with --read");
     const query = filmQuery(flags);
     if (files.length && query) throw new CliUsageError("give files or a film query, not both");

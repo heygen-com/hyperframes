@@ -10,7 +10,7 @@
  * hyperframes skill's references/film.md and references/types/launch.md — this file points agents there.
  */
 
-import { readdirSync, existsSync } from "node:fs";
+import { readdirSync, existsSync, readFileSync } from "node:fs";
 import { writeCaptureFileSync } from "./captureFile.js";
 import { captureSiteName } from "./localPage.js";
 import { join } from "node:path";
@@ -42,6 +42,28 @@ function inferColorRole(hex: string): string {
   return "neutral";
 }
 
+// Agents load these files as instructions, so text the page chose lands as one short line.
+function pageText(value: unknown, maxLength: number): string {
+  const line = String(value ?? "")
+    .replace(/[\p{Cc}\u2028\u2029]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return line.length > maxLength ? `${line.slice(0, maxLength - 1).trimEnd()}…` : line;
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+const AGENT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"] as const;
+
+function isCaptureWritten(path: string): boolean {
+  try {
+    return /^# [^\n]*\n\nSource: /.test(readFileSync(path, "utf-8"));
+  } catch {
+    return true;
+  }
+}
+
+/** Writes the capture's agent files; returns the existing ones capture did not write and kept. */
 export function generateAgentPrompt(
   outputDir: string,
   url: string,
@@ -52,11 +74,15 @@ export function generateAgentPrompt(
   hasShaders?: boolean,
   _catalogedAssets?: CatalogedAsset[], // reserved for future asset inventory
   _detectedLibraries?: string[],
-): void {
+): string[] {
   const prompt = buildPrompt(outputDir, url, tokens, hasScreenshot, hasLottie, hasShaders);
-  writeCaptureFileSync(join(outputDir, "AGENTS.md"), prompt, "utf-8");
-  writeCaptureFileSync(join(outputDir, "CLAUDE.md"), prompt, "utf-8");
-  writeCaptureFileSync(join(outputDir, ".cursorrules"), prompt, "utf-8");
+  const kept: string[] = [];
+  for (const name of AGENT_FILES) {
+    const path = join(outputDir, name);
+    if (existsSync(path) && !isCaptureWritten(path)) kept.push(name);
+    else writeCaptureFileSync(path, prompt, "utf-8");
+  }
+  return kept;
 }
 
 // fallow-ignore-next-line complexity
@@ -68,9 +94,10 @@ function buildPrompt(
   hasLottie?: boolean,
   hasShaders?: boolean,
 ): string {
-  const title = tokens.title || captureSiteName(url);
+  const title = pageText(tokens.title, 120) || captureSiteName(url);
 
   const colorSummary = tokens.colors
+    .filter((color) => typeof color === "string" && HEX_COLOR.test(color))
     .slice(0, 10)
     .map((hex) => `${hex} (${inferColorRole(hex)})`)
     .join(", ");
@@ -78,11 +105,11 @@ function buildPrompt(
     tokens.fonts
       .map(
         (f) =>
-          f.family +
+          pageText(f.family, 60) +
           (f.variable && f.weightRange
-            ? ` (${f.weightRange[0]}-${f.weightRange[1]} variable)`
+            ? ` (${Number(f.weightRange[0])}-${Number(f.weightRange[1])} variable)`
             : f.weights.length > 0
-              ? ` (${f.weights.join(",")})`
+              ? ` (${f.weights.map(Number).join(",")})`
               : ""),
       )
       .join(", ") || "none detected";

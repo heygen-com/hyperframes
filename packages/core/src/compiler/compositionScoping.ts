@@ -48,7 +48,44 @@ function compositionBoxSelector(scope: string): string {
   return `${scope}:not(:has([${INNER_ROOT_ATTR}])), ${scope} > [${INNER_ROOT_ATTR}]`;
 }
 
+function dropRootCompositionIdAttr(
+  selector: string,
+  authoredRootId: string | null | undefined,
+  compositionId: string,
+): string {
+  const trimmed = authoredRootId?.trim();
+  if (!trimmed) return selector;
+  const authored = escapeRegExp(`[${AUTHORED_ROOT_ID_ATTR}="${escapeCssAttributeValue(trimmed)}"]`);
+  const quotedCompId = escapeRegExp(compositionId);
+  const comp = String.raw`\[\s*data-composition-id\s*=\s*(?:"${quotedCompId}"|'${quotedCompId}')\s*\]`;
+  return selector.replace(new RegExp(`(${authored})${comp}|${comp}(${authored})`, "g"), "$1$2");
+}
+
 function scopeSelector(
+  selector: string,
+  scope: string,
+  compositionId: string,
+  authoredRootId?: string | null,
+  compoundAuthoredRoot?: boolean,
+  scopeRootSelectors?: boolean,
+): string {
+  const authored = normalizeAuthoredRootIdSelector(selector, authoredRootId);
+  const wrapperAlone = dropRootCompositionIdAttr(authored, authoredRootId, compositionId);
+  const scopeOnce = (text: string) =>
+    scopeSelectorOnce(
+      text,
+      scope,
+      compositionId,
+      authoredRootId,
+      compoundAuthoredRoot,
+      scopeRootSelectors,
+    );
+  if (wrapperAlone === authored) return scopeOnce(selector);
+  // A named host carries the id, the preserved inner root the authored id; an anonymous host's wrapper carries both.
+  return `${scopeOnce(authored).trim()}, ${scopeOnce(wrapperAlone).trim()}`;
+}
+
+function scopeSelectorOnce(
   selector: string,
   scope: string,
   compositionId: string,

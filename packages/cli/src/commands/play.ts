@@ -42,6 +42,7 @@ import {
   revalidatedResponse,
   assetContentType,
 } from "../utils/compositionServer.js";
+import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
 import {
   resolveProxy,
   ProxyCapacityError,
@@ -230,7 +231,9 @@ export async function registerCompositionRoute(
     // an in-project symlink to an external target nor a sibling dir whose name
     // shares the project-dir prefix (e.g. `<dir>-evil`) can escape.
     if (!isSafePath(project.dir, filePath)) return ctx.text("Forbidden", 403);
-    if (!existsSync(filePath)) return ctx.text("Not found", 404);
+    if (isPrivateCompositionFile(project.dir, filePath) || !existsSync(filePath)) {
+      return ctx.text("Not found", 404);
+    }
 
     // HTML gets the runtime + codec-map injected; other assets pass through.
     if (filePath.endsWith(".html")) {

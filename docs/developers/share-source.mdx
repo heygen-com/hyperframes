@@ -1,0 +1,137 @@
+---
+title: "Editable source in a share"
+description: "Choose whether a CLI review includes the project files used by its rendered video."
+---
+
+`hyperframes share` can attach editable project files to the same review page
+used by Desktop. Source upload requires `--include-source` for each upload, including updates.
+Without it, terminal, JSON and unattended commands share video only.
+Local Studio offers an unchecked **Include editable project files** option with
+a disclosure of the upload scope before creating or updating a share.
+
+Source is available when the workspace's sharing and
+Composition Sync permissions allow it. The recipient's access still depends on
+the share's settings and their plan.
+
+```bash
+hyperframes share --public               # Video only (default)
+hyperframes share --public --include-source # Also upload editable project files
+hyperframes share --update               # Update the existing review
+hyperframes share --update --video-only  # Explicitly omit editable source
+```
+
+The five-free-project sharing limit is unchanged. A workspace that cannot use
+Composition Sync can still share its rendered video. The command reports
+`source.at: "video_only"` and a reason in JSON; this is a successful video share.
+A source upload does not grant anyone editing access by itself. Manage access
+through `hyperframes share --manage`.
+
+## What travels
+
+Source uses the same portable project policy as Desktop: authored HTML, scripts,
+styles, assets, and supported Studio edit metadata. Known credential filenames
+(such as `.env`, `.npmrc`, and `*.pem`), dependency directories, chat
+history, local sharing state, and recorded render outputs stay out.
+
+These are filename rules, not a secret scanner. `.gitignore` does not control
+source capture. Other regular files can be included even if Git ignores them.
+Keep private material outside the project, or use `--video-only` when you do not
+want to upload project files. Unsupported symlinks and invalid file names stop
+source preparation rather than silently producing an incomplete editable project.
+
+To exclude scratch files, add `.hyperframesignore` at the project root:
+
+```text
+# Literal paths, relative to the project root
+out.json
+scratch/
+```
+
+Each line excludes that file or folder and its contents from source capture and
+sharing change detection. Blank lines and lines starting with `#` are ignored.
+Use paths with `/` separators or a single `*` wildcard (for example, `*.log`
+or `scratch/*.json`). Basename patterns apply in every folder. Negation, absolute paths, and
+excluding `index.html` are rejected. Do not exclude assets your composition uses.
+These rules can only exclude files, never re-include credentials or other files
+blocked by the portable project policy.
+
+The upload uses the workspace's file-count, per-file, project-size and manifest
+limits. Large media uploads in parts. Only a verified published snapshot that
+still matches the rendered project can be attached to the video version. The CLI
+checks the contents of rendered assets, including changes that preserve file
+sizes and timestamps. Deployments must include the exact source storage origins
+in `HYPERFRAMES_REVIEW_UPLOAD_ORIGINS` alongside the video storage origins.
+
+## Interrupted uploads and unavailable source
+
+Retry the same command after a network interruption. Its local record preserves
+the composition identity, upload idempotency key and completed file parts.
+A storage upload that makes no progress for 60 seconds is stopped and retried
+within the retry limit. The source record lives at `.hyperframes/share-sync.<backend-hash>.json` and
+contains no sign-in token. Do not copy that record into another project or edit
+its account, workspace or path: mismatches stop sharing to avoid overwriting
+another project's source.
+
+If source changed, conflicts with another snapshot, or remains under verification,
+the command explains why it stopped. Retry after resolving the problem, or pass
+`--video-only` to share just the rendered video. An unexpected source upload
+failure never silently turns an eligible source share into video-only. If the
+server confirms an upload expired or failed, a retry starts a new upload. If
+the files changed while an earlier upload was still pending, the CLI cancels
+that upload before starting a new one. It waits for uploads already under
+verification and preserves conflicts for explicit resolution.
+
+A video-only retry does not resume an interrupted video upload that already
+includes source. Check its status before retrying. To publish the same render as
+a new video-only version after the earlier upload finishes, use
+`hyperframes share --update --video-only`. Previous versions retain their files.
+
+`--status` reads the review without uploading anything. Its source state is
+`not_checked`; it does not promise that local files match the shared version.
+The upload result uses `ready` only after source verification and attachment
+preparation; video readiness remains the separate top-level `ready` field.
+
+## Refused uploads
+
+A refused upload is saved locally so `--status` reports a failure, including
+across CLI restarts. Retry an unfinished first share with the same command;
+use `--update` to replace a previously shared video. An upload whose result is
+still unknown keeps its recovery record to avoid creating duplicate versions.
+
+`export_blocked` means recent content moderation strikes prevent new video
+versions in this workspace. Contact HeyGen support to appeal. Rendering again,
+changing audience, or having a paid plan does not lift the block.
+`can_register_project` describes project quota eligibility, not moderation
+permission to upload a video.
+
+`--manage` requires an existing share. Audience flags are for first-share
+creation and cannot be combined with `--status`, `--manage`, or `--update`.
+Progress is written to stderr once per step; `--json` suppresses progress and
+unrelated skill-update notices. Set `HF_DEBUG_RENDER=1` only when diagnosing
+render initialization.
+
+## Integrating another local host
+
+`@hyperframes/share` exports `shareSources` and
+`createProjectShareSourceStore`. Call `prepare(projectPath, renderedFingerprint)`
+before `addVersion`, then pass `filesForExport` and `requireSource: true` for a
+ready source result. `requireSource` prevents a later mismatch from degrading to
+a video-only version. Pass `omitSource: true` for a video-only operation that
+must not reuse a source-bearing version or pending upload.
+
+A host may inject its existing binding store, or supply a read-only
+`existingBinding` resolver for Desktop bindings. Exact snapshots can be reused
+only in the same account and owner workspace, without a pending sync operation.
+Unsynced changes in a Desktop-owned binding require a Desktop sync first. The
+standalone CLI keeps its own project-local sync record; it does not discover or
+modify Desktop's application data directory.
+
+## Related topics
+
+- [CLI reference](/packages/cli#share) — audiences, updates, and processing status.
+- [CLI guide](/developers/cli) — choose the command for your task.
+
+Sharing excludes scratch `*.log` and `*.swp` files by default, both from render
+change detection and uploaded project files. Other files remain inputs because
+compositions can load them dynamically. Invalid rules report
+`invalid_source_ignore`; sharing stops rather than silently uploading excluded files.

@@ -26,6 +26,12 @@
       "types": "./dist/helpers/safePath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./request-identity": {
+      "source": "./src/helpers/requestIdentity.ts",
+      "runtime": "./dist/helpers/requestIdentity.js",
+      "types": "./dist/helpers/requestIdentity.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./hf-ids": {
       "source": "./src/helpers/hfIdPersist.ts",
       "runtime": "./dist/helpers/hfIdPersist.js",
@@ -96,6 +102,12 @@
       "source": "./src/helpers/encoderOptions.ts",
       "runtime": "./dist/helpers/encoderOptions.js",
       "types": "./dist/helpers/encoderOptions.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./media-range": {
+      "source": "./src/helpers/mediaRange.ts",
+      "runtime": "./dist/helpers/mediaRange.js",
+      "types": "./dist/helpers/mediaRange.d.ts",
       "environments": ["bun", "node"]
     }
   }

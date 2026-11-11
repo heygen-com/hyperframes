@@ -104,6 +104,33 @@ function useVideoThumbnailSnapshot(
   return selectThumbnailSnapshot(posterSnapshot, richSnapshot, shownSnapshot);
 }
 
+function useRangeHeldDuringTrim(
+  props: Required<
+    Pick<VideoThumbnailProps, "videoSrc" | "duration" | "projectId" | "sessionEpoch" | "priority">
+  > &
+    Pick<VideoThumbnailProps, "sourceStart" | "sourceRangeDuration">,
+) {
+  const {
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  } = props;
+  const range = useValueAtRest(
+    useMemo(
+      () => ({ sourceStart, sourceRangeDuration, duration }),
+      [duration, sourceRangeDuration, sourceStart],
+    ),
+  );
+  return useMemo(
+    () => ({ videoSrc, ...range, projectId, sessionEpoch, priority }),
+    [priority, projectId, range, sessionEpoch, videoSrc],
+  );
+}
+
 /** Sparse, bounded video frames supplied by the shared thumbnail scheduler. */
 export const VideoThumbnail = memo(function VideoThumbnail({
   videoSrc,
@@ -122,18 +149,15 @@ export const VideoThumbnail = memo(function VideoThumbnail({
       computeThumbnailStrip(container.width, 16 / 9, container.height).frameCount,
     ),
   );
-  const requestProps = useMemo(
-    () => ({
-      videoSrc,
-      sourceStart,
-      sourceRangeDuration,
-      duration,
-      projectId,
-      sessionEpoch,
-      priority,
-    }),
-    [duration, priority, projectId, sessionEpoch, sourceRangeDuration, sourceStart, videoSrc],
-  );
+  const requestProps = useRangeHeldDuringTrim({
+    videoSrc,
+    sourceStart,
+    sourceRangeDuration,
+    duration,
+    projectId,
+    sessionEpoch,
+    priority,
+  });
   const posterRequest = useMemo(
     () => createVideoThumbnailRequest(requestProps, 1, false),
     [requestProps],

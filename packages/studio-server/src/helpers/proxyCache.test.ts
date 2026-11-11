@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,6 +38,29 @@ afterEach(() => {
 });
 
 describe("cleanupProxyCache", () => {
+  it.skipIf(process.platform === "win32")(
+    "removes nothing from the folder a linked .transcode-cache points at",
+    () => {
+      const project = mkdtempSync(join(tmpdir(), "hf-proxy-cache-project-"));
+      const outside = mkdtempSync(join(tmpdir(), "hf-proxy-cache-outside-"));
+      tempDirs.push(project, outside);
+      const now = 1_800_000_000_000;
+      const theirs = proxy(outside, "someone-elses-file");
+      writeEntry(theirs, 4, now - 31 * 24 * 60 * 60 * 1000);
+      symlinkSync(outside, join(project, ".transcode-cache"));
+
+      const result = cleanupProxyCache(join(project, ".transcode-cache"), {
+        now,
+        maxBytes: Number.POSITIVE_INFINITY,
+        maxIdleMs: 60 * 60 * 1000,
+        minSweepIntervalMs: 0,
+      });
+
+      expect(result.removed).toEqual([]);
+      expect(existsSync(theirs)).toBe(true);
+    },
+  );
+
   it("removes idle and oldest entries until the cache is within its byte budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;
@@ -52,6 +83,26 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(expired)).toBe(false);
     expect(existsSync(oldest)).toBe(false);
     expect(existsSync(newest)).toBe(true);
+  });
+
+  it("counts the cached still frames toward the budget and sweeps them with the copies", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const oldStill = proxy(cache, "old-still", ".jpg");
+    const copy = proxy(cache, "copy");
+    writeEntry(oldStill, 6, now - 3_000);
+    writeEntry(copy, 6, now - 1_000);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      maxBytes: 8,
+      maxIdleMs: 30 * 24 * 60 * 60 * 1000,
+      minSweepIntervalMs: 0,
+    });
+
+    expect(result.removed).toEqual([oldStill]);
+    expect(existsSync(oldStill)).toBe(false);
+    expect(existsSync(copy)).toBe(true);
   });
 
   it("reports the same removals in a dry run and removes nothing", () => {

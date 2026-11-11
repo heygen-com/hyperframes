@@ -1,8 +1,8 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename } from "node:path";
-import { homedir } from "node:os";
 import {
   ensureModel,
   ensureVoices,
@@ -12,6 +12,7 @@ import {
 } from "./manager.js";
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -115,7 +116,7 @@ const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
-const SCRIPT_DIR = join(homedir(), ".cache", "hyperframes", "tts");
+const SCRIPT_DIR = hyperframesCacheDir("tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
@@ -211,7 +212,7 @@ export async function synthesize(
   const scriptPath = ensureSynthScript();
 
   // 4. Ensure output directory exists
-  mkdirSync(dirname(outputPath), { recursive: true });
+  makeOutputFolder(dirname(outputPath));
 
   // 5. Run synthesis
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);

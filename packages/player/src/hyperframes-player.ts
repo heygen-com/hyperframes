@@ -52,6 +52,7 @@ const ASSETS_READY_TIMEOUT_MS = 8_000;
 const ASSETS_LOADING_ATTR = "assets-loading";
 // "player" (default) draws the loading-assets card; "none" never does, like shader-loading="none".
 const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
+const BUFFERING_ATTR = "buffering";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
 const RANGE_START_ATTR = "range-start";
@@ -136,6 +137,7 @@ class HyperframesPlayer extends HTMLElement {
   private _pendingPlay = false;
   private _assetsGeneration = 0;
   private _assetsLoadingShowTimer: ReturnType<typeof setTimeout> | null = null;
+  private _bufferingShowTimer: ReturnType<typeof setTimeout> | null = null;
   private _currentTime = 0;
   private _duration = 0;
   private _paused = true;
@@ -277,7 +279,7 @@ class HyperframesPlayer extends HTMLElement {
         // message fire before connectedCallback installs the parent message listener. Initial
         // attributes are applied below by connectedCallback; only live changes navigate here.
         if (!this.isConnected) break;
-        if (val) this._navigateSrc(val);
+        if (val || this._videoSource) this._navigateSrc(val ?? "");
         break;
       case "type": {
         const src = this.getAttribute("src");
@@ -1098,7 +1100,11 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.updateTime(0, 0);
     this._syncVideoAudio();
     adapter.timeScale?.(this.playbackRate);
-    video.src = src;
+    if (src) video.src = src;
+    else {
+      video.removeAttribute("src");
+      video.load();
+    }
   }
 
   private _teardownVideo(): void {
@@ -1272,6 +1278,7 @@ class HyperframesPlayer extends HTMLElement {
         this._rejectRuntimeDataDelivery(channel, requestId, message),
       onRuntimeTimelineReady: (duration, assetsReady) =>
         this._onRuntimeTimelineReady(duration, assetsReady),
+      setBuffering: (buffering) => this._setBuffering(buffering),
       setRuntimeFps: (fps) => {
         this._runtimeFps = fps;
       },
@@ -1375,6 +1382,23 @@ class HyperframesPlayer extends HTMLElement {
     }, ASSETS_LOADING_SHOW_DELAY_MS);
   }
 
+  private _setBuffering(buffering: boolean): void {
+    if (buffering) {
+      if (this._bufferingShowTimer !== null || this.hasAttribute(BUFFERING_ATTR)) return;
+      this._bufferingShowTimer = setTimeout(() => {
+        this._bufferingShowTimer = null;
+        this.setAttribute(BUFFERING_ATTR, "");
+        if (this.assetsLoadingUi !== "none") this.shaderLoader.showAssetsLoading("Buffering", "");
+      }, ASSETS_LOADING_SHOW_DELAY_MS);
+      return;
+    }
+    if (this._bufferingShowTimer !== null) clearTimeout(this._bufferingShowTimer);
+    this._bufferingShowTimer = null;
+    if (!this.hasAttribute(BUFFERING_ATTR)) return;
+    this.removeAttribute(BUFFERING_ATTR);
+    this.shaderLoader.hideAssetsLoading();
+  }
+
   private _hasPendingFirstFrameAssets(doc: Document): boolean {
     const { pendingMedia, pendingImages, fontsLoading } = scanPendingCompositionAssets(doc, {
       scope: FIRST_FRAME_READINESS_SCOPE,
@@ -1442,6 +1466,7 @@ class HyperframesPlayer extends HTMLElement {
     this._directTimelineAdapter = null;
     this._directTimelineClock.stop();
     this._stopParentTickClock();
+    this._setBuffering(false);
     this.shaderLoader.reset();
     this._media.resetForIframeLoad();
   }

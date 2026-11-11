@@ -12,6 +12,7 @@ vi.mock("node:child_process", () => {
 });
 vi.mock("@hyperframes/parsers/ff-binaries", () => ({
   findFfBinary: (name: string) => `/fake/bin/${name}`,
+  requireFfBinary: (name: string) => `/fake/bin/${name}`,
 }));
 
 import { probeMediaMetadata } from "./mediaMetadata.js";

@@ -4,7 +4,11 @@ import { basename, dirname, join, relative, sep } from "node:path";
 import type { Hono } from "hono";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import type { StudioApiAdapter } from "../types.js";
-import { mkdirWithinProject, pinWithinProject } from "../helpers/safePath.js";
+import {
+  mkdirWithinProject,
+  pinWithinProject,
+  pinWritableWithinProject,
+} from "../helpers/safePath.js";
 import {
   atomicTempPath,
   createFileAtomically,
@@ -189,7 +193,7 @@ export function registerFreezeFrameRoutes(
     }
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    const absPath = pinWithinProject(project.dir, body.path);
+    const absPath = pinWritableWithinProject(project.dir, body.path);
     if (!absPath) return c.json({ error: `forbidden path: ${body.path}` }, 403);
 
     const read = readExpected(absPath, body.expectedVersion);

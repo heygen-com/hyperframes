@@ -3,7 +3,6 @@ import {
   existsSync,
   linkSync,
   mkdirSync,
-  mkdtempSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -12,6 +11,7 @@ import { renameWithRetry } from "@hyperframes/engine";
 import { dirname, join } from "node:path";
 import { PlanV2IntegrityError } from "./planV2Errors.js";
 import { assertPlanV2Sha256, planV2BlobPath } from "./planV2Layout.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export interface PlanV2PublishBlob {
   readonly sourcePath: string;
@@ -88,7 +88,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
     this.destinationDir = destinationDir;
     this.#linkFile = options.linkFile ?? linkSync;
     mkdirSync(dirname(destinationDir), { recursive: true });
-    this.temporaryDir = mkdtempSync(join(dirname(destinationDir), ".plan-v2-publish-"));
+    this.temporaryDir = createStagingDir(dirname(destinationDir), ".plan-v2-publish-");
   }
 
   async putBlob(blob: Readonly<PlanV2PublishBlob>): Promise<void> {
@@ -102,7 +102,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
     const destinationPath = planV2BlobPath(this.temporaryDir, digest);
     if (existsSync(destinationPath)) return;
     mkdirSync(dirname(destinationPath), { recursive: true });
-    const stagingDir = mkdtempSync(join(dirname(destinationPath), ".plan-v2-blob-"));
+    const stagingDir = createStagingDir(dirname(destinationPath), ".plan-v2-blob-");
     const temporaryPath = join(stagingDir, "blob");
     try {
       try {

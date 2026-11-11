@@ -25,6 +25,9 @@ import {
   distributeArrayKeyframes,
   authorsKeyframes,
   plainPercentKey,
+  scriptJson,
+  tweenMethodCode,
+  assertMotionPathNumbers,
 } from "./gsapSerialize";
 
 export type {
@@ -1479,7 +1482,7 @@ function insertAfterAnchor(parsed: ParsedGsapAst, newStatement: AstNode): void {
 
 /** Build the source for a single `tl.method(selector, vars, position)` call. */
 function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
-  const selector = JSON.stringify(anim.targetSelector);
+  const selector = scriptJson(anim.targetSelector);
   const props: Record<string, number | string> = { ...anim.properties };
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
@@ -1521,7 +1524,7 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   if (anim.method === "set" && anim.global) {
     return `gsap.set(${selector}, ${objCode});`;
   }
-  return `${timelineVar}.${anim.method}(${selector}, ${objCode}, ${posCode});`;
+  return `${timelineVar}.${tweenMethodCode(anim.method)}(${selector}, ${objCode}, ${posCode});`;
 }
 
 export function updateAnimationInScript(
@@ -1679,10 +1682,10 @@ export function addAnimationWithKeyframesToScript(
     return { script, id: "" };
   }
 
-  const selector = JSON.stringify(targetSelector);
+  const selector = scriptJson(targetSelector);
   const kfCode = buildKeyframeObjectCode(keyframes, easeEach ? { easeEach } : undefined);
   const varEntries = [`keyframes: ${kfCode}`, `duration: ${valueToCode(duration)}`];
-  if (ease) varEntries.push(`ease: ${JSON.stringify(ease)}`);
+  if (ease) varEntries.push(`ease: ${scriptJson(ease)}`);
   const posCode = valueToCode(position);
   const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${posCode});`;
 
@@ -1810,9 +1813,9 @@ function insertInheritedStateSet(
   }
   const tlVar = parsed.timelineVar;
   const props = Object.entries(properties)
-    .map(([k, v]) => `${k}: ${typeof v === "string" ? JSON.stringify(v) : v}`)
+    .map(([k, v]) => `${safeKey(k)}: ${typeof v === "string" ? scriptJson(v) : v}`)
     .join(", ");
-  const code = `${tlVar}.set(${JSON.stringify(selector)}, { ${props} }, ${position});`;
+  const code = `${tlVar}.set(${scriptJson(selector)}, { ${props} }, ${position});`;
   const newStatement = parseScript(code).program.body[0];
   const anchor = findTimelineDeclarationPath(parsed.ast, tlVar);
   if (anchor) {
@@ -2071,11 +2074,11 @@ function buildKeyframeObjectCode(
 ): string {
   const entries = mergePercentageKeyframes(keyframes).map((kf) => {
     const props = keyframePropsToCode(kf);
-    if (kf.ease) props.push(`ease: ${JSON.stringify(kf.ease)}`);
+    if (kf.ease) props.push(`ease: ${scriptJson(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
-    return `${JSON.stringify(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
+    return `${scriptJson(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
   });
-  if (options?.easeEach) entries.push(`easeEach: ${JSON.stringify(options.easeEach)}`);
+  if (options?.easeEach) entries.push(`easeEach: ${scriptJson(options.easeEach)}`);
   return `{ ${entries.join(", ")} }`;
 }
 
@@ -2124,7 +2127,7 @@ function buildKeyframeValueNode(
   const entries = Object.entries(properties)
     .filter(([k]) => k !== "ease")
     .map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  if (effectiveEase) entries.push(`ease: ${JSON.stringify(effectiveEase)}`);
+  if (effectiveEase) entries.push(`ease: ${scriptJson(effectiveEase)}`);
   return parseExpr(`{ ${entries.join(", ")} }`);
 }
 
@@ -2134,7 +2137,7 @@ function setObjectExpressionEase(node: AstNode, ease: string): boolean {
   const easeIdx = props.findIndex(
     (property: AstNode) => isObjectProperty(property) && propKeyName(property) === "ease",
   );
-  const easeNode = parseExpr(`({ ease: ${JSON.stringify(ease)} })`).properties[0];
+  const easeNode = parseExpr(`({ ease: ${scriptJson(ease)} })`).properties[0];
   if (easeIdx >= 0) props[easeIdx] = easeNode;
   else props.push(easeNode);
   return true;
@@ -2235,7 +2238,7 @@ function convertArrayKeyframesToObjectNode(varsArg: AstNode, scope: ScopeBinding
     el.properties = (el.properties ?? []).filter(
       (property: AstNode) => !isObjectProperty(property) || propKeyName(property) !== "duration",
     );
-    return `${JSON.stringify(plainPercentKey(timing.percentages[i]!))}: ${recast.print(el).code}`;
+    return `${scriptJson(plainPercentKey(timing.percentages[i]!))}: ${recast.print(el).code}`;
   });
   prop.value = parseExpr(`{ ${entries.join(", ")}, easeEach: "none" }`);
   return prop.value;
@@ -2327,7 +2330,7 @@ export function addKeyframeToScript(
     }
   } else {
     // Build the new property node with a quoted percentage key
-    const newProp = parseExpr(`{ ${JSON.stringify(pctKey)}: {} }`).properties[0];
+    const newProp = parseExpr(`{ ${scriptJson(pctKey)}: {} }`).properties[0];
     newProp.value = newValueNode;
 
     // Insert in sorted order by percentage
@@ -2513,7 +2516,7 @@ export function moveKeyframeInScript(
   const kept = (kfNode.properties ?? []).filter((p: AstNode) => !pctProps.has(p));
   kfNode.properties = [
     ...entries.map((e) => {
-      const p = parseExpr(`{ ${JSON.stringify(plainPercentKey(e.pct))}: {} }`).properties[0];
+      const p = parseExpr(`{ ${scriptJson(plainPercentKey(e.pct))}: {} }`).properties[0];
       p.value = e.value;
       return p;
     }),
@@ -2555,7 +2558,7 @@ export function resizeKeyframedTweenInScript(
     seen.add(match.prop);
     // Replace only the key node; the value node (incl. _auto + per-keyframe ease)
     // stays verbatim. easeEach is a sibling non-percentage prop, left untouched.
-    match.prop.key = parseExpr(`{ ${JSON.stringify(plainPercentKey(to))}: 0 }`).properties[0].key;
+    match.prop.key = parseExpr(`{ ${scriptJson(plainPercentKey(to))}: 0 }`).properties[0].key;
   }
 
   applyUpdatesToCall(loc.target.call, {
@@ -2672,7 +2675,7 @@ export function updateKeyframeInScript(
       else props.push(node);
     };
     for (const [k, v] of Object.entries(properties)) upsert(k, valueToCode(v));
-    if (ease !== undefined) upsert("ease", JSON.stringify(ease));
+    if (ease !== undefined) upsert("ease", scriptJson(ease));
     return recast.print(loc.parsed.ast).code;
   }
   match.prop.value = buildKeyframeValueNode(properties, ease);
@@ -2701,7 +2704,7 @@ function insertKeyframesProp(
 ): void {
   const fromEntries = Object.entries(fromProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
   const toEntries = Object.entries(toProps).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
-  const easeEntry = easeEach ? `, easeEach: ${JSON.stringify(easeEach)}` : "";
+  const easeEntry = easeEach ? `, easeEach: ${scriptJson(easeEach)}` : "";
   const kfCode = `{ "0%": { ${fromEntries.join(", ")} }, "100%": { ${toEntries.join(", ")} }${easeEntry} }`;
   const kfProp = parseExpr(`{ keyframes: {} }`).properties[0];
   kfProp.value = parseExpr(kfCode);
@@ -2853,7 +2856,7 @@ export function materializeKeyframesInScript(
 
   // Replace dynamic selector with resolved static string
   if (resolvedSelector && loc.target.call.node.arguments[0]) {
-    loc.target.call.node.arguments[0] = parseExpr(JSON.stringify(resolvedSelector));
+    loc.target.call.node.arguments[0] = parseExpr(scriptJson(resolvedSelector));
   }
 
   const kfObjCode = buildKeyframeObjectCode(sortedKeyframes(keyframes), { easeEach });
@@ -2898,6 +2901,7 @@ function buildMotionPathObjectCode(config: {
   segments: ArcPathSegment[];
   autoRotate: boolean | number;
 }): string {
+  assertMotionPathNumbers(config);
   const { waypoints, segments, autoRotate } = config;
   const hasExplicitControlPoints = segments.some((s) => s.cp1 && s.cp2);
   // The simple `path` array supports only one scalar curviness for the whole
@@ -3230,11 +3234,11 @@ export function addMotionPathToScript(
     segments: [{ curviness: 1 }],
     autoRotate: false,
   });
-  const selector = JSON.stringify(targetSelector);
+  const selector = scriptJson(targetSelector);
   const varEntries = [
     `motionPath: ${motionPathCode}`,
     `duration: ${valueToCode(duration)}`,
-    `ease: ${JSON.stringify(ease)}`,
+    `ease: ${scriptJson(ease)}`,
   ];
   const stmtCode = `${parsed.timelineVar}.to(${selector}, { ${varEntries.join(", ")} }, ${valueToCode(position)});`;
   const newStatement = parseScript(stmtCode).program.body[0];
@@ -3432,7 +3436,7 @@ export function unrollDynamicAnimations(
     typeof position === "number"
       ? String(position)
       : typeof position === "string"
-        ? JSON.stringify(position)
+        ? scriptJson(position)
         : "0";
 
   // Find the enclosing loop (for/forEach) by walking up the AST path
@@ -3467,7 +3471,7 @@ export function unrollDynamicAnimations(
       easeEach: el.easeEach,
     });
     calls.push(
-      `${loc.parsed.timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${JSON.stringify(ease)} }, ${posCode});`,
+      `${loc.parsed.timelineVar}.to(${scriptJson(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${scriptJson(ease)} }, ${posCode});`,
     );
   }
 

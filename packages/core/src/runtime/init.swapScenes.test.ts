@@ -9,6 +9,7 @@ import { probeAndCacheElementVolume } from "./mediaVolumeEnvelope.js";
 import { wrapScopedCompositionScript } from "../compiler/compositionScoping";
 import { AFTER_FONTS_SCRIPT_TYPE } from "../compiler/scriptRuns";
 import { parkFarScenesAtBoot } from "./sceneWindow";
+import { PREVIEW_SEEK_HOLD_ATTR, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 vi.mock("./mediaVolumeEnvelope.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./mediaVolumeEnvelope.js")>();
@@ -1767,9 +1768,13 @@ describe("the preview's scene window", () => {
       el.getAttribute("data-hf-scene"),
     );
   // As the runtime's entry does: park before any scene script runs, then run the rest.
-  function bootWindowed(scenes: Scene[], root: Tl, withManifest = true) {
+  function bootWindowed(scenes: Scene[], root: Tl, withManifest = true, studioPreview = false) {
     const { head, body } = preview(scenes);
     document.head.innerHTML = withManifest ? head : head.replace(/<meta[^>]*>/, "");
+    if (studioPreview)
+      document.head.append(
+        Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
+      );
     document.body.innerHTML = body;
     window.__timelines = { main: root };
     parkFarScenesAtBoot();
@@ -1868,6 +1873,40 @@ describe("the preview's scene window", () => {
     expect(parked()).toEqual(["s2"]);
   });
 
+  it("holds a parked destination until its videos mount and decode without retiring the old picture", async () => {
+    const ready = new WeakSet<HTMLMediaElement>();
+    vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockImplementation(function () {
+      return ready.has(this) ? 4 : 1;
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "networkState", "get").mockReturnValue(2);
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(64);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(36);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const { root } = trackingRoot();
+    bootWindowed(
+      [S0, S1, { ...S2, body: '<video src="/late.mp4" data-start="0" data-duration="2"></video>' }],
+      root,
+      true,
+      true,
+    );
+    await tick();
+    const landed = window.__player!.seek(5);
+    await vi.waitFor(() => {
+      expect(sceneHost("s2").querySelector("video")?.currentTime).toBeCloseTo(1, 3);
+    });
+    expect(root.time?.()).toBe(0);
+    expect(window.__player!.getTime()).toBe(5);
+    expect(parked()).not.toContain("s0");
+    expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(true);
+    const video = sceneHost("s2").querySelector("video")!;
+    ready.add(video);
+    video.dispatchEvent(new Event("seeked"));
+    await landed;
+    expect(root.time?.()).toBe(5);
+    expect(document.documentElement.hasAttribute(PREVIEW_SEEK_HOLD_ATTR)).toBe(false);
+  });
+
   it("waits for the scene a seek lands in while its mount as a neighbour is still running", async () => {
     bootWindowed([S0, S1, S2], trackingRoot().root);
     await tick();
@@ -1959,6 +1998,27 @@ describe("the preview's scene window", () => {
     expect(parked()).toContain("s2");
     await seekAndSettle(5);
     expect(sceneHost("s2").getAttribute("style")).not.toContain("display: none");
+  });
+
+  it("lays out a scene the visibility pass hid by display, unseen, while its script builds its timeline", async () => {
+    const seen =
+      `var h = document.querySelector('[data-hf-scene="s2"]:not(style):not(script)');` +
+      `document.body.setAttribute("data-s2-seen", [getComputedStyle(h).display, h.style.opacity, h.hasAttribute("inert")].join(" "));`;
+    const leaf: Scene = {
+      ...S2,
+      body: "<p>two</p>",
+      extraAttrs: ' style="position: static"',
+      script: seen,
+    };
+    bootWindowed([S0, S1, leaf], trackingRoot().root);
+    await tick();
+    // Paused in the middle scene, the last one mounts as next, hidden until it plays.
+    await seekAndSettle(2.5);
+    for (let i = 0; i < 5; i++) await tick();
+    expect(document.body.getAttribute("data-s2-seen")).toBe("block 0 true");
+    expect(sceneHost("s2").getAttribute("style")).toContain("display: none");
+    expect(sceneHost("s2").getAttribute("style")).not.toContain("opacity");
+    expect(sceneHost("s2").hasAttribute("inert")).toBe(false);
   });
 
   it("mounts a scene Studio holds for editing and keeps it until Studio lets go", async () => {

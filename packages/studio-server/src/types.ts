@@ -25,7 +25,7 @@ export interface RenderJobState {
    * stop an in-flight render; adapters that can't abort may omit it (the
    * route still marks the job cancelled so the SSE stream terminates).
    */
-  cancel?: () => void;
+  cancel?: () => void | Promise<void>;
 }
 
 export interface MediaProcessingJobState {
@@ -122,7 +122,7 @@ export interface StudioApiAdapter {
   ): Promise<string | null>;
 
   /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */
-  getProjectSignature?: (projectDir: string) => string;
+  getProjectSignature?: (projectDir: string) => string | Promise<string>;
   invalidateProjectSignature?: (projectDir: string) => void;
 
   loadSharp?: () => Promise<typeof import("sharp").default>;
@@ -184,6 +184,7 @@ export interface StudioApiAdapter {
     videoFrameFormat?: "auto" | "jpg" | "png";
     hdrMode?: "auto" | "force-hdr" | "force-sdr";
     proresProfile?: "4444" | "hq" | "422" | "lt" | "proxy";
+    chromaSubsampling?: "420" | "444";
     jobId: string;
     /**
      * The triggering browser profile has telemetry disabled (localStorage
@@ -228,6 +229,8 @@ export interface StudioApiAdapter {
     device?: "auto" | "cpu" | "coreml" | "cuda";
     jobId: string;
   }) => MediaProcessingJobState;
+
+  serverOrigin?: () => string | undefined;
 
   /** Optional: generate a thumbnail at the route's explicit output dimensions. */
   generateThumbnail?: (opts: {

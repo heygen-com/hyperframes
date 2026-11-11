@@ -10,7 +10,7 @@ import { defaultDeps, fetchPinned, type StageDeps } from "./prebuiltHandler.js";
 export type VideoArch = "x86_64" | "arm64";
 
 /** ECR repository names must be lowercase; stack names need not be. */
-function videoRepositoryName(stackName: string): string {
+export function videoRepositoryName(stackName: string): string {
   return `${stackName.toLowerCase()}-video`;
 }
 

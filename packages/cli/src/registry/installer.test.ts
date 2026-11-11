@@ -3,13 +3,15 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
   symlinkSync,
   rmSync,
   existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { RegistryItem } from "@hyperframes/core";
 
@@ -35,11 +37,15 @@ const item = {
   description: "Chart component",
   type: "hyperframes:component",
   files: [
-    { path: "data-chart.html", target: "components/data-chart.html", type: "hyperframes:snippet" },
+    {
+      path: "data-chart.html",
+      target: "compositions/data-chart.html",
+      type: "hyperframes:snippet",
+    },
   ],
 } as unknown as RegistryItem;
 
-const target = "components/data-chart.html";
+const target = "compositions/data-chart.html";
 
 describe("hasLocalEdits", () => {
   it("treats a file with no record as edited", () => {
@@ -64,14 +70,142 @@ describe("installItem", () => {
   it("rejects a target directory symlink that escapes the project even with force", async () => {
     const dir = project();
     const outside = project();
-    symlinkSync(outside, join(dir, "components"), "junction");
+    symlinkSync(outside, join(dir, "compositions"), "junction");
     await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(/Unsafe target/);
     expect(existsSync(join(outside, "data-chart.html"))).toBe(false);
   });
+  it.each([
+    ".git/hooks/pre-commit",
+    "GIT~1/hooks/pre-commit",
+    ".claude/settings.json",
+    ".vscode/tasks.json",
+    "compositions/.husky/pre-commit",
+    ".npmrc",
+    "assets/.env",
+    "package.json",
+    "hyperframes.json",
+    "hyperframes.lock.json",
+    "CLAUDE~1/settings.json",
+    "VSCODE~1/tasks.json",
+    "PACKAG~1.JSO",
+    "NPMRC~1",
+  ])("refuses the configuration target %s before writing anything", async (configTarget) => {
+    const dir = project();
+    const planted = { ...item, files: [{ ...item.files[0]!, target: configTarget }] };
+    await expect(installItem(planted, { destDir: dir, force: true })).rejects.toThrow(
+      /Unsafe target/,
+    );
+    expect(existsSync(join(dir, configTarget))).toBe(false);
+  });
+
+  it.each([
+    "node_modules/@hyperframes/core/audio-carve.js",
+    "compositions/node_modules/pkg/index.js",
+    "Node_Modules\\pkg\\index.js",
+    "compositions/CLAUDE.md",
+    "compositions\\AGENTS.md",
+    "assets/Claude.local.md",
+    "GEMINI.md",
+    "QWEN.md",
+    "CONVENTIONS.md",
+    "compositions/QWEN.md",
+    "assets/Crush.md",
+    "compositions\\WARP.md",
+    "compositions/conventions.md",
+    "notes.txt",
+    "whisper-cli.exe",
+    "assets/whisper-cli.EXE",
+    "compositions/conftest.py",
+    "lib/install.sh",
+    "vite.config.js",
+    "index.html",
+    "src/index.js",
+    "scripts\\postinstall.js",
+  ])("refuses the install target %s before writing anything", async (planted) => {
+    const dir = project();
+    const hostile = { ...item, files: [{ ...item.files[0]!, target: planted }] };
+    await expect(installItem(hostile, { destDir: dir, force: true })).rejects.toThrow(
+      /Unsafe target/,
+    );
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("writes into the standard folders, the configured ones and root notes", async () => {
+    const dir = project();
+    const targets = [
+      "compositions/a.html",
+      "compositions/components/b.html",
+      "assets/fonts/c.woff2",
+      "models/d.glb",
+      "lib/e.iife.js",
+      "TEMPLATE.md",
+      "scenes/f.html",
+    ];
+    const files = targets.map((name) => ({ ...item.files[0]!, path: name, target: name }));
+    await expect(installItem({ ...item, files }, { destDir: dir })).rejects.toThrow(
+      /scenes\/f\.html.*outside the project's blocks/,
+    );
+    await installItem({ ...item, files }, { destDir: dir, installDirs: ["scenes/"] });
+    for (const name of targets) expect(existsSync(join(dir, name))).toBe(true);
+  });
+
+  it.each([".", "", "node_modules", ".claude", "./"])(
+    "opens nothing for the configured folder %j",
+    async (configured) => {
+      const dir = project();
+      const hostile = { ...item, files: [{ ...item.files[0]!, target: "settings.json" }] };
+      await expect(
+        installItem(hostile, { destDir: dir, installDirs: [configured] }),
+      ).rejects.toThrow(/Unsafe target/);
+    },
+  );
+
+  it("refuses a target that the project's own link leads into node_modules", async () => {
+    const dir = project();
+    mkdirSync(join(dir, "node_modules", "pkg"), { recursive: true });
+    symlinkSync(join(dir, "node_modules", "pkg"), join(dir, "compositions"), "junction");
+    await expect(installItem(item, { destDir: dir, force: true })).rejects.toThrow(/node_modules/);
+    expect(readdirSync(join(dir, "node_modules", "pkg"))).toEqual([]);
+  });
+
+  it("accepts every target in the official catalog", async () => {
+    const registry = join(dirname(fileURLToPath(import.meta.url)), "../../../../registry");
+    const dir = project();
+    let checked = 0;
+    for (const kind of ["blocks", "components", "examples"]) {
+      for (const name of readdirSync(join(registry, kind))) {
+        const manifest = join(registry, kind, name, "registry-item.json");
+        if (!existsSync(manifest)) continue;
+        const official = JSON.parse(readFileSync(manifest, "utf8")) as RegistryItem;
+        await prepareItem(official, { destDir: dir });
+        checked += official.files.length;
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("lets an example bring its own package.json and .gitignore", async () => {
+    const dir = project();
+    const example = {
+      ...item,
+      type: "hyperframes:example",
+      dimensions: { width: 1920, height: 1080 },
+      duration: 10,
+      files: ["package.json", ".gitignore", "assets/.gitkeep"].map((name) => ({
+        path: name,
+        target: name,
+        type: "hyperframes:asset",
+      })),
+    } as unknown as RegistryItem;
+    await installItem(example, { destDir: dir, force: true });
+    expect(existsSync(join(dir, "package.json"))).toBe(true);
+    expect(existsSync(join(dir, ".gitignore"))).toBe(true);
+  });
+
   it("preserves directory symlinks whose destination stays inside the project", async () => {
     const dir = project();
     mkdirSync(join(dir, "actual"));
-    symlinkSync(join(dir, "actual"), join(dir, "components"), "junction");
+    symlinkSync(join(dir, "actual"), join(dir, "compositions"), "junction");
     await installItem(item, { destDir: dir, force: true });
     expect(readFileSync(join(dir, "actual/data-chart.html"), "utf8")).toContain("REGISTRY VERSION");
   });
@@ -87,12 +221,12 @@ describe("installItem", () => {
           const dir = project();
           const conflicting = {
             ...item,
-            files: names.map((name) => ({ ...item.files[0]!, target: `components/${name}` })),
+            files: names.map((name) => ({ ...item.files[0]!, target: `compositions/${name}` })),
           };
           await expect(installItem(conflicting, { destDir: dir, force: true })).rejects.toThrow(
             /duplicate/,
           );
-          expect(existsSync(join(dir, "components"))).toBe(false);
+          expect(existsSync(join(dir, "compositions"))).toBe(false);
         }
       } finally {
         vi.restoreAllMocks();
@@ -150,7 +284,7 @@ describe("installItem", () => {
 
   it("keeps a file that was there before any install", async () => {
     const dir = project();
-    mkdirSync(join(dir, "components"), { recursive: true });
+    mkdirSync(join(dir, "compositions"), { recursive: true });
     writeFileSync(join(dir, target), "PRE-EXISTING\n", "utf-8");
 
     const result = await installItem(item, { destDir: dir });
@@ -180,7 +314,9 @@ describe("installItem", () => {
       dimensions: { width: 100, height: 100 },
       duration: 1,
       type: "hyperframes:block",
-      files: [{ path: "hero.html", target: "blocks/hero.html", type: "hyperframes:composition" }],
+      files: [
+        { path: "hero.html", target: "compositions/hero.html", type: "hyperframes:composition" },
+      ],
     } as unknown as RegistryItem;
 
     const dir = project();
@@ -201,13 +337,13 @@ describe("installing several items, as a dependency plan does", () => {
     files: [
       {
         path: "shared-caption.html",
-        target: "components/shared-caption.html",
+        target: "compositions/shared-caption.html",
         type: "hyperframes:snippet",
       },
     ],
   } as unknown as RegistryItem;
 
-  const otherTarget = "components/shared-caption.html";
+  const otherTarget = "compositions/shared-caption.html";
 
   it("keeps a record for every item, not just the last one installed", () => {
     // `add` installs dependencies first and the requested item last. A record

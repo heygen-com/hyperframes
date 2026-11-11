@@ -1,4 +1,4 @@
-import { resolve, sep, join, dirname, basename, relative, isAbsolute } from "node:path";
+import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
 import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 
 export function realpath(path: string): string {
@@ -27,6 +27,12 @@ function isMissingPath(path: string): boolean {
   }
 }
 
+// On Windows even a realpath or lstat of a UNC or device path (\\host\share, \\?\, \\.\) connects to that host.
+function namesAnotherNetworkRoot(base: string, target: string): boolean {
+  const root = parse(target).root;
+  return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(base).root.toLowerCase();
+}
+
 /**
  * Reject paths that escape the `base` directory — including via symlinks.
  *
@@ -50,6 +56,8 @@ function isMissingPath(path: string): boolean {
  * from there without a backwards edge.
  */
 export function isSafePath(base: string, resolved: string): boolean {
+  const target = resolve(resolved);
+  if (namesAnotherNetworkRoot(resolve(base), target)) return false;
   let baseReal: string;
   try {
     baseReal = realpath(resolve(base));
@@ -58,7 +66,6 @@ export function isSafePath(base: string, resolved: string): boolean {
     return false;
   }
 
-  const target = resolve(resolved);
   const trailing: string[] = [];
   let probe = target;
 

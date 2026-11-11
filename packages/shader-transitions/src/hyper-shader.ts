@@ -224,6 +224,8 @@ function resolvePlayerCaptureScale(): number {
 }
 
 function resolvePlayerLoadingMode(): "internal" | "player" | "none" {
+  if ((window as { __HF_REPLAY_SKIPPED_FRAMES?: boolean }).__HF_REPLAY_SKIPPED_FRAMES)
+    return "none";
   const raw = readPlayerOption("__HF_SHADER_LOADING", PLAYER_LOADING_PARAM)?.trim().toLowerCase();
   if (raw === "player" || raw === "true" || raw === "1") return "player";
   if (raw === "none" || raw === "false" || raw === "0" || raw === "off") return "none";
@@ -326,8 +328,13 @@ function makeSnapshotKey(cacheKey: string, sampleIndex: number, side: "from" | "
 
 function openSnapshotDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  let request: IDBOpenDBRequest;
+  try {
+    request = indexedDB.open(SNAPSHOT_CACHE_DB, SNAPSHOT_CACHE_VERSION);
+  } catch {
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
-    const request = indexedDB.open(SNAPSHOT_CACHE_DB, SNAPSHOT_CACHE_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(SNAPSHOT_CACHE_STORE)) {

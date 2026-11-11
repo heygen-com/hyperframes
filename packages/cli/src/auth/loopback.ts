@@ -10,7 +10,7 @@
  * redirect URI's port is just a placeholder — the actual port the
  * server lands on is what matters at runtime.
  *
- * Times out after 120s. Validates `state` matches the value we
+ * Times out after 60 minutes. Validates `state` matches the value we
  * generated. Renders a small "you can close this window" page back
  * to the browser before shutting down.
  */
@@ -18,11 +18,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { AddressInfo } from "node:net";
+import { connectedPage, failurePage } from "./callbackPage.js";
 
 export interface LoopbackOptions {
   /** Expected `state` value — flow fails if it doesn't match. */
   state: string;
-  /** Timeout in ms (default 120s). */
+  /** Timeout in ms (default 60 minutes). */
   timeoutMs?: number;
   /** Override port for tests (default 0 = ephemeral). */
   port?: number;
@@ -40,15 +41,17 @@ export interface LoopbackHandle {
   result: Promise<LoopbackResult>;
   /** Redirect URI to pass to /v1/oauth/authorize. */
   redirectUri: string;
+  timeoutLabel: string;
   /** Stop the server early (e.g. user cancels). */
   close: () => Promise<void>;
 }
 
 const CALLBACK_PATH = "/oauth/callback";
-const DEFAULT_TIMEOUT_MS = 120_000;
+const SIGN_IN_WITH_CHECKOUT_TIMEOUT_MS = 60 * 60 * 1000;
 
 export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHandle> {
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = opts.timeoutMs ?? SIGN_IN_WITH_CHECKOUT_TIMEOUT_MS;
+  const timeoutLabel = `${timeoutMs / 60_000} minutes`;
 
   let resolveResult!: (value: LoopbackResult) => void;
   let rejectResult!: (err: Error) => void;
@@ -88,14 +91,14 @@ export async function startLoopback(opts: LoopbackOptions): Promise<LoopbackHand
   };
 
   const timer = setTimeout(() => {
-    rejectResult(new Error(`OAuth callback timed out after ${timeoutMs}ms`));
+    rejectResult(new Error(`OAuth callback timed out after ${timeoutLabel}`));
     void close();
   }, timeoutMs);
 
   // When result settles, drain the timer + shutdown.
   result.finally(close).catch(() => {});
 
-  return { result, redirectUri, close };
+  return { result, redirectUri, timeoutLabel, close };
 }
 
 async function listen(server: Server, port: number): Promise<void> {
@@ -135,14 +138,14 @@ function handleRequest(
   const error = params.get("error");
   if (error) {
     const desc = params.get("error_description") ?? "";
-    respond(res, 400, errorPage(error, desc));
+    respond(res, 400, failurePage(error, desc));
     rejectResult(new Error(`OAuth authorize returned error: ${error}${desc ? ` — ${desc}` : ""}`));
     return;
   }
 
   const state = params.get("state");
   if (!state || !stateMatches(state, expectedState)) {
-    respond(res, 400, errorPage("invalid_state", "State parameter did not match."));
+    respond(res, 400, failurePage("invalid_state", "State parameter did not match."));
     rejectResult(new Error("OAuth state mismatch — possible CSRF, aborting."));
     return;
   }
@@ -152,13 +155,13 @@ function handleRequest(
     respond(
       res,
       400,
-      errorPage("missing_code", "Authorization code is missing from the redirect."),
+      failurePage("missing_code", "Authorization code is missing from the redirect."),
     );
     rejectResult(new Error("OAuth redirect did not include `code`."));
     return;
   }
 
-  respond(res, 200, successPage());
+  respond(res, 200, connectedPage());
   resolveResult({ code, redirectUri });
 }
 
@@ -188,27 +191,4 @@ function respond(res: ServerResponse, status: number, body: string): void {
       connection: "close",
     })
     .end(body);
-}
-
-function successPage(): string {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Signed in to HeyGen</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0b0f14;color:#e6e8eb}main{max-width:480px;text-align:center;padding:32px;border-radius:12px;background:#11161d;border:1px solid #1f2630}h1{font-weight:600;margin:0 0 8px;color:#3CE6AC}p{margin:0;color:#9aa3ad}</style>
-</head><body><main><h1>You're signed in.</h1><p>You can close this tab and return to your terminal.</p></main></body></html>`;
-}
-
-function errorPage(code: string, description: string): string {
-  const safeCode = escapeHtml(code);
-  const safeDesc = escapeHtml(description);
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign-in failed</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a0b0b;color:#e6e8eb}main{max-width:480px;text-align:center;padding:32px;border-radius:12px;background:#1d1111;border:1px solid #301f1f}h1{font-weight:600;margin:0 0 8px;color:#ff7a7a}code{background:#2a1414;padding:2px 6px;border-radius:4px}p{margin:8px 0 0;color:#9aa3ad}</style>
-</head><body><main><h1>Sign-in failed</h1><p><code>${safeCode}</code></p><p>${safeDesc}</p></main></body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

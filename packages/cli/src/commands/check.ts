@@ -2,7 +2,7 @@ import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
   type ArtifactCapture,
@@ -28,6 +28,7 @@ import { withMeta } from "../utils/updateCheck.js";
 import {
   DEFAULT_CHECK_OPTIONS,
   checkExitCode,
+  leavesNothingToLoad,
   prelaunchBrowserForNextCheck,
   runCheckPipeline,
   selectFindingCropRequests,
@@ -43,6 +44,14 @@ import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 import { recordLastCheck } from "../telemetry/config.js";
 import { failureCodes } from "../utils/checkFailureCodes.js";
+import {
+  browserIdentity,
+  checkCacheKey,
+  checkCacheable,
+  readCachedPass,
+  storePass,
+} from "../utils/checkCache.js";
+import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -60,12 +69,17 @@ export interface CheckCommandDependencies {
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
   prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
+  browserIdentity?(): Promise<string | undefined>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
   resolveProject,
   async runPipeline(project, options) {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
+    const id = randomUUID();
+    console.error(
+      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+    );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
     reportArtifacts("check", "frame", images(report.snapshots.files));
@@ -73,7 +87,7 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capture = await capturing;
     if (!capture) return report;
     try {
-      return { ...report, saved: await saveCheckReport(project, options, report, capture) };
+      return { ...report, saved: await saveCheckReport(project, options, report, capture, id) };
     } catch (error) {
       warnNotRecorded(error);
       return report;
@@ -92,16 +106,19 @@ function warnNotRecorded(error: unknown): undefined {
   return undefined;
 }
 
+export function checkReportFile(projectDir: string, id: string): string {
+  return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
+}
+
 async function saveCheckReport(
   project: ProjectDir,
   options: CheckOptions,
   report: CheckReport,
   capture: ArtifactCapture,
+  id: string,
 ): Promise<SavedCheck> {
-  const id = randomUUID();
-  const directory = join(project.dir, ".hyperframes", "artifacts", "checks");
-  mkdirSync(directory, { recursive: true });
-  const path = join(directory, `${id}.json`);
+  const path = checkReportFile(project.dir, id);
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null
@@ -164,6 +181,11 @@ async function saveCheckReport(
 const CHECK_COMMAND_ARGS = {
   dir: { type: "positional", description: "Project directory", required: false },
   json: { type: "boolean", description: "Output agent-readable JSON", default: false },
+  "lint-verbose": {
+    type: "boolean",
+    description: "Accepted as render's spelling; check always prints every lint finding",
+    default: false,
+  },
   samples: {
     type: "string",
     description: "Number of midpoint samples across the duration (default: 9)",
@@ -209,15 +231,32 @@ const CHECK_COMMAND_ARGS = {
     description: "Allowed pixel overflow before reporting an issue (default: 2)",
     default: "2",
   },
+  budget: {
+    type: "string",
+    description:
+      "Stop the whole check this long after it starts (ms, or 90s, 8m; at least 30s) and report what it found so far",
+  },
+  cache: {
+    type: "boolean",
+    description:
+      "Return the stored result when the project, options and CLI are unchanged since the last pass (pass --no-cache to always re-run)",
+    default: true,
+  },
   timeout: {
     type: "string",
     description:
-      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 10000)",
-    default: "10000",
+      "Initial render-ready timeout in ms, or with a unit (45s, 2m); also sets the navigation minimum (10s floor, default: 45000, as snapshot and render)",
+    default: String(DEFAULT_CHECK_OPTIONS.timeout),
   },
   contrast: {
     type: "boolean",
     description: "Run the WCAG AA contrast pass (enabled by default)",
+    default: true,
+  },
+  craft: {
+    type: "boolean",
+    description:
+      "Run the craft pass (dead stretches, unread lines, silent films; enabled by default). --no-craft skips it, e.g. for a render preflight",
     default: true,
   },
   strict: {
@@ -246,6 +285,11 @@ const CHECK_COMMAND_ARGS = {
   snapshots: {
     type: "boolean",
     description: "Save contrast-pass PNGs under .hyperframes/artifacts/snapshots/",
+    default: false,
+  },
+  "include-unmounted": {
+    type: "boolean",
+    description: "Also lint compositions/ files that index.html never mounts",
     default: false,
   },
   "caption-zone": {
@@ -290,9 +334,7 @@ export function createCheckCommand(
           return;
         }
         recordLastCheck({ at: new Date().toISOString(), codes: {} });
-        const report = await withProjectLock(project.dir, "check", () =>
-          dependencies.runPipeline(project, options),
-        );
+        const report = await checkOrReplay(dependencies, project, options);
         recordLastCheck({
           at: new Date().toISOString(),
           exitCode: checkExitCode(report),
@@ -300,6 +342,8 @@ export function createCheckCommand(
         });
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
+          if (report.saved)
+            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
         } else {
           printHumanReport(report);
           if (report.saved) {
@@ -324,6 +368,27 @@ export function createCheckCommand(
   });
 }
 
+async function checkOrReplay(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+): Promise<SavedCheckReport> {
+  const identify = dependencies.browserIdentity ?? browserIdentity;
+  return withProjectLock(project.dir, "check", async () => {
+    const keyNow = async () =>
+      checkCacheable(options)
+        ? checkCacheKey(project.dir, options, VERSION, await identify())
+        : undefined;
+    const key = await keyNow();
+    const cached = key ? readCachedPass(project.dir, key) : undefined;
+    if (cached) return cached;
+    const report = await dependencies.runPipeline(project, options);
+    const treeUnchangedByTheRun = key !== undefined && (await keyNow()) === key;
+    if (treeUnchangedByTheRun) storePass(project.dir, key, report);
+    return report;
+  });
+}
+
 function reportCheckFailure(
   error: unknown,
   asJson: boolean,
@@ -342,6 +407,13 @@ function reportCheckFailure(
 }
 
 const REPORT_GRACE_MS = 5_000;
+const MIN_BUDGET_MS = 30_000;
+const BUDGET_REPORT_MS = 10_000;
+
+function parseBudget(raw: unknown): CheckOptions["budget"] {
+  const ms = parseTimeoutMs(raw, 0, MIN_BUDGET_MS, console.error, "--budget");
+  return ms > 0 ? { ms, stopAt: Date.now() + ms - BUDGET_REPORT_MS } : undefined;
+}
 
 function untilReported(): { done: () => void } {
   let done = (): void => undefined;
@@ -417,7 +489,10 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     collapseStatic: args["collapse-static"] !== false,
     tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
     timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
+    budget: parseBudget(args.budget),
+    cache: args.cache !== false,
     contrast: args.contrast !== false,
+    craft: args.craft !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
     snapshots: args.snapshots === true,
@@ -428,6 +503,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
     browserGpuMode: resolveLocalBrowserGpuMode(args["browser-gpu"] as boolean | undefined),
+    includeUnmounted: args["include-unmounted"] === true,
   };
 }
 
@@ -653,13 +729,16 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
 }
 
 function browserSkippedLine(report: CheckReport): string {
-  const lintError = report.lint.findings.some((finding) => finding.severity === "error");
-  return lintError
-    ? "Browser validation skipped because of the lint error above: fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
+  return report.lint.findings.some(leavesNothingToLoad)
+    ? "Browser validation skipped: the lint error above leaves no composition to load. Fix it and run check again. Layout, motion, and contrast were not checked, so this is not a clean pass."
     : "Browser session never ran — layout, motion, and contrast below are empty placeholders, not a clean pass.";
 }
 
 function printHumanReport(report: CheckReport): void {
+  if (report.cached)
+    console.log(
+      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
+    );
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,

@@ -97,6 +97,15 @@ describe("buildUnconfiguredLines — offline engine readiness", () => {
   });
 });
 
+describe("buildUnconfiguredLines — a coding agent", () => {
+  const text = joined({ interactive: true, agent: true });
+
+  it("asks the person to sign in from the prompt, with no local or API-key detour", () => {
+    expect(text).toContain("! npx hyperframes auth login");
+    expect(text).not.toMatch(/local engines|api-key|Kokoro/i);
+  });
+});
+
 describe("buildUnconfiguredJson", () => {
   it("recommends auth login and reports the local fallback", () => {
     for (const ctx of [INTERACTIVE, NON_INTERACTIVE]) {

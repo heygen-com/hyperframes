@@ -1,4 +1,7 @@
+import gsap from "gsap";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createGsapAdapter, muteDiscreteCallbacks } from "../adapters/gsap";
+import type { RuntimeTimelineLike } from "../types";
 import {
   type CaptureMotionBlurHost,
   captureMotionBlurBusy,
@@ -93,7 +96,10 @@ function host(
 
 const captureCanvas = (root: HTMLElement) => root.parentElement as HTMLCanvasElement;
 
+const rangeRect = Range.prototype.getBoundingClientRect;
+
 beforeEach(() => {
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
   setFilterFallbackForTests(false);
   contexts = [];
   vi.spyOn(console, "info").mockImplementation(() => {});
@@ -101,6 +107,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Range.prototype.getBoundingClientRect = rangeRect;
   resetCaptureMotionBlurForTests();
   setFilterFallbackForTests(true);
   vi.restoreAllMocks();
@@ -142,6 +149,61 @@ function movingHost(attrs?: Record<string, string>) {
 }
 
 const PLAY = { playing: true };
+
+/** Paints 0.5 s first, as a mid-film worker does, over one-off calls at 0.3 s and 0.7 s. */
+function textAfterStartingAtHalf(): string {
+  const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+  const calls = [
+    { at: 0.3, text: "first" },
+    { at: 0.7, text: "second" },
+  ];
+  let head = 0;
+  let text = "";
+  // GSAP fires a one-off call on a loud crossing in either direction.
+  const seek = (t: number, suppress: boolean) => {
+    h.seek(t, suppress);
+    const crossed = calls.filter(({ at }) => Math.min(head, t) < at && at <= Math.max(head, t));
+    if (t < head) crossed.reverse();
+    if (!suppress) for (const call of crossed) text = call.text;
+    head = t;
+  };
+  initCaptureMotionBlur({ ...h, seek });
+  void paintCaptureMotionBlur(0.5, PLAY);
+  return text;
+}
+
+function gsapCallsFilm(movesSlider = false) {
+  const { root, el, h } = movingHost({
+    "data-motion-blur": "on",
+    "data-motion-blur-events": "on",
+    "data-motion-blur-shutter": "360",
+  });
+  const label = root.appendChild(document.createElement("p"));
+  label.textContent = "A";
+  const tl = gsap.timeline({ paused: true });
+  tl.to(el, { x: 300, duration: 1, ease: "none" }, 0)
+    .call(() => void (label.textContent = "B"), [], 0.5)
+    .call(() => void label.classList.toggle("on"), [], 0.6);
+  if (movesSlider) tl.eventCallback("onUpdate", () => void (el.style.left = `${tl.time() * 40}px`));
+  const x = () => Number(gsap.getProperty(el, "x")) + (parseFloat(el.style.left) || 0);
+  el.getBoundingClientRect = () =>
+    ({ left: x(), top: 0, right: x() + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+  const adapter = createGsapAdapter({ getTimeline: () => tl as unknown as RuntimeTimelineLike });
+  const seek = vi.fn((t: number, suppressEvents: boolean) =>
+    adapter.seek({ time: t, suppressEvents }),
+  );
+  initCaptureMotionBlur({
+    ...h,
+    seek,
+    muteCallbacks: () => muteDiscreteCallbacks([tl as unknown as RuntimeTimelineLike]),
+  });
+  const paintAt = (t: number): string => {
+    seek(t, false);
+    void paintCaptureMotionBlur(t, PLAY);
+    return `${label.textContent}${label.className ? ` ${label.className}` : ""}`;
+  };
+  return Object.assign(paintAt, { seek });
+}
 
 describe("opt-in and off switches", () => {
   it("does nothing for a root that has not opted in", () => {
@@ -611,6 +673,55 @@ describe("wrapping", () => {
     expect(events).toEqual(["quiet:begin", "quiet:end:plain", "seek:0.5:true"]);
   });
 
+  it("keeps the offset of a scrolled container when the root moves in and out of the canvas", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const list = document.createElement("div");
+    const inner = document.createElement("div");
+    list.append(inner);
+    root.append(list);
+    const offsets = new Map<HTMLElement, [number, number]>([
+      [root, [0, 0]],
+      [list, [0, 0]],
+      [inner, [0, 0]],
+    ]);
+    for (const [el] of offsets) {
+      Object.defineProperties(el, {
+        scrollLeft: {
+          get: () => offsets.get(el)?.[0],
+          set: (v: number) => offsets.set(el, [v, offsets.get(el)?.[1] ?? 0]),
+          configurable: true,
+        },
+        scrollTop: {
+          get: () => offsets.get(el)?.[1],
+          set: (v: number) => offsets.set(el, [offsets.get(el)?.[0] ?? 0, v]),
+          configurable: true,
+        },
+      });
+    }
+    const reset = () => {
+      for (const el of offsets.keys()) offsets.set(el, [0, 0]);
+    };
+    initCaptureMotionBlur({
+      ...h,
+      ignoreMutations: (write) => {
+        write();
+        reset();
+      },
+    });
+    offsets.set(list, [12, 300]);
+    offsets.set(inner, [0, 40]);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.parentElement?.tagName).toBe("CANVAS");
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(inner)).toEqual([0, 40]);
+    offsets.set(root, [0, 7]);
+    expect(paintCaptureMotionBlur(0.5)).toBeNull();
+    expect(root.parentElement).toBe(document.body);
+    expect(offsets.get(list)).toEqual([12, 300]);
+    expect(offsets.get(root)).toEqual([0, 7]);
+  });
+
   it("does not re-seek when there was nothing to unwrap", () => {
     installHtmlInCanvas();
     const { h } = movingHost();
@@ -658,6 +769,18 @@ describe("wrapping", () => {
 const HIDE = "data-hf-motion-blur-hide";
 const ONLY = "data-hf-motion-blur-only";
 const MOVER = "data-hf-motion-blur-mover";
+
+describe("a canvas inside the composition", () => {
+  // Chrome drops a nested canvas's layout offset from drawElementImage unless it has a transform.
+  it("gets a transform while captured, one the composition's own translate overrides", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on" });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.1, PLAY);
+    const rules = [...document.head.querySelectorAll("style")].map((s) => s.textContent).join("\n");
+    expect(rules).toContain(`:where([data-hf-motion-blur="capture"] canvas) { translate: 0 0 0; }`);
+  });
+});
 
 describe("two-phase frames", () => {
   it("hides the movers for a background capture, then reveals them and settles", async () => {
@@ -889,9 +1012,24 @@ describe("painting", () => {
     }).h;
     initCaptureMotionBlur(eventful);
     win.__hfMotionBlur?.probe();
-    expect(eventful.seek.mock.calls.length).toBeGreaterThan(10);
-    expect(eventful.seek.mock.calls.every(([, suppress]) => suppress === false)).toBe(true);
+    const loud = eventful.seek.mock.calls.filter(([, suppress]) => suppress === false);
+    expect(loud.length).toBeGreaterThan(10);
+    // The page goes back to the frame with callbacks on after the scan.
+    expect(eventful.seek.mock.calls.at(-1)?.[1]).toBe(false);
   });
+
+  /** A slider that only a timeline callback moves, as a render(t) function would. */
+  function callbackHost() {
+    const { root, el, h } = movingHost({
+      "data-motion-blur": "on",
+      "data-motion-blur-events": "on",
+    });
+    const slide = h.seek;
+    const seek = vi.fn((t: number, suppress: boolean) => {
+      if (!suppress) slide(t, suppress);
+    });
+    return { root, el, h: { ...h, seek } };
+  }
 
   it("seeks pose reads with events suppressed unless the root allows them", () => {
     installHtmlInCanvas();
@@ -901,15 +1039,190 @@ describe("painting", () => {
     expect(quiet.seek.mock.calls.every(([, suppress]) => suppress === true)).toBe(true);
 
     resetCaptureMotionBlurForTests();
-    const eventful = movingHost({
-      "data-motion-blur": "on",
-      "data-motion-blur-events": "on",
-    }).h;
-    initCaptureMotionBlur(eventful);
+    const { h } = callbackHost();
+    initCaptureMotionBlur(h);
     void paintCaptureMotionBlur(0.5, PLAY);
-    const calls = eventful.seek.mock.calls;
+    const calls = h.seek.mock.calls;
     expect(calls.at(-1)?.[1]).toBe(false);
     expect(calls.some(([, suppress]) => suppress === false)).toBe(true);
+  });
+
+  // Each frame's reads step back to the frame from half a shutter ahead. A callback that keeps
+  // state (a simulation that replays from zero on a backward seek) would redo all of it per frame.
+  it("reads poses with callbacks off when callbacks move no mover, even with events on", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+    initCaptureMotionBlur(h);
+    win.__hfMotionBlur?.probe();
+    expect(win.__hfMotionBlur?.report().movers).toBe(1);
+    h.seek.mockClear();
+    void paintCaptureMotionBlur(0.5, PLAY);
+    const reads = h.seek.mock.calls.filter(([t]) => t > 0);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every(([, suppress]) => suppress === true)).toBe(true);
+  });
+
+  it("lands silent reads back on the frame through the host's holdFrame, taken before the first read", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+    const order: string[] = [];
+    const seek = vi.fn((t: number, suppress: boolean) => {
+      h.seek(t, suppress);
+      order.push(`seek ${t.toFixed(3)}`);
+    });
+    const hold = vi.fn(() => {
+      order.push("hold");
+      return (t: number) => void order.push(`restore ${t}`);
+    });
+    initCaptureMotionBlur({ ...h, seek, holdFrame: hold });
+    win.__hfMotionBlur?.probe();
+    order.length = 0;
+    void paintCaptureMotionBlur(0.5, PLAY);
+    const first = order.findIndex((step) => step.startsWith("seek 0.4"));
+    expect(order.indexOf("hold")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("hold")).toBeLessThan(first);
+    expect(order.at(-1)).toBe("restore 0.5");
+    expect(order.filter((step) => step === "seek 0.500")).toEqual([]);
+  });
+
+  it("does not hold the page when callbacks run in the reads", () => {
+    installHtmlInCanvas();
+    const { h } = callbackHost();
+    const hold = vi.fn(() => () => {});
+    initCaptureMotionBlur({ ...h, holdFrame: hold });
+    win.__hfMotionBlur?.probe();
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(hold).not.toHaveBeenCalled();
+  });
+
+  it("fires a one-off timeline call an even number of times over a scan, so a toggle ends as it began", () => {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-events": "on" });
+    // A call at 0.7 s that flips state each time an eventful seek crosses it, either way.
+    let at = 0;
+    let flipped = false;
+    const slide = h.seek;
+    const seek = vi.fn((t: number, suppress: boolean) => {
+      slide(t, suppress);
+      if (!suppress && Math.min(at, t) < 0.7 && Math.max(at, t) >= 0.7) flipped = !flipped;
+      at = t;
+    });
+    initCaptureMotionBlur({ ...h, seek });
+    win.__hfMotionBlur?.probe();
+    expect(seek.mock.calls.length).toBeGreaterThan(10);
+    expect(flipped).toBe(false);
+  });
+
+  // Both scans find the same mover and the same changing elements; only the mover's box differs.
+  it("reads poses with callbacks on when a callback pans a mover's tweened ancestor", () => {
+    installHtmlInCanvas();
+    const { root, el, h } = movingHost({
+      "data-motion-blur": "on",
+      "data-motion-blur-events": "on",
+    });
+    const rig = document.createElement("div");
+    root.append(rig);
+    rig.append(el);
+    const pan = () => Number(/,\s*([-\d.]+),\s*0\)$/.exec(rig.style.transform)?.[1] ?? 0);
+    const own = el.getBoundingClientRect.bind(el);
+    el.getBoundingClientRect = () => {
+      const b = own();
+      return { ...b, left: b.left + pan(), right: b.right + pan() } as DOMRect;
+    };
+    rig.getBoundingClientRect = () =>
+      ({ left: pan(), top: 0, right: pan() + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    const slide = h.seek;
+    const seek = vi.fn((t: number, suppress: boolean) => {
+      slide(t, suppress);
+      rig.style.opacity = String(1 - t / 2);
+      if (!suppress) rig.style.transform = `matrix(1, 0, 0, 1, ${-30 * t}, 0)`;
+    });
+    initCaptureMotionBlur({ ...h, seek });
+    win.__hfMotionBlur?.probe();
+    expect(win.__hfMotionBlur?.report().movers).toBe(1);
+    seek.mockClear();
+    void paintCaptureMotionBlur(0.5, PLAY);
+    const reads = seek.mock.calls.filter(([t]) => t > 0);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every(([, suppress]) => suppress === false)).toBe(true);
+  });
+
+  it("reads poses with callbacks on when a callback moves a mover", () => {
+    installHtmlInCanvas();
+    const { h } = callbackHost();
+    initCaptureMotionBlur(h);
+    win.__hfMotionBlur?.probe();
+    expect(win.__hfMotionBlur?.report().movers).toBe(1);
+    h.seek.mockClear();
+    void paintCaptureMotionBlur(0.5, PLAY);
+    // Wrapping resyncs at host.now() (0) on its own; the shutter's reads are the rest.
+    const reads = h.seek.mock.calls.filter(([t]) => t > 0);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every(([, suppress]) => suppress === false)).toBe(true);
+  });
+
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    installHtmlInCanvas();
+    expect(textAfterStartingAtHalf()).toBe("first");
+  });
+
+  it.each([
+    [[0.3], ["A"]],
+    [[0.55], ["B"]],
+    [[0.7], ["B on"]],
+    [
+      [0.3, 0.7],
+      ["A", "B on"],
+    ],
+  ])("leaves real GSAP calls' DOM as a plain seek does when painting %j", (times, shown) => {
+    installHtmlInCanvas();
+    const paintAt = gsapCallsFilm();
+    expect(times.map(paintAt)).toEqual(shown);
+  });
+
+  it("leaves a call just past the frame unfired after reads that run callbacks", () => {
+    installHtmlInCanvas();
+    const paintAt = gsapCallsFilm(true);
+    expect(paintAt(0.49)).toBe("A");
+    expect(paintAt.seek.mock.calls.some(([t, quiet]) => t > 0.5 && t < 0.51 && !quiet)).toBe(true);
+  });
+
+  it("restores callbacks when onUpdate throws during the scan", () => {
+    installHtmlInCanvas();
+    const { el, h } = movingHost({
+      "data-motion-blur": "on",
+      "data-motion-blur-events": "on",
+    });
+    const called = vi.fn();
+    let thrown = false;
+    const tl = gsap.timeline({
+      paused: true,
+      onUpdate: () => {
+        if (thrown || tl.time() < 0.4) return;
+        thrown = true;
+        throw new Error("onUpdate threw mid-scan");
+      },
+    });
+    tl.to(el, { x: 300, duration: 1, ease: "none" }, 0).call(called, [], 0.5);
+    el.getBoundingClientRect = () => {
+      const x = Number(gsap.getProperty(el, "x"));
+      return { left: x, top: 0, right: x + 10, bottom: 10, width: 10, height: 10 } as DOMRect;
+    };
+    const adapter = createGsapAdapter({ getTimeline: () => tl as unknown as RuntimeTimelineLike });
+    initCaptureMotionBlur({
+      ...h,
+      seek: (t, suppressEvents) => adapter.seek({ time: t, suppressEvents }),
+      muteCallbacks: () => muteDiscreteCallbacks([tl as unknown as RuntimeTimelineLike]),
+    });
+    try {
+      void paintCaptureMotionBlur(0.3, PLAY);
+    } catch {
+      // The scan may rethrow; what matters is that the callbacks are back.
+    }
+    expect(thrown).toBe(true);
+    expect(called).not.toHaveBeenCalled();
+    tl.seek(0.7, false);
+    expect(called).toHaveBeenCalledTimes(1);
   });
 
   it("fires timeline callbacks during discovery only when the root allows events", () => {
@@ -1329,6 +1642,23 @@ describe("probe", () => {
     expect(document.querySelector("canvas")).toBeNull();
   });
 
+  it.each(["capture", "filter"])("counts what the composition holds on the %s tier", (tier) => {
+    installHtmlInCanvas();
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const { root, h } = movingHost({ "data-motion-blur": "on", "data-motion-blur-tier": tier });
+    root.append(document.createElement("video"), document.createElement("video"));
+    initCaptureMotionBlur(h);
+    expect(win.__hfMotionBlur?.report()).toMatchObject({ fingerprint: null, readEvents: false });
+    expect(probe()).toMatchObject({ tier, fingerprint: { video: 2, webgl: 0 }, readEvents: false });
+  });
+
+  it("carries no counts when blur stands down before any scan", () => {
+    win.__HF_PAGE_MOTION_BLUR_OFF__ = "hdr-render";
+    const { h } = movingHost();
+    initCaptureMotionBlur(h);
+    expect(probe()).toMatchObject({ state: "off", fingerprint: null, readEvents: false });
+  });
+
   it("reports no movers for a composition where nothing moves", () => {
     installHtmlInCanvas();
     initCaptureMotionBlur(host(makeRoot()));
@@ -1614,6 +1944,10 @@ describe("paint timeouts", () => {
 describe("filter fallback", () => {
   beforeEach(() => setFilterFallbackForTests(true));
 
+  it("leaves a worker starting mid-film the state of the calls behind it, not ahead of it", () => {
+    expect(textAfterStartingAtHalf()).toBe("first");
+  });
+
   /** A root whose opacity tweens late, which a scan sees and capture cannot draw. */
   const CAPTURE = { "data-motion-blur": "on", "data-motion-blur-tier": "capture" };
   function fadingRoot(fade: { on: boolean }) {
@@ -1626,8 +1960,8 @@ describe("filter fallback", () => {
     return { root, el, h: { ...h, seek } };
   }
 
-  it("draws with filters where html-in-canvas is missing, and says why", () => {
-    const { root, el, h } = movingHost();
+  it("draws with filters where html-in-canvas is missing and capture was asked for", () => {
+    const { root, el, h } = movingHost(CAPTURE);
     initCaptureMotionBlur(h);
     expect(win.__hfMotionBlur?.report()).toMatchObject({
       state: "on",
@@ -1728,7 +2062,7 @@ describe("filter fallback", () => {
       });
     });
 
-    it("takes the cheaper filter tier when every mover only translates", () => {
+    it("draws with the filter tier on auto, where capture could run, for a mover that translates", () => {
       installHtmlInCanvas();
       const { root, el, h } = movingHost();
       initCaptureMotionBlur(h);
@@ -1736,15 +2070,28 @@ describe("filter fallback", () => {
       expect(win.__hfMotionBlur?.report()).toMatchObject({
         state: "on",
         tier: "filter",
-        reasonCode: "translation-only",
+        reasonCode: "tier-auto",
       });
       expect(root.parentElement).toBe(document.body);
       expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
     });
 
-    it("keeps capture for a mover that turns", () => {
+    it("draws with the filter tier on auto for a mover that turns", () => {
       installHtmlInCanvas();
-      const { root, h } = turningHost({ "data-motion-blur": "on" });
+      const { root, el, h } = turningHost({ "data-motion-blur": "on" });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report()).toMatchObject({
+        tier: "filter",
+        reasonCode: "tier-auto",
+      });
+      expect(root.parentElement).toBe(document.body);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("keeps capture for a mover that turns when the page asks for it", () => {
+      installHtmlInCanvas();
+      const { root, h } = turningHost(CAPTURE);
       initCaptureMotionBlur(h);
       void paintCaptureMotionBlur(0.5, PLAY);
       expect(win.__hfMotionBlur?.report()).toMatchObject({ tier: "capture", reasonCode: null });
@@ -1788,6 +2135,105 @@ describe("filter fallback", () => {
     expect(el.style.filter).toBe("drop-shadow(0px 0px 4px red)");
   });
 
+  describe("a mover holding a fixed child", () => {
+    /** A mover that slides through `left`, 300 px over the composition, holding a fixed badge. */
+    function leftMoverWithBadge(root: HTMLElement) {
+      const el = root.appendChild(document.createElement("div"));
+      el.id = "card";
+      const badge = el.appendChild(document.createElement("div"));
+      badge.style.position = "fixed";
+      const left = () => parseFloat(el.style.left) || 0;
+      for (const [k, v] of Object.entries({ offsetWidth: 10, offsetHeight: 10, offsetTop: 0 })) {
+        Object.defineProperty(el, k, { value: v, configurable: true });
+      }
+      Object.defineProperty(el, "offsetParent", { value: root, configurable: true });
+      Object.defineProperty(el, "offsetLeft", { get: left, configurable: true });
+      el.getBoundingClientRect = () =>
+        ({
+          left: left(),
+          top: 0,
+          right: left() + 10,
+          bottom: 10,
+          width: 10,
+          height: 10,
+        }) as DOMRect;
+      return el;
+    }
+
+    it("stays sharp when it moves through left, while the other movers blur", () => {
+      const { root, el: other, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(win.__hfMotionBlur?.report().moverNames).toEqual(["div#slider", "div#card"]);
+      expect(card.style.filter).toBe("");
+      expect(other.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+
+    it("still blurs when a transform already made it the containing block", () => {
+      const { el, h } = movingHost();
+      el.append(Object.assign(document.createElement("div"), { style: "position: fixed" }));
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.5, PLAY);
+      expect(el.style.filter).toMatch(/url\("?#hf-mb-0"?\)/);
+    });
+
+    it("blurs on the frames where a transform is set, and not on those where it is none", () => {
+      const { root, h } = movingHost();
+      const card = leftMoverWithBadge(root);
+      const slide = h.seek;
+      h.seek = vi.fn((t: number, quiet: boolean) => {
+        slide(t, quiet);
+        card.style.left = `${300 * t}px`;
+        card.style.transform = t >= 0.5 ? "matrix(1, 0, 0, 1, 0, 0)" : "";
+      });
+      initCaptureMotionBlur(h);
+      void paintCaptureMotionBlur(0.3, PLAY);
+      expect(card.style.filter).toBe("");
+      void paintCaptureMotionBlur(0.7, PLAY);
+      expect(card.style.filter).toMatch(/url\("?#hf-mb-\d+"?\)/);
+    });
+  });
+
+  it("reads poses with callbacks off when callbacks move no mover in the filter tier too", () => {
+    const { h } = movingHost({
+      "data-motion-blur": "on",
+      "data-motion-blur-events": "on",
+      "data-motion-blur-tier": "filter",
+    });
+    initCaptureMotionBlur(h);
+    win.__hfMotionBlur?.probe();
+    expect(win.__hfMotionBlur?.report()).toMatchObject({ tier: "filter", movers: 1 });
+    h.seek.mockClear();
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(h.seek.mock.calls.length).toBeGreaterThan(0);
+    expect(h.seek.mock.calls.every(([, suppress]) => suppress === true)).toBe(true);
+  });
+
+  it("keeps the filter tier's svg out of the root and removes it on teardown", () => {
+    const { root, h } = movingHost();
+    const svgs = () => document.querySelectorAll("svg[data-hf-ignore]").length;
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    initCaptureMotionBlur({ ...h, timeline: () => "tl2" });
+    void paintCaptureMotionBlur(0.6, PLAY);
+    expect(svgs()).toBe(1);
+    const next = movingHost();
+    initCaptureMotionBlur(next.h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(next.root.querySelector("svg[data-hf-ignore]")).toBeNull();
+    expect(svgs()).toBe(1);
+    resetCaptureMotionBlurForTests();
+    expect(svgs()).toBe(0);
+  });
+
   it("removes its filters and its SVG on teardown", () => {
     const { el, h } = movingHost();
     initCaptureMotionBlur(h);
@@ -1795,5 +2241,76 @@ describe("filter fallback", () => {
     resetCaptureMotionBlurForTests();
     expect(el.style.filter).toBe("");
     expect(document.querySelectorAll("filter")).toHaveLength(0);
+  });
+});
+
+describe("the movers-alone capture", () => {
+  // A mover clipped by an SVG <clipPath> elsewhere in the composition: hiding the clip path's
+  // shape empties the clip, so the mover captured as nothing and vanished from blurred frames.
+  it("leaves SVG clip paths and masks visible, hiding the rest of the scene", () => {
+    installHtmlInCanvas();
+    const { root, h } = movingHost();
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const defs = document.createElementNS(NS, "defs");
+    const clip = document.createElementNS(NS, "clipPath");
+    const shape = document.createElementNS(NS, "use");
+    clip.append(shape);
+    defs.append(clip);
+    svg.append(defs);
+    const still = document.createElement("div");
+    root.append(svg, still);
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, PLAY);
+    expect(root.hasAttribute(ONLY)).toBe(true);
+    // jsdom has no cascade for this: check which elements each isolation rule selects.
+    const rules = [...document.head.querySelectorAll("style")]
+      .flatMap((s) => (s.textContent ?? "").split("\n"))
+      .filter((line) => line.startsWith(`[${ONLY}]`));
+    const selecting = (el: Element, value: string) =>
+      rules.some(
+        (line) =>
+          line.includes(`visibility: ${value}`) && el.matches(line.slice(0, line.indexOf("{"))),
+      );
+    expect(selecting(still, "hidden")).toBe(true);
+    expect(selecting(still, "visible")).toBe(false);
+    // Neither hidden itself nor left to inherit its <svg>'s hidden: its <defs> is made visible.
+    expect(selecting(shape, "hidden")).toBe(false);
+    expect(selecting(clip, "hidden")).toBe(false);
+    expect(selecting(defs, "visible")).toBe(true);
+  });
+});
+
+describe("shutter phase on the root", () => {
+  /** The pose reads around a frame at 0.5 s: the scan's own steps are on the 1/30 grid, outside these. */
+  function readsAroundHalf(attrs: Record<string, string>): number[] {
+    installHtmlInCanvas();
+    const { h } = movingHost({ "data-motion-blur": "on", ...attrs });
+    initCaptureMotionBlur(h);
+    void paintCaptureMotionBlur(0.5, { engineMode: true });
+    return h.seek.mock.calls
+      .map(([t]) => Number(t))
+      .filter((t) => t > 0.47 && t < 0.53 && t !== 0.5);
+  }
+
+  it.each(["capture", "filter"])("opens the %s tier's shutter at the phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-phase": "0",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeGreaterThan(0.5);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 60, 8);
+  });
+
+  it.each(["capture", "filter"])("keeps the %s tier centred with no phase", (tier) => {
+    if (tier === "filter") setFilterFallbackForTests(true);
+    const reads = readsAroundHalf({
+      "data-motion-blur-shutter": "180",
+      "data-motion-blur-tier": tier,
+    });
+    expect(Math.min(...reads)).toBeCloseTo(0.5 - 1 / 120, 8);
+    expect(Math.max(...reads)).toBeCloseTo(0.5 + 1 / 120, 8);
   });
 });

@@ -1,7 +1,10 @@
 import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, parse, posix, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isNonRelativeUrl } from "./assetPaths.js";
 import { decodeUrlPathVariants } from "./composition.js";
+import { decodedUrlPath } from "./utils/urlPath.js";
 import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
 
 /** The subset of `node:path` that `isWithinProjectRoot` needs to run under
@@ -121,12 +124,44 @@ export function resolveLocalAssetCandidates(projectDir: string, url: string): st
 
     const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
     const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
-      addCandidate(candidates, resolve(projectRoot, clamped));
-    }
+    if (!clamped || clamped.startsWith("..")) continue;
+    const reanchored = resolve(projectRoot, clamped);
+    if (isWithinProjectRoot(projectRoot, reanchored)) addCandidate(candidates, reanchored);
   }
 
   return candidates;
+}
+
+// On Windows even a stat of a UNC or device path (\\host\share, \\?\, \\.\) connects to that host.
+export function namesAnotherNetworkRoot(base: string, target: string): boolean {
+  const root = parse(resolve(target)).root;
+  return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
+}
+
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
+function staysInsideProject(projectDir: string, path: string): boolean {
+  const relativePath = relative(resolve(projectDir), path);
+  return !LEADING_PARENT_SEGMENT.test(relativePath) && !isAbsolute(relativePath);
+}
+
+/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
+export function resolveCompositionSrc(projectDir: string, src: string): string | null {
+  const rooted = (value: string) => resolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
+  const decoded = rooted(decodedUrlPath(src));
+  if (!staysInsideProject(projectDir, decoded)) return null;
+  const raw = rooted(src);
+  return !existsSync(decoded) && staysInsideProject(projectDir, raw) && existsSync(raw)
+    ? raw
+    : decoded;
+}
+
+// A Windows absolute src (C:\clip.mp4) that render copies in. A POSIX /x is a project URL; another share is skipped.
+export function localAbsoluteAssetFile(projectDir: string, src: string): string | null {
+  const path = cleanAssetUrl(src);
+  if (isNonRelativeUrl(path) || !isAbsolute(path)) return null;
+  const file = resolve(projectDir, path);
+  return !namesAnotherNetworkRoot(projectDir, file) && existsSync(file) ? file : null;
 }
 
 export function resolveExistingLocalAsset(
@@ -150,7 +185,10 @@ export function resolveAuthoredAssetFile(
   const rootRelative = cleanSrc.startsWith("/")
     ? cleanSrc
     : rewriteAssetPath(compositionFile, cleanSrc, (path) => existsSync(join(projectDir, path)));
-  return resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ?? null;
+  return (
+    resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ??
+    localAbsoluteAssetFile(projectDir, cleanSrc)
+  );
 }
 
 // Candidates for a variant whose join escaped the project root, re-anchored at the root.
@@ -166,13 +204,30 @@ function reanchoredCandidates(variant: string, baseDir: string, compiledDir?: st
     : [join(baseDir, stripped)];
 }
 
+// A file: URL names a path on this machine; one that names no local path stays as written and reads as missing.
+function fileUrlAsPath(src: string): string {
+  if (!/^file:/i.test(src)) return src;
+  try {
+    return fileURLToPath(src);
+  } catch {
+    return src;
+  }
+}
+
+// `/c/Users/...`: agents on Windows write what their Git Bash shell prints. A project file of that name wins.
+function gitBashFile(src: string): string | undefined {
+  if (process.platform !== "win32" || !/^\/[a-zA-Z]\//.test(src)) return undefined;
+  const path = resolve(`${src[1]}:${src.slice(2)}`);
+  return existsSync(path) ? path : undefined;
+}
+
 /** Resolves a media `src` like a browser URL (`..` clamps at the project root); a miss returns the base-dir join. */
 export function resolveProjectRelativeSrc(
   src: string,
   baseDir: string,
   compiledDir?: string,
 ): string {
-  const cleanSrc = cleanAssetUrl(src);
+  const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
   if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
@@ -185,7 +240,7 @@ export function resolveProjectRelativeSrc(
     if (compiledDir) candidates.add(join(compiledDir, variant));
     candidates.add(join(baseDir, variant));
   }
-  return [...candidates].find(existsSync) ?? join(baseDir, cleanSrc);
+  return [...candidates].find(existsSync) ?? gitBashFile(cleanSrc) ?? join(baseDir, cleanSrc);
 }
 
 function maskRange(src: string, pattern: RegExp): string {
@@ -223,6 +278,18 @@ export type ProjectFileRead =
   | { kind: "folder" }
   | { kind: "missing" };
 
+// A byte order mark names the encoding, as browsers read it: PowerShell 5.1 saves files as UTF-16LE with one.
+export function decodeTextHonoringBom(bytes: Buffer): string {
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.subarray(2).toString("utf16le");
+  if (bytes[0] === 0xfe && bytes[1] === 0xff)
+    return Buffer.from(bytes.subarray(2, bytes.length - (bytes.length % 2)))
+      .swap16()
+      .toString("utf16le");
+  return bytes.toString("utf-8").replace(/^\uFEFF/, "");
+}
+
+export const readTextFile = (path: string): string => decodeTextHonoringBom(readFileSync(path));
+
 /** Reads through one descriptor, so the file-type check and the read see the same file. */
 export function readProjectFile(path: string): ProjectFileRead {
   let fd: number;
@@ -237,7 +304,7 @@ export function readProjectFile(path: string): ProjectFileRead {
   }
   try {
     if (!fstatSync(fd).isFile()) return { kind: "folder" };
-    return { kind: "file", text: readFileSync(fd, "utf-8") };
+    return { kind: "file", text: decodeTextHonoringBom(readFileSync(fd)) };
   } finally {
     closeSync(fd);
   }
