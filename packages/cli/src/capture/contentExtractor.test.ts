@@ -601,7 +601,25 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     ]);
   });
 
-  it.each(["global", "us", "europe-west4"])("accepts the region %s", async (location) => {
+  it.each([
+    "gemini-2.5-flash",
+    "google/gemini-2.5-flash",
+    "publishers/anthropic/models/claude-sonnet-4@20250514",
+    "projects/example.com:proj/locations/us-central1/endpoints/123",
+  ])("accepts the model id %s", async (model) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_MODEL", model);
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(captions).toEqual({ "hero.png": "A caption." });
+    expect(generateContentMock.mock.calls[0]?.[0]).toMatchObject({ model });
+  });
+
+  it.each(["global", "us", "eu", "europe-west4"])("accepts the region %s", async (location) => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     vertexEnv();

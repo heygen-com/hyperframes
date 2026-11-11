@@ -110,8 +110,9 @@ function vertexCredentials(raw: string): Record<string, unknown> | string {
 }
 
 // The SDK builds the request host from the location and the request path from the model id.
+// `:` stays legal inside a segment for endpoint paths in domain-scoped projects (`example.com:proj`).
 const VERTEX_LOCATION = /^[a-z][a-z0-9-]*$/;
-const GOOGLE_MODEL_ID = /^[A-Za-z0-9][\w.@-]*(?:\/[A-Za-z0-9][\w.@-]*)*$/;
+const GOOGLE_MODEL_ID = /^[A-Za-z0-9][\w.:@-]*(?:\/[A-Za-z0-9][\w.:@-]*)*$/;
 
 function googleClientSettingsProblem(
   provider: "vertex" | "gemini",
