@@ -38,6 +38,7 @@ const MANIFEST: RegistryManifest = {
     { name: "base-component", type: "hyperframes:component" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
+    { name: "example-dep-block", type: "hyperframes:block" },
   ],
 };
 
@@ -152,7 +153,14 @@ const EXAMPLE_ITEM: RegistryItem = {
   files: [{ path: "index.html", target: "index.html", type: "hyperframes:composition" }],
 };
 
+const EXAMPLE_DEP_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "example-dep-block",
+  registryDependencies: ["my-example"],
+};
+
 const ITEM_BY_NAME: Record<string, RegistryItem> = {
+  "example-dep-block": EXAMPLE_DEP_BLOCK_ITEM,
   "my-block": BLOCK_ITEM,
   "deprecated-block": DEPRECATED_BLOCK_ITEM,
   "future-block": FUTURE_BLOCK_ITEM,
@@ -467,6 +475,21 @@ describe("runAdd (integration, mocked registry)", () => {
       ).rejects.toMatchObject({
         code: "example-type",
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a block that depends on an example, before writing anything", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      await expect(
+        runAdd({ name: "example-dep-block", projectDir: dir, skipClipboard: true }),
+      ).rejects.toMatchObject({ code: "example-type" });
+      expect(existsSync(join(dir, "index.html"))).toBe(false);
+      expect(existsSync(join(dir, "compositions"))).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
