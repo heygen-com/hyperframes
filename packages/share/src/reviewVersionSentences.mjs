@@ -24,9 +24,9 @@ const SAID = {
   held_for_review: HELD_FOR_REVIEW,
 };
 
-/** @param {unknown} error */
-export function versionSentence(error) {
-  if (!(error instanceof ReviewFailed)) return "Couldn't add this version. Try again.";
+/** @param {unknown} error @param {string} [fallback] */
+export function versionSentence(error, fallback = "Couldn't add this version. Try again.") {
+  if (!(error instanceof ReviewFailed)) return fallback;
   const said = SAID[error.reason];
   if (said) return typeof said === "function" ? said(error) : said;
   if (error.status === 0) return "Couldn't reach HeyGen. Check your connection and try again.";
@@ -35,7 +35,7 @@ export function versionSentence(error) {
   // written for developers, so it is never shown.
   if (error.status === 200)
     return "HyperFrames couldn't process this video. Export it again, then try again.";
-  return "Couldn't add this version. Try again.";
+  return fallback;
 }
 
 /** "in about 3 hours", from the server's Retry-After. @param {number | undefined} ms */

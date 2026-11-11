@@ -69,6 +69,8 @@ const SLOW_POLL_MS = 30_000;
 const FINAL = new Set(["export_blocked", "content_rejected", "feature_unavailable"]);
 /** Too big or too long: the same file is refused again, but a smaller or shorter export can go up. */
 const TOO_BIG = new Set(["export_too_large", "export_too_long"]);
+const UNCONFIRMED_VERSION =
+  "Couldn't confirm whether the previous version was created. Check the review page. To add a new version, change the export settings and export again.";
 /** Longer than the backend's own limiter ever asks, and short enough that a laptop waking up checks again soon. */
 const MAX_WAIT_MS = 5 * 60_000;
 /** A run stops watching after this long; the video stays recorded, so the next press reads it back. */
@@ -210,13 +212,19 @@ async function writeState(dir, state) {
 
 /** @typedef {{ sentence: string, final: boolean, exportHelps: boolean, held?: boolean }} Said
  * @typedef {Said & { exportKey: string }} Failure */
-/** @param {unknown} error @returns {Said} */
-const said = (error) => ({
-  sentence: versionSentence(error),
-  final: error instanceof ReviewFailed && (FINAL.has(error.reason) || TOO_BIG.has(error.reason)),
-  exportHelps: error instanceof ReviewFailed && TOO_BIG.has(error.reason),
-  ...(error instanceof ReviewFailed && error.reason === "held_for_review" && { held: true }),
-});
+/** @param {unknown} error @param {boolean} [refusedReplay] @returns {Said} */
+function said(error, refusedReplay = false) {
+  const sentence = versionSentence(error, refusedReplay ? UNCONFIRMED_VERSION : undefined);
+  const exportHelps =
+    sentence === UNCONFIRMED_VERSION ||
+    (error instanceof ReviewFailed && TOO_BIG.has(error.reason));
+  return {
+    sentence,
+    final: exportHelps || (error instanceof ReviewFailed && FINAL.has(error.reason)),
+    exportHelps,
+    ...(error instanceof ReviewFailed && error.reason === "held_for_review" && { held: true }),
+  };
+}
 
 /** A failure found here, before the server: fixing the export fixes it. @param {string} sentence @returns {Said} */
 const local = (sentence) => ({ sentence, final: false, exportHelps: false });
@@ -234,7 +242,7 @@ const failures = new Map();
 /** Which export a failure was about: the newest export file and the project as it was rendered. @param {string} dir */
 const exportKeyOf = (dir) => {
   const latest = latestExportFile(dir);
-  return latest ? `${latest.path}\n${latest.fingerprint ?? ""}` : "";
+  return latest ? `${latest.id}\n${latest.path}\n${latest.fingerprint ?? ""}` : "";
 };
 
 /** Whether the newest export can go up now: there is one, it is MP4, and the project has not moved past it.
@@ -549,11 +557,8 @@ async function poll(r, id, current, until, every) {
   }
 }
 
-/** A refusal the same body would get again, or a spent upload, needs a new key next time.
- * A refusal of a replay cannot settle an earlier unanswered create.
- * @param {unknown} error @param {VersionRecord["pending"]} pending */
-const spent = (error, pending) =>
-  (!pending?.unanswered || pending.videoId !== null) &&
+/** @param {unknown} error */
+const permanentRefusal = (error) =>
   error instanceof ReviewFailed &&
   error.status >= 400 &&
   error.status < 500 &&
@@ -631,10 +636,18 @@ async function sendVersion(r, report, source, id, state) {
     const done = await watch(r, id, uploaded, size, report, clock);
     return finishRun(r, state, pending, id, done, first);
   } catch (error) {
-    if (spent(error, state.pending)) await writeState(r.projectPath, { ...state, pending: null });
-    console.error("[review] version failed:", error);
-    return said(error);
+    return failedSend(r.projectPath, state, error);
   }
+}
+
+/** @param {string} dir @param {VersionRecord} state @param {unknown} error */
+async function failedSend(dir, state, error) {
+  const refused = permanentRefusal(error);
+  // An earlier create can still be in flight when the replay is refused.
+  const unansweredCreate = state.pending?.unanswered === true && state.pending.videoId === null;
+  if (refused && !unansweredCreate) await writeState(dir, { ...state, pending: null });
+  console.error("[review] version failed:", error);
+  return said(error, refused && unansweredCreate);
 }
 
 /** @param {Required<VersionRequest>} r @param {VersionRecord} state
