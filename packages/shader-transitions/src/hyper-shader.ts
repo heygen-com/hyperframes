@@ -328,8 +328,13 @@ function makeSnapshotKey(cacheKey: string, sampleIndex: number, side: "from" | "
 
 function openSnapshotDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  let request: IDBOpenDBRequest;
+  try {
+    request = indexedDB.open(SNAPSHOT_CACHE_DB, SNAPSHOT_CACHE_VERSION);
+  } catch {
+    return Promise.resolve(null);
+  }
   return new Promise((resolve) => {
-    const request = indexedDB.open(SNAPSHOT_CACHE_DB, SNAPSHOT_CACHE_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(SNAPSHOT_CACHE_STORE)) {

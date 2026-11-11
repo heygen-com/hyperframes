@@ -761,6 +761,53 @@ describe("Studio thumbnail capture", () => {
     expect(clears[0]).toBeGreaterThan(screenshot.mock.invocationCallOrder[0]!);
   });
 
+  it("serves thumbnail capture documents in an opaque origin", async () => {
+    const dir = tmpProject();
+    writeFileSync(join(dir, "index.html"), '<div data-composition-id="main"></div>');
+    server = createStudioServer({ projectDir: dir, projectName: "demo" });
+    const capture = await server.app.request(
+      "http://localhost/api/projects/demo/preview?hf-capture=1",
+    );
+    expect(capture.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
+    const preview = await server.app.request("http://localhost/api/projects/demo/preview");
+    expect(preview.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("grants the capture page's loads on its own session before it navigates", async () => {
+    const calls: string[] = [];
+    const session = {
+      send: vi.fn(async (method: string) => void calls.push(method)),
+      on: vi.fn(),
+    };
+    const page = new Proxy(
+      {
+        createCDPSession: async () => session,
+        goto: async () => void calls.push("goto"),
+        screenshot: async () => Buffer.from("jpeg"),
+      },
+      {
+        get: (target, key) =>
+          key === "then"
+            ? undefined
+            : key in target
+              ? target[key as keyof typeof target]
+              : async () => {},
+      },
+    );
+    engineState.acquireBrowser = async () => ({
+      browser: { connected: true, newPage: async () => page, on: () => {} },
+      release: async () => {},
+    });
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    const previewUrl = "http://127.0.0.1:3002/api/projects/demo/preview?hf-capture=1";
+    await expect(
+      server.adapter.generateThumbnail?.({ ...opts(dir), previewUrl }),
+    ).resolves.toBeInstanceOf(Buffer);
+    expect(calls.slice(0, 2)).toEqual(["Fetch.enable", "goto"]);
+    expect(session.on).toHaveBeenCalledWith("Fetch.requestPaused", expect.any(Function));
+  });
+
   it("reuses the cached project signature instead of walking the project per thumbnail", async () => {
     fakePageBrowser();
     const dir = tmpProject();

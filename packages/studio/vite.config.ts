@@ -209,6 +209,7 @@ function devProjectApi(): Plugin {
           // writes the API accepts (Codespaces, tunnels).
           _api = mod.createStudioApi(adapter, {
             allowedHosts: mod.previewAllowedHostsFromEnv(),
+            sandboxThumbnailCaptures: true,
           });
         }
         return _api;
