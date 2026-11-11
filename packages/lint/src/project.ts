@@ -28,6 +28,7 @@ import {
   isRemoteOrInlineUrl,
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
+  localAbsoluteAssetFile,
   maskNonScannableRanges,
   readProjectFile,
   resolveCompositionSrc,
@@ -600,7 +601,7 @@ function lintMissingLocalAsset(
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
-      if (resolvedAsset) continue;
+      if (resolvedAsset || localAbsoluteAssetFile(projectDir, rootRelative)) continue;
 
       const rawRoot = rawSrc.trim();
       const safe = urlSafeSrcOf(
@@ -683,6 +684,8 @@ function lintTextureMaskAssetNotFound(
           cssSource.rootRelativePath,
         );
         if (candidates.some(existsSync)) continue;
+        const inPageCss = !cssSource.rootRelativePath;
+        if (inPageCss && localAbsoluteAssetFile(projectDir, url)) continue;
         missingByFile.set(file, (missingByFile.get(file) ?? new Set()).add(url));
       }
     }

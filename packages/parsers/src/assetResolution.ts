@@ -2,6 +2,7 @@ import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpa
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
 import { isAbsolute, join, parse, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isNonRelativeUrl } from "./assetPaths.js";
 import { decodeUrlPathVariants } from "./composition.js";
 import { decodedUrlPath } from "./utils/urlPath.js";
 import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
@@ -155,6 +156,14 @@ export function resolveCompositionSrc(projectDir: string, src: string): string |
     : decoded;
 }
 
+// A Windows absolute src (C:\clip.mp4) that render copies in. A POSIX /x is a project URL; another share is skipped.
+export function localAbsoluteAssetFile(projectDir: string, src: string): string | null {
+  const path = cleanAssetUrl(src);
+  if (isNonRelativeUrl(path) || !isAbsolute(path)) return null;
+  const file = resolve(projectDir, path);
+  return !namesAnotherNetworkRoot(projectDir, file) && existsSync(file) ? file : null;
+}
+
 export function resolveExistingLocalAsset(
   projectDir: string,
   url: string,
@@ -176,7 +185,10 @@ export function resolveAuthoredAssetFile(
   const rootRelative = cleanSrc.startsWith("/")
     ? cleanSrc
     : rewriteAssetPath(compositionFile, cleanSrc, (path) => existsSync(join(projectDir, path)));
-  return resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ?? null;
+  return (
+    resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ??
+    localAbsoluteAssetFile(projectDir, cleanSrc)
+  );
 }
 
 // Candidates for a variant whose join escaped the project root, re-anchored at the root.
