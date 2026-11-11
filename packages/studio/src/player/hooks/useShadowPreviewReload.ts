@@ -20,7 +20,7 @@ import {
 } from "./useTimelineSyncCallbacks";
 import type { IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { setPreviewReloading } from "../previewReloading";
-import { previewFrameScriptable, previewSeekPainted } from "../lib/previewChannel";
+import { previewFrameOpaque, previewSeekPainted } from "../lib/previewChannel";
 import { studioFileRevision } from "../../utils/studioFileVersion";
 import { announcePreviewPromoted } from "../sceneSwap";
 import { afterStudioPendingEdits, isStudioEditSaving } from "../../utils/studioPendingEdits";
@@ -36,7 +36,7 @@ export const SHADOW_READY_BUDGETS = 3;
 
 function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | undefined {
   if (!iframe) return undefined;
-  if (!previewFrameScriptable(iframe)) return previewSeekPainted(iframe, SHADOW_READY_TIMEOUT_MS);
+  if (previewFrameOpaque(iframe)) return previewSeekPainted(iframe, SHADOW_READY_TIMEOUT_MS);
   const win = iframe.contentWindow as IframeWindow | null;
   return win?.__hfWaitForSeekCompletion?.().catch(() => {});
 }

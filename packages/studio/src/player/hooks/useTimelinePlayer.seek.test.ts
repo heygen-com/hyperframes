@@ -10,7 +10,6 @@ import {
   makeFakeIframe,
   renderTimelinePlayerHarness,
   resetPlayerStore,
-  serveEditingRequests,
 } from "./timelinePlayerTestHarness";
 import { liveTime, usePlayerStore } from "../store/playerStore";
 import { setPreviewFrame } from "../store/previewFrameStore";
@@ -529,18 +528,12 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
     }
   });
 
-  it("tells the preview where the loop wraps to while it plays, and that it stopped looping", async () => {
+  it("tells the preview where the loop wraps to while it plays, and that it stopped looping", () => {
     const raf = installRafCapture();
-    const loopStarts: unknown[] = [];
-    let closePort = () => {};
     try {
       const { api, root } = renderTimelinePlayerHarness();
-      const { adapter } = attachInstrumentedAdapter(api, 30);
-      const frame = api.iframeRef.current!.contentWindow as unknown as Record<string, unknown>;
-      closePort = serveEditingRequests(frame, (kind, params) => {
-        if (kind === "set-loop-start") loopStarts.push((params as { seconds: unknown }).seconds);
-        return { applied: true };
-      });
+      const setLoopStart = vi.fn();
+      const { adapter } = attachInstrumentedAdapter(api, 30, { setLoopStart });
       act(() => {
         usePlayerStore.getState().setInPoint(2);
         usePlayerStore.getState().setOutPoint(5);
@@ -548,14 +541,12 @@ describe("useTimelinePlayer RAF loop wrap-around", () => {
       });
       adapter.setTime(3);
       act(() => void raf.flushOne());
-      act(() => void raf.flushOne());
-      await vi.waitFor(() => expect(loopStarts).toEqual([2]));
+      expect(setLoopStart).toHaveBeenLastCalledWith(2);
       act(() => usePlayerStore.getState().setLoopEnabled(false));
       act(() => void raf.flushOne());
-      await vi.waitFor(() => expect(loopStarts).toEqual([2, null]));
+      expect(setLoopStart).toHaveBeenLastCalledWith(null);
       unmountWithAct(root);
     } finally {
-      closePort();
       raf.restore();
     }
   });

@@ -12,7 +12,7 @@ import {
 } from "../lib/playbackAdapter";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { attachPausedVideoProvider } from "../lib/pausedVideoProvider";
-import { previewFrameScriptable } from "../lib/previewChannel";
+import { previewFrameOpaque } from "../lib/previewChannel";
 import { bridgePlaybackAdapter } from "../lib/bridgePlayback";
 
 /**
@@ -105,7 +105,7 @@ export function resolveFramePlaybackAdapter(
   iframe: HTMLIFrameElement,
   refs: StaticSeekRefs,
 ): PlaybackAdapter | null {
-  if (!previewFrameScriptable(iframe)) return bridgePlaybackAdapter(iframe);
+  if (previewFrameOpaque(iframe)) return bridgePlaybackAdapter(iframe);
   const win = iframe.contentWindow as IframeWindow | null;
   if (!win) return null;
   attachPausedVideoProvider(iframe, win);

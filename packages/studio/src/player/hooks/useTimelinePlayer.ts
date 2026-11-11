@@ -28,7 +28,7 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
-import { setPreviewLoopStart } from "../lib/previewChannel";
+import { setFrameLoopStart } from "../lib/previewChannel";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
@@ -163,7 +163,7 @@ export function useTimelinePlayer({
   );
 
   const setLoopStart = useCallback((seconds: number | null) => {
-    if (iframeRef.current) setPreviewLoopStart(iframeRef.current, seconds);
+    if (iframeRef.current) setFrameLoopStart(iframeRef.current, seconds);
   }, []);
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,

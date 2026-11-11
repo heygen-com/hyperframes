@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   previewClipManifest,
   previewEditingClient,
-  previewFrameScriptable,
+  previewFrameOpaque,
   previewSeekPainted,
-  setPreviewLoopStart,
+  setFrameLoopStart,
 } from "./previewChannel";
 import { bridgePlaybackAdapter } from "./bridgePlayback";
 import { resolveFramePlaybackAdapter } from "../hooks/playbackAdapterResolution";
@@ -38,28 +38,30 @@ function fromFrame(frame: object, data: Record<string, unknown>) {
   );
 }
 
-/** A same-origin fake frame whose runtime answers editing requests with `answer`. */
-function servedFrame(answer: (kind: string, params: unknown) => unknown) {
+/** A fake frame, same-origin unless `opaque`, whose runtime answers editing requests with `answer`. */
+function servedFrame(answer: (kind: string, params: unknown) => unknown, opaque = false) {
   const frame: Record<string, unknown> = {};
   const iframe = makeFakeIframe(frame);
+  if (opaque) Object.defineProperty(iframe, "contentDocument", { value: null });
   const handed = vi.fn(answer);
   closers.push(serveEditingRequests(frame, handed));
-  return { iframe, handed };
+  return { iframe, frame, handed };
 }
 
-describe("previewFrameScriptable", () => {
-  it("is true for a same-origin frame and false for one whose document is out of reach", () => {
-    expect(
-      previewFrameScriptable(document.body.appendChild(document.createElement("iframe"))),
-    ).toBe(true);
-    expect(previewFrameScriptable(opaqueFrame().iframe)).toBe(false);
-    const throwing = document.createElement("iframe");
+describe("previewFrameOpaque", () => {
+  it("is true only for a frame whose document is out of reach", () => {
+    expect(previewFrameOpaque(document.body.appendChild(document.createElement("iframe")))).toBe(
+      false,
+    );
+    expect(previewFrameOpaque(document.createElement("iframe"))).toBe(false);
+    expect(previewFrameOpaque(opaqueFrame().iframe)).toBe(true);
+    const throwing = makeFakeIframe({});
     Object.defineProperty(throwing, "contentDocument", {
       get: () => {
         throw new DOMException("blocked", "SecurityError");
       },
     });
-    expect(previewFrameScriptable(throwing)).toBe(false);
+    expect(previewFrameOpaque(throwing)).toBe(true);
   });
 });
 
@@ -76,16 +78,29 @@ describe("previewEditingClient", () => {
     expect(handed).toHaveBeenCalledOnce();
   });
 
-  it("sends the loop start only when it changes", async () => {
+  it("sends an opaque frame's loop start over the port, only when it changes", async () => {
     const seen: unknown[] = [];
     const { iframe } = servedFrame((_kind, params) => {
       seen.push((params as { seconds: unknown }).seconds);
       return { applied: true };
-    });
-    setPreviewLoopStart(iframe, 2);
-    setPreviewLoopStart(iframe, 2);
-    setPreviewLoopStart(iframe, null);
+    }, true);
+    setFrameLoopStart(iframe, 2);
+    setFrameLoopStart(iframe, 2);
+    setFrameLoopStart(iframe, null);
     await vi.waitFor(() => expect(seen).toEqual([2, null]));
+  });
+
+  it("calls a scriptable frame's own loop-start hook and never opens a port", async () => {
+    const { iframe, frame, handed } = servedFrame(() => ({ applied: true }));
+    const setLoopStart = vi.fn();
+    frame.__hf = { setLoopStart };
+    setFrameLoopStart(iframe, 2);
+    setFrameLoopStart(iframe, 2);
+    expect(setLoopStart.mock.calls).toEqual([[2], [2]]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(handed).not.toHaveBeenCalled();
+    delete frame.__hf;
+    expect(() => setFrameLoopStart(iframe, null)).not.toThrow();
   });
 
   it("waits for the runtime's seek to paint, and settles anyway when no runtime answers", async () => {

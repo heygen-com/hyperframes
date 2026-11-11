@@ -3,16 +3,18 @@ import {
   createEditingPortClient,
   type EditingPortClient,
 } from "@hyperframes/core/runtime/editing-port";
-import type { ClipManifest } from "./playbackTypes";
+import type { ClipManifest, IframeWindow } from "./playbackTypes";
 
 const clients = new WeakMap<HTMLIFrameElement, EditingPortClient>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
 
-export function previewFrameScriptable(iframe: HTMLIFrameElement): boolean {
+/** A frame with a document Studio cannot read; one with no window has nothing to reach either way. */
+export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
+  if (!iframe.contentWindow) return false;
   try {
-    return iframe.contentDocument !== null;
+    return iframe.contentDocument === null;
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -30,7 +32,13 @@ export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClie
   return client;
 }
 
-export function setPreviewLoopStart(iframe: HTMLIFrameElement, seconds: number | null): void {
+export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | null): void {
+  if (!previewFrameOpaque(iframe)) {
+    try {
+      (iframe.contentWindow as IframeWindow | null)?.__hf?.setLoopStart?.(seconds);
+    } catch {}
+    return;
+  }
   const client = previewEditingClient(iframe);
   if (loopStarts.has(client) && loopStarts.get(client) === seconds) return;
   loopStarts.set(client, seconds);

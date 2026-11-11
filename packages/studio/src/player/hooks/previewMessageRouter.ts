@@ -10,7 +10,7 @@
  */
 
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
-import type { ClipManifestClip, PlaybackAdapter } from "../lib/playbackTypes";
+import type { ClipManifestClip, IframeWindow, PlaybackAdapter } from "../lib/playbackTypes";
 import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFixture";
 import { acceptStudioRuntimeMessage, postRuntimeControlMessage } from "../lib/runtimeProtocol";
 import {
@@ -23,7 +23,7 @@ import {
   parsePreviewFacts,
 } from "../store/previewQualitySlice";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
-import { previewClipManifest } from "../lib/previewChannel";
+import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
 export interface ClipManifestMessage {
@@ -105,10 +105,22 @@ function recoverClipManifest(
     .finally(() => (recovery.asking = false));
 }
 
+function recoverEmptyTimeline(
+  deps: PreviewMessageRouterDeps,
+  iframe: HTMLIFrameElement | null,
+  recovery: { asking: boolean },
+): void {
+  if (iframe && previewFrameOpaque(iframe)) return recoverClipManifest(deps, iframe, recovery);
+  const manifest = (iframe?.contentWindow as IframeWindow | null)?.__clipManifest;
+  if (manifest && manifest.clips.length > 0) {
+    deps.processTimelineMessageRef.current(manifest);
+  }
+}
+
 /**
  * A `state` tick doubles as a recovery hook: if the store still has no
- * elements, ask the runtime for its manifest, and if no `timeline` message has arrived
- * recently, re-run enrichment (at most every 500 ms: it queries the whole document).
+ * elements, read the manifest straight off the iframe, and if no `timeline`
+ * message has arrived recently, re-run enrichment (at most every 500 ms: it queries the whole document).
  */
 function handleStateMessage(
   deps: PreviewMessageRouterDeps,
@@ -117,9 +129,8 @@ function handleStateMessage(
   enriched: { at: number; asking: boolean },
 ): void {
   try {
-    if (iframe && usePlayerStore.getState().elements.length === 0) {
-      recoverClipManifest(deps, iframe, enriched);
-    }
+    if (usePlayerStore.getState().elements.length === 0)
+      recoverEmptyTimeline(deps, iframe, enriched);
     if (!playingHoldsClipListPosts && enrichDue(deps.lastTimelineMessageRef.current, enriched)) {
       deps.enrichMissingCompositionsRef.current();
     }
