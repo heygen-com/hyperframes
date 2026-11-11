@@ -136,6 +136,7 @@ export interface CompiledComposition {
   gradedCanvas: boolean;
   masterFxChain?: string;
   unresolvedCompositions: UnresolvedElement[];
+  variablesByComp: Record<string, Record<string, unknown>>;
   /** Assets that resolve outside projectDir. Keys are the path used in HTML, values are absolute filesystem paths. */
   externalAssets: Map<string, string>;
   width: number;
@@ -1087,7 +1088,7 @@ function inlineSubCompositions(
   projectDir: string,
   variableOverrides: Record<string, unknown>,
   assetRoot: string | undefined,
-): string {
+): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
@@ -1103,7 +1104,7 @@ function inlineSubCompositions(
       {},
       variableOverrides,
     );
-    return emitted ? document.toString() : html;
+    return { html: emitted ? document.toString() : html, variablesByComp: {} };
   }
 
   // Assign per-instance runtime composition ids before each host is inlined,
@@ -1262,7 +1263,7 @@ function inlineSubCompositions(
   // anything downstream keys media on an id. See core's mediaRenderIds.ts.
   assignMediaRenderIds(document as unknown as Document);
 
-  return document.toString();
+  return { html: document.toString(), variablesByComp: result.variablesByComp };
 }
 
 /**
@@ -2279,7 +2280,7 @@ export async function compileForRender(
   // Inline sub-compositions into the main HTML so the runtime takes the same
   // synchronous code path as the bundled preview (no async fetch of
   // data-composition-src). This mirrors what htmlBundler.ts does for preview.
-  const inlinedHtml = inlineSubCompositions(
+  const { html: inlinedHtml, variablesByComp } = inlineSubCompositions(
     fullHtml,
     subCompositions,
     projectDir,
@@ -2519,6 +2520,7 @@ export async function compileForRender(
     gradedCanvas,
     ...(masterFxChain ? { masterFxChain } : {}),
     unresolvedCompositions,
+    variablesByComp,
     externalAssets,
     width,
     height,
