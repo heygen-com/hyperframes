@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,15 +67,26 @@ describe("findPython / describeRejectedPythonOverride", () => {
 
   it("findPython still falls back to the PATH probe when the override is rejected", () => {
     process.env.HYPERFRAMES_PYTHON = "/nonexistent/python";
+    const bin = mkdtempSync(join(tmpdir(), "hf-python-path-"));
+    for (const file of ["python3", "python3.exe"])
+      writeFileSync(join(bin, file), "", { mode: 0o755 });
+    vi.stubEnv("PATH", bin);
     execFileSyncMock.mockImplementation((cmd: string, args: string[]) => {
       if (args[0] === "--version" && cmd === "/nonexistent/python") {
         throw new Error("ENOENT: no such file or directory");
       }
-      if (cmd === "which" || cmd === "where") return "/usr/bin/python3\n";
+      if (cmd === "which") return `${join(bin, "python3")}\n`;
       if (args[0] === "--version") return "Python 3.11.0";
       throw new Error(`unexpected call: ${cmd} ${args.join(" ")}`);
     });
-    expect(findPython()).toBe("/usr/bin/python3");
+    try {
+      expect(findPython()).toBe(
+        join(bin, process.platform === "win32" ? "python3.exe" : "python3"),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 
   it("findPython never runs a python that the lookup finds in the working directory", () => {

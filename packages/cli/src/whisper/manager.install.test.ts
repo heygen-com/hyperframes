@@ -89,6 +89,10 @@ it("builds only the reviewed whisper.cpp commit", async () => {
 
 it("names the missing build tool when whisper.cpp cannot be built", async () => {
   vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
+  // Windows walks PATH itself, so PATH holds only git there.
+  const bin = mkdtempSync(join(tmpdir(), "hf-whisper-path-"));
+  writeFileSync(join(bin, "git.exe"), "");
+  vi.stubEnv("PATH", bin);
   vi.resetModules();
   const { ensureWhisper: ensure } = await import("./manager.js");
   calls.exec.mockImplementation((command: string, args: string[]) => {
