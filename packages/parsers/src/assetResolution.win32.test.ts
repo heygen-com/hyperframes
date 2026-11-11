@@ -22,6 +22,7 @@ const {
   resolveAuthoredAssetFile,
   resolveCompositionSrc,
   resolveLocalAssetCandidates,
+  srcOnAnotherNetworkRoot,
 } = await import("./assetResolution.js");
 const { resolve } = await import("node:path");
 
@@ -140,5 +141,29 @@ describe("localAbsoluteAssetFile under Windows rules", () => {
   it("returns null when the file is not there", () => {
     present.clear();
     expect(localAbsoluteAssetFile(PROJECT, "C:\\media\\gone.mp4")).toBeNull();
+  });
+});
+
+describe("srcOnAnotherNetworkRoot under Windows rules", () => {
+  it.each([
+    "\\\\attacker.example\\share\\x.wav",
+    "//attacker.example/share/x.wav",
+    "/\\attacker.example\\share\\x.wav",
+    "\\\\attacker.example\\share\\x.wav?v=2",
+  ])("is true for %s", (src) => {
+    touched.length = 0;
+    expect(srcOnAnotherNetworkRoot(PROJECT, src)).toBe(true);
+    expect(touched).toEqual([]);
+  });
+
+  it.each(["C:\\media\\voice.wav", "assets\\voice.wav", "/assets/voice.wav", "../voice.wav"])(
+    "is false for %s",
+    (src) => {
+      expect(srcOnAnotherNetworkRoot(PROJECT, src)).toBe(false);
+    },
+  );
+
+  it("is false for a file on the share the project itself lives on", () => {
+    expect(srcOnAnotherNetworkRoot("\\\\nas\\films\\project", "//NAS/films/voice.wav")).toBe(false);
   });
 });
