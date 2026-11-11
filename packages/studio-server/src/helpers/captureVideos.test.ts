@@ -13,7 +13,8 @@ describe("corsProjectVideos", () => {
           '<video id="d" src="https://cdn.example/d.mp4"></video>' +
           '<video id="e" src="//cdn.example/e.mp4"></video>' +
           '<video id="f" src="blob:x"></video>' +
-          '<video id="g" crossorigin="use-credentials" src="g.mp4"></video>',
+          '<video id="g" crossorigin="use-credentials" src="g.mp4"></video>' +
+          '<video id="h"><source src="h.webm"><source src="https://cdn.example/h.mp4"></video>',
       ),
     );
     const marked = [...html.matchAll(/<video crossorigin="anonymous" id="(\w)"/g)].map((m) => m[1]);

@@ -3,8 +3,12 @@ import { parseHTML } from "linkedom";
 
 const OTHER_HOST = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
+const isOtherHost = (el: Element) => OTHER_HOST.test(el.getAttribute("src")?.trim() ?? "");
+
 const isProjectVideo = (video: Element) =>
-  !video.hasAttribute("crossorigin") && !OTHER_HOST.test(video.getAttribute("src")?.trim() ?? "");
+  !video.hasAttribute("crossorigin") &&
+  !isOtherHost(video) &&
+  ![...video.querySelectorAll("source")].some(isOtherHost);
 
 /** An opaque capture page reads a video's pixels (color grading, shader textures) only from a CORS load. */
 export function corsProjectVideos(html: string): string {
