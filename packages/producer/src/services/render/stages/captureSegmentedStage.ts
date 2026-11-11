@@ -355,7 +355,6 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
       };
       const session = probeSession ?? (await openSession());
       if (probeSession) {
-        // Released before the await: workers open together, and only one may borrow the probe session.
         const reused = probeSession;
         probeSession = null;
         await openSegmentedSessionReuse(input, reused, injector).catch(async (error: unknown) => {
