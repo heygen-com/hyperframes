@@ -77,6 +77,7 @@ import {
   readTextFile,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
+import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
@@ -227,6 +228,10 @@ function normalizeCompositionSrcs(html: string, projectDir: string): string {
   });
 }
 
+// Git metadata and env files are never inlined into a render, as the preview bundler refuses them.
+const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
+  isPrivateFileUnder(projectDir, filePath, isVcsOrSecretPath);
+
 /**
  * Recursively walk every `data-composition-src` reference reachable from
  * `html` (including nested sub-compositions) and verify each resolves to a
@@ -259,6 +264,10 @@ function assertSubCompositionsUsable(
     const filePath = resolveCompositionSrc(projectDir, srcPath);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });
+      continue;
+    }
+    if (isPrivateCompositionFile(projectDir, filePath)) {
+      problems.push({ srcPath, detail: "it is git metadata or an env file" });
       continue;
     }
     // Circular reference guard. parseSubCompositions (below) silently
@@ -801,7 +810,7 @@ async function parseSubCompositions(
     if (!srcPath) continue;
 
     const filePath = resolveCompositionSrc(projectDir, srcPath);
-    if (filePath === null) continue;
+    if (filePath === null || isPrivateCompositionFile(projectDir, filePath)) continue;
 
     // Circular reference guard
     if (visited.has(filePath)) {
@@ -1095,7 +1104,10 @@ function inlineSubCompositions(
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
           const filePath = resolveCompositionSrc(projectDir, srcPath);
-          const read = filePath ? readProjectFile(filePath) : null;
+          const read =
+            filePath && !isPrivateCompositionFile(projectDir, filePath)
+              ? readProjectFile(filePath)
+              : null;
           if (read?.kind === "file") {
             compHtml = rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath);
           }
