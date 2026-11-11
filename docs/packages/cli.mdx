@@ -461,7 +461,9 @@ timestamps, SRT, and VTT all land as the same `[{text, start, end}]` word array
 in `transcript.json`. If the project has caption HTML, it is patched
 automatically.
 
-Word-level transcripts get grouped into readable cues at sentence boundaries.
+Word-level transcripts get grouped into readable cues at sentence boundaries,
+up to 42 columns each. A Korean, Chinese or Japanese character takes two columns,
+so those cues hold about 21 characters, as wide on screen as a 42-character Latin cue.
 Exporting straight from an `.srt` or `.vtt` keeps that file's cue boundaries.
 Add `--preserve-cues` when the source `transcript.json` already holds finished
 cues with no internal spaces — single-word or CJK captions.
