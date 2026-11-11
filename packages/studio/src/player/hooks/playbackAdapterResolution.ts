@@ -100,10 +100,7 @@ export function resolvePlaybackAdapter(
   return bestAdapter;
 }
 
-/**
- * The frame's adapter. A frame Studio can script is driven directly, as before;
- * one it cannot (an opaque-origin preview) is driven over the control bridge.
- */
+/** A frame Studio cannot script (opaque origin) is driven over the control bridge. */
 export function resolveFramePlaybackAdapter(
   iframe: HTMLIFrameElement,
   refs: StaticSeekRefs,

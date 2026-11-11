@@ -1,11 +1,9 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * The port goes to `window.parent` when the parent asks for it, so only the
- * parent holds a channel. Each later ask from the parent (a remounted client)
- * closes the port it had and hands over a fresh one. A connect posted by
- * anything else, including the page itself, is ignored. Requests on the port
- * are validated before they run; a bad one gets a typed error reply, never a throw.
+ * Each connect from `window.parent` closes the previous port and hands it a fresh
+ * one, so only the parent holds a channel; a connect from anything else is ignored.
+ * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
 import {
@@ -108,7 +106,6 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    // The parent's earlier client is gone or replaced; only the newest holds a channel.
     port?.close();
     const channel = new MessageChannel();
     port = channel.port1;

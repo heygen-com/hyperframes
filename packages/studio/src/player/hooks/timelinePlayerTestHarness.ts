@@ -149,10 +149,6 @@ export async function paintShadow(getApi: () => TimelinePlayerApi, shadow: HTMLI
   return slot.gen;
 }
 
-/**
- * Answers the editing-port requests a fake preview window receives, as the
- * runtime's agent does. Returns a function that closes the port it handed over.
- */
 export function serveEditingRequests(
   frame: Record<string, unknown>,
   answer: (kind: string, params: unknown) => unknown,

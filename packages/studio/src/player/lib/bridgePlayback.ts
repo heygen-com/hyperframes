@@ -1,11 +1,6 @@
-/**
- * Playback for a preview frame Studio cannot script, such as a preview on an
- * opaque origin. Commands go over the runtime's control bridge. Time, play state
- * and duration mirror the `state` and `timeline` messages the runtime posts.
- *
- * The listener is installed when this module loads, before any preview runs. A
- * runtime posts its first `timeline` while it boots, and a later listener would miss it.
- */
+// Playback of a frame Studio cannot script: control-bridge commands, with time and duration mirrored
+// from the runtime's `state` and `timeline` posts. The listener starts at module load because a
+// runtime posts its first `timeline` while it boots.
 import type { PlaybackAdapter } from "./playbackTypes";
 import { inspectStudioRuntimeMessage, postRuntimeControlMessage } from "./runtimeProtocol";
 
@@ -30,7 +25,6 @@ function mirrorFor(frame: object): PlaybackMirror {
 const finiteAtLeastZero = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
 
-/** A `state` or `timeline` post from a frame's runtime, with the frame that sent it. */
 function playbackPost(
   event: MessageEvent,
 ): { frame: object; message: Record<string, unknown> } | null {
@@ -58,7 +52,6 @@ function mirrorRuntimePlayback(event: MessageEvent): void {
 
 if (typeof window !== "undefined") window.addEventListener("message", mirrorRuntimePlayback);
 
-/** A PlaybackAdapter that drives the frame's runtime through control messages. */
 export function bridgePlaybackAdapter(iframe: HTMLIFrameElement): PlaybackAdapter | null {
   const frame = iframe.contentWindow;
   if (!frame) return null;
