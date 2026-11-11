@@ -55,7 +55,8 @@ export function trackShareInteraction(input: ShareInteraction, surface: ShareSur
     case "share_link_copied":
       return emit(input.event, { ...base, via: input.via });
     case "share_upgrade_clicked":
-      return emit(input.event, { ...base, reason: input.reason });
+      // The local Studio share modal has one upgrade button; `cta` names it.
+      return emit(input.event, { ...base, reason: input.reason, cta: "share_modal_upgrade" });
     case "share_audience_selected":
       return emit(input.event, { ...base, audience: input.audience });
     case "share_source_toggled":

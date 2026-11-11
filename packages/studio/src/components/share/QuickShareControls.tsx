@@ -239,12 +239,19 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
   );
 }
 
+const PRICING_ORIGINS = ["https://hyperframes.dev", "https://dev.hyperframes.dev"];
+
+/** The plan link opens only HyperFrames' own pricing page; its query (the `entry` it is counted under) may vary. */
+function isPricingPage(link: string): boolean {
+  if (!URL.canParse(link)) return false;
+  const url = new URL(link);
+  return PRICING_ORIGINS.includes(url.origin) && url.pathname === "/pricing";
+}
+
 export function SharePlan({ model, snapshot }: Props) {
   const space = snapshot.spaces.find((item) => item.id === model.spaceId);
   const upgrade = space?.upgradeUrl;
-  const allowed =
-    upgrade &&
-    ["https://hyperframes.dev/pricing", "https://dev.hyperframes.dev/pricing"].includes(upgrade);
+  const allowed = upgrade !== undefined && upgrade !== null && isPricingPage(upgrade);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-step-12">
       {space && space.limit !== null && space.used !== null ? (

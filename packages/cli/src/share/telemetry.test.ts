@@ -55,7 +55,10 @@ it("forwards only bounded CTA fields with the local Studio surface", () => {
   );
   trackShareInteraction({ event: "share_source_toggled", enabled: false }, "local_studio");
   expect(mocks.track.mock.calls).toEqual([
-    ["share_upgrade_clicked", { client_surface: "local_studio", reason: "project_limit" }],
+    [
+      "share_upgrade_clicked",
+      { client_surface: "local_studio", reason: "project_limit", cta: "share_modal_upgrade" },
+    ],
     ["share_source_toggled", { client_surface: "local_studio", enabled: false }],
   ]);
 });

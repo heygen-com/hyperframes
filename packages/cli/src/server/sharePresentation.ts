@@ -50,7 +50,11 @@ function planOffer(
   entitlements: Awaited<ReturnType<ShareService["spaces"]>>[number]["review_entitlements"],
 ) {
   const plan = entitlements?.plan ?? null;
-  return { plan, upgradeUrl: plan === "free" ? `${shareSite()}/pricing` : null };
+  // `from=cli` returns the visitor to their terminal after checkout; `entry` tells the pricing page which link they used.
+  return {
+    plan,
+    upgradeUrl: plan === "free" ? `${shareSite()}/pricing?from=cli&entry=local_studio_share` : null,
+  };
 }
 
 function presentedState(value: ShareState, held: boolean): LocalShareState["state"] {

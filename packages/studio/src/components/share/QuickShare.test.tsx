@@ -501,6 +501,26 @@ it.each(["free", "subscribed", null] as const)(
     else expect(link).toBeUndefined();
   },
 );
+it("keeps the plan link's entry so the pricing page can count where the visit came from", async () => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.upgradeUrl =
+    "https://hyperframes.dev/pricing?from=cli&entry=local_studio_share";
+  await mount();
+  const link = [...host.querySelectorAll("a")].find((a) =>
+    a.textContent?.includes("Upgrade to Pro"),
+  );
+  expect(link?.href).toBe("https://hyperframes.dev/pricing?from=cli&entry=local_studio_share");
+});
+it("refuses a look-alike pricing host even with a matching path", async () => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.upgradeUrl =
+    "https://hyperframes.dev.evil.test/pricing?from=cli&entry=local_studio_share";
+  await mount();
+  const link = [...host.querySelectorAll("a")].find((a) =>
+    a.textContent?.includes("Upgrade to Pro"),
+  );
+  expect(link).toBeUndefined();
+});
 it("refuses an upgrade destination outside the public pricing flow", async () => {
   snapshot.spaces[0]!.plan = "free";
   snapshot.spaces[0]!.upgradeUrl = "https://example.com/checkout";
