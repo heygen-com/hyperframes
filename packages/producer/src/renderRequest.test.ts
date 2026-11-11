@@ -66,6 +66,24 @@ describe("RenderRequest", () => {
     ).toBe("off");
   });
 
+  it("carries strictVariables through the in-process and distributed adapters, and refuses a non-boolean", () => {
+    const value = request();
+    value.options.strictVariables = true;
+    expect(renderConfigFromRequest(value).strictVariables).toBe(true);
+    const config = distributedConfigFromRequest(value);
+    expect(config.strictVariables).toBe(true);
+    expect(
+      renderRequestFromDistributedConfig({
+        projectDir: value.projectDir,
+        outputPath: value.outputPath,
+        config,
+      }).options.strictVariables,
+    ).toBe(true);
+    expect(() =>
+      parseRenderRequest({ ...value, options: { ...value.options, strictVariables: "yes" } }),
+    ).toThrow(/strictVariables must be a boolean/);
+  });
+
   it("carries the delivery encoder options through every adapter", () => {
     const value = request();
     Object.assign(value.options, {

@@ -308,6 +308,8 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * rather than mid-plan; the producer-side throw is the fallback.
    */
   variables?: Record<string, unknown>;
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
+  strictVariables?: boolean;
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
@@ -322,6 +324,8 @@ export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 export interface BuildLocalExecutionPlanOptions {
@@ -384,6 +388,8 @@ export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 /** Applies the same audio correctness policy used by the in-process renderer. */
@@ -1228,6 +1234,7 @@ async function compilePlanComposition(
     logger: config.logger,
     producerConfig: cfg,
     variables: config.variables,
+    strictVariables: config.strictVariables,
     pageMotionBlur: config.pageMotionBlur,
   });
   const entryFile = config.entryFile ?? "index.html";
@@ -1392,6 +1399,7 @@ async function compilePlanComposition(
     logPlanStage(log, "reference_background", stageStarted);
   }
   compiled = probeResult.compiled;
+  job.strictVariablesChecked = probeResult.strictVariablesChecked;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
@@ -1832,6 +1840,9 @@ export async function buildLocalExecutionPlan(
     format: config.format,
     ffmpegVersion,
     producerVersion,
+    ...(job.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: job.strictVariablesChecked }),
   };
 }
 
@@ -1894,5 +1905,8 @@ export async function plan(
     format: executionPlan.format,
     ffmpegVersion: executionPlan.ffmpegVersion,
     producerVersion: executionPlan.producerVersion,
+    ...(executionPlan.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: executionPlan.strictVariablesChecked }),
   };
 }

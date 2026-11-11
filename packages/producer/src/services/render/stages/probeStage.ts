@@ -82,7 +82,7 @@ import {
   writeCompiledArtifacts,
   type CompositionMetadata,
 } from "../shared.js";
-import type { RenderJob } from "../../renderOrchestrator.js";
+import type { RenderConfig, RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
 import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
 import { resolveCaptureSurface } from "../captureImageFormat.js";
@@ -126,6 +126,7 @@ function durationToFrameCount(duration: number, fps: number): number {
 }
 
 export interface ProbeStageResult {
+  strictVariablesChecked: boolean | undefined;
   /** May be reassigned from `recompileWithResolutions`. */
   compiled: CompiledComposition;
   /** Created when `needsBrowser` was true; `null` otherwise. */
@@ -325,6 +326,20 @@ function hasRuntimeMediaChanges(html: string): boolean {
  * that shape is measured statically and must never reach the band's `applied`
  * cohort (review finding, R4).
  */
+/** A strict render with variables to check needs the loaded page; with none there is nothing to read. */
+function checksVariablesInBrowser(config: RenderConfig): boolean {
+  return config.strictVariables === true && Object.keys(config.variables ?? {}).length > 0;
+}
+
+/** Reported `strictVariables`: undefined if not asked; true if checked or nothing needed checking; else false. */
+export function strictVariablesAttestation(
+  config: RenderConfig,
+  probeSession: CaptureSession | null,
+): boolean | undefined {
+  if (config.strictVariables !== true) return undefined;
+  return !checksVariablesInBrowser(config) || probeSession?.strictVariablesChecked === true;
+}
+
 export function probeRequiresBrowser(args: {
   durationSeconds: number;
   unresolvedCompositionCount: number;
@@ -332,8 +347,10 @@ export function probeRequiresBrowser(args: {
   hasScriptedAudio: boolean;
   hasVariableMedia: boolean;
   hasInsertedMedia: boolean;
+  requiresVariablesCheck?: boolean;
 }): boolean {
   return (
+    args.requiresVariablesCheck === true ||
     args.durationSeconds <= 0 ||
     args.unresolvedCompositionCount > 0 ||
     args.hasAutoStart ||
@@ -405,6 +422,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       hasScriptedAudio,
       hasVariableMedia,
       hasInsertedMedia,
+      requiresVariablesCheck: checksVariablesInBrowser(job.config),
     });
 
   try {
@@ -446,6 +464,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
           job.config.quality,
         ),
         variables: job.config.variables,
+        strictVariables: job.config.strictVariables,
         deviceScaleFactor,
         motionBlur,
         pageMotionBlur: job.config.pageMotionBlur,
@@ -922,6 +941,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   }
 
   return {
+    strictVariablesChecked: strictVariablesAttestation(job.config, probeSession),
     compiled,
     fileServer,
     probeSession,

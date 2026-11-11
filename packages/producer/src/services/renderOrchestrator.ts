@@ -481,6 +481,7 @@ export interface RenderConfig {
    * `--variables-file <path>`. Must be a JSON-serializable plain object.
    */
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -791,6 +792,7 @@ export interface RenderStageProgress {
 
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
+  strictVariablesChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -3464,6 +3466,7 @@ async function executeRenderPipeline(input: {
     compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
+    job.strictVariablesChecked = probeResult.strictVariablesChecked;
     lastBrowserConsole = probeResult.lastBrowserConsole;
     let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
     if (resolvedCaptureBeyondViewport !== undefined) {

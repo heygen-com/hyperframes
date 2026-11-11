@@ -68,6 +68,7 @@ export interface RenderRequestOptions {
   chromaSubsampling?: RenderConfig["chromaSubsampling"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
@@ -216,6 +217,9 @@ function assertRequestOptionObjects(options: Record<string, unknown>): void {
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");
   }
+  if (options.strictVariables !== undefined && typeof options.strictVariables !== "boolean") {
+    throw new Error("Render request strictVariables must be a boolean");
+  }
   if (options.distributed !== undefined) assertDistributedOptions(options.distributed);
 }
 
@@ -350,6 +354,7 @@ export function distributedConfigFromRequest(
     abortSignal: runtime.abortSignal,
     planDirSizeLimitBytes: distributed.planDirSizeLimitBytes,
     variables: options.variables,
+    strictVariables: options.strictVariables,
   };
 }
 
@@ -400,6 +405,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("strictness", config.strictness),
     ...optionalProperty("entryFile", config.entryFile),
     ...optionalProperty("variables", config.variables),
+    ...optionalProperty("strictVariables", config.strictVariables),
   } satisfies CreateRenderRequestInput["options"];
   return createRenderRequest({
     projectDir: input.projectDir,

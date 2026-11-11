@@ -130,6 +130,7 @@ import {
 } from "./chromeMemorySampler.js";
 import { sampleProcessRss } from "../utils/processRss.js";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
+import { assertVariablesMatchPage } from "./variablesCheck.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -234,6 +235,8 @@ export interface CaptureSession {
   scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
+  /** True once this session honoured `options.strictVariables`: the check ran and passed. */
+  strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
   vfxFailure?: string;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
@@ -3078,6 +3081,13 @@ export async function describeThrowSite(
   return ` [thrown at: ${where}]`;
 }
 
+/** When the session asks for strict variables, refuse a render whose variables the page does not declare. */
+async function checkStrictVariables(session: CaptureSession): Promise<void> {
+  if (!session.options.strictVariables) return;
+  await assertVariablesMatchPage(session.page, session.options.variables);
+  session.strictVariablesChecked = true;
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -3220,6 +3230,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
+    await checkStrictVariables(session);
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
@@ -3362,6 +3373,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
+    await checkStrictVariables(session);
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);

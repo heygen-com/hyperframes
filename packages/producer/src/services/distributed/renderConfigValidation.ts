@@ -272,6 +272,9 @@ export function validateDistributedRenderConfig(
   if (config.variables !== undefined) {
     validateVariablesPayload(config.variables);
   }
+  if (config.strictVariables !== undefined && typeof config.strictVariables !== "boolean") {
+    throw new InvalidConfigError("config.strictVariables", "must be a boolean");
+  }
   if (config.engineConfig !== undefined) {
     try {
       validateEngineConfigSnapshot(config.engineConfig);
