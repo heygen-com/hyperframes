@@ -29,7 +29,7 @@ function runBin(handover: (project: string) => string | undefined) {
     "console.log(JSON.stringify({ cwd: process.cwd(), pwd: process.env.PWD, passedOn: process.env.HYPERFRAMES_PLUGIN_CWD ?? null }));\n",
   );
   // npm's shell sets PWD to the folder npx started in.
-  const env = { ...process.env, PWD: outside };
+  const env: NodeJS.ProcessEnv = { ...process.env, PWD: outside };
   delete env.HYPERFRAMES_PLUGIN_CWD;
   const named = handover(project);
   if (named !== undefined) env.HYPERFRAMES_PLUGIN_CWD = named;
