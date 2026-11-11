@@ -1,6 +1,15 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
-export function localShareRequestAllowed(request: Request): boolean {
+const isLoopbackSocketPeer = (address: string | undefined): boolean => {
+  const ip = address?.replace(/^::ffff:/i, "") ?? "";
+  return ip === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
+};
+
+export function localShareRequestAllowed(
+  request: Request,
+  socketPeer: string | undefined,
+): boolean {
+  if (!isLoopbackSocketPeer(socketPeer)) return false;
   const host = request.headers.get("host");
   if (!host || request.headers.get("sec-fetch-site") !== "same-origin") return false;
   try {

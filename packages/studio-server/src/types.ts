@@ -118,7 +118,7 @@ export interface StudioApiAdapter {
   /** Bundle a project directory into a single HTML string, forwarding `options` over the host's own. */
   bundle(
     projectDir: string,
-    options?: Pick<BundleOptions, "stampHfIds" | "onRead">,
+    options?: Pick<BundleOptions, "stampHfIds" | "onRead" | "privateFiles">,
   ): Promise<string | null>;
 
   /** Optional: a cached `createProjectSignature(dir)`; preview caching checks builds against it. */

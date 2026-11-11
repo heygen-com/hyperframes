@@ -1015,6 +1015,21 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  it("compileForRender refuses to inline an env file named as a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-env-subcomp-",
+      [{ id: "intro", src: "compositions/.env.html" }],
+      { ".env.html": validSubCompHtml("intro", "ENV_SECRET_VALUE") },
+    );
+    try {
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/compositions\/\.env\.html[\s\S]*git metadata or an env file/);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
     const projectDir = makeSubCompProject(
       "hf-missing-subcomp-",

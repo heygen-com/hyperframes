@@ -41,13 +41,14 @@ function fixture() {
   mountShareRoutes(app, "/fixed/project", create, login, track);
   return { app, service, create, login, track };
 }
+const LOCAL_PEER = { incoming: { socket: { remoteAddress: "127.0.0.1" } } };
 const headers = {
   host: "localhost:3000",
   origin: "http://localhost:3000",
   "sec-fetch-site": "same-origin",
 };
 async function token(app: Hono) {
-  const response = await app.request("/api/share/bootstrap", { headers });
+  const response = await app.request("/api/share/bootstrap", { headers }, LOCAL_PEER);
   expect(response.status).toBe(200);
   const body: unknown = await response.json();
   if (!body || typeof body !== "object" || !("csrf" in body) || typeof body.csrf !== "string")
@@ -55,11 +56,15 @@ async function token(app: Hono) {
   return body.csrf;
 }
 function request(app: Hono, path: string, csrf: string, body?: unknown) {
-  return app.request(`/api/share/${path}`, {
-    method: body ? "POST" : "GET",
-    headers: { ...headers, "x-hyperframes-share-csrf": csrf, "content-type": "application/json" },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  return app.request(
+    `/api/share/${path}`,
+    {
+      method: body ? "POST" : "GET",
+      headers: { ...headers, "x-hyperframes-share-csrf": csrf, "content-type": "application/json" },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    },
+    LOCAL_PEER,
+  );
 }
 describe("local share boundary", () => {
   it.each([
@@ -72,7 +77,19 @@ describe("local share boundary", () => {
     { ...headers, host: "localhost:3000@evil.example" },
   ])("denies foreign, LAN and missing-origin requests before authentication %j", async (input) => {
     const { app, create } = fixture();
-    expect((await app.request("/api/share/bootstrap", { headers: input })).status).toBe(403);
+    expect((await app.request("/api/share/bootstrap", { headers: input }, LOCAL_PEER)).status).toBe(
+      403,
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["a LAN peer", { incoming: { socket: { remoteAddress: "192.168.1.20" } } }],
+    ["a mapped LAN peer", { incoming: { socket: { remoteAddress: "::ffff:10.0.0.5" } } }],
+    ["an unknown peer", {}],
+    ["no server bindings", undefined],
+  ])("denies %s even with local headers", async (_, peer) => {
+    const { app, create } = fixture();
+    expect((await app.request("/api/share/bootstrap", { headers }, peer)).status).toBe(403);
     expect(create).not.toHaveBeenCalled();
   });
   it("allows same-origin browser GET Referer and IPv6 loopback", () => {
@@ -85,6 +102,7 @@ describe("local share boundary", () => {
             "sec-fetch-site": "same-origin",
           },
         }),
+        "127.0.0.1",
       ),
     ).toBe(true);
     expect(
@@ -96,6 +114,7 @@ describe("local share boundary", () => {
             "sec-fetch-site": "same-origin",
           },
         }),
+        "::1",
       ),
     ).toBe(true);
   });

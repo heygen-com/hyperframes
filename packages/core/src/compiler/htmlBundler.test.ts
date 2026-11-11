@@ -201,6 +201,61 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it("never inlines git metadata or env files, spelled directly or through a link", async () => {
+    const secret = "SECRET_TOKEN_VALUE";
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".env"><link rel="stylesheet" href="style.css">
+      </head><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-start="0" data-duration="2">
+          <img src=".git/config">
+          <div data-composition-id="intro" data-composition-src="scenes/intro.html" data-start="0" data-duration="1"></div>
+          <div data-composition-id="env" data-composition-src=".env.html" data-start="0" data-duration="1"></div>
+        </div>
+        <script src=".git/config"></script>
+        <script src="linked.js"></script>
+      </body></html>`,
+      "style.css": '@import ".env.local"; .a { color: red; }',
+      "scenes/intro.html": `<template><div data-composition-id="intro" data-width="320" data-height="180">
+        <p>intro</p><script src="../.env"></script></div></template>`,
+      ".env": `TOKEN=${secret}`,
+      ".env.local": `TOKEN=${secret}`,
+      ".env.html": `<template><div data-composition-id="env">${secret}</div></template>`,
+      ".git/config": `[remote "origin"] url = https://${secret}@example.com/repo.git`,
+    });
+    symlinkSync(join(dir, ".env"), join(dir, "linked.js"));
+    try {
+      const bundled = await bundleToSingleHtml(dir, { inlineAssets: true });
+      expect(bundled).not.toContain(secret);
+      expect(bundled).not.toContain(Buffer.from(`TOKEN=${secret}`).toString("base64"));
+      expect(bundled).toContain(".a { color: red; }");
+      expect(bundled).toContain("<p>intro</p>");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the app's records only under the studio private-file policy", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".hyperframes/handoff.css">
+        <link rel="stylesheet" href=".hyperframes/prepared-assets/fonts.css">
+      </head><body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+      ".hyperframes/handoff.css": ".app-record { color: red; }",
+      ".hyperframes/prepared-assets/fonts.css": ".prepared { color: blue; }",
+    });
+    try {
+      const studio = await bundleToSingleHtml(dir, { privateFiles: "studio" });
+      expect(studio).not.toContain(".app-record");
+      expect(studio).toContain('href=".hyperframes/handoff.css"');
+      expect(studio).toContain(".prepared { color: blue; }");
+      const plain = await bundleToSingleHtml(dir);
+      expect(plain).toContain(".app-record { color: red; }");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [
       "UTF-16LE",
