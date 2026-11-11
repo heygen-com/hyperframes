@@ -1,8 +1,11 @@
-import type { Context, Next } from "hono";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Context, Hono, Next } from "hono";
 
-// Fonts only: every opaque frame sends the same `Origin: null`, so a module-script grant could not be
-// limited to the Studio's own frames. A page's own fetch() sends `Sec-Fetch-Dest: empty` and never matches.
-const GRANTED_LOADS = new Map([["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }]]);
+const GRANTED_LOADS = new Map([
+  ["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }],
+  ["script", { path: /\.m?js$/i, type: /^text\/javascript\b/ }],
+]);
+const TOKEN_SEGMENT = /^~([\w-]{43})$/;
 
 interface OpaqueFrameLoad {
   origin: string | undefined;
@@ -19,17 +22,65 @@ function opaqueFrameLoadGranted(load: OpaqueFrameLoad): boolean {
   return keepsStoredContentType || grant.type.test(load.contentType ?? "");
 }
 
-export async function grantOpaqueFrameLoads(c: Context, next: Next): Promise<void> {
-  await next();
+export function createFrameTokens() {
+  const secret = randomBytes(32);
+  const tokenFor = (projectId: string) =>
+    createHmac("sha256", secret).update(projectId).digest("base64url");
+  const matches = (projectId: string, token: string) =>
+    timingSafeEqual(Buffer.from(token), Buffer.from(tokenFor(projectId)));
+  return { tokenFor, matches };
+}
+
+type FrameTokens = ReturnType<typeof createFrameTokens>;
+
+const previewBase = (projectId: string) =>
+  `/api/projects/${encodeURIComponent(projectId)}/preview/`;
+
+function tokenPathHeaders(c: Context, res: Response, pathname: string): Headers {
+  const headers = new Headers(res.headers);
+  headers.set("Referrer-Policy", "no-referrer");
   const granted = opaqueFrameLoadGranted({
     origin: c.req.header("origin"),
     dest: c.req.header("sec-fetch-dest"),
-    pathname: new URL(c.req.url).pathname,
-    status: c.res.status,
-    contentType: c.res.headers.get("content-type"),
+    pathname,
+    status: res.status,
+    contentType: headers.get("content-type"),
   });
-  if (!granted) return;
-  c.header("Access-Control-Allow-Origin", "null");
-  c.header("X-Content-Type-Options", "nosniff");
-  c.header("Vary", "Origin", { append: true });
+  if (granted) {
+    headers.set("Access-Control-Allow-Origin", "null");
+    headers.set("X-Content-Type-Options", "nosniff");
+    headers.append("Vary", "Origin");
+  }
+  return headers;
+}
+
+async function underToken(res: Response, headers: Headers, projectId: string, token: string) {
+  if (res.status !== 200 || !headers.get("content-type")?.startsWith("text/html"))
+    return new Response(res.body, { status: res.status, headers });
+  const base = previewBase(projectId);
+  headers.delete("content-length");
+  const html = (await res.text()).replaceAll(base, `${base}~${token}/`);
+  return new Response(html, { status: res.status, headers });
+}
+
+// Every opaque frame sends `Origin: null`, so the grant goes only to `preview/~<token>/` paths, which only the
+// Studio's own pages can learn. The token path serves the plain path's response, its document re-based under the token.
+export function serveTokenPreviewPaths(
+  api: Hono,
+  tokens: FrameTokens,
+  resolveProjectId: (id: string) => Promise<string | undefined>,
+) {
+  return async (c: Context, next: Next) => {
+    const url = new URL(c.req.url);
+    const segments = url.pathname.split("/");
+    const token = TOKEN_SEGMENT.exec(segments[4] ?? "")?.[1];
+    if (!token) return next();
+    const projectId = await resolveProjectId(c.req.param("id") ?? "");
+    if (!projectId || !tokens.matches(projectId, token)) return c.text("not found", 404);
+    segments.splice(4, 1);
+    url.pathname = segments.join("/");
+    const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
+    const res = await api.fetch(req);
+    return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);
+  };
 }

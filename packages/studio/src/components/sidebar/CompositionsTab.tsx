@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
+import { studioApiFetch } from "../../utils/studioApiFetch";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import {
@@ -59,6 +60,30 @@ export function resolveCompositionPreviewScale(input: {
 
 function compositionPreviewUrl(projectId: string, comp: string): string {
   return buildProjectApiPath(projectId, `/preview/comp/${encodePreviewPath(comp)}`);
+}
+
+function framePreviewUrl(projectId: string, comp: string, frameToken: string | null): string {
+  const tokenPrefix = frameToken ? `/~${frameToken}` : "";
+  return buildProjectApiPath(projectId, `/preview${tokenPrefix}/comp/${encodePreviewPath(comp)}`);
+}
+
+function useFreshFrameToken(projectId: string, wanted: boolean): string | null | undefined {
+  const [known, setKnown] = useState<{ token: string | null } | undefined>(undefined);
+  useEffect(() => {
+    if (!wanted) return setKnown(undefined);
+    let live = true;
+    void studioApiFetch(buildProjectApiPath(projectId, "/frame-token"))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { token?: unknown } | null) =>
+        typeof body?.token === "string" ? body.token : null,
+      )
+      .catch(() => null)
+      .then((token) => live && setKnown({ token }));
+    return () => {
+      live = false;
+    };
+  }, [projectId, wanted]);
+  return known?.token;
 }
 
 export function compositionCardThumbnailUrl(
@@ -173,7 +198,7 @@ function CompCard({
     setLivePreviewLoaded(false);
   };
   const name = comp.replace(/^compositions\//, "").replace(/\.html$/, "");
-  const previewUrl = compositionPreviewUrl(projectId, comp);
+  const frameToken = useFreshFrameToken(projectId, hovered);
   const thumbnailUrl = compositionCardThumbnailUrl(projectId, comp, contentRevision);
   const [thumbnailBox, nearViewport] = useNearViewport<HTMLDivElement>();
   const timelineSessionEpoch = usePlayerStore((state) => state.timelineSessionEpoch);
@@ -287,10 +312,10 @@ function CompCard({
             }`}
           />
         )}
-        {hovered && (
+        {hovered && frameToken !== undefined && (
           <iframe
             ref={iframeRef}
-            src={previewUrl}
+            src={framePreviewUrl(projectId, comp, frameToken)}
             sandbox={OPAQUE_ORIGIN_SCRIPTS_ONLY_SANDBOX}
             className="absolute border-none pointer-events-none"
             style={{

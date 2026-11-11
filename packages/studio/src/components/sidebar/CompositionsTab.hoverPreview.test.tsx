@@ -2,11 +2,16 @@
 
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mountCompositionsTab } from "./compositionsTabTestUtils";
+import {
+  FRAME_TOKEN,
+  mountCompositionsTab,
+  settleFrameToken,
+  stubFrameTokenFetch,
+} from "./compositionsTabTestUtils";
 
 type PostedControl = { source: string; type: string; action: string; muted?: boolean };
 
-function hoverPreview() {
+async function hoverPreview() {
   const host = mountCompositionsTab();
   const card = host.querySelector<HTMLElement>('[draggable="true"]');
   if (!card) throw new Error("composition card did not render");
@@ -14,6 +19,7 @@ function hoverPreview() {
     card.dispatchEvent(new Event("pointerover", { bubbles: true }));
     vi.advanceTimersByTime(300);
   });
+  await settleFrameToken();
   const iframe = host.querySelector("iframe");
   if (!iframe) throw new Error("hover preview did not mount");
   // Stand-in for the frame's window. The document getter throws, as reading into
@@ -48,23 +54,37 @@ let consoleError: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.useFakeTimers();
   consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  stubFrameTokenFetch();
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   consoleError.mockRestore();
   vi.useRealTimers();
 });
 
 describe("composition card hover preview", () => {
-  it("frames the composition in an opaque origin", () => {
-    const { iframe } = hoverPreview();
+  it("frames the composition in an opaque origin, at the project's token path", async () => {
+    const { iframe } = await hoverPreview();
+    expect(iframe.getAttribute("src")).toBe(
+      `/api/projects/demo/preview/~${FRAME_TOKEN}/comp/compositions/headline.html`,
+    );
     expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe.sandbox.contains("allow-scripts")).toBe(true);
     expect(iframe.sandbox.contains("allow-same-origin")).toBe(false);
   });
 
-  it("plays muted over the runtime bridge once the runtime is listening", () => {
-    const { frameWindow } = hoverPreview();
+  it("falls back to the plain path when the token is unavailable", async () => {
+    vi.restoreAllMocks();
+    stubFrameTokenFetch(null);
+    const { iframe } = await hoverPreview();
+    expect(iframe.getAttribute("src")).toBe(
+      "/api/projects/demo/preview/comp/compositions/headline.html",
+    );
+  });
+
+  it("plays muted over the runtime bridge once the runtime is listening", async () => {
+    const { frameWindow } = await hoverPreview();
     expect(frameWindow.postMessage).not.toHaveBeenCalled();
 
     fromFrame(frameWindow, { type: "ready" });
@@ -79,8 +99,8 @@ describe("composition card hover preview", () => {
     }
   });
 
-  it("sizes the stage from the runtime's timeline message", () => {
-    const { iframe, frameWindow } = hoverPreview();
+  it("sizes the stage from the runtime's timeline message", async () => {
+    const { iframe, frameWindow } = await hoverPreview();
     expect([iframe.style.width, iframe.style.height]).toEqual(["1920px", "1080px"]);
 
     fromFrame(frameWindow, { type: "timeline", compositionWidth: 1080, compositionHeight: 1920 });
@@ -88,8 +108,8 @@ describe("composition card hover preview", () => {
     expect([iframe.style.width, iframe.style.height]).toEqual(["1080px", "1920px"]);
   });
 
-  it("ignores runtime messages that come from another window", () => {
-    const { iframe, frameWindow } = hoverPreview();
+  it("ignores runtime messages that come from another window", async () => {
+    const { iframe, frameWindow } = await hoverPreview();
 
     fromFrame({ postMessage: vi.fn() }, { type: "ready" });
     fromFrame(window, { type: "timeline", compositionWidth: 640, compositionHeight: 640 });
