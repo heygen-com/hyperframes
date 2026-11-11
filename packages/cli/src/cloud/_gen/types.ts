@@ -79,6 +79,11 @@ export interface CaptionSetting {
 
 export type CaptionStyle = "default";
 
+export interface CartesiaEngineSettings {
+  engine_type: "cartesia";
+  model?: "sonic-3.6" | "sonic-3.5" | null;
+}
+
 export type ChargedPool = "api_credits" | "hyperframes_credits" | "web_credits" | "free_images";
 
 export type CinematicAvatarModel = "seedance_2" | "heygen_video_1";
@@ -323,20 +328,13 @@ export type DeliveryErrorCode =
 export type DeliveryStatus = "pending" | "in_progress" | "succeeded" | "failed";
 
 export interface ElevenLabsEngineSettings {
-  model?: ElevenLabsModel | null;
+  model?: "eleven_multilingual_v2" | "eleven_turbo_v2_5" | "eleven_v3" | "eleven_v4" | null;
   similarity_boost?: number | null;
   stability?: number | null;
   style?: number | null;
   use_speaker_boost?: boolean | null;
   engine_type: "elevenlabs";
 }
-
-export type ElevenLabsModel =
-  | "eleven_multilingual_v2"
-  | "eleven_turbo_v2_5"
-  | "eleven_flash_v2_5"
-  | "eleven_v3"
-  | "eleven_v4";
 
 export interface ElevenLabsSpeechSettings {
   model_id:
@@ -360,13 +358,11 @@ export interface FileDeliveryStatus {
 }
 
 export interface FishEngineSettings {
-  model?: FishModel | null;
+  model?: "s2.1-pro" | "s2-pro" | null;
   stability?: number | null;
   similarity?: number | null;
   engine_type: "fish";
 }
-
-export type FishModel = "s1" | "s2-pro" | "s2.1-pro";
 
 export interface GptImage25Request {
   model: "gpt-image-2.5";
@@ -393,6 +389,11 @@ export interface GptImage26Request {
 }
 
 export interface HeyGenVoiceEngineSettings {
+  model?: "heygen-voice-1" | null;
+  similarity?: "medium" | "high" | "extra_high" | "max" | null;
+  expressiveness?: number | null;
+  pitch?: number | null;
+  inflection?: number | null;
   engine_type: "heygen_voice" | "orca";
 }
 
@@ -422,6 +423,7 @@ export interface HyperframesRenderDetail {
   completed_at?: number | null;
   failure_message?: string | null;
   failure_code?: string | null;
+  failure_detail?: string | null;
 }
 
 export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "failed";
@@ -451,7 +453,7 @@ export interface ImageToVideoRequest {
   mode: "image_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive" | null;
@@ -501,6 +503,10 @@ export interface MintPartUrlsRequest {
 export interface MintPartUrlsResponse {
   parts: Array<PartUrl>;
   expires_in_seconds: number;
+}
+
+export interface MockingbirdEngineSettings {
+  engine_type: "mockingbird";
 }
 
 export interface ModelVideoResponse {
@@ -595,7 +601,7 @@ export interface ReferenceToVideoRequest {
   mode: "reference_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "adaptive";
@@ -616,7 +622,7 @@ export interface ScribeV2TranscriptionRequest {
   num_speakers?: number | null;
 }
 
-export type SpeechEngine = "starfish" | "orca" | "elevenlabs" | "elevenlabs_v3";
+export type SpeechEngine = "starfish" | "heygen_voice" | "orca" | "elevenlabs" | "elevenlabs_v3";
 
 export interface StandardAPIError {
   code: string;
@@ -678,7 +684,7 @@ export interface TextToVideoRequest {
   mode: "text_to_video";
   model: "heygen-video-1";
   prompt: string;
-  prompt_enhancement?: "turbo" | "quality" | "default" | "disabled" | "ultraquality";
+  prompt_enhancement?: "turbo" | "quality" | "disabled" | "ultraquality";
   resolution?: "480p" | "768p" | "1080p" | "2k";
   duration?: number | "auto";
   aspect_ratio?: "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16";
@@ -833,6 +839,8 @@ export interface VoiceSettingsInput {
     | FishEngineSettings
     | StarfishEngineSettings
     | HeyGenVoiceEngineSettings
+    | CartesiaEngineSettings
+    | MockingbirdEngineSettings
     | null;
 }
 
