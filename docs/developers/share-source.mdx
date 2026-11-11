@@ -56,9 +56,10 @@ These rules can only exclude files, never re-include credentials or other files
 blocked by the portable project policy.
 
 Cloud render reads the same file as gitignore syntax, so it may hold rules this
-reader rejects, such as `/exports/` or `**/*.mov`. Source capture then stops with
-an error. Change detection keeps working and ignores the file's rules, so those
-files still count as changes.
+reader rejects, such as `/exports/` or `**/*.mov`. Source capture, and anything
+else that picks project files to upload, then stops with an error. Change
+detection keeps working and ignores the file's rules, so those files still count
+as changes.
 
 The upload uses the workspace's file-count, per-file, project-size and manifest
 limits. Large media uploads in parts. Only a verified published snapshot that

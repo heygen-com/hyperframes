@@ -649,6 +649,7 @@ test("a video-only retry never replays an unanswered source-bearing export", asy
   );
   assert.equal(creates, 1);
 });
+const lenient = { lenientIgnore: true };
 test("change detection keeps working when .hyperframesignore uses gitignore syntax", async (t) => {
   for (const rule of ["/renders/", "**/*.mov", "!keep.mp4", "assets/*/raw-*.mp4", "a[bc].png"]) {
     const dir = await folder(t);
@@ -657,11 +658,11 @@ test("change detection keeps working when .hyperframesignore uses gitignore synt
     await writeFile(join(dir, "assets/clip.mov"), "clip");
     await writeFile(join(dir, ".hyperframesignore"), `${rule}\n`);
     // The CLI's syntax is not this reader's: nothing is excluded beyond scratch, so a change still counts.
-    const files = await snapshotProject(dir);
+    const files = await snapshotProject(dir, lenient);
     assert.deepEqual([...files.keys()].sort(), ["assets/clip.mov", "index.html"], rule);
     // snapshotFiles names every file asked for; an excluded one is keyed undefined.
     assert.notEqual(
-      (await snapshotFiles(dir, ["assets/clip.mov"])).get("assets/clip.mov"),
+      (await snapshotFiles(dir, ["assets/clip.mov"], lenient)).get("assets/clip.mov"),
       undefined,
       rule,
     );
@@ -674,7 +675,24 @@ test("change detection keeps working when .hyperframesignore is a link", async (
   const dir = await folder(t);
   await writeFile(join(dir, "index.html"), "<div>Hello</div>");
   await symlink(join(dir, "index.html"), join(dir, ".hyperframesignore"));
-  assert.deepEqual([...(await snapshotProject(dir)).keys()], ["index.html"]);
+  assert.deepEqual([...(await snapshotProject(dir, lenient)).keys()], ["index.html"]);
+  await projectFingerprint(dir);
+});
+test("a snapshot that picks files to send refuses a .hyperframesignore it can't read", async (t) => {
+  const dir = await folder(t);
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await writeFile(join(dir, "private-notes.txt"), "private");
+  // One valid exclusion and one rule this reader refuses: the whole file is unreadable here.
+  await writeFile(join(dir, ".hyperframesignore"), "private-notes.txt\n/renders/\n");
+  await assert.rejects(snapshotProject(dir), { code: "invalid_source_ignore" });
+  await assert.rejects(snapshotFiles(dir, ["private-notes.txt"]), {
+    code: "invalid_source_ignore",
+  });
+  // Change detection still runs, and sees the file the valid line meant to exclude.
+  assert.equal((await snapshotProject(dir, lenient)).has("private-notes.txt"), true);
+  await rm(join(dir, ".hyperframesignore"));
+  await symlink(join(dir, "index.html"), join(dir, ".hyperframesignore"));
+  await assert.rejects(snapshotProject(dir), { code: "invalid_source_ignore" });
 });
 test("change detection still applies a .hyperframesignore it can read", async (t) => {
   const dir = await folder(t);
@@ -683,5 +701,6 @@ test("change detection still applies a .hyperframesignore it can read", async (t
   await writeFile(join(dir, "assets/raw.mov"), "raw");
   await writeFile(join(dir, "debug.log"), "log");
   await writeFile(join(dir, ".hyperframesignore"), "assets/raw.mov\n");
-  assert.deepEqual([...(await snapshotProject(dir)).keys()], ["index.html"]);
+  for (const options of [undefined, lenient])
+    assert.deepEqual([...(await snapshotProject(dir, options)).keys()], ["index.html"]);
 });
