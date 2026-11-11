@@ -52,6 +52,7 @@ export type {
   CaptureWarning,
   CaptureWarningCode,
   SubTimelineWaitMemo,
+  StaticDedupMemo,
   SubTimelineWaitOutcome,
 } from "./types.js";
 

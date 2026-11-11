@@ -36,6 +36,7 @@ import {
   type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
+  type StaticDedupMemo,
   closeCaptureSession,
   compositionRequiresWebGpu,
   createCaptureSession,
@@ -75,6 +76,7 @@ import {
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
+  noteStaticDedupActivity,
   projectBrowserEndToCompositionTimeline,
   resolveBrowserMediaEnd,
   writeCompiledArtifacts,
@@ -84,6 +86,7 @@ import type { RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
 import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
 import { resolveCaptureSurface } from "../captureImageFormat.js";
+import { computeCompositionObservabilityHash } from "../observability.js";
 
 export interface ProbeStageInput {
   projectDir: string;
@@ -109,6 +112,7 @@ export interface ProbeStageInput {
   needsAlpha: boolean;
   deviceScaleFactor: number;
   subTimelineWaitMemo: SubTimelineWaitMemo;
+  staticDedupMemo?: StaticDedupMemo;
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
@@ -370,6 +374,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     needsAlpha,
     deviceScaleFactor,
     subTimelineWaitMemo,
+    staticDedupMemo,
   } = input;
   let { compiled } = input;
 
@@ -446,6 +451,10 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         pageMotionBlur: job.config.pageMotionBlur,
         requiresWebGpu: compositionRequiresWebGpu(compiled.html),
         subTimelineWaitMemo,
+        staticDedupMemo,
+        compositionHash: computeCompositionObservabilityHash(compiled.html),
+        deferStaticDedup: true,
+        onStaticDedupActivity: () => noteStaticDedupActivity(job),
       };
 
       const PROBE_MAX_ATTEMPTS = 2;

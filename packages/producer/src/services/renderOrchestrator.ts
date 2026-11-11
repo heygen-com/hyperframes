@@ -71,6 +71,7 @@ import {
   type CaptureOptions,
   type CaptureVideoMetadataHint,
   type SubTimelineWaitMemo,
+  type StaticDedupMemo,
   type CaptureSession,
   type BeforeCaptureHook,
   createVideoFrameInjector,
@@ -148,6 +149,8 @@ import {
   createMemorySampler,
   describeWorkerPhases,
   forgetWorkerPhases,
+  noteStaticDedupActivity,
+  staticDedupActivity,
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
@@ -1251,6 +1254,7 @@ export function frameStallRule(
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
     attemptOpened: () => forgetWorkerPhases(job),
+    activity: () => staticDedupActivity(job),
   };
 }
 
@@ -3426,6 +3430,7 @@ async function executeRenderPipeline(input: {
       Object.assign(job, result),
     );
     const subTimelineWaitMemo: SubTimelineWaitMemo = {};
+    const staticDedupMemo: StaticDedupMemo = {};
     const probeResult = await observeRenderStage(
       observability,
       "browser_probe",
@@ -3447,6 +3452,7 @@ async function executeRenderPipeline(input: {
           needsAlpha,
           deviceScaleFactor,
           subTimelineWaitMemo,
+          staticDedupMemo,
           recordReferenceBackground,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
@@ -3829,6 +3835,9 @@ async function executeRenderPipeline(input: {
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
       subTimelineWaitMemo,
+      staticDedupMemo,
+      compositionHash,
+      onStaticDedupActivity: () => noteStaticDedupActivity(job),
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,

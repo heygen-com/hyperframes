@@ -499,7 +499,7 @@ async function runSequentialDiskCapture(
       // Reuse preparation can fail on the output dir (permissions, read-only, disk full);
       // keep it inside try/finally so the borrowed probe browser is still closed.
       if (probeSession) {
-        prepareCaptureSessionForReuse(session, framesDir, videoInjector);
+        await prepareCaptureSessionForReuse(session, framesDir, videoInjector);
         probeSession = null;
       }
       await ensureSessionReady(session, {
