@@ -10,7 +10,7 @@ function pluginShim(t) {
   const dir = mkdtempSync(join(tmpdir(), "hf-resolve-plugin-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   mkdirSync(join(dir, "lib"));
-  for (const file of ["resolve.mjs", "lib/npx-sync.mjs"]) {
+  for (const file of ["resolve.mjs", "lib/npx-sync.mjs", "lib/windows-exe-search.mjs"]) {
     copyFileSync(fileURLToPath(new URL(file, import.meta.url)), join(dir, file));
   }
   const marker = join(dir, "npx-ran");
@@ -69,7 +69,7 @@ test("helper package override keeps a contributor's local CLI", (t) => {
   const scripts = join(root, "skills/media-use/scripts");
   mkdirSync(join(scripts, "lib"), { recursive: true });
   mkdirSync(join(root, "packages/cli/dist"), { recursive: true });
-  for (const file of ["resolve.mjs", "lib/npx-sync.mjs"]) {
+  for (const file of ["resolve.mjs", "lib/npx-sync.mjs", "lib/windows-exe-search.mjs"]) {
     copyFileSync(fileURLToPath(new URL(file, import.meta.url)), join(scripts, file));
   }
   writeFileSync(join(root, "packages/cli/dist/cli.js"), 'console.log("local-cli");');

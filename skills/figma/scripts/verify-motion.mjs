@@ -21,6 +21,7 @@
  * frame. Measure it from the render (the card's left/top edge + scaled
  * size), don't guess: a wrong crop reads as motion divergence.
  */
+import "./lib/windows-exe-search.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

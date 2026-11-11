@@ -11,6 +11,7 @@
 //
 // Missing/failed BGM never blocks a render.
 
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
 import { join } from "node:path";
