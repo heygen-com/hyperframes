@@ -1,3 +1,4 @@
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
 // tts.mjs — multi-provider TTS for the media audio engine. The provider chain,

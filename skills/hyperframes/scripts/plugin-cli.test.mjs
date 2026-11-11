@@ -12,6 +12,7 @@ import {
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import { invocation, npmFolder, pluginVersion } from "./plugin-cli.mjs";
 
 function fixture(t, manifest = "plugin.json", version = "1.2.3") {
@@ -22,10 +23,12 @@ function fixture(t, manifest = "plugin.json", version = "1.2.3") {
   writeFileSync(join(root, manifest), JSON.stringify({ name: "hyperframes", version }));
   const launcher = join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
   copyFileSync(new URL("./plugin-cli.mjs", import.meta.url), launcher);
-  copyFileSync(
-    new URL("./lib/main-module.mjs", import.meta.url),
-    join(root, "skills/hyperframes/scripts/lib/main-module.mjs"),
-  );
+  for (const lib of ["main-module.mjs", "windows-exe-search.mjs"]) {
+    copyFileSync(
+      new URL(`./lib/${lib}`, import.meta.url),
+      join(root, "skills/hyperframes/scripts/lib", lib),
+    );
+  }
   return { root, launcher };
 }
 
@@ -125,6 +128,31 @@ test("installed helper keeps cwd, arguments, release environment and exit code",
     cli: realpathSync(launcher),
   });
   assert.equal(readFileSync(join(root, "plugin.json"), "utf8"), before);
+});
+
+test("on Windows, a helper and the programs it starts skip the working-directory lookup", (t) => {
+  const { root, launcher } = fixture(t);
+  const helper = join(root, "helper.mjs");
+  writeFileSync(
+    helper,
+    "console.log(JSON.stringify(process.env.NoDefaultCurrentDirectoryInExePath ?? null));",
+  );
+  const asWindows = join(root, "as-windows.mjs");
+  writeFileSync(asWindows, 'Object.defineProperty(process, "platform", { value: "win32" });');
+  const run = (env) =>
+    spawnSync(
+      process.execPath,
+      ["--import", pathToFileURL(asWindows).href, launcher, "--script", helper],
+      { cwd: root, encoding: "utf8", env: { ...env, NODE_OPTIONS: "" } },
+    );
+  const stdoutOf = (result) => {
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const { NoDefaultCurrentDirectoryInExePath: _, ...env } = process.env;
+
+  assert.equal(stdoutOf(run(env)), "1");
+  assert.equal(stdoutOf(run({ ...env, NoDefaultCurrentDirectoryInExePath: "yes" })), "yes");
 });
 
 test(

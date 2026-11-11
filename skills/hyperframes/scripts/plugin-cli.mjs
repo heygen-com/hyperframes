@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Run from the user's project; locate the release from this installed file.
+import "./lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";

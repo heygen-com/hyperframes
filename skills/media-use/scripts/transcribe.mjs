@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,

@@ -1,5 +1,6 @@
 // recording.mjs — the person's own voice recording as a voice line: converted to the engine's wav,
 // time-stretched by `speed` with the pitch kept, with word timings scaled to match.
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";

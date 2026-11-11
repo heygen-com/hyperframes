@@ -15,6 +15,7 @@
 // `HYPERFRAMES_PYTHON` (the documented PEP 668 venv setup) wins over the PATH probe, matching
 // the CLI's `findPython()`; ignoring it made BGM silently disable itself (#4614).
 
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 
 // Accept only an interpreter whose `--version` reports Python 3, as the CLI's

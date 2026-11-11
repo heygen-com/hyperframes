@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, isAbsolute, join, resolve } from "node:path";
 import {
   createMediaUseCommand,
   MEDIA_USE_VERBS,
@@ -18,13 +18,13 @@ function tempCommandDir(): string {
 
 describe("mediaUseEngineEnv", () => {
   it("hands the running CLI entry to the engine", () => {
-    const env = mediaUseEngineEnv({ HOME: "/home/u" }, "dist/cli.js");
+    const env = mediaUseEngineEnv({ HOME: "/home/u" }, "dist/cli.js", "linux");
     expect(env).toEqual({ HOME: "/home/u", HYPERFRAMES_CLI_ENTRY: resolve("dist/cli.js") });
   });
 
   it("hands nothing over from a TypeScript source entry, which plain node cannot run", () => {
-    expect(mediaUseEngineEnv({}, "src/cli.ts")).toEqual({});
-    expect(mediaUseEngineEnv({}, "")).toEqual({});
+    expect(mediaUseEngineEnv({}, "src/cli.ts", "linux")).toEqual({});
+    expect(mediaUseEngineEnv({}, "", "linux")).toEqual({});
   });
 
   it.skipIf(process.platform === "win32")(
@@ -48,6 +48,53 @@ describe("mediaUseEngineEnv", () => {
       expect(env.PATH).toBe(["/usr/bin", "/bin"].join(delimiter));
     },
   );
+});
+
+describe("mediaUseEngineEnv on Windows", () => {
+  function asWindows(): void {
+    const realPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+    onTestFinished(() => {
+      Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
+    });
+  }
+
+  it("turns off the working-directory program lookup for the engine and its children", () => {
+    asWindows();
+    const caller: NodeJS.ProcessEnv = { Path: "" };
+
+    const env = mediaUseEngineEnv(caller, "");
+
+    expect(env.NoDefaultCurrentDirectoryInExePath).toBe("1");
+    expect(caller).toEqual({ Path: "" });
+  });
+
+  it("keeps a value the person set", () => {
+    asWindows();
+
+    const env = mediaUseEngineEnv({ NoDefaultCurrentDirectoryInExePath: "yes" }, "");
+
+    expect(env.NoDefaultCurrentDirectoryInExePath).toBe("yes");
+  });
+});
+
+describe("mediaUseEngineEnv with no trusted PATH folder", () => {
+  it("never hands the engine an empty PATH, which would mean the working directory", () => {
+    const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-media-use-project-")));
+    onTestFinished(() => rmSync(project, { recursive: true, force: true }));
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+
+    const env = mediaUseEngineEnv({ PATH: ["", ".", "bin", project].join(delimiter) }, "", "linux");
+
+    expect(env.PATH).toBeTruthy();
+    expect(env.PATH?.split(delimiter)).toHaveLength(1);
+    expect(isAbsolute(env.PATH ?? "")).toBe(true);
+    expect(existsSync(env.PATH ?? "")).toBe(false);
+    expect(env.PATH?.startsWith(project)).toBe(false);
+  });
 });
 
 describe("media-use command wiring", () => {

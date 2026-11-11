@@ -9,21 +9,33 @@ vi.mock("node:os", async (original) => ({
   ...(await original<typeof import("node:os")>()),
   platform: () => "darwin",
 }));
-// Windows walks PATH itself, so there the lookup returns the real install's path, not `/bin/<name>`.
 const isTool = (command: string, name: string) =>
   new RegExp(`(^|[\\\\/])${name}(\\.exe)?$`, "i").test(command);
+const temps: string[] = [];
 afterEach(() => {
   vi.unstubAllEnvs();
   calls.exec.mockReset();
+  for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+// The lookup walks PATH in-process, so PATH holds only the tools a test wants found.
+function pathWith(...tools: string[]): string {
+  const bin = mkdtempSync(join(tmpdir(), "hf-whisper-path-"));
+  temps.push(bin);
+  for (const tool of tools) {
+    const file = join(bin, process.platform === "win32" ? `${tool}.exe` : tool);
+    writeFileSync(file, "", { mode: 0o755 });
+  }
+  vi.stubEnv("PATH", bin);
+  return bin;
+}
 it("never installs when the runtime vanishes after discovery and installation is disabled", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hf-missing-runtime-"));
   const binary = join(dir, "whisper-cli");
   writeFileSync(binary, "runtime");
   vi.stubEnv("HYPERFRAMES_WHISPER_PATH", binary);
-  calls.exec.mockImplementation((command: string, args: string[]) => {
-    if ((command === "which" || command === "where") && args[0] !== "whisper-cli")
-      return `/bin/${args[0]}\n`;
+  pathWith("brew", "git", "cmake");
+  calls.exec.mockImplementation(() => {
     throw new Error("not available");
   });
   try {
@@ -48,11 +60,8 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
   vi.resetModules();
   const { ensureWhisper: ensure, WhisperUnavailableError: Unavailable } =
     await import("./manager.js");
+  pathWith("git", "cmake");
   calls.exec.mockImplementation((command: string, args: string[]) => {
-    const lookup = command === "which" || command === "where";
-    if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
-      throw new Error("not available");
-    if (lookup) return `/bin/${args[0]}\n`;
     if (isTool(command, "git") && args[0] === "clone") throw new Error("stop after the clone");
     return "";
   });
@@ -72,11 +81,8 @@ it("builds only the reviewed whisper.cpp commit", async () => {
   vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
   vi.resetModules();
   const { ensureWhisper: ensure } = await import("./manager.js");
+  pathWith("git", "cmake");
   calls.exec.mockImplementation((command: string, args: string[]) => {
-    const lookup = command === "which" || command === "where";
-    if (lookup && (args[0] === "brew" || args[0] === "whisper-cli"))
-      throw new Error("not available");
-    if (lookup) return `/bin/${args[0]}\n`;
     if (isTool(command, "git") && args[0] === "rev-parse") return "0123456789abcdef\n";
     return "";
   });
@@ -98,15 +104,14 @@ it.skipIf(process.platform === "win32")(
     vi.stubEnv("HYPERFRAMES_WHISPER_PATH", "");
     vi.resetModules();
     const { ensureWhisper: ensure } = await import("./manager.js");
-    calls.exec.mockImplementation((command: string, args: string[]) => {
-      const lookup = command === "which" || command === "where";
-      if (lookup && args[0] === "brew") return "/opt/homebrew/bin/brew\n";
+    const bin = pathWith("brew");
+    calls.exec.mockImplementation(() => {
       throw new Error("not available");
     });
     try {
       await expect(ensure()).rejects.toThrow();
       const runs = calls.exec.mock.calls.map(([command]) => command as string);
-      expect(runs).toContain("/opt/homebrew/bin/brew");
+      expect(runs).toContain(join(bin, "brew"));
       expect(runs).not.toContain("brew");
     } finally {
       rmSync(cache, { recursive: true, force: true });
@@ -116,17 +121,10 @@ it.skipIf(process.platform === "win32")(
 
 it("names the missing build tool when whisper.cpp cannot be built", async () => {
   vi.stubEnv("HYPERFRAMES_CACHE_DIR", mkdtempSync(join(tmpdir(), "hf-whisper-cache-")));
-  // Windows walks PATH itself, so PATH holds only git there.
-  const bin = mkdtempSync(join(tmpdir(), "hf-whisper-path-"));
-  writeFileSync(join(bin, "git.exe"), "");
-  vi.stubEnv("PATH", bin);
+  pathWith("git");
   vi.resetModules();
   const { ensureWhisper: ensure } = await import("./manager.js");
-  calls.exec.mockImplementation((command: string, args: string[]) => {
-    if ((command === "which" || command === "where") && args[0] !== "git")
-      throw new Error("not available");
-    return `/bin/${args[0]}\n`;
-  });
+  calls.exec.mockImplementation(() => "");
   await expect(ensure()).rejects.toThrow(/cannot build whisper\.cpp: cmake not found on PATH/);
 });
 
@@ -152,6 +150,7 @@ it("gives a Windows user one runnable winget line, and finds a Release-built whi
   try {
     const { getInstallInstructions, findWhisper } = await import("./manager.js");
     expect(getInstallInstructions()).toContain("winget install -e --id Kitware.CMake");
+    pathWith();
     calls.exec.mockImplementation(() => {
       throw new Error("not available");
     });
