@@ -109,6 +109,26 @@ function vertexCredentials(raw: string): Record<string, unknown> | string {
     : "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not a service-account key; skipped vision captioning.";
 }
 
+// The SDK builds the request host from the location and the request path from the model id.
+const VERTEX_LOCATION = /^[a-z][a-z0-9-]*$/;
+const GOOGLE_MODEL_ID = /^[A-Za-z0-9][\w.@-]*(?:\/[A-Za-z0-9][\w.@-]*)*$/;
+
+function googleClientSettingsProblem(
+  provider: "vertex" | "gemini",
+  model: string,
+  location: string,
+): string | undefined {
+  if (provider === "vertex" && !VERTEX_LOCATION.test(location)) {
+    return "HYPERFRAMES_VERTEX_LOCATION is not a Google Cloud region; skipped vision captioning.";
+  }
+  if (!GOOGLE_MODEL_ID.test(model)) {
+    const variable =
+      provider === "vertex" ? "HYPERFRAMES_VERTEX_MODEL" : "HYPERFRAMES_GEMINI_MODEL";
+    return `${variable} is not a model id; skipped vision captioning.`;
+  }
+  return undefined;
+}
+
 function resolveVisionRequestTimeoutMs(): number {
   const configured = Number(process.env.HYPERFRAMES_VISION_TIMEOUT_MS);
   return Number.isFinite(configured) && configured > 0
@@ -398,6 +418,14 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
+      const vertexLocation = process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1";
+      const settingsProblem = googleClientSettingsProblem(provider, model, vertexLocation);
+      if (settingsProblem) {
+        warnings.push(settingsProblem);
+        internalError = true;
+        reportOutcome();
+        return geminiCaptions;
+      }
       let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
       try {
         ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
@@ -421,7 +449,7 @@ export async function captionImagesWithGemini(
         ai = new GoogleGenAI({
           vertexai: true,
           project: vertexProject,
-          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
+          location: vertexLocation,
           googleAuthOptions: { credentials },
         });
       } else {
