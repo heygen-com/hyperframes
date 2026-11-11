@@ -214,8 +214,8 @@ export interface CaptureSession {
    * Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
-  /** Init skipped the still-frame check (`deferStaticDedup`); `armDeferredStaticDedup` runs it. */
-  staticDedupDeferred?: boolean;
+  /** The init-time page analysis of a check deferred by `deferStaticDedup`; `armDeferredStaticDedup` runs it. */
+  staticDedupDeferred?: StaticFrameStats;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -1314,9 +1314,6 @@ async function initDrawElementOrTransparentBackground(
       // passed) and the DOM is still normal (canvas not yet injected, so the
       // verification screenshots are valid). drawElement-path only; see armStaticDedup.
       await armStaticDedup(session, page, logInitPhase);
-      // A static frame reuses the previous drawElement capture; a risk frame is captured by
-      // another session, so its neighbours must not reuse across it.
-      for (const f of session.deRiskFrames ?? []) session.staticFrames?.delete(f);
       // Video comps on injector-less sessions (probe sessions initialize before
       // video extraction) DEFER the rest of the drawElement init: ground-truth
       // screenshots would capture black <video> boxes, and once the canvas is
@@ -3704,6 +3701,8 @@ export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
  * comp on any signal the tween-walker can't see: video / canvas / webgl (redraw without
  * a tween), zero tweens (non-GSAP animation), or a running CSS/WAAPI animation.
  */
+type StaticFrameStats = Awaited<ReturnType<typeof computeStaticFrameSet>>;
+
 export async function computeStaticFrameSet(
   page: Page,
   fps: number,
@@ -4423,7 +4422,7 @@ export async function armFromSharedStaticDedup(
  * and on success stores it on the session for captureFrameCore to reuse. Sample budget
  * via HF_STATIC_DEDUP_SAMPLES (default 24).
  */
-async function armStaticDedup(
+export async function armStaticDedup(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
@@ -4449,31 +4448,38 @@ async function armStaticDedup(
     );
     session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
-  if (session.options.deferStaticDedup) {
-    session.staticDedupDeferred = true;
-    logInitPhase("static-frame dedup: deferred until this session captures");
-    return;
-  }
   await armStaticDedupFrames(session, page, logInitPhase, sharedStaticFrameStats);
 }
 
 /** Runs the still-frame check a session deferred at init; a no-op for any other session. */
 export async function armDeferredStaticDedup(session: CaptureSession): Promise<void> {
-  if (!session.staticDedupDeferred) return;
-  session.staticDedupDeferred = false;
+  const stats = session.staticDedupDeferred;
+  if (!stats) return;
+  session.staticDedupDeferred = undefined;
   const startedAt = Date.now();
-  await armStaticDedupFrames(session, session.page, (phase) =>
+  const logInitPhase = (phase: string) =>
     console.error(
       `[initSession:${session.captureMode}] ${phase} (deferred, ${Date.now() - startedAt}ms)`,
-    ),
-  );
+    );
+  if (videoInjectionBlocksStaticDedup(session, logInitPhase)) return;
+  await checkStaticFrames(session, stats, logInitPhase);
+}
+
+function videoInjectionBlocksStaticDedup(
+  session: CaptureSession,
+  logInitPhase: (phase: string) => void,
+): boolean {
+  if (!session.onBeforeCapture) return false;
+  session.staticDedupSkipReason = "video_injection";
+  logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
+  return true;
 }
 
 async function armStaticDedupFrames(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
-  sharedStaticFrameStats?: Awaited<ReturnType<typeof computeStaticFrameSet>>,
+  sharedStaticFrameStats?: StaticFrameStats,
 ): Promise<void> {
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
   // (verification screenshots need the un-injected DOM), and initializeSession
@@ -4481,7 +4487,7 @@ async function armStaticDedupFrames(
   // populated, re-running would overwrite the armed state with
   // skipReason="capture_mode" (captureMode is "drawelement" by then) —
   // contradictory telemetry — and re-run the verification seeks. No-op instead.
-  if (session.staticFrames || session.staticDedupSkipReason) return;
+  if (session.staticFrames || session.staticDedupSkipReason || session.staticDedupDeferred) return;
   // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
   // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
   // Default-on: only an explicit `staticFrameDedup === false` (resolved from
@@ -4506,11 +4512,7 @@ async function armStaticDedupFrames(
     );
     return;
   }
-  if (session.onBeforeCapture) {
-    session.staticDedupSkipReason = "video_injection";
-    logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
-    return;
-  }
+  if (videoInjectionBlocksStaticDedup(session, logInitPhase)) return;
   const pageComposite = await page
     .evaluate(
       () =>
@@ -4532,6 +4534,34 @@ async function armStaticDedupFrames(
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
     return;
   }
+  // Deferred after the page is read, so a later drawElement canvas cannot change the analysis.
+  if (session.options.deferStaticDedup) {
+    session.staticDedupDeferred = stats;
+    logInitPhase("static-frame dedup: deferred until this session captures");
+    return;
+  }
+  await checkStaticFrames(session, stats, logInitPhase);
+}
+
+/** Verifies (or shares) the predicted still frames and arms them, without the risk frames. */
+async function checkStaticFrames(
+  session: CaptureSession,
+  stats: StaticFrameStats,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  try {
+    await verifyOrShareStaticFrames(session, stats, logInitPhase);
+  } finally {
+    for (const f of session.deRiskFrames ?? []) session.staticFrames?.delete(f);
+  }
+}
+
+async function verifyOrShareStaticFrames(
+  session: CaptureSession,
+  stats: StaticFrameStats,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  const fps = fpsToNumber(session.options.fps);
   const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
   const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
   session.staticDedupPredictedCount = stats.staticFrameSet.size;
