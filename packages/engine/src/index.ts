@@ -557,3 +557,8 @@ export {
   pipeLaunchClosedOnMac,
   sandboxDeniedRemediation,
 } from "./services/sandboxLaunch.js";
+export {
+  VariablesInvalidError,
+  type VariablesIssue,
+  type VariablesInvalidMetadata,
+} from "./services/variablesCheck.js";

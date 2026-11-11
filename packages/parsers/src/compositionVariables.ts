@@ -76,6 +76,29 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
   return true;
 }
 
+/** What one `data-composition-variables` attribute declares, and whether all of it could be read. */
+export interface ReadCompositionVariables {
+  declarations: CompositionVariable[];
+  /** False when the JSON is invalid, is not an array, or holds an entry that is not a valid declaration. */
+  complete: boolean;
+}
+
+/**
+ * Valid declarations in the raw attribute text. `complete` is false when the JSON is invalid, is not an array,
+ * or has an entry that is not a valid declaration (dropped).
+ */
+export function readCompositionVariables(raw: string | null | undefined): ReadCompositionVariables {
+  if (!raw) return { declarations: [], complete: true };
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { declarations: [], complete: false };
+    const declarations = parsed.filter(isCompositionVariable);
+    return { declarations, complete: declarations.length === parsed.length };
+  } catch {
+    return { declarations: [], complete: false };
+  }
+}
+
 /**
  * Parse the typed variable declarations from an element's
  * `data-composition-variables` attribute. Malformed entries (wrong shape,
@@ -83,20 +106,7 @@ export function isCompositionVariable(v: unknown): v is CompositionVariable {
  * absent attribute, invalid JSON, or a non-array payload yields `[]`.
  */
 export function parseCompositionVariables(htmlEl: Element): CompositionVariable[] {
-  const variablesAttr = htmlEl.getAttribute("data-composition-variables");
-  if (!variablesAttr) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(variablesAttr);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isCompositionVariable);
-  } catch {
-    return [];
-  }
+  return readCompositionVariables(htmlEl.getAttribute("data-composition-variables")).declarations;
 }
 
 /**

@@ -115,6 +115,11 @@ interface RenderInput {
    */
   variables?: Record<string, unknown>;
   /**
+   * Check `variables` against the page's declarations before any frame; a mismatch fails the render with
+   * `VARIABLES_INVALID`. Responses report `strictVariablesChecked`. Off by default.
+   */
+  strictVariables?: boolean;
+  /**
    * Output resolution preset (e.g. `landscape-4k`). Drives the same
    * `resolveDeviceScaleFactor` supersampling path the local CLI uses — Chrome
    * renders at a higher devicePixelRatio so the captured screenshot lands at
@@ -164,6 +169,13 @@ export function extractSafeRenderErrorMetadata(
     retryable: typeof retryable === "boolean" ? retryable : undefined,
     ...(isPlainObject(publicMetadata) ? { errorMetadata: publicMetadata } : {}),
   };
+}
+
+/** `strictVariablesChecked` for a response, present only when the request asked for strict variables. */
+function strictVariablesResult(job: RenderJob): { strictVariablesChecked?: boolean } {
+  return job.strictVariablesChecked === undefined
+    ? {}
+    : { strictVariablesChecked: job.strictVariablesChecked };
 }
 
 function parseServerFps(value: unknown): RenderInput["fps"] {
@@ -246,7 +258,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     chromaSubsampling,
   } = encoder.ok ? encoder.options : {};
 
-  const { variables, outputResolution, outputResolutionAspectAgnostic } =
+  const { variables, strictVariables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
 
   return {
@@ -269,6 +281,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     format,
     outputDynamicRange,
     variables,
+    strictVariables,
     outputResolution,
     outputResolutionAspectAgnostic,
     videoFrameFormat,
@@ -287,11 +300,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 function parseRenderOverrides(body: Record<string, unknown>): {
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
 } {
   // Only forward a plain JSON object. Arrays / primitives / null → undefined.
   const variables = isPlainObject(body.variables) ? body.variables : undefined;
+  const strictVariables = body.strictVariables === true ? true : undefined;
   // Accept canonical presets and aliases ("4k", "landscape-4k", …).
   const rawOutputResolution =
     typeof body.outputResolution === "string" ? body.outputResolution : undefined;
@@ -304,7 +319,7 @@ function parseRenderOverrides(body: Record<string, unknown>): {
   const outputResolutionAspectAgnostic = outputResolution
     ? isAspectAgnosticResolutionAlias(rawOutputResolution)
     : undefined;
-  return { variables, outputResolution, outputResolutionAspectAgnostic };
+  return { variables, strictVariables, outputResolution, outputResolutionAspectAgnostic };
 }
 
 /**
@@ -334,6 +349,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       strictness: input.strictness,
       entryFile: input.entryFile,
       variables: input.variables,
+      strictVariables: input.strictVariables,
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
@@ -412,6 +428,9 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
   }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
+  }
+  if (body.strictVariables !== undefined && typeof body.strictVariables !== "boolean") {
+    return "strictVariables must be a boolean";
   }
   if (
     body.outputDynamicRange !== undefined &&
@@ -843,6 +862,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         outcome: job.outcome ?? "completed",
         warnings: job.warnings,
         perf: job.perfSummary ?? null,
+        ...strictVariablesResult(job),
       });
     } catch (error) {
       const durationMs = Date.now() - t0;
@@ -946,6 +966,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             warnings: job.warnings,
             perf: job.perfSummary ?? null,
             producerVersion: readProducerVersion(),
+            ...strictVariablesResult(job),
           }),
         });
       } catch (error) {

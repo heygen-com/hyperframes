@@ -4,7 +4,7 @@ import {
   assertVideoExtractionSucceeded,
   VideoExtractionStageError,
 } from "./services/render/stages/extractVideosStage.js";
-import type { ExtractionResult } from "@hyperframes/engine";
+import { VariablesInvalidError, type ExtractionResult } from "@hyperframes/engine";
 import { AssetMediaTypeMismatchError } from "./services/assetMediaType.js";
 import { EncoderInterruptedError } from "./services/render/encoderInterruption.js";
 import { RenderStageStalledError } from "./services/render/observability.js";
@@ -137,5 +137,18 @@ describe("extractSafeRenderErrorCode", () => {
     expect(
       extractSafeRenderErrorCode(new Error("failed [VIDEO_SOURCE_UNRENDERABLE; secret=/tmp/x]")),
     ).toBeUndefined();
+  });
+});
+
+describe("VARIABLES_INVALID", () => {
+  it("is transported with its owner, no retry and bounded issue metadata", () => {
+    const error = new VariablesInvalidError([{ kind: "undeclared", variableId: "titel" }]);
+    expect(extractSafeRenderErrorCode(error)).toBe("VARIABLES_INVALID");
+    expect(extractSafeRenderErrorMetadata(error)).toEqual({
+      errorCode: "VARIABLES_INVALID",
+      errorOwner: "user",
+      retryable: false,
+      errorMetadata: { issues: [{ kind: "undeclared", variableId: "titel" }], total: 1 },
+    });
   });
 });

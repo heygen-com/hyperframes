@@ -254,6 +254,11 @@ export interface CaptureOptions {
    */
   variables?: Record<string, unknown>;
   /**
+   * Check `variables` against the page's `data-composition-variables` once it is ready, before any frame;
+   * a mismatch or unreadable declarations end the session with `VariablesInvalidError`. Off by default.
+   */
+  strictVariables?: boolean;
+  /**
    * When `true`, the BeginFrame warmup loop driven during page navigation
    * runs exactly `LOCKED_WARMUP_TICKS` (60) iterations regardless of how
    * long the page load takes, making `session.beginFrameTimeTicks`

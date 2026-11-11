@@ -482,6 +482,11 @@ export interface RenderConfig {
    */
   variables?: Record<string, unknown>;
   /**
+   * Check `variables` against the page's declarations before any frame; a mismatch fails the render with
+   * `VARIABLES_INVALID`. Responses report `strictVariablesChecked`. Off by default.
+   */
+  strictVariables?: boolean;
+  /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
    * {@link resolveDeviceScaleFactor} for the integer-scale, aspect, and
@@ -791,6 +796,8 @@ export interface RenderStageProgress {
 
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
+  /** Set when `config.strictVariables` was asked: whether this producer honoured it (see `RenderConfig`). */
+  strictVariablesChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -3464,6 +3471,7 @@ async function executeRenderPipeline(input: {
     compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
+    job.strictVariablesChecked = probeResult.strictVariablesChecked;
     lastBrowserConsole = probeResult.lastBrowserConsole;
     let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
     if (resolvedCaptureBeyondViewport !== undefined) {
