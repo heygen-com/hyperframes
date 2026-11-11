@@ -146,11 +146,18 @@ export function resolveNpxCliPath(
   return pathExists(besideNode) ? besideNode : null;
 }
 
-// A HyperFrames CLI that launches this code hands over its own entry file, so `npx hyperframes`
-// runs that same build with the same Node instead of whatever npx resolves from the project.
+export const MISSING_CLI_MESSAGE =
+  "No HyperFrames CLI was handed to this helper, and it does not look one up in the project. " +
+  "Run the helper through the plugin launcher (`plugin-cli.mjs --script <helper> ...`), or set " +
+  "HYPERFRAMES_CLI_ENTRY to the absolute path of your installed CLI's bin/hyperframes.mjs.";
+
+// The HyperFrames CLI or plugin launcher that starts this code hands over its own entry file, so
+// `npx hyperframes` runs that same CLI with the same Node. Without one it fails rather than
+// letting npx resolve `hyperframes` from the project.
 function launchingCliCommand(cmd, args, env = process.env) {
+  if (cmd !== "npx" || args[0] !== "hyperframes") return null;
   const entry = env.HYPERFRAMES_CLI_ENTRY;
-  if (cmd !== "npx" || args[0] !== "hyperframes" || !entry || !isAbsolute(entry)) return null;
+  if (!entry || !isAbsolute(entry)) throw new Error(MISSING_CLI_MESSAGE);
   return { cmd: process.execPath, args: [entry, ...args.slice(1).map((arg) => String(arg))] };
 }
 
@@ -186,9 +193,11 @@ export function resolveSpawnCommand(
 // (its ESM exports are non-configurable, so mock.method can't patch it).
 // One-shot so a whole batch of TTS lines doesn't repeat the same diagnostic.
 let _warnedNpxResolution = false;
-/** Test-only: reset the one-shot npx-resolution warning latch. */
+let _warnedMissingCli = false;
+/** Test-only: reset the one-shot npx-resolution warning latches. */
 export function _resetNpxResolutionWarnForTests() {
   _warnedNpxResolution = false;
+  _warnedMissingCli = false;
 }
 
 export function spawnP(
@@ -200,7 +209,16 @@ export function spawnP(
   env = process.env,
   pathExists = existsSync,
 ) {
-  const resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
+  let resolved;
+  try {
+    resolved = resolveSpawnCommand(cmd, args, opts, platform, env, pathExists);
+  } catch (error) {
+    if (!_warnedMissingCli) {
+      _warnedMissingCli = true;
+      console.error(`[media-use] ${error.message}`);
+    }
+    return Promise.resolve({ status: -1, error: error.message });
+  }
   if (!resolved) {
     // resolveSpawnCommand only returns null for the npx-on-win32 case where
     // neither npm's configured CLI nor the beside-node fallback exists. Without
@@ -307,7 +325,8 @@ export async function synthesizeOne({
 export function synthResult(r, wavAbs, label) {
   if (r.status === 0 && existsSync(wavAbs)) return { ok: true, words: null };
   const why =
-    r.status !== 0 ? `${label} exited with status ${r.status}` : `${label} produced no wav file`;
+    r.error ??
+    (r.status !== 0 ? `${label} exited with status ${r.status}` : `${label} produced no wav file`);
   return { ok: false, words: null, error: why };
 }
 
