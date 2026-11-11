@@ -4,7 +4,7 @@
     "unpacked": 290508
   },
   "@hyperframes/cli": {
-    "packed": 8062664,
+    "packed": 8577627,
     "unpacked": 25159107
   },
   "@hyperframes/core": {
@@ -48,12 +48,12 @@
     "unpacked": 825937
   },
   "@hyperframes/share": {
-    "packed": 64831,
-    "unpacked": 257736
+    "packed": 148738,
+    "unpacked": 575775
   },
   "@hyperframes/studio": {
-    "packed": 5998328,
-    "unpacked": 24360208
+    "packed": 6589635,
+    "unpacked": 26703858
   },
   "@hyperframes/studio-server": {
     "packed": 164800,

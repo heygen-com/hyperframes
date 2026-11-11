@@ -231,7 +231,11 @@ jobs:
               - "packages/lint/src/**"
               - "packages/cli/src/{cli,help,version}.ts"
               - "packages/cli/src/renderSetupWorker*.ts"
-              - "packages/cli/src/commands/{preview*,add,browser}.ts"
+              - "packages/cli/src/commands/{preview*,add,browser,batchRender,render}.ts"
+              - "packages/cli/src/commands/render/**"
+              - "packages/cli/src/share/**"
+              - "packages/cli/src/cloud/parsing.ts"
+              - "packages/share/{src,scripts}/**"
               - "packages/cli/src/server/**"
               - "packages/cli/src/browser/**"
               - "packages/cli/src/utils/**"
@@ -239,7 +243,7 @@ jobs:
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
               - "packages/cli/src/media-use/lib/config-lock.mjs"
-              - "packages/cli/src/auth/{config,errors,paths,telemetryIdentity}.ts"
+              - "packages/cli/src/auth/**"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
               - "packages/engine/src/**"
@@ -248,7 +252,7 @@ jobs:
               - "packages/producer/scripts/build-hf-early-stub.ts"
               - "packages/producer/build*.mjs"
               - "packages/player/scripts/verify-runtime-pin.mjs"
-              - "packages/{studio,studio-server,core,parsers,player,sdk,lint,cli,engine,producer}/{package.json,tsconfig.json,tsup.config.ts}"
+              - "packages/{studio,studio-server,core,parsers,player,sdk,lint,cli,engine,producer,share}/{package.json,tsconfig.json,tsup.config.ts}"
               - "packages/*/package-subpaths.json"
               - "scripts/package-subpaths.mjs"
               - "scripts/rewrite-relative-import-extensions.mjs"
@@ -1529,7 +1533,7 @@ jobs:
 
           bun run --filter @hyperframes/cli dev -- lint /tmp/hf-cli-inside
           bun run --filter @hyperframes/cli dev -- validate /tmp/hf-cli-inside --timeout 3000
-          bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
+          HF_DEBUG_RENDER=1 bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
             --quality standard \
             --workers auto \
             --strict \

@@ -40,7 +40,8 @@ async function dataOf(reply, what) {
 
 /** @param {Response} reply @param {string} what @param {import("./types/reviewWire.js").ErrorEnvelope["data"] | undefined} data */
 function responseFailure(reply, what, data) {
-  console.error(`[review] ${what} refused:`, reply.status, data?.reason);
+  if (process.env.HF_DEBUG_SHARE === "1")
+    console.error(`[review] ${what} refused:`, reply.status, data?.reason);
   const retryAfter = Number(reply.headers.get("retry-after") ?? NaN);
   return new ReviewFailed(
     reply.status,

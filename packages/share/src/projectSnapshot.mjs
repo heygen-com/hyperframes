@@ -1,6 +1,7 @@
 // @ts-check
 // A project's files as change detection sees them: every file the film can use (isOutsideFilm), keyed by mtime and
 // size, except html, keyed by content without the data-hf-id stamps. A run's change set and the watcher both read it.
+import { readSourceIgnore } from "./sourceIgnore.mjs";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
@@ -31,13 +32,20 @@ async function snapshotKey(full, byContent) {
     const stat = await handle.stat();
     if (!stat.isFile()) return undefined;
     if (full.endsWith(".html")) return contentKey(await handle.readFile("utf8"));
-    if (byContent) return sha256(await handle.readFile());
+    if (byContent) return await hashFile(handle);
     return `${stat.mtimeMs}:${stat.size}`;
   } catch {
     return undefined;
   } finally {
     await handle.close();
   }
+}
+
+/** @param {import("node:fs/promises").FileHandle} handle */
+async function hashFile(handle) {
+  const hash = createHash("sha256");
+  for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 /** @param {import("node:fs").Dirent} entry @param {string} full @param {boolean} followSymlinks */
@@ -53,6 +61,7 @@ async function entryKind(entry, full, followSymlinks) {
 export async function snapshotProject(dir, { byContent = false, followSymlinks = false } = {}) {
   /** @type {Snapshot} */
   const result = new Map();
+  const ignored = await readSourceIgnore(dir);
   /** @param {string} current @param {Set<string>} ancestors */
   async function walk(current, ancestors) {
     const real = await fs.realpath(current).catch(() => null);
@@ -67,7 +76,7 @@ export async function snapshotProject(dir, { byContent = false, followSymlinks =
     }
     for (const entry of entries) {
       const full = path.join(current, entry.name);
-      if (isOutsideFilm(path.relative(dir, full))) continue;
+      if (excludedFromSnapshot(dir, full, ignored)) continue;
       const kind = await entryKind(entry, full, followSymlinks);
       if (kind?.isDirectory()) await walk(full, parents);
       else if (kind?.isFile()) {
@@ -93,11 +102,12 @@ export function snapshotFingerprint(snapshot) {
 export async function snapshotFiles(dir, files) {
   /** @type {Map<string, unknown>} */
   const result = new Map();
+  const ignored = await readSourceIgnore(dir);
   for (const file of files) {
     const full = path.join(dir, file);
     const stat = await fs.lstat(full).catch(() => null);
     if (stat?.isDirectory()) return null;
-    const holds = stat?.isFile() && !isOutsideFilm(path.relative(dir, full));
+    const holds = stat?.isFile() && !excludedFromSnapshot(dir, full, ignored);
     result.set(file, holds ? await snapshotKey(full, false) : undefined);
   }
   return result;
@@ -115,6 +125,12 @@ export function diffChangedFiles(before, after) {
   return changed;
 }
 
-/** @param {string} projectPath */
-export const projectFingerprint = async (projectPath) =>
-  snapshotFingerprint(await snapshotProject(projectPath, { followSymlinks: true }));
+/** @param {string} projectPath @param {{ byContent?: boolean }} [options] */
+export const projectFingerprint = async (projectPath, options) =>
+  snapshotFingerprint(await snapshotProject(projectPath, { ...options, followSymlinks: true }));
+
+/** @param {string} dir @param {string} full @param {(path: string) => boolean} ignored */
+function excludedFromSnapshot(dir, full, ignored) {
+  const relative = path.relative(dir, full);
+  return isOutsideFilm(relative) || ignored(relative.split(path.sep).join("/"));
+}

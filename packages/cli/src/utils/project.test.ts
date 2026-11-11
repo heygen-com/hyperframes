@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
@@ -117,4 +117,21 @@ describe("resolveLintTarget", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+it("finds a parent project only when no directory was explicitly supplied", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-parent-project-"));
+  const child = join(dir, "compositions");
+  mkdirSync(child);
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  const cwd = vi.spyOn(process, "cwd").mockReturnValue(child);
+  try {
+    expect(resolveProjectOrThrow(undefined, { searchParents: true }).dir).toBe(dir);
+    expect(() => resolveProjectOrThrow(child, { searchParents: true })).toThrow(
+      "No composition found",
+    );
+  } finally {
+    cwd.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

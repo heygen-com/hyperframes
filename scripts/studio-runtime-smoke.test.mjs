@@ -13,6 +13,9 @@ function bodyOf(method, path) {
 }
 
 describe("Studio runtime smoke fixtures", () => {
+  it("bootstraps the sharing entry point without credentials", () => {
+    assert.deepEqual(bodyOf("GET", "/api/share/bootstrap"), { csrf: "s".repeat(43) });
+  });
   it("matches the collection and project-detail API schemas", () => {
     assert.deepEqual(bodyOf("GET", "/api/projects"), {
       projects: [{ id: "smoke-test", dir: "/tmp/smoke-test", title: "Smoke test" }],

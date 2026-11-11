@@ -22,3 +22,10 @@ it("warns that a host access token still signs commands after logout", async () 
 
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Unset HEYGEN_ACCESS_TOKEN"));
 });
+
+it("requires an explicit confirmation without a terminal", async () => {
+  const cmd = (await import("./logout.js")).default;
+  await expect(
+    (cmd.run as (ctx: { args: Record<string, unknown> }) => Promise<void>)({ args: {} }),
+  ).rejects.toThrow("auth logout --yes");
+});

@@ -955,9 +955,10 @@ async function launchBrowser(
     const gpuFlags = fingerprint.args.filter(
       (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
     );
-    console.error(
-      `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
-    );
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(
+        `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
+      );
 
     if (captureMode === "beginframe") {
       let result = await probe(browser);
