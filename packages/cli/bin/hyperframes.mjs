@@ -3,6 +3,16 @@
 import module from "node:module";
 import { runtimeVersionError } from "../dist/runtimeVersion.js";
 
+// The plugin launcher starts npx outside the project so npm cannot pick the CLI from it,
+// and names the project here. Nested CLI runs keep the working folder their caller gives them.
+const projectDir = process.env.HYPERFRAMES_PLUGIN_CWD;
+delete process.env.HYPERFRAMES_PLUGIN_CWD;
+if (projectDir) {
+  process.chdir(projectDir);
+  // npm's shell resets PWD to the folder npx started in; commands read the project name from it.
+  process.env.PWD = projectDir;
+}
+
 const error = runtimeVersionError(process.versions.node);
 if (error) {
   console.error(error);

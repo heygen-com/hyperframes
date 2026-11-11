@@ -1,27 +1,22 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-test(
-  "plugin resolver uses the release CLI without a repository checkout",
-  { skip: process.platform === "win32" },
-  (t) => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-resolve-plugin-"));
-    t.after(() => rmSync(dir, { recursive: true, force: true }));
-    mkdirSync(join(dir, "lib"));
-    for (const file of ["resolve.mjs", "lib/npx-sync.mjs"]) {
-      copyFileSync(fileURLToPath(new URL(file, import.meta.url)), join(dir, file));
-    }
-    writeFileSync(
-      join(dir, "npx"),
-      `#!${process.execPath}\nconsole.log(JSON.stringify({args:process.argv.slice(2),skip:process.env.HYPERFRAMES_SKIP_SKILLS}));process.exit(7);`,
-      { mode: 0o755 },
-    );
-    const result = spawnSync(process.execPath, [join(dir, "resolve.mjs"), "--intent", "a & b"], {
+function pluginShim(t) {
+  const dir = mkdtempSync(join(tmpdir(), "hf-resolve-plugin-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "lib"));
+  for (const file of ["resolve.mjs", "lib/npx-sync.mjs"]) {
+    copyFileSync(fileURLToPath(new URL(file, import.meta.url)), join(dir, file));
+  }
+  const marker = join(dir, "npx-ran");
+  writeFileSync(join(dir, "npx"), `#!/bin/sh\ntouch "${marker}"\nexit 9\n`, { mode: 0o755 });
+  const run = (env) =>
+    spawnSync(process.execPath, [join(dir, "resolve.mjs"), "--intent", "a & b"], {
       cwd: dir,
       encoding: "utf8",
       env: {
@@ -29,13 +24,42 @@ test(
         PATH: `${dir}${delimiter}${process.env.PATH}`,
         HYPERFRAMES_PLUGIN_VERSION: "1.2.3",
         HYPERFRAMES_SKIP_SKILLS: "1",
+        HYPERFRAMES_CLI_ENTRY: "",
+        ...env,
       },
     });
+  return { dir, marker, run };
+}
+
+test(
+  "plugin resolver runs the CLI the launcher handed over, not npx in the project",
+  { skip: process.platform === "win32" },
+  (t) => {
+    const { dir, marker, run } = pluginShim(t);
+    const launcher = join(dir, "launcher.mjs");
+    writeFileSync(
+      launcher,
+      "console.log(JSON.stringify({args:process.argv.slice(2),skip:process.env.HYPERFRAMES_SKIP_SKILLS}));process.exit(7);",
+    );
+    const result = run({ HYPERFRAMES_CLI_ENTRY: launcher });
     assert.equal(result.status, 7, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), {
-      args: ["--yes", "hyperframes@1.2.3", "media-use", "resolve", "--intent", "a & b"],
+      args: ["media-use", "resolve", "--intent", "a & b"],
       skip: "1",
     });
+    assert.equal(existsSync(marker), false);
+  },
+);
+
+test(
+  "plugin resolver without a handed-over CLI fails with the fix",
+  { skip: process.platform === "win32" },
+  (t) => {
+    const { marker, run } = pluginShim(t);
+    const result = run({});
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /plugin-cli\.mjs --script/);
+    assert.equal(existsSync(marker), false);
   },
 );
 

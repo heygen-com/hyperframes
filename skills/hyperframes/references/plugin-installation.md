@@ -23,13 +23,16 @@ For a plugin installation, these rules apply in every skill and reference:
   Run in the user's project directory, never in the plugin directory. The launcher
   selects the manifest's CLI version and disables automatic standalone skill
   installation, including during `init`. The first call may download that exact
-  CLI version through npm. A download failure is an error, not permission to use
+  CLI version through npm. npm runs from the home folder, so the project's
+  `node_modules`, `package.json` and `.npmrc` cannot choose the CLI; the CLI then
+  works in the project. A download failure is an error, not permission to use
   latest. Existing project dependency files and lockfiles must not be overwritten
   to match the plugin; surface a runtime incompatibility before changing them.
 
 - For bundled Node helpers, use the same
   launcher with `--script <absolute-script-path> <args...>`. This passes the
-  release version to their dependency loader. External providers, registry
+  release version to their dependency loader, and helpers that call the CLI run
+  it through the launcher. External providers, registry
   downloads, and existing project dependencies have their own versions; a plugin
   version alone does not freeze those inputs.
 - Treat the plugin directory as read-only. Put outputs and temporary work in the
