@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { captureLoadGetsCors, grantCaptureLoads, type CaptureCdpSession } from "./captureLoads";
+import { captureLoadGrant, grantCaptureLoads, type CaptureCdpSession } from "./captureLoads";
 
 const ORIGIN = "http://127.0.0.1:3002";
 const PREVIEW = `${ORIGIN}/api/projects/demo/preview`;
 const CAPTURE = `${PREVIEW}/comp/compositions/intro.html?hf-capture=1`;
 
-describe("captureLoadGetsCors", () => {
+describe("captureLoadGrant", () => {
   it.each([
     ["Font", `${PREVIEW}/assets/brand.woff2`],
     ["Font", `${PREVIEW}/fonts/Display.ttf?v=2`],
@@ -14,8 +14,16 @@ describe("captureLoadGetsCors", () => {
     ["XHR", `${PREVIEW}/compositions/scene.html`],
     ["Fetch", `${PREVIEW}/caption-overrides.json`],
     ["XHR", `${PREVIEW}/luts/warm.cube`],
-  ])("grants a %s load of %s", (resourceType, url) => {
-    expect(captureLoadGetsCors({ url, method: "GET", resourceType }, CAPTURE)).toBe(true);
+  ])("lets the frame read a %s load of %s", (resourceType, url) => {
+    expect(captureLoadGrant({ url, method: "GET", resourceType }, CAPTURE)).toBe("read");
+  });
+
+  it("answers the runtime's wait for a video's preview copy and its preflight", () => {
+    const url = `${PREVIEW}/assets/clip.mov?hf-proxy=h264&hf-proxy-box=1448x724`;
+    expect(captureLoadGrant({ url, method: "GET", resourceType: "XHR" }, CAPTURE)).toBe("proxy");
+    expect(captureLoadGrant({ url, method: "OPTIONS", resourceType: "XHR" }, CAPTURE)).toBe(
+      "preflight",
+    );
   });
 
   it.each([
@@ -30,14 +38,20 @@ describe("captureLoadGetsCors", () => {
     ["XHR", `http://127.0.0.1:9999/api/projects/demo/preview/index.html`, "GET"],
     ["XHR", `${PREVIEW}/compositions/scene.html`, "PUT"],
     ["XHR", `${PREVIEW}/compositions/scene.html`, "POST"],
+    ["XHR", `${PREVIEW}/compositions/scene.html`, "OPTIONS"],
+    ["XHR", `${PREVIEW}/assets/clip.mov`, "GET"],
+    ["XHR", `${PREVIEW}/.env?hf-proxy=h264`, "GET"],
+    ["XHR", `${PREVIEW}/.env?hf-proxy=h264`, "OPTIONS"],
+    ["XHR", `${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "PUT"],
+    ["Media", `${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "GET"],
   ])("refuses a %s load of %s (%s)", (resourceType, url, method) => {
-    expect(captureLoadGetsCors({ url, method, resourceType }, CAPTURE)).toBe(false);
+    expect(captureLoadGrant({ url, method, resourceType }, CAPTURE)).toBeNull();
   });
 
   it("grants nothing for a URL that is not a preview document", () => {
     const load = { url: `${PREVIEW}/assets/brand.woff2`, method: "GET", resourceType: "Font" };
-    expect(captureLoadGetsCors(load, `${ORIGIN}/api/projects/demo/files/index.html`)).toBe(false);
-    expect(captureLoadGetsCors(load, "not a url")).toBe(false);
+    expect(captureLoadGrant(load, `${ORIGIN}/api/projects/demo/files/index.html`)).toBeNull();
+    expect(captureLoadGrant(load, "not a url")).toBeNull();
   });
 });
 
@@ -90,6 +104,42 @@ describe("grantCaptureLoads", () => {
         { name: "Access-Control-Allow-Origin", value: "null" },
         { name: "X-Content-Type-Options", value: "nosniff" },
       ],
+    });
+  });
+
+  it("exposes the preview copy's progress headers to the runtime's wait", async () => {
+    const { session, send, pause } = fakeSession();
+    await grantCaptureLoads(session, CAPTURE);
+    pause(
+      response(`${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "XHR", {
+        responseStatusCode: 202,
+        responseHeaders: [{ name: "Retry-After", value: "2" }],
+      }),
+    );
+    expect(send).toHaveBeenLastCalledWith("Fetch.continueResponse", {
+      requestId: "r1",
+      responseCode: 202,
+      responseHeaders: expect.arrayContaining([
+        { name: "Access-Control-Allow-Origin", value: "null" },
+        { name: "Access-Control-Expose-Headers", value: expect.stringContaining("Retry-After") },
+      ]),
+    });
+  });
+
+  it("answers the wait's preflight itself, whatever the server said", async () => {
+    const { session, send, pause } = fakeSession();
+    await grantCaptureLoads(session, CAPTURE);
+    pause({
+      ...response(`${PREVIEW}/assets/clip.mov?hf-proxy=h264`, "XHR", { responseStatusCode: 404 }),
+      request: { url: `${PREVIEW}/assets/clip.mov?hf-proxy=h264`, method: "OPTIONS" },
+    });
+    expect(send).toHaveBeenLastCalledWith("Fetch.fulfillRequest", {
+      requestId: "r1",
+      responseCode: 204,
+      responseHeaders: expect.arrayContaining([
+        { name: "Access-Control-Allow-Origin", value: "null" },
+        { name: "Access-Control-Allow-Methods", value: "GET" },
+      ]),
     });
   });
 

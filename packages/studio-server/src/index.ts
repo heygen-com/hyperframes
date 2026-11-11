@@ -59,7 +59,7 @@ export {
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
-export { captureLoadGetsCors, grantCaptureLoads } from "./helpers/captureLoads.js";
+export { captureLoadGrant, grantCaptureLoads } from "./helpers/captureLoads.js";
 export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
