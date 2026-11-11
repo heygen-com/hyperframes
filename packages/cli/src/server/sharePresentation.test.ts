@@ -18,7 +18,7 @@ it.each(["free", "subscribed", undefined] as const)(
     const [result] = presentSpaces([space]);
     expect(result?.plan).toBe(plan ?? null);
     expect(result?.upgradeUrl).toBe(
-      plan === "free" ? "https://hyperframes.dev/pricing?from=cli&entry=local_studio_share" : null,
+      plan === "free" ? "https://hyperframes.dev/pricing?entry=local_studio_share" : null,
     );
   },
 );

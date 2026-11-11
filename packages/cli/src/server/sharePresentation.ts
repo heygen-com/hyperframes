@@ -52,7 +52,7 @@ function planOffer(
   const plan = entitlements?.plan ?? null;
   return {
     plan,
-    upgradeUrl: plan === "free" ? `${shareSite()}/pricing?from=cli&entry=local_studio_share` : null,
+    upgradeUrl: plan === "free" ? `${shareSite()}/pricing?entry=local_studio_share` : null,
   };
 }
 
