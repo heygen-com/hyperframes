@@ -18,6 +18,7 @@ describe("captureLoadGrant", () => {
     ["XHR", `${PREVIEW}/assets/fonts/Geist-Bold.ttf`],
     ["XHR", `${PREVIEW}/notes.txt`],
     ["XHR", `${PREVIEW}/assets/clip.mov?hf-proxy=h264&hf-proxy-box=1448x724`],
+    ["Image", `${PREVIEW}/assets%2Flogo%20v2.png`],
   ])("lets the frame read a %s load of %s", (resourceType, url) => {
     expect(captureLoadGrant({ url, method: "GET", resourceType }, CAPTURE)).toBe("read");
   });
@@ -34,6 +35,10 @@ describe("captureLoadGrant", () => {
     ["XHR", `${PREVIEW}/.git/config`, "GET"],
     ["XHR", `${PREVIEW}/assets/.npmrc`, "GET"],
     ["XHR", `${PREVIEW}/%2Eenv`, "GET"],
+    ["XHR", `${PREVIEW}/assets%2F.npmrc`, "GET"],
+    ["Fetch", `${PREVIEW}/assets%2F.config%2Fsettings.json`, "GET"],
+    ["XHR", `${PREVIEW}/x%2F..%2F.npmrc`, "GET"],
+    ["XHR", `${PREVIEW}/assets%5C.npmrc`, "GET"],
     ["XHR", `${PREVIEW}/%E0%A4%A.html`, "GET"],
     ["Script", `${PREVIEW}/.env`, "GET"],
     ["Image", `${PREVIEW}/.git/logo.png`, "GET"],

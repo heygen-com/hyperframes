@@ -1,4 +1,5 @@
 import { PREVIEW_PROXY_PRIORITY_HEADER, PREVIEW_PROXY_PROGRESS_HEADER } from "@hyperframes/core";
+import { decodeWellFormedEscapes } from "./requestSubPath.js";
 
 /**
  * A sandboxed capture document's CORS-mode loads fail, so the trusted renderer adds CORS headers for
@@ -45,11 +46,13 @@ const decodedSegment = (segment: string) => {
   }
 };
 
-const isDotPath = (url: URL, prefix: string) =>
-  url.pathname
-    .slice(new URL(prefix).pathname.length)
-    .split("/")
-    .some((segment) => decodedSegment(segment).startsWith("."));
+const isDotPath = (url: URL, prefix: string) => {
+  const rest = url.pathname.slice(new URL(prefix).pathname.length);
+  return [
+    ...rest.split("/").map(decodedSegment),
+    ...decodeWellFormedEscapes(rest).split(/[\\/]/),
+  ].some((segment) => segment.startsWith("."));
+};
 
 export function captureLoadGrant(
   load: CaptureLoad,
