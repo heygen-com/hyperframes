@@ -149,8 +149,8 @@ const isShortName = (part: string): boolean => /~\d+(\.|$)/.test(part);
 // browser scripts sit in `models/` and `lib/`), plus the project's configured folders. Anything else in a project is
 // someone else's: installed packages, tool settings, scripts other programs run.
 const STANDARD_INSTALL_DIRS = ["compositions", "assets", "models", "lib"];
-// A block may also leave notes at the project root, never code or configuration.
-const ROOT_NOTE = /\.(md|txt)$/;
+// The one file a block may leave at the project root: the catalog's usage note. Any other name could be one a tool loads.
+const ROOT_NOTES = new Set(["template.md"]);
 // Coding agents load these on their own, wherever they sit.
 const AGENT_INSTRUCTIONS = /^(agents?|claude|gemini|copilot-instructions)(\.[a-z]+)?\.md$/;
 // Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
@@ -228,7 +228,7 @@ const CONFIG_TARGET_RULES: TargetRule[] = [
       !example &&
       installDirs !== null &&
       !inInstallDir(dirs, installDirs) &&
-      !(dirs.length === 0 && ROOT_NOTE.test(file)),
+      !(dirs.length === 0 && ROOT_NOTES.has(file)),
   ],
 ];
 

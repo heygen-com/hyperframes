@@ -417,6 +417,14 @@ export async function addToProject(
       "example-type",
     );
   }
+  // An example lays out a whole project, so the installer trusts it with the root; a block may not bring one along.
+  const exampleDependency = resolved.find((dep) => dep.type === "hyperframes:example");
+  if (exampleDependency) {
+    throw new AddError(
+      `"${item.name}" depends on the example "${exampleDependency.name}", which \`add\` does not install.`,
+      "example-type",
+    );
+  }
 
   // 3. Compatibility-gate every item we're about to install (dependencies
   //    included) before writing anything.
