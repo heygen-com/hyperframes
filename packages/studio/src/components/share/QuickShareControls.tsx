@@ -179,7 +179,10 @@ export function ShareSourceStatus({ model, snapshot }: Props) {
           type="checkbox"
           checked={model.includeSource}
           disabled={model.busy}
-          onChange={(event) => model.setIncludeSource(event.target.checked)}
+          onChange={(event) => {
+            model.setIncludeSource(event.target.checked);
+            model.track({ event: "share_source_toggled", enabled: event.target.checked });
+          }}
         />
         <span>
           Include editable project files
@@ -236,12 +239,18 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
   );
 }
 
+const PRICING_ORIGINS = ["https://hyperframes.dev", "https://dev.hyperframes.dev"];
+
+function isPricingPage(link: string): boolean {
+  if (!URL.canParse(link)) return false;
+  const url = new URL(link);
+  return PRICING_ORIGINS.includes(url.origin) && url.pathname === "/pricing";
+}
+
 export function SharePlan({ model, snapshot }: Props) {
   const space = snapshot.spaces.find((item) => item.id === model.spaceId);
   const upgrade = space?.upgradeUrl;
-  const allowed =
-    upgrade &&
-    ["https://hyperframes.dev/pricing", "https://dev.hyperframes.dev/pricing"].includes(upgrade);
+  const allowed = upgrade !== undefined && upgrade !== null && isPricingPage(upgrade);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-step-12">
       {space && space.limit !== null && space.used !== null ? (
@@ -252,6 +261,15 @@ export function SharePlan({ model, snapshot }: Props) {
       {space?.plan === "free" && allowed ? (
         <a
           href={upgrade}
+          onClick={() =>
+            model.track({
+              event: "share_upgrade_clicked",
+              reason:
+                space.limit !== null && space.used !== null && space.used >= space.limit
+                  ? "project_limit"
+                  : "sharing_permissions",
+            })
+          }
           target="_blank"
           rel="noreferrer"
           className="inline-flex h-8 items-center gap-1 rounded-full px-2 font-semibold text-accent hover:bg-hover"

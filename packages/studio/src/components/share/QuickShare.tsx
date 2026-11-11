@@ -81,6 +81,9 @@ export function QuickShareContent({
         {manageUrl ? (
           <a
             href={manageUrl}
+            onClick={() =>
+              model.track({ event: "share_navigation_clicked", destination: "manage" })
+            }
             target="_blank"
             rel="noreferrer"
             className="flex h-8 items-center rounded-full px-2 text-step-12 text-text-2 hover:bg-hover"
@@ -91,6 +94,9 @@ export function QuickShareContent({
         {url ? (
           <a
             href={url}
+            onClick={() =>
+              model.track({ event: "share_navigation_clicked", destination: "shared_page" })
+            }
             target="_blank"
             rel="noreferrer"
             className="flex h-8 items-center rounded-full px-2 text-step-12 text-text-2 hover:bg-hover"

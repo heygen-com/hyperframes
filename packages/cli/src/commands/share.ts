@@ -226,7 +226,7 @@ function presentFailure(result: ShareState, json: boolean) {
 
 function sourceNotice(reason: string): string {
   if (reason === "source_plan_required")
-    return "Your video is shared without editable project files. Upgrade to Pro to include source files: https://hyperframes.studio/pricing";
+    return "Your video is shared without editable project files. Upgrade to Pro to include source files: https://hyperframes.studio/pricing?from=cli&entry=cli_share";
   if (reason === "requested")
     return "Sharing the video without editable project files. Use --include-source to upload project files.";
   return "Sharing the video without editable project files; source sharing is unavailable in this workspace.";

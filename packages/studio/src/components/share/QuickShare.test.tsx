@@ -132,6 +132,10 @@ it("drains pending editor saves before creating or uploading", async () => {
   await mount(save);
   await choose("public");
   await act(async () => button("Create share link")?.click());
+  expect(interaction).toHaveBeenCalledWith(token, {
+    event: "share_action_clicked",
+    action: "share",
+  });
   expect(save).toHaveBeenCalledOnce();
   expect(calls).toEqual([]);
   await act(async () => resolveSave());
@@ -497,6 +501,25 @@ it.each(["free", "subscribed", null] as const)(
     else expect(link).toBeUndefined();
   },
 );
+it("keeps the plan link's entry so the pricing page can count where the visit came from", async () => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.upgradeUrl = "https://hyperframes.dev/pricing?entry=local_studio_share";
+  await mount();
+  const link = [...host.querySelectorAll("a")].find((a) =>
+    a.textContent?.includes("Upgrade to Pro"),
+  );
+  expect(link?.href).toBe("https://hyperframes.dev/pricing?entry=local_studio_share");
+});
+it("refuses a look-alike pricing host even with a matching path", async () => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.upgradeUrl =
+    "https://hyperframes.dev.evil.test/pricing?entry=local_studio_share";
+  await mount();
+  const link = [...host.querySelectorAll("a")].find((a) =>
+    a.textContent?.includes("Upgrade to Pro"),
+  );
+  expect(link).toBeUndefined();
+});
 it("refuses an upgrade destination outside the public pricing flow", async () => {
   snapshot.spaces[0]!.plan = "free";
   snapshot.spaces[0]!.upgradeUrl = "https://example.com/checkout";
@@ -618,5 +641,37 @@ it("discloses source scope and uploads files only after checking the option", as
   await act(async () => button("Create share link")?.click());
   expect(calls).toEqual([
     { action: "share", audience: "public", space: "team1", includeSource: true },
+  ]);
+});
+
+it.each([0, 5])("counts upgrade intent with quota context (used=%s)", async (used) => {
+  snapshot.spaces[0]!.plan = "free";
+  snapshot.spaces[0]!.used = used;
+  snapshot.spaces[0]!.upgradeUrl = "https://hyperframes.dev/pricing";
+  await mount();
+  expect(interaction.mock.calls.filter(([, e]) => e.event === "share_upgrade_clicked")).toEqual([]);
+  const upgrade = host.querySelector<HTMLAnchorElement>(
+    'a[href="https://hyperframes.dev/pricing"]',
+  )!;
+  upgrade.addEventListener("click", (event) => event.preventDefault());
+  await act(async () => upgrade.click());
+  expect(interaction).toHaveBeenCalledWith(token, {
+    event: "share_upgrade_clicked",
+    reason: used === 5 ? "project_limit" : "sharing_permissions",
+  });
+  expect(calls).toEqual([]);
+});
+it("counts explicit audience, source and manage interactions without sending project data", async () => {
+  await mount();
+  await choose("invite");
+  await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+  const manage = host.querySelector<HTMLAnchorElement>('a[href="https://hyperframes.dev/shares"]')!;
+  manage.addEventListener("click", (event) => event.preventDefault());
+  await act(async () => manage.click());
+  expect(interaction.mock.calls).toEqual([
+    [token, { event: "share_opened", link: "none" }],
+    [token, { event: "share_audience_selected", audience: "invite" }],
+    [token, { event: "share_source_toggled", enabled: true }],
+    [token, { event: "share_navigation_clicked", destination: "manage" }],
   ]);
 });
