@@ -1,11 +1,8 @@
 import type { Context, Next } from "hono";
 
-// An opaque frame loads fonts and module scripts with `Origin: null`. Only the browser sets
-// `Sec-Fetch-Dest`, and a page's own fetch() always sends `empty`, so script never gets a grant.
-const GRANTED_LOADS = new Map([
-  ["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }],
-  ["script", { path: /\.m?js$/i, type: /^text\/javascript\b/ }],
-]);
+// Fonts only: every opaque frame sends the same `Origin: null`, so a module-script grant could not be
+// limited to the Studio's own frames. A page's own fetch() sends `Sec-Fetch-Dest: empty` and never matches.
+const GRANTED_LOADS = new Map([["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }]]);
 
 interface OpaqueFrameLoad {
   origin: string | undefined;

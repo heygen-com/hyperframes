@@ -53,8 +53,6 @@ describe("an opaque preview frame's loads", () => {
   it.each([
     ["font", "fonts/Brand.woff2", "font/woff2"],
     ["font", "fonts/Brand.ttf", "font/ttf"],
-    ["script", "scene.js", "text/javascript"],
-    ["script", "scene.mjs", "text/javascript"],
   ])("lets a %s load of %s through", async (dest, path, type) => {
     const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
     expect(res.status).toBe(200);
@@ -103,12 +101,15 @@ describe("an opaque preview frame's loads", () => {
     ["style", "fonts/Brand.woff2"],
     ["font", "data.json"],
     ["font", "scene.js"],
+    ["script", "scene.js"],
+    ["script", "scene.mjs"],
     ["script", "data.json"],
     ["script", "fonts/Brand.woff2"],
     ["script", "scene.html"],
     ["script", "comp/scene.html"],
     // The sub-composition route answers any project file with an HTML page.
     ["script", "comp/scene.js"],
+    ["font", "comp/fonts/Brand.woff2"],
     ["toString", "scene.js"],
     ["constructor", "fonts/Brand.woff2"],
   ])("refuses a %s load of %s", async (dest, path) => {
@@ -116,6 +117,16 @@ describe("an opaque preview frame's loads", () => {
     expect(res.status).toBe(200);
     expectNotGranted(res);
   });
+
+  it.each(["scene.js", "scene.mjs"])(
+    "refuses a module load of %s, from a tag or import()",
+    async (path) => {
+      const res = await load(path, { origin: "null", "sec-fetch-dest": "script" });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/javascript");
+      expectNotGranted(res);
+    },
+  );
 
   it("refuses a page's own fetch, which carries no Sec-Fetch-Dest it can choose", async () => {
     const res = await load("fonts/Brand.woff2", { origin: "null" });
