@@ -1,12 +1,7 @@
 import type { Context, Next } from "hono";
 
-/**
- * A preview framed with an opaque origin (the Compositions hover preview, or a preview another site
- * frames) makes its CORS-mode loads with `Origin: null`, so a project font or module script fails
- * without a CORS grant. The grant is chosen by `Sec-Fetch-Dest`, which the browser sets and page
- * script cannot: a page's own `fetch()` is always `empty`, so composition script still cannot read
- * a project file.
- */
+// An opaque frame loads fonts and module scripts with `Origin: null`. Only the browser sets
+// `Sec-Fetch-Dest`, and a page's own fetch() always sends `empty`, so script never gets a grant.
 const GRANTED_LOADS = new Map([
   ["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }],
   ["script", { path: /\.m?js$/i, type: /^text\/javascript\b/ }],
@@ -23,8 +18,8 @@ interface OpaqueFrameLoad {
 function opaqueFrameLoadGranted(load: OpaqueFrameLoad): boolean {
   const grant = load.origin === "null" ? GRANTED_LOADS.get(load.dest ?? "") : undefined;
   if (!grant?.path.test(load.pathname)) return false;
-  // A 304 carries no Content-Type; the browser keeps the stored response's.
-  return load.status === 304 || grant.type.test(load.contentType ?? "");
+  const keepsStoredContentType = load.status === 304;
+  return keepsStoredContentType || grant.type.test(load.contentType ?? "");
 }
 
 export async function grantOpaqueFrameLoads(c: Context, next: Next): Promise<void> {
