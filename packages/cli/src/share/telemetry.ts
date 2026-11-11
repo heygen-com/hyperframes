@@ -6,6 +6,7 @@ import { resetTelemetryPostureCache, trackEvent } from "../telemetry/client.js";
 import type { ReviewExportProgress } from "@hyperframes/share";
 
 export type ShareSurface = "cli" | "local_studio";
+const LOCAL_STUDIO_UPGRADE_CTA = "share_modal_upgrade";
 export type ShareInteraction =
   | Exclude<
       import("@hyperframes/studio-server").LocalShareInteraction,
@@ -55,8 +56,7 @@ export function trackShareInteraction(input: ShareInteraction, surface: ShareSur
     case "share_link_copied":
       return emit(input.event, { ...base, via: input.via });
     case "share_upgrade_clicked":
-      // The local Studio share modal has one upgrade button; `cta` names it.
-      return emit(input.event, { ...base, reason: input.reason, cta: "share_modal_upgrade" });
+      return emit(input.event, { ...base, reason: input.reason, cta: LOCAL_STUDIO_UPGRADE_CTA });
     case "share_audience_selected":
       return emit(input.event, { ...base, audience: input.audience });
     case "share_source_toggled":

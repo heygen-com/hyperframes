@@ -241,7 +241,6 @@ export function ShareLogin({ model }: { model: QuickShareModel }) {
 
 const PRICING_ORIGINS = ["https://hyperframes.dev", "https://dev.hyperframes.dev"];
 
-/** The plan link opens only HyperFrames' own pricing page; its query (the `entry` it is counted under) may vary. */
 function isPricingPage(link: string): boolean {
   if (!URL.canParse(link)) return false;
   const url = new URL(link);
