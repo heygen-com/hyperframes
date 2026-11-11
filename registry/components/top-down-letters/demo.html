@@ -109,7 +109,12 @@
             // Only rebuild when text was supplied; the shipped markup is already the
             // exact span-per-character output this branch produces for CASCADE.
             if (text !== null) {
-              var characters = Array.from(text);
+              var characters = Array.from(
+                new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
+                function (part) {
+                  return part.segment;
+                },
+              );
               root.textContent = "";
               for (var j = 0; j < characters.length; j += 1) {
                 var span = document.createElement("span");
