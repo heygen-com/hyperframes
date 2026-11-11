@@ -70,7 +70,7 @@ import {
   isLibraryCopy,
   refuseSwapsReachedByRootScripts,
 } from "./inlineSubCompositions";
-import { isSafePath, resolveWithinProject } from "../safePath.js";
+import { isSafePath, isVcsOrSecretFile, resolveWithinProject } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
@@ -111,15 +111,27 @@ function isRelativeUrl(url: string): boolean {
   return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
-const bundleReads = new AsyncLocalStorage<(filePath: string) => void>();
+interface BundleReadScope {
+  projectDir: string;
+  canRead?: (filePath: string) => boolean;
+  noteRead: (filePath: string) => void;
+}
+
+const bundleReads = new AsyncLocalStorage<BundleReadScope>();
 
 function noteRead(filePath: string): void {
-  bundleReads.getStore()?.(filePath);
+  bundleReads.getStore()?.noteRead(filePath);
+}
+
+function readAllowed(filePath: string): boolean {
+  const scope = bundleReads.getStore();
+  if (!scope) return true;
+  return !isVcsOrSecretFile(scope.projectDir, filePath) && (scope.canRead?.(filePath) ?? true);
 }
 
 function safeReadFile(filePath: string): string | null {
   noteRead(filePath);
-  if (!existsSync(filePath)) return null;
+  if (!readAllowed(filePath) || !existsSync(filePath)) return null;
   try {
     return readTextFile(filePath);
   } catch {
@@ -290,7 +302,7 @@ function inlineCssFile(
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
   noteRead(filePath);
-  if (!existsSync(filePath)) return null;
+  if (!readAllowed(filePath) || !existsSync(filePath)) return null;
   try {
     return readFileSync(filePath);
   } catch {
@@ -912,6 +924,8 @@ export interface BundleOptions {
   staticGuard?: boolean;
   /** Called once per build for each project file the build reads or looks for. */
   onRead?: (filePath: string) => void;
+  /** Project files the build may read; a refused file keeps its authored reference, not inlined. */
+  canRead?: (filePath: string) => boolean;
 }
 
 /**
@@ -1038,16 +1052,15 @@ function hoistCompositionScripts(
 }
 
 export function bundleToSingleHtml(projectDir: string, options?: BundleOptions): Promise<string> {
-  const bundle = () => bundleProject(projectDir, options);
   const onRead = options?.onRead;
-  if (!onRead) return bundle();
   const noted = new Set<string>();
-  const noteOnce = (filePath: string) => {
+  const noteRead = (filePath: string) => {
     if (noted.has(filePath)) return;
     noted.add(filePath);
-    onRead(filePath);
+    onRead?.(filePath);
   };
-  return bundleReads.run(noteOnce, bundle);
+  const scope: BundleReadScope = { projectDir, canRead: options?.canRead, noteRead };
+  return bundleReads.run(scope, () => bundleProject(projectDir, options));
 }
 
 // A <template> scene has no root or GSAP of its own: bundle it inside the index that mounts it, as render does.
@@ -1066,7 +1079,7 @@ function readMountedSceneShell(
 async function bundleProject(projectDir: string, options?: BundleOptions): Promise<string> {
   const entryFile = options?.entryFile ?? "index.html";
   const indexPath = resolveWithinProject(projectDir, entryFile);
-  if (!indexPath || !existsSync(indexPath)) {
+  if (!indexPath || !readAllowed(indexPath) || !existsSync(indexPath)) {
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);

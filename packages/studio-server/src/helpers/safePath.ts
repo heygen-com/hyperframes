@@ -1,7 +1,9 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { lstatSync, readdirSync, type Dirent } from "node:fs";
 import {
+  isVcsOrSecretPath,
   mkdirWithinProject,
+  projectPathSegments,
   realpath,
   resolveWithinProject as resolveInProject,
 } from "@hyperframes/core/safe-path";
@@ -47,28 +49,10 @@ export function realFilePath(filePath: string): string {
 const STUDIO_FILES = new Set([STUDIO_MOTION_PATH, STUDIO_MANUAL_EDITS_PATH]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
-/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
-function segmentsOf(relPath: string): string[] {
-  return relPath
-    .toLowerCase()
-    .split(/[\\/]/)
-    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
-}
-
-function withoutTrailingDotsOrSpaces(segment: string): string {
-  let end = segment.length;
-  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
-  return segment.slice(0, end);
-}
-
-// Git metadata and env files hold commands other tools run and secrets: no route reads or writes them.
-const isVcsOrSecretSegment = (segment: string): boolean =>
-  segment === ".git" || segment.startsWith(".env");
-
 /** For a project-relative path with `/` separators. */
 export function isPrivateProjectPath(relPath: string): boolean {
   const path = relPath.toLowerCase();
-  if (segmentsOf(path).some(isVcsOrSecretSegment)) return true;
+  if (isVcsOrSecretPath(path)) return true;
   return (
     (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
     !STUDIO_FILES.has(path) &&
@@ -90,7 +74,7 @@ const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
 /** Writes refuse the project folder, node_modules, and hidden paths but Studio's records and the media ledger. */
 export function isWritableProjectPath(relPath: string): boolean {
   if (!relPath || isPrivateProjectPath(relPath)) return false;
-  const segments = segmentsOf(relPath);
+  const segments = projectPathSegments(relPath);
   return segments.every(
     (segment, at) =>
       segment !== "" &&

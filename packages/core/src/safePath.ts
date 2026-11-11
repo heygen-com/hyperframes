@@ -105,6 +105,37 @@ export function resolveWithinProject(base: string, relativePath: string): string
   return isSafePath(base, resolved) ? resolved : null;
 }
 
+/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
+export function projectPathSegments(relPath: string): string[] {
+  return relPath
+    .toLowerCase()
+    .split(/[\\/]/)
+    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
+}
+
+function withoutTrailingDotsOrSpaces(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
+  return segment.slice(0, end);
+}
+
+// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
+export function isVcsOrSecretPath(relPath: string): boolean {
+  return projectPathSegments(relPath).some(
+    (segment) => segment === ".git" || segment.startsWith(".env"),
+  );
+}
+
+/** `isVcsOrSecretPath` for a file under `projectDir`, spelled as given and with its links resolved. */
+export function isVcsOrSecretFile(projectDir: string, filePath: string): boolean {
+  if (isVcsOrSecretPath(relative(resolve(projectDir), resolve(filePath)))) return true;
+  try {
+    return isVcsOrSecretPath(relative(realpath(resolve(projectDir)), realpath(filePath)));
+  } catch {
+    return false;
+  }
+}
+
 /** The project folder is gone, renamed or deleted while open; a write must not bring it back. */
 export class ProjectRootMissingError extends Error {
   constructor(readonly root: string) {

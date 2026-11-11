@@ -654,6 +654,35 @@ describe("registerPreviewRoutes", () => {
     expect(plugin?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
   });
 
+  it("does not inline project files no route serves", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(projectDir, ".hyperframes", "handoff.json"), '{"note":"PRIVATE_RECORD"}');
+    writeFileSync(join(projectDir, ".env"), "TOKEN=PRIVATE_ENV");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><link rel="stylesheet" href=".env"></head><body>
+        <div data-composition-id="root" data-width="320" data-height="180"></div>
+        <script src=".hyperframes/handoff.json"></script>
+      </body></html>`,
+    );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: (dir, options) =>
+          bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options }),
+      }),
+    );
+
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    expect(html).toContain('data-composition-id="root"');
+    expect(html).not.toContain("PRIVATE_RECORD");
+    expect(html).not.toContain("PRIVATE_ENV");
+  });
+
   async function previewScriptSrcs(bodyGsapTag: string) {
     const projectDir = createProjectDir();
     writeFileSync(

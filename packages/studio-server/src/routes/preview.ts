@@ -526,6 +526,7 @@ export function registerPreviewRoutes(
       let bundled = await adapter.bundle(project.dir, {
         stampHfIds: true,
         onRead: (filePath) => recordPreviewRead(project.dir, filePath),
+        canRead: (filePath) => !isPrivateProjectFile(project.dir, filePath),
       });
       let mainCompositionPath = "index.html";
       if (!bundled) {
