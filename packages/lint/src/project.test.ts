@@ -1643,3 +1643,27 @@ describe("references that leave the project", () => {
     expect(JSON.stringify(await findingsOf(project))).not.toContain("TOP-SECRET-VALUE");
   });
 });
+
+describe("missing_timeline_registry with a script outside the project", () => {
+  const rootWithScript = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <script src="${src}"></script>
+</body></html>`;
+  const registryErrors = async (project: string) =>
+    (await lintProject(project)).results
+      .flatMap((result) => result.result.findings)
+      .filter((finding) => finding.code === "missing_timeline_registry");
+
+  it("is not reported when the timeline may be registered in a script lint did not read", async () => {
+    const project = makeProject(rootWithScript("../shared/timeline.js"));
+
+    expect(await registryErrors(project)).toEqual([]);
+  });
+
+  it("is still reported when every script is in the project and none registers", async () => {
+    const project = makeProject(rootWithScript("scene.js"));
+    writeFileSync(join(project, "scene.js"), "console.log('no timeline');");
+
+    expect(await registryErrors(project)).toHaveLength(1);
+  });
+});

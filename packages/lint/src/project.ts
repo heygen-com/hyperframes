@@ -2,8 +2,8 @@ export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { projectIgnore } from "./projectIgnore.js";
-import { dirname, extname, join, relative, resolve } from "node:path";
-import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { isNonRelativeUrl, rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { spansOverlap } from "@hyperframes/parsers/time-spans";
 import {
   compositionOriginSeconds,
@@ -177,19 +177,27 @@ export function linkedSources(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): Pick<HyperframeLinterOptions, "externalStyles" | "externalScripts"> {
+): Pick<
+  HyperframeLinterOptions,
+  "externalStyles" | "externalScripts" | "scriptsOutsideProjectUnread"
+> {
   return {
     externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
-    externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
+    ...collectExternalScripts(projectDir, html, compSrcPath),
   };
+}
+
+function leavesProject(projectDir: string, path: string): boolean {
+  return !isNonRelativeUrl(path) && !isWithinProjectRoot(projectDir, resolve(projectDir, path));
 }
 
 function collectExternalScripts(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): NonNullable<HyperframeLinterOptions["externalScripts"]> {
+): Pick<HyperframeLinterOptions, "externalScripts" | "scriptsOutsideProjectUnread"> {
   const scripts: NonNullable<HyperframeLinterOptions["externalScripts"]> = [];
+  const scriptsOutsideProjectUnread: string[] = [];
   const { document } = parseHTML(html);
   for (const element of querySelectorAllIncludingTemplates(document, "script[src]")) {
     const src = element.getAttribute("src") ?? "";
@@ -201,7 +209,12 @@ function collectExternalScripts(
       (compSrcPath && staysInsideProjectRoot(path)
         ? resolveExistingLocalAsset(projectDir, path)
         : null);
-    if (!script) continue;
+    if (!script) {
+      if (leavesProject(projectDir, isAbsolute(path) ? path : besideFile)) {
+        scriptsOutsideProjectUnread.push(src);
+      }
+      continue;
+    }
     const read = readProjectFile(script.resolved);
     if (read.kind !== "file" || read.text.length > MAX_EXTERNAL_SCRIPT_BYTES) continue;
     const attrs = Array.from(element.attributes)
@@ -215,7 +228,7 @@ function collectExternalScripts(
       rootRelativePath: script.rootRelativePath,
     });
   }
-  return scripts;
+  return { externalScripts: scripts, scriptsOutsideProjectUnread };
 }
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
