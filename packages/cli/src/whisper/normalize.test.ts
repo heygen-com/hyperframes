@@ -14,7 +14,7 @@ import {
 } from "./normalize.js";
 import { detectSpeechOnset } from "./transcribe.js";
 
-function tmpFile(name: string, content: string): string {
+function tmpFile(name: string, content: string | Uint8Array): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-normalize-test-"));
   dirs.push(dir);
   const path = join(dir, name);
@@ -92,6 +92,8 @@ describe("detectFormat", () => {
   });
 });
 
+const KOREAN_SRT = "1\n00:00:00,500 --> 00:00:02,000\n안녕하세요, 여러분.\n";
+
 describe("loadTranscript", () => {
   it.each([
     ["00:00:01.000", "00:00:03.500", "align:start"],
@@ -116,6 +118,30 @@ describe("loadTranscript", () => {
       words: [],
       format: "words-json",
     });
+  });
+
+  it.each([".srt", ".vtt"])("refuses a %s file that is not UTF-8 instead of garbling it", (ext) => {
+    const header = ext === ".vtt" ? "WEBVTT\n\n" : "1\n";
+    const time = ext === ".vtt" ? "00:00.500 --> 00:02.000" : "00:00:00,500 --> 00:00:02,000";
+    // "안녕하세요" in CP949, the encoding of most Korean subtitles from older tools
+    const korean = Buffer.from("bec8b3e7c7cfbcbcbfe4", "hex");
+    const path = tmpFile(
+      `cp949${ext}`,
+      Buffer.concat([Buffer.from(`${header}${time}\n`), korean, Buffer.from("\n")]),
+    );
+    expect(() => loadTranscript(path)).toThrow(/is not UTF-8 text.*CP949.*iconv -f CP949/s);
+  });
+
+  it.each([
+    ["UTF-8 with a BOM", Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(KOREAN_SRT)])],
+    [
+      "UTF-16LE with a BOM",
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(KOREAN_SRT, "utf16le")]),
+    ],
+  ])("reads a Korean SRT saved as %s", (_, bytes) => {
+    expect(loadTranscript(tmpFile("korean.srt", bytes)).words).toEqual([
+      { text: "안녕하세요, 여러분.", start: 0.5, end: 2, id: "w0" },
+    ]);
   });
 
   it("still rejects a JSON array that is not a word list", () => {

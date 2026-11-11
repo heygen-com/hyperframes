@@ -508,6 +508,23 @@ export function parseWhisperJson(text: string): any {
   );
 }
 
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+/** A subtitle file as UTF-16LE (with its BOM) or UTF-8; other bytes are refused, not read as U+FFFD. */
+function readSubtitleText(filePath: string): string {
+  const bytes = readFileSync(filePath);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return bytes.toString("utf16le").slice(1);
+  try {
+    return STRICT_UTF8.decode(bytes);
+  } catch {
+    throw new Error(
+      `${filePath} is not UTF-8 text. Subtitles saved by older Korean, Japanese or Chinese ` +
+        "tools are often CP949 (EUC-KR), Shift_JIS or GBK: convert the file to UTF-8 first, " +
+        `e.g. iconv -f CP949 -t UTF-8 "${filePath}" > subtitles.utf8${extname(filePath)}`,
+    );
+  }
+}
+
 /**
  * Load and normalize a transcript file to a standard word array.
  *
@@ -520,16 +537,22 @@ export function parseWhisperJson(text: string): any {
  */
 export function loadTranscript(filePath: string): { words: Word[]; format: TranscriptFormat } {
   const ext = extname(filePath).toLowerCase();
-  const content = readJsonFileText(filePath);
 
   if (ext === ".srt") {
-    const words = parseSrt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+    const words = parseSrt(readSubtitleText(filePath)).map((w, i) => ({
+      ...w,
+      id: w.id ?? `w${i}`,
+    }));
     return { words, format: "srt" };
   }
   if (ext === ".vtt") {
-    const words = parseVtt(content).map((w, i) => ({ ...w, id: w.id ?? `w${i}` }));
+    const words = parseVtt(readSubtitleText(filePath)).map((w, i) => ({
+      ...w,
+      id: w.id ?? `w${i}`,
+    }));
     return { words, format: "vtt" };
   }
+  const content = readJsonFileText(filePath);
 
   // JSON formats — parse once, detect, then extract words
   const parsed = parseWhisperJson(content);
