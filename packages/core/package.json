@@ -423,6 +423,12 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/editing-port": {
+      "bun": "./src/runtime/editingPort.ts",
+      "node": "./dist/runtime/editingPort.js",
+      "import": "./src/runtime/editingPort.ts",
+      "types": "./src/runtime/editingPort.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -902,6 +908,10 @@
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
+      },
+      "./runtime/editing-port": {
+        "import": "./dist/runtime/editingPort.js",
+        "types": "./dist/runtime/editingPort.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
