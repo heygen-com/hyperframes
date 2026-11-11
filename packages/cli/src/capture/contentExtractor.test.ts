@@ -556,6 +556,83 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(clientOptions[0]).toMatchObject({ location: "europe-west4" });
   });
 
+  it.each([
+    "attacker.example/",
+    "x.attacker.example#",
+    "a@attacker.example",
+    "attacker.example:443?",
+    "us-central1.attacker.example",
+  ])("skips captioning for a location that is not a region: %s", async (location) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_LOCATION", location);
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(clientOptions).toHaveLength(0);
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(warnings).toEqual([
+      "HYPERFRAMES_VERTEX_LOCATION is not a Google Cloud region; skipped vision captioning.",
+    ]);
+  });
+
+  it.each([
+    "../../v1/other",
+    "gemini?alt=x",
+    "gemini#x",
+    "https://attacker.example/m",
+    "/models/x",
+  ])("skips captioning for a model that is not a model id: %s", async (model) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_MODEL", model);
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(clientOptions).toHaveLength(0);
+    expect(warnings).toEqual([
+      "HYPERFRAMES_VERTEX_MODEL is not a model id; skipped vision captioning.",
+    ]);
+  });
+
+  it.each([
+    "gemini-2.5-flash",
+    "google/gemini-2.5-flash",
+    "publishers/anthropic/models/claude-sonnet-4@20250514",
+    "projects/example.com:proj/locations/us-central1/endpoints/123",
+  ])("accepts the model id %s", async (model) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_MODEL", model);
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(captions).toEqual({ "hero.png": "A caption." });
+    expect(generateContentMock.mock.calls[0]?.[0]).toMatchObject({ model });
+  });
+
+  it.each(["global", "us", "eu", "europe-west4"])("accepts the region %s", async (location) => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_LOCATION", location);
+    vi.stubEnv("HYPERFRAMES_VERTEX_MODEL", "publishers/google/models/gemini-2.5-flash-001");
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(captions).toEqual({ "hero.png": "A caption." });
+    expect(clientOptions[0]).toMatchObject({ location });
+  });
+
   it("spends no output budget on thinking", async () => {
     // Thinking tokens come out of maxOutputTokens, so a model left free to think can consume
     // the whole budget and return empty text: a successful request that produces no caption.
