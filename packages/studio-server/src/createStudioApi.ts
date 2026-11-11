@@ -43,15 +43,12 @@ const fromAnotherSite = (c: Context) => {
   return site === "cross-site" || site === "same-site";
 };
 
-// A thumbnail capture runs every composition with no user action, so its document gets an opaque
-// origin too: its scripts reach nothing of this API. The renderer grants the loads it still needs
-// (grantCaptureLoads).
-const forCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
+const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
 async function sandboxPreviewForAnotherSiteOrCapture(c: Context, next: Next) {
   await next();
   c.header("Vary", "Sec-Fetch-Site", { append: true });
-  if (fromAnotherSite(c) || forCapture(c))
+  if (fromAnotherSite(c) || isThumbnailCapture(c))
     c.header("Content-Security-Policy", "sandbox allow-scripts");
 }
 

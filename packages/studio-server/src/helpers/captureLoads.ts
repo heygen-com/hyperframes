@@ -1,20 +1,13 @@
 import { PREVIEW_PROXY_PRIORITY_HEADER, PREVIEW_PROXY_PROGRESS_HEADER } from "@hyperframes/core";
 
 /**
- * A thumbnail capture document is served with `Content-Security-Policy: sandbox allow-scripts`
- * (createStudioApi), so its scripts run in an opaque origin and cannot use the Studio API. Loads that
- * the browser makes in CORS mode then fail too: fonts, module scripts, images drawn for color grading,
- * the runtime's fetch of a nested composition, and its wait for a video's preview copy. The renderer
- * that opened the capture page is trusted, so it adds the CORS headers to those responses itself, for
- * that page only, by the kind of each load. Only the project's own preview files qualify, and
- * `fetch()` reads only what the runtime fetches to draw a frame: `.html` scenes, `.json`, `.cube`
- * LUTs and a video's `?hf-proxy=` copy.
+ * A capture document is sandboxed (createStudioApi), so its CORS-mode loads fail. The trusted renderer
+ * adds the CORS headers for its own page, by each load's kind: what a frame draws, and what the runtime
+ * fetches (`.html` scenes, `.json`, `.cube` LUTs, a video's `?hf-proxy=` copy and its preflight).
  */
-
 const RUNTIME_READS = /\.(html?|json|cube)$/i;
 
-/** File kinds an opaque capture page may load with CORS, by Chrome's resource type. Chrome reports
- * a page's `fetch()`, and its preflight, as `XHR` to the Fetch domain. */
+// Chrome reports a page's `fetch()`, and its preflight, as `XHR`.
 const CAPTURE_LOADS = new Map<string, RegExp>([
   ["Font", /\.(woff2?|ttf|otf)$/i],
   ["Script", /\.m?js$/i],
@@ -23,12 +16,10 @@ const CAPTURE_LOADS = new Map<string, RegExp>([
   ["XHR", RUNTIME_READS],
 ]);
 
-// The server makes a `?hf-proxy=` copy of a video file only, and answers anything else with a 404.
 const PROXY_PARAM = "hf-proxy";
 const VIDEO_FILE = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts)$/i;
 
-/** `<origin>/api/projects/<id>/preview/` for a capture URL, or null for any other URL. */
-function previewPrefix(captureUrl: string): string | null {
+function capturePreviewPrefix(captureUrl: string): string | null {
   let url: URL;
   try {
     url = new URL(captureUrl);
@@ -45,18 +36,11 @@ export interface CaptureLoad {
   resourceType: string;
 }
 
-/**
- * What the capture page at `captureUrl` may do with `load` across its opaque origin:
- * - `read`: a file the frame draws from;
- * - `proxy`: the runtime's wait for a video's preview copy (`proxyWait.ts`), which reads its status
- *   and progress headers;
- * - `preflight`: that wait's preflight, sent when it carries the priority header.
- */
 export function captureLoadGrant(
   load: CaptureLoad,
   captureUrl: string,
 ): "read" | "proxy" | "preflight" | null {
-  const prefix = previewPrefix(captureUrl);
+  const prefix = capturePreviewPrefix(captureUrl);
   if (!prefix || !load.url.startsWith(prefix)) return null;
   const url = new URL(load.url);
   const fetched = load.resourceType === "XHR" || load.resourceType === "Fetch";
@@ -71,7 +55,6 @@ export function captureLoadGrant(
 
 type Header = { name: string; value: string };
 
-/** The part of a CDP session this needs; puppeteer's `CDPSession` fits it. */
 export interface CaptureCdpSession {
   send(method: string, params?: object): Promise<unknown>;
   on(
@@ -102,10 +85,9 @@ const PREFLIGHT_ANSWER: Header[] = [
   { name: "Access-Control-Allow-Headers", value: `Range, ${PREVIEW_PROXY_PRIORITY_HEADER}` },
 ];
 
-/** Grants the capture page's loads that `captureLoadGrant` allows. Call it on the page's own session
- * before navigating, and keep the session for the page's life. */
+/** Call on the capture page's own session before it navigates; keep the session for the page's life. */
 export async function grantCaptureLoads(cdp: CaptureCdpSession, captureUrl: string): Promise<void> {
-  const prefix = previewPrefix(captureUrl);
+  const prefix = capturePreviewPrefix(captureUrl);
   if (!prefix) return;
   cdp.on("Fetch.requestPaused", (event) => {
     const { requestId } = event;
