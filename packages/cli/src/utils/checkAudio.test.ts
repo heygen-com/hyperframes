@@ -178,13 +178,13 @@ describe.skipIf(!ffmpeg)("inspectAudio", () => {
     // Played at double speed, 2 s of film reach 4 s into the file, past the silent start.
     expect(await codes(media([clip("late.wav", { end: 2, playbackRate: 2 })]))).toEqual([]);
   });
-});
 
-describe("inspectAudio on a project of many clips trimmed from few files", () => {
   it("hears a clip past the middle of a WAV whose header misstates its byte rate, as render plays it", async () => {
     expect(await codes(media([clip("misstated-rate.wav", { mediaStart: 5 })]))).toEqual([]);
   });
+});
 
+describe("inspectAudio on a project of many clips trimmed from few files", () => {
   it("probes each file once, however many clips are cut from it", async () => {
     const probes = { accepts: 0, audio: 0, silence: 0 };
     const dependencies: AudioCheckDependencies = {
