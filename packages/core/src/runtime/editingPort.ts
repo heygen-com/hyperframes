@@ -9,8 +9,34 @@
  * otherwise takes straight off the frame's window, which an opaque-origin
  * preview does not allow.
  */
+import {
+  EDITING_ELEMENT_HANDLE,
+  MAX_DESCRIBE_HANDLES,
+  type EditingElementDescription,
+  type EditingElementHandle,
+  type EditingElementHit,
+} from "./editingElement";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+
+export {
+  buildStableSelector,
+  escapeCssString,
+  getPreferredClassSelector,
+  readElementSource,
+  EDITING_ELEMENT_HANDLE,
+  MAX_DESCRIBE_HANDLES,
+  MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
+  MAX_POINT_STACK,
+  MAX_SOURCE_GROUPS,
+  type EditingElementDescription,
+  type EditingElementHandle,
+  type EditingElementHit,
+  type EditingElementSource,
+  type EditingRect,
+} from "./editingElement";
 
 export const EDITING_PROTOCOL_VERSION = 1 as const;
 /** Parent to frame, on the window: asks the runtime for the port. */
@@ -24,6 +50,8 @@ export const EDITING_REQUEST_KINDS = [
   "wait-for-seek",
   "set-loop-start",
   "computed-styles",
+  "elements-at-point",
+  "describe",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -53,6 +81,16 @@ export interface EditingRequests {
   "computed-styles": {
     params: { selector: string; properties: string[] };
     result: { styles: Record<string, string> | null };
+  };
+  /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
+  "elements-at-point": {
+    params: { x: number; y: number };
+    result: { elements: EditingElementHit[] };
+  };
+  /** One entry per handle, in order; null for an unknown or removed element. */
+  describe: {
+    params: { handles: EditingElementHandle[] };
+    result: { elements: Array<EditingElementDescription | null> };
   };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -86,7 +124,11 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
 
 const MAX_SELECTOR_LENGTH = 2_000;
 const MAX_STYLE_PROPERTIES = 64;
-const STYLE_PROPERTY = /^(--)?[a-z][a-z0-9-]*$/;
+const MAX_STYLE_PROPERTY_LENGTH = 256;
+const STYLE_PROPERTY = /^(?:[a-z][a-z0-9-]*|--[\w\u0080-\uffff-]+)$/;
+
+const hasKeys = (params: unknown, keys: string): params is Record<string, unknown> =>
+  isPlainRecord(params) && Object.keys(params).sort().join() === keys;
 
 const noParams = (params: unknown): NoParams | null =>
   params === undefined || (isPlainRecord(params) && Object.keys(params).length === 0) ? {} : null;
@@ -115,9 +157,27 @@ const PARAM_PARSERS: {
     }
     if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
     const names = properties.filter(
-      (name): name is string => typeof name === "string" && STYLE_PROPERTY.test(name),
+      (name): name is string =>
+        typeof name === "string" &&
+        name.length <= MAX_STYLE_PROPERTY_LENGTH &&
+        STYLE_PROPERTY.test(name),
     );
     return names.length === properties.length ? { selector, properties: names } : null;
+  },
+  "elements-at-point": (params) => {
+    if (!hasKeys(params, "x,y")) return null;
+    const { x, y } = params;
+    return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
+  },
+  describe: (params) => {
+    if (!hasKeys(params, "handles") || !Array.isArray(params.handles)) return null;
+    const { handles } = params;
+    if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+    return handles.every(
+      (handle) => typeof handle === "string" && EDITING_ELEMENT_HANDLE.test(handle),
+    )
+      ? { handles: handles as string[] }
+      : null;
   },
 };
 

@@ -5,6 +5,13 @@
  */
 import { getLogicalOpacity } from "@hyperframes/core/studio-preview-mark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import {
+  buildStableSelector,
+  escapeCssString,
+  getPreferredClassSelector,
+  readElementSource,
+  type EditingElementSource,
+} from "@hyperframes/core/runtime/editing-port";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
 
@@ -36,6 +43,8 @@ export function isEditableTextLeaf(el: HTMLElement): boolean {
 }
 
 export { getLogicalOpacity };
+// One addressing rule for Studio and the runtime that describes elements to it.
+export { buildStableSelector, escapeCssString };
 
 /** Does this node render AT ALL, ignoring what it inherits? Sole owner of the
  *  rule; the walk below only decides which nodes to ask it about. */
@@ -171,33 +180,24 @@ export function getCompositionSourceMapRevision(): number {
   return compositionSourceMapRevision;
 }
 
-function sourceFromCompositionId(ownerRoot: HTMLElement | null): string | undefined {
-  if (!ownerRoot || compositionSourceMap.size === 0) return undefined;
-  // The runtime may rename the mounted id to a runtime-unique one, preserving the
-  // authored id on `data-hf-original-composition-id` — prefer that, then the current id.
-  const authored = ownerRoot.getAttribute("data-hf-original-composition-id");
-  const current = ownerRoot.getAttribute("data-composition-id");
-  return (
-    (authored ? compositionSourceMap.get(authored) : undefined) ??
-    (current ? compositionSourceMap.get(current) : undefined)
-  );
+/** The source file `source` names (see `EditingElementSource`), with this project's composition map. */
+export function resolveElementSourceFile(
+  source: EditingElementSource,
+  activeCompositionPath: string | null,
+): string {
+  const { file, compositionId, originalCompositionId } = source;
+  const mapped = compositionSourceMap.size
+    ? ((originalCompositionId ? compositionSourceMap.get(originalCompositionId) : undefined) ??
+      (compositionId ? compositionSourceMap.get(compositionId) : undefined))
+    : undefined;
+  return file ?? mapped ?? activeCompositionPath ?? "index.html";
 }
 
 export function getSourceFileForElement(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): { sourceFile: string; compositionPath: string } {
-  const sourceHost = findClosestByAttribute(el, ["data-composition-file", "data-composition-src"]);
-  const ownerRoot = findClosestByAttribute(el, ["data-composition-id"]);
-  const sourceFile =
-    sourceHost?.getAttribute("data-composition-file") ??
-    sourceHost?.getAttribute("data-composition-src") ??
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    sourceFromCompositionId(ownerRoot) ??
-    activeCompositionPath ??
-    "index.html";
-
+  const sourceFile = resolveElementSourceFile(readElementSource(el), activeCompositionPath);
   return {
     sourceFile,
     compositionPath: sourceFile,
@@ -228,49 +228,6 @@ export function normalizeTimelineCompositionSource(value: string | undefined): s
 
 // ─── CSS escaping ─────────────────────────────────────────────────────────────
 
-function escapeCssIdentifier(value: string): string {
-  const css = globalThis.CSS as { escape?: (input: string) => string } | undefined;
-  if (typeof css?.escape === "function") return css.escape(value);
-
-  if (value === "-") return "\\-";
-
-  let escaped = "";
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index] ?? "";
-    const code = char.charCodeAt(0);
-    if (code === 0) {
-      escaped += "�";
-      continue;
-    }
-
-    const isDigit = code >= 48 && code <= 57;
-    const isUpperAlpha = code >= 65 && code <= 90;
-    const isLowerAlpha = code >= 97 && code <= 122;
-    const isControl = (code >= 1 && code <= 31) || code === 127;
-    const isLeadingDigit = index === 0 && isDigit;
-    const isSecondDigitAfterDash = index === 1 && value.startsWith("-") && isDigit;
-    if (isControl || isLeadingDigit || isSecondDigitAfterDash) {
-      escaped += `\\${code.toString(16)} `;
-      continue;
-    }
-    if (isUpperAlpha || isLowerAlpha || isDigit || char === "-" || char === "_" || code >= 128) {
-      escaped += char;
-      continue;
-    }
-    escaped += `\\${char}`;
-  }
-  return escaped;
-}
-
-export function escapeCssString(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\a ")
-    .replace(/\r/g, "\\d ")
-    .replace(/\f/g, "\\c ");
-}
-
 export function querySelectorAllSafely(doc: Document, selector: string): Element[] {
   try {
     return Array.from(doc.querySelectorAll(selector));
@@ -292,31 +249,6 @@ function humanizeIdentifier(value: string): string {
 }
 
 // ─── CSS selector building ────────────────────────────────────────────────────
-
-export function buildStableSelector(el: HTMLElement): string | undefined {
-  if (el.id) return `#${escapeCssIdentifier(el.id)}`;
-
-  const compositionId = el.getAttribute("data-composition-id");
-  if (compositionId) return `[data-composition-id="${escapeCssString(compositionId)}"]`;
-
-  // Group wrappers carry no id/class; their data-hf-group value is the unique,
-  // stable handle the source mutations write — use it so the wrapper is
-  // selectable, patchable (move/scale), and addressable for ungroup.
-  const group = el.getAttribute("data-hf-group");
-  if (group) return `[data-hf-group="${escapeCssString(group)}"]`;
-
-  return getPreferredClassSelector(el);
-}
-
-function getPreferredClassSelector(el: HTMLElement): string | undefined {
-  const classes = Array.from(el.classList)
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (classes.length === 0) return undefined;
-  const preferred =
-    classes.find((value) => value !== "clip" && !value.startsWith("__hf-")) ?? classes[0];
-  return preferred ? `.${escapeCssIdentifier(preferred)}` : undefined;
-}
 
 // fallow-ignore-next-line complexity
 export function buildElementLabel(el: HTMLElement): string {
