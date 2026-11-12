@@ -21,7 +21,7 @@
 # Unlike the AWS Lambda adapter there is no ZIP-size ceiling and no runtime
 # Chrome decompression step — the binary lives in the image at a fixed path.
 
-FROM node:22.23.4-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS beginframe-contract
+FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS beginframe-contract
 
 # ── System dependencies (identical set to the producer's render image) ───────
 RUN apt-get update && apt-get install -y --no-install-recommends \
