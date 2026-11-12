@@ -3,6 +3,8 @@ import { GAP_PX as TOOLBAR_GAP_PX, TOOLBAR_HEIGHT_PX } from "./InlineTextToolbar
 
 const GAP_PX = 8;
 const EDGE_PX = 4;
+const SNAP_TOOLBAR_BAND_PX = 36;
+const SNAP_TOOLBAR_WIDTH_PX = 180;
 const CHIP_HEIGHT_PX = 32;
 const CHAR_PX = 8;
 const CHIP_PADDING_PX = 36;
@@ -14,6 +16,8 @@ interface Box {
   minY: number;
   maxX: number;
   maxY: number;
+  toolbarBottom: number;
+  toolbarLeft: number;
 }
 
 interface Spot {
@@ -34,16 +38,23 @@ function visibleBox(readout: GestureReadoutState): Box {
   const stage = readout.basis.iframeRect;
   const stageLeft = stage.left - bounds.left;
   const stageTop = stage.top - bounds.top;
+  const minY = Math.max(0, -bounds.top, stageTop) + EDGE_PX;
+  const maxX =
+    Math.min(bounds.width, readout.viewportWidth - bounds.left, stageLeft + stage.width) - EDGE_PX;
   return {
     minX: Math.max(0, -bounds.left, stageLeft) + EDGE_PX,
-    minY: Math.max(0, -bounds.top, stageTop) + EDGE_PX,
-    maxX:
-      Math.min(bounds.width, readout.viewportWidth - bounds.left, stageLeft + stage.width) -
-      EDGE_PX,
+    minY,
+    toolbarBottom: minY + SNAP_TOOLBAR_BAND_PX,
+    toolbarLeft: maxX - SNAP_TOOLBAR_WIDTH_PX,
+    maxX,
     maxY:
       Math.min(bounds.height, readout.viewportHeight - bounds.top, stageTop + stage.height) -
       EDGE_PX,
   };
+}
+
+function clearOfToolbar(box: Box, right: number, top: number): boolean {
+  return right <= box.toolbarLeft || top >= box.toolbarBottom;
 }
 
 function chipSpots(
@@ -66,11 +77,21 @@ function chipSpots(
       y: bottom + GAP_PX,
       fits: !toolbarBelow && bottom + GAP_PX + CHIP_HEIGHT_PX <= box.maxY,
     },
-    right: { x: right + GAP_PX, y: middle, fits: beside && right + GAP_PX + width <= box.maxX },
+    right: {
+      x: right + GAP_PX,
+      y: middle,
+      fits:
+        beside &&
+        right + GAP_PX + width <= box.maxX &&
+        clearOfToolbar(box, right + GAP_PX + width, middle),
+    },
     left: {
       x: rect.left - GAP_PX,
       y: middle,
-      fits: beside && rect.left - GAP_PX - width >= box.minX,
+      fits:
+        beside &&
+        rect.left - GAP_PX - width >= box.minX &&
+        clearOfToolbar(box, rect.left - GAP_PX, middle),
     },
     above: { x: centre, y: rect.top - GAP_PX - toolbarBand - CHIP_HEIGHT_PX, fits: true },
   };
@@ -101,6 +122,8 @@ export function placeChip(readout: GestureReadoutState, text: string): ChipPlace
   const left = centred
     ? Math.max(box.minX + width / 2, Math.min(box.maxX - width / 2, spot.x))
     : spot.x;
-  const top = Math.min(box.maxY - CHIP_HEIGHT_PX, Math.max(box.minY, spot.y));
+  const chipRight = side === "right" ? left + width : side === "left" ? left : left + width / 2;
+  const floor = clearOfToolbar(box, chipRight, box.minY) ? box.minY : box.toolbarBottom;
+  const top = Math.min(box.maxY - CHIP_HEIGHT_PX, Math.max(floor, spot.y));
   return { side, left, top, transform: TRANSFORMS[side] };
 }

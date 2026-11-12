@@ -222,8 +222,8 @@ describe("gesture readout", () => {
     const view = mount("drag");
     view.move(300, 10);
     view.draw();
-    expect(view.label.style.transform).toBe("none");
-    expect(view.label.style.left).toBe("208px");
+    expect(view.label.style.transform).toBe("translateX(-100%)");
+    expect(view.label.style.left).toBe("142px");
   });
   it("keeps its side for the whole gesture while that side still fits", () => {
     const view = mount("drag");
@@ -242,7 +242,7 @@ describe("gesture readout", () => {
     const view = mount("drag");
     view.move(900, -100);
     view.draw();
-    expect(view.label.style.top).toBe("4px");
+    expect(view.label.style.top).toBe("40px");
     view.move(-900, 900);
     view.draw();
     expect(view.label.style.left).toBe("78px");
@@ -284,6 +284,12 @@ describe("gesture readout", () => {
     narrow.move(100, 0);
     narrow.draw();
     inside(narrow.label, 4, 396);
+  });
+  it("lands below the preview toolbar when the element is larger than the stage", () => {
+    const view = mount("drag", { height: 800, overlayWidth: 150 });
+    view.move(100, 0);
+    view.draw();
+    expect(Number.parseFloat(view.label.style.top)).toBeGreaterThanOrEqual(40);
   });
   it("bounds the chip by the stage, not the larger canvas area around it", () => {
     const view = mount("drag", { stageHeight: 300 });
