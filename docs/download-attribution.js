@@ -115,23 +115,37 @@
     // keep this page's
   }
 
-  function tag(event) {
+  // The link to hyperframes.studio an event is on, as a URL, or null for any other link.
+  function studioLink(event) {
     var link = event.target instanceof Element && event.target.closest("a[href]");
-    if (!link) return;
-    var url;
+    if (!link) return null;
     try {
-      url = new URL(link.href);
+      var url = new URL(link.href);
+      return url.protocol === "https:" && url.hostname === STUDIO && url.port === "" ? { link: link, url: url } : null;
     } catch {
-      return;
+      return null;
     }
-    if (url.protocol !== "https:" || url.hostname !== STUDIO || url.port !== "") return;
-    var original = link.getAttribute("href");
-    // A tag the link already names keeps its own value. Only the source's own names come back from storage, so a value
-    // kept there can never add any other parameter (ph_id belongs to the consent check below).
+  }
+
+  // A tag the link already names keeps its own value. Only the source's own names come back from the cookie, under the
+  // same length cap as a fresh one, so a value kept there can never add any other parameter or grow a link.
+  function addSource(url) {
     new URLSearchParams(landing).forEach(function (value, name) {
-      var known = CAMPAIGN.indexOf(name) !== -1 || name === "ref" || (name === "ad_click" && AD_CLICKS.indexOf(value) !== -1);
+      var known =
+        (CAMPAIGN.indexOf(name) !== -1 && value.length <= TAG_MAX) ||
+        name === "ref" ||
+        (name === "ad_click" && AD_CLICKS.indexOf(value) !== -1);
       if (known && !url.searchParams.has(name)) url.searchParams.set(name, value);
     });
+  }
+
+  function tag(event) {
+    var found = studioLink(event);
+    if (!found) return;
+    var link = found.link;
+    var url = found.url;
+    var original = link.getAttribute("href");
+    addSource(url);
     var id = url.pathname === DOWNLOAD && posthogLoaded() && !optedOut() && posthogId();
     if (id) url.searchParams.set("ph_id", id);
     if (url.toString() === new URL(link.href).toString()) return;
@@ -155,7 +169,17 @@
     }, 0);
   }
 
+  // A right-click menu's Open in new tab or Copy link takes the href as it stands when the menu opens: the source goes on
+  // and stays (it names no person); the id never does, as it is only added for a click and taken off after.
+  function tagForMenu(event) {
+    var found = studioLink(event);
+    if (!found) return;
+    addSource(found.url);
+    if (found.url.toString() !== found.link.href) found.link.href = found.url.toString();
+  }
+
   // Capture phase, before the browser follows the link; auxclick covers a middle-click into a new tab.
   document.addEventListener("click", tag, true);
   document.addEventListener("auxclick", tag, true);
+  document.addEventListener("contextmenu", tagForMenu, true);
 })();
