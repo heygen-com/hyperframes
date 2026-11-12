@@ -193,6 +193,21 @@ describe("a reference to a file outside the project in a private location", () =
     ]);
   });
 
+  it("leaves out a referenced project file that links to a private file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, ".ssh"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, ".ssh", "id_ed25519"), "KEY");
+    symlinkSync(join(root, ".ssh", "id_ed25519"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), `<img src="logo.png"><img src="./logo.png">`);
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()]).toEqual(["index.html"]);
+    expect(warnings).toEqual([
+      "logo.png links to a file outside the project in a private location; it was left out of the upload.",
+    ]);
+  });
+
   it("still uploads a project file that links to an ordinary file outside the project", () => {
     const root = temp();
     mkdirSync(join(root, "shared"));

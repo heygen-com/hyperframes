@@ -423,7 +423,10 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
 
 function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): boolean {
   if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return true;
-  return isPrivateCompositionFile(ctx.absProjectDir, absPath);
+  return (
+    isPrivateCompositionFile(ctx.absProjectDir, absPath) ||
+    (existsSync(absPath) && linksToPrivateOutsideFile(ctx.absProjectDir, absPath))
+  );
 }
 
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
