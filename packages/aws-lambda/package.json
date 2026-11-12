@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/aws-lambda",
-  "version": "0.9.36",
+  "version": "0.9.37",
   "description": "AWS Lambda adapter for HyperFrames distributed rendering — handler, client-side SDK, and CDK construct.",
   "repository": {
     "type": "git",
