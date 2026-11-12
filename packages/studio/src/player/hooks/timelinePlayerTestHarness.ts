@@ -67,6 +67,7 @@ export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFram
     value: document.implementation.createHTMLDocument("preview"),
     configurable: true,
   });
+  document.body.appendChild(iframe);
   return iframe;
 }
 

@@ -129,6 +129,21 @@ describe("preview errors", () => {
     root = null;
   });
 
+  it("leaves a callback ref alone on unmount, so a frame its owner made live since is kept", async () => {
+    // A shadow reload's promotion makes its frame the live one without calling the live Player's ref.
+    const ref = vi.fn();
+    const { player } = await mountPlayer({ ref } as Partial<PlayerProps>);
+    const frame = ref.mock.calls[0]?.[0] as HTMLIFrameElement;
+    player.shadowRoot!.append(frame); // where <hyperframes-player> keeps its frame
+    expect(frame.isConnected).toBe(true);
+
+    act(() => root?.unmount());
+    root = null;
+
+    expect(ref).toHaveBeenCalledTimes(1);
+    expect(frame.isConnected).toBe(false);
+  });
+
   it("puts the preview on the player's once-a-second paused heartbeat", async () => {
     const { player } = await mountPlayer();
     expect(player.hasAttribute("low-power-idle")).toBe(true);

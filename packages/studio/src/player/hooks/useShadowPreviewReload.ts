@@ -114,6 +114,7 @@ export function useShadowPreviewReload({
   const budgetsSpentRef = useRef(0);
   // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
   const budgetGenRef = useRef<number | null>(null);
+  const shadowFrameLeftPageRef = useRef(false);
   const cancelPendingLoadRef = useRef<() => void>(() => {});
   const stopHoldRef = useRef<() => void>(() => {});
   const shadowUrlRef = useRef("");
@@ -127,6 +128,7 @@ export function useShadowPreviewReload({
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
     budgetGenRef.current = null;
+    shadowFrameLeftPageRef.current = false;
     cancelPendingLoadRef.current();
     stopHoldRef.current();
     pendingCommitRef.current = null;
@@ -296,14 +298,10 @@ export function useShadowPreviewReload({
     [promoteWhenReady],
   );
 
-  const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
-    shadowIframeRef.current = node;
-  }, []);
-
   const armReadyTimer = useCallback(
     (gen: number) => {
       clearTimeout(readyTimerRef.current);
-      if (isDocumentHidden()) return;
+      if (isDocumentHidden() || shadowFrameLeftPageRef.current) return;
       let drew = false;
       let starved = false;
       requestAnimationFrame(() => {
@@ -315,6 +313,12 @@ export function useShadowPreviewReload({
         if (!drew) {
           starved = true;
           logReload("shadow-starved", { gen });
+          return;
+        }
+        const frame = shadowIframeRef.current;
+        if (frame && !frame.isConnected) {
+          shadowFrameLeftPageRef.current = true;
+          logReload("shadow-detached", { gen });
           return;
         }
         budgetsSpentRef.current += 1;
@@ -330,6 +334,17 @@ export function useShadowPreviewReload({
   );
   const armReadyTimerRef = useRef(armReadyTimer);
   armReadyTimerRef.current = armReadyTimer;
+
+  const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
+    shadowIframeRef.current = node;
+    const gen = budgetGenRef.current;
+    if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
+      return;
+    shadowFrameLeftPageRef.current = false;
+    budgetsSpentRef.current = 0;
+    logReload("shadow-reattached", { gen });
+    armReadyTimerRef.current(gen);
+  }, []);
 
   const beginShadowReload = useCallback(
     (url: string) => {

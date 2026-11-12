@@ -533,6 +533,52 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  it("keeps a reload whose frame left the page, and promotes it once a new frame mounts", () => {
+    vi.useFakeTimers();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, live, root } = beginReload({ onPreviewReloadFailed });
+    const first = makeShadowWithSpies();
+    act(() => getApi().setShadowIframeNode(first.iframe));
+
+    // The pane holding the preview unmounts mid-reload: its Players remove their frames.
+    act(() => first.iframe.remove());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS * 2));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    expect(getApi().iframeRef.current).toBe(live);
+
+    // The pane comes back: a new Player for the same slot mounts a new frame, which loads.
+    const again = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(again.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(getApi().iframeRef.current).toBe(again.iframe);
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    unmount(root);
+  });
+
+  it("gives a frame that mounts again its full budgets, then drops it if it stays silent", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, live, root } = beginReload({ onPreviewReloadFailed });
+    const first = makeShadowWithSpies();
+    act(() => getApi().setShadowIframeNode(first.iframe));
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + 1000));
+    act(() => first.iframe.remove());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => getApi().setShadowIframeNode(makeShadowWithSpies().iframe));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    expect(getApi().iframeRef.current).toBe(live);
+    unmount(root);
+  });
+
   it("does not spend the budget while the tab is hidden, and promotes once it is visible", () => {
     vi.useFakeTimers();
     const onPreviewReloadFailed = vi.fn();
