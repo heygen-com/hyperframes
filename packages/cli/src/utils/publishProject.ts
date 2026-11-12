@@ -797,8 +797,11 @@ export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArc
  * byte-identical (never see baked proxies); only `publish.ts` inserts a baking
  * transform between them.
  */
-export function createPublishArchive(projectDir: string): PublishArchiveResult {
-  return zipPublishFileMap(buildPublishFileMap(projectDir));
+export function createPublishArchive(
+  projectDir: string,
+  onLeftOut?: (warning: string) => void,
+): PublishArchiveResult {
+  return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut));
 }
 
 export function getPublishApiBaseUrl(): string {
