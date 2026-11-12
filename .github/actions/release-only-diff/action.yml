@@ -4,7 +4,10 @@ description: >-
   can skip it. Main and the merge queue never skip. Needs a checkout with full history.
 outputs:
   release_only:
-    description: "'true' when every changed file is a version bump, release note or changelog entry."
+    description: "'true' when a pull request changes only version bumps, release notes and the changelog entry. Always 'false' elsewhere."
+    value: ${{ github.event_name == 'pull_request' && steps.diff.outputs.release_only || 'false' }}
+  release_diff:
+    description: "'true' when the commit changes only a release's own files, in a pull request or the merge queue."
     value: ${{ steps.diff.outputs.release_only }}
 runs:
   using: composite
@@ -12,7 +15,7 @@ runs:
     - id: diff
       shell: bash
       run: |
-        if [ "${{ github.event_name }}" = pull_request ]; then
+        if [ "${{ github.event_name }}" = pull_request ] || [ "${{ github.event_name }}" = merge_group ]; then
           node scripts/ci/release-only-diff.mjs
         else
           echo "release_only=false" >> "$GITHUB_OUTPUT"

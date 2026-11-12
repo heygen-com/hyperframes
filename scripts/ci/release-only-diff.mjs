@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
+import { releaseVersionOf, skipsChangelog } from "../changelog-skip.mjs";
 
 const MANIFESTS = new Set(["package.json", "plugin.json", "gemini-extension.json"]);
 const RELEASE_NOTES = /^releases\/v\d+\.\d+\.\d+[^/]*\.md$/;
@@ -44,8 +45,13 @@ export function classify(paths, before, after) {
   return { releaseOnly: paths.length > 0 && other.length === 0, other, versions };
 }
 
+/** The commits in `commits` ({ sha, subject }) that release notes should list but do not link. */
+export function unlistedCommits(commits, notes) {
+  return commits.filter(({ sha, subject }) => !skipsChangelog(subject) && !notes.includes(sha));
+}
+
 /** Problems with a release that is otherwise only versions and notes; empty when it is consistent. */
-export function verifyRelease({ versions }, after) {
+export function verifyRelease({ versions }, after, commits = []) {
   const problems = [];
   const distinct = new Set(versions.values());
   if (distinct.size !== 1) {
@@ -57,8 +63,17 @@ export function verifyRelease({ versions }, after) {
   const [version] = distinct;
   const notes = after(`releases/v${version}.md`);
   if (notes === null) problems.push(`releases/v${version}.md is missing`);
-  else if (UNREVIEWED.some((marker) => notes.includes(marker)))
-    problems.push(`releases/v${version}.md still has the generated TODO or style note`);
+  else {
+    if (UNREVIEWED.some((marker) => notes.includes(marker)))
+      problems.push(`releases/v${version}.md still has the generated TODO or style note`);
+    const unlisted = unlistedCommits(commits, notes);
+    if (unlisted.length)
+      problems.push(
+        `releases/v${version}.md misses ${unlisted.length} commit(s) merged since the notes were drafted: ` +
+          unlisted.map(({ sha, subject }) => `${sha.slice(0, 9)} ${subject}`).join("; ") +
+          ". Link each in the notes, or rebase on main and rerun `bun run release:prepare` if main moved.",
+      );
+  }
   const changelog = after(CHANGELOG);
   if (changelog === null || !changelog.includes(`label="HyperFrames v${version}"`))
     problems.push(`${CHANGELOG} has no entry for v${version}`);
@@ -75,6 +90,22 @@ const show = (ref) => (path) => {
     return null;
   }
 };
+
+/** The commits between the last release commit and `base`; empty when `base` holds no earlier release. */
+function commitsSinceLastRelease(base) {
+  const last = git("log", "--format=%H%x09%s", base)
+    .split("\n")
+    .find((line) => releaseVersionOf(line.split("\t").slice(1).join("\t")) !== null)
+    ?.split("\t")[0];
+  if (!last) return [];
+  return git("log", "--no-merges", "--format=%H%x09%s", `${last}..${base}`)
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, ...subject] = line.split("\t");
+      return { sha, subject: subject.join("\t") };
+    });
+}
 
 function main(argv) {
   const at = argv.indexOf("--base");
@@ -97,7 +128,7 @@ function main(argv) {
     );
     return 1;
   }
-  const problems = verifyRelease(result, show("HEAD"));
+  const problems = verifyRelease(result, show("HEAD"), commitsSinceLastRelease(base));
   for (const problem of problems) console.error(`::error::${problem}`);
   return problems.length ? 1 : 0;
 }

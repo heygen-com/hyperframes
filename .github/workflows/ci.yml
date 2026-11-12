@@ -73,6 +73,7 @@ jobs:
       pull-requests: read
     outputs:
       release_only: ${{ steps.release.outputs.release_only }}
+      release_diff: ${{ steps.release.outputs.release_diff }}
       code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.cli }}
@@ -272,7 +273,8 @@ jobs:
   release-checks:
     name: Release checks
     needs: changes
-    if: ${{ needs.changes.outputs.release_only == 'true' }}
+    # The queue also runs this on a release, so a commit merged after the notes were drafted fails here.
+    if: ${{ (github.event_name == 'merge_group' && needs.changes.outputs.release_diff == 'true') || needs.changes.outputs.release_only == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
