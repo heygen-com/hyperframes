@@ -10,7 +10,7 @@ export interface FfprobePcmFields extends FfprobeStreamCodec {
   bits_per_sample?: number;
 }
 
-/** PCM whose header byte rate is not sample rate x channels x sample size: an input seek by it lands at the wrong time. */
+/** PCM whose header byte rate is not sample rate x channels x sample size: a seek by it lands wrong. */
 export function misstatesPcmByteRate(stream: FfprobePcmFields): boolean {
   const declared = Number(stream.bit_rate);
   const { channels, bits_per_sample: bits } = stream;
