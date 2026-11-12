@@ -1,5 +1,6 @@
 import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
+import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
   installPausedVideoCallbacks,
   stagePausedVideoCallbacks,
@@ -156,6 +157,7 @@ function refresh(entry: Presented): void {
     canvas.style.top = `${video.offsetTop}px`;
     canvas.style.margin = "0";
   }
+  applyNativeVideoLook(canvas, video, css.filter || "none");
   canvas.style.setProperty("pointer-events", "none", "important");
   canvas.style.setProperty("animation", "none", "important");
   canvas.style.setProperty("transition", "none", "important");

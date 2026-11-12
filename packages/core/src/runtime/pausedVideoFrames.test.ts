@@ -267,3 +267,47 @@ it("does not retire an adopted decoded picture when its native snapshot lease en
   expect(ownsPausedVideoTime(video)).toBe(true);
   expect(video.currentTime).toBe(3);
 });
+
+const MAC_CHROME =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+it("shows a paused frame with the look its video layer has, and the authored filter after it", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  window.__HF_MEDIA_SOURCE_FACTS__ = {
+    "/original.webm": { width: 64, height: 36, bitDepth: 8, bitrate: 1 },
+  };
+  const { session, video, request } = fixture();
+  video.style.filter = "blur(2px)";
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).toMatch(
+    /^url\("?#__hf_native_video_look"?\) blur\(2px\)$/,
+  );
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+  vi.unstubAllGlobals();
+});
+
+it("leaves the paused frame of an HDR source as decoded", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  window.__HF_MEDIA_SOURCE_FACTS__ = {
+    "/original.webm": { width: 64, height: 36, bitDepth: 10, bitrate: 1 },
+  };
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).not.toContain("__hf_native_video_look");
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+  vi.unstubAllGlobals();
+});
+
+it("leaves the paused frame of a source the scan did not report as it was decoded", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).not.toContain("__hf_native_video_look");
+  vi.unstubAllGlobals();
+});

@@ -237,3 +237,35 @@ it("retires the hard Play timer after native readiness publishes", async () => {
   expect(commit).toHaveBeenCalledWith(3);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("gives the native-only held picture the look of its video layer", async () => {
+  vi.stubGlobal("navigator", {
+    userAgent:
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+  });
+  window.__HF_MEDIA_SOURCE_FACTS__ = {
+    "/clip.mp4": { width: 64, height: 36, bitDepth: 8, bitrate: 1 },
+  };
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  const { job, video, host, native } = fixture();
+  video.setAttribute("src", "/clip.mp4");
+  let ready = 4;
+  Object.defineProperties(video, {
+    readyState: { get: () => ready },
+    videoWidth: { value: 64 },
+    videoHeight: { value: 36 },
+  });
+  host.videosToHold = () => [video];
+  host.frames.available = () => false;
+  native.mockImplementation(() => {
+    ready = 1;
+  });
+  const settled = job.handoff(3);
+  expect(document.querySelector("canvas")?.style.filter).toMatch(/__hf_native_video_look/);
+  job.cancel();
+  await settled;
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+  vi.unstubAllGlobals();
+});
