@@ -28,7 +28,7 @@ export function deriveCodecMapKey(el: HTMLMediaElement): string | null {
   }
 }
 
-/** A route prefix the keys do not carry is allowed: the longest key that ends the pathname wins (keys start with `/`). */
+/** The keys carry no route prefix, so the longest key that ends the pathname wins. */
 function lookupLongestExactSuffix<T>(pathname: string, map: Record<string, T>): T | null {
   let bestKey: string | null = null;
   for (const key of Object.keys(map)) {

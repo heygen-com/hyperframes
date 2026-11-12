@@ -2,9 +2,9 @@ import { isWebKit } from "./mediaClock";
 import { PREVIEW_VIDEO_CANVAS_ATTR } from "../studioPreviewMark";
 import { sourceFactsOf } from "./mediaSourceLookup";
 
-/** The one owner of how a decoded frame on a canvas is made to look like the browser's own video layer, which on
- * macOS Chromium shows 8-bit SDR video with Apple's video gamma (about 1.961) where a canvas shows it as sRGB.
- * Display-only (a CSS filter), so `drawImage` and WebGL readers of the canvas keep the pixels a playing video gives them. */
+/** The one owner of making a canvas frame look like the browser's own video layer, which on macOS Chromium
+ * shows 8-bit SDR video with Apple's gamma (about 1.961) where a canvas shows sRGB. Display-only, so canvas
+ * readers keep the pixels a playing video gives them. */
 export const NATIVE_VIDEO_LOOK_FILTER_ID = "__hf_native_video_look";
 const VIDEO_LAYER_GAMMA = 1.961;
 
