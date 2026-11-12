@@ -380,6 +380,8 @@ describe.skipIf(!HAS_FFMPEG)("frame sampling at the output frame rate", () => {
       // 64x36 source: halved as often as the box allows (even sides round up); never below the box.
       expect(await firstFrameSize("shown-quarter", { width: 16, height: 9 })).toBe("16,10");
       expect(await firstFrameSize("shown-third", { width: 20, height: 12 })).toBe("32,18");
+      // Exactly half (a 4K source in a 1080p box): one halving lands on the box and still covers it.
+      expect(await firstFrameSize("shown-half", { width: 32, height: 18 })).toBe("32,18");
       expect(await firstFrameSize("shown-near-full", { width: 40, height: 20 })).toBe("64,36");
     }, 30_000);
   });
