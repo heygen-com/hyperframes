@@ -8,11 +8,13 @@ import type { ClipManifest, IframeWindow } from "./playbackTypes";
 const clients = new WeakMap<HTMLIFrameElement, EditingPortClient>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
 
-/** A frame with a document Studio cannot read; one with no window has nothing to reach either way. */
+/** A frame whose window refuses Studio's reads; one with no window has nothing to reach either way. */
 export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
-  if (!iframe.contentWindow) return false;
+  const win = iframe.contentWindow;
+  if (!win) return false;
   try {
-    return iframe.contentDocument === null;
+    void win.document;
+    return false;
   } catch {
     return true;
   }

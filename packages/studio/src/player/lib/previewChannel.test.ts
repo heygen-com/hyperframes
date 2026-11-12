@@ -43,26 +43,30 @@ function fromFrame(frame: object, data: Record<string, unknown>) {
 function servedFrame(answer: (kind: string, params: unknown) => unknown, opaque = false) {
   const frame: Record<string, unknown> = {};
   const iframe = makeFakeIframe(frame);
-  if (opaque) Object.defineProperty(iframe, "contentDocument", { value: null });
+  if (opaque) {
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+  }
   const handed = vi.fn(answer);
   closers.push(serveEditingRequests(frame, handed));
   return { iframe, frame, handed };
 }
 
 describe("previewFrameOpaque", () => {
-  it("is true only for a frame whose document is out of reach", () => {
+  it("is true only for a frame whose window refuses a read", () => {
     expect(previewFrameOpaque(document.body.appendChild(document.createElement("iframe")))).toBe(
       false,
     );
     expect(previewFrameOpaque(document.createElement("iframe"))).toBe(false);
     expect(previewFrameOpaque(opaqueFrame().iframe)).toBe(true);
-    const throwing = makeFakeIframe({});
-    Object.defineProperty(throwing, "contentDocument", {
-      get: () => {
-        throw new DOMException("blocked", "SecurityError");
-      },
-    });
-    expect(previewFrameOpaque(throwing)).toBe(true);
+    // A window that answers reads is not opaque, even with no document to hand.
+    const readable = document.createElement("iframe");
+    Object.defineProperty(readable, "contentWindow", { value: {} });
+    expect(previewFrameOpaque(readable)).toBe(false);
   });
 });
 

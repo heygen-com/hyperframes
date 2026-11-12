@@ -18,7 +18,14 @@ const GLOBAL_MANIFEST = { clips: [{ id: "x" }], durationInFrames: 30, scenes: []
 function routeStateTicks(opaque: boolean) {
   const frame: Record<string, unknown> = { __clipManifest: GLOBAL_MANIFEST };
   const iframe = makeFakeIframe(frame);
-  if (opaque) Object.defineProperty(iframe, "contentDocument", { value: null });
+  if (opaque) {
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+  }
   const asked = vi.fn(() => ({ clipManifest: PORT_MANIFEST }));
   closers.push(serveEditingRequests(frame, asked));
   const processed = vi.fn();
