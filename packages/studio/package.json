@@ -34,7 +34,6 @@
       "types": "./src/playerEntry.ts"
     },
     "./keys": {
-      "browser": "./src/keys.ts",
       "bun": "./src/keys.ts",
       "import": "./src/keys.ts",
       "types": "./src/keys.ts"
