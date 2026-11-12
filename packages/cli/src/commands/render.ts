@@ -1229,7 +1229,9 @@ async function executeLocalRender(
       signal: cancellation.signal,
     });
   }
-  const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
+  const job = producer.createRenderJob(
+    producer.renderConfigFromRequest(request, { logger, allowOutsideProjectAssets: true }),
+  );
 
   const onProgress = options.quiet
     ? undefined
@@ -1360,6 +1362,7 @@ async function renderRange(input: {
       config,
       input.range,
       input.outputPath,
+      { allowOutsideProjectAssets: true },
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);

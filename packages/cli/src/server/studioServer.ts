@@ -683,6 +683,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
+            allowOutsideProjectAssets: true,
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {

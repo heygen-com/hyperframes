@@ -36,7 +36,8 @@
  */
 
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
+import { escapesAssetRoot } from "../../../utils/paths.js";
 import type { ChromaSubsampling, EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
@@ -51,7 +52,10 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
 
 export interface CompileStageInput {
   projectDir: string;
@@ -163,10 +167,19 @@ export function resolveEntryHtmlPath(input: {
   workDir: string;
   entryFile: string;
   log: ProducerLogger;
+  assetRoot?: string;
 }): string {
   const { projectDir, workDir, entryFile, log } = input;
+  const readEntry = (path: string) => {
+    if (escapesAssetRoot(path, input.assetRoot)) {
+      throw new Error(
+        `Entry file "${relative(projectDir, path)}" leads outside the project folder`,
+      );
+    }
+    return readTextFile(path);
+  };
   const htmlPath = join(projectDir, entryFile);
-  const rawEntry = readTextFile(htmlPath);
+  const rawEntry = readEntry(htmlPath);
   if (entryFile === "index.html" || !isTemplateEntry(rawEntry)) return htmlPath;
 
   const projectIndexPath = join(projectDir, "index.html");
@@ -176,7 +189,7 @@ export function resolveEntryHtmlPath(input: {
     );
   }
   const standaloneHtml = extractStandaloneEntryFromIndex(
-    readTextFile(projectIndexPath),
+    readEntry(projectIndexPath),
     entryFile,
     rawEntry,
   );
@@ -225,7 +238,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     abortSignal,
   } = input;
 
-  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log });
+  const assetRoot = job.config.allowOutsideProjectAssets ? undefined : projectDir;
+  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log, assetRoot });
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     log,
@@ -239,6 +253,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -362,6 +377,9 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
+  if (!job.config.allowOutsideProjectAssets) {
+    dropMediaOutsideProject({ projectDir, workDir, composition, log });
+  }
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),

@@ -140,6 +140,7 @@ export interface RunDistributedSimulatedInput {
   maxParallelChunks?: number;
   /** Forwarded to `plan()` and re-applied by `renderChunk()` at boot. */
   variables?: Record<string, unknown>;
+  allowOutsideProjectAssets?: boolean;
 }
 
 /**
@@ -190,6 +191,7 @@ export async function runDistributedSimulatedRender(
       variables: input.variables,
     },
     planDir,
+    { allowOutsideProjectAssets: input.allowOutsideProjectAssets },
   );
 
   // Step B: render every chunk. Sequential to keep the harness predictable —

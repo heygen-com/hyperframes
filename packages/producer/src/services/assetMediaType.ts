@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   fingerprintElementId,
   isNotMediaPayload,
@@ -11,6 +12,8 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
+import { escapesAssetRoot } from "../utils/paths.js";
+import type { ProducerLogger } from "../logger.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
 
@@ -86,6 +89,28 @@ interface MediaReference {
 
 function isRemoteOrInlineSource(src: string): boolean {
   return /^(?:https?:|data:|blob:|about:)/i.test(src.trim());
+}
+
+/** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
+export function dropMediaOutsideProject(input: {
+  projectDir: string;
+  workDir: string;
+  composition: { videos: VideoElement[]; audios: AudioElement[]; images: ImageElement[] };
+  log: ProducerLogger;
+}): void {
+  const { projectDir, workDir, composition, log } = input;
+  const compiledDir = join(workDir, "compiled");
+  const roots = [projectDir, compiledDir, join(workDir, "downloads")];
+  const staysInside = ({ id, src }: { id: string; src: string }) => {
+    if (!src || isRemoteOrInlineSource(src)) return true;
+    const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+    if (roots.some((root) => !escapesAssetRoot(path, root))) return true;
+    log.warn(`[Render] Media "${id}" source is missing: it is outside the project folder`, { src });
+    return false;
+  };
+  composition.videos = composition.videos.filter(staysInside);
+  composition.audios = composition.audios.filter(staysInside);
+  composition.images = composition.images.filter(staysInside);
 }
 
 /**

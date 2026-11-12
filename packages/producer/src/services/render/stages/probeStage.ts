@@ -84,7 +84,10 @@ import {
 } from "../shared.js";
 import type { RenderConfig, RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
 import { resolveCaptureSurface } from "../captureImageFormat.js";
 import { computeCompositionObservabilityHash } from "../observability.js";
 
@@ -437,6 +440,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
+        allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
       });
       assertNotAborted();
 
@@ -622,6 +626,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             resolutions,
             projectDir,
             join(workDir, "downloads"),
+            job.config.allowOutsideProjectAssets ? undefined : projectDir,
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
@@ -834,6 +839,9 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
+    if (!job.config.allowOutsideProjectAssets) {
+      dropMediaOutsideProject({ projectDir, workDir, composition, log });
+    }
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),
