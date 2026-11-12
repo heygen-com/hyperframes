@@ -100,6 +100,7 @@ describe("skillsUpdateCheck", () => {
         location: "/home/user/.claude/skills",
         updateAvailable: true,
         summary: { current: 1, outdated: 2, missing: 0, coreMissing: 0 },
+        skills: [],
       });
       const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
       await refreshSkillsCache();
@@ -128,6 +129,7 @@ describe("skillsUpdateCheck", () => {
       location: "/home/user/.claude/skills",
       updateAvailable: false,
       summary: { current: 1, outdated: 0, missing: 0, coreMissing: 0 },
+      skills: [],
     });
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
     await refreshSkillsCache();
@@ -139,6 +141,12 @@ describe("skillsUpdateCheck", () => {
       location: "/home/user/.claude/skills",
       updateAvailable: true,
       summary: { current: 1, outdated: 2, missing: 3, coreMissing: 1 },
+      skills: [
+        { name: "media-use", status: "outdated" },
+        { name: "hyperframes", status: "current" },
+        { name: "hyperframes-cli", status: "outdated" },
+        { name: "reverse-any-video", status: "missing" },
+      ],
     });
 
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
@@ -148,6 +156,9 @@ describe("skillsUpdateCheck", () => {
       skillsUpdateAvailable: true,
       skillsOutdatedCount: 2,
       skillsMissingCount: 1,
+      // Which skills, so telemetry can tell an on-demand skill that never triggered from one not there.
+      skillsInstalled: ["hyperframes", "hyperframes-cli", "media-use"],
+      skillsOutdated: ["hyperframes-cli", "media-use"],
     });
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
@@ -160,10 +171,36 @@ describe("skillsUpdateCheck", () => {
       location: null,
       updateAvailable: false,
       summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0 },
+      skills: [],
     });
 
     const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
     await refreshSkillsCache();
+  });
+
+  it("forgets the installed skill names once a check finds no install (check, uninstall, check)", async () => {
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    mockCheckSkills.mockResolvedValue({
+      location: "/home/user/.claude/skills",
+      updateAvailable: true,
+      summary: { current: 1, outdated: 1, missing: 0, coreMissing: 0 },
+      skills: [
+        { name: "hyperframes", status: "current" },
+        { name: "media-use", status: "outdated" },
+      ],
+    });
+    await refreshSkillsCache();
+    expect(config).toMatchObject({ skillsInstalled: ["hyperframes", "media-use"] });
+
+    mockCheckSkills.mockResolvedValue({
+      location: null,
+      updateAvailable: false,
+      summary: { current: 0, outdated: 0, missing: 0, coreMissing: 0 },
+      skills: [],
+    });
+    await refreshSkillsCache();
+    expect(config).not.toHaveProperty("skillsInstalled");
+    expect(config).not.toHaveProperty("skillsOutdated");
   });
 
   /** Drive printSkillsUpdateNotice from the given cache shape; returns what it wrote (if anything). */
@@ -270,6 +307,7 @@ describe("skillsUpdateCheck", () => {
         location: "/home/user/.claude/skills",
         updateAvailable: false,
         summary: { current: 20, outdated: 0, missing: 0, coreMissing: 0 },
+        skills: [],
       });
 
       const { skillsCheckDue, refreshSkillsCache, invalidateSkillsCache } =

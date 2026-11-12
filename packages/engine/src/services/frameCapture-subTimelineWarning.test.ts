@@ -158,6 +158,31 @@ describe("recordSubTimelineWarning", () => {
     expect(message).not.toContain("failed to load");
   });
 
+  it("says GSAP was not loaded yet when a script reads timeline before GSAP runs", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      pageErrors: ["runtime-error:TypeError: Cannot read properties of null (reading 'timeline')"],
+      pendingTimelineIds: ["main"],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.warnings[0].message).toContain(
+      "GSAP was not loaded yet when that script ran: load the GSAP script before the first script that uses gsap.",
+    );
+  });
+
+  it("adds no GSAP hint for a null read that is not GSAP's", () => {
+    const session = makeSession({
+      subTimelineWaitOutcome: "script_failure",
+      pageErrors: [
+        "runtime-error:TypeError: Cannot read properties of null (reading 'appendChild')",
+      ],
+    });
+    recordSubTimelineWarning(session, 45_000);
+
+    expect(session.warnings[0].message).not.toContain("GSAP was not loaded");
+  });
+
   it("names the missing script, not the error it caused, when both are present", () => {
     const session = makeSession({
       subTimelineWaitOutcome: "script_failure",

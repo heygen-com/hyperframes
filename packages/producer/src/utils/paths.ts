@@ -9,9 +9,8 @@ import {
   relative as nodeRelative,
   isAbsolute as nodeIsAbsolute,
 } from "node:path";
-import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
+import { isSafePath } from "@hyperframes/core/safe-path";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -64,6 +63,11 @@ export function isPathInside(
   // is above the parent, and an absolute path when they live on different
   // drives/volumes (Windows) — none of which count as "inside".
   return rel !== "" && !LEADING_PARENT_SEGMENT_RE.test(rel) && !isPathAbsolute(rel);
+}
+
+/** True when `assetRoot` is set and `path`, symlinks resolved, leaves it. */
+export function escapesAssetRoot(path: string, assetRoot: string | undefined): boolean {
+  return assetRoot !== undefined && !isSafePath(assetRoot, path);
 }
 
 /**
@@ -135,13 +139,4 @@ export function resolveRenderPaths(
   const absoluteOutputPath = nodeResolve(resolvedOutputPath);
 
   return { absoluteProjectDir, absoluteOutputPath };
-}
-
-/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
-export function resolveCompositionSrc(projectDir: string, src: string): string | null {
-  const rooted = (value: string) => nodeResolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
-  const decoded = rooted(decodedUrlPath(src));
-  if (!isPathInside(decoded, projectDir)) return null;
-  const raw = rooted(src);
-  return !existsSync(decoded) && isPathInside(raw, projectDir) && existsSync(raw) ? raw : decoded;
 }

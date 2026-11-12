@@ -44,6 +44,14 @@ import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
 import { recordLastCheck } from "../telemetry/config.js";
 import { failureCodes } from "../utils/checkFailureCodes.js";
+import {
+  browserIdentity,
+  checkCacheKey,
+  checkCacheable,
+  readCachedPass,
+  storePass,
+} from "../utils/checkCache.js";
+import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
   ["Run the full verification gate", "hyperframes check"],
@@ -61,6 +69,7 @@ export interface CheckCommandDependencies {
   runPipeline(project: ProjectDir, options: CheckOptions): Promise<SavedCheckReport>;
   prepareMedia(project: ProjectDir, options: CheckOptions): Promise<PreparedMediaFile[]>;
   withMeta(value: object): object;
+  browserIdentity?(): Promise<string | undefined>;
 }
 
 const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
@@ -227,6 +236,12 @@ const CHECK_COMMAND_ARGS = {
     description:
       "Stop the whole check this long after it starts (ms, or 90s, 8m; at least 30s) and report what it found so far",
   },
+  cache: {
+    type: "boolean",
+    description:
+      "Return the stored result when the project, options and CLI are unchanged since the last pass (pass --no-cache to always re-run)",
+    default: true,
+  },
   timeout: {
     type: "string",
     description:
@@ -236,6 +251,12 @@ const CHECK_COMMAND_ARGS = {
   contrast: {
     type: "boolean",
     description: "Run the WCAG AA contrast pass (enabled by default)",
+    default: true,
+  },
+  craft: {
+    type: "boolean",
+    description:
+      "Run the craft pass (dead stretches, unread lines, silent films; enabled by default). --no-craft skips it, e.g. for a render preflight",
     default: true,
   },
   strict: {
@@ -313,9 +334,7 @@ export function createCheckCommand(
           return;
         }
         recordLastCheck({ at: new Date().toISOString(), codes: {} });
-        const report = await withProjectLock(project.dir, "check", () =>
-          dependencies.runPipeline(project, options),
-        );
+        const report = await checkOrReplay(dependencies, project, options);
         recordLastCheck({
           at: new Date().toISOString(),
           exitCode: checkExitCode(report),
@@ -346,6 +365,27 @@ export function createCheckCommand(
         reported.done();
       }
     },
+  });
+}
+
+async function checkOrReplay(
+  dependencies: CheckCommandDependencies,
+  project: ProjectDir,
+  options: CheckOptions,
+): Promise<SavedCheckReport> {
+  const identify = dependencies.browserIdentity ?? browserIdentity;
+  return withProjectLock(project.dir, "check", async () => {
+    const keyNow = async () =>
+      checkCacheable(options)
+        ? checkCacheKey(project.dir, options, VERSION, await identify())
+        : undefined;
+    const key = await keyNow();
+    const cached = key ? readCachedPass(project.dir, key) : undefined;
+    if (cached) return cached;
+    const report = await dependencies.runPipeline(project, options);
+    const treeUnchangedByTheRun = key !== undefined && (await keyNow()) === key;
+    if (treeUnchangedByTheRun) storePass(project.dir, key, report);
+    return report;
   });
 }
 
@@ -450,7 +490,9 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
     timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
     budget: parseBudget(args.budget),
+    cache: args.cache !== false,
     contrast: args.contrast !== false,
+    craft: args.craft !== false,
     ...(checkReview()?.skipContrastInMotion ? { skipContrastInMotion: true } : {}),
     strict: args.strict === true,
     snapshots: args.snapshots === true,
@@ -693,6 +735,10 @@ function browserSkippedLine(report: CheckReport): string {
 }
 
 function printHumanReport(report: CheckReport): void {
+  if (report.cached)
+    console.log(
+      `${c.dim("◇")} Nothing changed since the pass at ${report.cached.at}; showing that result. Remote scripts and assets were not fetched again. Run with --no-cache to check again.`,
+    );
   if (report.scope) {
     console.log(
       `Scope: ${report.scope.range ? report.scope.range.join("–") + "s" : "full timeline"}; ${report.scope.hiddenFindings} findings hidden by component filter. Counts/status include hidden findings.`,

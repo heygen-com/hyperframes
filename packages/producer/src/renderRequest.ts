@@ -65,8 +65,10 @@ export interface RenderRequestOptions {
   bufferSize?: string;
   videoFrameFormat?: VideoFrameFormat;
   hdrMode?: RenderConfig["hdrMode"];
+  chromaSubsampling?: RenderConfig["chromaSubsampling"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
@@ -200,6 +202,7 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
   assertOptionalEnum(options, "proresProfile", PRORES_PROFILE_NAMES);
   assertOptionalEnum(options, "strictness", ["strict", "best-effort"]);
   assertOptionalEnum(options, "hdrMode", ["auto", "force-hdr", "force-sdr"]);
+  assertOptionalEnum(options, "chromaSubsampling", ["420", "444"]);
   assertOptionalEnum(options, "pageMotionBlur", ["off"]);
   if (options.videoFrameFormat !== undefined && !isVideoFrameFormat(options.videoFrameFormat)) {
     throw new Error("Render request videoFrameFormat is invalid");
@@ -213,6 +216,9 @@ function assertRequestOptionObjects(options: Record<string, unknown>): void {
   validateEngineConfigSnapshot(options.engineConfig);
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");
+  }
+  if (options.strictVariables !== undefined && typeof options.strictVariables !== "boolean") {
+    throw new Error("Render request strictVariables must be a boolean");
   }
   if (options.distributed !== undefined) assertDistributedOptions(options.distributed);
 }
@@ -279,13 +285,14 @@ export function createRenderRequest(input: CreateRenderRequestInput): RenderRequ
 
 export function renderConfigFromRequest(
   request: RenderRequest,
-  runtime: { logger?: ProducerLogger } = {},
+  runtime: { logger?: ProducerLogger; allowOutsideProjectAssets?: boolean } = {},
 ): RenderConfig {
   const { engineConfig, distributed: _distributed, ...options } = request.options;
   return {
     ...options,
     producerConfig: engineConfig,
     logger: runtime.logger,
+    allowOutsideProjectAssets: runtime.allowOutsideProjectAssets === true,
   };
 }
 
@@ -309,6 +316,11 @@ export function distributedConfigFromRequest(
   }
   if (options.hdrMode === "force-hdr") {
     throw new Error("Distributed render does not support force-hdr");
+  }
+  if (options.chromaSubsampling === "444") {
+    throw new Error(
+      "Distributed render does not support chromaSubsampling 444: chunk workers and the assemble encode 4:2:0",
+    );
   }
   return {
     fps: distributedFps(options.fps),
@@ -343,6 +355,7 @@ export function distributedConfigFromRequest(
     abortSignal: runtime.abortSignal,
     planDirSizeLimitBytes: distributed.planDirSizeLimitBytes,
     variables: options.variables,
+    strictVariables: options.strictVariables,
   };
 }
 
@@ -393,6 +406,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("strictness", config.strictness),
     ...optionalProperty("entryFile", config.entryFile),
     ...optionalProperty("variables", config.variables),
+    ...optionalProperty("strictVariables", config.strictVariables),
   } satisfies CreateRenderRequestInput["options"];
   return createRenderRequest({
     projectDir: input.projectDir,

@@ -120,6 +120,7 @@ import type {
   SubTimelineWaitMemo,
   SubTimelineWaitOutcome,
 } from "../types.js";
+import { PROVENANCE_VERSION } from "../utils/renderProvenance.js";
 import { cloneCaptureWarnings } from "./captureWarning.js";
 import { installMediaRenderIdBridge } from "./mediaRenderIdBridge.js";
 import {
@@ -129,6 +130,7 @@ import {
 } from "./chromeMemorySampler.js";
 import { sampleProcessRss } from "../utils/processRss.js";
 import type { CompositionLengthSource } from "@hyperframes/core/runtime/composition-length";
+import { assertVariablesMatchPage } from "./variablesCheck.js";
 export { isMemoryExhaustionError, isTransientBrowserError } from "./captureFailure.js";
 
 export type { CaptureOptions, CaptureResult, CaptureBufferResult, CapturePerfSummary };
@@ -214,6 +216,8 @@ export interface CaptureSession {
    * Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
+  /** The init-time page analysis of a check deferred by `deferStaticDedup`; `armDeferredStaticDedup` runs it. */
+  staticDedupDeferred?: StaticFrameStats;
   // Tracks whether the page/browser handles have already been released by
   // closeCaptureSession. Used to make closeCaptureSession idempotent under
   // browser-pool semantics (see the function body for the full invariant).
@@ -232,6 +236,8 @@ export interface CaptureSession {
   scriptLoadCauses?: ScriptLoadCause[];
   /** Uncaught page errors; a timed-out timeline wait with any of these becomes a script failure. */
   pageErrors: string[];
+  /** True once this session honoured `options.strictVariables`: the check ran and passed. */
+  strictVariablesChecked?: boolean;
   /** The first VFX chain error; its frames would lack the effect, so it stops the render. */
   vfxFailure?: string;
   /** Outcome of the sub-composition timeline wait: ready | timeout | script_failure. */
@@ -1037,10 +1043,21 @@ async function initDrawElementOrTransparentBackground(
   // help, and the safety-net blank guard also stands down under it so diagnostic
   // frames arrive unmodified.
   const forceDE = process.env.HF_FORCE_DRAWELEMENT === "1";
+  // drawElement verification and worker-encode are JPEG-only; its PNG path is for alpha.
+  const opaquePng = session.options.format === "png" && !capturesAlpha(session.options);
   const useDrawElement =
     ((session.config?.useDrawElement ?? false) || forceDE) &&
     !supersampling &&
+    !opaquePng &&
     (!forceScreenshot || forceDE);
+  if ((session.config?.useDrawElement ?? false) && !supersampling && opaquePng) {
+    session.deGateReason = "opaque_png";
+    session.deFallbackTrigger = "opaque_png";
+    console.error(
+      "[engine] fast capture disabled for this render: lossless opaque PNG capture " +
+        "uses the launch-mode capture path.",
+    );
+  }
   if ((session.config?.useDrawElement ?? false) && supersampling) {
     session.deGateReason = "supersampling";
     session.deFallbackTrigger = "supersampling";
@@ -1301,9 +1318,6 @@ async function initDrawElementOrTransparentBackground(
       // passed) and the DOM is still normal (canvas not yet injected, so the
       // verification screenshots are valid). drawElement-path only; see armStaticDedup.
       await armStaticDedup(session, page, logInitPhase);
-      // A static frame reuses the previous drawElement capture; a risk frame is captured by
-      // another session, so its neighbours must not reuse across it.
-      for (const f of session.deRiskFrames ?? []) session.staticFrames?.delete(f);
       // Video comps on injector-less sessions (probe sessions initialize before
       // video extraction) DEFER the rest of the drawElement init: ground-truth
       // screenshots would capture black <video> boxes, and once the canvas is
@@ -1333,6 +1347,7 @@ function drawElementWorkerEncodeEligible(session: CaptureSession, transparent: b
   return (
     (session.config?.enableDrawElementWorkerEncode ?? false) &&
     !transparent &&
+    session.options.format !== "png" &&
     session.beginFrameTimeTicks === 0
   );
 }
@@ -1452,8 +1467,10 @@ async function finalizeDrawElementInit(
 export async function completeDeferredDrawElementInit(session: CaptureSession): Promise<void> {
   if (!session.deInitDeferred || !session.onBeforeCapture) return;
   const page = session.page;
-  const logInitPhase = (phase: string) =>
-    console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  const logInitPhase = (phase: string) => {
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(`[initSession:${session.captureMode}] ${phase} (deferred drawElement init)`);
+  };
   await finalizeDrawElementInit(session, page, logInitPhase, {
     transparent: capturesAlpha(session.options),
     forceDE: process.env.HF_FORCE_DRAWELEMENT === "1",
@@ -2654,6 +2671,14 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
   const loadCauses = session.scriptLoadCauses ?? [];
   const pending = session.pendingTimelineIds ?? [];
   const pendingSuffix = pending.length > 0 ? ` (still unregistered: ${pending.join(", ")})` : "";
+  // The render page's gsap reads null until GSAP's script runs, so a too-early gsap.timeline() surfaces as this.
+  const gsapNotLoaded = sources.some((s) =>
+    /gsap is not defined|Cannot read properties of (?:null|undefined) \(reading '(?:timeline|registerPlugin)'\)/.test(
+      s,
+    ),
+  )
+    ? " GSAP was not loaded yet when that script ran: load the GSAP script before the first script that uses gsap."
+    : "";
   const isolated = session.isolatedCompositions ?? [];
   if (isolated.length > 0) {
     recordCaptureWarnings(session, [
@@ -2677,7 +2702,7 @@ export function recordSubTimelineWarning(session: CaptureSession, timeoutMs: num
       code: scriptFailure ? "sub_timeline_script_failure" : "sub_timeline_readiness_timeout",
       message: threwThenTimedOut
         ? `A composition script threw before its timeline registered` +
-          `${pendingSuffix} (${sources.join(", ")}). Fix the error; a composition animated by ` +
+          `${pendingSuffix} (${sources.join(", ")}).${gsapNotLoaded} Fix the error; a composition animated by ` +
           `CSS or rAF rather than a GSAP timeline must mark its host with data-no-timeline.`
         : scriptFailure
           ? `A sub-composition timeline script failed to load${scriptLoadCauseSuffix(loadCauses)} ` +
@@ -3057,6 +3082,13 @@ export async function describeThrowSite(
   return ` [thrown at: ${where}]`;
 }
 
+/** When the session asks for strict variables, refuse a render whose variables the page does not declare. */
+async function checkStrictVariables(session: CaptureSession): Promise<void> {
+  if (!session.options.strictVariables) return;
+  await assertVariablesMatchPage(session.page, session.options.variables);
+  session.strictVariablesChecked = true;
+}
+
 export async function initializeSession(session: CaptureSession): Promise<void> {
   const { page, serverUrl } = session;
 
@@ -3067,7 +3099,11 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const text = msg.text();
     const locationUrl = msg.location()?.url ?? "";
     const diagnostic = formatConsoleDiagnostic(type, text, locationUrl);
-    if (!diagnostic.suppressHostLog && !loggedEarlierInRender(session, text)) {
+    if (
+      !diagnostic.suppressHostLog &&
+      !quietRuntimeDetail(text) &&
+      !loggedEarlierInRender(session, text)
+    ) {
       console.error(diagnostic.text);
     }
     appendBrowserDiagnostic(session, diagnostic.text);
@@ -3144,7 +3180,8 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   const initStart = Date.now();
   const logInitPhase = (phase: string) => {
-    console.error(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(`[initSession:${session.captureMode}] ${phase} (${Date.now() - initStart}ms)`);
   };
   const gotoEntryPage = async (): Promise<void> => {
     appendBrowserDiagnostic(
@@ -3194,6 +3231,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
+    await checkStrictVariables(session);
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
@@ -3336,6 +3374,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
     await pollHfReady(page, pageReadyTimeout);
     logInitPhase("pollHfReady complete");
+    await checkStrictVariables(session);
 
     await waitForSubCompositionTimelines(session, page, pageReadyTimeout);
     logInitPhase(`pollSubCompositionTimelines complete (${session.subTimelineWaitOutcome})`);
@@ -3827,6 +3866,8 @@ export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
  * comp on any signal the tween-walker can't see: video / canvas / webgl (redraw without
  * a tween), zero tweens (non-GSAP animation), or a running CSS/WAAPI animation.
  */
+type StaticFrameStats = Awaited<ReturnType<typeof computeStaticFrameSet>>;
+
 export async function computeStaticFrameSet(
   page: Page,
   fps: number,
@@ -4055,12 +4096,12 @@ export async function computeStaticFrameSet(
 const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 
 // Wall budget for verification: 15 s is the floor; above it the budget is 1.5x
-// planned shots x the first shot's seek+capture time, capped at 300 s (nothing
-// was gained past 600 s on a 4K job). Exhaustion fails closed: dedup is
-// disabled for the unverified runs and normal capture proceeds.
+// planned shots x the first shot's seek+capture time, capped at 60 s so it ends before
+// the producer's 300 s first-frame stall that every worker's verification runs inside.
+// Exhaustion fails closed: dedup is disabled for unverified runs and capture proceeds.
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
-const STATIC_VERIFY_CEILING_MS = 300_000;
+const STATIC_VERIFY_CEILING_MS = 60_000;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
 const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
@@ -4366,6 +4407,7 @@ export async function verifyStaticFramesSafe(
     await seekToFrame(frameIdx);
     stats.screenshots++;
     const buf = await capture(page, session.options);
+    session.options.onStaticDedupActivity?.();
     if (stats.screenshots === 1) firstShotMs = now() - shotStart;
     return buf;
   };
@@ -4406,6 +4448,138 @@ export async function verifyStaticFramesSafe(
   }
 }
 
+// A session reusing an earlier session's verified set re-verifies this many short runs of its own frames.
+const STATIC_SPOT_CHECK_RUNS = 4;
+const STATIC_SPOT_CHECK_FRAMES = 2 * STATIC_VERIFY_REFERENCE_STRIDE;
+
+/** Sessions share a dedup verdict only when every input that decides their pixels is equal. */
+export function staticDedupMemoKey(session: CaptureSession): string | undefined {
+  const options = session.options;
+  if (!options.staticDedupMemo || !options.compositionHash) return undefined;
+  return JSON.stringify([
+    options.compositionHash,
+    options.width,
+    options.height,
+    options.deviceScaleFactor ?? 1,
+    session.captureMode,
+    options.format ?? null,
+    options.quality ?? null,
+    options.transparent === true,
+    options.fps,
+    [...(options.hiddenElementIds ?? [])].sort(),
+    options.variables ?? null,
+    options.motionBlur ?? null,
+    options.pageMotionBlur ?? null,
+    PROVENANCE_VERSION,
+  ]);
+}
+
+/** Up to STATIC_SPOT_CHECK_RUNS short runs of `frames` inside `range`: the first, the last and evenly between. */
+export function pickStaticSpotCheck(
+  frames: ReadonlySet<number>,
+  range?: { start: number; end: number },
+): Set<number> {
+  const inRange = [...frames]
+    .filter((frame) => !range || (frame >= range.start && frame < range.end))
+    .sort((left, right) => left - right);
+  const runs = contiguousStaticRuns(inRange).filter((run) => run.a >= 1 && run.b - run.a >= 2);
+  const count = Math.min(STATIC_SPOT_CHECK_RUNS, runs.length);
+  const picked = new Set<number>();
+  for (let index = 0; index < count; index++) {
+    const run = runs[count === 1 ? 0 : Math.round((index * (runs.length - 1)) / (count - 1))]!;
+    const end = Math.min(run.b, run.a + STATIC_SPOT_CHECK_FRAMES - 1);
+    for (let frame = run.a; frame <= end; frame++) picked.add(frame);
+  }
+  return picked;
+}
+
+export interface SharedStaticDedupDependencies {
+  openVerificationPage?: (session: CaptureSession) => Promise<Page>;
+}
+
+export type StaticDedupClaim =
+  | { kind: "verify"; settle: (frames: readonly number[] | null) => void }
+  | { kind: "reuse"; check: Promise<readonly number[] | null> };
+
+/** The first session for a key verifies and must settle; later sessions with that key reuse its check. */
+export function claimStaticDedupCheck(session: CaptureSession): StaticDedupClaim | undefined {
+  const key = staticDedupMemoKey(session);
+  const memo = session.options.staticDedupMemo;
+  if (!key || !memo) return undefined;
+  const checks = (memo.checks ??= new Map());
+  const pending = checks.get(key);
+  if (pending) return { kind: "reuse", check: pending };
+  let settle!: (frames: readonly number[] | null) => void;
+  checks.set(key, new Promise((resolve) => (settle = resolve)));
+  return { kind: "verify", settle };
+}
+
+/** What a verification gives later sessions: its fully verified frames, or null when it has none. */
+export function shareableStaticFrames(
+  verdict: StaticVerificationResult | null,
+): readonly number[] | null {
+  const usable =
+    verdict !== null &&
+    verdict.outcome !== "mismatch" &&
+    verdict.outcome !== "infrastructure" &&
+    verdict.outcome !== "unprofitable" &&
+    verdict.verifiedFrames.size > 0;
+  return usable ? [...verdict.verifiedFrames] : null;
+}
+
+/**
+ * Arms dedup from an earlier session's check of the same page. The shared frames are narrowed to this
+ * session's own prediction and spot-checked; any failure turns dedup off for this session only.
+ */
+export async function armFromSharedStaticDedup(
+  session: CaptureSession,
+  sharedFrames: readonly number[] | null,
+  predicted: ReadonlySet<number>,
+  fps: number,
+  logInitPhase: (phase: string) => void,
+  dependencies: SharedStaticDedupDependencies = {},
+): Promise<void> {
+  if (!sharedFrames) {
+    session.staticDedupSkipReason = "verification_failed";
+    logInitPhase(
+      "static-frame dedup: disabled (an earlier session of this render could not verify it)",
+    );
+    return;
+  }
+  const frames = new Set(sharedFrames.filter((frame) => predicted.has(frame)));
+  const spot = pickStaticSpotCheck(frames, session.options.staticDedupFrameRange);
+  if (spot.size === 0) {
+    session.staticDedupSkipReason = "ineligible";
+    logInitPhase("static-frame dedup: disabled (no shared static run in this session's frames)");
+    return;
+  }
+  const openPage = dependencies.openVerificationPage ?? createStaticVerificationPage;
+  let page: Page | undefined;
+  let verdict: StaticVerificationResult | undefined;
+  try {
+    page = await openPage(session);
+    verdict = await verifyStaticFramesSafe(session, page, spot, fps, 1);
+  } catch {
+    verdict = undefined;
+  } finally {
+    await page?.close().catch(() => {});
+  }
+  if (verdict?.outcome !== "verified" || verdict.verifiedFrames.size !== spot.size) {
+    session.staticDedupSkipReason = "verification_failed";
+    const at = verdict?.badFrame === undefined ? "" : ` at frame ${verdict.badFrame}`;
+    logInitPhase(
+      `static-frame dedup: disabled (spot check of the shared set: ${verdict?.outcome ?? "infrastructure"}${at})`,
+    );
+    return;
+  }
+  session.staticDedupVerification = verdict;
+  session.staticFrames = frames;
+  logInitPhase(
+    `static-frame dedup: ${frames.size}/${predicted.size} predicted frame(s) reusable (shared check, ` +
+      `spot check ${spot.size} frame(s), screenshots=${verdict.stats.screenshots}, elapsedMs=${verdict.stats.elapsedMs})`,
+  );
+}
+
 /**
  * Arm static-frame dedup for this render (default-on; opt out with HF_STATIC_DEDUP=false).
  * Runs at init in normal DOM state so the verification screenshots are valid. Predicts
@@ -4413,7 +4587,7 @@ export async function verifyStaticFramesSafe(
  * and on success stores it on the session for captureFrameCore to reuse. Sample budget
  * via HF_STATIC_DEDUP_SAMPLES (default 24).
  */
-async function armStaticDedup(
+export async function armStaticDedup(
   session: CaptureSession,
   page: Page,
   logInitPhase: (phase: string) => void,
@@ -4439,13 +4613,46 @@ async function armStaticDedup(
     );
     session.motionBlurNonSpatialFrames = sharedStaticFrameStats.nonSpatialOnlyFrameSet;
   }
+  await armStaticDedupFrames(session, page, logInitPhase, sharedStaticFrameStats);
+}
+
+/** Runs the still-frame check a session deferred at init; a no-op for any other session. */
+export async function armDeferredStaticDedup(session: CaptureSession): Promise<void> {
+  const stats = session.staticDedupDeferred;
+  if (!stats) return;
+  session.staticDedupDeferred = undefined;
+  const startedAt = Date.now();
+  const logInitPhase = (phase: string) =>
+    console.error(
+      `[initSession:${session.captureMode}] ${phase} (deferred, ${Date.now() - startedAt}ms)`,
+    );
+  if (videoInjectionBlocksStaticDedup(session, logInitPhase)) return;
+  await checkStaticFrames(session, stats, logInitPhase);
+}
+
+function videoInjectionBlocksStaticDedup(
+  session: CaptureSession,
+  logInitPhase: (phase: string) => void,
+): boolean {
+  if (!session.onBeforeCapture) return false;
+  session.staticDedupSkipReason = "video_injection";
+  logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
+  return true;
+}
+
+async function armStaticDedupFrames(
+  session: CaptureSession,
+  page: Page,
+  logInitPhase: (phase: string) => void,
+  sharedStaticFrameStats?: StaticFrameStats,
+): Promise<void> {
   // Idempotent: the drawElement init path arms dedup BEFORE canvas injection
   // (verification screenshots need the un-injected DOM), and initializeSession
   // calls this again unconditionally afterwards. Once staticFrames is
   // populated, re-running would overwrite the armed state with
   // skipReason="capture_mode" (captureMode is "drawelement" by then) —
   // contradictory telemetry — and re-run the verification seeks. No-op instead.
-  if (session.staticFrames || session.staticDedupSkipReason) return;
+  if (session.staticFrames || session.staticDedupSkipReason || session.staticDedupDeferred) return;
   // Default ON for everyone; opt out via HF_STATIC_DEDUP in {false,0,off} (resolved into
   // EngineConfig.staticFrameDedup by resolveConfig). Verification is the safety net at scale.
   // Default-on: only an explicit `staticFrameDedup === false` (resolved from
@@ -4470,11 +4677,7 @@ async function armStaticDedup(
     );
     return;
   }
-  if (session.onBeforeCapture) {
-    session.staticDedupSkipReason = "video_injection";
-    logInitPhase("static-frame dedup: disabled (before-capture hook / video injection active)");
-    return;
-  }
+  if (videoInjectionBlocksStaticDedup(session, logInitPhase)) return;
   const pageComposite = await page
     .evaluate(
       () =>
@@ -4496,6 +4699,34 @@ async function armStaticDedup(
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
     return;
   }
+  // Deferred after the page is read, so a later drawElement canvas cannot change the analysis.
+  if (session.options.deferStaticDedup) {
+    session.staticDedupDeferred = stats;
+    logInitPhase("static-frame dedup: deferred until this session captures");
+    return;
+  }
+  await checkStaticFrames(session, stats, logInitPhase);
+}
+
+/** Verifies (or shares) the predicted still frames and arms them, without the risk frames. */
+async function checkStaticFrames(
+  session: CaptureSession,
+  stats: StaticFrameStats,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  try {
+    await verifyOrShareStaticFrames(session, stats, logInitPhase);
+  } finally {
+    for (const f of session.deRiskFrames ?? []) session.staticFrames?.delete(f);
+  }
+}
+
+async function verifyOrShareStaticFrames(
+  session: CaptureSession,
+  stats: StaticFrameStats,
+  logInitPhase: (phase: string) => void,
+): Promise<void> {
+  const fps = fpsToNumber(session.options.fps);
   const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
   const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
   session.staticDedupPredictedCount = stats.staticFrameSet.size;
@@ -4507,6 +4738,36 @@ async function armStaticDedup(
     );
     return;
   }
+  const claim = claimStaticDedupCheck(session);
+  if (claim?.kind === "reuse") {
+    await armFromSharedStaticDedup(
+      session,
+      await claim.check,
+      stats.staticFrameSet,
+      fps,
+      logInitPhase,
+    );
+    return;
+  }
+  // Every exit settles the claim, so sessions waiting on this check never hang.
+  let shared: StaticVerificationResult | null = null;
+  try {
+    await verifyAndArmStaticDedup(session, stats, fps, samples, logInitPhase, (verdict) => {
+      shared = verdict;
+    });
+  } finally {
+    claim?.settle(shareableStaticFrames(shared));
+  }
+}
+
+async function verifyAndArmStaticDedup(
+  session: CaptureSession,
+  stats: Awaited<ReturnType<typeof computeStaticFrameSet>>,
+  fps: number,
+  samples: number,
+  logInitPhase: (phase: string) => void,
+  onVerdict: (verdict: StaticVerificationResult) => void,
+): Promise<void> {
   let verificationPage: Page | undefined;
   let verdict: StaticVerificationResult;
   try {
@@ -4526,6 +4787,7 @@ async function armStaticDedup(
     await verificationPage?.close().catch(() => {});
   }
   session.staticDedupVerification = verdict;
+  onVerdict(verdict);
   if (verdict.outcome === "mismatch" || verdict.outcome === "infrastructure") {
     session.staticDedupSkipReason = "verification_failed";
     logInitPhase(
@@ -5788,11 +6050,11 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
   session.isInitialized = false;
 }
 
-export function prepareCaptureSessionForReuse(
+export async function prepareCaptureSessionForReuse(
   session: CaptureSession,
   outputDir: string,
   onBeforeCapture: BeforeCaptureHook | null,
-): void {
+): Promise<void> {
   if (!existsSync(outputDir)) {
     mkdirSync(outputDir, { recursive: true });
   }
@@ -5815,6 +6077,7 @@ export function prepareCaptureSessionForReuse(
   session.lastFrameBuffer = undefined;
   session.lastFrameAbsoluteIndex = undefined;
   session.staticDedupCount = 0;
+  await armDeferredStaticDedup(session);
 }
 
 export async function getCompositionDuration(session: CaptureSession): Promise<number> {
@@ -6079,4 +6342,8 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     deNcprFallbacks: ncprFallbacks,
     deFrameTimeouts: session.deFrameTimeouts ?? 0,
   };
+}
+
+function quietRuntimeDetail(text: string): boolean {
+  return process.env.HF_DEBUG_RENDER !== "1" && text.startsWith("[hyperframes] render runtime fps");
 }

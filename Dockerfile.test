@@ -104,6 +104,8 @@ COPY packages/engine/package.json packages/engine/package.json
 COPY packages/player/package.json packages/player/package.json
 COPY packages/producer/package.json packages/producer/package.json
 COPY packages/cli/package.json packages/cli/package.json
+# Sharing runs its prepare script at install time, so include its build inputs.
+COPY packages/share/ packages/share/
 COPY packages/studio/package.json packages/studio/package.json
 COPY packages/shader-transitions/package.json packages/shader-transitions/package.json
 COPY packages/aws-lambda/package.json packages/aws-lambda/package.json
@@ -137,7 +139,7 @@ COPY packages/studio-server/ packages/studio-server/
 COPY packages/core/ packages/core/
 
 # Build workspace packages so "node" export conditions resolve to built dist
-RUN bun run --filter '@hyperframes/{parsers,lint,studio-server}' build \
+RUN bun run --filter '@hyperframes/{parsers,lint,studio-server,share}' build \
     && bun run --cwd packages/core build
 
 # Build core runtime artifacts (needed by renderer)

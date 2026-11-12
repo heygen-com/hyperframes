@@ -4,7 +4,7 @@ Open-source video rendering framework: write HTML, render video.
 
 ## Skills
 
-This repo ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`); install everything only when the user explicitly asks for the full set.
+This repo ships AI agent skills via [vercel-labs/skills](https://github.com/vercel-labs/skills). Install them before writing compositions — they encode framework-specific patterns that generic docs don't cover. **Default to the core set** (`/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video`, `/style-sampling`); install everything only when the user explicitly asks for the full set.
 
 ```bash
 npx hyperframes skills update           # default: installs/refreshes the core set plus anything already installed
@@ -18,11 +18,11 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 - `/hyperframes-cli` — the HyperFrames CLI by job: scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history; plus reading its JSON and recovering from build or render failures.
 - `/hyperframes-registry` — about 450 ready-made blocks and components installed as editable source. Use before hand-building any named visual; also for `hyperframes add` and `catalog`.
 - `/media-use` — get or make any media for a video (music, sound effects, images, voiceover, avatar and generated video, transcripts, cutouts, colour grades) with HeyGen or free local tools, and mix placed audio.
+- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project (motion graphics, talking heads, live action or AI-generated footage) and check the render against the original frame by frame. A HyperFrames Pro feature.
+- `/style-sampling` — make a new episode on your topic in one of five proven styles (Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime). A HyperFrames Pro feature.
 - `/figma` — bring Figma into a video: rendered assets, brand tokens, components, storyboard frames as reconstructed motion.
 - `/slideshow` — a presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
-- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project (motion graphics, talking heads, live action or AI-generated footage) and check the render against the original frame by frame. A HyperFrames Pro feature.
-- `/style-sampling` — make a new episode on your topic in one of five proven styles (Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime). A HyperFrames Pro feature.
 
 ## Issue and PR triage
 

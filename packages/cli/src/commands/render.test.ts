@@ -1217,6 +1217,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
+  it("forwards chromaSubsampling to createRenderJob", async () => {
+    await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      chromaSubsampling: "444",
+    });
+
+    expect(producerState.createdJobs[0]?.chromaSubsampling).toBe("444");
+  });
+
   it("forwards debug mode to createRenderJob", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -1420,6 +1435,35 @@ describe("renderLocal browser GPU config", () => {
 
     vi.advanceTimersByTime(100);
     expect(consumeCommandResult().exitCode).toBe(0);
+  });
+
+  it("does not finalize the host command or mask a later upload failure when embedded", async () => {
+    const success = await import("../utils/render-success-state.js");
+    const lifecycle = await import("../utils/commandResult.js");
+    const exit = vi.spyOn(lifecycle, "scheduleCliExit");
+    success._resetRenderSuccessForTests();
+    const uploadFailure = new Error("upload failed after render");
+    try {
+      const share = async () => {
+        await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+          embedded: true,
+          exitAfterComplete: true,
+        });
+        throw uploadFailure;
+      };
+      await expect(share()).rejects.toBe(uploadFailure);
+      expect(exit).not.toHaveBeenCalled();
+      expect(success.isRunDelivered()).toBe(false);
+    } finally {
+      success._resetRenderSuccessForTests();
+    }
   });
 
   it("still completes the render when the output registry cannot be written", async () => {
@@ -2087,6 +2131,21 @@ describe("checkRenderResolutionPreflight", () => {
       expect(
         await checkRenderResolutionPreflight(portraitHtml, "landscape-4k", agnostic),
       ).toBeUndefined();
+    });
+
+    it("clears a landscape-1440p preset on a portrait 720p composition (an exact 2×)", async () => {
+      expect(
+        await checkRenderResolutionPreflight(comp(720, 1280), "landscape-1440p", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("refuses `--resolution 1440p` on a 1920×1080 composition: 4/3 is not an integer scale", async () => {
+      const result = await checkRenderResolutionPreflight(
+        landscapeHtml,
+        "landscape-1440p",
+        agnostic,
+      );
+      expect(result?.kind).toBe("non-integer-scale");
     });
 
     it("clears a landscape preset on a square composition", async () => {

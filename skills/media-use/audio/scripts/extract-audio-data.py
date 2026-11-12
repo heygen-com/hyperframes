@@ -22,6 +22,8 @@ import sys
 
 import numpy as np
 
+from trusted_program import find_program
+
 # Windows sizes stdio to the ANSI code page (cp1252). These scripts emit UTF-8 on
 # every platform; say so rather than depending on the console's code page. Carry
 # `errors` across: reconfigure() resets it to "strict", and CPython deliberately gives
@@ -51,7 +53,7 @@ MAX_FREQ = 16000.0
 def decode_audio(path: str) -> np.ndarray:
     """Decode audio to mono float32 samples via ffmpeg."""
     cmd = [
-        "ffmpeg", "-i", path,
+        find_program("ffmpeg"), "-i", path,
         "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-f", "s16le", "-acodec", "pcm_s16le",
         "-loglevel", "error",

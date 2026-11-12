@@ -4,7 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
-import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { resolveFramePlaybackAdapter } from "./playbackAdapterResolution";
 import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
 import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
@@ -28,7 +28,7 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
-import { attachPausedVideoProvider } from "../lib/pausedVideoProvider";
+import { setFrameLoopStart } from "../lib/previewChannel";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
@@ -149,10 +149,8 @@ export function useTimelinePlayer({
       try {
         // undefined means "no override"; an explicit null override means "no adapter".
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
-        const win = iframe?.contentWindow as IframeWindow | null;
-        if (!iframe || !win) return null;
-        attachPausedVideoProvider(iframe, win);
-        const adapter = resolvePlaybackAdapter(iframe, win, {
+        if (!iframe) return null;
+        const adapter = resolveFramePlaybackAdapter(iframe, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
@@ -165,9 +163,7 @@ export function useTimelinePlayer({
   );
 
   const setLoopStart = useCallback((seconds: number | null) => {
-    try {
-      (iframeRef.current?.contentWindow as IframeWindow | null)?.__hf?.setLoopStart?.(seconds);
-    } catch {}
+    if (iframeRef.current) setFrameLoopStart(iframeRef.current, seconds);
   }, []);
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,

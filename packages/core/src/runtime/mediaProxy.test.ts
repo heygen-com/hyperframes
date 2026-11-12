@@ -10,7 +10,6 @@ const syncRuntimeMedia = (
 ) => syncRuntimeMediaWithDuration({ getCompositionDuration: () => 0, ...params });
 
 import {
-  deriveCodecMapKey,
   handleErrorForProxy,
   describeVideoSources,
   handleMetadataForProxy,
@@ -18,6 +17,8 @@ import {
   swapToProxy,
   type MediaCodecMapEntry,
 } from "./mediaProxy";
+import { deriveCodecMapKey } from "./mediaSourceLookup";
+import { recordOpenedAtInPoint, unproxiedSrc } from "./proxySrc";
 
 vi.mock("./bridge", () => ({
   postRuntimeMessage: vi.fn(),
@@ -497,6 +498,17 @@ describe("handleErrorForProxy (tertiary trigger)", () => {
 });
 
 describe("swapToProxy", () => {
+  it("swaps a clip held with no src after giving it back its file", async () => {
+    const el = createVideo("/video.mp4");
+    recordOpenedAtInPoint(el, "/video.mp4", null);
+    el.removeAttribute("src");
+    swapToProxy(el, HEVC_ENTRY, "proactive");
+    await settle();
+    expect(isProxied(el)).toBe(true);
+    expect(new URL(el.src).pathname).toBe("/video.mp4");
+    expect(unproxiedSrc(el)).toBe("/video.mp4");
+  });
+
   it("does not poison swap state when the source URL is malformed", async () => {
     const el = createVideo("/video.mp4");
     Object.defineProperty(el, "currentSrc", {

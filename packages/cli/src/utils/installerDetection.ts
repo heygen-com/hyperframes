@@ -6,8 +6,9 @@
  * in charge.
  */
 
-import { existsSync, realpathSync } from "node:fs";
-import { posix } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { delimiter, dirname, join, posix } from "node:path";
+import { compareVersions } from "compare-versions";
 import { isSafeVersion } from "./safeVersion.js";
 
 export type InstallerKind = "npm" | "bun" | "pnpm" | "brew" | "skip";
@@ -79,8 +80,7 @@ function isHomebrewInstall(realEntry: string): boolean {
  * Classify the install by walking the resolved entry path against each
  * package manager's well-known global prefix signature.
  */
-export function detectInstaller(): InstallerInfo {
-  const realEntry = resolveEntry();
+export function detectInstaller(realEntry: string | null = resolveEntry()): InstallerInfo {
   if (!realEntry) {
     return {
       kind: "skip",
@@ -235,7 +235,11 @@ export function runningInstall(): RunningInstall {
   const path = resolveEntry();
   // plugin-cli.mjs runs a pinned `npx hyperframes@<version>` and marks the child with this.
   if (process.env["HYPERFRAMES_PLUGIN_VERSION"]) return { channel: "plugin", path };
-  const installer = detectInstaller();
+  return installAt(path);
+}
+
+function installAt(path: string | null): RunningInstall {
+  const installer = detectInstaller(path);
   if (installer.kind !== "skip") return { channel: installer.kind, path };
   if (!path) return { channel: "unknown", path };
   if (isWorkspaceLink(path)) return { channel: "workspace", path };
@@ -282,4 +286,76 @@ export function updateCommandFor(install: RunningInstall, latest: string): strin
     if (invocation) return `${invocation.bin} ${invocation.args.join(" ")}`;
   }
   return "npx hyperframes@latest";
+}
+
+/** The version in the `hyperframes` package.json at or above a resolved bin script, or null. */
+function packageVersionAbove(entry: string): string | null {
+  let dir = dirname(entry);
+  for (let depth = 0; depth < 4; depth++) {
+    const manifest = join(dir, "package.json");
+    if (existsSync(manifest)) {
+      try {
+        const pkg = JSON.parse(readFileSync(manifest, "utf-8")) as {
+          name?: unknown;
+          version?: unknown;
+        };
+        const version = typeof pkg.version === "string" ? pkg.version : "";
+        return pkg.name === "hyperframes" && isSafeVersion(version) ? version : null;
+      } catch {
+        return null;
+      }
+    }
+    dir = dirname(dir);
+  }
+  return null;
+}
+
+const UPDATABLE_CHANNELS = new Set<InstallChannel>(["npm", "pnpm", "bun", "brew", "project"]);
+
+export interface ShadowingInstall {
+  version: string;
+  /** What moves that install to the latest release. */
+  updateCommand: string;
+}
+
+function resolvedOrNull(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/** The first `hyperframes` on PATH that is neither this copy nor another npx/bunx cache copy. */
+function firstGlobalOnPath(self: string | null): string | null {
+  for (const dir of (process.env["PATH"] ?? "").split(delimiter)) {
+    const real = dir ? resolvedOrNull(join(dir, "hyperframes")) : null;
+    if (real && real !== self && !isEphemeralExec(real)) return real;
+  }
+  return null;
+}
+
+function isOlder(version: string, than: string): boolean {
+  try {
+    return compareVersions(than, version) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The older install a plain `npx hyperframes` runs instead of this npx copy: the first
+ * `hyperframes` on PATH outside the npx cache, when it is older than `current` and its manager
+ * (global or the project's) can move it. Agents never update
+ * it (no notice, no auto-install unattended), so it only moves when the person runs this command.
+ * ponytail: POSIX shims only; Windows `.cmd` shims are not looked up.
+ */
+export function shadowingInstall(current: string): ShadowingInstall | null {
+  if (runningInstall().channel !== "npx") return null;
+  const global = firstGlobalOnPath(resolveEntry());
+  const version = global ? packageVersionAbove(global) : null;
+  if (!global || !version || !isOlder(version, current)) return null;
+  const install = installAt(global);
+  if (!UPDATABLE_CHANNELS.has(install.channel)) return null;
+  return { version, updateCommand: updateCommandFor(install, current) };
 }

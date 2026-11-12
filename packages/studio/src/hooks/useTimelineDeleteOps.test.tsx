@@ -156,6 +156,34 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     expect(body.targets).toHaveLength(elements.length);
   });
 
+  it("a refused delete names its count: 1 clip, 2 clips", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/file-mutations/remove-elements/")
+          ? new Response("{}", { status: 500 })
+          : new Response(JSON.stringify({ content: html }), { status: 200 }),
+      ),
+    );
+    const showToast = vi.fn();
+    const { elements, b, getHook } = mountDeleteHarness({
+      handleTimelineGroupMove: vi.fn(),
+      showToast,
+    });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+    await act(async () => {
+      await getHook().handleTimelineElementsDelete(elements.slice(0, 2));
+    });
+
+    expect(showToast.mock.calls.map(([message]) => message)).toEqual([
+      "Failed to delete 1 clip from index.html",
+      "Failed to delete 2 clips from index.html",
+    ]);
+  });
+
   it("shows exactly one toast when a ripple fails to persist after a committed delete", async () => {
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
     const showToast = vi.fn();

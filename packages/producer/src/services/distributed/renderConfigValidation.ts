@@ -261,8 +261,19 @@ export function validateDistributedRenderConfig(
     );
   }
 
+  const chromaSubsampling = (config as { chromaSubsampling?: unknown }).chromaSubsampling;
+  if (chromaSubsampling !== undefined && chromaSubsampling !== "420") {
+    throw new InvalidConfigError(
+      "config.chromaSubsampling",
+      `distributed mode encodes 4:2:0 only; got ${String(chromaSubsampling)}`,
+    );
+  }
+
   if (config.variables !== undefined) {
     validateVariablesPayload(config.variables);
+  }
+  if (config.strictVariables !== undefined && typeof config.strictVariables !== "boolean") {
+    throw new InvalidConfigError("config.strictVariables", "must be a boolean");
   }
   if (config.engineConfig !== undefined) {
     try {

@@ -524,7 +524,13 @@ describe("desktopHint", () => {
   });
 
   it("still gives the line to a coding agent, which passes it on to the person", () => {
-    const agent = { ...mac, ready: true, installed: true, tty: false, env: { CLAUDECODE: "1" } };
+    const agent = {
+      ...mac,
+      ready: true,
+      installed: true,
+      tty: false,
+      env: { CLAUDE_CODE_CHILD_SESSION: "1" },
+    };
     expect(desktopHint(process.cwd(), agent)).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );

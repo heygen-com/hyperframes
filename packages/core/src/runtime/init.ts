@@ -20,6 +20,8 @@ import { clipsFirstRenderedIn } from "./firstRenderReveal";
 import { refreshSvgSelectorAliases } from "../compiler/svgSelectorAliases";
 import { RUNTIME_FILLER } from "./protocol";
 import {
+  giveBackWhenDue,
+  isLongSource,
   preloadMedia,
   prepareUpcomingMedia,
   releaseMedia,
@@ -37,6 +39,7 @@ import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
 import { isWebKit, mediaElementTime } from "./mediaClock";
@@ -50,6 +53,7 @@ import {
   skipsHiddenImages,
 } from "./timedClipHide";
 import {
+  capturePageIn,
   inPlayerFrame,
   STUDIO_PREVIEW_MARK_META,
   PREVIEW_ONLY_ATTRS,
@@ -113,6 +117,7 @@ import {
   MEDIA_PRESEEK_SECONDS,
   type RuntimeMediaClip,
 } from "./media";
+import { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "../previewProxyBox";
 import {
   handleErrorForProxy,
   handleMetadataForProxy,
@@ -184,8 +189,10 @@ import { watchSceneWebglContexts } from "./webglContextRecovery";
 import {
   captureMotionBlurBusy,
   initCaptureMotionBlur,
+  motionBlurLighterLevels,
   paintCaptureMotionBlur,
   releaseCaptureMotionBlurFrame,
+  setMotionBlurPreviewQuality,
 } from "./captureMotionBlur";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -318,6 +325,13 @@ function resolveExportRenderFps(): ExportRenderFpsResolution {
     rawFps,
     fallbackReason: config.fpsFallbackReason,
   };
+}
+
+/** Levels below Full that make the preview lighter: a heavy video's copy, or blur's fewer copies. */
+function lighterLevels(): PreviewQuality[] {
+  const videos = levelsWithLighterCopies();
+  const blur = motionBlurLighterLevels();
+  return PREVIEW_QUALITY_LEVELS.filter((level) => videos.includes(level) || blur.includes(level));
 }
 
 function compositionFps(): number | null {
@@ -522,6 +536,7 @@ function decodesFirst(el: HTMLMediaElement, webAudio: WebAudioTransport): boolea
     isWebKit() &&
     isAudioElement(el) &&
     !el.loop &&
+    !isLongSource(el) &&
     webAudio.fitsDecodeBudget(el) &&
     typeof readElementRateSpec(el) === "number" &&
     readElementPlaybackRate(el) === 1
@@ -1313,7 +1328,7 @@ export function initSandboxRuntimeModular(): void {
       ? {
           from: "media",
           tag: media.tagName.toLowerCase(),
-          src: media.getAttribute("src") ?? media.currentSrc ?? "",
+          src: unproxiedSrc(media) ?? media.currentSrc ?? "",
           trimmed: media.hasAttribute("data-duration") || media.hasAttribute("data-end"),
         }
       : { from };
@@ -2529,10 +2544,7 @@ export function initSandboxRuntimeModular(): void {
         }
         const tagName = node.tagName.toLowerCase();
         const assetUrl =
-          node.getAttribute("src") ??
-          node.getAttribute("href") ??
-          node.getAttribute("poster") ??
-          null;
+          unproxiedSrc(node) ?? node.getAttribute("href") ?? node.getAttribute("poster") ?? null;
         const diagnosticCode =
           tagName === "link" ? "runtime_stylesheet_load_failed" : "runtime_asset_load_failed";
         postRuntimeDiagnosticOnce(
@@ -3003,6 +3015,7 @@ export function initSandboxRuntimeModular(): void {
   const hiddenImagesSkipped = skipsHiddenImages();
   const mediaDeferred = defersMedia();
   const studioPreview = document.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+  const loadsAhead = !capturePageIn(document);
   const skipFarScenes = createFarSceneSkip((host) =>
     runtimeElementWindow(host, {
       timelineRegistry: window.__timelines ?? {},
@@ -3051,7 +3064,7 @@ export function initSandboxRuntimeModular(): void {
   const NEXT_TAKE_SPAN_SECONDS = 0.5;
   let nextTakes: { t: number; bound: number; clips: Set<HTMLMediaElement> } | null = null;
   const fileOf = (el: HTMLMediaElement) =>
-    el.getAttribute("src") ?? el.querySelector("source")?.getAttribute("src") ?? "";
+    unproxiedSrc(el) ?? el.querySelector("source")?.getAttribute("src") ?? "";
   const nextTakeClips = (t: number): Set<HTMLMediaElement> => {
     if (nextTakes?.t === t && nextTakes.bound === metadataBoundMedia.size) return nextTakes.clips;
     const byFile = new Map<string, { el: HTMLMediaElement; start: number }[]>();
@@ -3251,6 +3264,7 @@ export function initSandboxRuntimeModular(): void {
       resolveAbsoluteMediaStartSeconds(el) + (resolveDurationForElement(el) ?? Number.NaN) <= time;
     const spent = passed && (decided !== true || (el.networkState === 2 && el.readyState < 4));
     const near = visible || armed || (upcoming && !unslotted && !spent);
+    if (near) giveBackWhenDue(el);
     if ((visible || !near) && endPrefetch(el)) queueMicrotask(fillPrefetchSlots);
     const approaching = near && !visible && resolveAbsoluteMediaStartSeconds(el) > clock.now();
     const wasApproaching = approachingMedia.has(el);
@@ -3267,7 +3281,7 @@ export function initSandboxRuntimeModular(): void {
         // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
         if (decided)
           withoutOwnTimingRecords(el, () =>
-            releaseMedia(el, window.__HF_RELEASE_PASSED_MEDIA === true),
+            releaseMedia(el, !loadsAhead || window.__HF_RELEASE_PASSED_MEDIA === true),
           );
       }
     } else if (!visible || decided === undefined) {
@@ -3472,11 +3486,12 @@ export function initSandboxRuntimeModular(): void {
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
-          playerFrame
-            ? nextTakeClips(currentTime).has(rawNode)
-            : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime),
+          loadsAhead &&
+            (playerFrame
+              ? nextTakeClips(currentTime).has(rawNode)
+              : upcoming || mediaStaysDue(rawNode, visibleAt, currentTime)),
           currentTime,
-          dueAtLoopStart(rawNode, visibleAt),
+          loadsAhead && dueAtLoopStart(rawNode, visibleAt),
         );
       if (!isMediaElement(rawNode) && !isImageElement(rawNode)) decidedTimedClip = true;
       if (isVideoElement(rawNode) || isImageElement(rawNode)) {
@@ -6682,11 +6697,14 @@ export function initSandboxRuntimeModular(): void {
           mountedElementCount: document.body.querySelectorAll("*").length,
           durationSeconds: clock.getDuration(),
           videos: describeVideoSources(),
-          lighterAt: levelsWithLighterCopies(),
+          lighterAt: lighterLevels(),
           copiesReady: copiesReady(),
         },
       }),
-    onSetPreviewQuality: setPreviewQuality,
+    onSetPreviewQuality: (level) => {
+      setPreviewQuality(level);
+      setMotionBlurPreviewQuality(level);
+    },
     onSetCopiesAhead: (on) => setCopiesAhead(on, () => clock.isPlaying()),
     onRetryPreviewCopies: retryPreviewCopies,
     onSetIdleHeartbeat: (slow) => {
@@ -6739,6 +6757,7 @@ export function initSandboxRuntimeModular(): void {
     onClearRuntimeData: clearRuntimeData,
     getCanonicalFps: () => state.canonicalFps,
   });
+  runtimeCleanupCallbacks.push(installEditingAgent().dispose);
 
   const teardown = () => {
     if (state.tornDown) return;

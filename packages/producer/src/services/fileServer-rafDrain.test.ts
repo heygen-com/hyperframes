@@ -1,6 +1,6 @@
 /**
  * Tests for the capture-path rAF drain exposed by the virtual-time shim
- * (`buildVirtualTimeShim` in fileServer.ts).
+ * (`VIRTUAL_TIME_SHIM` in fileServer.ts).
  *
  * heygen-com/hyperframes#5888: `seekToTime` flushes the rAF queue exactly
  * once, so a deferred DOM update chained through several rAF turns lands one
@@ -22,7 +22,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { Script, createContext, type Context } from "node:vm";
-import { buildVirtualTimeShim } from "./fileServer.js";
+import { VIRTUAL_TIME_SHIM } from "./fileServer.js";
 
 function runShim(shimSource: string): {
   run: <T = unknown>(code: string) => T;
@@ -51,7 +51,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // renderSeek, so the chain registers under the incoming epoch as fresh
     // work: the seek's flush runs turn one and the capture-path drain runs
     // the remaining nine at the same virtual time.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ afterSeek: number; afterDrain: number; visible: boolean }>(`(() => {
       var el = { calls: 0, visibility: "visible" };
       var pending = 10;
@@ -78,7 +78,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // beginSeek boundary the onUpdate registration lands at epoch 0 and the
     // drain would treat it as page-load lineage. hf.seek arms the boundary
     // before renderSeek, so the first captured frame drains like any other.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ calls: number; visible: boolean }>(`(() => {
       var el = { calls: 0, visibility: "visible" };
       var pending = 10;
@@ -102,7 +102,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // Same-origin child frames are driven through seekToTime directly, with
     // no renderSeek step: the boundary rolls there instead, and registrations
     // made since the last completed seek stay drainable at the next one.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const calls = run<number>(`(() => {
       var calls = 0;
       var pending = 5;
@@ -122,7 +122,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // tick's lineage epoch is 0 (registered before the first seek), so the
     // drain always defers it — the maintainer's 24-runs-over-24-frames
     // contract, drain included.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const runs = run<number>(`(() => {
       var runs = 0;
       function tick() { runs++; requestAnimationFrame(tick); }
@@ -143,7 +143,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // pushed the render into the ticker's turn. A spawned edge is not a loop
     // member, so the chain drains at the current seek while the driver keeps
     // its one-turn-per-seek pace.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ calls: number; ticks: number; visible: boolean }>(`(() => {
       var el = { calls: 0, visibility: "visible" };
       var pending = 10;
@@ -170,7 +170,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("a page-load callback ping-pong keeps alternating one turn per seek", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const runs = run<number>(`(() => {
       var runs = 0;
       function a() { runs++; requestAnimationFrame(b); }
@@ -190,7 +190,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("a chain queued before the first seek keeps the old one-turn-per-seek pace", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const calls = run<number>(`(() => {
       var calls = 0;
       var pending = 10;
@@ -212,7 +212,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("a perpetual loop first registered during a seek is bounded by the rerun allowance", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const runs = run<number>(`(() => {
       var runs = 0;
       function tick() { runs++; requestAnimationFrame(tick); }
@@ -234,7 +234,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("a fresh callback queued beside an established loop still runs", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ applied: boolean; loopRuns: number }>(`(() => {
       var el = { applied: false };
       var loopRuns = 0;
@@ -254,7 +254,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("caps a non-converging queue of distinct callbacks", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const ran = run<number>(`(() => {
       var runs = 0;
       window.__HF_VIRTUAL_TIME__.beginSeek();
@@ -273,7 +273,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("reports drain stats on __HF_VIRTUAL_TIME__.lastDrain", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const stats = run<{ flush: object; drain: { turns: number; ran: number; pending: number } }>(
       `(() => {
       window.__HF_VIRTUAL_TIME__.beginSeek();
@@ -291,7 +291,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("drains without advancing virtual time", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const observed = run<{ time: number; applied: boolean }>(`(() => {
       var el = { applied: false };
       var pending = 4;
@@ -306,7 +306,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
   });
 
   it("keeps cancelled entries cancelled across drain turns", () => {
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const ran = run<number>(`(() => {
       var runs = 0;
       window.__HF_VIRTUAL_TIME__.beginSeek();
@@ -325,7 +325,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // left turns 2-5 pending from the second seek on (first screenshot green,
     // the rest red). Lineage is per registration: the re-request opens a
     // fresh lineage and settles all five turns every seek.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ perSeek: number[]; visible: boolean[] }>(`(() => {
       var el = { visibility: "hidden" };
       var pending = 0, calls = 0;
@@ -356,7 +356,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // Sibling path through a persistent driver: a page-load ticker requests
     // the same reveal each seek. A repeated spawn edge is a fresh invocation
     // each time, not loop membership — it must still settle every seek.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ perSeek: number[]; visible: boolean[] }>(`(() => {
       var el = { visibility: "hidden" };
       var pending = 0, calls = 0;
@@ -393,7 +393,7 @@ describe("virtual-time shim capture-path rAF drain", () => {
     // callbacks collectible after a forced GC. The queued ancestor history
     // is likewise bounded at RAF_LINEAGE_MAX_ANCESTORS records per entry,
     // not the whole history of seeks.
-    const { run } = runShim(buildVirtualTimeShim({ seedRandomFromFrame: false }));
+    const { run } = runShim(VIRTUAL_TIME_SHIM);
     const state = run<{ alive: number; total: number }>(`(() => {
       var refs = [];
       for (var s = 0; s < 200; s++) {

@@ -38,7 +38,7 @@ import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
 import { scanMovers, whileCallbacksMuted } from "./discover";
-import { createFilterTier } from "./filterTier";
+import { createFilterTier, FILTER_LIGHTER_LEVELS, setFilterPreviewQuality } from "./filterTier";
 import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
@@ -783,6 +783,15 @@ export function paintCaptureMotionBlur(
   return done;
 }
 
+export function setMotionBlurPreviewQuality(level: number): void {
+  setFilterPreviewQuality(level);
+}
+
+export function motionBlurLighterLevels(): readonly number[] {
+  if (!instance || !onFallback || suspended) return [];
+  return instance.report().movers > 0 ? FILTER_LIGHTER_LEVELS : [];
+}
+
 /** True while a blurred frame is between its two captures: the page must hold still. */
 export function captureMotionBlurBusy(): boolean {
   return instance?.busy() ?? false;
@@ -827,6 +836,7 @@ export function resetCaptureMotionBlurForTests(): void {
   suspended = false;
   priorResolver = null;
   ourResolver = null;
+  setFilterPreviewQuality(1);
 }
 
 /** Test-only: judge the capture tier alone, without the filter fallback taking over. */

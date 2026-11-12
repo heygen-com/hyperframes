@@ -1868,6 +1868,22 @@ describe("WebAudioTransport", () => {
       vi.unstubAllGlobals();
     });
 
+    it("decodes a file once for clips that open at different in-points of it", async () => {
+      const transport = transportWithDecode(async () => ({}) as AudioBuffer);
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(8),
+      }));
+      vi.stubGlobal("fetch", fetchMock);
+      await Promise.all([
+        transport.decodeAudioElement(el("take.wav#t=10")),
+        transport.decodeAudioElement(el("take.wav#t=90")),
+      ]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls[0]![0]).toBe(key("take.wav"));
+      vi.unstubAllGlobals();
+    });
+
     it("DOES blacklist genuinely undecodable bytes — not retried", async () => {
       const transport = transportWithDecode(async () => {
         throw new Error("unsupported codec");

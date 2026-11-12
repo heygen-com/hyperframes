@@ -8,6 +8,7 @@
 
 import { spawnSync } from "node:child_process";
 import { platform } from "node:os";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 const COPY_TIMEOUT_MS = 5000;
 
@@ -16,27 +17,25 @@ interface ClipboardProvider {
   args: string[];
 }
 
-function detectProvider(): ClipboardProvider | undefined {
+function candidateProviders(): ClipboardProvider[] {
   const os = platform();
-  if (os === "darwin") {
-    return { cmd: "pbcopy", args: [] };
-  }
-  if (os === "win32") {
-    return { cmd: "clip.exe", args: [] };
-  }
-  // Linux / BSD — pick the first tool that's on PATH.
+  if (os === "darwin") return [{ cmd: "pbcopy", args: [] }];
+  if (os === "win32") return [{ cmd: "clip", args: [] }];
+  // Linux / BSD — pick the first tool installed.
   // WSL exposes clip.exe too; prefer it so copies land in the Windows
   // clipboard where the user actually sees them.
-  const candidates: ClipboardProvider[] = [
+  return [
     { cmd: "clip.exe", args: [] },
     { cmd: "wl-copy", args: [] },
     { cmd: "xclip", args: ["-selection", "clipboard"] },
     { cmd: "xsel", args: ["--clipboard", "--input"] },
   ];
-  const cmd = process.platform === "win32" ? "where" : "which";
-  for (const p of candidates) {
-    const result = spawnSync(cmd, [p.cmd], { stdio: "ignore", windowsHide: true });
-    if (result.status === 0) return p;
+}
+
+function detectProvider(): ClipboardProvider | undefined {
+  for (const provider of candidateProviders()) {
+    const cmd = findTrustedExecutable(provider.cmd);
+    if (cmd) return { cmd, args: provider.args };
   }
   return undefined;
 }

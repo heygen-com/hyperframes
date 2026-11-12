@@ -110,6 +110,7 @@ describe("auth login", () => {
         "GITPOD_WORKSPACE_ID",
         "container",
         "CLAUDECODE",
+        "CLAUDE_CODE_CHILD_SESSION",
         "CLAUDE_CODE_ENTRYPOINT",
       ].map((key) => [key, process.env[key]]),
     );
@@ -321,14 +322,14 @@ describe("auth login", () => {
   });
 
   it("lets a coding agent on this machine open the browser sign-in without a terminal", async () => {
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
     await runCommand({});
     expect(browserAuth.start).toHaveBeenCalledOnce();
   });
 
   it("keeps a coding agent in CI off the browser sign-in", async () => {
-    process.env["CLAUDECODE"] = "1";
+    process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
     process.env["CI"] = "true";
     Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
     await expect(runCommand({})).rejects.toThrow(/Invalid command usage/);

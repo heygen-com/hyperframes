@@ -62,12 +62,14 @@ describe("closeFileServerSafely", () => {
 async function withFileServer(
   projectDir: string,
   run: (server: Awaited<ReturnType<typeof createFileServer>>) => Promise<void>,
+  allowOutsideProjectAssets?: boolean,
 ): Promise<void> {
   const server = await createFileServer({
     projectDir,
     preHeadScripts: [],
     headScripts: [],
     bodyScripts: [],
+    allowOutsideProjectAssets,
   });
   try {
     await run(server);
@@ -492,7 +494,7 @@ describe("createFileServer", () => {
     );
   });
 
-  it("serves asset files through project-root symlinked directories", async () => {
+  it("serves asset files through project-root symlinked directories for local renders", async () => {
     const workspaceDir = mkdtempSync(join(tmpdir(), "hf-file-server-symlink-assets-"));
     const adsDir = join(workspaceDir, "Ads");
     const projectDir = join(adsDir, "annual-upsell-2");
@@ -508,11 +510,18 @@ describe("createFileServer", () => {
       );
       symlinkSync("../shared", join(projectDir, "shared"));
 
+      await withFileServer(
+        projectDir,
+        async (server) => {
+          await expectTextResponse(`${server.url}/shared/brand.css`, {
+            contentType: "text/css",
+            bodyIncludes: ".aisplus-glass",
+          });
+        },
+        true,
+      );
       await withFileServer(projectDir, async (server) => {
-        await expectTextResponse(`${server.url}/shared/brand.css`, {
-          contentType: "text/css",
-          bodyIncludes: ".aisplus-glass",
-        });
+        expect((await fetch(`${server.url}/shared/brand.css`)).status).toBe(404);
       });
     } finally {
       rmSync(workspaceDir, { recursive: true, force: true });

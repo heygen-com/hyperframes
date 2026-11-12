@@ -509,6 +509,10 @@ export interface HyperframesConfig {
   skillsOutdatedCount?: number;
   /** How many skills were missing (not installed) at the last check. */
   skillsMissingCount?: number;
+  /** Names of the HyperFrames skills installed at the last check (current or outdated). */
+  skillsInstalled?: string[];
+  /** Names of the installed skills that were outdated at the last check. */
+  skillsOutdated?: string[];
   /** How many installed skills were flagged removed-upstream at the last check. */
   /**
    * True once the DE parallel-router experiment ("HF_DE_PARALLEL_ROUTER")
@@ -741,6 +745,8 @@ function passthroughFields(parsed: Partial<HyperframesConfig>): Partial<Hyperfra
     skillsUpdateAvailable: parsed.skillsUpdateAvailable,
     skillsOutdatedCount: parsed.skillsOutdatedCount,
     skillsMissingCount: parsed.skillsMissingCount,
+    skillsInstalled: stringList(parsed.skillsInstalled),
+    skillsOutdated: stringList(parsed.skillsOutdated),
     localEmbeddingEnabled: consentFrom(parsed.localEmbeddingEnabled),
   };
 }
@@ -945,6 +951,11 @@ export function updateLocalModelConsent(
     warnSettingsLockedOnce(error);
     return localModelConsentOnDisk();
   }
+}
+
+/** A list of names from disk, or absent when what is there is not one. */
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : undefined;
 }
 
 /** Absent means never asked; anything present but not `true` counts as a no. */

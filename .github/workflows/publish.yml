@@ -49,9 +49,57 @@ jobs:
           path: out/hf-media-linux-aarch64.tar.gz
           if-no-files-found: error
 
+  lambda-handler-zip:
+    name: Lambda handler zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Runs apart from the publish job: read-only token, no secrets, no stored git credentials.
+    permissions:
+      contents: read
+    env:
+      EXPECTED_RELEASE_SHA: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.merge_commit_sha
+            || github.sha }}
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    outputs:
+      sha256: ${{ steps.zip.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.EXPECTED_RELEASE_SHA }}
+          persist-credentials: false
+      - name: Verify immutable release checkout
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_RELEASE_SHA}^{commit}")"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+            echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
+            exit 1
+          fi
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Build Lambda handler zip
+        id: zip
+        run: |
+          bun run --cwd packages/aws-lambda build:zip
+          echo "sha256=$(sha256sum packages/aws-lambda/dist/handler.zip | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hyperframes-lambda-handler-zip
+          path: packages/aws-lambda/dist/handler.zip
+          if-no-files-found: error
+
   publish:
     name: Publish
-    needs: lambda-arm64-ffmpeg
+    needs: [lambda-arm64-ffmpeg, lambda-handler-zip]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-publish
@@ -77,6 +125,9 @@ jobs:
           # release PR event exposes main as github.ref, which may advance
           # before this job starts; use the event's exact merge commit instead.
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
+          # Keep the write token out of .git/config. Only "Create release tag"
+          # pushes, and it authenticates its own git calls.
+          persist-credentials: false
 
       - name: Verify immutable release checkout
         run: |
@@ -124,7 +175,15 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          : "${GITHUB_TOKEN:?}"
+          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$BASIC_AUTH"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
+
           TAG="v$VERSION"
           EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
 
@@ -158,20 +217,32 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run build
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hyperframes-lambda-handler-zip
+          path: dist/lambda-handler-build
+
       # Before `npm publish`, so @hyperframes/aws-lambda pins this exact zip.
-      - name: Build Lambda handler zip
+      - name: Pin Lambda handler zip
         id: lambda_zip
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
+          EXPECTED_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
         run: |
           # A retried run reuses the zip already on the release, so the pin still matches it.
           if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-handler.zip --dir dist; then
             echo "attached=true" >> "$GITHUB_OUTPUT"
           else
-            bun run --cwd packages/aws-lambda build:zip
+            ACTUAL_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
+            if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+              echo "::error::Lambda handler zip sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
+              exit 1
+            fi
+            mv dist/lambda-handler-build/handler.zip dist/hyperframes-lambda-handler.zip
           fi
+          rm -rf dist/lambda-handler-build
           bun packages/aws-lambda/scripts/pin-handler-zip.ts
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4

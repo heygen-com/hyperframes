@@ -13,7 +13,7 @@ import {
 import { shouldTrack } from "../telemetry/client.js";
 import { getDoctorSummary } from "../telemetry/feedback.js";
 import { readConfig, type LastCheckRecord, type RecentRenderRecord } from "../telemetry/config.js";
-import { publishProjectArchive } from "../utils/publishProject.js";
+import { createPublishArchive, publishProjectArchive } from "../utils/publishProject.js";
 import { submitCatalogSearchMiss, submitFeedback } from "../utils/submitFeedback.js";
 import { buildIssueUrl, HYPERFRAMES_REPO_URL } from "../utils/feedbackIssue.js";
 import { VERSION } from "../version.js";
@@ -120,8 +120,11 @@ async function publishRepro(dir: string): Promise<string | undefined> {
   const spinner = clack.spinner();
   spinner.start("Publishing minimal repro...");
   try {
-    const published = await publishProjectArchive(dir);
+    const leftOut: string[] = [];
+    const archive = createPublishArchive(dir, (warning) => leftOut.push(warning));
+    const published = await publishProjectArchive(dir, { archive });
     spinner.stop(c.success("Repro published"));
+    for (const warning of leftOut) clack.log.warn(c.warn(warning));
     return published.url;
   } catch (err: unknown) {
     spinner.stop(c.error("Publish failed"));

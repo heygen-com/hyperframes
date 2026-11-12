@@ -47,6 +47,12 @@ lints the file it is editing.
 
 **Fix:** Give every caption element the same `data-track-index`.
 
+### `multiple_scene_templates`
+
+**Warning.** A file has more than one `<template>` holding a composition root and no composition root outside them. Only the first one renders; the message names each template.
+
+**Fix:** Keep one composition root per file, or move the other scenes into their own files.
+
 ### `clip_ends_past_root_duration`
 
 **Warning.** A clip runs past the root composition's `data-duration`, so it is cut off in previews, posters and renders.

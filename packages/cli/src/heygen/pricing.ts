@@ -1,7 +1,8 @@
 // Prices before a paid call, from the HyperFrames app's creation pricing. HeyGen charges in units of $1/60, rounded
 // up; the label rounds up to the cent. Routes HeyGen does not price ahead say so instead of guessing.
 import { Fix, probeSeconds, probeVideo, round } from "../measure/media.js";
-import { GUIDE_MAX_S, type GenerateRequest } from "./generate.js";
+import { GUIDE_MAX_S, VENDOR_PRICED_IMAGES, type GenerateRequest } from "./generate.js";
+import { limitCheck } from "./v3.js";
 
 export interface Price {
   usd: number | null;
@@ -31,10 +32,24 @@ const GPT_IMAGE: Record<string, number> = {
   "3:4": 0.03612,
 };
 const GPT_REFERENCE = 0.0125;
-const GPT_MODELS = new Set(["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]);
 const NANO_IMAGE = 0.067;
 const NANO_2_1_IMAGE = 0.0336;
 const NANO_2_1_REFERENCE = 0.00168;
+const MINIMAX_IMAGE: Record<string, number> = {
+  "minimax-h3-image": 0.025,
+  "minimax-h3-image-4k": 0.07,
+};
+const MINIMAX_REFERENCE = 0.015;
+// An API key pays 1.5x the vendor price; the price book's hf_image rows charge it x1.103 serving overhead x1.5.
+const API_IMAGE_MARKUP = 1.5;
+const HF_IMAGE_MARKUP = 1.103 * 1.5;
+const MARKUPS = "x1.5 on an API key, x1.6545 in HyperFrames credits";
+const image = (vendorUsd: number, basis: string): Price =>
+  at(
+    vendorUsd * API_IMAGE_MARKUP,
+    `${basis}; vendor price ${MARKUPS}`,
+    vendorUsd * HF_IMAGE_MARKUP * HF_CREDITS_PER_USD,
+  );
 const VIDEO_768P_PER_S = 0.018;
 // A reference shot (pictures, voice or guide clip) bills more, and its guide clip's seconds bill too: measured
 // 2026-10-23 from the wallet, 5 s with a picture $0.25, 10 s $0.50, 5 s with a 1 s guide $0.30, with a 3 s guide $0.40.
@@ -61,19 +76,24 @@ export function priceOf(r: GenerateRequest): Price {
   switch (r.type) {
     case "image": {
       const refs = r.references?.length ?? 0;
-      const model = r.model ?? "nano-banana-2";
-      if (model === "nano-banana-2") return at(NANO_IMAGE, "nano-banana-2, $0.067 an image");
+      const model = r.model ?? "nano-banana-2.1";
+      if (model === "nano-banana-2") return image(NANO_IMAGE, "nano-banana-2, $0.067 an image");
       if (model === "nano-banana-2.1")
-        return at(
+        return image(
           NANO_2_1_IMAGE + refs * NANO_2_1_REFERENCE,
           "nano-banana-2.1, $0.0336 an image and $0.00168 a reference",
         );
-      if (!GPT_MODELS.has(model))
+      if (!VENDOR_PRICED_IMAGES.has(model))
         return { usd: null, list: null, credits: null, basis: `${model}, not priced ahead` };
-      const each = GPT_IMAGE[r.aspect ?? "16:9"] ?? GPT_IMAGE["16:9"]!;
-      return at(
-        each + refs * GPT_REFERENCE,
-        `${model} at ${r.aspect ?? "16:9"}, about $0.0125 a reference`,
+      const aspect = r.aspect ?? "16:9";
+      const minimax = MINIMAX_IMAGE[model];
+      const each = minimax ?? GPT_IMAGE[aspect] ?? GPT_IMAGE["16:9"]!;
+      const reference = minimax === undefined ? GPT_REFERENCE : MINIMAX_REFERENCE;
+      const list = each + refs * reference;
+      const about = Math.ceil(list * HF_IMAGE_MARKUP * HF_CREDITS_PER_USD - 1e-9);
+      return image(
+        list,
+        `${model} at ${aspect}, about ${about} credits (charged on the vendor's bill), with about $${reference} a reference`,
       );
     }
     case "video": {
@@ -137,12 +157,16 @@ export function priceOf(r: GenerateRequest): Price {
   }
 }
 
-// No HeyGen unit rounding here: a $0.067 image is charged 67 credits, measured on dev 2026-10-29. Still an estimate.
+// No HeyGen unit rounding here, only up to a whole credit: the price book rounds a call's lines once. Still an estimate.
 export const creditsOf = (p: Price): number | null =>
   p.credits === null ? null : Math.ceil(p.credits - 1e-9);
 
-/** Refuses, before anything is sent, a call that would not fit what is left of the person's credit limit. */
-export function checkLimit(credits: number | null, limit: number | undefined): void {
+/** Refuses, before anything is sent, a call past the limit; a vendor-priced image is checked at its estimate + 10%. */
+export function checkLimit(
+  credits: number | null,
+  limit: number | undefined,
+  vendorPriced = false,
+): void {
   if (limit === undefined) return;
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
@@ -151,9 +175,10 @@ export function checkLimit(credits: number | null, limit: number | undefined): v
       `this call cannot be priced ahead, so it cannot be kept under --max-credits ${limit}; nothing was made`,
       fix,
     );
-  if (credits > limit)
+  const { checked, about } = limitCheck(credits, vendorPriced);
+  if (checked > limit)
     throw new Fix(
-      `this call is about ${credits} credits, over --max-credits ${limit}; nothing was made or charged`,
+      `this call is ${about}, over --max-credits ${limit}; nothing was made or charged`,
       fix,
     );
 }

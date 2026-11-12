@@ -1015,6 +1015,21 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  it("compileForRender refuses to inline an env file named as a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-env-subcomp-",
+      [{ id: "intro", src: "compositions/.env.html" }],
+      { ".env.html": validSubCompHtml("intro", "ENV_SECRET_VALUE") },
+    );
+    try {
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/compositions\/\.env\.html[\s\S]*git metadata or an env file/);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("compileForRender aborts when a data-composition-src reference points at a missing file", async () => {
     const projectDir = makeSubCompProject(
       "hf-missing-subcomp-",
@@ -1461,16 +1476,16 @@ describe("local font embedding", () => {
 </body></html>`,
     );
 
-    const originalInfo = defaultLogger.info;
+    const originalDebug = defaultLogger.debug;
     const embeddedMessages: string[] = [];
-    defaultLogger.info = (message) => {
+    defaultLogger.debug = (message) => {
       if (message.includes("Embedded local font file")) embeddedMessages.push(message);
     };
 
     try {
       await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     } finally {
-      defaultLogger.info = originalInfo;
+      defaultLogger.debug = originalDebug;
     }
 
     expect(embeddedMessages).toHaveLength(1);
@@ -1550,9 +1565,9 @@ describe("local font embedding", () => {
 </body></html>`,
     );
 
-    const originalInfo = defaultLogger.info;
+    const originalDebug = defaultLogger.debug;
     const fileBackedMessages: string[] = [];
-    defaultLogger.info = (message) => {
+    defaultLogger.debug = (message) => {
       if (message.includes("Kept large local font file-backed")) {
         fileBackedMessages.push(message);
       }
@@ -1562,7 +1577,7 @@ describe("local font embedding", () => {
     try {
       compiled = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
     } finally {
-      defaultLogger.info = originalInfo;
+      defaultLogger.debug = originalDebug;
     }
 
     expect(compiled.html).toContain('url("assets/large.ttc")');

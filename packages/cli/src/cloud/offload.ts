@@ -35,6 +35,7 @@ import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
+  archiveKey,
   assertUnchanged,
   type HtmlAttributeResolver,
   readChecked,
@@ -929,9 +930,9 @@ function htmlSrcKey(
   if (!clean || isRemoteOrInlineUrl(clean)) return null;
   const rootRelative = clean.startsWith("/")
     ? clean
-    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p));
+    : rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p)));
   for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-    const key = relative(absDir, candidate).replaceAll("\\", "/");
+    const key = archiveKey(relative(absDir, candidate).replaceAll("\\", "/"));
     if (fileMap.has(key)) return key;
   }
   return null;
@@ -956,7 +957,7 @@ function rewriteReferences(
 ): void {
   const urlFor: UrlFor = (rootRelative) => {
     for (const candidate of resolveLocalAssetCandidates(absDir, rootRelative)) {
-      const url = urlForKey(relative(absDir, candidate).replaceAll("\\", "/"));
+      const url = urlForKey(archiveKey(relative(absDir, candidate).replaceAll("\\", "/")));
       if (url) return url;
     }
     return null;
@@ -1032,7 +1033,11 @@ function rewriteHtmlDocument(
   const referrerAbsDir = resolve(absDir, dirname(entryPath));
   // Sub-composition srcs resolve the way the renderer inlines them.
   const resolveTarget: HtmlAttributeResolver = (raw) =>
-    localTarget(raw, (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(p)), urlFor);
+    localTarget(
+      raw,
+      (clean) => rewriteAssetPath(entryPath, clean, (p) => fileMap.has(archiveKey(p))),
+      urlFor,
+    );
   const { document } = parseHTML(html);
   const attrs = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "poster", "href"],

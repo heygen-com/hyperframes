@@ -1280,6 +1280,67 @@ describe("syncRuntimeMedia", () => {
     expect(clip.el.play).not.toHaveBeenCalled();
   });
 
+  it("seeks a held video tail once, though the browser lands short of the source end", () => {
+    // WebKit clamps a seek to the end onto the last frame, a few ms before the duration.
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    let time = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => time,
+      set: (value: number) => {
+        seeks.push(value);
+        time = Math.min(value, 0.2);
+      },
+      configurable: true,
+    });
+    for (const timeSeconds of [2, 2.02, 2.04, 2.06, 2.08])
+      syncRuntimeMedia({ clips: [clip], timeSeconds, playing: true, playbackRate: 1 });
+    expect(seeks).toHaveLength(1);
+  });
+
+  it("seeks a held video tail again when something else moved the element off it", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    let time = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => time,
+      set: (value: number) => {
+        seeks.push(value);
+        time = Math.min(value, 0.2);
+      },
+      configurable: true,
+    });
+    for (const timeSeconds of [2, 2.02, 2.04]) {
+      syncRuntimeMedia({ clips: [clip], timeSeconds, playing: true, playbackRate: 1 });
+    }
+    time = 0; // a reload resets the element
+    syncRuntimeMedia({ clips: [clip], timeSeconds: 2.06, playing: true, playbackRate: 1 });
+    expect(seeks).toHaveLength(2);
+  });
+
+  it("seeks a held video tail on every paused pass, as a render's prepare relies on", () => {
+    const clip = createMockClip({ start: 0, end: 5, duration: 5, sourceDuration: 0.25 });
+    let time = 0;
+    const seeks: number[] = [];
+    Object.defineProperty(clip.el, "currentTime", {
+      get: () => time,
+      set: (value: number) => {
+        seeks.push(value);
+        time = Math.min(value, 0.2);
+      },
+      configurable: true,
+    });
+    for (const timeSeconds of [2, 2, 2])
+      syncRuntimeMedia({
+        clips: [clip],
+        timeSeconds,
+        playing: false,
+        playbackRate: 1,
+        forceSync: true,
+      });
+    expect(seeks).toHaveLength(3);
+  });
+
   it("holds a video that runs to the composition end on its last frame at the terminal time", () => {
     const clip = createMockClip({ start: 2.5, end: 5, duration: 2.5, sourceDuration: 10 });
     const seek = {
@@ -1622,6 +1683,53 @@ describe("syncRuntimeMedia", () => {
     });
 
     expect(onElementVolume).toHaveBeenLastCalledWith(clip.el, 0.5, 1, 0.8);
+  });
+
+  describe("a muted video's own audio track", () => {
+    // A muted video still takes its clock from its audio track; a late track start stalls the picture after a cut.
+    const withTracks = (el: HTMLMediaElement, tracks: Array<{ enabled: boolean }>) =>
+      Object.defineProperty(el, "audioTracks", { value: tracks, configurable: true });
+    const tick = (clip: RuntimeMediaClip) =>
+      syncRuntimeMedia({ clips: [clip], timeSeconds: 5, playing: true, playbackRate: 1 });
+
+    it("is switched off for a video the author muted", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      clip.el.setAttribute("muted", "");
+      const tracks = [{ enabled: true }];
+      withTracks(clip.el, tracks);
+      tick(clip);
+      expect(tracks[0].enabled).toBe(false);
+    });
+
+    it("stays on for a video that can sound", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      const tracks = [{ enabled: true }];
+      withTracks(clip.el, tracks);
+      tick(clip);
+      expect(tracks[0].enabled).toBe(true);
+    });
+
+    it("stays on for a video that is muted by script and unmuted later", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      const tracks = [{ enabled: true }];
+      withTracks(clip.el, tracks);
+      clip.el.muted = true;
+      tick(clip);
+      clip.el.muted = false;
+      tick(clip);
+      expect(tracks[0].enabled).toBe(true);
+    });
+
+    it("is switched off when the browser lists it after the first tick", () => {
+      const clip = createMockClip({ start: 0, end: 10 });
+      clip.el.setAttribute("muted", "");
+      const tracks: Array<{ enabled: boolean }> = [];
+      withTracks(clip.el, tracks);
+      tick(clip);
+      tracks.push({ enabled: true });
+      tick(clip);
+      expect(tracks[0].enabled).toBe(false);
+    });
   });
 
   describe("per-element mute (Web Audio ownership)", () => {

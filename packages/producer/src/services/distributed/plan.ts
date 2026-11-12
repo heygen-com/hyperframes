@@ -49,6 +49,7 @@ import {
   fpsToNumber,
   HF_COLOR_GRADING_ATTR,
 } from "@hyperframes/core";
+import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   type EngineConfig,
   type VideoFrameFormat,
@@ -308,6 +309,8 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * rather than mid-plan; the producer-side throw is the fallback.
    */
   variables?: Record<string, unknown>;
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
+  strictVariables?: boolean;
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
@@ -322,6 +325,8 @@ export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 export interface BuildLocalExecutionPlanOptions {
@@ -349,6 +354,8 @@ export interface BuildLocalExecutionPlanOptions {
   readonly sliceChunkAudio?: boolean;
   /** Leave the audio to {@link buildPlanAudio}; chunks render video only. mp4 without `cfr` only. */
   readonly deferAudio?: boolean;
+  /** Trusted local callers only; see CompileForRenderOptions. Never read from config. */
+  readonly allowOutsideProjectAssets?: boolean;
 }
 
 export interface RemoteProjectFile {
@@ -384,6 +391,8 @@ export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 /** Applies the same audio correctness policy used by the in-process renderer. */
@@ -1184,7 +1193,10 @@ async function compilePlanComposition(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "executionPlanSizeLimitBytes" | "remoteFiles">,
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    "executionPlanSizeLimitBytes" | "remoteFiles" | "allowOutsideProjectAssets"
+  >,
 ) {
   // Plan-time validation. Rejections here surface as typed errors with
   // non-retryable codes so workflow adapters don't waste retry budget on
@@ -1228,6 +1240,9 @@ async function compilePlanComposition(
     logger: config.logger,
     producerConfig: cfg,
     variables: config.variables,
+    strictVariables: config.strictVariables,
+    pageMotionBlur: config.pageMotionBlur,
+    allowOutsideProjectAssets: options.allowOutsideProjectAssets === true,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);
@@ -1262,6 +1277,7 @@ async function compilePlanComposition(
       // false-positive every descendant.
       const rel = relative(projectDir, src);
       if (rel === "" || rel.startsWith("..")) return true;
+      if (!job.config.allowOutsideProjectAssets && !isSafePath(projectDir, src)) return false;
       const firstSegment = rel.split(sep, 1)[0];
       return firstSegment === undefined || !PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(firstSegment);
     },
@@ -1391,6 +1407,7 @@ async function compilePlanComposition(
     logPlanStage(log, "reference_background", stageStarted);
   }
   compiled = probeResult.compiled;
+  job.strictVariablesChecked = probeResult.strictVariablesChecked;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
@@ -1831,6 +1848,9 @@ export async function buildLocalExecutionPlan(
     format: config.format,
     ffmpegVersion,
     producerVersion,
+    ...(job.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: job.strictVariablesChecked }),
   };
 }
 
@@ -1877,7 +1897,10 @@ export async function plan(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "chunksCarryAudio"> = {},
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    "chunksCarryAudio" | "allowOutsideProjectAssets"
+  > = {},
 ): Promise<PlanResult> {
   const executionPlan = await buildLocalExecutionPlan(projectDir, config, planDir, options);
   return {
@@ -1893,5 +1916,8 @@ export async function plan(
     format: executionPlan.format,
     ffmpegVersion: executionPlan.ffmpegVersion,
     producerVersion: executionPlan.producerVersion,
+    ...(executionPlan.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: executionPlan.strictVariablesChecked }),
   };
 }

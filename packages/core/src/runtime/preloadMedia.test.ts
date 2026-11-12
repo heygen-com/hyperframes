@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
+import { unproxiedSrc } from "./proxySrc";
 import {
+  deferMediaUntilDue,
+  giveBackWhenDue,
   isRenderFrameVideo,
   preloadMedia,
   prepareUpcomingMedia,
@@ -259,5 +262,187 @@ describe("preparing upcoming video playback", () => {
     element.dispatchEvent(new Event("loadedmetadata"));
     expect(element.currentTime).toBeCloseTo(6, 3);
     element.remove();
+  });
+});
+
+describe("a clip of a long file opening at its in-point on Safari", () => {
+  const SAFARI =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+  const CHROME = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36";
+  let meta: HTMLMetaElement;
+  let seq = 0;
+  const stopWatching = () =>
+    (window as Window & { __hfMediaDeferral?: MutationObserver }).__hfMediaDeferral?.disconnect();
+  const inPlayer = (on: boolean) => {
+    const frame = document.createElement("iframe");
+    if (on) frame.setAttribute("data-hf-player-frame", "");
+    Object.defineProperty(window, "frameElement", { value: frame, configurable: true });
+  };
+  const sizeOf = (bytes: number | "unreadable") =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (bytes === "unreadable") throw new TypeError("blocked");
+        return new Response(null, {
+          status: 206,
+          headers: { "content-range": `bytes 0-0/${bytes}` },
+        });
+      }),
+    );
+  beforeEach(() => {
+    meta = document.createElement("meta");
+    meta.name = "hyperframes-studio-preview";
+    document.head.appendChild(meta);
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(SAFARI);
+    inPlayer(true);
+    sizeOf(68_000_000);
+    deferMediaUntilDue();
+  });
+  afterEach(() => {
+    stopWatching();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    Reflect.deleteProperty(window, "frameElement");
+    meta.remove();
+    document.body.replaceChildren();
+  });
+
+  // Each test names its own file: the size of a file is asked once per page.
+  const clip = (attrs = 'data-media-start="30"', start = "0") =>
+    `<video src="/m/film-${seq++}.mp4" data-start="${start}" data-duration="2" ${attrs}></video>`;
+  const later = () => clip('data-media-start="30"', "4");
+  async function added(html: string): Promise<HTMLVideoElement> {
+    document.body.insertAdjacentHTML("beforeend", html);
+    await Promise.resolve();
+    return document.body.lastElementChild as HTMLVideoElement;
+  }
+  const opened = (v: HTMLVideoElement) => v.getAttribute("src")!.includes("#t=");
+
+  it("gets a start fragment and keeps its authored src for everything that reads it", async () => {
+    const v = await added(clip());
+    const authored = v.getAttribute("src")!;
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBe(`${authored}#t=30`));
+    expect(unproxiedSrc(v)).toBe(authored);
+  });
+
+  it("holds a later clip with no src, still naming its file, until it is due", async () => {
+    const v = await added(later());
+    const authored = v.getAttribute("src")!;
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+    expect(unproxiedSrc(v)).toBe(authored);
+    giveBackWhenDue(v);
+    expect(v.getAttribute("src")).toBe(`${authored}#t=30`);
+  });
+
+  it("opens a later clip WebKit already began reading at its in-point, and gives its preload back", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "networkState", "get").mockReturnValue(2);
+    const v = await added(later());
+    await vi.waitFor(() => expect(opened(v)).toBe(true));
+    expect(v.preload).not.toBe("none");
+  });
+
+  it("leaves the preload of a small file's clip parsed before the runtime as authored", async () => {
+    sizeOf(5_600_000);
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    const authored = v.preload;
+    deferMediaUntilDue();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.preload).toBe(authored);
+  });
+
+  it("holds a later clip of a long file parsed before the runtime", async () => {
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", later());
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    deferMediaUntilDue();
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+  });
+
+  it.each([
+    ["playing", "paused", false],
+    ["seeking", "seeking", true],
+  ])(
+    "leaves the src of a later clip already %s when its file's size arrives",
+    async (_n, prop, value) => {
+      document.body.insertAdjacentHTML("beforeend", later());
+      const v = document.body.lastElementChild as HTMLVideoElement;
+      const authored = v.getAttribute("src");
+      Object.defineProperty(v, prop, { value, configurable: true });
+      await new Promise((r) => setTimeout(r, 10));
+      expect(v.getAttribute("src")).toBe(authored);
+    },
+  );
+
+  it("holds a later clip again when it is released after playing", async () => {
+    const v = await added(later());
+    await vi.waitFor(() => expect(v.getAttribute("src")).toBeNull());
+    giveBackWhenDue(v);
+    releaseMedia(v, true);
+    expect(v.getAttribute("src")).toBeNull();
+  });
+
+  it("does not hold a later clip a binding has given another src", async () => {
+    const v = await added(later());
+    v.setAttribute("src", "/m/bound.mp4");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(v.getAttribute("src")).toBe("/m/bound.mp4");
+  });
+
+  it("does so for a clip already parsed when the runtime arrives", async () => {
+    stopWatching();
+    document.body.insertAdjacentHTML("beforeend", clip());
+    deferMediaUntilDue();
+    const v = document.body.lastElementChild as HTMLVideoElement;
+    await vi.waitFor(() => expect(opened(v)).toBe(true));
+  });
+
+  it("stops reporting the authored src once something else sets the src", async () => {
+    const v = await added(clip());
+    await vi.waitFor(() => expect(opened(v)).toBe(true));
+    v.setAttribute("src", "/m/other.mp4");
+    expect(unproxiedSrc(v)).toBe("/m/other.mp4");
+  });
+
+  it("is left alone when its file is small, so a short film loads exactly as before", async () => {
+    sizeOf(5_600_000);
+    const v = await added(later());
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened(v)).toBe(false);
+    expect(v.preload).toBe("none");
+  });
+
+  it("is left alone when the size of its file cannot be read", async () => {
+    sizeOf("unreadable");
+    const v = await added(clip());
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened(v)).toBe(false);
+  });
+
+  it.each([
+    ["starts at the head of the file", 'data-media-start="0"'],
+    ["loops", 'data-media-start="30" loop'],
+  ])("is left alone when it %s", async (_name, attrs) => {
+    const v = await added(clip(attrs));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened(v)).toBe(false);
+  });
+
+  it("is left alone in Studio's preview, which copies and saves what it reads from the page", async () => {
+    inPlayer(false);
+    const v = await added(clip());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened(v)).toBe(false);
+  });
+
+  it("is left alone off Safari", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(CHROME);
+    const v = await added(clip());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(opened(v)).toBe(false);
   });
 });

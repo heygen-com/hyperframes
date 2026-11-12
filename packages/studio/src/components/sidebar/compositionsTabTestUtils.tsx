@@ -1,6 +1,6 @@
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, vi } from "vitest";
+import { afterEach, expect, vi } from "vitest";
 import { thumbnailScheduler } from "../../player/lib/thumbnailScheduler";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { CompositionsTab } from "./CompositionsTab";
@@ -36,4 +36,19 @@ export function mountCompositionsTab(props: Partial<ComponentProps<typeof Compos
     );
   });
   return host;
+}
+
+export const FRAME_TOKEN = "T".repeat(43);
+
+export function stubFrameTokenFetch(token: string | null = FRAME_TOKEN) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    expect(String(input)).toBe("/api/projects/demo/frame-token");
+    return { ok: token !== null, json: async () => ({ token }) } as Response;
+  });
+}
+
+export async function settleFrameToken() {
+  await act(async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  });
 }

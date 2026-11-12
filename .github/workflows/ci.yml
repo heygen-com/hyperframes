@@ -73,6 +73,7 @@ jobs:
       pull-requests: read
     outputs:
       release_only: ${{ steps.release.outputs.release_only }}
+      release_diff: ${{ steps.release.outputs.release_diff }}
       code: ${{ (github.event_name == 'workflow_dispatch' && inputs.catalog_publish) && 'true' || steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.code }}
       docs_catalog: ${{ steps.filter.outputs.docs_catalog }}
       cli: ${{ steps.release.outputs.release_only == 'true' && 'false' || steps.filter.outputs.cli }}
@@ -231,7 +232,11 @@ jobs:
               - "packages/lint/src/**"
               - "packages/cli/src/{cli,help,version}.ts"
               - "packages/cli/src/renderSetupWorker*.ts"
-              - "packages/cli/src/commands/{preview*,add,browser}.ts"
+              - "packages/cli/src/commands/{preview*,add,browser,batchRender,render}.ts"
+              - "packages/cli/src/commands/render/**"
+              - "packages/cli/src/share/**"
+              - "packages/cli/src/cloud/parsing.ts"
+              - "packages/share/{src,scripts}/**"
               - "packages/cli/src/server/**"
               - "packages/cli/src/browser/**"
               - "packages/cli/src/utils/**"
@@ -239,7 +244,7 @@ jobs:
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"
               - "packages/cli/src/media-use/lib/config-lock.mjs"
-              - "packages/cli/src/auth/{config,errors,paths,telemetryIdentity}.ts"
+              - "packages/cli/src/auth/**"
               - "packages/cli/scripts/**"
               - "packages/core/stubs/**"
               - "packages/engine/src/**"
@@ -248,7 +253,7 @@ jobs:
               - "packages/producer/scripts/build-hf-early-stub.ts"
               - "packages/producer/build*.mjs"
               - "packages/player/scripts/verify-runtime-pin.mjs"
-              - "packages/{studio,studio-server,core,parsers,player,sdk,lint,cli,engine,producer}/{package.json,tsconfig.json,tsup.config.ts}"
+              - "packages/{studio,studio-server,core,parsers,player,sdk,lint,cli,engine,producer,share}/{package.json,tsconfig.json,tsup.config.ts}"
               - "packages/*/package-subpaths.json"
               - "scripts/package-subpaths.mjs"
               - "scripts/rewrite-relative-import-extensions.mjs"
@@ -268,7 +273,8 @@ jobs:
   release-checks:
     name: Release checks
     needs: changes
-    if: ${{ needs.changes.outputs.release_only == 'true' }}
+    # The queue also runs this on a release, so a commit merged after the notes were drafted fails here.
+    if: ${{ (github.event_name == 'merge_group' && needs.changes.outputs.release_diff == 'true') || needs.changes.outputs.release_only == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -408,6 +414,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
@@ -883,6 +891,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       # Build workspace deps so the sdk's @hyperframes/parsers + core subpath
       # imports resolve via the "node" export condition (dist) under vitest.
@@ -975,6 +985,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - uses: ./.github/actions/install-ffmpeg-linux
+      - uses: ./.github/actions/prepare-ffmpeg-bin
       - run: bash scripts/ci/install-workspace-dependencies.sh
       # Same reason as studio-load-smoke: vite.config.ts is loaded by Node and
       # resolves the workspace packages through their "node" export condition.
@@ -1523,7 +1535,7 @@ jobs:
 
           bun run --filter @hyperframes/cli dev -- lint /tmp/hf-cli-inside
           bun run --filter @hyperframes/cli dev -- validate /tmp/hf-cli-inside --timeout 3000
-          bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
+          HF_DEBUG_RENDER=1 bun run --filter @hyperframes/cli dev -- render /tmp/hf-cli-inside \
             --quality standard \
             --workers auto \
             --strict \

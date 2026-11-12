@@ -36,3 +36,32 @@ export function renderMotionBlurEventProperties(
     ...Object.fromEntries(counts),
   };
 }
+
+export interface RenderMotionBlurResult {
+  tier?: "capture" | "filter";
+  movers: number;
+  failed_frames: number;
+  fingerprint?: Record<string, number>;
+}
+
+const count = (value: unknown): number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : 0;
+
+export function renderMotionBlurResult(motionBlur: PageMotionBlurSummary): RenderMotionBlurResult {
+  const { tier, fingerprint } = motionBlur;
+  return {
+    ...(tier === "capture" || tier === "filter" ? { tier } : {}),
+    movers: count(motionBlur.movers),
+    failed_frames: count(motionBlur.failedFrames),
+    ...(fingerprint
+      ? {
+          fingerprint: Object.fromEntries(
+            MOTION_BLUR_FINGERPRINT_FIELDS.map((field) => [
+              snake(field),
+              count(fingerprint[field]),
+            ]),
+          ),
+        }
+      : {}),
+  };
+}

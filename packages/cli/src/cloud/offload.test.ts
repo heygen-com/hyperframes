@@ -1077,4 +1077,32 @@ describe("offloadHeavyMedia", () => {
     expect(gifPrep).not.toHaveBeenCalled();
     expect(fileMap.has("logo.png")).toBe(true);
   });
+  it("offloads a file stored decomposed when the page names it composed, and the reverse", async () => {
+    const composed = "media/vid\u00e9o.mp4";
+    const decomposed = "media/vide\u0301o.mp4";
+    const dir = project({
+      "index.html": html(`<video src="${composed}"></video>`),
+      [decomposed]: HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+    const report = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+    expect(report.map((item) => item.path)).toEqual([composed]);
+    expect(fileMap.get("index.html")!.toString()).toContain("https://assets.example/");
+
+    const other = project({
+      "index.html": html(`<video src="${decomposed}"></video>`),
+      [composed]: HEAVY,
+    });
+    const otherMap = buildPublishFileMap(other);
+    await offloadHeavyMedia(other, otherMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+    expect(otherMap.get("index.html")!.toString()).toContain("https://assets.example/");
+  });
 });

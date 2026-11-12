@@ -50,6 +50,10 @@ function frozenAudioFor(el: HTMLMediaElement, ct: number, now: number): number {
   }
   return now - m.at;
 }
+// Where a video held on its tail was last sent, and where the browser put it: a browser lands a seek to the end
+// short of it, so asking again for the same time each tick would seek every frame.
+const heldTailSeekedTo = new WeakMap<HTMLMediaElement, { target: number; landed: number }>();
+const HELD_TAIL_MOVED_SECONDS = 0.05;
 const releaseHeldVideo = new WeakMap<HTMLMediaElement, () => void>();
 
 // A seeking video still paints its previous frame, and one still fetching its first data paints none (its seek
@@ -309,6 +313,7 @@ function clampVolume(volume: number): number {
  * element at a different file without ever leaving its active window.
  */
 export function evictMediaSyncState(el: HTMLMediaElement): void {
+  heldTailSeekedTo.delete(el);
   lastMoved.delete(el);
   lastOffset.delete(el);
   lastRelativeTime.delete(el);
@@ -473,6 +478,13 @@ function learnVideoStartLatency(el: HTMLMediaElement, time: number, offset: numb
   videoStartLatency = Math.min(0.1, Math.max(0, averaged));
 }
 
+/** A muted video takes its clock from its audio track, whose late start stalls the picture after a cut. */
+function dropSilentAudioTrack(el: HTMLMediaElement): void {
+  if (el.tagName !== "VIDEO" || !el.defaultMuted) return;
+  const tracks = (el as { audioTracks?: ArrayLike<{ enabled: boolean }> }).audioTracks;
+  for (const track of Array.from(tracks ?? [])) track.enabled = false;
+}
+
 // fallow-ignore-next-line complexity
 export function syncRuntimeMedia(params: {
   clips: RuntimeMediaClip[];
@@ -534,6 +546,7 @@ export function syncRuntimeMedia(params: {
   for (const clip of params.clips) {
     const { el } = clip;
     if (!el.isConnected) continue;
+    dropSilentAudioTrack(el);
     const clipRate = clip.rate ?? clip.playbackRate;
     const origin = clip.origin ?? clip.start;
     const isNonLoopVideo = el.tagName === "VIDEO" && !clip.loop;
@@ -808,7 +821,14 @@ export function syncRuntimeMedia(params: {
         // ignore unsupported playbackRate
         swallow("runtime.media.site1", err);
       }
-      if (hardSync || strictSync || forceSync || (steerSeeks && !dipped)) {
+      const heldTail = heldTailSeekedTo.get(el);
+      // Only while playing: a paused pass (a seek, a render's prepare) always lands the frame it asks for.
+      const tailSettled =
+        isHeldVideoTail &&
+        params.playing &&
+        heldTail?.target === relTime &&
+        Math.abs(el.currentTime - heldTail.landed) < HELD_TAIL_MOVED_SECONDS;
+      if (!tailSettled && (hardSync || strictSync || forceSync || (steerSeeks && !dipped))) {
         // Skip the per-tick seek (and the `el.load()` drift-recovery retry
         // below) for `<video>` elements that have a sibling
         // `<img id="__render_frame_<id>__">`. The sibling is created only
@@ -827,6 +847,9 @@ export function syncRuntimeMedia(params: {
           } catch (err) {
             swallow("runtime.media.site2", err);
           }
+          if (isHeldVideoTail)
+            heldTailSeekedTo.set(el, { target: relTime, landed: el.currentTime });
+          else heldTailSeekedTo.delete(el);
           if (Math.abs(el.currentTime - relTime) > 0.5 && !seekLoadRetried.has(el)) {
             seekLoadRetried.add(el);
             el.load();

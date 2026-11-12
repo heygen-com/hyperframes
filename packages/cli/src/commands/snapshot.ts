@@ -1,5 +1,6 @@
 import {
   DEFAULT_CONFIG,
+  assertPublicHttpsUrl,
   buildZeroDurationDiagnostic,
   downloadToTemp,
   evaluateHfDiagnostic,
@@ -44,6 +45,7 @@ import {
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -53,6 +55,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -420,14 +423,38 @@ const processStderr = (error: unknown) =>
     ? error.stderr
     : "";
 
-const REMOTE_VIDEO_DIR = join(tmpdir(), "hyperframes-snapshot-media");
+/** `parent`'s folder for remote clips kept across runs, or a fresh one when that folder is not this user's alone. */
+export function privateMediaDir(parent: string): string {
+  const dir = join(parent, `hyperframes-snapshot-media-${process.getuid?.() ?? "u"}`);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  const ours =
+    stat.isDirectory() &&
+    (process.platform === "win32" ||
+      (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
+  if (ours) return dir;
+  const staging = createStagingDir(parent, "hyperframes-snapshot-media-");
+  process.once("exit", () => rmSync(staging, { recursive: true, force: true }));
+  return staging;
+}
 
-/** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
-export async function remoteVideoInput(url: string, download = downloadToTemp): Promise<string> {
+let remoteVideoDir: string | undefined;
+
+/** A local copy of a remote clip, or null: FFmpeg never gets the URL, since it would follow redirects unchecked. */
+export async function remoteVideoInput(
+  url: string,
+  download = downloadToTemp,
+): Promise<string | null> {
   try {
-    return await download(url, REMOTE_VIDEO_DIR, FFMPEG_EXTRACT_TIMEOUT_MS);
+    assertPublicHttpsUrl(url);
   } catch {
-    return url;
+    return null;
+  }
+  try {
+    remoteVideoDir ??= privateMediaDir(tmpdir());
+    return await download(url, remoteVideoDir, FFMPEG_EXTRACT_TIMEOUT_MS);
+  } catch {
+    return null;
   }
 }
 
@@ -1179,9 +1206,14 @@ export async function captureSnapshots(
         );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
-      const remoteCopies = new Map<string, Promise<string>>();
-      const localCopy = (href: string): Promise<string> => {
-        const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
+      const remoteCopies = new Map<string, Promise<string | null>>();
+      const leaveOutUnreadable = (href: string) => (path: string | null) => {
+        if (!path) warnings.push(`Remote video from ${new URL(href).host} could not be downloaded`);
+        return path;
+      };
+      const localCopy = (href: string): Promise<string | null> => {
+        const copy =
+          remoteCopies.get(href) ?? remoteVideoInput(href).then(leaveOutUnreadable(href));
         remoteCopies.set(href, copy);
         return copy;
       };
@@ -1299,7 +1331,7 @@ export async function captureSnapshots(
             active,
             VIDEO_FRAME_EXTRACT_CONCURRENCY,
             async (v) => {
-              // Prefer the project-local file; remote http(s) clips go to FFmpeg directly,
+              // Prefer the project-local file; remote http(s) clips go to FFmpeg as a downloaded copy,
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
@@ -1312,7 +1344,7 @@ export async function captureSnapshots(
                   const url = new URL(v.src);
                   if (url.protocol === "http:" || url.protocol === "https:") {
                     ffmpegInput = await localCopy(url.href);
-                    inputIsLocal = ffmpegInput !== url.href;
+                    inputIsLocal = true;
                   }
                 } catch {
                   /* unresolvable src (e.g. blob:, data:) — skip */

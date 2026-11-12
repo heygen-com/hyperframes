@@ -83,6 +83,7 @@ import {
 } from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import {
   FRAME_FILENAME_PREFIX,
   gcExtractionCache,
@@ -147,14 +148,10 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
   return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
 }
 
+const SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES = 1e-4;
 /**
- * Resolve the frame count produced for a requested extraction duration.
- *
- * Both paths sample with FFmpeg's fps filter. A CFR window ends at the nearest
- * frame boundary; a VFR window rounds up, keeping the slot a trailing still
- * covers. Keep this calculation shared by superset slicing and
- * producer coverage accounting so a complete VFR extraction cannot be
- * rejected because the two paths disagree by one frame.
+ * Frames a window gets: one per output slot it covers (CFR), or rounded up (VFR).
+ * Superset slicing and the coverage gate share it, so they never disagree by a frame.
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
@@ -214,9 +211,11 @@ export function extractionFrameCountForDuration(
 
   const frameNumerator = microseconds * fpsNumerator;
   const frameDenominator = 1_000_000n * fpsDenominator;
+  const slotsPerTolerance = BigInt(Math.round(1 / SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES));
   const frameCount = isVFR
     ? (frameNumerator + frameDenominator - 1n) / frameDenominator
-    : (2n * frameNumerator + frameDenominator) / (2n * frameDenominator);
+    : (slotsPerTolerance * (frameNumerator + frameDenominator) - frameDenominator - 1n) /
+      (slotsPerTolerance * frameDenominator);
   const frames = Number(frameCount);
   return Math.max(1, Number.isSafeInteger(frames) ? frames : Number.MAX_SAFE_INTEGER);
 }
@@ -1036,10 +1035,16 @@ async function leadInSecondsUnlessAborted(
 function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: number): number {
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
+const KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP = "tpad=stop_mode=clone:stop=1";
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
-function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): string[] {
+function undoTickRoundingOnTheSourceFrameGrid(
+  seek: number,
+  lead: number,
+  sourceFps: number,
+): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
+    ...(sourceFps > 0 ? [KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
@@ -1077,13 +1082,18 @@ function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
-function splitFrameRanges(ranges: readonly FrameRange[], segmentFrames: number): FrameRange[] {
+function splitFrameRanges(
+  ranges: readonly FrameRange[],
+  segmentFrames: number,
+  frameLimit: number,
+): FrameRange[] {
   const segments: FrameRange[] = [];
   for (const range of ranges) {
-    for (let offset = 0; offset < range.frames; offset += segmentFrames) {
+    const frames = Math.min(range.frames, frameLimit - range.firstFrame);
+    for (let offset = 0; offset < frames; offset += segmentFrames) {
       segments.push({
         firstFrame: range.firstFrame + offset,
-        frames: Math.min(segmentFrames, range.frames - offset),
+        frames: Math.min(segmentFrames, frames - offset),
       });
     }
   }
@@ -1205,7 +1215,11 @@ function videoFilterChain(input: VideoFilterChainInput): (seek: number) => strin
       ? [
           ...(metadata.isVFR
             ? []
-            : undoTickRoundingOnTheSourceFrameGrid(seek, videoStartOnMediaTimeline(metadata))),
+            : undoTickRoundingOnTheSourceFrameGrid(
+                seek,
+                videoStartOnMediaTimeline(metadata),
+                metadata.fps,
+              )),
           "settb=intb/2",
           "setpts=PTS-lte(TB\\,0.001)",
           `fps=${ffmpegFps}:start_time=0:round=up`,
@@ -1304,7 +1318,7 @@ async function extractVideoFramesRangeUnredacted(
   const fps = fpsToNumber(normalizedFps);
   const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
-  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, mediaIdPathSegment(videoId));
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   let metadata: VideoMetadata;
@@ -1419,13 +1433,17 @@ async function extractVideoFramesRangeUnredacted(
     return filters.length > 0 ? ["-vf", filters.join(",")] : [];
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
-  const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
-  // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
-  // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
-  // decimal rate counts zero frames here and keeps the `-t` window.
-  const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
+  const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const framesBeforeSourceEnd = extractionFrameCountForDuration(
+    playableDuration - startTime,
+    normalizedFps,
+    false,
+  );
+  const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
+  // A `-t` window ends at the nearest slot; segments read a frame past and keep exactly their own.
+  // A decimal rate counts zero frames here and keeps the `-t` window.
   const extract = (hwaccel: string[]) =>
-    sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
+    sampleAtOutputFps && (options.frameRanges || totalFrames > 0)
       ? runSegmentedExtraction({
           decodeArgs: [...hwaccel, ...decodeArgs],
           filterAndEncodeArgs: (seek) => [...filterArgsFor(seek), ...encodeArgs],
@@ -1438,6 +1456,7 @@ async function extractVideoFramesRangeUnredacted(
           segments: splitFrameRanges(
             options.frameRanges ?? [{ firstFrame: 0, frames: totalFrames }],
             segmentFrames,
+            totalFrames > 0 ? totalFrames : Number.POSITIVE_INFINITY,
           ),
           runOptions,
           onProgress: options.onProgress,
@@ -2553,7 +2572,7 @@ export async function extractAllVideoFrames(
   ): Promise<ExtractedFrames> {
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       const attempted = await runVideoExtractionWithRetry(
         () =>
           extractVideoFramesRange(
@@ -2632,7 +2651,7 @@ export async function extractAllVideoFrames(
     const tailFrames = Math.min(expectedFrames, Math.ceil(fps));
     if (expectedFrames <= tailFrames) return null;
     const deferred = (totalFrames: number): ExtractedFrames => {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       mkdirSync(outputDir, { recursive: true });
       return {
         videoId: work.video.id,
@@ -2676,7 +2695,7 @@ export async function extractAllVideoFrames(
       const totalFrames = firstTailFrame + storedTailFrames;
       return totalFrames <= expectedFrames * 0.6 ? null : deferred(totalFrames);
     }
-    const probeDir = join(options.outputDir, `${work.video.id}.tail-probe`);
+    const probeDir = join(options.outputDir, `${mediaIdPathSegment(work.video.id)}.tail-probe`);
     try {
       const tail = await extractVideoFramesRange(
         work.videoPath,
@@ -2724,7 +2743,7 @@ export async function extractAllVideoFrames(
       return sliceSupersetMember(
         member,
         superset,
-        join(options.outputDir, work.video.id),
+        join(options.outputDir, mediaIdPathSegment(work.video.id)),
         fps,
         configuredFps,
       );

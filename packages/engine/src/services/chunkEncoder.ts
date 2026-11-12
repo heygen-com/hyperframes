@@ -13,7 +13,6 @@ import {
   existsSync,
   ftruncateSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -50,6 +49,7 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -58,6 +58,8 @@ export const ENCODER_PRESETS = {
   standard: { preset: "medium", quality: 18, codec: "h264" as const },
   high: { preset: "fast", quality: 15, codec: "h264" as const },
 };
+
+export type ChromaSubsampling = "420" | "444";
 
 export interface EncoderPreset {
   preset: string;
@@ -160,6 +162,7 @@ export function getEncoderPreset(
   format: "mp4" | "webm" | "mov" = "mp4",
   hdr?: { transfer: HdrTransfer },
   proresProfile: ProresProfile = "4444",
+  chromaSubsampling: ChromaSubsampling = "420",
 ): EncoderPreset {
   const base = ENCODER_PRESETS[quality];
   if (format === "webm") {
@@ -183,7 +186,7 @@ export function getEncoderPreset(
       hdr,
     };
   }
-  return { ...base, pixelFormat: "yuv420p" };
+  return { ...base, pixelFormat: chromaSubsampling === "444" ? "yuv444p" : "yuv420p" };
 }
 
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.
@@ -764,7 +767,7 @@ export async function encodeFramesChunkedConcat(
   mkdirSync(dirname(outputPath), { recursive: true });
   // Keep intermediates under the caller-owned output directory for its existing
   // cleanup/debug policy, but never reuse another invocation's chunk files.
-  const chunkDir = mkdtempSync(join(dirname(outputPath), "chunk-encode-"));
+  const chunkDir = createStagingDir(dirname(outputPath), "chunk-encode-");
   const chunkPaths: string[] = [];
 
   for (let i = 0; i < chunkCount; i++) {

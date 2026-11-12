@@ -14,6 +14,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
@@ -66,22 +67,8 @@ export function findParakeet(): string | undefined {
   for (const path of candidates) {
     if (existsSync(path) && isRunnable(path)) return path;
   }
-  try {
-    const which = process.platform === "win32" ? "where" : "which";
-    const out = execFileSync(which, ["parakeet-mlx"], {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 5000,
-    });
-    const first = out
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    if (first && existsSync(first)) return first;
-  } catch {
-    // not on PATH
-  }
-  return undefined;
+  const onPath = findTrustedExecutable("parakeet-mlx");
+  return onPath && existsSync(onPath) ? onPath : undefined;
 }
 
 interface ParakeetToken {

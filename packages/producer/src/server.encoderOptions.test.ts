@@ -175,4 +175,31 @@ describe.each(ROUTES)("POST %s — encoder options", (path) => {
       "outputDynamicRange and legacy hdrMode must describe the same output policy",
     );
   });
+
+  it("forwards 4:4:4 chroma for an SDR mp4 render", async () => {
+    const response = await requestRender(path, { chromaSubsampling: "444" });
+
+    expect(response.status).toBe(200);
+    expect(capturedRenderConfigs[0]?.chromaSubsampling).toBe("444");
+  });
+
+  it("sends no chroma override when none is requested", async () => {
+    await requestRender(path, {});
+
+    expect(capturedRenderConfigs[0]).not.toHaveProperty("chromaSubsampling");
+  });
+
+  it.each([
+    [{ chromaSubsampling: "422" }, "chromaSubsampling must be one of"],
+    // Fragments without quotes: the error arrives JSON-encoded, so `"444"` is escaped.
+    [{ chromaSubsampling: "444", format: "webm" }, "supports mp4 only (got webm)"],
+    [{ chromaSubsampling: "444", gpu: true }, "requires the software encoder"],
+    [{ chromaSubsampling: "444", hdrMode: "force-hdr" }, "SDR only"],
+    [
+      { chromaSubsampling: "444", outputDynamicRange: "hdr" },
+      "is SDR only, not outputDynamicRange",
+    ],
+  ])("rejects chroma request %j", async (body, message) => {
+    await expectRejected(body, message);
+  });
 });

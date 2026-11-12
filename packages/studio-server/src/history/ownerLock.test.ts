@@ -95,7 +95,7 @@ function withoutHardLinks(code = "ENOTSUP"): void {
 }
 
 describe("takeHistoryOwnership on a drive without hard links", () => {
-  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM"])(
+  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES"])(
     "takes the lock when linking fails with %s",
     async (code) => {
       withoutHardLinks(code);

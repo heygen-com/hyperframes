@@ -304,6 +304,7 @@ async function installAll(
   force: boolean,
   requestedName: string,
   variableValues: Record<string, unknown> | null,
+  installDirs: string[],
 ): Promise<{
   written: string[];
   preserved: string[];
@@ -325,6 +326,7 @@ async function installAll(
           // Only the item the user named. A dependency dragged in behind it never
           // declared these variables and must not be rewritten by them.
           variableValues: planItem.name === requestedName ? variableValues : null,
+          installDirs,
         }),
       );
     }
@@ -415,6 +417,14 @@ export async function addToProject(
       "example-type",
     );
   }
+  // An example lays out a whole project, so the installer trusts it with the root; a block may not bring one along.
+  const exampleDependency = resolved.find((dep) => dep.type === "hyperframes:example");
+  if (exampleDependency) {
+    throw new AddError(
+      `"${item.name}" depends on the example "${exampleDependency.name}", which \`add\` does not install.`,
+      "example-type",
+    );
+  }
 
   // 3. Compatibility-gate every item we're about to install (dependencies
   //    included) before writing anything.
@@ -438,6 +448,7 @@ export async function addToProject(
     opts.force ?? false,
     item.name,
     variableValues,
+    [config.paths.blocks, config.paths.components, config.paths.assets],
   );
 
   // Report what landed, not what was asked for: a failed install throws above,

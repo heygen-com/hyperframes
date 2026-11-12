@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReferenceBackground } from "@hyperframes/producer";
 import { createRenderPlan } from "./plan.js";
-import { batchRowRenderOptions, executeRenderPlan, renderOptionsFromPlan } from "./execute.js";
+import {
+  batchRowRenderOptions,
+  executeRenderPlan,
+  renderOptionsFromPlan,
+  runRenderLint,
+} from "./execute.js";
 import * as manager from "../../browser/manager.js";
 import * as system from "../../telemetry/system.js";
 import { wantsDesktopHint, type SingleRenderResult } from "../render.js";
@@ -175,6 +180,27 @@ describe("the machine result line after a single render", () => {
     });
   });
 
+  it("prints the motion blur summary beside the background", async () => {
+    const lines = await resultLines({
+      renderTimeMs: 5,
+      reference_background: { kind: "none" },
+      motionBlur: {
+        tier: "capture",
+        reasonCode: null,
+        movers: 2,
+        failedFrames: 1,
+        readEvents: true,
+        fingerprint: null,
+      },
+    });
+    expect(JSON.parse((lines[0] ?? "").slice("@hf-result ".length))).toEqual({
+      version: 1,
+      operation: "render",
+      reference_background: { kind: "none" },
+      motion_blur: { tier: "capture", movers: 2, failed_frames: 1 },
+    });
+  });
+
   it("prints nothing when the render fails", async () => {
     expect(await resultLines(new Error("capture failed"))).toEqual([]);
   });
@@ -187,4 +213,18 @@ describe("the machine result line after a single render", () => {
     expect(await resultLines(measured, { quiet: true })).toEqual([]);
     expect(await resultLines({ renderTimeMs: 5 }, { docker: true })).toEqual([]);
   });
+});
+
+it("preserves actionable strict lint diagnostics for embedded sharing", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-render-invalid-"));
+  try {
+    writeFileSync(
+      join(dir, "index.html"),
+      '<main data-composition-id="main" data-width="1920" data-height="1080" data-duration="1"></main>',
+    );
+    const plan = createRenderPlan({ dir, strict: true, quiet: true });
+    await expect(runRenderLint(plan)).rejects.toThrow(/Cannot render:.*missing_timeline_registry/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

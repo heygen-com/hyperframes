@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,6 +45,7 @@ const {
   checkRequest,
   foldShort,
   generate,
+  isVendorPriced,
   parseMask,
   pickVoice,
   ringChange,
@@ -133,7 +134,7 @@ describe("generate", () => {
       references: [ref],
     });
     expect(sent[0]!.body).toMatchObject({
-      model: "nano-banana-2",
+      model: "nano-banana-2.1",
       prompt: "empty room",
       reference_images: [{ type: "base64", media_type: "image/jpeg" }],
     });
@@ -141,6 +142,138 @@ describe("generate", () => {
     const ledger = readFileSync(join(project, ".media/manifest.jsonl"), "utf8");
     expect(ledger).toContain('"source":"generated"');
     expect(ledger).toContain('"references":["ref.png"]');
+  });
+
+  it("reports and records the credits HeyGen says it charged", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img2",
+              status: "completed",
+              images: [{ url: "https://files.test/charged.png" }],
+              charged: { amount: 41, pool: "hyperframes_credits" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/charged.png"),
+      prompt: "a charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r.charged_credits).toBe(41);
+    expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
+      '"charged_credits":41',
+    );
+  });
+
+  it("keeps 10% headroom under the run's credit limit for an image charged on the vendor's bill", async () => {
+    const run = (limit: number) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-generate-limit-"));
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      const request = {
+        type: "image",
+        out: join(dir, "assets/limited.png"),
+        prompt: "a limited picture",
+        model: "gpt-image-2.5",
+        aspect: "16:9",
+      } as const;
+      return generate(request, undefined, creditsOf(priceOf(request)) ?? undefined);
+    };
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/limited.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img4",
+              status: "completed",
+              images: [{ url: "https://files.test/limited.png" }],
+            },
+          }),
+    );
+    await expect(run(72)).rejects.toThrow(
+      "about 66 credits, 73 with 10% headroom because it is charged on the vendor's bill and the run's credit limit of 72 leaves 72",
+    );
+    await expect(run(73)).resolves.toMatchObject({ job: "img4" });
+  });
+
+  it("sends a MiniMax H3 image one picture at its aspect, with no seed", async () => {
+    const sent: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (init?.body) sent.push(JSON.parse(String(init.body)));
+      return url === "https://files.test/h3.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img6",
+              status: "completed",
+              images: [{ url: "https://files.test/h3.png" }],
+            },
+          });
+    });
+    await generate({
+      type: "image",
+      out: join(project, "assets/h3.png"),
+      prompt: "a wide desk",
+      model: "minimax-h3-image-4k",
+      aspect: "21:9",
+    });
+    expect(sent[0]).toEqual({
+      model: "minimax-h3-image-4k",
+      prompt: "a wide desk",
+      num_images: 1,
+      aspect_ratio: "21:9",
+    });
+  });
+
+  it("reports no charge in HyperFrames credits for a charge to another pool", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/api-charged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img5",
+              status: "completed",
+              images: [{ url: "https://files.test/api-charged.png" }],
+              charged: { amount: 2.46, pool: "api_credits" },
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/api-charged.png"),
+      prompt: "an api-charged picture",
+      model: "gpt-image-2.5",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
+  });
+
+  it("reports no charge when HeyGen does not say one", async () => {
+    vi.stubGlobal("fetch", async (url: string) =>
+      url === "https://files.test/uncharged.png"
+        ? new Response(new Uint8Array([1]))
+        : json({
+            data: {
+              id: "img3",
+              status: "completed",
+              images: [{ url: "https://files.test/uncharged.png" }],
+              charged: null,
+            },
+          }),
+    );
+    const r = await generate({
+      type: "image",
+      out: join(project, "assets/uncharged.png"),
+      prompt: "an uncharged picture",
+    });
+    expect(r).not.toHaveProperty("charged_credits");
   });
 
   it("sends a picture with no ffmpeg on the machine, shrunk to 2048 px", async () => {
@@ -750,7 +883,7 @@ describe("generate", () => {
     } as const;
     await expect(
       generate(request, undefined, creditsOf(priceOf(request)) ?? undefined),
-    ).rejects.toThrow("this step needs about 67");
+    ).rejects.toThrow("this step needs about 56");
   });
 
   it("prices before making", () => {
@@ -764,7 +897,7 @@ describe("generate", () => {
         aspect: "1:1",
         references: ["a", "b"],
       }).usd,
-    ).toBe(0.09);
+    ).toBe(0.12);
     expect(priceOf({ type: "voice", out: "a.mp3" }).usd).toBeNull();
     expect(creditsOf(priceOf({ type: "voice", out: "a.mp3", script: "今天聊黄金" }))).toBe(1);
   });
@@ -773,21 +906,129 @@ describe("generate", () => {
     const edit = (model: string, references: string[]) =>
       creditsOf(priceOf({ type: "image", out: "a.png", model, aspect: "16:9", references }));
     for (const model of ["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]) {
-      expect(edit(model, [])).toBe(40);
-      expect(edit(model, ["a"])).toBe(53);
+      expect(edit(model, [])).toBe(66);
+      expect(edit(model, ["a"])).toBe(87);
       expect(
         edit(
           model,
           Array.from({ length: 16 }, (_, i) => `r${i}`),
         ),
-      ).toBe(240);
+      ).toBe(397);
     }
     expect(
       creditsOf(
         priceOf({ type: "image", out: "a.png", model: "nano-banana-2.1", references: ["a", "b"] }),
       ),
-    ).toBe(37);
+    ).toBe(62);
     expect(priceOf({ type: "image", out: "a.png", model: "some-new-model" }).credits).toBeNull();
+  });
+
+  it("says a GPT Image price is an estimate charged on the vendor's bill, and a Nano Banana one is not", () => {
+    expect(
+      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" }).basis,
+    ).toBe(
+      "gpt-image-2.5 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+    );
+    expect(priceOf({ type: "image", out: "a.png" }).basis).toBe(
+      "nano-banana-2.1, $0.0336 an image and $0.00168 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+    );
+  });
+
+  it("prices a MiniMax H3 image at 2K and 4K, with references, for an API key and a plan", () => {
+    const h3 = (model: string, references: number, aspect = "16:9") =>
+      priceOf({
+        type: "image",
+        out: "a.png",
+        model,
+        aspect,
+        references: Array.from({ length: references }, (_, i) => `r${i}`),
+      });
+    // The hf_image rows: 41.3625 a 2K output, 115.815 a 4K output, 24.8175 a reference.
+    expect(h3("minimax-h3-image", 0).credits).toBeCloseTo(41.3625, 6);
+    expect(h3("minimax-h3-image-4k", 0).credits).toBeCloseTo(115.815, 6);
+    expect(h3("minimax-h3-image", 1).credits! - h3("minimax-h3-image", 0).credits!).toBeCloseTo(
+      24.8175,
+      6,
+    );
+    expect(
+      h3("minimax-h3-image-4k", 1).credits! - h3("minimax-h3-image-4k", 0).credits!,
+    ).toBeCloseTo(24.8175, 6);
+    const both = (p: ReturnType<typeof h3>) => [p.list, p.usd, creditsOf(p)];
+    expect(both(h3("minimax-h3-image", 0))).toEqual([expect.closeTo(0.0375, 9), 0.05, 42]);
+    expect(both(h3("minimax-h3-image", 2))).toEqual([expect.closeTo(0.0825, 9), 0.09, 91]);
+    expect(both(h3("minimax-h3-image-4k", 0))).toEqual([expect.closeTo(0.105, 9), 0.12, 116]);
+    expect(both(h3("minimax-h3-image-4k", 1))).toEqual([expect.closeTo(0.1275, 9), 0.14, 141]);
+    expect(creditsOf(h3("minimax-h3-image", 16))).toBe(439);
+    // One price at every aspect: H3 bills by area tier, not shape.
+    expect(h3("minimax-h3-image", 0, "21:9").credits).toBe(
+      h3("minimax-h3-image", 0, "1:1").credits,
+    );
+    expect(h3("minimax-h3-image-4k", 0, "21:9").basis).toBe(
+      "minimax-h3-image-4k at 21:9, about 116 credits (charged on the vendor's bill), with about $0.015 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+    );
+    for (const model of ["minimax-h3-image", "minimax-h3-image-4k"])
+      expect(isVendorPriced({ type: "image", out: "a.png", model })).toBe(true);
+  });
+
+  it("prices every image model at its hf_image row for a plan and 1.5x its vendor price for an API key", () => {
+    const image = (model: string, aspect: string, references = 0) =>
+      priceOf({
+        type: "image",
+        out: "a.png",
+        model,
+        aspect,
+        references: Array.from({ length: references }, (_, i) => `r${i}`),
+      });
+    const rows: [string, string, number][] = [
+      ["gpt-image-2.6", "1:1", 87.15906],
+      ["gpt-image-2.6-flare", "16:9", 65.5182],
+      ["gpt-image-2.5", "4:3", 59.76054],
+      ["nano-banana-2", "21:9", 110.8515],
+      ["nano-banana-2.1", "3:2", 55.5912],
+    ];
+    for (const [model, aspect, row] of rows)
+      expect(image(model, aspect).credits).toBeCloseTo(row, 6);
+    expect(
+      image("gpt-image-2.6", "16:9", 1).credits! - image("gpt-image-2.6", "16:9").credits!,
+    ).toBeCloseTo(20.68125, 6);
+    expect(
+      image("nano-banana-2.1", "1:1", 1).credits! - image("nano-banana-2.1", "1:1").credits!,
+    ).toBeCloseTo(2.77956, 6);
+    expect(image("nano-banana-2", "1:1", 3).credits).toBe(image("nano-banana-2", "1:1").credits);
+    expect(image("nano-banana-2", "1:1").list).toBeCloseTo(0.1005, 9);
+    expect(image("nano-banana-2", "1:1").usd).toBe(0.12);
+    expect(image("gpt-image-2.6", "16:9").list).toBeCloseTo(0.0594, 9);
+    expect(image("gpt-image-2.6", "16:9").usd).toBe(0.07);
+    expect(image("nano-banana-2.1", "16:9", 2).list).toBeCloseTo((0.0336 + 2 * 0.00168) * 1.5, 9);
+  });
+
+  it("refuses an aspect ratio or a reference count the model does not take", () => {
+    const check =
+      (model: string, aspect?: string, references = 0) =>
+      () =>
+        checkRequest({
+          type: "image",
+          out: join(project, "assets/limits.png"),
+          prompt: "a desk",
+          model,
+          ...(aspect ? { aspect } : {}),
+          references: Array.from({ length: references }, (_, i) =>
+            join(project, `missing-${i}.png`),
+          ),
+        });
+    for (const model of ["minimax-h3-image", "minimax-h3-image-4k"]) {
+      for (const aspect of ["1:1", "16:9", "9:16", "4:3", "3:4", "21:9"])
+        expect(check(model, aspect)).not.toThrow();
+      expect(check(model, "3:2")).toThrow(`${model} does not make 3:2`);
+      expect(check(model, undefined, 17)).toThrow(
+        `${model} takes at most 16 --reference pictures, not 17`,
+      );
+      expect(check(model, undefined, 16)).toThrow("no file at");
+    }
+    expect(check("gpt-image-2.6", "21:9")).toThrow("gpt-image-2.6 does not make 21:9");
+    expect(check("nano-banana-2.1", "21:9")).not.toThrow();
+    expect(check("nano-banana-2", undefined, 15)).toThrow("at most 14 --reference pictures");
+    expect(check("some-new-model", "7:5")).not.toThrow();
   });
 
   it("prices only a request the real call would accept", () => {
@@ -943,11 +1184,26 @@ describe("generate", () => {
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
     expect(shot).toBe(108);
-    expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(67);
+    expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(56);
     expect(() => checkLimit(shot, 108)).not.toThrow();
     expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
     expect(() => checkLimit(null, undefined)).not.toThrow();
+  });
+
+  it("keeps 10% headroom under the limit for an image charged on the vendor's bill", () => {
+    const limited = (request: GenerateRequest, limit: number) => () =>
+      checkLimit(creditsOf(priceOf(request)), limit, isVendorPriced(request));
+    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" } as const;
+    expect(creditsOf(priceOf(gpt))).toBe(66);
+    expect(limited(gpt, 66)).toThrow(
+      "about 66 credits, 73 with 10% headroom because it is charged on the vendor's bill, over --max-credits 66",
+    );
+    expect(limited(gpt, 72)).toThrow("73 with 10% headroom");
+    expect(limited(gpt, 73)).not.toThrow();
+    const nano = { type: "image", out: "a.png", model: "nano-banana-2" } as const;
+    expect(isVendorPriced(nano)).toBe(false);
+    expect(limited(nano, 111)).not.toThrow();
   });
 });
 
@@ -1013,6 +1269,7 @@ describe("each route through the generated client", () => {
           [file, undefined],
         ]);
         expect(r).toMatchObject({ route: path, job: polled ? "j/1" : "" });
+        expect(r).not.toHaveProperty("charged_credits");
       },
     );
 

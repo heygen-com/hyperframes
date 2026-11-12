@@ -5,9 +5,15 @@ import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { cpus, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { processCompositionAudio } from "./audioMixer.js";
+
+vi.mock("node:os", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:os")>()),
+  cpus: () =>
+    Array.from({ length: 8 }, () => ({}) as ReturnType<typeof import("node:os").cpus>[number]),
+}));
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"], { encoding: "utf-8" }).status === 0;
 const BYTES_PER_SECOND = 48_000 * 2 * 2;

@@ -1,5 +1,6 @@
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
+import { parseHTML } from "linkedom";
 import {
   findHtmlTag,
   extractTimelineRegistryKeys,
@@ -166,7 +167,7 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const ruleHeader = /([^{}]+)\{/g;
+  const ruleHeader = /(?<![^{}])([^{}]+)\{/g;
   let m: RegExpExecArray | null;
   while ((m = ruleHeader.exec(noComments)) !== null) {
     const header = (m[1] ?? "").trim();
@@ -208,7 +209,7 @@ function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   const ids = new Set<string>();
   for (const style of styles) {
     const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
     while ((m = ruleWithBody.exec(noComments)) !== null) {
       const header = (m[1] ?? "").trim();
@@ -555,7 +556,7 @@ function stylesheetCanvasZoomHits(
 ): CanvasZoomHit[] {
   const hits: CanvasZoomHit[] = [];
   for (const style of styles) {
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     const content = stripCssComments(style.content);
     // At-rules and style attributes can restrict selector applicability.
     const allowNewHits = style.attrs.trim() === "" && !content.includes("@");
@@ -786,7 +787,7 @@ function stackingContextSelectors(styles: readonly ExtractedBlock[]): Set<string
   const selectors = new Set<string>();
   for (const style of styles) {
     const content = stripCssComments(style.content);
-    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    const rule = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let match: RegExpExecArray | null;
     while ((match = rule.exec(content)) !== null) {
       if (!STACKING_CONTEXT_DECLARATION.test(match[2] ?? "")) continue;
@@ -1945,6 +1946,32 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
         snippet: truncateSnippet(style.content.slice(0, 120)),
       }));
+  },
+
+  // multiple_scene_templates: the renderer takes the first scene template of a file with no live root.
+  ({ rawSource }) => {
+    const { document } = parseHTML(rawSource);
+    if (document.querySelector("[data-composition-id]")) return [];
+    const scenes = Array.from(document.querySelectorAll("template")).flatMap((template, index) => {
+      const compositionId = parseHTML(template.innerHTML)
+        .document.querySelector("[data-composition-id]")
+        ?.getAttribute("data-composition-id");
+      if (compositionId === undefined) return [];
+      const id = template.getAttribute("id");
+      return [
+        `template #${index + 1}${id ? ` (id="${id}")` : ""} holding composition "${compositionId}"`,
+      ];
+    });
+    if (scenes.length < 2) return [];
+    return [
+      {
+        code: "multiple_scene_templates",
+        severity: "warning",
+        message: `This file has more than one scene template and no live composition root, so only the first renders: ${scenes.join("; ")}.`,
+        fixHint:
+          "Keep one composition root per file, or move the other scenes into their own files.",
+      },
+    ];
   },
 ];
 

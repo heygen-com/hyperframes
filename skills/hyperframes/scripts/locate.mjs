@@ -20,6 +20,7 @@
  *        → VERIFY: read check.png — is the red box on the target? If off,
  *        redo step 2/3 with corrected strips. Never skip this.
  */
+import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, copyFileSync } from "node:fs";
 

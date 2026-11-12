@@ -14,7 +14,7 @@ const CHANGELOG = (v, body = "Faster renders.") =>
   `<Update\n  label="HyperFrames v${v}"\n>\n${body}\n</Update>\n`;
 
 /** A repo whose HEAD~1 is the base: `change` edits the worktree, then it is committed as the "release". */
-function repo(change) {
+function repo(change, between) {
   const root = mkdtempSync(join(tmpdir(), "release-only-"));
   const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
   const write = (path, text) => {
@@ -31,6 +31,7 @@ function repo(change) {
   write("docs/changelog.mdx", CHANGELOG("0.8.1"));
   git("add", "-A");
   git("commit", "-qm", "base");
+  if (between) between(write, git);
   change(write);
   git("add", "-A");
   git("commit", "-qm", "release", "--allow-empty");
@@ -132,6 +133,84 @@ test("--verify refuses mixed versions, a missing note, an unreviewed note and a 
     write("docs/changelog.mdx", CHANGELOG("0.8.1"));
   });
   assert.match(run(noEntry, "--verify").stderr, /no entry for v0\.8\.2/);
+});
+
+/** A release v0.8.1 commit, then one feature commit on main; returns the repo and the feature commit's sha. */
+function repoWithLateCommit(notesFor) {
+  let sha = "";
+  const root = repo(
+    (write) => {
+      bump("0.8.2")(write);
+      write("releases/v0.8.2.md", notesFor(sha));
+    },
+    (write, git) => {
+      git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+      write("packages/core/src/late.ts", "export const late = 1;\n");
+      git("add", "-A");
+      git("commit", "-qm", "fix(core): a change merged after the notes were drafted (#2)");
+      sha = git("rev-parse", "HEAD").trim();
+    },
+  );
+  return { root, sha: () => sha };
+}
+
+test("--verify fails a release whose notes miss a commit merged since the last release", () => {
+  const { root, sha } = repoWithLateCommit(() => NOTES("0.8.2", "Nothing listed."));
+  const result = run(root, "--verify");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /misses 1 commit\(s\)/);
+  assert.ok(result.stderr.includes(sha().slice(0, 9)));
+});
+
+test("--verify passes once the notes link that commit", () => {
+  const { root } = repoWithLateCommit((sha) => NOTES("0.8.2", `- late ([x](/commit/${sha})).`));
+  assert.equal(run(root, "--verify").code, 0);
+});
+
+test("commits that release notes leave out never count as missing", () => {
+  const root = repo(bump("0.8.2"), (write, git) => {
+    git("commit", "-q", "--allow-empty", "-m", "chore: release v0.8.1 (#1)");
+    git("commit", "-q", "--allow-empty", "-m", "chore: bump version to 0.8.1-x");
+    git("commit", "-q", "--allow-empty", "-m", "docs: x [skip changelog]");
+  });
+  assert.equal(run(root, "--verify").code, 0);
+});
+
+test("the last release is found by its subject, not by a line in another commit's body", () => {
+  const { root } = (() => {
+    let sha = "";
+    const r = repo(
+      (write) => {
+        bump("0.8.2")(write);
+        write("releases/v0.8.2.md", NOTES("0.8.2", "Nothing listed."));
+      },
+      (write, git) => {
+        git("commit", "-q", "--allow-empty", "-m", "chore(release): cut v0.8.1 (#1)");
+        write("packages/core/src/early.ts", "export const early = 1;\n");
+        git("add", "-A");
+        git("commit", "-qm", "fix(core): before the body line (#2)");
+        git(
+          "commit",
+          "-q",
+          "--allow-empty",
+          "-m",
+          "fix(core): squash body (#3)",
+          "-m",
+          "chore: release v9.9.9",
+        );
+        sha = git("rev-parse", "HEAD~1").trim();
+      },
+    );
+    return { root: r, sha };
+  })();
+  const result = run(root, "--verify");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /misses 2 commit\(s\)/);
+});
+
+test("the merge queue runs the release checks on a release diff", () => {
+  const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
+  assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);
 });
 
 test("classify works on plain data", () => {

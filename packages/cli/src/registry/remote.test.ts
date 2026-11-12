@@ -120,6 +120,38 @@ describe("fetchRegistryManifest", () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
     await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toBeUndefined();
   });
+  it("never answers for the default registry from a lookalike registry's cache", async () => {
+    const lookalike = DEFAULT_REGISTRY_URL.replace(
+      "raw.githubusercontent.com",
+      "raw-githubusercontent.com",
+    );
+    expect(lookalike).not.toBe(DEFAULT_REGISTRY_URL);
+    const foreign = { ...MANIFEST, name: "lookalike" };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(foreign));
+    await fetchRegistryManifest(lookalike);
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockClear().mockResolvedValue(ok(MANIFEST));
+    await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toEqual(MANIFEST);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a cache entry that names another registry as its source", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(ok(MANIFEST));
+    await fetchRegistryManifest(DEFAULT_REGISTRY_URL);
+    const cache = join(scratchHome, ".hyperframes/cache");
+    const file = readdirSync(cache)[0]!;
+    writeFileSync(
+      join(cache, file),
+      JSON.stringify({
+        fetchedAt: Date.now(),
+        source: "https://elsewhere.example/registry",
+        data: MANIFEST,
+      }),
+    );
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("offline"));
+    await expect(fetchRegistryManifest(DEFAULT_REGISTRY_URL)).resolves.toBeUndefined();
+  });
+
   it("serves a fresh cache without touching the network", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(ok(MANIFEST));
     await fetchRegistryManifest(DEFAULT_REGISTRY_URL);

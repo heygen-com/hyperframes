@@ -5,6 +5,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useElementPicker } from "./useElementPicker";
+import { serveEditingRequests } from "../player/hooks/timelinePlayerTestHarness";
 
 // As the host leaves it on disk: hf-ids pinned, no element ids.
 const SAVED = ensureHfIds(`<!doctype html><html><body>
@@ -20,12 +21,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// The runtime's element-picked message, posted by `from`.
-const picked = (from: Window | null, selector: string) =>
+// The runtime's element-picked message, posted by `from`, from this page's origin unless told otherwise.
+const picked = (from: Window | null, selector: string, origin = window.location.origin) =>
   act(() => {
     window.dispatchEvent(
       new MessageEvent("message", {
         source: from,
+        origin,
         data: {
           source: "hf-preview",
           type: "element-picked",
@@ -36,11 +38,16 @@ const picked = (from: Window | null, selector: string) =>
     );
   });
 
-const pickerMessage = (from: Window | null, data: Record<string, unknown>) =>
+const pickerMessage = (
+  from: Window | null,
+  data: Record<string, unknown>,
+  origin = window.location.origin,
+) =>
   act(() => {
     window.dispatchEvent(
       new MessageEvent("message", {
         source: from,
+        origin,
         data: {
           source: "hf-preview",
           ...data,
@@ -481,5 +488,78 @@ describe("a pick across a reload that swaps the preview frame", () => {
     const stranger = mountPreview();
     picked(stranger.contentWindow, "h1");
     expect(picker().pickedElement).toBeNull();
+  });
+});
+
+describe("messages from the picked frame's origin only", () => {
+  it("ignores a pick posted by the preview's window from an origin it cannot have", () => {
+    const { iframe, picker } = mountPicker({ "index.html": SAVED });
+    picked(iframe.contentWindow, "h1.foreign", "https://elsewhere.example");
+    picked(iframe.contentWindow, "h1.opaque", "null");
+    expect(picker().pickedElement?.selector).toBe("h1");
+  });
+});
+
+describe("a pick in a frame Studio cannot read", () => {
+  /** A sandboxed frame: its window refuses reads, and its runtime answers editing requests. */
+  function opaquePreview(answer: (kind: string, params: unknown) => unknown) {
+    const frame: Record<string, unknown> = {};
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("sandbox", "allow-scripts");
+    Object.defineProperty(iframe, "contentWindow", { value: frame });
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    const close = serveEditingRequests(frame, answer);
+    let api: ReturnType<typeof useElementPicker> | null = null;
+    function Harness() {
+      api = useElementPicker({ current: iframe });
+      return null;
+    }
+    root = createRoot(document.createElement("div"));
+    act(() => root?.render(React.createElement(Harness)));
+    return { frame: frame as unknown as Window, close, picker: () => api! };
+  }
+
+  it("takes the picked element's computed styles from its runtime", async () => {
+    const asked: unknown[] = [];
+    const { frame, close, picker } = opaquePreview((kind, params) => {
+      asked.push({ kind, params });
+      return { styles: { color: "rgb(1, 2, 3)", opacity: "0.5", injected: "x" } };
+    });
+    try {
+      picked(frame, "h1.title", "null");
+      expect(picker().pickedElement?.computedStyles).toEqual({});
+      await vi.waitFor(() =>
+        expect(picker().pickedElement?.computedStyles).toEqual({
+          color: "rgb(1, 2, 3)",
+          opacity: "0.5",
+        }),
+      );
+      expect(asked).toEqual([
+        {
+          kind: "computed-styles",
+          params: {
+            selector: "h1.title",
+            properties: expect.arrayContaining(["color", "opacity"]),
+          },
+        },
+      ]);
+    } finally {
+      close();
+    }
+  });
+
+  it("ignores a pick from the frame's window that does not come from an opaque origin", () => {
+    const { frame, close, picker } = opaquePreview(() => ({ styles: {} }));
+    try {
+      picked(frame, "h1", window.location.origin);
+      expect(picker().pickedElement).toBeNull();
+    } finally {
+      close();
+    }
   });
 });

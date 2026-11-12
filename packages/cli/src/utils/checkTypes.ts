@@ -38,6 +38,8 @@ export interface CheckOptions {
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
   includeUnmounted?: boolean;
+  cache?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {
@@ -396,6 +398,7 @@ export interface CheckReport {
     notes: string[];
   };
   ok: boolean;
+  cached?: { at: string };
   strict: boolean;
   browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };

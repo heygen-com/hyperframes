@@ -201,6 +201,61 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it("never inlines git metadata or env files, spelled directly or through a link", async () => {
+    const secret = "SECRET_TOKEN_VALUE";
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".env"><link rel="stylesheet" href="style.css">
+      </head><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-start="0" data-duration="2">
+          <img src=".git/config">
+          <div data-composition-id="intro" data-composition-src="scenes/intro.html" data-start="0" data-duration="1"></div>
+          <div data-composition-id="env" data-composition-src=".env.html" data-start="0" data-duration="1"></div>
+        </div>
+        <script src=".git/config"></script>
+        <script src="linked.js"></script>
+      </body></html>`,
+      "style.css": '@import ".env.local"; .a { color: red; }',
+      "scenes/intro.html": `<template><div data-composition-id="intro" data-width="320" data-height="180">
+        <p>intro</p><script src="../.env"></script></div></template>`,
+      ".env": `TOKEN=${secret}`,
+      ".env.local": `TOKEN=${secret}`,
+      ".env.html": `<template><div data-composition-id="env">${secret}</div></template>`,
+      ".git/config": `[remote "origin"] url = https://${secret}@example.com/repo.git`,
+    });
+    symlinkSync(join(dir, ".env"), join(dir, "linked.js"));
+    try {
+      const bundled = await bundleToSingleHtml(dir, { inlineAssets: true });
+      expect(bundled).not.toContain(secret);
+      expect(bundled).not.toContain(Buffer.from(`TOKEN=${secret}`).toString("base64"));
+      expect(bundled).toContain(".a { color: red; }");
+      expect(bundled).toContain("<p>intro</p>");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the app's records only under the studio private-file policy", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".hyperframes/handoff.css">
+        <link rel="stylesheet" href=".hyperframes/prepared-assets/fonts.css">
+      </head><body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+      ".hyperframes/handoff.css": ".app-record { color: red; }",
+      ".hyperframes/prepared-assets/fonts.css": ".prepared { color: blue; }",
+    });
+    try {
+      const studio = await bundleToSingleHtml(dir, { privateFiles: "studio" });
+      expect(studio).not.toContain(".app-record");
+      expect(studio).toContain('href=".hyperframes/handoff.css"');
+      expect(studio).toContain(".prepared { color: blue; }");
+      const plain = await bundleToSingleHtml(dir);
+      expect(plain).toContain(".app-record { color: red; }");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [
       "UTF-16LE",
@@ -284,6 +339,53 @@ describe("bundleToSingleHtml", () => {
       expect(bundled).not.toContain("intro scene");
     },
   );
+
+  it("bundles the first scene template of a file with two scene templates and no live root", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="6">
+          <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "compositions/scene.html": `<template><div data-composition-id="scene" data-duration="6"><h1>first scene</h1></div></template>
+        <template><div data-composition-id="other"><h1>second scene</h1></div></template>`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir, { entryFile: "compositions/scene.html" });
+
+    expect(bundled).toContain("first scene");
+    expect(bundled).not.toContain("second scene");
+  });
+
+  it.each([
+    [
+      "a card template before the scene",
+      `<template id="card"><div class="card">card</div></template>`,
+      "mounted scene",
+      "",
+    ],
+    [
+      "two scene templates",
+      "",
+      "mounted scene",
+      `<template><div data-composition-id="other"><h1>second scene</h1></div></template>`,
+    ],
+  ])("mounts the scene template of a file with %s", async (_label, before, expected, after) => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-duration="6">
+          <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="6"></div>
+        </div>
+      </body></html>`,
+      "compositions/scene.html": `${before}<template><div data-composition-id="scene" data-duration="6"><h1>mounted scene</h1></div></template>${after}`,
+    });
+
+    const bundled = await bundleToSingleHtml(dir);
+
+    expect(bundled).toContain(expected);
+    expect(bundled).not.toContain("second scene");
+    expect(bundled).not.toContain(">card<");
+  });
 
   it("rebases direct-entry authored asset paths before inlining", async () => {
     const spriteSvg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg>';

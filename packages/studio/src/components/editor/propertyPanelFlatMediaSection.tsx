@@ -52,8 +52,6 @@ export function FlatMediaSection({
   volumeAutomated,
   onAutomateVolume,
   onRemoveVolumeAutomation,
-  onCommitVolumeAt,
-  automatedVolumeValue,
   rate,
 }: {
   projectId?: string | null;
@@ -64,12 +62,10 @@ export function FlatMediaSection({
   onSetAttribute: (attr: string, value: string) => void | Promise<void>;
   onSetHtmlAttribute: (attr: string, value: string | null) => void | Promise<void>;
   onSetAttributeBatch: CommitDomAttributeBatch;
-  /** A volume lane in the timeline drives the level; the Volume slider writes a keyframe. */
+  /** A volume lane in the timeline shapes the level over the clip; the Volume slider offsets all of it. */
   volumeAutomated?: boolean;
   onAutomateVolume?: () => void;
   onRemoveVolumeAutomation?: () => void;
-  onCommitVolumeAt?: (v: number) => void;
-  automatedVolumeValue?: number;
   /** Speed lane binding and presets; absent outside the Studio panel. */
   rate?: RateBinding;
   onRemoveBackground?: (
@@ -88,10 +84,7 @@ export function FlatMediaSection({
   const isVisualMedia = isVideo || isImage;
   const el = element.element;
 
-  // Gain is `data-volume`, ahead of the effects; Volume is the lane's level at the
-  // playhead, unity without one. What plays is gain times level, as in an editor.
   const gain = parseNumericValue(element.dataAttributes.volume ?? "") ?? 1;
-  const volume = volumeAutomated && automatedVolumeValue !== undefined ? automatedVolumeValue : 1;
   const { mediaStart, mediaStartAttr } = readClipInPoint(element.dataAttributes);
   const constantRate = Number.parseFloat(element.dataAttributes["playback-rate"] ?? "1") || 1;
   const playbackRate =
@@ -242,25 +235,7 @@ export function FlatMediaSection({
       )}
       {(isVideo || isAudio) && (
         <>
-          <FlatSlider
-            label="Gain"
-            value={audioGainToFaderPosition(gain)}
-            min={AUDIO_GAIN_FADER_MIN}
-            max={AUDIO_GAIN_FADER_MAX}
-            tier={gain === 1 ? "default" : "explicitCustom"}
-            displayValue={audioGainToText(gain)}
-            centerTick
-            onCommit={(next) =>
-              void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)))
-            }
-            onCommitText={(text) => {
-              const next = parseGainInput(text);
-              if (next === null) return false;
-              void onSetAttribute("volume", formatAudioGain(next));
-              return true;
-            }}
-          />
-          {/* A commit writes a keyframe at the playhead, starting a lane when there is none. */}
+          {/* Volume is the whole clip's level (`data-volume`); a fade or keyframes ride on top of it. */}
           <div
             className="hf-volume-row flex items-center gap-1"
             data-volume-automated={volumeAutomated ? "" : undefined}
@@ -268,17 +243,19 @@ export function FlatMediaSection({
             <div className="min-w-0 flex-1">
               <FlatSlider
                 label="Volume"
-                value={audioGainToFaderPosition(volume)}
+                value={audioGainToFaderPosition(gain)}
                 min={AUDIO_GAIN_FADER_MIN}
                 max={AUDIO_GAIN_FADER_MAX}
-                tier={volume === 1 ? "default" : "explicitCustom"}
-                displayValue={audioGainToText(volume)}
+                tier={gain === 1 ? "default" : "explicitCustom"}
+                displayValue={audioGainToText(gain)}
                 centerTick
-                onCommit={(next) => onCommitVolumeAt?.(audioFaderPositionToGain(next))}
+                onCommit={(next) =>
+                  void onSetAttribute("volume", formatAudioGain(audioFaderPositionToGain(next)))
+                }
                 onCommitText={(text) => {
                   const next = parseGainInput(text);
                   if (next === null) return false;
-                  onCommitVolumeAt?.(next);
+                  void onSetAttribute("volume", formatAudioGain(next));
                   return true;
                 }}
               />

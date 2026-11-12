@@ -11,7 +11,7 @@ import { hideTimedClipsUntilFirstPass, keepInlineHideRulesForOlderShaders } from
 import { fitTextFontSize } from "../text/fitTextFontSize";
 import { pretext } from "../text/pretext";
 import { assetUrl } from "./assetUrl";
-import { getVariables } from "./getVariables";
+import { getDeclaredVariableSources, getVariables } from "./getVariables";
 import { clearRuntimeData, registerRuntimeDataHandler, setRuntimeData } from "./runtimeData";
 import { runScriptsAfterFonts } from "./afterFonts";
 import { AFTER_FONTS_SCRIPTS } from "../compiler/scriptRuns";
@@ -27,6 +27,7 @@ type HyperframeWindow = Window & {
     assetUrl: typeof assetUrl;
     fitTextFontSize: typeof fitTextFontSize;
     getVariables: typeof getVariables;
+    getDeclaredVariableSources: typeof getDeclaredVariableSources;
     pretext: typeof pretext;
     registerRuntimeDataHandler: typeof registerRuntimeDataHandler;
     setRuntimeData: typeof setRuntimeData;
@@ -60,6 +61,7 @@ deferMediaUntilDue();
   assetUrl,
   fitTextFontSize,
   getVariables,
+  getDeclaredVariableSources,
   pretext,
   registerRuntimeDataHandler,
   setRuntimeData,

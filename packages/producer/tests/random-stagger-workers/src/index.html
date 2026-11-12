@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1080, height=1080">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js" integrity="sha384-d+vyQ0dYcymoP8ndq2hW7FGC50nqGdXUEgoOUGxbbkAJwZqL7h+jKN0GGgn9hFDS" crossorigin="anonymous"></script>
+    <style>
+        body { margin: 0; background: #0d1117; width: 1080px; height: 1080px; overflow: hidden; }
+        #grid {
+            position: absolute; left: 140px; top: 140px; width: 800px; height: 800px;
+            display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); gap: 8px;
+        }
+        .cell { background: #e6edf3; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div id="root" data-composition-id="root" data-width="1080" data-height="1080" data-duration="2"
+         style="position:absolute;width:1080px;height:1080px;">
+        <div id="grid"></div>
+    </div>
+    <script>
+        const grid = document.getElementById("grid");
+        for (let i = 0; i < 100; i++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+            grid.appendChild(cell);
+        }
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(".cell", { opacity: 1 }, { opacity: 0.1, duration: 0.1, ease: "none", stagger: { amount: 1.6, from: "random" } }, 0.2);
+        window.__timelines["root"] = tl;
+    </script>
+</body>
+</html>

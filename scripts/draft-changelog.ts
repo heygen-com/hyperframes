@@ -11,6 +11,7 @@ import {
   validateCliVersion,
   type InlineValueOption,
 } from "./cli-options.ts";
+import { releaseVersionOf, skipsChangelog } from "./changelog-skip.mjs";
 import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE, compareSemver } from "./set-version.ts";
 
 /**
@@ -221,7 +222,7 @@ function resolvePreviousTag(versionTag: string, to: string, version: string) {
     fail("Could not resolve the previous release tag. Pass --from <tag> explicitly.");
   }
   // Only guards an auto-resolved baseline; an explicit --from never reaches here.
-  assertNoSkippedTags(from, version);
+  assertNoSkippedTags(from, version, ref);
   return from;
 }
 
@@ -260,13 +261,24 @@ function listStableTags(): string[] {
   }
 }
 
-function assertNoSkippedTags(from: string, version: string) {
-  const skipped = findSkippedReleaseTags(listStableTags(), from, version);
+/** Versions of the `chore: release vX.Y.Z` commits in `subjects`, tagged here or not. */
+export function releaseVersionsInSubjects(subjects: string[]): string[] {
+  return subjects.flatMap((subject) => releaseVersionOf(subject) ?? []);
+}
+
+/** Releases whose commit is in `from..ref`, so a clone without their tags still sees them. */
+function listReleasedVersions(from: string, ref: string): string[] {
+  return releaseVersionsInSubjects(git(["log", "--format=%s", `${from}..${ref}`]).split("\n"));
+}
+
+function assertNoSkippedTags(from: string, version: string, ref: string) {
+  const known = [...new Set([...listStableTags(), ...listReleasedVersions(from, ref)])];
+  const skipped = findSkippedReleaseTags(known, from, version);
   if (skipped.length === 0) return;
   const names = skipped.map((tag) => `v${tag}`).join(", ");
   fail(
-    `Baseline v${from.replace(/^v/, "")} skips ${names} — tagged locally, but not in this history.\n` +
-      "Those tags are stale, so the draft would re-list work that already shipped.\n\n" +
+    `Baseline v${from.replace(/^v/, "")} skips ${names} — released in this history, but the tag is stale or missing here.\n` +
+      "The draft would re-list work that already shipped.\n\n" +
       "  git fetch origin --tags --force\n\n" +
       "Then re-run. Pass --from <tag> to override when the baseline is deliberate.",
   );
@@ -290,12 +302,7 @@ function getCommits(from: string, to: string): RawCommit[] {
 }
 
 export function shouldSkipCommit(commit: RawCommit) {
-  const subject = commit.subject.toLowerCase();
-  return (
-    subject.includes("[skip changelog]") ||
-    /^chore: release v\d+\.\d+\.\d+/.test(subject) ||
-    /^chore: bump version/.test(subject)
-  );
+  return skipsChangelog(commit.subject);
 }
 
 export function parseCommit(commit: RawCommit): ParsedCommit {

@@ -79,6 +79,8 @@ export interface CaptionSetting {
 
 export type CaptionStyle = "default";
 
+export type ChargedPool = "api_credits" | "hyperframes_credits" | "web_credits" | "free_images";
+
 export type CinematicAvatarModel = "seedance_2" | "heygen_video_1";
 
 export interface CompleteAssetUploadRequest {
@@ -105,7 +107,7 @@ export interface CreateAssetUploadRequest {
   content_type: string;
   size_bytes: number;
   checksum_sha256?: string | null;
-  multipart?: boolean;
+  multipart?: boolean | null;
 }
 
 export interface CreateAssetUploadResponse {
@@ -131,6 +133,8 @@ export interface CreateHyperframesRenderRequest {
   quality?: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   crf?: number | null;
+  max_bitrate?: string | null;
+  buffer_size?: string | null;
   resolution?: HyperframesResolution;
   aspect_ratio?: HyperframesAspectRatio;
   composition?: string | null;
@@ -689,6 +693,11 @@ export interface ThirdPartyGeneratedImage {
   height: number;
 }
 
+export interface ThirdPartyImageCharge {
+  amount: number;
+  pool: ChargedPool;
+}
+
 export type ThirdPartyImageFailureCode =
   | "content_policy_violation"
   | "partial_generation"
@@ -706,6 +715,7 @@ export interface ThirdPartyImageResponse {
   images: Array<ThirdPartyGeneratedImage>;
   failure_code?: ThirdPartyImageFailureCode | null;
   failure_message?: string | null;
+  charged?: ThirdPartyImageCharge | null;
 }
 
 export type TranscriptionCreateRequest = ScribeV2TranscriptionRequest;

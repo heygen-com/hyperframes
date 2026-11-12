@@ -1,4 +1,5 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
+import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
@@ -16,8 +17,30 @@ const SIMPLE_RUNTIME_FLAG_ASSIGNMENTS = [
 
 const LEADING_COMMENTS = /^(?:\s|<!--(?:>|->|[\s\S]*?-->))*/;
 
+export interface SceneRootLookup {
+  root: Element | null;
+  hasTemplate: boolean;
+  hasLiveRoot: boolean;
+}
+
+export function locateSceneRoot(html: string): SceneRootLookup {
+  const { document } = parseHTML(html);
+  const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
+  const templates = Array.from(document.querySelectorAll("template"));
+  const sceneRoot =
+    (findSceneTemplate(templates)?.content.querySelector(
+      "[data-composition-id]",
+    ) as Element | null) ?? null;
+  return {
+    root: sceneRoot,
+    hasTemplate: templates.length > 0,
+    hasLiveRoot: liveRoot !== null,
+  };
+}
+
 export function isTemplateEntry(html: string): boolean {
-  return /^<template[\s>/]/i.test(html.replace(LEADING_COMMENTS, ""));
+  const { root, hasTemplate, hasLiveRoot } = locateSceneRoot(html);
+  return hasTemplate && root !== null && !hasLiveRoot;
 }
 
 export function isFullHtmlDocument(html: string): boolean {

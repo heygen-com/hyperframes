@@ -75,7 +75,9 @@ export const REDIRECTS_WITH_NEXT_STEP = Object.keys(COMMAND_REDIRECTS).filter(
 );
 
 export function fileHint(word: string, path: string[], names: string[]): string | undefined {
-  if (path.length === 0 || names.length === 0 || !existsSync(word)) return undefined;
+  if (path.length === 0 || names.length === 0) return undefined;
+  const kind = existsSync(word) ? "is" : /[\\/]|\.\w{2,4}$/.test(word) ? "looks like" : undefined;
+  if (!kind) return undefined;
   const group = ["hyperframes", ...path].join(" ");
-  return `'${word}' is a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
+  return `'${word}' ${kind} a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
 }

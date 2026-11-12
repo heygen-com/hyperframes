@@ -42,14 +42,30 @@ export const InstallCommand = ({ command, item }) => {
   React.useEffect(() => {
     if (!item) return;
 
+    // >>> vars argument
+    /**
+     * The ` --vars '<json>'` suffix for a query value, or "" when nothing usable is in it.
+     *
+     * Keeps variable-id keys with string, finite number or boolean values, and
+     * escapes `'` so the JSON stays one shell argument.
+     */
+    function varsArgument(raw) {
+      if (!raw) return "";
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
+      const kept = Object.entries(parsed).filter(([id, value]) => {
+        if (!/^[A-Za-z_][\w-]*$/.test(id)) return false;
+        if (typeof value === "number") return Number.isFinite(value);
+        return typeof value === "string" || typeof value === "boolean";
+      });
+      if (kept.length === 0) return "";
+      return ` --vars '${JSON.stringify(Object.fromEntries(kept)).replace(/'/g, "'\\''")}'`;
+    }
+    // <<< vars argument
+
     const read = () => {
       try {
-        const raw = new URLSearchParams(window.location.search).get(`vars-${item}`);
-        if (!raw) return setTuned("");
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return setTuned("");
-        if (Object.keys(parsed).length === 0) return setTuned("");
-        setTuned(` --vars '${JSON.stringify(parsed)}'`);
+        setTuned(varsArgument(new URLSearchParams(window.location.search).get(`vars-${item}`)));
       } catch {
         // A hand-edited link should leave the plain command, not break it.
         setTuned("");

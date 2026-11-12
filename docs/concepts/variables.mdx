@@ -60,20 +60,23 @@ Variables live on the composition declaration:
 ></html>
 ```
 
-Supported declared types are:
+### What can be a variable
 
-| Type      | Good for                               |
-| --------- | -------------------------------------- |
-| `string`  | Text or a media path                   |
-| `number`  | Counts, positions, sizes, or strengths |
-| `color`   | Approved color choices                 |
-| `boolean` | On or off                              |
-| `enum`    | One value from an approved list        |
-| `font`    | A font-family choice                   |
-| `image`   | An image path or image value           |
+A variable has one of seven kinds. The kind sets the control the browser editor
+shows and what a render accepts for it.
 
-The type lets the browser editor show the right control and lets rendering catch invalid
-values.
+| Kind      | What it holds                                  | Example                          |
+| --------- | ---------------------------------------------- | -------------------------------- |
+| `string`  | Text, or a link to a file                      | A customer name, a video link    |
+| `number`  | A count, position, size, or strength           | Seats on a plan, a speed         |
+| `color`   | One approved color                             | A brand accent                   |
+| `boolean` | On or off                                      | Show the badge                   |
+| `enum`    | One value from a list you approved             | `light` or `dark`                |
+| `font`    | A font family                                  | The headline typeface            |
+| `image`   | A link to a picture                            | A customer logo                  |
+
+Video and sound have no kind of their own. Declare the link as a `string`, then
+bind it to a `<video>` or `<audio>` element, as in [Swap in a video or a sound](#swap-in-a-video-or-a-sound).
 
 ### Say what a slot means, not where it sits
 
@@ -136,6 +139,50 @@ loops, or derived values:
 const { featured = false } = window.__hyperframes.getVariables();
 document.querySelector(".badge").hidden = !featured;
 ```
+
+## Swap in a video or a sound
+
+Bind a link to a media element with `data-var-src`. Keep a `src` on the element
+as the placeholder:
+
+```html index.html
+<html
+  data-composition-variables='[
+  {"id":"welcomeClip","type":"string","label":"Welcome clip","default":"assets/placeholder.mp4"}
+]'
+>
+  <video
+    data-var-src="welcomeClip"
+    src="assets/placeholder.mp4"
+    data-start="0"
+    data-track-index="0"
+    playsinline
+  ></video>
+</html>
+```
+
+Render the same saved project once per account by passing each account's clip:
+
+```bash
+npx hyperframes render \
+  --variables '{"welcomeClip":"https://example.com/clips/northstar.mp4"}' \
+  --output northstar.mp4
+```
+
+The film takes the length and the sound of the clip you pass, not the
+placeholder's. A 3 second placeholder swapped for a 5 second clip renders 5
+seconds, and that clip's sound is mixed once.
+
+Limits:
+
+- `data-var-src` works on `<video>`, `<audio>`, `<img>`, and `<source>`. On any
+  other element it is ignored.
+- The link must be a path or an `http`, `https`, or `blob` URL. Any
+  other value, including a `data:` video, is dropped and the placeholder
+  renders instead, with a warning.
+- A clip inside a nested composition that receives its own `data-variable-values`
+  is resolved by the browser during the render, not before it.
+- The root composition's length follows the clips it plays. It is not a variable.
 
 ## Give each nested composition different values
 

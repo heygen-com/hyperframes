@@ -6,6 +6,7 @@ import {
   GENERATE_TYPES,
   checkRequest,
   generate,
+  isVendorPriced,
   parseMask,
   voiceFor,
   type GenerateRequest,
@@ -130,7 +131,7 @@ export default defineCommand({
     model: {
       type: "string",
       description:
-        "image: nano-banana-2 (default), nano-banana-2.1, gpt-image-2.5, gpt-image-2.6 or gpt-image-2.6-flare",
+        "image: nano-banana-2.1 (default), nano-banana-2, gpt-image-2.5, gpt-image-2.6, gpt-image-2.6-flare, minimax-h3-image (2K) or minimax-h3-image-4k",
     },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
@@ -141,7 +142,7 @@ export default defineCommand({
     "max-credits": {
       type: "string",
       description:
-        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more",
+        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image or minimax-h3-image call is charged on the vendor's bill, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over. The project's credit-limit.json follows the same rule",
     },
     plan: {
       type: "boolean",
@@ -195,7 +196,7 @@ export default defineCommand({
           next: "run the same command without --plan to make it",
         };
       }
-      checkLimit(credits, num(args["max-credits"], "--max-credits"));
+      checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
         (status) => console.error(`generate: ${status}…`),

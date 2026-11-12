@@ -1079,6 +1079,34 @@ describe("resolveProxy", () => {
     expect(existsSync(live)).toBe(true);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "still makes a copy in a .transcode-cache that links outside the project, but never sweeps it",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "clip.mov");
+      writeFileSync(sourcePath, "source");
+      const outside = mkdtempSync(join(tmpdir(), "hf-proxy-outside-"));
+      const stale = join(
+        outside,
+        `.tmp-11111111-1111-1111-1111-111111111111-${"a".repeat(64)}.mp4`,
+      );
+      writeFileSync(stale, "someone else's file");
+      const longAgo = new Date(Date.now() - 60 * 60_000);
+      utimesSync(stale, longAgo, longAgo);
+      symlinkSync(outside, join(projectDir, ".transcode-cache"));
+
+      const batch = resolveProxies(projectDir, [{ sourcePath, variant: "h264" }]);
+      await answerUntilIdle(calls, (call) => succeed(call));
+      const [result] = await batch;
+
+      expect(result?.status).toBe("fulfilled");
+      expect(existsSync(stale)).toBe(true);
+      rmSync(outside, { recursive: true, force: true });
+    },
+  );
+
   it("settles each request of a batch on its own when one of them fails", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxies } = await loadModule(spawn, FFMPEG_PATH);

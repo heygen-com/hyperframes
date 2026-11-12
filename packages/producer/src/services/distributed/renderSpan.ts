@@ -55,6 +55,7 @@ export async function renderSpan(
   config: DistributedRenderConfig,
   span: { startSeconds: number; endSeconds?: number },
   outputPath: string,
+  options: { allowOutsideProjectAssets?: boolean } = {},
 ): Promise<RenderSpanResult> {
   if (config.format !== "mp4") {
     throw new RenderSpanUnsupportedError(
@@ -74,7 +75,7 @@ export async function renderSpan(
       projectDir,
       { ...config, rejectOnSystemFonts: false, failClosedFontFetch: false },
       planDir,
-      { chunksCarryAudio: true },
+      { chunksCarryAudio: true, allowOutsideProjectAssets: options.allowOutsideProjectAssets },
     );
     const { startFrame, endFrame } = spanFrameRange(
       span.startSeconds,
