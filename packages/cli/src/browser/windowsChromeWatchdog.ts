@@ -42,6 +42,10 @@ function executableOf(chrome: ChildProcess): string | undefined {
   }
 }
 
+function chromePipes(chrome: ChildProcess) {
+  return [chrome.stdio[3], chrome.stdio[4]].map((pipe) => pipe ?? "ignore");
+}
+
 /** Ends Chrome's tree if the CLI dies. ponytail: a pid reused within one 500 ms poll of its exit is still killed. */
 export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
   const executable = process.platform === "win32" ? executableOf(chrome) : undefined;
@@ -53,7 +57,7 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
       HF_CHROME_PID: String(chrome.pid),
       HF_CHROME_KILL: JSON.stringify(chromeKillCommand(chrome.pid, executable)),
     },
-    stdio: ["pipe", "ignore", "ignore"],
+    stdio: ["pipe", "ignore", "ignore", ...chromePipes(chrome)],
     windowsHide: true,
   });
   watchdog.on("error", () => {});
