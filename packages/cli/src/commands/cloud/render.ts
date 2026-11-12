@@ -685,7 +685,9 @@ async function prepareLocalArchive(
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
-  const { fileMap, entryPath } = stageProjectFiles(project, composition);
+  const { fileMap, entryPath } = stageProjectFiles(project, composition, (warning) =>
+    (asJson ? console.error : console.log)(c.warn(`   ${warning}`)),
+  );
   const swappedFonts = await embedSystemFonts({
     dir: project.dir,
     entryFile: composition,
@@ -727,9 +729,10 @@ async function prepareLocalArchive(
 function stageProjectFiles(
   project: ProjectDir,
   composition: string | undefined,
+  onLeftOut: (warning: string) => void,
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES);
+    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut);
     const entryPath = archiveKey(
       relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
         "\\",
