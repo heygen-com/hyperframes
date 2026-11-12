@@ -40,7 +40,7 @@ export function limitCheck(credits: number, vendorPriced = false) {
   return {
     checked,
     about: vendorPriced
-      ? `about ${credits} credits, ${checked} with 10% headroom because it is charged at the vendor's cost`
+      ? `about ${credits} credits, ${checked} with 10% headroom because it is charged on the vendor's bill`
       : `about ${credits} credits`,
   };
 }
