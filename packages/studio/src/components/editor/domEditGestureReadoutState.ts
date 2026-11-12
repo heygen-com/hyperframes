@@ -11,6 +11,8 @@ export interface GestureReadoutState {
   /** The chip's fields, joined by " · ": "X 70 · Y 41", "W 100 · H 60", or "↻ 32°". */
   text: string;
   rect: OverlayRect;
+  /** The rect at the start of the gesture; a rotation is measured from it. */
+  baseRect: OverlayRect;
   /** The side the chip took. It keeps it for the whole gesture while it still fits, so it does not hop. */
   side?: GestureReadoutSide;
 }
@@ -29,6 +31,7 @@ export function createGestureReadout(
     viewportHeight: window.innerHeight,
     text: "",
     rect,
+    baseRect: rect,
   };
 }
 
@@ -45,11 +48,26 @@ export function updateGestureReadout(
   readout.rect = rect;
 }
 
+/** While rotating, the chip clears the rotated box, which is wider and taller than the element's own rect. */
 export function updateGestureReadoutAngle(
   readout: GestureReadoutState | undefined,
   angle: number,
 ): void {
-  if (readout) updateGestureReadout(readout, readout.rect, `↻ ${Math.round(angle)}°`);
+  if (!readout) return;
+  const { left, top, width, height } = readout.baseRect;
+  const radians = (angle * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const rotatedWidth = width * cos + height * sin;
+  const rotatedHeight = width * sin + height * cos;
+  const rotated = {
+    ...readout.baseRect,
+    left: left + (width - rotatedWidth) / 2,
+    top: top + (height - rotatedHeight) / 2,
+    width: rotatedWidth,
+    height: rotatedHeight,
+  };
+  updateGestureReadout(readout, rotated, `↻ ${Math.round(angle)}°`);
 }
 
 export function updateGestureReadoutSize(

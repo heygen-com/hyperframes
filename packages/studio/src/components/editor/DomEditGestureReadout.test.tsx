@@ -3,7 +3,11 @@ import React, { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DomEditGestureReadout } from "./DomEditGestureReadout";
-import { createGestureReadout, updateGestureReadout } from "./domEditGestureReadoutState";
+import {
+  createGestureReadout,
+  updateGestureReadout,
+  updateGestureReadoutAngle,
+} from "./domEditGestureReadoutState";
 
 const frames = vi.hoisted(() => ({ update: () => {} }));
 vi.mock("./overlayFrameLoop", () => ({
@@ -241,5 +245,15 @@ describe("gesture readout", () => {
     view.draw();
     expect(view.label.style.left).toBe("78px");
     expect(view.label.style.top).toBe("364px");
+  });
+  it("while rotating, measures from the rotated box so the chip clears the turned element", () => {
+    const view = mount("rotate");
+    const readout = view.gestureRef.current?.readout;
+    updateGestureReadoutAngle(readout, 90);
+    expect(readout?.rect.width).toBeCloseTo(30, 5);
+    expect(readout?.rect.height).toBeCloseTo(50, 5);
+    updateGestureReadoutAngle(readout, 0);
+    expect(readout?.rect.width).toBeCloseTo(50, 5);
+    expect(readout?.text).toBe("↻ 0°");
   });
 });
