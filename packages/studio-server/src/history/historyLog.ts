@@ -23,6 +23,8 @@ export interface HistoryTarget {
   hfId?: string;
   selector?: string;
   selectorIndex?: number;
+  /** The element's layer name as the person saw it when they made the edit; never an identity, so a rename moves nothing. */
+  name?: string;
 }
 
 export interface HistoryEntry {

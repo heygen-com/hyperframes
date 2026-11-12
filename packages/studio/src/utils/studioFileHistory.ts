@@ -4,8 +4,24 @@ import type { MutableRefObject } from "react";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 import { studioApiFetch } from "./studioApiFetch";
+import type { PatchTarget } from "./sourcePatcher";
 
 export type EditContextTarget = HistoryTarget;
+
+/** How to find an edited element again, and the layer name the person saw (a selection's `label`). */
+export function editContextTarget(
+  file: string,
+  target: PatchTarget & { label?: string },
+): EditContextTarget {
+  return {
+    file,
+    ...(target.id && { id: target.id }),
+    ...(target.hfId && { hfId: target.hfId }),
+    ...(target.selector && { selector: target.selector }),
+    ...(target.selectorIndex !== undefined && { selectorIndex: target.selectorIndex }),
+    ...(target.label && { name: target.label }),
+  };
+}
 
 export interface RecordEditInput {
   targets?: EditContextTarget[];
