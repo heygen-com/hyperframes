@@ -52,6 +52,19 @@ describe("normalizeClipsLoudness", () => {
 });
 
 describe("writeClipGains", () => {
+  it("writes data-volume on a clip with a volume lane, which the gain stacks on", async () => {
+    const onSetElementAttributeQuiet = vi.fn(async () => ({ status: "saved" as const }));
+    await writeClipGains([{ element: clip("vo", { automation: volumeLane }), gain: 2 }], {
+      onSetElementAttributeQuiet,
+    });
+    expect(onSetElementAttributeQuiet).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "vo" }),
+      "data-volume",
+      "2",
+      "Audio Gain",
+    );
+  });
+
   it("stops at the first refused single save", async () => {
     const onSetElementAttributeQuiet = vi.fn(async () => ({
       status: "refused" as const,
