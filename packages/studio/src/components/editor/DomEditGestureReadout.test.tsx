@@ -23,7 +23,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mount(kind: "drag" | "resize" | "rotate") {
+function mount(kind: "drag" | "resize" | "rotate", { overlayWidth = 500 } = {}) {
   const host = document.createElement("div");
   const overlay = document.createElement("div");
   const iframe = document.createElement("iframe");
@@ -41,8 +41,8 @@ function mount(kind: "drag" | "resize" | "rotate") {
   let y = 40.75;
   const width = 100;
   const height = 60;
-  overlay.getBoundingClientRect = () => new DOMRect(20, 30, 500, 400);
-  iframe.getBoundingClientRect = () => new DOMRect(20, 30, 500, 400);
+  overlay.getBoundingClientRect = () => new DOMRect(20, 30, overlayWidth, 400);
+  iframe.getBoundingClientRect = () => new DOMRect(20, 30, overlayWidth, 400);
   composition.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 800);
   element.getBoundingClientRect = () => new DOMRect(x, y, width, height);
   Object.defineProperties(element, {
@@ -75,7 +75,7 @@ function mount(kind: "drag" | "resize" | "rotate") {
       },
       text,
     );
-  update(kind === "resize" ? "100 × 60" : kind === "rotate" ? "0°" : undefined);
+  update(kind === "resize" ? "W 100 · H 60" : kind === "rotate" ? "↻ 0°" : undefined);
   root = createRoot(host);
   act(() =>
     root?.render(
@@ -113,6 +113,13 @@ function mount(kind: "drag" | "resize" | "rotate") {
   };
 }
 
+/** The chip's fields as [name, figure] pairs. */
+const fields = (label: Element) =>
+  [...label.querySelectorAll(":scope > span.flex")].map((field) => [
+    field.children[0]?.textContent,
+    field.children[1]?.textContent,
+  ]);
+
 describe("gesture readout", () => {
   it("adds no layout reads while drawing and stays hidden on a plain press", () => {
     const view = mount("drag");
@@ -125,7 +132,10 @@ describe("gesture readout", () => {
     view.move(120, 70);
     view.draw();
     view.draw();
-    expect(view.label.textContent).toBe("Canvas X 120 · Y 70");
+    expect(fields(view.label)).toEqual([
+      ["X", "120"],
+      ["Y", "70"],
+    ]);
     expect(measure).not.toHaveBeenCalled();
     for (const measurement of view.measurements) expect(measurement).not.toHaveBeenCalled();
     measure.mockRestore();
@@ -134,10 +144,16 @@ describe("gesture readout", () => {
   it("shows rounded composition coordinates during a move, accounting for preview zoom", () => {
     const view = mount("drag");
     view.draw();
-    expect(view.label.textContent).toBe("Canvas X 70 · Y 41");
+    expect(fields(view.label)).toEqual([
+      ["X", "70"],
+      ["Y", "41"],
+    ]);
     view.move(120.25, 70.75);
     view.draw();
-    expect(view.label.textContent).toBe("Canvas X 120 · Y 71");
+    expect(fields(view.label)).toEqual([
+      ["X", "120"],
+      ["Y", "71"],
+    ]);
     expect(view.doc.querySelector("[data-dom-edit-gesture-readout]")).toBeNull();
     view.end();
     expect(view.label.style.display).toBe("none");
@@ -145,33 +161,85 @@ describe("gesture readout", () => {
   it("shows the actual size draft during resize and hides on release", () => {
     const view = mount("resize");
     view.draw();
-    expect(view.label.textContent).toBe("100 × 60");
-    view.update("144 × 87");
+    expect(fields(view.label)).toEqual([
+      ["W", "100"],
+      ["H", "60"],
+    ]);
+    view.update("W 144 · H 87");
     view.draw();
-    expect(view.label.textContent).toBe("144 × 87");
+    expect(fields(view.label)).toEqual([
+      ["W", "144"],
+      ["H", "87"],
+    ]);
     view.end();
     expect(view.label.style.display).toBe("none");
   });
   it("reads the live angle during rotation and hides on cancellation", () => {
     const view = mount("rotate");
-    view.update("32°");
+    view.update("↻ 32°");
     view.draw();
-    expect(view.label.textContent).toBe("32°");
-    view.update("-46°");
+    expect(fields(view.label)).toEqual([["↻", "32°"]]);
+    view.update("↻ -46°");
     view.draw();
-    expect(view.label.textContent).toBe("-46°");
+    expect(fields(view.label)).toEqual([["↻", "-46°"]]);
     view.end();
     expect(view.label.style.display).toBe("none");
+  });
+  it("sits below the element, centred, clear of the text toolbar above it", () => {
+    const view = mount("drag");
+    view.move(300, 200);
+    view.draw();
+    expect(view.label.style.left).toBe("175px");
+    expect(view.label.style.top).toBe("138px");
+    expect(view.label.style.transform).toBe("translateX(-50%)");
+  });
+  it("goes beside the element when there is no room below it", () => {
+    const view = mount("drag");
+    view.move(300, 700);
+    view.draw();
+    expect(view.label.style.left).toBe("208px");
+    expect(view.label.style.top).toBe("349px");
+    expect(view.label.style.transform).toBe("none");
+    view.move(880, 700);
+    view.draw();
+    expect(view.label.style.left).toBe("432px");
+    expect(view.label.style.transform).toBe("translateX(-100%)");
+  });
+  it("goes above the toolbar's band when neither below nor either side has room", () => {
+    const view = mount("drag", { overlayWidth: 150 });
+    view.move(100, 700);
+    view.draw();
+    expect(view.label.style.top).toBe("266px");
+    expect(view.label.style.transform).toBe("translateX(-50%)");
+  });
+  it("is not placed below an element whose toolbar has dropped below it", () => {
+    const view = mount("drag");
+    view.move(300, 10);
+    view.draw();
+    expect(view.label.style.transform).toBe("none");
+    expect(view.label.style.left).toBe("208px");
+  });
+  it("keeps its side for the whole gesture while that side still fits", () => {
+    const view = mount("drag");
+    view.move(300, 700);
+    view.draw();
+    expect(view.label.style.transform).toBe("none");
+    view.move(300, 200);
+    view.draw();
+    expect(view.label.style.left).toBe("208px");
+    expect(view.label.style.top).toBe("99px");
+    view.move(900, 200);
+    view.draw();
+    expect(view.label.style.transform).toBe("translateX(-50%)");
   });
   it("clamps the label inside the visible overlay at either edge", () => {
     const view = mount("drag");
     view.move(900, -100);
     view.draw();
-    expect(view.label.style.left).toBe("496px");
     expect(view.label.style.top).toBe("4px");
     view.move(-900, 900);
     view.draw();
-    expect(view.label.style.left).toBe("4px");
-    expect(view.label.style.top).toBe("396px");
+    expect(view.label.style.left).toBe("78px");
+    expect(view.label.style.top).toBe("364px");
   });
 });

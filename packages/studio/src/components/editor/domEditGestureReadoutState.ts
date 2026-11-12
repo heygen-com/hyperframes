@@ -1,12 +1,18 @@
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 
+/** Where the chip sits against the element, in the order it is tried. */
+export type GestureReadoutSide = "below" | "right" | "left" | "above";
+
 export interface GestureReadoutState {
   basis: OverlayRootScale;
   viewportWidth: number;
   viewportHeight: number;
+  /** The chip's fields, joined by " · ": "X 70 · Y 41", "W 100 · H 60", or "↻ 32°". */
   text: string;
   rect: OverlayRect;
+  /** The side the chip took. It keeps it for the whole gesture while it still fits, so it does not hop. */
+  side?: GestureReadoutSide;
 }
 
 export function createGestureReadout(
@@ -35,7 +41,7 @@ export function updateGestureReadout(
   const { basis } = readout;
   const x = (rect.left - (basis.iframeRect.left - basis.overlayRect.left)) / basis.rootScaleX;
   const y = (rect.top - (basis.iframeRect.top - basis.overlayRect.top)) / basis.rootScaleY;
-  readout.text = text ?? `Canvas X ${Math.round(x)} · Y ${Math.round(y)}`;
+  readout.text = text ?? `X ${Math.round(x)} · Y ${Math.round(y)}`;
   readout.rect = rect;
 }
 
@@ -43,7 +49,7 @@ export function updateGestureReadoutAngle(
   readout: GestureReadoutState | undefined,
   angle: number,
 ): void {
-  if (readout) updateGestureReadout(readout, readout.rect, `${Math.round(angle)}°`);
+  if (readout) updateGestureReadout(readout, readout.rect, `↻ ${Math.round(angle)}°`);
 }
 
 export function updateGestureReadoutSize(
@@ -51,5 +57,5 @@ export function updateGestureReadoutSize(
   rect: OverlayRect,
   size: { width: number; height: number },
 ): void {
-  updateGestureReadout(readout, rect, `${Math.round(size.width)} × ${Math.round(size.height)}`);
+  updateGestureReadout(readout, rect, `W ${Math.round(size.width)} · H ${Math.round(size.height)}`);
 }
