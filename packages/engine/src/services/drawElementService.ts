@@ -15,6 +15,7 @@
  */
 
 import type { Page } from "puppeteer-core";
+import { htmlInCanvasForm, type HtmlInCanvasForm } from "@hyperframes/core/html-in-canvas";
 import { SOFTWARE_WEBGL_RENDERER_TOKENS } from "./browserManager.js";
 import type { CaptureMode } from "./browserLeasePool.js";
 
@@ -269,7 +270,7 @@ export async function detectSwiftShader(page: Page): Promise<boolean> {
 }
 
 /**
- * Inject a `<canvas layoutsubtree>` around the composition root.
+ * Inject a capture canvas (`layoutsubtree`, or `content="drawable"` on Chrome 157+) around the composition root.
  *
  * The canvas must wrap `[data-composition-id]` for drawElementImage to read
  * its paint records. Idempotent — skips injection if `__hf_de_canvas` exists.
@@ -280,8 +281,9 @@ export async function injectDrawElementCanvas(
   width: number,
   height: number,
 ): Promise<void> {
+  const form = (await page.evaluate(htmlInCanvasForm)) ?? "layoutsubtree";
   await page.evaluate(
-    ({ w, h }: { w: number; h: number }) => {
+    ({ w, h, form }: { w: number; h: number; form: HtmlInCanvasForm }) => {
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
       if (!root || document.getElementById("__hf_de_canvas")) return;
       // Record the root's base opacity (timeline at 0, before any entrance/
@@ -297,11 +299,13 @@ export async function injectDrawElementCanvas(
       }
       const parent = root.parentNode;
       if (!parent) throw new Error("drawElement: composition root has no parent node");
-      const canvas = document.createElement("canvas") as HTMLCanvasElement & {
-        layoutsubtree: boolean;
-      };
+      const canvas = document.createElement("canvas");
       canvas.id = "__hf_de_canvas";
-      canvas.setAttribute("layoutsubtree", "");
+      if (form === "layoutsubtree") canvas.setAttribute("layoutsubtree", "");
+      else {
+        canvas.setAttribute("content", "drawable");
+        root.setAttribute("drawable", "");
+      }
       canvas.width = w;
       canvas.height = h;
       canvas.style.cssText = "display:block;position:absolute;top:0;left:0;z-index:0";
@@ -349,7 +353,7 @@ export async function injectDrawElementCanvas(
         return false;
       };
     },
-    { w: width, h: height },
+    { w: width, h: height, form },
   );
 }
 
