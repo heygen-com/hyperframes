@@ -341,9 +341,11 @@ const BEGINFRAME_ONLY_FLAGS = new Set([
   "--enable-surface-synchronization",
 ]);
 
-function stripBeginFrameFlags(args: string[]): string[] {
+function stripBeginFrameFlags(args: readonly string[]): string[] {
   return args.filter((a) => !BEGINFRAME_ONLY_FLAGS.has(a));
 }
+
+const WHOLE_TILE_RASTER_FLAG = "--disable-partial-raster";
 
 /**
  * Probe the complete HeadlessExperimental.beginFrame runtime contract.
@@ -979,7 +981,7 @@ async function launchBrowser(
             `${result.detail}; falling back to screenshot mode.`,
         );
         captureMode = "screenshot";
-        browser = await launch(stripBeginFrameFlags([...fingerprint.args]));
+        browser = await launch([...stripBeginFrameFlags(fingerprint.args), WHOLE_TILE_RASTER_FLAG]);
       }
     }
 
@@ -1234,6 +1236,8 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
       "--disable-image-animation-resync",
       "--enable-surface-synchronization",
     );
+  } else {
+    chromeArgs.push(WHOLE_TILE_RASTER_FLAG);
   }
 
   if (gpuDisabled) {

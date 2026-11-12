@@ -272,6 +272,22 @@ describe("buildChromeArgs browser GPU mode", () => {
     ).not.toContain("--disable-gpu-compositing");
   });
 
+  // HF#7111: partial raster makes a frame's pixels depend on the frames drawn before it.
+  it.each(["software", "hardware"] as const)(
+    "disables partial raster for %s screenshot capture",
+    (browserGpuMode) => {
+      expect(buildChromeArgs({ ...base, captureMode: "screenshot" }, { browserGpuMode })).toContain(
+        "--disable-partial-raster",
+      );
+    },
+  );
+
+  it("leaves partial raster alone under BeginFrame control", () => {
+    expect(buildChromeArgs({ ...base, captureMode: "beginframe" })).not.toContain(
+      "--disable-partial-raster",
+    );
+  });
+
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
     const args = buildChromeArgs({ ...base, platform: "darwin" }, { browserGpuMode: "hardware" });
     expect(args).toContain("--enable-unsafe-webgpu");
@@ -1856,5 +1872,9 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
 
     expect(result.captureMode).toBe("screenshot");
     expect(launch).toHaveBeenCalledTimes(3);
+    // HF#7111: this browser captures by screenshot, though its args were built for BeginFrame.
+    const fallbackArgs = launch.mock.lastCall?.[0]?.args;
+    expect(fallbackArgs).toContain("--disable-partial-raster");
+    expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
   });
 });
