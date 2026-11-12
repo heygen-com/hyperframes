@@ -29,7 +29,8 @@ describe("the Windows Chrome watchdog's kill", () => {
   });
 });
 
-// fails without the guard: a Chrome that exited earlier left its pid to be reused, and the sweep killed whatever held it.
+// fails without the guard: a Chrome that exited earlier left its pid to be reused, and the sweep
+// killed whatever held it.
 describe("the watchdog's reuse guard", () => {
   const runWatchdog = async (pid: number, until: "armed" | "gone", clean: boolean) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-watchdog-"));
