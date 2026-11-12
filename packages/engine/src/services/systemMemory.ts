@@ -270,7 +270,7 @@ export function getAvailableMemoryMb(): number {
   return fallback;
 }
 
-/** CPUs this process may run on: a cpuset (taskset, docker --cpuset-cpus) lowers it, a CPU quota does not. Size work by it. */
+/** CPUs this process may run on: a cpuset (taskset, --cpuset-cpus) lowers it, a CPU quota does not. */
 export function usableCpuCount(): number {
   return availableParallelism();
 }
