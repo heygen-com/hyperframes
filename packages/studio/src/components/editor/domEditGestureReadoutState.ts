@@ -47,20 +47,7 @@ export function updateGestureReadoutAngle(
   angle: number,
 ): void {
   if (!readout) return;
-  const { left, top, width, height } = readout.baseRect;
-  const radians = (angle * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(radians));
-  const sin = Math.abs(Math.sin(radians));
-  const rotatedWidth = width * cos + height * sin;
-  const rotatedHeight = width * sin + height * cos;
-  const rotated = {
-    ...readout.baseRect,
-    left: left + (width - rotatedWidth) / 2,
-    top: top + (height - rotatedHeight) / 2,
-    width: rotatedWidth,
-    height: rotatedHeight,
-  };
-  updateGestureReadout(readout, rotated, `↻ ${Math.round(angle)}°`);
+  updateGestureReadout(readout, { ...readout.baseRect, angle }, `↻ ${Math.round(angle)}°`);
 }
 
 export function updateGestureReadoutSize(

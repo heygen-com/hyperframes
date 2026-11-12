@@ -1,4 +1,5 @@
 import type { GestureReadoutSide, GestureReadoutState } from "./domEditGestureReadoutState";
+import type { OverlayRect } from "./domEditOverlayGeometry";
 import { GAP_PX as TOOLBAR_GAP_PX, TOOLBAR_HEIGHT_PX } from "./InlineTextToolbar";
 
 const GAP_PX = 8;
@@ -57,12 +58,33 @@ function clearOfToolbar(box: Box, right: number, top: number): boolean {
   return right <= box.toolbarLeft || top >= box.toolbarBottom;
 }
 
+function paintedBox(rect: OverlayRect): OverlayRect {
+  const radians = ((rect.angle ?? 0) * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(radians));
+  const sin = Math.abs(Math.sin(radians));
+  const width = rect.width * cos + rect.height * sin;
+  const height = rect.width * sin + rect.height * cos;
+  return {
+    ...rect,
+    left: rect.left + (rect.width - width) / 2,
+    top: rect.top + (rect.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+function fitsBeside(box: Box, x0: number, x1: number, top: number): boolean {
+  const inside =
+    x0 >= box.minX && x1 <= box.maxX && top >= box.minY && top + CHIP_HEIGHT_PX <= box.maxY;
+  return inside && clearOfToolbar(box, x1, top);
+}
+
 function chipSpots(
   readout: GestureReadoutState,
   box: Box,
   width: number,
 ): Record<GestureReadoutSide, Spot> {
-  const rect = readout.rect;
+  const rect = paintedBox(readout.rect);
   const right = rect.left + rect.width;
   const bottom = rect.top + rect.height;
   const centre = rect.left + rect.width / 2;
@@ -70,7 +92,6 @@ function chipSpots(
   const toolbarBelow =
     readout.basis.overlayRect.top + rect.top - TOOLBAR_GAP_PX < TOOLBAR_HEIGHT_PX;
   const toolbarBand = toolbarBelow ? 0 : TOOLBAR_GAP_PX + TOOLBAR_HEIGHT_PX;
-  const beside = middle >= box.minY && middle + CHIP_HEIGHT_PX <= box.maxY;
   return {
     below: {
       x: centre,
@@ -80,18 +101,12 @@ function chipSpots(
     right: {
       x: right + GAP_PX,
       y: middle,
-      fits:
-        beside &&
-        right + GAP_PX + width <= box.maxX &&
-        clearOfToolbar(box, right + GAP_PX + width, middle),
+      fits: fitsBeside(box, right + GAP_PX, right + GAP_PX + width, middle),
     },
     left: {
       x: rect.left - GAP_PX,
       y: middle,
-      fits:
-        beside &&
-        rect.left - GAP_PX - width >= box.minX &&
-        clearOfToolbar(box, rect.left - GAP_PX, middle),
+      fits: fitsBeside(box, rect.left - GAP_PX - width, rect.left - GAP_PX, middle),
     },
     above: { x: centre, y: rect.top - GAP_PX - toolbarBand - CHIP_HEIGHT_PX, fits: true },
   };

@@ -29,7 +29,7 @@ afterEach(() => {
 
 function mount(
   kind: "drag" | "resize" | "rotate",
-  { overlayWidth = 500, height = 60, stageHeight = 400 } = {},
+  { overlayWidth = 500, height = 60, stageHeight = 400, angle = undefined as number | undefined } = {},
 ) {
   const host = document.createElement("div");
   const overlay = document.createElement("div");
@@ -65,6 +65,7 @@ function mount(
         height: height / 2,
         editScaleX: 0.5,
         editScaleY: 0.5,
+        angle,
       }),
     },
   };
@@ -78,6 +79,7 @@ function mount(
         height: height / 2,
         editScaleX: 0.5,
         editScaleY: 0.5,
+        angle,
       },
       text,
     );
@@ -248,15 +250,51 @@ describe("gesture readout", () => {
     expect(view.label.style.left).toBe("78px");
     expect(view.label.style.top).toBe("364px");
   });
-  it("while rotating, measures from the rotated box so the chip clears the turned element", () => {
+  it("while rotating, places from the rotated box and keeps the angle apart from the size", () => {
     const view = mount("rotate");
     const readout = view.gestureRef.current?.readout;
     updateGestureReadoutAngle(readout, 90);
-    expect(readout?.rect.width).toBeCloseTo(30, 5);
-    expect(readout?.rect.height).toBeCloseTo(50, 5);
+    expect(readout?.rect.width).toBe(50);
+    expect(readout?.rect.angle).toBe(90);
     updateGestureReadoutAngle(readout, 0);
-    expect(readout?.rect.width).toBeCloseTo(50, 5);
+    expect(readout?.rect.angle).toBe(0);
     expect(readout?.text).toBe("↻ 0°");
+  });
+  it("clears an element that was already rotated when it is dragged", () => {
+    const view = mount("drag", { angle: 90 });
+    view.move(300, 200);
+    view.draw();
+    expect(view.label.style.top).toBe("148px");
+  });
+  it("clears an element that was already rotated when it is resized", () => {
+    const view = mount("resize", { angle: 90 });
+    view.move(300, 200);
+    view.draw();
+    expect(view.label.style.top).toBe("148px");
+  });
+  it("never puts a side chip off the stage, left or right, even when that side was kept", () => {
+    const first = mount("drag");
+    first.move(-900, 700);
+    first.draw();
+    expect(first.label.style.transform).toBe("translateX(-50%)");
+    const second = mount("drag");
+    second.move(1800, 700);
+    second.draw();
+    expect(second.label.style.transform).toBe("translateX(-50%)");
+    const keptRight = mount("drag");
+    keptRight.move(300, 700);
+    keptRight.draw();
+    expect(keptRight.label.style.transform).toBe("none");
+    keptRight.move(-900, 700);
+    keptRight.draw();
+    expect(keptRight.label.style.transform).toBe("translateX(-50%)");
+    const keptLeft = mount("drag");
+    keptLeft.move(880, 700);
+    keptLeft.draw();
+    expect(keptLeft.label.style.transform).toBe("translateX(-100%)");
+    keptLeft.move(1800, 700);
+    keptLeft.draw();
+    expect(keptLeft.label.style.transform).toBe("translateX(-50%)");
   });
   const inside = (label: HTMLElement, top: number, bottom: number) => {
     const y = Number.parseFloat(label.style.top);
