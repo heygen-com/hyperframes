@@ -393,7 +393,7 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
     reasons.push({
       code: "captureMotionBlur",
       message:
-        'Detected capture motion blur (data-motion-blur="on"), which draws each frame with html-in-canvas; routed through screenshot capture mode.',
+        'Detected motion blur (data-motion-blur="on"), drawn per frame with an SVG filter or, on the capture tier, html-in-canvas; routed through screenshot capture mode.',
     });
   }
 
