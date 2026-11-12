@@ -29,15 +29,18 @@ function isUnder(path: string, ...dir: string[]): boolean {
   return lowerPath === lowerDir || lowerPath.startsWith(`${lowerDir}${sep}`);
 }
 
+const CLOUD_DRIVE_FOLDERS = ["Mobile Documents", "CloudStorage"];
+
 function homeAppDataFolder(path: string): string | null {
   if (isUnder(path, "AppData")) return "AppData";
-  if (isUnder(path, "Library") && !isUnder(path, "Library", "Mobile Documents")) return "Library";
+  const cloudDrive = CLOUD_DRIVE_FOLDERS.some((folder) => isUnder(path, "Library", folder));
+  if (isUnder(path, "Library") && !cloudDrive) return "Library";
   return null;
 }
 
 function inHomeAppData(projectDir: string, path: string): boolean {
   const folder = homeAppDataFolder(path);
-  return folder !== null && !isUnder(projectDir, folder);
+  return folder !== null && homeAppDataFolder(projectDir) !== folder;
 }
 
 /** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */
