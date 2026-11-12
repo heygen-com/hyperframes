@@ -96,7 +96,7 @@ describe("element handles over the editing port", () => {
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
   });
 
-  it("keeps an element's handle for the page load, then answers null and drops it once gone", async () => {
+  it("keeps an element's handle for the page load, answering null only while it is detached", async () => {
     document.body.innerHTML = `<p id="a">A</p><p id="b">B</p>`;
     const [a, b] = Array.from(document.querySelectorAll("p"));
     stackAtPoint(a!, b!);
@@ -105,7 +105,9 @@ describe("element handles over the editing port", () => {
     const again = await describeHandles([second!.handle, first!.handle]);
     expect(again.map((entry) => entry?.id)).toEqual(["b", "a"]);
 
-    a!.remove();
+    // The preview parks a scene with replaceWith and later puts the same nodes back.
+    const placeholder = document.createElement("template");
+    a!.replaceWith(placeholder);
     const tracked = trackedHandleCount();
     const unknown = first!.handle.replace(/:\d+$/, ":999999");
     expect(await describeHandles([first!.handle, unknown, second!.handle])).toEqual([
@@ -113,7 +115,9 @@ describe("element handles over the editing port", () => {
       null,
       expect.objectContaining({ id: "b" }),
     ]);
-    expect(trackedHandleCount()).toBe(tracked - 1);
+    expect(trackedHandleCount()).toBe(tracked);
+    placeholder.replaceWith(a!);
+    expect(await describeHandles([first!.handle])).toEqual([expect.objectContaining({ id: "a" })]);
   });
 
   it("answers null for a handle from an earlier load, even one with the same number", async () => {
@@ -169,6 +173,10 @@ describe("element handles over the editing port", () => {
 
     const style = await describeOne(card.querySelector("style")!);
     expect(style).toMatchObject({ text: "", children: [], truncated: false });
+
+    document.body.innerHTML = `<p>data: 42 users, up 3%</p>`;
+    const dataText = await describeOne(document.querySelector("p")!);
+    expect(dataText).toMatchObject({ text: "data: 42 users, up 3%", truncated: false });
 
     document.body.innerHTML = `<p>${"y".repeat(MAX_ELEMENT_TEXT + 10)}</p>`;
     const text = await describeOne(document.querySelector("p")!);

@@ -1,7 +1,7 @@
 /**
  * Element handles for the editing channel. The parent never receives an element, only a handle this
  * module gives it and the plain data `describeElement` reads from it. Handles live for one page load:
- * the maps are module state, and an entry goes once its element is gone or seen disconnected.
+ * the maps are module state, and an entry goes once its element is garbage-collected.
  */
 import {
   buildStableSelector,
@@ -48,9 +48,9 @@ function elementForHandle(handle: EditingElementHandle): Element | null {
   if (handleLoad !== loadId()) return null;
   const n = Number(count);
   const element = elements.get(n)?.deref();
-  if (element?.isConnected && element.ownerDocument === document) return element;
-  elements.delete(n);
-  return null;
+  if (!element) elements.delete(n);
+  // A parked scene's nodes come back, so a disconnected element keeps its entry.
+  return element?.isConnected && element.ownerDocument === document ? element : null;
 }
 
 /** How many elements hold a live entry; for tests of the bound. */
@@ -84,8 +84,9 @@ const NO_TEXT = new Set(["script", "style"]);
 
 type Cut = { truncated: boolean };
 
-function cut(value: string, limit: number, state: Cut): string {
-  const header = value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
+/** A `dataUrl` value starting `data:` keeps only its header; text is cut by length alone. */
+function cut(value: string, limit: number, state: Cut, dataUrl = false): string {
+  const header = dataUrl && value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
   const kept = header || value.slice(0, limit);
   if (kept.length < value.length) state.truncated = true;
   return kept.slice(0, limit);
@@ -119,7 +120,7 @@ function inlineStyles(element: Element, state: Cut): Record<string, string> {
   if (declared.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   for (let index = 0; index < Math.min(declared.length, MAX_ELEMENT_ENTRIES); index += 1) {
     const name = declared.item(index);
-    styles[name] = cut(declared.getPropertyValue(name), MAX_ELEMENT_VALUE, state);
+    styles[name] = cut(declared.getPropertyValue(name), MAX_ELEMENT_VALUE, state, true);
   }
   return styles;
 }
@@ -129,7 +130,7 @@ function attributes(element: Element, state: Cut): EditingElementDescription["at
   if (kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   return kept
     .slice(0, MAX_ELEMENT_ENTRIES)
-    .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state)]);
+    .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state, true)]);
 }
 
 function children(element: Element, state: Cut): EditingElementDescription["children"] {
