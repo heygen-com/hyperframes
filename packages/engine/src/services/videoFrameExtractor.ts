@@ -325,7 +325,7 @@ function halveToCoverScaleFilter(box: { width: number; height: number }): string
   const fit = `max(${Math.ceil(box.width)}/iw\\,${Math.ceil(box.height)}/ih)`;
   const halvings = `floor(log(1/${fit})/log(2))`;
   const side = (dim: "iw" | "ih") =>
-    `if(lt(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
+    `if(lte(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
   return `scale=w=${side("iw")}:h=${side("ih")}:flags=area+accurate_rnd`;
 }
 
