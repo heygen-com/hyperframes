@@ -13,11 +13,15 @@ import {
   seedDomEditGroupWithSelection,
 } from "../utils/domEditHelpers";
 import {
-  findElementForSelection,
   findElementForTimelineElement,
-  resolveDomEditSelection,
   type DomEditSelection,
 } from "../components/editor/domEditing";
+import {
+  findOpaqueTimelineElement,
+  findSelectionElement,
+  resolveFoundSelection,
+} from "../components/editor/previewSelection";
+import type { PreviewElement } from "../player/lib/previewElements";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
 import { holdScenesOf } from "../utils/sceneHold";
 import { useStudioTestHooks } from "./useStudioTestHooks";
@@ -216,8 +220,12 @@ export function useDomSelection({
   );
 
   const buildDomSelectionFromTarget = useCallback(
-    (target: HTMLElement, options?: ResolveDomSelectionOptions) => {
-      return resolveDomEditSelection(target, {
+    (
+      target: HTMLElement | PreviewElement,
+      options?: ResolveDomSelectionOptions,
+      iframe = previewIframeRef.current,
+    ) => {
+      return resolveFoundSelection(iframe, target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
@@ -231,7 +239,7 @@ export function useDomSelection({
         projectId,
       });
     },
-    [activeCompPath, isMasterView, projectId],
+    [activeCompPath, isMasterView, previewIframeRef, projectId],
   );
 
   const resolveDomSelectionFromPreviewPoint = useCallback(
@@ -302,23 +310,25 @@ export function useDomSelection({
     // fallow-ignore-next-line complexity
     async (element: TimelineElement): Promise<DomEditSelection | null> => {
       const iframe = previewIframeRef.current;
+      const lookup = { activeCompositionPath: activeCompPath, compIdToSrc, isMasterView };
       let doc: Document | null = null;
       try {
         doc = iframe?.contentDocument ?? null;
       } catch {
         return null;
       }
-      if (!doc) return null;
+      if (!doc) {
+        const found = await findOpaqueTimelineElement(iframe, element, lookup);
+        return found
+          ? buildDomSelectionFromTarget(found, { preferClipAncestor: false }, iframe)
+          : null;
+      }
 
       const held = holdScenesOf(iframe, element);
       if (held) await held;
       reapplyPositionEditsAfterSeek(doc);
 
-      const targetElement = findElementForTimelineElement(doc, element, {
-        activeCompositionPath: activeCompPath,
-        compIdToSrc,
-        isMasterView,
-      });
+      const targetElement = findElementForTimelineElement(doc, element, lookup);
       return targetElement
         ? buildDomSelectionFromTarget(targetElement, {
             preferClipAncestor: false,
@@ -365,15 +375,8 @@ export function useDomSelection({
       const stillSelected = () =>
         domEditSelectionsTargetSame(domEditSelectionRef.current, selection);
       if (!stillSelected()) return;
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
-      const element = findElementForSelection(doc, selection, activeCompPath);
+      const element = await findSelectionElement(iframe, selection, activeCompPath);
+      if (element === undefined || !stillSelected()) return;
       if (!element) {
         // Losing the primary is not losing the selection. When a group is live,
         // re-resolve it and keep whoever still exists rather than wiping the lot.
@@ -390,7 +393,11 @@ export function useDomSelection({
         return;
       }
 
-      const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
+      const nextSelection = await buildDomSelectionFromTarget(
+        element,
+        { previous: selection },
+        iframe,
+      );
       if (nextSelection && stillSelected()) {
         applyDomSelection(nextSelection, {
           revealPanel: false,
@@ -405,17 +412,10 @@ export function useDomSelection({
     // fallow-ignore-next-line complexity
     async (selections: DomEditSelection[]) => {
       const iframe = previewIframeRef.current;
-      let doc: Document | null = null;
-      try {
-        doc = iframe?.contentDocument ?? null;
-      } catch {
-        return;
-      }
-      if (!doc) return;
-
       const nextGroup: DomEditSelection[] = [];
       for (const selection of selections) {
-        const element = findElementForSelection(doc, selection, activeCompPath);
+        const element = await findSelectionElement(iframe, selection, activeCompPath);
+        if (element === undefined) return;
         if (!element) continue;
         const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
         if (nextSelection) nextGroup.push(nextSelection);

@@ -7,6 +7,7 @@ import {
   MAX_DESCRIBE_HANDLES,
   type EditingElementDescription,
   type EditingElementHit,
+  type EditingElementMatch,
   type EditingElementSource,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
@@ -94,6 +95,32 @@ export async function describePreviewElements(
     const element = readPreviewElement(entry);
     return element?.handle === handles[index] ? element : null;
   });
+}
+
+/** Each handle's ancestors, parent first; null for an element the frame no longer has. */
+export async function previewAncestors(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): Promise<Array<string[] | null> | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const reply = await previewRequest(iframe, "ancestors", { handles: [...handles] });
+  const chains: unknown = reply?.ancestors;
+  if (!Array.isArray(chains) || chains.length !== handles.length) return null;
+  return chains.map((chain) =>
+    Array.isArray(chain) && chain.every(isHandle) ? (chain as string[]) : null,
+  );
+}
+
+/** The frame's matches for `selector` in document order; null when the runtime cannot answer. */
+export async function queryPreviewElements(
+  iframe: HTMLIFrameElement,
+  selector: string,
+): Promise<{ matches: EditingElementMatch[]; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "query", { selector });
+  const matches: unknown = reply?.matches;
+  if (!Array.isArray(matches) || typeof reply?.truncated !== "boolean") return null;
+  const ok = matches.every((m) => isFields(m) && isHandle(m.handle) && isSource(m.source));
+  return ok ? { matches: matches as EditingElementMatch[], truncated: reply.truncated } : null;
 }
 
 /** `getSourceFileForElement` for the frame's own element. */

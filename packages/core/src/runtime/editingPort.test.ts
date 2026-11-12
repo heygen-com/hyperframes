@@ -68,6 +68,8 @@ describe("createEditingPortClient", () => {
           "computed-styles",
           "elements-at-point",
           "describe",
+          "ancestors",
+          "query",
         ],
       });
     } finally {

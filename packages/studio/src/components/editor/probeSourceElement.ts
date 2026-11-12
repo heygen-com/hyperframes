@@ -4,7 +4,7 @@ import type { DomEditSelection } from "./domEditingTypes";
 
 export type ProbeTarget = { id?: string; hfId?: string; selector?: string; selectorIndex?: number };
 
-export function knownSourceAnswer(
+function knownSourceAnswer(
   previous: DomEditSelection | null | undefined,
   element: HTMLElement,
   sourceFile: string,
@@ -67,4 +67,22 @@ export function probeSourceElement(
     }
     probes.push({ target, resolve });
   });
+}
+
+export async function existsInSourceFile(
+  previous: DomEditSelection | null | undefined,
+  element: HTMLElement,
+  sourceFile: string,
+  target: ProbeTarget,
+  options: { projectId?: string | null; skipSourceProbe?: boolean },
+): Promise<boolean | undefined> {
+  const probeTarget: ProbeTarget = {};
+  if (target.id) probeTarget.id = target.id;
+  if (target.hfId) probeTarget.hfId = target.hfId;
+  if (target.selector) probeTarget.selector = target.selector;
+  if (target.selectorIndex != null) probeTarget.selectorIndex = target.selectorIndex;
+  const known = knownSourceAnswer(previous, element, sourceFile, probeTarget);
+  if (known !== undefined || options.skipSourceProbe || !options.projectId) return known;
+  if (!target.id && !target.selector && !target.hfId) return known;
+  return probeSourceElement(options.projectId, sourceFile, probeTarget);
 }

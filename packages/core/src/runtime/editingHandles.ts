@@ -5,15 +5,18 @@
  */
 import {
   buildStableSelector,
+  MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_POINT_STACK,
+  MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
   readElementSource,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
+  type EditingElementMatch,
   type EditingElementSource,
 } from "./editingElement";
 
@@ -43,7 +46,7 @@ function handleFor(element: Element): EditingElementHandle {
 }
 
 /** The live element in this document behind `handle`, else null. */
-function elementForHandle(handle: EditingElementHandle): Element | null {
+export function elementForHandle(handle: EditingElementHandle): Element | null {
   const [handleLoad, count] = handle.split(":");
   if (handleLoad !== loadId()) return null;
   const n = Number(count);
@@ -187,4 +190,31 @@ export function describeHandles(
     const element = elementForHandle(handle);
     return element ? describeElement(element) : null;
   });
+}
+
+export function ancestorHandles(
+  requested: readonly EditingElementHandle[],
+): Array<EditingElementHandle[] | null> {
+  return requested.map((handle) => {
+    const element = elementForHandle(handle);
+    if (!element) return null;
+    const chain: EditingElementHandle[] = [];
+    let node = element.parentElement;
+    for (; node && chain.length < MAX_DESCRIBE_HANDLES; node = node.parentElement) {
+      chain.push(handleFor(node));
+    }
+    return chain;
+  });
+}
+
+export function queryElements(selector: string): {
+  matches: EditingElementMatch[];
+  truncated: boolean;
+} {
+  const matches: EditingElementMatch[] = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push({ handle: handleFor(element), source: readElementSource(element) });
+  }
+  return { matches, truncated: false };
 }

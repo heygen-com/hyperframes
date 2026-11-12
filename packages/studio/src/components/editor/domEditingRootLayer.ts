@@ -12,32 +12,36 @@ function approximatelyEqual(a: number, b: number) {
   return Math.abs(a - b) <= COMPOSITION_ROOT_LAYER_EPSILON_PX;
 }
 
-function getCompositionRootBounds(doc: Document) {
-  const root =
-    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
-  const rootWidth = readPositiveDimension(root?.getAttribute("data-width") ?? null);
-  const rootHeight = readPositiveDimension(root?.getAttribute("data-height") ?? null);
-  if (!root || !rootWidth || !rootHeight) return null;
-  return { rect: root.getBoundingClientRect(), width: rootWidth, height: rootHeight };
+interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
-function getRenderedLayerSize(element: HTMLElement, computedStyles: Record<string, string>) {
-  const rect = element.getBoundingClientRect();
-  const width = rect.width || parsePx(computedStyles.width);
-  const height = rect.height || parsePx(computedStyles.height);
-  return width && height ? { width, height } : null;
+export interface CompositionRootFacts {
+  rect: Box;
+  width: string | null;
+  height: string | null;
 }
 
-function matchesCompositionRootBounds(
-  elementRect: DOMRect,
-  elementSize: { width: number; height: number },
-  rootBounds: { rect: DOMRect; width: number; height: number },
-) {
-  return (
-    approximatelyEqual(elementRect.left, rootBounds.rect.left) &&
-    approximatelyEqual(elementRect.top, rootBounds.rect.top) &&
-    approximatelyEqual(elementSize.width, rootBounds.width) &&
-    approximatelyEqual(elementSize.height, rootBounds.height)
+export function coversCompositionRoot(
+  layer: { rect: Box; computedStyles: Record<string, string> },
+  root: CompositionRootFacts | null,
+): boolean {
+  if (isExplicitFullBleedLayer(layer.computedStyles)) return false;
+  const rootWidth = readPositiveDimension(root?.width ?? null);
+  const rootHeight = readPositiveDimension(root?.height ?? null);
+  if (!root || !rootWidth || !rootHeight) return false;
+  const width = layer.rect.width || parsePx(layer.computedStyles.width);
+  const height = layer.rect.height || parsePx(layer.computedStyles.height);
+  return Boolean(
+    width &&
+    height &&
+    approximatelyEqual(layer.rect.left, root.rect.left) &&
+    approximatelyEqual(layer.rect.top, root.rect.top) &&
+    approximatelyEqual(width, rootWidth) &&
+    approximatelyEqual(height, rootHeight),
   );
 }
 
@@ -52,13 +56,14 @@ export function isCompositionRootLayer(
 ) {
   if (element.parentElement !== doc.body) return false;
   if (element.hasAttribute("data-hf-allow-root-edit")) return false;
-  if (isExplicitFullBleedLayer(computedStyles)) return false;
-
-  const rootBounds = getCompositionRootBounds(doc);
-  const elementSize = getRenderedLayerSize(element, computedStyles);
-  return Boolean(
-    rootBounds &&
-    elementSize &&
-    matchesCompositionRootBounds(element.getBoundingClientRect(), elementSize, rootBounds),
+  const root =
+    doc.querySelector<HTMLElement>("[data-composition-id]") ?? doc.documentElement ?? null;
+  return coversCompositionRoot(
+    { rect: element.getBoundingClientRect(), computedStyles },
+    root && {
+      rect: root.getBoundingClientRect(),
+      width: root.getAttribute("data-width"),
+      height: root.getAttribute("data-height"),
+    },
   );
 }

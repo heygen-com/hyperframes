@@ -52,12 +52,18 @@ export interface EditingElementDescription extends EditingElementHit {
   truncated: boolean;
 }
 
+export interface EditingElementMatch {
+  handle: EditingElementHandle;
+  source: EditingElementSource;
+}
+
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
 export const MAX_ELEMENT_VALUE = 2_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
+export const MAX_QUERY_MATCHES = 2_048;
 
 // fallow-ignore-next-line complexity
 function escapeCssIdentifier(value: string): string {

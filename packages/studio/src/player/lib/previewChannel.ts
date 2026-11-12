@@ -97,13 +97,14 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   return manifest as ClipManifest;
 }
 
-/** The runtime's computed `properties` for the element `selector` names; null when it has none. */
+/** The runtime's computed `properties` for the element `target` names; null when it has none. */
 export async function previewComputedStyles(
   iframe: HTMLIFrameElement,
-  selector: string,
+  target: string | { handle: string },
   properties: string[],
 ): Promise<Record<string, string> | null> {
-  const reply = await previewRequest(iframe, "computed-styles", { selector, properties });
+  const element = typeof target === "string" ? { selector: target } : { handle: target.handle };
+  const reply = await previewRequest(iframe, "computed-styles", { ...element, properties });
   const styles: unknown = reply?.styles;
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};

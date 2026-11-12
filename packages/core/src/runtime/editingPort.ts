@@ -15,6 +15,7 @@ import {
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
+  type EditingElementMatch,
 } from "./editingElement";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -30,10 +31,12 @@ export {
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_POINT_STACK,
+  MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
+  type EditingElementMatch,
   type EditingElementSource,
   type EditingRect,
 } from "./editingElement";
@@ -52,6 +55,8 @@ export const EDITING_REQUEST_KINDS = [
   "computed-styles",
   "elements-at-point",
   "describe",
+  "ancestors",
+  "query",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -77,9 +82,9 @@ export interface EditingRequests {
   "wait-for-seek": { params: NoParams; result: { waited: boolean } };
   /** Where a looping playback wraps to; null stops looping from a custom start. */
   "set-loop-start": { params: { seconds: number | null }; result: { applied: boolean } };
-  /** `styles` is null when no element matches `selector`; empty values are left out. */
+  /** The element `selector` first matches, or `handle` names. `styles` is null for none; empty values are left out. */
   "computed-styles": {
-    params: { selector: string; properties: string[] };
+    params: ({ selector: string } | { handle: EditingElementHandle }) & { properties: string[] };
     result: { styles: Record<string, string> | null };
   };
   /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
@@ -91,6 +96,16 @@ export interface EditingRequests {
   describe: {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingElementDescription | null> };
+  };
+  /** Each handle's ancestors, parent first, up to MAX_DESCRIBE_HANDLES; null as in `describe`. */
+  ancestors: {
+    params: { handles: EditingElementHandle[] };
+    result: { ancestors: Array<EditingElementHandle[] | null> };
+  };
+  /** The matches of `selector` in document order, up to MAX_QUERY_MATCHES; an invalid one fails. */
+  query: {
+    params: { selector: string };
+    result: { matches: EditingElementMatch[]; truncated: boolean };
   };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -133,6 +148,36 @@ const hasKeys = (params: unknown, keys: string): params is Record<string, unknow
 const noParams = (params: unknown): NoParams | null =>
   params === undefined || (isPlainRecord(params) && Object.keys(params).length === 0) ? {} : null;
 
+const isSelector = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= MAX_SELECTOR_LENGTH;
+const isHandle = (value: unknown): value is EditingElementHandle =>
+  typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
+
+function styleTarget(params: Record<string, unknown>) {
+  const keys = Object.keys(params).sort().join();
+  const { selector, handle } = params;
+  if (keys === "properties,selector" && isSelector(selector)) return { selector };
+  return keys === "handle,properties" && isHandle(handle) ? { handle } : null;
+}
+
+function styleProperties(properties: unknown): string[] | null {
+  if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
+  const names = properties.filter(
+    (name): name is string =>
+      typeof name === "string" &&
+      name.length <= MAX_STYLE_PROPERTY_LENGTH &&
+      STYLE_PROPERTY.test(name),
+  );
+  return names.length === properties.length ? names : null;
+}
+
+function handleList(params: unknown): { handles: EditingElementHandle[] } | null {
+  if (!hasKeys(params, "handles") || !Array.isArray(params.handles)) return null;
+  const { handles } = params;
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  return handles.every(isHandle) ? { handles } : null;
+}
+
 const PARAM_PARSERS: {
   [K in EditingRequestKind]: (params: unknown) => EditingParams<K> | null;
 } = {
@@ -148,37 +193,22 @@ const PARAM_PARSERS: {
       : null;
   },
   "computed-styles": (params) => {
-    if (!isPlainRecord(params) || Object.keys(params).sort().join() !== "properties,selector") {
-      return null;
-    }
-    const { selector, properties } = params;
-    if (typeof selector !== "string" || !selector || selector.length > MAX_SELECTOR_LENGTH) {
-      return null;
-    }
-    if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
-    const names = properties.filter(
-      (name): name is string =>
-        typeof name === "string" &&
-        name.length <= MAX_STYLE_PROPERTY_LENGTH &&
-        STYLE_PROPERTY.test(name),
-    );
-    return names.length === properties.length ? { selector, properties: names } : null;
+    if (!isPlainRecord(params)) return null;
+    const target = styleTarget(params);
+    const properties = styleProperties(params.properties);
+    return target && properties ? { ...target, properties } : null;
   },
   "elements-at-point": (params) => {
     if (!hasKeys(params, "x,y")) return null;
     const { x, y } = params;
     return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
   },
-  describe: (params) => {
-    if (!hasKeys(params, "handles") || !Array.isArray(params.handles)) return null;
-    const { handles } = params;
-    if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
-    return handles.every(
-      (handle) => typeof handle === "string" && EDITING_ELEMENT_HANDLE.test(handle),
-    )
-      ? { handles: handles as string[] }
-      : null;
-  },
+  describe: handleList,
+  ancestors: handleList,
+  query: (params) =>
+    hasKeys(params, "selector") && isSelector(params.selector)
+      ? { selector: params.selector }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
