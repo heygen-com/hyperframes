@@ -8,7 +8,6 @@ import type { PatchTarget } from "./sourcePatcher";
 
 export type EditContextTarget = HistoryTarget;
 
-/** How to find an edited element again, and the layer name the person saw (a selection's `label`). */
 export function editContextTarget(
   file: string,
   target: PatchTarget & { label?: string },
@@ -47,7 +46,6 @@ type ProjectFileWriter = (path: string, content: string, expectedContent?: strin
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
   label: string;
-  /** The elements the edit changed, for the history entry's targets. */
   targets?: EditContextTarget[];
   coalesceKey?: string;
   coalesceMs?: number;

@@ -85,7 +85,6 @@ function identityOf(
 
 const MAX_TARGET_NAME = 200;
 
-/** A layer name as the person typed it: trimmed and capped, so one entry cannot carry a pasted page. */
 function nameOf(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   return value.trim().slice(0, MAX_TARGET_NAME) || undefined;
