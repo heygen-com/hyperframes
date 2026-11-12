@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import {
   inAgentSandbox,
   isOneProcessOverPipe,
+  launchWithChromeSandboxFallback,
   machServiceDenied,
   oneProcessOverPipe,
   pipeLaunchClosedOnMac,
@@ -108,8 +109,11 @@ export async function launchManagedBrowser(
   { diagnose = true }: { diagnose?: boolean } = {},
 ): Promise<Browser> {
   const sandboxed = isOneProcessOverPipe(options) || inAgentSandbox();
+  const prepared = sandboxed ? oneProcessOverPipe(options) : options;
   try {
-    return await launchOwnedBrowser(puppeteer, sandboxed ? oneProcessOverPipe(options) : options);
+    return await launchWithChromeSandboxFallback(prepared.args ?? [], (args) =>
+      launchOwnedBrowser(puppeteer, { ...prepared, args }),
+    );
   } catch (error) {
     const unnamedSeatbelt =
       !sandboxed &&

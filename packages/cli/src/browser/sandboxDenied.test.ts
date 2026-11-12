@@ -124,8 +124,32 @@ describe("a browser inside an agent's macOS seatbelt", () => {
       "Protocol error (Target.setDiscoverTargets): Target closed",
     );
     const { puppeteer, launches } = recordingPuppeteer([closed]);
-    await expect(launchManagedBrowser(puppeteer, { args: ["--headless"] })).rejects.toBe(closed);
+    await expect(
+      launchManagedBrowser(puppeteer, { args: ["--headless", "--no-sandbox"] }),
+    ).rejects.toBe(closed);
     expect(launches).toHaveLength(1);
+  });
+
+  it("retries once without Chrome's sandbox when Linux closes a sandboxed launch at startup", async () => {
+    vi.stubEnv("CODEX_SANDBOX", "");
+    Object.defineProperty(process, "platform", { value: "linux" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { puppeteer, launches } = recordingPuppeteer([
+      new TargetCloseError("Protocol error (Target.setDiscoverTargets): Target closed"),
+    ]);
+    await expect(launchManagedBrowser(puppeteer, { args: ["--headless"] })).resolves.toBeDefined();
+    expect(launches.map((options) => options.args)).toEqual([
+      ["--headless", HYPERFRAMES_BROWSER_MARKER_ARG],
+      [
+        "--headless",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--no-zygote",
+        HYPERFRAMES_BROWSER_MARKER_ARG,
+      ],
+    ]);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 });
 
