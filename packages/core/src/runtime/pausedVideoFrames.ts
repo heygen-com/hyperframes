@@ -157,7 +157,6 @@ function refresh(entry: Presented): void {
     canvas.style.top = `${video.offsetTop}px`;
     canvas.style.margin = "0";
   }
-  // Only the 8-bit SDR conversion was measured, so HDR sources keep their decoded look.
   if (!isHighBitDepthSource(video)) applyNativeVideoLook(canvas, css.filter || "none");
   canvas.style.setProperty("pointer-events", "none", "important");
   canvas.style.setProperty("animation", "none", "important");
