@@ -7,6 +7,7 @@ import {
   type BeforeCaptureHook,
   type EngineConfig,
   type ExtractedFrames,
+  type ShownBox,
   type VideoElement,
 } from "@hyperframes/engine";
 import { resolveRenderFpsConfig } from "../fileServer.js";
@@ -52,6 +53,7 @@ export function createSegmentVideoFrames(input: {
   injectorOptions: Parameters<typeof createVideoFrameInjector>[1];
   abortSignal?: AbortSignal;
   sourceOf?: (video: ExtractedFrames) => string;
+  shownBoxes?: ReadonlyMap<string, ShownBox>;
   extractFrames?: FrameExtractor;
 }): SegmentVideoFrames {
   const extractFrames = input.extractFrames ?? extractDeferredFrames;
@@ -69,6 +71,7 @@ export function createSegmentVideoFrames(input: {
       cfg: input.cfg,
       signal: input.abortSignal,
       sourceOf,
+      shownBoxes: input.shownBoxes,
       onMissingFrame: (video, index) =>
         new Error(
           `[Render] video ${JSON.stringify(video.videoId)} has no frame ${index}; ` +

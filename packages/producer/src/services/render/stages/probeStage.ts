@@ -94,6 +94,7 @@ import { computeCompositionObservabilityHash } from "../observability.js";
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  measuresShownBoxes?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -409,6 +410,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
+    input.measuresShownBoxes === true ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
       unresolvedCompositionCount: compiled.unresolvedCompositions.length,
@@ -429,6 +431,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (hasScriptedAudio) reasons.push("scripted audio volume");
       if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
       if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+      if (input.measuresShownBoxes) reasons.push("video(s) larger than the canvas");
 
       log.info("Launching browser for composition probe...", {
         reasons,
