@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
-import { isAbsolute, relative, sep } from "node:path";
+import { homedir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 
 const ENV_FILE = /^\.env([._-].*|rc)?$/;
@@ -17,13 +18,18 @@ function inPrivateLocation(projectDir: string, path: string): boolean {
   const segmentsPastProjectFolders = relative(projectDir, path)
     .split(/[\\/]/)
     .filter((segment) => segment !== "..");
-  return segmentsPastProjectFolders.some(
-    (segment, i) =>
-      segment.startsWith(".") ||
-      segment.toLowerCase() === "appdata" ||
-      (segment.toLowerCase() === "library" &&
-        segmentsPastProjectFolders[i + 1] !== "Mobile Documents"),
+  return (
+    segmentsPastProjectFolders.some((segment) => segment.startsWith(".")) || inHomeAppData(path)
   );
+}
+
+function inHomeAppData(path: string): boolean {
+  const lowerPath = path.toLowerCase();
+  const under = (...dir: string[]) => {
+    const lowerDir = join(homedir(), ...dir).toLowerCase();
+    return lowerPath === lowerDir || lowerPath.startsWith(`${lowerDir}${sep}`);
+  };
+  return (under("AppData") || under("Library")) && !under("Library", "Mobile Documents");
 }
 
 /** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */

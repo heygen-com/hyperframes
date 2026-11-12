@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];
@@ -206,15 +206,43 @@ describe("a reference to a file outside the project in a private location", () =
     expect(warnings).toEqual([]);
   });
 
-  it("leaves out references into AppData and Library, but not iCloud Drive", () => {
+  it("leaves out references into the home AppData and Library, but not iCloud Drive", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const files = [
+        "AppData/Roaming/token.json",
+        "Library/Cookies/c.binarycookies",
+        "Library/Mobile Documents/shared/logo.png",
+      ];
+      for (const file of files) {
+        mkdirSync(dirname(join(home, file)), { recursive: true });
+        writeFileSync(join(home, file), "x");
+      }
+      const project = temp();
+      writeFileSync(
+        join(project, "index.html"),
+        files.map((file) => `<img src="${join(home, file)}">`).join(""),
+      );
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(project, Infinity, (w) => warnings.push(w));
+      const ext = [...staged.keys()].filter((key) => key.startsWith("_ext/"));
+      expect(ext).toEqual([expect.stringMatching(/Mobile Documents\/shared\/logo\.png$/)]);
+      expect(warnings).toHaveLength(2);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("still copies a sibling asset folder named library or AppData outside the home folder", () => {
     const { ext, warnings } = stageIn("p", {
-      "AppData/Roaming/token.json": "KEY",
-      "Library/Cookies/c.binarycookies": "KEY",
-      "Library/Mobile Documents/shared/logo.png": "png",
-      "p/index.html": `<img src="../AppData/Roaming/token.json"><img src="../Library/Cookies/c.binarycookies"><img src="../Library/Mobile Documents/shared/logo.png">`,
+      "library/logo.png": "png",
+      "AppData/clip.png": "png",
+      "p/index.html": `<img src="../library/logo.png"><img src="../AppData/clip.png">`,
     });
-    expect(ext).toEqual(["_ext/Library/Mobile Documents/shared/logo.png"]);
-    expect(warnings).toHaveLength(2);
+    expect(ext.sort()).toEqual(["_ext/AppData/clip.png", "_ext/library/logo.png"]);
+    expect(warnings).toEqual([]);
   });
 
   it("says nothing about a reference into a hidden folder that does not exist", () => {
