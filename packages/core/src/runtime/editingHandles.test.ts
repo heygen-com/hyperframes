@@ -135,6 +135,22 @@ describe("element handles over the editing port", () => {
     expect(earlierLoad.describeHandles([current!.handle])).toEqual([null]);
   });
 
+  it("draws its load id on first use, so loading the runtime leaves a seeded RNG alone", async () => {
+    vi.resetModules();
+    const draw = vi.spyOn(crypto, "getRandomValues");
+    try {
+      const fresh = await import("./editingHandles");
+      expect(draw).not.toHaveBeenCalled();
+      document.body.innerHTML = `<p>A</p>`;
+      stackAtPoint(document.querySelector("p")!);
+      fresh.elementsAtPoint(0, 0);
+      fresh.elementsAtPoint(0, 0);
+      expect(draw).toHaveBeenCalledOnce();
+    } finally {
+      draw.mockRestore();
+    }
+  });
+
   it("cuts long values, keeps only a data: header, and leaves script and style text out", async () => {
     const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
     document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">

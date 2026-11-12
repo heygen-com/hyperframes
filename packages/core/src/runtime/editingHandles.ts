@@ -17,9 +17,13 @@ import {
   type EditingElementSource,
 } from "./editingElement";
 
-const LOAD = Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
-  byte.toString(16).padStart(2, "0"),
-).join("");
+// Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
+// composition's own random values.
+let load = "";
+const loadId = () =>
+  (load ||= Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join(""));
 const numbers = new WeakMap<Element, number>();
 const elements = new Map<number, WeakRef<Element>>();
 const collected = new FinalizationRegistry<number>((n) => {
@@ -35,13 +39,13 @@ function handleFor(element: Element): EditingElementHandle {
     collected.register(element, n);
   }
   if (!elements.has(n)) elements.set(n, new WeakRef(element));
-  return `${LOAD}:${n}`;
+  return `${loadId()}:${n}`;
 }
 
 /** The live element in this document behind `handle`, else null. */
 function elementForHandle(handle: EditingElementHandle): Element | null {
-  const [load, count] = handle.split(":");
-  if (load !== LOAD) return null;
+  const [handleLoad, count] = handle.split(":");
+  if (handleLoad !== loadId()) return null;
   const n = Number(count);
   const element = elements.get(n)?.deref();
   if (element?.isConnected && element.ownerDocument === document) return element;
