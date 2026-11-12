@@ -31,6 +31,7 @@ import {
 } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
+import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -923,16 +924,18 @@ async function launchBrowser(
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
   const launch = (args: readonly string[]) =>
-    launchInsideSandbox(ppt, {
-      ...ownedLaunchOptions(),
-      headless: true,
-      args: withHyperframesBrowserMarker(args),
-      defaultViewport: null,
-      executablePath: fingerprint.executablePath,
-      env,
-      timeout: fingerprint.browserTimeoutMs,
-      protocolTimeout: fingerprint.protocolTimeoutMs,
-    }).catch(async (error: unknown) => {
+    launchWithChromeSandboxFallback(args, (launchArgs) =>
+      launchInsideSandbox(ppt, {
+        ...ownedLaunchOptions(),
+        headless: true,
+        args: withHyperframesBrowserMarker(launchArgs),
+        defaultViewport: null,
+        executablePath: fingerprint.executablePath,
+        env,
+        timeout: fingerprint.browserTimeoutMs,
+        protocolTimeout: fingerprint.protocolTimeoutMs,
+      }),
+    ).catch(async (error: unknown) => {
       const remediation =
         process.platform === "darwin" &&
         sandboxDeniedRemediation(error instanceof Error ? error.message : "");
@@ -1105,6 +1108,7 @@ export interface BuildChromeArgsOptions {
   platform?: NodeJS.Platform;
   /** The composition declares `data-requires-webgpu`; forces the WebGPU flag even in "software" mode. */
   requiresWebGpu?: boolean;
+  sandbox?: boolean;
 }
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
@@ -1143,8 +1147,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
   // headless-shell guidance.
   const chromeArgs = [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(options.sandbox),
     "--disable-dev-shm-usage",
     softwareWebGpu
       ? `${CANVAS_DRAW_ELEMENT_FEATURE_FLAG},Vulkan`
@@ -1175,7 +1178,6 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
     "--disable-domain-reliability",
     "--disable-print-preview",
     "--no-pings",
-    "--no-zygote",
     // Memory — scale GPU budget to available system RAM
     `--force-gpu-mem-available-mb=${getGpuMemBudgetMb()}`,
     "--disk-cache-size=268435456",
