@@ -97,18 +97,23 @@ describe("launchWithChromeSandboxFallback", () => {
   });
   afterEach(() => warn.mockRestore());
 
-  it("retries a refused Linux sandbox once without it, warns once, and skips the attempt after", async () => {
+  it("retries a bare startup exit once without the sandbox, warns once, and latches on the second", async () => {
     const launch = vi
       .fn<(args: string[]) => Promise<string>>()
       .mockRejectedValueOnce(closedTarget)
+      .mockResolvedValueOnce("browser")
+      .mockRejectedValueOnce(closedTarget)
       .mockResolvedValue("browser");
 
-    await expect(launchWithChromeSandboxFallback(["--a"], launch, "linux")).resolves.toBe(
+    await expect(launchWithChromeSandboxFallback(["--a"], launch, "linux", {})).resolves.toBe(
       "browser",
     );
-    await launchWithChromeSandboxFallback(["--a"], launch, "linux");
+    await launchWithChromeSandboxFallback(["--a"], launch, "linux", {});
+    await launchWithChromeSandboxFallback(["--a"], launch, "linux", {});
 
     expect(launch.mock.calls.map(([args]) => args)).toEqual([
+      ["--a"],
+      ["--a", ...NO_SANDBOX_ARGS],
       ["--a"],
       ["--a", ...NO_SANDBOX_ARGS],
       ["--a", ...NO_SANDBOX_ARGS],
@@ -116,13 +121,23 @@ describe("launchWithChromeSandboxFallback", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  it("recognizes Chrome's sandbox error text when stderr reaches the message", async () => {
+  it("latches at once when Chrome names the sandbox in its error", async () => {
     const launch = vi
       .fn<(args: string[]) => Promise<string>>()
       .mockRejectedValueOnce(new Error("Failed to launch the browser process: No usable sandbox!"))
       .mockResolvedValue("browser");
-    await expect(launchWithChromeSandboxFallback([], launch, "linux")).resolves.toBe("browser");
-    expect(launch).toHaveBeenLastCalledWith(NO_SANDBOX_ARGS);
+    await expect(launchWithChromeSandboxFallback([], launch, "linux", {})).resolves.toBe("browser");
+    await launchWithChromeSandboxFallback([], launch, "linux", {});
+    expect(launch.mock.calls.map(([args]) => args)).toEqual([[], NO_SANDBOX_ARGS, NO_SANDBOX_ARGS]);
+  });
+
+  it("never drops the sandbox when HYPERFRAMES_CHROME_SANDBOX=1 requires it", async () => {
+    const refused = new Error("Running as root without --no-sandbox is not supported");
+    const launch = vi.fn<(args: string[]) => Promise<string>>().mockRejectedValue(refused);
+    const env = { HYPERFRAMES_CHROME_SANDBOX: "1" };
+    await expect(launchWithChromeSandboxFallback([], launch, "linux", env)).rejects.toBe(refused);
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it.each<[string, string[], NodeJS.Platform, Error]>([
@@ -132,7 +147,7 @@ describe("launchWithChromeSandboxFallback", () => {
     ["Windows", [], "win32", closedTarget],
   ])("does not retry %s", async (_, args, platform, error) => {
     const launch = vi.fn<(args: string[]) => Promise<string>>().mockRejectedValue(error);
-    await expect(launchWithChromeSandboxFallback(args, launch, platform)).rejects.toBe(error);
+    await expect(launchWithChromeSandboxFallback(args, launch, platform, {})).rejects.toBe(error);
     expect(launch).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -144,8 +159,8 @@ describe("launchWithChromeSandboxFallback", () => {
       .mockRejectedValueOnce(closedTarget)
       .mockRejectedValueOnce(retryError)
       .mockResolvedValue("browser");
-    await expect(launchWithChromeSandboxFallback([], launch, "linux")).rejects.toBe(retryError);
-    await launchWithChromeSandboxFallback([], launch, "linux");
+    await expect(launchWithChromeSandboxFallback([], launch, "linux", {})).rejects.toBe(retryError);
+    await launchWithChromeSandboxFallback([], launch, "linux", {});
     expect(launch).toHaveBeenLastCalledWith([]);
   });
 });

@@ -67,34 +67,53 @@ function withoutChromeSandbox(args: readonly string[]): string[] {
 }
 
 let sandboxRefused = false;
+let closedTargetRetries = 0;
+let warned = false;
 
 export function _resetChromeSandboxFallbackForTests(): void {
   sandboxRefused = false;
+  closedTargetRetries = 0;
+  warned = false;
+}
+
+function chromeNamedSandboxFailure(error: unknown): boolean {
+  return error instanceof Error && SANDBOX_START_FAILURE.test(error.message);
 }
 
 function sandboxStartFailure(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
   // Over a pipe, a Chrome that exits at startup surfaces only as a closed target.
-  return error.name === "TargetCloseError" || SANDBOX_START_FAILURE.test(error.message);
+  return (
+    chromeNamedSandboxFailure(error) ||
+    (error instanceof Error && error.name === "TargetCloseError")
+  );
 }
 
-/** A sandboxed Linux launch Chrome refuses at startup is retried once without the sandbox, then never sandboxed again. */
+/**
+ * A sandboxed Linux launch Chrome refuses at startup is retried once without the sandbox.
+ * The sandbox stays off for the process once Chrome names it as the cause, or after a second
+ * bare startup exit (a single one may be an unrelated kill). HYPERFRAMES_CHROME_SANDBOX=1 never retries.
+ */
 export async function launchWithChromeSandboxFallback<T>(
   args: readonly string[],
   launch: (args: string[]) => Promise<T>,
   platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<T> {
   const sandboxed = platform === "linux" && !args.includes("--no-sandbox");
-  if (sandboxed && sandboxRefused) return launch(withoutChromeSandbox(args));
+  const sandboxRequired = env.HYPERFRAMES_CHROME_SANDBOX === "1";
+  if (sandboxed && sandboxRefused && !sandboxRequired) return launch(withoutChromeSandbox(args));
   try {
     return await launch([...args]);
   } catch (error) {
-    if (!sandboxed || !sandboxStartFailure(error)) throw error;
+    if (!sandboxed || sandboxRequired || !sandboxStartFailure(error)) throw error;
     const browser = await launch(withoutChromeSandbox(args));
-    sandboxRefused = true;
-    console.warn(
-      "[hyperframes] Chrome could not start with its sandbox on this host (user namespaces are likely restricted), so it runs without it. Set HYPERFRAMES_CHROME_SANDBOX=0 to skip the sandboxed attempt.",
-    );
+    if (chromeNamedSandboxFailure(error) || ++closedTargetRetries >= 2) sandboxRefused = true;
+    if (!warned) {
+      warned = true;
+      console.warn(
+        "[hyperframes] Chrome could not start with its sandbox on this host (user namespaces are likely restricted), so it runs without it. Set HYPERFRAMES_CHROME_SANDBOX=0 to skip the sandboxed attempt.",
+      );
+    }
     return browser;
   }
 }

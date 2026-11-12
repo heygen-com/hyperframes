@@ -1899,7 +1899,8 @@ non-root user outside a container. It runs without one as root, in Docker,
 Podman or Kubernetes, on AWS Lambda and Cloud Run, and where Linux restricts
 unprivileged user namespaces (Ubuntu 23.10 and later). If a sandboxed Linux
 launch still fails, the render prints a warning and continues without the
-sandbox. Set `HYPERFRAMES_CHROME_SANDBOX=1` or `0` to choose for yourself.
+sandbox. Set `HYPERFRAMES_CHROME_SANDBOX=0` to always run without it, or `1` to
+require it: with `1`, a launch Chrome refuses fails instead of falling back.
 
 #### When a render times out
 
