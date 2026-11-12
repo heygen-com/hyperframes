@@ -65,7 +65,9 @@ describe("renderOptionsFromPlan", () => {
     // compare for a page with no data-composition-variables).
     const off = renderOptionsFromPlan(createRenderPlan({ dir: projectDir }), undefined, undefined);
     expect(off.strictVariables).toBe(false);
-    expect(batchRowRenderOptions(createRenderPlan({ dir: projectDir }), undefined).strictVariables).toBe(false);
+    expect(
+      batchRowRenderOptions(createRenderPlan({ dir: projectDir }), undefined).strictVariables,
+    ).toBe(false);
     const on = renderOptionsFromPlan(
       createRenderPlan({ dir: projectDir, "strict-variables": true }),
       undefined,

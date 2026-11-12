@@ -583,7 +583,6 @@ export interface RenderOptions {
   bestEffort?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
-  /** Fail the render when a variable is not declared by the page (--strict-variables). */
   strictVariables?: boolean;
   entryFile?: string;
   exitAfterComplete?: boolean;

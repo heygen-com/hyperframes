@@ -61,7 +61,6 @@ export interface DockerRenderOptions {
   quiet: boolean;
   debug?: boolean;
   bestEffort?: boolean;
-  /** Fail the render when a variable is not declared by the page; forwarded as `--strict-variables`. */
   strictVariables?: boolean;
   variables?: Record<string, unknown>;
   entryFile?: string;
