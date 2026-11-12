@@ -233,7 +233,8 @@ export default defineCommand({
       // committed config, else on by default.
       const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
-      const fileMap = buildPublishFileMap(dir);
+      const leftOut: string[] = [];
+      const fileMap = buildPublishFileMap(dir, (warning) => leftOut.push(warning));
       let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {
         proxyBakeManifest = await bakeMediaProxies(dir, fileMap);
@@ -249,6 +250,7 @@ export default defineCommand({
         credential,
       });
       publishSpinner.stop(c.success("Project published"));
+      for (const warning of leftOut) clack.log.warn(c.warn(warning));
 
       console.log();
       console.log(`  ${c.dim("Project")}              ${c.accent(published.title)}`);

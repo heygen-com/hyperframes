@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { basename, dirname, join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];
@@ -79,5 +79,210 @@ describe("an env file outside the project", () => {
     expect(keys.filter((key) => key.startsWith("_ext/"))).toEqual([
       expect.stringMatching(/song\.mp3$/),
     ]);
+  });
+});
+
+describe("a reference to a file outside the project in a private location", () => {
+  /** Writes `files` under a fresh folder, stages `<root>/<projectPath>`, and collects the warnings. */
+  function stageIn(projectPath: string, files: Record<string, string>) {
+    const root = temp();
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(join(root, name), body.replaceAll("<root>", root));
+    }
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, projectPath), Infinity, (w) => warnings.push(w));
+    const ext = [...staged.keys()].filter((key) => key.startsWith("_ext/"));
+    return { root, warnings, ext };
+  }
+
+  it("leaves out a ../ reference into a hidden folder and names the file and reference", () => {
+    const { warnings, ext } = stageIn("p", {
+      ".ssh/id_ed25519": "KEY",
+      "p/index.html": "<html></html>",
+      "p/compositions/intro.html": `<img src="../../.ssh/id_ed25519"><img src="../../.ssh/id_ed25519">`,
+    });
+    expect(ext).toEqual([]);
+    expect(warnings).toEqual([
+      "compositions/intro.html references ../../.ssh/id_ed25519, which is outside the project in a private location; it was left out of the upload.",
+    ]);
+  });
+
+  it("leaves out an absolute reference under a hidden folder", () => {
+    const { root, warnings, ext } = stageIn("p", {
+      ".aws/credentials": "KEY",
+      "p/index.html": `<link href="<root>/.aws/credentials">`,
+    });
+    expect(ext).toEqual([]);
+    expect(warnings).toEqual([
+      `index.html references ${root}/.aws/credentials, which is outside the project in a private location; it was left out of the upload.`,
+    ]);
+  });
+
+  it("leaves out an ordinary-looking outside file that links into a hidden folder", () => {
+    const root = temp();
+    mkdirSync(join(root, ".aws"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, ".aws", "credentials"), "KEY");
+    symlinkSync(join(root, ".aws", "credentials"), join(root, "link.png"));
+    writeFileSync(join(root, "p", "index.html"), `<img src="../link.png">`);
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].some((key) => key.startsWith("_ext/"))).toBe(false);
+    expect(warnings).toEqual([expect.stringMatching(/^index\.html references \.\.\/link\.png,/)]);
+  });
+
+  it.skipIf(process.platform === "win32")("leaves out a file under /etc", () => {
+    const { warnings, ext } = stageIn("p", { "p/index.html": `<link href="/etc/hosts">` });
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("warns when it leaves out an env file outside the project", () => {
+    const { warnings, ext } = stageIn("p", {
+      "shared/.env.production": "SECRET=1",
+      "p/index.html": `<link href="../shared/.env.production">`,
+    });
+    expect(ext).toEqual([]);
+    expect(warnings).toEqual([
+      expect.stringMatching(/^index\.html references \.\.\/shared\/\.env\.production,/),
+    ]);
+  });
+
+  it("still copies an ordinary outside file, without a warning", () => {
+    const { warnings, ext } = stageIn("p", {
+      "shared/logo.png": "png",
+      "p/index.html": `<img src="../shared/logo.png">`,
+    });
+    expect(ext).toEqual(["_ext/shared/logo.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("does not count hidden folders the project itself sits in", () => {
+    const { warnings, ext } = stageIn(".work/p", {
+      ".work/shared/logo.png": "png",
+      ".work/p/index.html": `<img src="../shared/logo.png">`,
+    });
+    expect(ext).toEqual(["_ext/shared/logo.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("keeps a referenced file under a hidden folder inside the project, without a warning", () => {
+    const root = temp();
+    mkdirSync(join(root, ".media"));
+    writeFileSync(join(root, ".media", "clip.mp4"), "v");
+    writeFileSync(join(root, "index.html"), `<video src=".media/clip.mp4"></video>`);
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(root, Infinity, (w) => warnings.push(w));
+    expect(staged.has(".media/clip.mp4")).toBe(true);
+    expect(warnings).toEqual([]);
+  });
+
+  it("leaves out a project file that links to a private file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, ".ssh"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, ".ssh", "id_ed25519"), "KEY");
+    symlinkSync(join(root, ".ssh", "id_ed25519"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), "<html></html>");
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()]).toEqual(["index.html"]);
+    expect(warnings).toEqual([
+      "logo.png links to a file outside the project in a private location; it was left out of the upload.",
+    ]);
+  });
+
+  it("leaves out a referenced project file that links to a private file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, ".ssh"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, ".ssh", "id_ed25519"), "KEY");
+    symlinkSync(join(root, ".ssh", "id_ed25519"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), `<img src="logo.png"><img src="./logo.png">`);
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()]).toEqual(["index.html"]);
+    expect(warnings).toEqual([
+      "logo.png links to a file outside the project in a private location; it was left out of the upload.",
+    ]);
+  });
+
+  it("still uploads a project file that links to an ordinary file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, "shared"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, "shared", "logo.png"), "png");
+    symlinkSync(join(root, "shared", "logo.png"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), "<html></html>");
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].sort()).toEqual(["index.html", "logo.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("leaves out references into the home AppData and Library, but not iCloud Drive", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const files = [
+        "AppData/Roaming/token.json",
+        "Library/Cookies/c.binarycookies",
+        "Library/Mobile Documents/shared/logo.png",
+      ];
+      for (const file of files) {
+        mkdirSync(dirname(join(home, file)), { recursive: true });
+        writeFileSync(join(home, file), "x");
+      }
+      const project = temp();
+      writeFileSync(
+        join(project, "index.html"),
+        files.map((file) => `<img src="${join(home, file)}">`).join(""),
+      );
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(project, Infinity, (w) => warnings.push(w));
+      const ext = [...staged.keys()].filter((key) => key.startsWith("_ext/"));
+      expect(ext).toEqual([expect.stringMatching(/Mobile Documents\/shared\/logo\.png$/)]);
+      expect(warnings).toHaveLength(2);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("still copies outside assets for a project that itself sits in the home AppData", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const temps = join(home, "AppData", "Local", "Temp");
+      mkdirSync(join(temps, "shared"), { recursive: true });
+      mkdirSync(join(temps, "p"));
+      writeFileSync(join(temps, "shared", "logo.png"), "png");
+      writeFileSync(join(temps, "p", "index.html"), `<img src="../shared/logo.png">`);
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(join(temps, "p"), Infinity, (w) => warnings.push(w));
+      expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([
+        "_ext/shared/logo.png",
+      ]);
+      expect(warnings).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("still copies a sibling asset folder named library or AppData outside the home folder", () => {
+    const { ext, warnings } = stageIn("p", {
+      "library/logo.png": "png",
+      "AppData/clip.png": "png",
+      "p/index.html": `<img src="../library/logo.png"><img src="../AppData/clip.png">`,
+    });
+    expect(ext.sort()).toEqual(["_ext/AppData/clip.png", "_ext/library/logo.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("says nothing about a reference into a hidden folder that does not exist", () => {
+    const { warnings } = stageIn("p", { "p/index.html": `<a href="../.nothing/here.png">x</a>` });
+    expect(warnings).toEqual([]);
   });
 });
