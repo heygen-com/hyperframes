@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { readSfntFaces } from "./sfntNames.js";
 
 export const SYSTEM_FONT_SIZE_LIMIT = 5 * 1024 * 1024;
+export const CHROME_WEB_FONT_DECODE_LIMIT = 128 * 1024 * 1024;
 const FC_MATCH_TIMEOUT_MS = 3000;
 
 export type FontFileFormat = "ttf" | "otf" | "woff2" | "woff" | "ttc";

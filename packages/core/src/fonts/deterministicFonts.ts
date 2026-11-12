@@ -6,6 +6,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,12 @@ import { join } from "node:path";
 import { fontShorthandFamilies } from "@hyperframes/parsers/composition";
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
 import { extractSfntFace } from "./sfntNames.js";
-import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
+import {
+  CHROME_WEB_FONT_DECODE_LIMIT,
+  locateSystemFontVariants,
+  SYSTEM_FONT_SIZE_LIMIT,
+  type LocatedFontVariant,
+} from "./systemFontLocator.js";
 import { parseHTML } from "linkedom";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
@@ -796,6 +802,25 @@ async function googleFamilyFaceRules(
   );
 }
 
+async function systemVariantFaceRule(
+  variant: LocatedFontVariant,
+  lookupFamily: string,
+  emitFamily: string,
+  log: FontLogger,
+): Promise<{ rule: string; bytes: number } | null> {
+  const single = variant.face === undefined ? null : extractSfntFace(variant.path, variant.face);
+  const bytes = single ? single.bytes.length : statSync(variant.path).size;
+  if (bytes > CHROME_WEB_FONT_DECODE_LIMIT) {
+    log.warn(
+      `[Compiler] System font "${lookupFamily}" has a ${(bytes / 1024 / 1024).toFixed(1)} MB face, more than the ${CHROME_WEB_FONT_DECODE_LIMIT / 1024 / 1024} MB Chrome decodes as a web font. Not embedding it: its text renders from the copy installed on the rendering machine, if there is one.`,
+    );
+    return null;
+  }
+  const face = single ?? { bytes: readFileSync(variant.path), format: variant.format };
+  const dataUri = await fontToDataUri(face.bytes, face.format);
+  return { rule: buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style), bytes };
+}
+
 // Path 3: locate font on the local filesystem, compress, and embed.
 async function systemFamilyFaceRules(
   lookupFamily: string,
@@ -803,24 +828,22 @@ async function systemFamilyFaceRules(
   log: FontLogger,
   byInnerName: boolean,
 ): Promise<string[] | null> {
-  const variants = locateSystemFontVariants(lookupFamily, { byInnerName });
-  if (variants.length === 0) return null;
   const rules: string[] = [];
   let totalBytes = 0;
-  for (const variant of variants) {
-    const single = variant.face === undefined ? null : extractSfntFace(variant.path, variant.face);
-    const fontBuffer = single?.bytes ?? readFileSync(variant.path);
-    totalBytes += fontBuffer.length;
-    const dataUri = await fontToDataUri(fontBuffer, single?.format ?? variant.format);
-    rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
+  for (const variant of locateSystemFontVariants(lookupFamily, { byInnerName })) {
+    const face = await systemVariantFaceRule(variant, lookupFamily, emitFamily, log);
+    if (!face) continue;
+    totalBytes += face.bytes;
+    rules.push(face.rule);
   }
+  if (rules.length === 0) return null;
   if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
     log.warn(
-      `[Compiler] System font "${lookupFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${variants.length} variant(s)), embedding anyway. Consider font subsetting for production.`,
+      `[Compiler] System font "${lookupFamily}" is large (${(totalBytes / 1024 / 1024).toFixed(1)} MB total across ${rules.length} variant(s)), embedding anyway. Consider font subsetting for production.`,
     );
   }
   log.info(
-    `[Compiler] Embedded system font "${lookupFamily}": ${variants.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
+    `[Compiler] Embedded system font "${lookupFamily}": ${rules.length} variant(s), ${(totalBytes / 1024).toFixed(0)} KB total`,
   );
   return rules;
 }
