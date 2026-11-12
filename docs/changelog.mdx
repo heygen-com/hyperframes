@@ -9,6 +9,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.37"
+  description="Released - 2026-11-12"
+  tags={["Release", "CLI", "Share"]}
+>
+Sharing refuses to build an archive when it can't read `.hyperframesignore`, so ignored files stay out. `templates pull` also refuses archives that hold links.
+
+## Fixes
+
+- **CLI:** `hyperframes templates pull` refuses an archive that holds anything other than plain files and folders, such as a symlink, hard link or device entry. Nothing is unpacked, and no partial folder is left behind. A link inside a pulled template could otherwise let preview, render and publish reach files elsewhere on your machine ([ab66e5bd7](https://github.com/heygen-com/hyperframes/commit/ab66e5bd72ad16b36a37dd1ee50d23cc21b41bb0), [#7576](https://github.com/heygen-com/hyperframes/pull/7576)).
+- **Share:** `snapshotProject` and `snapshotFiles` throw `invalid_source_ignore` again when `.hyperframesignore` can't be read. In 0.9.35 they skipped the unreadable file, so an archive built from the snapshot could include files the ignore file meant to leave out. Hosts that use these functions only for change detection should pass `{ lenientIgnore: true }` to keep the 0.9.35 behavior. `projectFingerprint` already does ([35cf03cab](https://github.com/heygen-com/hyperframes/commit/35cf03cab9e75a4f21fc90cf0dac8a08310ab6ad), [#7573](https://github.com/heygen-com/hyperframes/pull/7573)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.36...v0.9.37).
+</Update>
+
+<Update
   label="HyperFrames v0.9.36"
   description="Released - 2026-11-11"
   tags={["Release", "Lint", "Core"]}
