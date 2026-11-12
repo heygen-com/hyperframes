@@ -9,7 +9,8 @@ import {
   previewSeekPainted,
   setFrameLoopStart,
 } from "./previewChannel";
-import { bridgePlaybackAdapter } from "./bridgePlayback";
+import { bridgePlaybackAdapter, watchPreviewFrame } from "./bridgePlayback";
+import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import { resolveFramePlaybackAdapter } from "../hooks/playbackAdapterResolution";
 import { makeFakeIframe, serveEditingRequests } from "../hooks/timelinePlayerTestHarness";
 
@@ -27,15 +28,17 @@ function opaqueFrame() {
     },
   });
   const iframe = document.createElement("iframe");
+  iframe.setAttribute("sandbox", "allow-scripts");
   Object.defineProperty(iframe, "contentWindow", { value: frame });
   Object.defineProperty(iframe, "contentDocument", { value: null });
   return { iframe, frame, posted };
 }
 
-function fromFrame(frame: object, data: Record<string, unknown>) {
+/** Posts from `frame` as its runtime does, from an opaque origin unless told otherwise. */
+function fromFrame(frame: object, data: Record<string, unknown>, origin = "null") {
   const source = frame as Window;
   window.dispatchEvent(
-    new MessageEvent("message", { source, data: { source: "hf-preview", ...data } }),
+    new MessageEvent("message", { source, origin, data: { source: "hf-preview", ...data } }),
   );
 }
 
@@ -173,6 +176,73 @@ describe("bridge playback for a frame Studio cannot script", () => {
     } finally {
       clock.mockRestore();
     }
+  });
+
+  it("takes a seek the runtime landed on the frame before it, and plays on", () => {
+    const { iframe, frame } = opaqueFrame();
+    const adapter = bridgePlaybackAdapter(iframe)!;
+    const at30fps = runtimeProtocolMetadata(30);
+    adapter.seek(4.01);
+    fromFrame(frame, { type: "state", currentTime: 4, isPlaying: true, ...at30fps });
+    expect(adapter.getTime()).toBe(4);
+    expect(adapter.isPlaying()).toBe(true);
+    fromFrame(frame, { type: "state", currentTime: 4.3, isPlaying: true, ...at30fps });
+    expect(adapter.getTime()).toBe(4.3);
+  });
+
+  it("ignores a post from a window it was not built for, or from an origin its frame cannot have", () => {
+    const opaque = opaqueFrame();
+    const adapter = bridgePlaybackAdapter(opaque.iframe)!;
+    const stranger = opaqueFrame();
+    fromFrame(stranger.frame, { type: "state", currentTime: 9, isPlaying: true });
+    fromFrame(opaque.frame, { type: "state", currentTime: 8, isPlaying: true }, location.origin);
+    fromFrame(
+      opaque.frame,
+      { type: "state", currentTime: 7, isPlaying: true },
+      "https://example.com",
+    );
+    expect(adapter.getTime()).toBe(0);
+    // A post from a frame nobody registered is dropped, not kept for a later adapter.
+    expect(bridgePlaybackAdapter(stranger.iframe)!.getTime()).toBe(0);
+    fromFrame(opaque.frame, { type: "state", currentTime: 2, isPlaying: false });
+    expect(adapter.getTime()).toBe(2);
+
+    const sameOrigin = document.createElement("iframe");
+    sameOrigin.src = "/preview/index.html";
+    const frame = {};
+    Object.defineProperty(sameOrigin, "contentWindow", { value: frame });
+    watchPreviewFrame(sameOrigin);
+    const own = bridgePlaybackAdapter(sameOrigin)!;
+    fromFrame(frame, { type: "state", currentTime: 5, isPlaying: false }, "null");
+    expect(own.getTime()).toBe(0);
+    fromFrame(frame, { type: "state", currentTime: 5, isPlaying: false }, location.origin);
+    expect(own.getTime()).toBe(5);
+  });
+
+  it.each([
+    ["srcdoc", (f: HTMLIFrameElement) => f.setAttribute("srcdoc", "<p>x</p>"), location.origin],
+    [
+      "about:blank",
+      (f: HTMLIFrameElement) => f.setAttribute("src", "about:blank"),
+      location.origin,
+    ],
+    ["a data: URL", (f: HTMLIFrameElement) => f.setAttribute("src", "data:text/html,x"), "null"],
+    [
+      "another origin",
+      (f: HTMLIFrameElement) => f.setAttribute("src", "https://a.test/p"),
+      "https://a.test",
+    ],
+  ])("accepts a frame loading %s only from the origin it has", (_name, load, origin) => {
+    const iframe = document.createElement("iframe");
+    load(iframe);
+    const frame = {};
+    Object.defineProperty(iframe, "contentWindow", { value: frame });
+    const adapter = bridgePlaybackAdapter(iframe)!;
+    const wrong = origin === "null" ? location.origin : "null";
+    fromFrame(frame, { type: "state", currentTime: 3, isPlaying: false }, wrong);
+    expect(adapter.getTime()).toBe(0);
+    fromFrame(frame, { type: "state", currentTime: 3, isPlaying: false }, origin);
+    expect(adapter.getTime()).toBe(3);
   });
 
   it("takes time, play state and duration from its own frame's state and timeline messages", () => {
