@@ -38,6 +38,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
+import { CAPTURE_CANVAS_SELECTOR } from "@hyperframes/core/html-in-canvas";
 import { readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import { resolveRateSpec } from "@hyperframes/core/speed-ramp";
 import { gsapCdnDist, normalizeGsapBaseUrl } from "@hyperframes/core/gsap-cdn";
@@ -379,7 +380,7 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
   const reasons: RenderModeHint[] = [];
   const { document } = parseHTML(html);
 
-  if (document.querySelector("canvas[layoutsubtree]")) {
+  if (document.querySelector(CAPTURE_CANVAS_SELECTOR)) {
     reasons.push({
       code: "htmlInCanvas",
       message:
