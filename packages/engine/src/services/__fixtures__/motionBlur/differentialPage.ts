@@ -76,17 +76,32 @@ export interface Measured {
   mask: Uint8Array;
 }
 
+async function wholeFramesAndShutterSweep(
+  page: Page,
+  t: number,
+): Promise<{ wholeFrames: Rgba[]; sweep: Rgba[] }> {
+  const whole = neighbourTimes(t);
+  const times = [...whole, ...shutterTimes(t)].sort((a, b) => a - b);
+  const wholeFrames: Rgba[] = [];
+  const sweep: Rgba[] = [];
+  for (const time of times) {
+    if (whole.includes(time)) wholeFrames.push(await captureFrame(page, time));
+    else sweep.push(await captureFrame(page, time, { subFrameDivisions: SUB_FRAME_DIVISIONS }));
+  }
+  return { wholeFrames, sweep };
+}
+
 export async function measureOutside(
   browser: Browser,
   f: BlurFixture,
   t: number,
   tier?: Tier,
 ): Promise<Measured> {
-  const offFrames = await captureInOrder(await referencePage(f), neighbourTimes(t));
+  const { wholeFrames, sweep } = await wholeFramesAndShutterSweep(await referencePage(f), t);
   const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
-  const reference = offFrames[INVARIANTS.radiusFrames];
+  const reference = wholeFrames[INVARIANTS.radiusFrames];
   if (!reference) throw new Error("missing reference frame");
-  const mask = trailMask(offFrames, radiusPx(f));
+  const mask = trailMask([...wholeFrames, ...sweep], radiusPx(f));
   const d = compareTiles(reference, onFrame, mask, "outside", {
     block: INVARIANTS.block,
     maxMae: INVARIANTS.outsideMaxMae,
