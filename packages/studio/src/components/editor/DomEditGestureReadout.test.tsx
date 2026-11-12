@@ -34,6 +34,7 @@ function mount(
     height = 60,
     stageHeight = 400,
     angle = undefined as number | undefined,
+    localAngle = undefined as number | undefined,
   } = {},
 ) {
   const host = document.createElement("div");
@@ -84,7 +85,7 @@ function mount(
         height: height / 2,
         editScaleX: 0.5,
         editScaleY: 0.5,
-        angle,
+        angle: localAngle ?? angle,
       },
       text,
     );
@@ -270,6 +271,23 @@ describe("gesture readout", () => {
     view.move(300, 200);
     view.draw();
     expect(view.label.style.top).toBe("148px");
+  });
+  it("uses the painted angle, not the element's own, under a rotated parent", () => {
+    const counter = mount("drag", { angle: 0, localAngle: -90 });
+    counter.move(300, 200);
+    counter.draw();
+    expect(counter.label.style.top).toBe("138px");
+    const parentOnly = mount("drag", { angle: 90, localAngle: 0 });
+    parentOnly.move(300, 200);
+    parentOnly.draw();
+    expect(parentOnly.label.style.top).toBe("148px");
+  });
+  it("turns the painted angle by the change in the element's own angle while rotating", () => {
+    const view = mount("rotate", { angle: 90, localAngle: 0 });
+    const readout = view.gestureRef.current?.readout;
+    updateGestureReadoutAngle(readout, 30, 0);
+    expect(readout?.rect.angle).toBe(120);
+    expect(readout?.text).toBe("↻ 30°");
   });
   it("clears an element that was already rotated when it is resized", () => {
     const view = mount("resize", { angle: 90 });

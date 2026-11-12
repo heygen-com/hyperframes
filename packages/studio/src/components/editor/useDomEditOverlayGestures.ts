@@ -165,7 +165,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         actualAngle: g.actualRotation,
         snap: e.shiftKey,
       });
-      readout.updateGestureReadoutAngle(g.readout, rotated.angle);
+      readout.updateGestureReadoutAngle(g.readout, rotated.angle, g.actualRotation);
       applyRotationDraft(sel.element, rotated.angle, g.plainRotation);
       return;
     }
