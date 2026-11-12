@@ -42,9 +42,12 @@ function opaqueFrame(answer?: (kind: string, params: unknown) => unknown) {
 
 const NO_SOURCE = { file: null, compositionId: null, originalCompositionId: null };
 
-function described(handle: number, extra: Partial<EditingElementDescription> = {}) {
+const LOAD = "0123456789abcdef";
+const h = (n: number) => `${LOAD}:${n}`;
+
+function described(n: number, extra: Partial<EditingElementDescription> = {}) {
   return {
-    handle,
+    handle: h(n),
     parent: null,
     tag: "div",
     id: null,
@@ -52,11 +55,12 @@ function described(handle: number, extra: Partial<EditingElementDescription> = {
     matchesBefore: null,
     source: NO_SOURCE,
     locked: false,
-    attributes: [["data-hf-id", `hf-${handle}`]],
+    attributes: [["data-hf-id", `hf-${n}`]],
     inlineStyles: { left: "4px" },
     text: "",
-    children: [{ text: "Hi" }, { handle: handle + 1 }],
+    children: [{ text: "Hi" }, { handle: h(n + 1) }],
     rect: { x: 1, y: 2, width: 3, height: 4 },
+    truncated: false,
     ...extra,
   } as EditingElementDescription;
 }
@@ -67,9 +71,11 @@ describe("readPreviewElement", () => {
     for (const bad of [
       null,
       [],
-      described(0),
-      described(1.5),
-      described(1, { parent: -1 }),
+      described(1, { handle: 1 as never }),
+      described(1, { handle: "1" }),
+      described(1, { handle: `${LOAD}:0` }),
+      described(1, { handle: `${LOAD.toUpperCase()}:1` }),
+      described(1, { parent: "x" }),
       described(1, { tag: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
@@ -78,6 +84,7 @@ describe("readPreviewElement", () => {
       described(1, { children: [{ node: {} }] as never }),
       described(1, { matchesBefore: [{ source: NO_SOURCE, count: -1 }] }),
       described(1, { rect: { x: Number.NaN, y: 0, width: 0, height: 0 } }),
+      described(1, { truncated: undefined as never }),
     ]) {
       expect(readPreviewElement(bad)).toBeNull();
     }
@@ -86,21 +93,28 @@ describe("readPreviewElement", () => {
 
 describe("element requests over an opaque frame's port", () => {
   it("asks for the stack under a point and keeps only well-formed entries", async () => {
-    const { iframe, handed } = opaqueFrame(() => ({ elements: [described(1), { handle: "x" }] }));
-    expect(await previewElementsAtPoint(iframe, 10, 20)).toEqual([described(1)]);
+    const hit = { handle: h(1), tag: "p", rect: { x: 1, y: 2, width: 3, height: 4 } };
+    const bad = [
+      { ...hit, handle: "x" },
+      { ...hit, tag: 1 },
+      { ...hit, rect: { x: 1 } },
+    ];
+    const { iframe, handed } = opaqueFrame(() => ({ elements: [hit, ...bad] }));
+    expect(await previewElementsAtPoint(iframe, 10, 20)).toEqual([hit]);
     expect(handed).toHaveBeenCalledWith("elements-at-point", { x: 10, y: 20 });
   });
 
   it("describes handles in order, with null for a gone element or a mismatched entry", async () => {
     let reply: unknown = { elements: [described(2), null, described(9)] };
     const { iframe, handed } = opaqueFrame(() => reply);
-    expect(await describePreviewElements(iframe, [2, 3, 4])).toEqual([described(2), null, null]);
-    expect(handed).toHaveBeenCalledWith("describe", { handles: [2, 3, 4] });
+    const asked = [h(2), h(3), h(4)];
+    expect(await describePreviewElements(iframe, asked)).toEqual([described(2), null, null]);
+    expect(handed).toHaveBeenCalledWith("describe", { handles: asked });
     reply = { elements: [described(2)] };
-    expect(await describePreviewElements(iframe, [2, 3])).toBeNull();
+    expect(await describePreviewElements(iframe, [h(2), h(3)])).toBeNull();
     handed.mockClear();
     expect(await describePreviewElements(iframe, [])).toBeNull();
-    expect(await describePreviewElements(iframe, Array(257).fill(1))).toBeNull();
+    expect(await describePreviewElements(iframe, Array(257).fill(h(1)))).toBeNull();
     expect(handed).not.toHaveBeenCalled();
   });
 
@@ -110,7 +124,7 @@ describe("element requests over an opaque frame's port", () => {
     const answers = await Promise.all([
       previewComputedStyles(iframe, "#a", ["color"]),
       previewElementsAtPoint(iframe, 1, 1),
-      describePreviewElements(iframe, [1]),
+      describePreviewElements(iframe, [h(1)]),
     ]);
     expect(answers).toEqual([null, null, null]);
     expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);

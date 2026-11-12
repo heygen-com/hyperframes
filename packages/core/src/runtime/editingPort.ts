@@ -10,9 +10,11 @@
  * preview does not allow.
  */
 import {
+  EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   type EditingElementDescription,
   type EditingElementHandle,
+  type EditingElementHit,
 } from "./editingElement";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -22,14 +24,18 @@ export {
   escapeCssString,
   getPreferredClassSelector,
   readElementSource,
+  EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
   MAX_POINT_STACK,
   MAX_SOURCE_GROUPS,
   type EditingElementDescription,
   type EditingElementHandle,
+  type EditingElementHit,
   type EditingElementSource,
+  type EditingRect,
 } from "./editingElement";
 
 export const EDITING_PROTOCOL_VERSION = 1 as const;
@@ -76,10 +82,10 @@ export interface EditingRequests {
     params: { selector: string; properties: string[] };
     result: { styles: Record<string, string> | null };
   };
-  /** The elements under a frame viewport point, topmost first, at most MAX_POINT_STACK. */
+  /** The stack under a viewport point, topmost first, up to MAX_POINT_STACK. Describe one to keep. */
   "elements-at-point": {
     params: { x: number; y: number };
-    result: { elements: EditingElementDescription[] };
+    result: { elements: EditingElementHit[] };
   };
   /** One entry per handle, in order; null for an unknown or removed element. */
   describe: {
@@ -167,8 +173,10 @@ const PARAM_PARSERS: {
     if (!hasKeys(params, "handles") || !Array.isArray(params.handles)) return null;
     const { handles } = params;
     if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
-    return handles.every((handle) => Number.isSafeInteger(handle) && handle > 0)
-      ? { handles: handles as number[] }
+    return handles.every(
+      (handle) => typeof handle === "string" && EDITING_ELEMENT_HANDLE.test(handle),
+    )
+      ? { handles: handles as string[] }
       : null;
   },
 };

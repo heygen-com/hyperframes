@@ -20,7 +20,7 @@ import {
   type EditingResult,
 } from "./editingPort";
 import type { ClipNode } from "./clipTree";
-import { describeElementsAtPoint, describeHandles } from "./editingHandles";
+import { describeHandles, elementsAtPoint } from "./editingHandles";
 import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
@@ -69,7 +69,7 @@ const HANDLERS: Handlers = {
     }
     return { styles };
   },
-  "elements-at-point": ({ x, y }) => ({ elements: describeElementsAtPoint(x, y) }),
+  "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
 };
 

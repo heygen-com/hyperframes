@@ -1,39 +1,56 @@
 /**
- * Element handles for the editing channel. The parent never receives an element, only a number this
+ * Element handles for the editing channel. The parent never receives an element, only a handle this
  * module gives it and the plain data `describeElement` reads from it. Handles live for one page load:
- * the maps are module state, and a removed element's entry is only a dead WeakRef.
+ * the maps are module state, and an entry goes once its element is gone or seen disconnected.
  */
 import {
   buildStableSelector,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
   MAX_POINT_STACK,
   MAX_SOURCE_GROUPS,
   readElementSource,
   type EditingElementDescription,
   type EditingElementHandle,
+  type EditingElementHit,
   type EditingElementSource,
 } from "./editingElement";
 
-const handles = new WeakMap<Element, EditingElementHandle>();
-const elements = new Map<EditingElementHandle, WeakRef<Element>>();
-let lastHandle = 0;
+const LOAD = Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
+  byte.toString(16).padStart(2, "0"),
+).join("");
+const numbers = new WeakMap<Element, number>();
+const elements = new Map<number, WeakRef<Element>>();
+const collected = new FinalizationRegistry<number>((n) => {
+  if (!elements.get(n)?.deref()) elements.delete(n);
+});
+let lastNumber = 0;
 
 function handleFor(element: Element): EditingElementHandle {
-  let handle = handles.get(element);
-  if (handle === undefined) {
-    handle = ++lastHandle;
-    handles.set(element, handle);
-    elements.set(handle, new WeakRef(element));
+  let n = numbers.get(element);
+  if (n === undefined) {
+    n = ++lastNumber;
+    numbers.set(element, n);
+    collected.register(element, n);
   }
-  return handle;
+  if (!elements.has(n)) elements.set(n, new WeakRef(element));
+  return `${LOAD}:${n}`;
 }
 
 /** The live element in this document behind `handle`, else null. */
 function elementForHandle(handle: EditingElementHandle): Element | null {
-  const element = elements.get(handle)?.deref();
-  return element?.isConnected && element.ownerDocument === document ? element : null;
+  const [load, count] = handle.split(":");
+  if (load !== LOAD) return null;
+  const n = Number(count);
+  const element = elements.get(n)?.deref();
+  if (element?.isConnected && element.ownerDocument === document) return element;
+  elements.delete(n);
+  return null;
 }
+
+/** How many elements hold a live entry; for tests of the bound. */
+export const trackedHandleCount = () => elements.size;
 
 const sameSource = (a: EditingElementSource, b: EditingElementSource) =>
   a.file === b.file &&
@@ -59,54 +76,103 @@ function matchesBefore(element: Element, selector: string | undefined) {
   return null;
 }
 
-const cut = (text: string | null) => (text ?? "").slice(0, MAX_ELEMENT_TEXT);
+const NO_TEXT = new Set(["script", "style"]);
 
-function inlineStyles(element: Element): Record<string, string> {
+type Cut = { truncated: boolean };
+
+function cut(value: string, limit: number, state: Cut): string {
+  const header = value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
+  const kept = header || value.slice(0, limit);
+  if (kept.length < value.length) state.truncated = true;
+  return kept.slice(0, limit);
+}
+
+function renderedText(element: Element, state: Cut): string {
+  if (NO_TEXT.has(element.localName)) return "";
+  let text = "";
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) =>
+        node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    },
+  );
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    text += node.nodeValue;
+    if (text.length > MAX_ELEMENT_TEXT) break;
+  }
+  return cut(text, MAX_ELEMENT_TEXT, state);
+}
+
+function inlineStyles(element: Element, state: Cut): Record<string, string> {
   const styles: Record<string, string> = {};
   const declared = (element as Partial<ElementCSSInlineStyle>).style;
   if (!declared) return styles;
+  if (declared.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   for (let index = 0; index < Math.min(declared.length, MAX_ELEMENT_ENTRIES); index += 1) {
     const name = declared.item(index);
-    styles[name] = declared.getPropertyValue(name);
+    styles[name] = cut(declared.getPropertyValue(name), MAX_ELEMENT_VALUE, state);
   }
   return styles;
 }
 
-function children(element: Element): EditingElementDescription["children"] {
+function attributes(element: Element, state: Cut): EditingElementDescription["attributes"] {
+  const kept = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
+  if (kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
+  return kept
+    .slice(0, MAX_ELEMENT_ENTRIES)
+    .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state)]);
+}
+
+function children(element: Element, state: Cut): EditingElementDescription["children"] {
   const out: EditingElementDescription["children"] = [];
+  const textless = NO_TEXT.has(element.localName);
   for (const node of element.childNodes) {
-    if (out.length >= MAX_ELEMENT_ENTRIES) break;
+    if (out.length >= MAX_ELEMENT_ENTRIES) {
+      state.truncated = true;
+      break;
+    }
     if (node.nodeType === Node.ELEMENT_NODE) out.push({ handle: handleFor(node as Element) });
-    else if (node.nodeType === Node.TEXT_NODE) out.push({ text: cut(node.textContent) });
+    else if (node.nodeType === Node.TEXT_NODE && !textless)
+      out.push({ text: cut(node.nodeValue ?? "", MAX_ELEMENT_TEXT, state) });
   }
   return out;
 }
 
-function describeElement(element: Element): EditingElementDescription {
-  const selector = buildStableSelector(element);
+function hit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
-    parent: element.parentElement ? handleFor(element.parentElement) : null,
     tag: element.tagName.toLowerCase(),
+    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+  };
+}
+
+function describeElement(element: Element): EditingElementDescription {
+  const selector = buildStableSelector(element);
+  const state: Cut = { truncated: false };
+  return {
+    ...hit(element),
+    parent: element.parentElement ? handleFor(element.parentElement) : null,
     id: element.id || null,
     selector: selector ?? null,
     matchesBefore: matchesBefore(element, selector),
     source: readElementSource(element),
     locked: element.closest("[data-timeline-locked]") !== null,
-    attributes: Array.from(element.attributes)
-      .filter((attribute) => attribute.name !== "style")
-      .slice(0, MAX_ELEMENT_ENTRIES)
-      .map((attribute) => [attribute.name, attribute.value]),
-    inlineStyles: inlineStyles(element),
-    text: cut(element.textContent),
-    children: children(element),
-    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+    attributes: attributes(element, state),
+    inlineStyles: inlineStyles(element, state),
+    text: renderedText(element, state),
+    children: children(element, state),
+    truncated: state.truncated,
   };
 }
 
-export function describeElementsAtPoint(x: number, y: number): EditingElementDescription[] {
-  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(describeElement);
+export function elementsAtPoint(x: number, y: number): EditingElementHit[] {
+  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(hit);
 }
 
 export function describeHandles(

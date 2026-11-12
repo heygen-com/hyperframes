@@ -1,24 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
-import type { EditingElementDescription } from "./editingPort";
+import { trackedHandleCount } from "./editingHandles";
+import {
+  EDITING_ELEMENT_HANDLE,
+  MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
+  type EditingElementDescription,
+  type EditingElementHit,
+} from "./editingPort";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 
-type Reply = { ok: boolean; result?: { elements: Array<EditingElementDescription | null> } };
+type Reply<T> = { ok: boolean; result?: { elements: T[] }; error?: { code: string } };
 
 describe("element handles over the editing port", () => {
   let port: MessagePort;
   let agent: { dispose: () => void };
   let lastId = 0;
 
-  const ask = (kind: string, params: unknown): Promise<Reply> =>
+  const ask = <T>(kind: string, params: unknown): Promise<Reply<T>> =>
     new Promise((resolve) => {
       port.onmessage = (event) => resolve(event.data);
       port.postMessage({ v: 1, id: ++lastId, kind, params });
     });
-  const describeHandles = async (handles: number[]) =>
-    (await ask("describe", { handles })).result!.elements;
-  const atPoint = async () => (await ask("elements-at-point", { x: 5, y: 6 })).result!.elements;
+  const describeHandles = async (handles: string[]) =>
+    (await ask<EditingElementDescription | null>("describe", { handles })).result!.elements;
+  const atPoint = async () =>
+    (await ask<EditingElementHit>("elements-at-point", { x: 5, y: 6 })).result!.elements;
+  const describeOne = async (element: Element) => {
+    stackAtPoint(element);
+    const [hit] = await atPoint();
+    return (await describeHandles([hit!.handle]))[0]!;
+  };
   const stackAtPoint = (...elements: Element[]) =>
     Object.defineProperty(document, "elementsFromPoint", {
       configurable: true,
@@ -41,18 +54,25 @@ describe("element handles over the editing port", () => {
     delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
   });
 
-  it("describes the stack under a point in plain data, topmost first", async () => {
+  it("answers a point with handle, tag and rect only, and describes a kept handle in plain data", async () => {
     document.body.innerHTML = `
       <div data-composition-id="card__hf1" data-hf-original-composition-id="card" data-timeline-locked>
         <p class="clip title" data-hf-id="hf-1" data-start="2" style="color: red; left: 4px">Hi <b>there</b></p>
       </div>`;
     const title = document.querySelector("p")!;
-    const root = title.parentElement!;
-    stackAtPoint(title, root);
+    stackAtPoint(title, title.parentElement!);
     const [top, below] = await atPoint();
     expect(document.elementsFromPoint).toHaveBeenCalledWith(5, 6);
     expect(top).toEqual({
-      handle: expect.any(Number),
+      handle: expect.stringMatching(EDITING_ELEMENT_HANDLE),
+      tag: "p",
+      rect: { x: 0, y: 0, width: 0, height: 0 },
+    });
+    expect(below).toEqual({ handle: expect.any(String), tag: "div", rect: expect.any(Object) });
+
+    const [described, root] = await describeHandles([top!.handle, below!.handle]);
+    expect(described).toEqual({
+      handle: top!.handle,
       parent: below!.handle,
       tag: "p",
       id: null,
@@ -67,16 +87,16 @@ describe("element handles over the editing port", () => {
       ],
       inlineStyles: { color: "red", left: "4px" },
       text: "Hi there",
-      children: [{ text: "Hi " }, { handle: expect.any(Number) }],
+      children: [{ text: "Hi " }, { handle: expect.stringMatching(EDITING_ELEMENT_HANDLE) }],
       rect: { x: 0, y: 0, width: 0, height: 0 },
+      truncated: false,
     });
-    expect(below).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
-    expect(below!.matchesBefore).toBeNull();
-    // Nothing on the wire is a node: the reply survived a structured clone as plain data.
-    expect(JSON.parse(JSON.stringify(top))).toEqual(top);
+    expect(root).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
+    expect(root!.matchesBefore).toBeNull();
+    expect(JSON.parse(JSON.stringify(described))).toEqual(described);
   });
 
-  it("keeps an element's handle for the page load and answers null once it is gone", async () => {
+  it("keeps an element's handle for the page load, then answers null and drops it once gone", async () => {
     document.body.innerHTML = `<p id="a">A</p><p id="b">B</p>`;
     const [a, b] = Array.from(document.querySelectorAll("p"));
     stackAtPoint(a!, b!);
@@ -84,14 +104,61 @@ describe("element handles over the editing port", () => {
     expect(first!.handle).not.toBe(second!.handle);
     const again = await describeHandles([second!.handle, first!.handle]);
     expect(again.map((entry) => entry?.id)).toEqual(["b", "a"]);
-    expect(again[0]!.handle).toBe(second!.handle);
 
     a!.remove();
-    expect(await describeHandles([first!.handle, 999_999, second!.handle])).toEqual([
+    const tracked = trackedHandleCount();
+    const unknown = first!.handle.replace(/:\d+$/, ":999999");
+    expect(await describeHandles([first!.handle, unknown, second!.handle])).toEqual([
       null,
       null,
       expect.objectContaining({ id: "b" }),
     ]);
+    expect(trackedHandleCount()).toBe(tracked - 1);
+  });
+
+  it("answers null for a handle from an earlier load, even one with the same number", async () => {
+    document.body.innerHTML = `<p id="a">A</p>`;
+    const element = document.querySelector("p")!;
+    stackAtPoint(element);
+    const [current] = await atPoint();
+    // A fresh module instance is a fresh page load: a new load id, numbering from 1 again.
+    vi.resetModules();
+    const earlierLoad = await import("./editingHandles");
+    const [earlier] = earlierLoad.elementsAtPoint(0, 0);
+    expect(earlier!.handle).not.toBe(current!.handle);
+    expect(await describeHandles([earlier!.handle])).toEqual([null]);
+    const sameNumber = `${earlier!.handle.split(":")[0]}:${current!.handle.split(":")[1]}`;
+    expect(await describeHandles([sameNumber, current!.handle])).toEqual([
+      null,
+      expect.objectContaining({ id: "a" }),
+    ]);
+    expect(earlierLoad.describeHandles([current!.handle])).toEqual([null]);
+  });
+
+  it("cuts long values, keeps only a data: header, and leaves script and style text out", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
+    document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">
+      <img src="data:image/png;base64,${"A".repeat(5000)}"><style>.a{color:red}</style>
+      <script>window.secretish = 1</script><span>Shown</span></div><style>.b{}</style>`;
+    const card = document.querySelector("div")!;
+    const described = await describeOne(card);
+    expect(described.truncated).toBe(true);
+    expect(described.attributes[1]).toEqual(["title", long.slice(0, MAX_ELEMENT_VALUE)]);
+    expect(described.inlineStyles["--note"]!.length).toBeLessThanOrEqual(MAX_ELEMENT_VALUE);
+    expect(described.text.replace(/\s+/g, " ").trim()).toBe("Shown");
+
+    const img = await describeOne(card.querySelector("img")!);
+    expect(img.attributes).toEqual([["src", "data:image/png;base64,"]]);
+    expect(img.truncated).toBe(true);
+
+    const style = await describeOne(card.querySelector("style")!);
+    expect(style).toMatchObject({ text: "", children: [], truncated: false });
+
+    document.body.innerHTML = `<p>${"y".repeat(MAX_ELEMENT_TEXT + 10)}</p>`;
+    const text = await describeOne(document.querySelector("p")!);
+    expect(text.text).toHaveLength(MAX_ELEMENT_TEXT);
+    expect(text.children).toEqual([{ text: "y".repeat(MAX_ELEMENT_TEXT) }]);
+    expect(text.truncated).toBe(true);
   });
 
   it("counts a class selector's earlier matches per source", async () => {
@@ -100,11 +167,9 @@ describe("element handles over the editing port", () => {
       <div data-composition-file="cards.html"><div class="tile"></div><div class="tile"></div></div>
       <div data-composition-src="cards.html"><div class="tile" id="t"></div></div>
       <div data-composition-file="cards.html"><div class="tile"></div></div>`;
-    const tiles = document.querySelectorAll(".tile");
-    stackAtPoint(tiles[4]!);
-    const [last] = await atPoint();
-    expect(last!.source.file).toBe("cards.html");
-    expect(last!.matchesBefore).toEqual([
+    const last = await describeOne(document.querySelectorAll(".tile")[4]!);
+    expect(last.source.file).toBe("cards.html");
+    expect(last.matchesBefore).toEqual([
       { source: { file: null, compositionId: null, originalCompositionId: null }, count: 1 },
       {
         source: { file: "cards.html", compositionId: null, originalCompositionId: null },

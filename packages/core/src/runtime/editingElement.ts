@@ -9,16 +9,31 @@ export interface EditingElementSource {
   originalCompositionId: string | null;
 }
 
-/** Given on first sight, kept for one page load, never reused. Unknown or removed: null. */
-export type EditingElementHandle = number;
+/** `<load>:<n>`, never reused. One from another page load, or of a removed element, reads as null. */
+export type EditingElementHandle = string;
+export const EDITING_ELEMENT_HANDLE = /^[0-9a-f]{16}:[1-9][0-9]{0,14}$/;
 
-/** An element as plain data. Lists stop at MAX_ELEMENT_ENTRIES, text at MAX_ELEMENT_TEXT. */
-export interface EditingElementDescription {
+export interface EditingRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface EditingElementHit {
   handle: EditingElementHandle;
-  parent: EditingElementHandle | null;
   tag: string;
+  /** `getBoundingClientRect()`, in the frame's CSS pixels. */
+  rect: EditingRect;
+}
+
+/**
+ * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value keeps only its header.
+ * `truncated` says something was cut, so the description is not safe to write back to source.
+ */
+export interface EditingElementDescription extends EditingElementHit {
+  parent: EditingElementHandle | null;
   id: string | null;
-  /** `buildStableSelector`. */
   selector: string | null;
   /**
    * A class selector's earlier matches, counted per source. The element's index in its file is the
@@ -31,14 +46,15 @@ export interface EditingElementDescription {
   /** Every attribute but `style`. */
   attributes: Array<[name: string, value: string]>;
   inlineStyles: Record<string, string>;
+  /** Rendered-tree text: `<script>` and `<style>` contents are left out, as from `children`. */
   text: string;
   children: Array<{ handle: EditingElementHandle } | { text: string }>;
-  /** `getBoundingClientRect()`, in the frame's CSS pixels. */
-  rect: { x: number; y: number; width: number; height: number };
+  truncated: boolean;
 }
 
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
+export const MAX_ELEMENT_VALUE = 2_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
