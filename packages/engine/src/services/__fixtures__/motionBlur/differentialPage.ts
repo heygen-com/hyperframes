@@ -82,11 +82,17 @@ export async function measureOutside(
   t: number,
   tier?: Tier,
 ): Promise<Measured> {
-  const offFrames = await captureInOrder(await referencePage(f), neighbourTimes(t));
+  const page = await referencePage(f);
+  const offFrames = await captureInOrder(page, neighbourTimes(t));
+  // A mover that jumps more than the dilation between two whole frames is never sampled in the gap,
+  // but the shutter sweeps it: mask what the shutter sees too, or its blur reads as a defect.
+  const shutter = await captureInOrder(page, shutterTimes(t), {
+    subFrameDivisions: SUB_FRAME_DIVISIONS,
+  });
   const onFrame = await onFreshPage(browser, f, "on", (p) => captureFrame(p, t), tier);
   const reference = offFrames[INVARIANTS.radiusFrames];
   if (!reference) throw new Error("missing reference frame");
-  const mask = trailMask(offFrames, radiusPx(f));
+  const mask = trailMask([...offFrames, ...shutter], radiusPx(f));
   const d = compareTiles(reference, onFrame, mask, "outside", {
     block: INVARIANTS.block,
     maxMae: INVARIANTS.outsideMaxMae,
