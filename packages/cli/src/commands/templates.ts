@@ -116,6 +116,15 @@ function assertSafeEntries(data: Buffer): void {
   for (const name of names.split("\n"))
     if (name.startsWith("/") || name.split("/").includes(".."))
       throw new PullRefused(`The template holds an unsafe path (${name}); nothing was unpacked.`);
+  // The long listing starts each line with the entry type: only plain files and folders unpack.
+  const kinds = execFileSync("tar", ["-tvzf", "-"], {
+    input: data,
+    encoding: "utf8",
+    maxBuffer: 1 << 26,
+  });
+  for (const line of kinds.split("\n"))
+    if (line && line[0] !== "-" && line[0] !== "d")
+      throw new PullRefused("The template holds a link or special file; nothing was unpacked.");
 }
 
 const PULLED_HASH = ".template-sha256";
