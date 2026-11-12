@@ -10,6 +10,7 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 // Two CPUs: the extractor runs at most one ffmpeg at a time.
 vi.mock("os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("os")>()),
+  availableParallelism: () => 2,
   cpus: () => [{}, {}],
 }));
 

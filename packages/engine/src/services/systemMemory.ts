@@ -10,7 +10,7 @@
 
 import { execSync } from "child_process";
 import { readFileSync } from "fs";
-import { freemem, platform, totalmem } from "os";
+import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
@@ -268,4 +268,13 @@ export function getAvailableMemoryMb(): number {
   }
 
   return fallback;
+}
+
+/** CPUs this process may run on: a cpuset (taskset, --cpuset-cpus) lowers it, a CPU quota does not. */
+export function usableCpuCount(): number {
+  return availableParallelism();
+}
+
+export function hostCpuCount(): number {
+  return cpus().length;
 }

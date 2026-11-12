@@ -3,8 +3,9 @@
  * the `perf-summary.json` debug artifact.
  */
 
-import { arch, cpus, platform, totalmem } from "node:os";
+import { arch, platform, totalmem } from "node:os";
 import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
+import { hostCpuCount } from "@hyperframes/engine";
 import type {
   CapturePerfSummary,
   StaticVerificationOutcome,
@@ -469,7 +470,7 @@ export function buildRenderPerfSummary(input: {
     host: {
       platform: platform(),
       arch: arch(),
-      cpuCount: cpus().length,
+      cpuCount: hostCpuCount(),
       totalMemMb: Math.round(totalmem() / (1024 * 1024)),
       nodeVersion: process.version,
       gpuDisabled: input.gpuDisabled,

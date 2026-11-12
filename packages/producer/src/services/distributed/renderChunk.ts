@@ -36,7 +36,6 @@
 import { chunkGopFrames } from "../render/deliveryEncoder.js";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
 import { join } from "node:path";
 import {
   assertSwiftShader,
@@ -59,6 +58,7 @@ import {
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
   type ShownBox,
+  usableCpuCount,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
 import {
@@ -1043,7 +1043,7 @@ export async function renderChunk(
           const captureSession = session;
           session = null;
           verifyStarted = Date.now();
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpus().length)
+          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, usableCpuCount())
             ? encodeWhileCapturing(encodeInput, framesInChunk)
             : null;
           await observeRenderStage(
