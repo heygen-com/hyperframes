@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-const src = dirname(new URL(import.meta.url).pathname);
+const src = import.meta.dirname;
 
 /** Every file `entry` reaches through static imports and re-exports, with any package it names. */
 function importGraph(entry: string): { files: string[]; packages: string[] } {
@@ -24,7 +24,10 @@ function importGraph(entry: string): { files: string[]; packages: string[] } {
     }
   };
   visit(join(src, entry));
-  return { files: [...files].map((f) => f.slice(src.length + 1)).sort(), packages: [...packages] };
+  return {
+    files: [...files].map((f) => relative(src, f).split(sep).join("/")).sort(),
+    packages: [...packages],
+  };
 }
 
 describe("@hyperframes/studio/keys", () => {
