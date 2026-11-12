@@ -193,6 +193,19 @@ describe("pullTemplate", () => {
     expect(existsSync(join(dir, "templates", "sample"))).toBe(false);
   });
 
+  it("refuses an archive holding a symlink and leaves no partial folder", async () => {
+    const src = mkdtempSync(join(dir, "linked-"));
+    writeFileSync(join(src, "SKILL.md"), "x");
+    symlinkSync("/tmp", join(src, "shared"));
+    const out = join(dir, "linked.tar.gz");
+    execFileSync("tar", ["-czf", out, "-C", src, "SKILL.md", "shared"]);
+    const linked = readFileSync(out);
+    pin(linked);
+    serve({}, linked);
+    await expect(pullTemplate("sample", dir)).rejects.toThrow("link or special file");
+    expect(existsSync(join(dir, "templates", "sample"))).toBe(false);
+  });
+
   /** A part folder exactly as a pull leaves it mid-unpack, made to belong to `pid`. */
   async function partLeftBy(pid: number, suffix: string): Promise<string> {
     serve({});
