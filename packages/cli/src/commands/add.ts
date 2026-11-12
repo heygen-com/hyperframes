@@ -566,7 +566,7 @@ export default defineCommand({
     if (!existsSync(projectDir)) {
       failCaught(
         new Error(
-          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init <dir>\`.`,
+          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init ${JSON.stringify(args.dir)}\`.`,
         ),
         json,
         c.error,
