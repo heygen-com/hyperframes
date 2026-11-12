@@ -16,7 +16,8 @@ export function chromeKillCommand(
 export const WATCHDOG = `let clean = false;
 let gone = false;
 const alive = () => { try { return process.kill(Number(process.env.HF_CHROME_PID), 0); } catch { return false; } };
-const watch = setInterval(() => { gone ||= !alive(); }, 500);
+const watch = setInterval(() => { if (!gone && !alive()) { gone = true; console.log("gone"); } }, Number(process.env.HF_WATCH_MS) || 500);
+console.log("armed");
 const done = () => {
   clearInterval(watch);
   if (!clean && !gone && alive()) {
@@ -41,7 +42,7 @@ function executableOf(chrome: ChildProcess): string | undefined {
   }
 }
 
-/** Windows does not end a process's children with it, so Chrome's children outlive a killed CLI without this. */
+/** Ends Chrome's tree if the CLI dies. ponytail: a pid reused within one 500 ms poll of its exit is still killed. */
 export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
   const executable = process.platform === "win32" ? executableOf(chrome) : undefined;
   if (!executable || chrome.pid === undefined) return undefined;

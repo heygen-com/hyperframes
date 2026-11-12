@@ -31,7 +31,7 @@ describe("the Windows Chrome watchdog's kill", () => {
 
 // fails without the guard: a Chrome that exited earlier left its pid to be reused, and the sweep killed whatever held it.
 describe("the watchdog's reuse guard", () => {
-  const runWatchdog = async (pid: number, wait: number, clean: boolean) => {
+  const runWatchdog = async (pid: number, until: "armed" | "gone", clean: boolean) => {
     const dir = mkdtempSync(join(tmpdir(), "hf-watchdog-"));
     const marker = join(dir, "killed");
     const kill = {
@@ -39,10 +39,21 @@ describe("the watchdog's reuse guard", () => {
       args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`],
     };
     const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
-      env: { ...process.env, HF_CHROME_PID: String(pid), HF_CHROME_KILL: JSON.stringify(kill) },
-      stdio: ["pipe", "ignore", "ignore"],
+      env: {
+        ...process.env,
+        HF_CHROME_PID: String(pid),
+        HF_CHROME_KILL: JSON.stringify(kill),
+        HF_WATCH_MS: "20",
+      },
+      stdio: ["pipe", "pipe", "ignore"],
     });
-    await new Promise((done) => setTimeout(done, wait));
+    let said = "";
+    await new Promise<void>((resolve) =>
+      watchdog.stdout?.on("data", (data) => {
+        said += String(data);
+        if (said.includes(until)) resolve();
+      }),
+    );
     watchdog.stdin?.end(clean ? "clean" : "");
     await new Promise((done) => watchdog.once("exit", done));
     const killed = existsSync(marker);
@@ -51,21 +62,21 @@ describe("the watchdog's reuse guard", () => {
   };
 
   it("kills a Chrome that is alive when the CLI ends", async () => {
-    expect(await runWatchdog(process.pid, 100, false)).toBe(true);
+    expect(await runWatchdog(process.pid, "armed", false)).toBe(true);
   });
 
   it("never kills for a Chrome it saw exit, even when the CLI then ends unclean", async () => {
     const chrome = spawn(process.execPath, ["-e", ""]);
     const pid = chrome.pid!;
     await new Promise((done) => chrome.once("exit", done));
-    expect(await runWatchdog(pid, 1500, false)).toBe(false);
+    expect(await runWatchdog(pid, "gone", false)).toBe(false);
   });
 
   it("never kills for a pid that is gone when the CLI ends", async () => {
     const chrome = spawn(process.execPath, ["-e", ""]);
     const pid = chrome.pid!;
     await new Promise((done) => chrome.once("exit", done));
-    expect(await runWatchdog(pid, 0, false)).toBe(false);
+    expect(await runWatchdog(pid, "armed", false)).toBe(false);
   });
 });
 
