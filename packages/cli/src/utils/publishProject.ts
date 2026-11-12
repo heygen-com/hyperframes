@@ -22,7 +22,11 @@ import { isAuthError } from "../auth/errors.js";
 import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../auth/resolver.js";
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
-import { isPrivateCompositionFile, isPrivateOutsideFile } from "./privateProjectFile.js";
+import {
+  isPrivateCompositionFile,
+  isPrivateOutsideFile,
+  linksToPrivateOutsideFile,
+} from "./privateProjectFile.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -739,6 +743,12 @@ export function stagePublishFiles(
   const fileContents = new Map<string, StagedFile>();
   const diskPathOf = new Map<string, string>();
   for (const filePath of filePaths) {
+    if (linksToPrivateOutsideFile(absProjectDir, join(absProjectDir, filePath))) {
+      onLeftOut?.(
+        `${filePath} links to a file outside the project in a private location; it was left out of the upload.`,
+      );
+      continue;
+    }
     const key = archiveKey(filePath);
     const clash = diskPathOf.get(key);
     if (clash !== undefined) {

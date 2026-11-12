@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { relative } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 
 const ENV_FILE = /^\.env([._-].*|rc)?$/;
@@ -17,10 +17,16 @@ function inPrivateLocation(projectDir: string, path: string): boolean {
   const segmentsPastProjectFolders = relative(projectDir, path)
     .split(/[\\/]/)
     .filter((segment) => segment !== "..");
-  return segmentsPastProjectFolders.some((segment) => segment.startsWith("."));
+  return segmentsPastProjectFolders.some(
+    (segment, i) =>
+      segment.startsWith(".") ||
+      segment.toLowerCase() === "appdata" ||
+      (segment.toLowerCase() === "library" &&
+        segmentsPastProjectFolders[i + 1] !== "Mobile Documents"),
+  );
 }
 
-/** An existing file outside the project that publish leaves out: env files, Git data, hidden and system folders. */
+/** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */
 export function isPrivateOutsideFile(projectDir: string, absPath: string): boolean {
   const realPath = realpathSync(absPath);
   return (
@@ -29,6 +35,13 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
     inPrivateLocation(projectDir, absPath) ||
     inPrivateLocation(realFilePath(projectDir), realPath)
   );
+}
+
+export function linksToPrivateOutsideFile(projectDir: string, filePath: string): boolean {
+  const fromProject = relative(realFilePath(projectDir), realpathSync(filePath));
+  const outside =
+    fromProject === ".." || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject);
+  return outside && isPrivateOutsideFile(projectDir, filePath);
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */

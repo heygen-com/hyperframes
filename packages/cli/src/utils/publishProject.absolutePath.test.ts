@@ -178,6 +178,45 @@ describe("a reference to a file outside the project in a private location", () =
     expect(warnings).toEqual([]);
   });
 
+  it("leaves out a project file that links to a private file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, ".ssh"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, ".ssh", "id_ed25519"), "KEY");
+    symlinkSync(join(root, ".ssh", "id_ed25519"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), "<html></html>");
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()]).toEqual(["index.html"]);
+    expect(warnings).toEqual([
+      "logo.png links to a file outside the project in a private location; it was left out of the upload.",
+    ]);
+  });
+
+  it("still uploads a project file that links to an ordinary file outside the project", () => {
+    const root = temp();
+    mkdirSync(join(root, "shared"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, "shared", "logo.png"), "png");
+    symlinkSync(join(root, "shared", "logo.png"), join(root, "p", "logo.png"));
+    writeFileSync(join(root, "p", "index.html"), "<html></html>");
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].sort()).toEqual(["index.html", "logo.png"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("leaves out references into AppData and Library, but not iCloud Drive", () => {
+    const { ext, warnings } = stageIn("p", {
+      "AppData/Roaming/token.json": "KEY",
+      "Library/Cookies/c.binarycookies": "KEY",
+      "Library/Mobile Documents/shared/logo.png": "png",
+      "p/index.html": `<img src="../AppData/Roaming/token.json"><img src="../Library/Cookies/c.binarycookies"><img src="../Library/Mobile Documents/shared/logo.png">`,
+    });
+    expect(ext).toEqual(["_ext/Library/Mobile Documents/shared/logo.png"]);
+    expect(warnings).toHaveLength(2);
+  });
+
   it("says nothing about a reference into a hidden folder that does not exist", () => {
     const { warnings } = stageIn("p", { "p/index.html": `<a href="../.nothing/here.png">x</a>` });
     expect(warnings).toEqual([]);
