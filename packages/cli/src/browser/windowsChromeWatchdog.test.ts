@@ -13,7 +13,16 @@ describe("the Windows Chrome watchdog's kill", () => {
       { SystemRoot: "D:\\Win" },
     );
     expect(file).toBe("D:\\Win\\System32\\taskkill.exe");
-    expect(args).toEqual(["/PID", "4242", "/PID", "77", "/T", "/F", "/FI", "IMAGENAME eq chrome.exe"]);
+    expect(args).toEqual([
+      "/PID",
+      "4242",
+      "/PID",
+      "77",
+      "/T",
+      "/F",
+      "/FI",
+      "IMAGENAME eq chrome.exe",
+    ]);
     expect(`${file} ${args.join(" ")}`).not.toMatch(/powershell/i);
   });
 });
