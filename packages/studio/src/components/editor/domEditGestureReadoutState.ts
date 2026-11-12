@@ -1,19 +1,14 @@
 import { computeOverlayRootScale, type OverlayRootScale } from "./domEditOverlayBasis";
 import type { OverlayRect } from "./domEditOverlayGeometry";
-
-/** Where the chip sits against the element, in the order it is tried. */
 export type GestureReadoutSide = "below" | "right" | "left" | "above";
 
 export interface GestureReadoutState {
   basis: OverlayRootScale;
   viewportWidth: number;
   viewportHeight: number;
-  /** The chip's fields, joined by " · ": "X 70 · Y 41", "W 100 · H 60", or "↻ 32°". */
   text: string;
   rect: OverlayRect;
-  /** The rect at the start of the gesture; a rotation is measured from it. */
   baseRect: OverlayRect;
-  /** The side the chip took. It keeps it for the whole gesture while it still fits, so it does not hop. */
   side?: GestureReadoutSide;
 }
 
@@ -47,8 +42,6 @@ export function updateGestureReadout(
   readout.text = text ?? `X ${Math.round(x)} · Y ${Math.round(y)}`;
   readout.rect = rect;
 }
-
-/** While rotating, the chip clears the rotated box, which is wider and taller than the element's own rect. */
 export function updateGestureReadoutAngle(
   readout: GestureReadoutState | undefined,
   angle: number,

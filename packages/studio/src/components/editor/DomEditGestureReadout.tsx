@@ -1,8 +1,7 @@
 import { useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import type { GestureReadoutSide } from "./domEditGestureReadoutState";
+import { placeChip } from "./domEditGestureReadoutPlacement";
 import type { GestureState } from "./domEditOverlayGestures";
-import { GAP_PX as TOOLBAR_GAP_PX, TOOLBAR_HEIGHT_PX } from "./InlineTextToolbar";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
 
 type ReadoutGesture = Pick<GestureState, "readout" | "travelled">;
@@ -13,17 +12,6 @@ interface DomEditGestureReadoutProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
 }
 
-/** Clear of the element on every side the chip takes. */
-const GAP_PX = 8;
-/** h-8: the chip's height is fixed, so placing it needs no layout read. */
-const CHIP_HEIGHT_PX = 32;
-/** The chip's width is estimated from its text; only the side checks use it. */
-const CHAR_PX = 8;
-const CHIP_PADDING_PX = 36;
-
-const SIDES: readonly GestureReadoutSide[] = ["below", "right", "left", "above"];
-
-/** Below the element, else beside it, else above the toolbar's band; a side is kept while it still fits. */
 function positionGestureReadout(
   label: HTMLDivElement,
   gesture: ReadoutGesture,
@@ -31,58 +19,13 @@ function positionGestureReadout(
 ): void {
   const readout = gesture.readout;
   if (!readout) return;
-  const bounds = readout.basis.overlayRect;
-  const rect = readout.rect;
-  const stage = readout.basis.iframeRect;
-  const stageLeft = stage.left - bounds.left;
-  const stageTop = stage.top - bounds.top;
-  const minX = Math.max(0, -bounds.left, stageLeft) + 4;
-  const minY = Math.max(0, -bounds.top, stageTop) + 4;
-  const maxX =
-    Math.min(bounds.width, readout.viewportWidth - bounds.left, stageLeft + stage.width) - 4;
-  const maxY =
-    Math.min(bounds.height, readout.viewportHeight - bounds.top, stageTop + stage.height) - 4;
-  const width = text.length * CHAR_PX + CHIP_PADDING_PX;
-  const right = rect.left + rect.width;
-  const middle = rect.top + rect.height / 2 - CHIP_HEIGHT_PX / 2;
-  // The text toolbar sits above the element, or below it when the element is too near the top of the window.
-  const toolbarBelow = bounds.top + rect.top - TOOLBAR_GAP_PX < TOOLBAR_HEIGHT_PX;
-  const beside = middle >= minY && middle + CHIP_HEIGHT_PX <= maxY;
-  const spots: Record<GestureReadoutSide, { x: number; y: number; fits: boolean }> = {
-    below: {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height + GAP_PX,
-      fits: !toolbarBelow && rect.top + rect.height + GAP_PX + CHIP_HEIGHT_PX <= maxY,
-    },
-    right: { x: right + GAP_PX, y: middle, fits: beside && right + GAP_PX + width <= maxX },
-    left: { x: rect.left - GAP_PX, y: middle, fits: beside && rect.left - GAP_PX - width >= minX },
-    above: {
-      x: rect.left + rect.width / 2,
-      y:
-        rect.top -
-        GAP_PX -
-        (toolbarBelow ? 0 : TOOLBAR_GAP_PX + TOOLBAR_HEIGHT_PX) -
-        CHIP_HEIGHT_PX,
-      fits: true,
-    },
-  };
-  const kept = readout.side && spots[readout.side].fits ? readout.side : undefined;
-  const side = kept ?? SIDES.find((each) => spots[each].fits) ?? "above";
-  readout.side = side;
-  const spot = spots[side];
-  const centred = side === "below" || side === "above";
-  const x = centred ? Math.max(minX + width / 2, Math.min(maxX - width / 2, spot.x)) : spot.x;
-  label.style.left = `${x}px`;
-  label.style.top = `${Math.min(maxY - CHIP_HEIGHT_PX, Math.max(minY, spot.y))}px`;
-  // CSS resolves the chip's own width, so centring and the left side need no layout read.
-  label.style.transform = centred
-    ? "translateX(-50%)"
-    : side === "left"
-      ? "translateX(-100%)"
-      : "none";
+  const placed = placeChip(readout, text);
+  readout.side = placed.side;
+  label.style.left = `${placed.left}px`;
+  label.style.top = `${placed.top}px`;
+  label.style.transform = placed.transform;
 }
 
-/** "X 70 · Y 41" is two fields; each is a quiet label and a figure. */
 function renderFields(label: HTMLDivElement, text: string): void {
   const fields = text.split(" · ").flatMap((field, index) => {
     const [name = "", ...value] = field.split(" ");
