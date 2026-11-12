@@ -47,6 +47,8 @@ type ProjectFileWriter = (path: string, content: string, expectedContent?: strin
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
   label: string;
+  /** The elements the edit changed, for the history entry's targets. */
+  targets?: EditContextTarget[];
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, (contentInsideFileQueue: string) => string>;
@@ -123,6 +125,7 @@ export async function saveServerRewriteWithHistory(input: {
 
 export async function writeProjectFilesWithHistoryInQueue({
   label,
+  targets,
   coalesceKey,
   coalesceMs,
   files,
@@ -150,7 +153,13 @@ export async function writeProjectFilesWithHistoryInQueue({
       writtenPaths.push(path);
     }
 
-    await recordEdit({ label, coalesceKey, coalesceMs, files: snapshots });
+    await recordEdit({
+      label,
+      coalesceKey,
+      coalesceMs,
+      ...(targets?.length && { targets }),
+      files: snapshots,
+    });
   } catch (error) {
     try {
       for (const path of writtenPaths.reverse()) {
