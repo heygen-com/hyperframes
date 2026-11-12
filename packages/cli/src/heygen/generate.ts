@@ -163,7 +163,11 @@ interface Route extends JobRoute {
 
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
-const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
+const DEFAULTS = {
+  image: "nano-banana-2.1",
+  video: "heygen-video-1",
+  music: "lyria-3-pro",
+} as const;
 export const VENDOR_PRICED_IMAGES = new Set([
   "gpt-image-2.5",
   "gpt-image-2.6",
