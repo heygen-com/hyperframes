@@ -377,11 +377,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // During crossfade refreshes the retiring Player unmounts after the
           // new Player has already assigned its iframe to the same ref — blindly
           // nulling it would break seeking in the new Player.
-          // Callback refs are left alone: their owner can repoint the frame
-          // without calling them (a shadow reload's promotion makes its frame
-          // the live one directly), so a null from the retiring Player would
-          // wipe the promoted frame. Owners that must notice a removed frame
-          // check `isConnected` (useShadowPreviewReload).
+          // Callback refs are left alone: a shadow reload's promotion repoints
+          // the live frame without calling them, so a null here would wipe it.
+          // Their owners check `isConnected` instead (useShadowPreviewReload).
           if (typeof ref === "function") {
             // no-op
           } else if (ref) {

@@ -67,7 +67,6 @@ export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFram
     value: document.implementation.createHTMLDocument("preview"),
     configurable: true,
   });
-  // On the page, as a mounted Player's frame is: a frame that left it is one whose Player unmounted.
   document.body.appendChild(iframe);
   return iframe;
 }
