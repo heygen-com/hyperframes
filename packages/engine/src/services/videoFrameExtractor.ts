@@ -311,6 +311,7 @@ export interface ExtractionOptions {
   contentKeyedDirs?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   shownBox?: { width: number; height: number };
+  shownBoxes?: ReadonlyMap<string, { width: number; height: number }>;
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
@@ -321,6 +322,10 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_ZSCALE_TRANSFORM_KEY = "hdr2sdr-hable-srgb";
 const HDR_TO_SDR_VIDEOTOOLBOX_TRANSFORM_KEY = "hdr2sdr-videotoolbox-hdr";
 const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
+function shownBoxKey(box: { width: number; height: number } | undefined): string | undefined {
+  return box && `shown-${Math.ceil(box.width)}x${Math.ceil(box.height)}`;
+}
+
 function halveToCoverScaleFilter(box: { width: number; height: number }): string {
   const fit = `max(${Math.ceil(box.width)}/iw\\,${Math.ceil(box.height)}/ih)`;
   const halvings = `floor(log(1/${fit})/log(2))`;
@@ -2497,6 +2502,7 @@ export async function extractAllVideoFrames(
       sdrToHdrTransfer: work.sdrToHdrTransfer,
       toneMapHdrToSdr: work.hdrToSdrTransformKey !== undefined,
       finalFrameOnly: work.finalFrameOnly,
+      shownBox: options.shownBoxes?.get(work.video.id) ?? options.shownBox,
     };
   }
 
@@ -2539,6 +2545,7 @@ export async function extractAllVideoFrames(
       work.sdrToHdrTransfer ? sdrToHdrTransformKey(work.sdrToHdrTransfer) : undefined,
       work.hdrToSdrTransformKey,
       work.finalFrameOnly ? "final-frame" : undefined,
+      shownBoxKey(options.shownBoxes?.get(work.video.id) ?? options.shownBox),
     ].filter((part): part is string => part !== undefined);
     const transform = transformParts.length > 0 ? transformParts.join("+") : undefined;
 

@@ -55,6 +55,7 @@ import {
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
   videoAudioId,
+  type ShownBox,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
@@ -97,6 +98,7 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  shownBoxes?: ReadonlyMap<string, ShownBox>;
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   onProgress?: ProgressCallback;
@@ -423,6 +425,7 @@ export async function runExtractVideosStage(
     assertNotAborted,
     materializeSymlinks,
     deferRangeExtraction,
+    shownBoxes,
     urlByAbsentLocalPath,
     skipFrameExtractionIds = [],
   } = input;
@@ -554,6 +557,7 @@ export async function runExtractVideosStage(
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
         deferRangeExtraction,
+        shownBoxes,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
         onProgress: ({ planned = 0, done = 0 }) => {

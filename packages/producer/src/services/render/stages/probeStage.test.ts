@@ -1115,6 +1115,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs).toHaveLength(0);
   });
 
+  it("opens a page for a video larger than the canvas, and none for a film without one", async () => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    for (const measuresShownBoxes of [false, true]) {
+      capturedCfgs.length = 0;
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.compiled.html = `<video id="clip" src="clip.mp4" data-start="0" data-duration="5"></video>`;
+      await runProbeStage({ ...input, measuresShownBoxes });
+      expect(capturedCfgs.length > 0, `measuresShownBoxes ${measuresShownBoxes}`).toBe(
+        measuresShownBoxes,
+      );
+    }
+  });
+
   it("probes when a source child of existing media is mutated", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
