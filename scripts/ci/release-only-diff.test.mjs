@@ -176,6 +176,38 @@ test("commits that release notes leave out never count as missing", () => {
   assert.equal(run(root, "--verify").code, 0);
 });
 
+test("the last release is found by its subject, not by a line in another commit's body", () => {
+  const { root } = (() => {
+    let sha = "";
+    const r = repo(
+      (write) => {
+        bump("0.8.2")(write);
+        write("releases/v0.8.2.md", NOTES("0.8.2", "Nothing listed."));
+      },
+      (write, git) => {
+        git("commit", "-q", "--allow-empty", "-m", "chore(release): cut v0.8.1 (#1)");
+        write("packages/core/src/early.ts", "export const early = 1;\n");
+        git("add", "-A");
+        git("commit", "-qm", "fix(core): before the body line (#2)");
+        git(
+          "commit",
+          "-q",
+          "--allow-empty",
+          "-m",
+          "fix(core): squash body (#3)",
+          "-m",
+          "chore: release v9.9.9",
+        );
+        sha = git("rev-parse", "HEAD~1").trim();
+      },
+    );
+    return { root: r, sha };
+  })();
+  const result = run(root, "--verify");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /misses 2 commit\(s\)/);
+});
+
 test("the merge queue runs the release checks on a release diff", () => {
   const ci = readFileSync(new URL("../../.github/workflows/ci.yml", import.meta.url), "utf8");
   assert.match(ci, /release-checks:[\s\S]*merge_group[\s\S]*release_diff/);

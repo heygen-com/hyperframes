@@ -11,7 +11,7 @@ import {
   validateCliVersion,
   type InlineValueOption,
 } from "./cli-options.ts";
-import { skipsChangelog } from "./changelog-skip.mjs";
+import { releaseVersionOf, skipsChangelog } from "./changelog-skip.mjs";
 import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE, compareSemver } from "./set-version.ts";
 
 /**
@@ -263,10 +263,7 @@ function listStableTags(): string[] {
 
 /** Versions of the `chore: release vX.Y.Z` commits in `subjects`, tagged here or not. */
 export function releaseVersionsInSubjects(subjects: string[]): string[] {
-  return subjects.flatMap((subject) => {
-    const match = /^chore: release v(\d+\.\d+\.\d+)(?: \(#\d+\))?$/.exec(subject);
-    return match ? [match[1]!] : [];
-  });
+  return subjects.flatMap((subject) => releaseVersionOf(subject) ?? []);
 }
 
 /** Releases whose commit is in `from..ref`, so a clone without their tags still sees them. */

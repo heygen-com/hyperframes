@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
-import { skipsChangelog } from "../changelog-skip.mjs";
+import { releaseVersionOf, skipsChangelog } from "../changelog-skip.mjs";
 
 const MANIFESTS = new Set(["package.json", "plugin.json", "gemini-extension.json"]);
 const RELEASE_NOTES = /^releases\/v\d+\.\d+\.\d+[^/]*\.md$/;
@@ -71,7 +71,7 @@ export function verifyRelease({ versions }, after, commits = []) {
       problems.push(
         `releases/v${version}.md misses ${unlisted.length} commit(s) merged since the notes were drafted: ` +
           unlisted.map(({ sha, subject }) => `${sha.slice(0, 9)} ${subject}`).join("; ") +
-          ". Rebase on main and rerun `bun run release:prepare`.",
+          ". Link each in the notes, or rebase on main and rerun `bun run release:prepare` if main moved.",
       );
   }
   const changelog = after(CHANGELOG);
@@ -93,14 +93,10 @@ const show = (ref) => (path) => {
 
 /** The commits between the last release commit and `base`; empty when `base` holds no earlier release. */
 function commitsSinceLastRelease(base) {
-  const last = git(
-    "log",
-    "-1",
-    "--format=%H",
-    "-E",
-    "--grep=^chore: release v[0-9]+\\.[0-9]+\\.[0-9]+",
-    base,
-  ).trim();
+  const last = git("log", "--format=%H%x09%s", base)
+    .split("\n")
+    .find((line) => releaseVersionOf(line.split("\t").slice(1).join("\t")) !== null)
+    ?.split("\t")[0];
   if (!last) return [];
   return git("log", "--no-merges", "--format=%H%x09%s", `${last}..${base}`)
     .split("\n")
