@@ -840,7 +840,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     }
 
     if (!job.config.allowOutsideProjectAssets) {
-      dropMediaOutsideProject({ projectDir, compiledDir: join(workDir, "compiled"), composition });
+      dropMediaOutsideProject({ projectDir, workDir, composition, log });
     }
     await preflightCompositionAssetMediaTypes({
       projectDir,

@@ -228,6 +228,15 @@ function normalizeCompositionSrcs(html: string, projectDir: string): string {
   });
 }
 
+function resolveCompositionFile(
+  projectDir: string,
+  src: string,
+  assetRoot: string | undefined,
+): string | null {
+  const file = resolveCompositionSrc(projectDir, src);
+  return file === null || escapesAssetRoot(file, assetRoot) ? null : file;
+}
+
 // Git metadata and env files are never inlined into a render, as the preview bundler refuses them.
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
   isPrivateFileUnder(projectDir, filePath, isVcsOrSecretPath);
@@ -250,6 +259,7 @@ const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean
 function assertSubCompositionsUsable(
   html: string,
   projectDir: string,
+  assetRoot: string | undefined,
   visited: Set<string> = new Set(),
 ): void {
   const { document } = parseHTML(html);
@@ -261,7 +271,7 @@ function assertSubCompositionsUsable(
     if (!srcPath) continue;
     if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
-    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });
       continue;
@@ -308,7 +318,7 @@ function assertSubCompositionsUsable(
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
     try {
-      assertSubCompositionsUsable(fileHtml, projectDir, nestedVisited);
+      assertSubCompositionsUsable(fileHtml, projectDir, assetRoot, nestedVisited);
     } catch (err) {
       if (err instanceof EmptyCompositionError) {
         problems.push(...err.problems);
@@ -815,7 +825,7 @@ async function parseSubCompositions(
     const srcPath = el.getAttribute("data-composition-src");
     if (!srcPath) continue;
 
-    const filePath = resolveCompositionSrc(projectDir, srcPath);
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
     if (filePath === null || isPrivateCompositionFile(projectDir, filePath)) continue;
 
     // Circular reference guard
@@ -1062,7 +1072,8 @@ function inlineSubCompositions(
   html: string,
   subCompositions: Map<string, string>,
   projectDir: string,
-  variableOverrides: Record<string, unknown> = {},
+  variableOverrides: Record<string, unknown>,
+  assetRoot: string | undefined,
 ): string {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -1111,7 +1122,7 @@ function inlineSubCompositions(
       resolveHtml: (srcPath: string) => {
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
-          const filePath = resolveCompositionSrc(projectDir, srcPath);
+          const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
           const read =
             filePath && !isPrivateCompositionFile(projectDir, filePath)
               ? readProjectFile(filePath)
@@ -2147,6 +2158,10 @@ export async function compileForRender(
   downloadDir: string,
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
+  const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
+  if (isPathInside(htmlPath, projectDir) && escapesAssetRoot(htmlPath, assetRoot)) {
+    throw new Error(`Entry file ${htmlPath} leads outside the project folder`);
+  }
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
   const rawHtml = bindVariableMediaSources(
     normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
@@ -2159,10 +2174,9 @@ export async function compileForRender(
   // unconditional (not gated behind --strict like lint warnings) — a render
   // that silently drops a scene is strictly worse than one that refuses to
   // start.
-  assertSubCompositionsUsable(rawHtml, projectDir);
+  assertSubCompositionsUsable(rawHtml, projectDir, assetRoot);
 
   const probes: SourceProbes = new Map();
-  const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -2198,6 +2212,7 @@ export async function compileForRender(
     subCompositions,
     projectDir,
     options.variables ?? {},
+    assetRoot,
   );
 
   // Strip preload="none" from media elements — the renderer needs to load all
@@ -2369,6 +2384,7 @@ export async function compileForRender(
     if (
       advised.has(videoPath) ||
       namesAnotherNetworkRoot(projectDir, videoPath) ||
+      !existsSync(videoPath) ||
       escapesAssetRoot(videoPath, assetRoot)
     )
       continue;
