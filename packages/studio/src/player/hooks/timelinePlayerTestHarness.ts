@@ -60,13 +60,18 @@ export function renderTimelinePlayerHarness(options?: UseTimelinePlayerOptions) 
   };
 }
 
-export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
+export function detachedFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   Object.defineProperty(iframe, "contentWindow", { value: iframeWindow, configurable: true });
   Object.defineProperty(iframe, "contentDocument", {
     value: document.implementation.createHTMLDocument("preview"),
     configurable: true,
   });
+  return iframe;
+}
+
+export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
+  const iframe = detachedFakeIframe(iframeWindow);
   document.body.appendChild(iframe);
   return iframe;
 }

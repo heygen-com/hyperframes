@@ -12,7 +12,7 @@ import {
 import { bridgePlaybackAdapter, watchPreviewFrame } from "./bridgePlayback";
 import { runtimeProtocolMetadata } from "@hyperframes/core/runtime/protocol";
 import { resolveFramePlaybackAdapter } from "../hooks/playbackAdapterResolution";
-import { serveEditingRequests } from "../hooks/timelinePlayerTestHarness";
+import { detachedFakeIframe, serveEditingRequests } from "../hooks/timelinePlayerTestHarness";
 
 const closers: Array<() => void> = [];
 afterEach(() => closers.splice(0).forEach((close) => close()));
@@ -40,17 +40,6 @@ function fromFrame(frame: object, data: Record<string, unknown>, origin = "null"
   window.dispatchEvent(
     new MessageEvent("message", { source, origin, data: { source: "hf-preview", ...data } }),
   );
-}
-
-/** Never attached, so happy-dom fires no load of its own that would end the client's frame load. */
-function detachedFakeIframe(frame: Record<string, unknown>) {
-  const iframe = document.createElement("iframe");
-  Object.defineProperty(iframe, "contentWindow", { value: frame, configurable: true });
-  Object.defineProperty(iframe, "contentDocument", {
-    value: document.implementation.createHTMLDocument("preview"),
-    configurable: true,
-  });
-  return iframe;
 }
 
 /** A fake frame, same-origin unless `opaque`, whose runtime answers editing requests with `answer`. */

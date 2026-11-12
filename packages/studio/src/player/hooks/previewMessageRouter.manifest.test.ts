@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
-import { makeFakeIframe, serveEditingRequests } from "./timelinePlayerTestHarness";
+import { detachedFakeIframe, serveEditingRequests } from "./timelinePlayerTestHarness";
 
 const closers: Array<() => void> = [];
 afterEach(() => {
@@ -17,7 +17,7 @@ const GLOBAL_MANIFEST = { clips: [{ id: "x" }], durationInFrames: 30, scenes: []
 /** A frame whose globals and editing port carry different manifests, so a test sees which was read. */
 function routeStateTicks(opaque: boolean) {
   const frame: Record<string, unknown> = { __clipManifest: GLOBAL_MANIFEST };
-  const iframe = makeFakeIframe(frame);
+  const iframe = detachedFakeIframe(frame);
   if (opaque) {
     Object.defineProperty(iframe, "contentDocument", { value: null });
     Object.defineProperty(frame, "document", {
