@@ -11,8 +11,13 @@ const RATE = 48_000;
 const dir = mkdtempSync(join(tmpdir(), "hf-check-audio-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-/** A mono 16-bit WAV of `seconds`, each sample from `fill`. */
-function wav(name: string, seconds: number, fill: (t: number) => number): string {
+/** A mono 16-bit WAV of `seconds`, each sample from `fill`; `byteRate` is the header's claim. */
+function wav(
+  name: string,
+  seconds: number,
+  fill: (t: number) => number,
+  byteRate = RATE * 2,
+): string {
   const frames = Math.round(seconds * RATE);
   const data = Buffer.alloc(frames * 2);
   for (let i = 0; i < frames; i++) data.writeInt16LE(Math.round(fill(i / RATE) * 32767), i * 2);
@@ -24,7 +29,7 @@ function wav(name: string, seconds: number, fill: (t: number) => number): string
   header.writeUInt16LE(1, 20);
   header.writeUInt16LE(1, 22);
   header.writeUInt32LE(RATE, 24);
-  header.writeUInt32LE(RATE * 2, 28);
+  header.writeUInt32LE(byteRate, 28);
   header.writeUInt16LE(2, 32);
   header.writeUInt16LE(16, 34);
   header.write("data", 36);
@@ -72,6 +77,8 @@ describe.skipIf(!ffmpeg)("inspectAudio", () => {
   // Long enough to be sampled at spots first; sound only between the spots.
   wav("long-silent.wav", 20, silent);
   wav("long-gap.wav", 20, (t) => (t > 5 && t < 6 ? tone(t) : 0));
+  // Its header claims twice the real byte rate, as some speech generators write it.
+  wav("misstated-rate.wav", 8, tone, RATE * 4);
   // Not audio at all: the render's audio probe rejects it and the whole mix fails.
   writeFileSync(join(dir, "notes.wav"), "RIFF but not really a wave file");
   // A 1x1 PNG: it probes, but as a still image, so render refuses it as an <audio> source.
@@ -175,6 +182,10 @@ describe.skipIf(!ffmpeg)("inspectAudio", () => {
     expect(await codes(media([clip("late.wav", { mediaStart: 2, end: 2 })]))).toEqual([]);
     // Played at double speed, 2 s of film reach 4 s into the file, past the silent start.
     expect(await codes(media([clip("late.wav", { end: 2, playbackRate: 2 })]))).toEqual([]);
+  });
+
+  it("hears a clip past the middle of a WAV whose header misstates its byte rate, as render plays it", async () => {
+    expect(await codes(media([clip("misstated-rate.wav", { mediaStart: 5 })]))).toEqual([]);
   });
 });
 

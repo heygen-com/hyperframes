@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
+import {
+  decodableAudioStream,
+  misstatesPcmByteRate,
+  type FfprobePcmFields,
+} from "@hyperframes/parsers/media-streams";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
 
 const run = promisify(execFile);
@@ -11,6 +15,7 @@ export interface AudioStreamInfo {
   sampleRate: number;
   channels: number;
   duration: number;
+  misstatedByteRate?: boolean;
 }
 
 function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
@@ -38,11 +43,7 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
     { maxBuffer: 8 * 1024 * 1024, windowsHide: true },
   );
   const parsed = JSON.parse(stdout) as {
-    streams?: (FfprobeStreamCodec & {
-      sample_rate?: string;
-      channels?: number;
-      duration?: string;
-    })[];
+    streams?: (FfprobePcmFields & { duration?: string })[];
     format?: { duration?: string };
   };
   const index = decodableAudioStream(parsed.streams ?? []);
@@ -53,6 +54,7 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
     sampleRate: Number(stream.sample_rate),
     channels: stream.channels ?? 1,
     duration: Number(stream.duration ?? parsed.format?.duration ?? 0),
+    misstatedByteRate: misstatesPcmByteRate(stream),
   };
 }
 
@@ -88,15 +90,17 @@ export async function decodeAudio(
     channels: format.mono ? 1 : probedInfo.channels,
   };
   const seek = window.from ? ["-ss", String(window.from)] : [];
+  const [inputSeek, decodedSeek] = probedInfo.misstatedByteRate ? [[], seek] : [seek, []];
   const length = window.seconds === undefined ? [] : ["-t", String(window.seconds)];
   const { stdout } = await run(
     requiredBinary("ffmpeg"),
     [
       "-v",
       "error",
-      ...seek,
+      ...inputSeek,
       "-i",
       file,
+      ...decodedSeek,
       ...length,
       "-map",
       `0:a:${probedInfo.audioStream}`,
