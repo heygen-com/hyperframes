@@ -271,6 +271,26 @@ describe("a reference to a file outside the project in a private location", () =
     }
   });
 
+  it("leaves out a Library file referenced by a project on iCloud Drive", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const drive = join(home, "Library", "Mobile Documents", "com~apple~CloudDocs");
+      const token = join(home, "Library", "Application Support", "app", "token.json");
+      mkdirSync(join(drive, "p"), { recursive: true });
+      mkdirSync(dirname(token), { recursive: true });
+      writeFileSync(token, "KEY");
+      writeFileSync(join(drive, "p", "index.html"), `<img src="${token}">`);
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(join(drive, "p"), Infinity, (w) => warnings.push(w));
+      expect([...staged.keys()].some((key) => key.startsWith("_ext/"))).toBe(false);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("still copies a sibling asset folder named library or AppData outside the home folder", () => {
     const { ext, warnings } = stageIn("p", {
       "library/logo.png": "png",

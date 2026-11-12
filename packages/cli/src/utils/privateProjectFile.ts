@@ -37,7 +37,7 @@ function homeAppDataFolder(path: string): string | null {
 
 function inHomeAppData(projectDir: string, path: string): boolean {
   const folder = homeAppDataFolder(path);
-  return folder !== null && !isUnder(projectDir, folder);
+  return folder !== null && homeAppDataFolder(projectDir) !== folder;
 }
 
 /** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */
