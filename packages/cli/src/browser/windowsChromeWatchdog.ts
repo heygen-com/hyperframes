@@ -1,34 +1,46 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { win32 } from "node:path";
+import type { Browser } from "puppeteer-core";
 
 export function chromeKillCommand(
-  pid: number,
+  pids: readonly number[],
   executable: string,
   env: NodeJS.ProcessEnv = process.env,
 ): { file: string; args: string[] } {
   return {
     file: win32.join(env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
-    args: ["/PID", String(pid), "/T", "/F", "/FI", `IMAGENAME eq ${win32.basename(executable)}`],
+    args: [
+      ...pids.flatMap((pid) => ["/PID", String(pid)]),
+      "/T",
+      "/F",
+      "/FI",
+      `IMAGENAME eq ${win32.basename(executable)}`,
+    ],
   };
 }
 
 export const WATCHDOG = `let clean = false;
-let gone = false;
-const alive = () => { try { return process.kill(Number(process.env.HF_CHROME_PID), 0); } catch { return false; } };
-const watch = setInterval(() => { if (!gone && !alive()) { gone = true; console.log("gone"); } }, Number(process.env.HF_WATCH_MS) || 500);
-console.log("armed");
+let kill;
+let rest = "";
+const take = (line) => {
+  if (line === "clean") clean = true;
+  else if (line === "none") kill = undefined;
+  else if (line) kill = JSON.parse(line);
+};
 const done = () => {
-  clearInterval(watch);
-  if (!clean && !gone && alive()) {
-    const { file, args } = JSON.parse(process.env.HF_CHROME_KILL);
-    require("node:child_process").spawnSync(file, args, { windowsHide: true, timeout: 20000 });
-  }
+  take(rest);
+  if (!clean && kill) require("node:child_process").spawnSync(kill.file, kill.args, { windowsHide: true, timeout: 20000 });
   process.exit(0);
 };
-process.stdin.on("data", (data) => { clean ||= String(data).includes("clean"); });
+process.stdin.on("data", (data) => {
+  const lines = (rest + data).split("\\n");
+  rest = lines.pop();
+  lines.forEach(take);
+});
 process.stdin.on("end", done);
-process.stdin.on("error", done);`;
+process.stdin.on("error", done);
+console.log("armed");`;
 
 export interface ChromeWatchdog {
   release(clean: boolean): void;
@@ -42,17 +54,26 @@ function executableOf(chrome: ChildProcess): string | undefined {
   }
 }
 
-/** Ends Chrome's tree if the CLI dies. ponytail: a pid reused within one 500 ms poll of its exit is still killed. */
-export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
+async function chromeProcessIds(browser: Browser): Promise<number[]> {
+  const session = await browser.target().createCDPSession();
+  try {
+    const { processInfo } = await session.send("SystemInfo.getProcessInfo");
+    return processInfo.map((each) => each.id);
+  } finally {
+    await session.detach().catch(() => {});
+  }
+}
+
+/** Ends Chrome's tree if the CLI dies. ponytail: 1 s reuse window; a kill-on-close job object would close it. */
+export function watchChromeTree(
+  chrome: ChildProcess,
+  browser: Browser,
+): ChromeWatchdog | undefined {
   const executable = process.platform === "win32" ? executableOf(chrome) : undefined;
   if (!executable || chrome.pid === undefined) return undefined;
+  const mainPid = chrome.pid;
   const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
     detached: true,
-    env: {
-      ...process.env,
-      HF_CHROME_PID: String(chrome.pid),
-      HF_CHROME_KILL: JSON.stringify(chromeKillCommand(chrome.pid, executable)),
-    },
     stdio: ["pipe", "ignore", "ignore"],
     windowsHide: true,
   });
@@ -60,12 +81,33 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
   watchdog.stdin?.on("error", () => {});
   watchdog.unref();
   (watchdog.stdin as unknown as { unref?: () => void } | null)?.unref?.();
+  let stopped = false;
+  const send = (pids: number[]) =>
+    stopped || watchdog.stdin?.write(`${JSON.stringify(chromeKillCommand(pids, executable))}\n`);
+  send([mainPid]);
+  let asking = false;
+  const poll = setInterval(() => {
+    if (asking) return;
+    asking = true;
+    chromeProcessIds(browser)
+      .then((pids) => send([...new Set([mainPid, ...pids])]))
+      .catch(() => {})
+      .finally(() => (asking = false));
+  }, 1000);
+  poll.unref();
+  chrome.once("exit", () => {
+    stopped = true;
+    clearInterval(poll);
+    watchdog.stdin?.write("none\n");
+  });
   let released = false;
   return {
     release(clean) {
       if (released) return;
       released = true;
-      watchdog.stdin?.end(clean ? "clean" : "");
+      stopped = true;
+      clearInterval(poll);
+      watchdog.stdin?.end(clean ? "clean\n" : "");
     },
   };
 }

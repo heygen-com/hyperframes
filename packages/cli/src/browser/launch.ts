@@ -191,7 +191,7 @@ async function launchOwnedBrowser(
     const child = browser.process();
     if (!child) throw new Error("A launched browser has no owned process.");
     browsers.add(browser);
-    const watchdog = watchChromeTree(child);
+    const watchdog = watchChromeTree(child, browser);
     if (watchdog) watchdogs.set(browser, watchdog);
     gracefulClose.set(browser, browser.close.bind(browser));
     browser.close = () => closeManagedBrowser(browser);
