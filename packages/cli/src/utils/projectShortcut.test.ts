@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { commandWordIndex, measureProbeShortcutArgv, openShortcutArgv } from "./projectShortcut.js";
+import {
+  commandWordIndex,
+  measureProbeShortcutArgv,
+  openShortcutArgv,
+  registryAliasArgv,
+} from "./projectShortcut.js";
 
 const commands = new Set(["open", "render", "lint"]);
 const cwd = mkdtempSync(join(tmpdir(), "hf-shortcut-"));
@@ -98,5 +103,31 @@ describe("commandWordIndex", () => {
     [[], -1],
   ] as const)("%j -> %i", (argv, index) => {
     expect(commandWordIndex(argv)).toBe(index);
+  });
+});
+
+describe("registryAliasArgv", () => {
+  it.each([
+    [
+      ["registry", "search", "rain", "snow", "--json"],
+      ["catalog", "rain", "snow", "--json"],
+    ],
+    [
+      ["registry", "crossfade"],
+      ["catalog", "crossfade"],
+    ],
+    [
+      ["--verbose", "registry", "search", "title"],
+      ["--verbose", "catalog", "title"],
+    ],
+    [["registry"], ["catalog"]],
+  ])("runs %j as %j", (argv, expected) => {
+    expect(registryAliasArgv(argv)).toEqual(expected);
+  });
+
+  it("leaves every other command alone", () => {
+    const argv = ["catalog", "search", "rain"];
+    expect(registryAliasArgv(argv)).toBe(argv);
+    expect(registryAliasArgv(["render", "registry"])).toEqual(["render", "registry"]);
   });
 });
