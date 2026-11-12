@@ -143,6 +143,8 @@ describe("installEditingAgent", () => {
           "computed-styles",
           "elements-at-point",
           "describe",
+          "ancestors",
+          "query",
         ],
       },
     });
@@ -258,6 +260,38 @@ describe("installEditingAgent", () => {
     ].map((params, index) => [
       { v: 1, id: 40 + index, kind: "describe", params },
       40 + index,
+      "invalid-params",
+    ]),
+    ...[
+      { handle: "0123456789abcdef:1" },
+      { handle: "1", properties: ["color"] },
+      { handle: 1, properties: ["color"] },
+      { handle: "0123456789abcdef:1", selector: "p", properties: ["color"] },
+      { handle: "0123456789abcdef:1", properties: ["color;"] },
+    ].map((params, index) => [
+      { v: 1, id: 70 + index, kind: "computed-styles", params },
+      70 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { handles: [] },
+      { handles: ["1"] },
+      { handles: Array(257).fill("0123456789abcdef:1") },
+    ].map((params, index) => [
+      { v: 1, id: 80 + index, kind: "ancestors", params },
+      80 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { selector: "" },
+      { selector: 1 },
+      { selector: "p".repeat(2001) },
+      { selector: "p", x: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 90 + index, kind: "query", params },
+      90 + index,
       "invalid-params",
     ]),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(

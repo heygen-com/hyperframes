@@ -190,7 +190,7 @@ export function usePreviewInteraction({
         preferClipAncestor: options?.preferClipAncestor ?? false,
       });
       // A null result while drilled into a group means the click landed OUTSIDE that
-      // group (resolveGroupCapture → out-of-scope). Drill-in isn't sticky: exit it and
+      // group (selectionTargetIndex: out of scope). Drill-in isn't sticky: exit it and
       // re-resolve at the top level so this click selects whatever's there (or the
       // group as a unit). Without this, a stale drill-in keeps selecting children and
       // the "first click selects the group" expectation breaks.

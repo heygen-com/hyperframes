@@ -20,7 +20,13 @@ import {
   type EditingResult,
 } from "./editingPort";
 import type { ClipNode } from "./clipTree";
-import { describeHandles, elementsAtPoint } from "./editingHandles";
+import {
+  ancestorHandles,
+  describeHandles,
+  elementForHandle,
+  elementsAtPoint,
+  queryElements,
+} from "./editingHandles";
 import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
@@ -57,8 +63,12 @@ const HANDLERS: Handlers = {
     setLoopStart(seconds);
     return { applied: true };
   },
-  "computed-styles": ({ selector, properties }) => {
-    const element = document.querySelector(selector);
+  "computed-styles": (params) => {
+    const { properties } = params;
+    const element =
+      "handle" in params
+        ? elementForHandle(params.handle)
+        : document.querySelector(params.selector);
     if (!element) return { styles: null };
     const computed = window.getComputedStyle(element);
     const styles: Record<string, string> = {};
@@ -71,6 +81,8 @@ const HANDLERS: Handlers = {
   },
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
+  ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
+  query: ({ selector }) => queryElements(selector),
 };
 
 function serve(port: MessagePort): void {

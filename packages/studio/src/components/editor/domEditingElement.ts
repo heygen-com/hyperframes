@@ -11,14 +11,13 @@ import type {
 } from "./domEditingTypes";
 import {
   buildStableSelector,
-  escapeCssString,
   getSelectorIndex,
   getSourceFileForElement,
   isHtmlElement,
   isElementVisibleThroughAncestors,
-  normalizeTimelineCompositionSource,
   querySelectorAllSafely,
 } from "./domEditingDom";
+import { selectionLookups, timelineElementLookup } from "./domEditSelectionRules";
 
 // ─── Visibility ──────────────────────────────────────────────────────────────
 
@@ -171,36 +170,6 @@ export function isDomLayerElement(el: HTMLElement): boolean {
   return isInspectableLayerElement(el) && resolveLayerSelector(el) !== undefined;
 }
 
-// ─── Clip ancestor / selection candidate ─────────────────────────────────────
-
-function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
-  let current: HTMLElement | null = startEl;
-  while (current) {
-    if (current.classList.contains("clip")) {
-      const isCompositionHost =
-        current.hasAttribute("data-composition-src") ||
-        current.hasAttribute("data-composition-file");
-      if (!isCompositionHost || current === startEl) return current;
-    }
-    current = current.parentElement;
-  }
-  return null;
-}
-
-export function getSelectionCandidate(
-  startEl: HTMLElement,
-  options: DomEditContextOptions,
-): HTMLElement {
-  if (options.preferClipAncestor) {
-    const clipAncestor = getPreferredClipAncestor(startEl);
-    if (clipAncestor) {
-      return clipAncestor;
-    }
-  }
-
-  return startEl;
-}
-
 // ─── Visual target resolution ─────────────────────────────────────────────────
 
 export function resolveVisualDomEditSelectionTarget(
@@ -295,23 +264,11 @@ export function findElementForSelection(
     (!selection.sourceFile ||
       getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
         selection.sourceFile);
-  const findAll = (selector: string): HTMLElement[] =>
-    querySelectorAllSafely(doc, selector).filter(sourceMatches);
-
-  if (selection.hfId) {
-    const byHfId = findAll(`[data-hf-id="${escapeCssString(selection.hfId)}"]`)[0];
-    if (byHfId) return byHfId;
+  for (const { selector, index } of selectionLookups(selection)) {
+    const found = querySelectorAllSafely(doc, selector).filter(sourceMatches)[index];
+    if (found) return found;
   }
-
-  if (selection.id) {
-    // Flattened sub-compositions can repeat authored ids. getElementById returns
-    // only the first document match, so filter every id match by source first.
-    const byId = findAll(`[id="${escapeCssString(selection.id)}"]`)[0];
-    if (byId) return byId;
-  }
-
-  if (!selection.selector) return null;
-  return findAll(selection.selector)[selection.selectorIndex ?? 0] ?? null;
+  return null;
 }
 
 // The selected node while mounted, else its copy in the selection's own file (ids repeat across files), else any copy.
@@ -327,49 +284,15 @@ export function findPreviewNode(
   );
 }
 
-// fallow-ignore-next-line complexity
 export function findElementForTimelineElement(
   doc: Document,
   element: TimelineElementDomTarget,
   options: TimelineElementDomTargetOptions,
 ): HTMLElement | null {
-  const elementId = typeof element.id === "string" ? element.id : "";
-  const compositionSource =
-    normalizeTimelineCompositionSource(element.compositionSrc) ??
-    options.compIdToSrc?.get(elementId);
-  const sourceFile =
-    compositionSource ??
-    normalizeTimelineCompositionSource(element.sourceFile) ??
-    options.activeCompositionPath ??
-    "index.html";
-  const escapedElementId = escapeCssString(elementId);
-  const escapedCompositionSource = compositionSource ? escapeCssString(compositionSource) : null;
-  const selector =
-    element.selector ??
-    (compositionSource
-      ? `[data-composition-src="${escapedCompositionSource}"],[data-composition-file="${escapedCompositionSource}"],[data-composition-id="${escapedElementId}"]`
-      : escapedElementId
-        ? `[data-composition-id="${escapedElementId}"]`
-        : undefined);
-
-  if (selector || element.domId) {
-    const targetElement = findElementForSelection(
-      doc,
-      {
-        id: element.domId ?? undefined,
-        selector,
-        selectorIndex: element.selectorIndex,
-        sourceFile,
-      },
-      options.activeCompositionPath,
-    );
-    if (targetElement) return targetElement;
-  }
-
-  const hasExplicitDomTarget = Boolean(element.domId || element.selector || compositionSource);
-  if (options.isMasterView || hasExplicitDomTarget || !options.activeCompositionPath) {
-    return null;
-  }
+  const { target, sourceFile, rootFallback } = timelineElementLookup(element, options);
+  const found = target && findElementForSelection(doc, target, options.activeCompositionPath);
+  if (found) return found;
+  if (!rootFallback) return null;
 
   const root = doc.querySelector("[data-composition-id]");
   if (!isHtmlElement(root)) return null;

@@ -1,5 +1,6 @@
 import type { PatchTarget } from "../../utils/sourcePatcher";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
+import type { EditingElementHandle } from "@hyperframes/core/runtime/editing-port";
 
 export const CURATED_STYLE_PROPERTIES = [
   "position",
@@ -78,6 +79,7 @@ export interface DomEditTextField {
 
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
+  handle?: EditingElementHandle;
   label: string;
   tagName: string;
   sourceFile: string;
