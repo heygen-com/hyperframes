@@ -1373,6 +1373,23 @@ describe("trackCommandFailure", () => {
     expect(payload).not.toMatch(/Jane|555-0100/);
   });
 
+  it("reports an unknown template slug as usage, never the slug", async () => {
+    const { default: templates } = await import("../commands/templates.js");
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const thrown = await templates
+      .run?.({
+        args: { _: [], action: "pull", slug: "Jane-555-0100" },
+        rawArgs: [],
+        cmd: templates,
+      } as never)
+      .catch((error: unknown) => error);
+    quiet.mockRestore();
+    trackCommandFailure("templates", thrown);
+    const payload = JSON.stringify(trackEvent.mock.calls.at(-1));
+    expect(payload).toContain("Invalid command usage");
+    expect(payload).not.toMatch(/Jane|555-0100/);
+  });
+
   beforeEach(() => {
     trackEvent.mockClear();
   });

@@ -372,12 +372,20 @@ describe("templates command", () => {
     expect(String(err.mock.calls[0]?.[0])).toContain("sample");
   });
 
+  it("rejects an unknown slug as usage, naming the templates", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(run({ action: "pull", slug: "nope", dir })).rejects.toBeInstanceOf(CliUsageError);
+    expect(String(err.mock.calls[0]?.[0])).toContain('No template "nope"');
+    expect(String(err.mock.calls[0]?.[0])).toContain("sample");
+  });
+
   it("keeps the refusal as the failure's cause, so it is not reported as a bare failure", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     serve({ status: 402 });
     const failure = await run({ action: "pull", slug: "sample", dir }).catch((e: unknown) => e);
     expect(failure).toBeInstanceOf(CliRuntimeError);
     expect((failure as CliRuntimeError).cause).toBeInstanceOf(PullRefused);
+    expect((failure as CliRuntimeError).cause).toHaveProperty("name", "PullRefused");
   });
 });
 

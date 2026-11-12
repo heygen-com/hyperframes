@@ -67,7 +67,9 @@ export const TEMPLATES: Record<string, TemplatePack> = {
 };
 
 /** A pull that stopped, with the one line the agent relays. Nothing was written. */
-export class PullRefused extends Error {}
+export class PullRefused extends Error {
+  override name = "PullRefused";
+}
 
 const LINK_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 20 * 60_000;
@@ -289,11 +291,13 @@ export default defineCommand({
       console.log(`${slugs}\nPull one with \`npx hyperframes templates pull <slug>\`.`);
       return;
     }
-    if (args.action !== "pull" || !args.slug) {
-      console.error(c.error(`Use \`templates pull <slug>\`. ${slugs}`));
+    const slug = args.action === "pull" ? args.slug : undefined;
+    if (!slug || !Object.hasOwn(TEMPLATES, slug)) {
+      const problem = slug ? `No template "${slug}".` : "Use `templates pull <slug>`.";
+      console.error(c.error(`${problem} ${slugs}`));
       failUsage();
     }
-    await pullAndReport(args.slug, args.dir ?? ".");
+    await pullAndReport(slug, args.dir ?? ".");
   },
 });
 
