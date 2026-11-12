@@ -3,6 +3,7 @@ import { isUnplayable, mediaSourceTimeAt } from "./media";
 import type { RuntimeMediaClip } from "./types";
 import { isVideoElement } from "./domRealm";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
   nativeSnapshotStyle,
   captureNativeVideoFrame,
@@ -20,6 +21,7 @@ function holdVideoFrame(video: HTMLVideoElement): (() => void) | undefined {
   const canvas = captureNativeVideoFrame(video);
   if (!canvas) return;
   for (const name of Array.from(css)) canvas.style.setProperty(name, css.getPropertyValue(name));
+  applyNativeVideoLook(canvas, video, css.filter || "none");
   canvas.style.setProperty("animation", "none", "important");
   canvas.style.setProperty("transition", "none", "important");
   canvas.style.setProperty("pointer-events", "none", "important");

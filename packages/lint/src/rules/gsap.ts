@@ -1,4 +1,5 @@
 import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
 import { gsapCallOffset, containingCallOffset, gsapRunsWhenScriptRuns } from "../scriptPositions";
 interface LintParsedGsap {
   animations: Array<{
@@ -1068,7 +1069,7 @@ function cssRuleSubjects(
   for (const style of styles) {
     let root: postcss.Root;
     try {
-      root = postcss.parse(style.content);
+      root = styleRoot(style);
     } catch {
       continue;
     }

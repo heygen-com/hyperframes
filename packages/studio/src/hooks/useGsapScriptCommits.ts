@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useRef } from "react";
 import { findUnsafeMutationValues } from "@hyperframes/core/studio-api/finite-mutation";
-import { readProjectFileContent as readSharedProjectFileContent } from "../utils/studioFileHistory";
+import {
+  editContextTarget,
+  readProjectFileContent as readSharedProjectFileContent,
+} from "../utils/studioFileHistory";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
 import {
@@ -323,12 +326,13 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   // the same animationId so their POSTs can't interleave. Held in a ref so the
   // chain survives re-renders.
   const serializerRef = useRef(createKeyedSerializer());
-  const recordMutationEdit = useCallback(async (targetPath: string, result: MutationResult, options: CommitMutationOptions) => {
+  const recordMutationEdit = useCallback(async (targetPath: string, selection: DomEditSelection, result: MutationResult, options: CommitMutationOptions) => {
     if (result.before == null || result.after == null) return;
     await editHistory.recordEdit({
       label: options.label,
       coalesceKey: options.coalesceKey,
       coalesceMs: options.coalesceMs,
+      targets: [editContextTarget(targetPath, selection)],
       files: { [targetPath]: { before: result.before, after: result.after } },
     });
   }, [editHistory]);
@@ -348,7 +352,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
       }
       return;
     }
-    await recordMutationEdit(targetPath, result, options);
+    await recordMutationEdit(targetPath, selection, result, options);
     const nestedFiles = await settleNestedReads(
       result.scriptText
         ? readNestedFiles(previewIframeRef.current, result.scriptText, (path) =>

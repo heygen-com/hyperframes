@@ -1,5 +1,6 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
 import {
@@ -116,7 +117,7 @@ function digitIdsTargetedBySelectors(
   const ids = new Set<string>();
   for (const style of styles) {
     try {
-      postcss.parse(style.content).walkRules((rule) => {
+      styleRoot(style).walkRules((rule) => {
         for (const selector of rule.selectors) addUnescapedDigitIds(selector, ids);
       });
     } catch {
@@ -686,7 +687,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
       if (!/transition/i.test(style.content)) continue;
       let root: postcss.Root;
       try {
-        root = postcss.parse(style.content);
+        root = styleRoot(style);
       } catch {
         // The CSS syntax rule reports malformed style blocks separately.
         continue;
@@ -737,7 +738,7 @@ export const coreRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     for (const style of styles) {
       let root: postcss.Root;
       try {
-        root = postcss.parse(style.content);
+        root = styleRoot(style);
       } catch (error) {
         findings.push({
           ...locate(

@@ -10,6 +10,12 @@ import {
 import { findInjectedRenderFrame } from "./renderFrameSibling";
 import type { RuntimeJson } from "./types";
 import { isVideoElement } from "./domRealm";
+import {
+  currentSrcValue,
+  deriveCodecMapKey,
+  lookupCodecMapEntry,
+  sourceFactsOf,
+} from "./mediaSourceLookup";
 import { heldPosters, swappedElements, unproxiedSrc } from "./proxySrc";
 import { giveBackWhenDue } from "./preloadMedia";
 import { restartPlaybackHealth } from "./playbackHealth";
@@ -52,7 +58,6 @@ export type MediaCodecMapEntry = {
 declare global {
   interface Window {
     __HF_MEDIA_CODEC_MAP__?: Record<string, MediaCodecMapEntry>;
-    __HF_MEDIA_SOURCE_FACTS__?: Record<string, PreviewSourceFacts>;
   }
 }
 
@@ -77,10 +82,6 @@ const unavailableDiagnosedElements = new WeakSet<HTMLMediaElement>();
 // Elements whose swap has started, with the src it started for. Until the copy is served they
 // keep that src, so nothing that reads it (timeline, player mirror) loads a copy still being made.
 const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
-
-function currentSrcValue(el: HTMLMediaElement): string {
-  return el.currentSrc || el.src;
-}
 
 // Below 1, heavy files get lighter copies at the shown box times this level; 1 is the preview as it always was.
 let previewQuality: PreviewQuality = 1;
@@ -141,12 +142,6 @@ function codecEntryOf(el: HTMLMediaElement): MediaCodecMapEntry | null {
   const map = window.__HF_MEDIA_CODEC_MAP__;
   const key = deriveCodecMapKey(el);
   return map && key !== null ? lookupCodecMapEntry(key, map) : null;
-}
-
-function sourceFactsOf(el: HTMLMediaElement): PreviewSourceFacts | null {
-  const facts = window.__HF_MEDIA_SOURCE_FACTS__;
-  const key = deriveCodecMapKey(el);
-  return facts && key !== null ? lookupCodecMapEntry(key, facts) : null;
 }
 
 // fallow-ignore-next-line complexity
@@ -313,89 +308,6 @@ function loadProxy(
 export function isRenderMode(el: HTMLMediaElement): boolean {
   if (window.__HF_EXPORT_RENDER_SEEK_CONFIG) return true;
   return isVideoElement(el) && !!findInjectedRenderFrame(el);
-}
-
-/**
- * Resolve an element's codec-map key: the served-root-relative,
- * percent-decoded, query-string-stripped URL pathname (per the server
- * contract KTD). Returns null when there's no usable src, or the src is
- * cross-origin — the server can't have scanned (or proxy) a file it doesn't
- * host, so there is never a map entry to look up.
- */
-export function deriveCodecMapKey(el: HTMLMediaElement): string | null {
-  const raw = currentSrcValue(el);
-  if (!raw) return null;
-  let url: URL;
-  try {
-    url = new URL(raw, document.baseURI);
-  } catch {
-    return null;
-  }
-  if (url.origin !== window.location.origin) return null;
-  try {
-    return decodeURIComponent(url.pathname);
-  } catch {
-    return url.pathname;
-  }
-}
-
-/**
- * The composition is served under a route prefix on some surfaces —
- * studio-server's preview route injects `<base href="/api/projects/:id/preview/">`
- * (packages/studio-server/src/routes/preview.ts) so every relative asset
- * resolves through that prefix — while the codec map (per the server
- * contract) is keyed by project-root-relative pathnames with no prefix.
- * `play` and the CLI's static project server serve from the root with no
- * such prefix, where an exact match already succeeds. So: try exact first
- * (covers unprefixed servers), then fall back to the longest map key that
- * is a suffix of the pathname. No separate segment-boundary check is
- * needed: every key is contractually root-relative and leading-slash
- * (`"/assets/x.mp4"`, never `"assets/x.mp4"`), so a suffix match's boundary
- * is always that leading `/` itself — `pathname.endsWith(key)` can't match
- * a partial segment (e.g. key `"/foo.mp4"` can never match a pathname
- * ending in `"/notfoo.mp4"`, since that would require the literal substring
- * `"/foo.mp4"` to appear where the last `/` already fell a segment later).
- */
-function lookupLongestExactSuffix<T>(pathname: string, map: Record<string, T>): T | null {
-  let bestKey: string | null = null;
-  for (const key of Object.keys(map)) {
-    if (!pathname.endsWith(key)) continue;
-    if (bestKey === null || key.length > bestKey.length) bestKey = key;
-  }
-  return bestKey ? (map[bestKey] ?? null) : null;
-}
-
-function lookupNormalizedSuffix<T>(pathname: string, map: Record<string, T>): T | null {
-  // Case-insensitive filesystems and Unicode-normalizing filesystems can
-  // serve an authored URL whose spelling differs from the canonical path
-  // ffprobe returned (Clip.mp4 vs clip.mp4, NFC vs NFD). Exact matching stays
-  // authoritative; this normalized fallback is used only when it finds one
-  // unambiguous longest suffix, so case-sensitive projects containing both
-  // spellings never select the wrong asset.
-  const normalizedPathname = pathname.normalize("NFC").toLowerCase();
-  let normalizedBestLength = -1;
-  let normalizedBest: T | null = null;
-  let ambiguous = false;
-  for (const [key, entry] of Object.entries(map)) {
-    const normalizedKey = key.normalize("NFC").toLowerCase();
-    if (!normalizedPathname.endsWith(normalizedKey)) continue;
-    if (normalizedKey.length > normalizedBestLength) {
-      normalizedBestLength = normalizedKey.length;
-      normalizedBest = entry;
-      ambiguous = false;
-    } else if (normalizedKey.length === normalizedBestLength) {
-      ambiguous = true;
-    }
-  }
-  return ambiguous ? null : normalizedBest;
-}
-
-function lookupCodecMapEntry<T>(pathname: string, map: Record<string, T>): T | null {
-  return (
-    map[pathname] ??
-    lookupLongestExactSuffix(pathname, map) ??
-    lookupNormalizedSuffix(pathname, map)
-  );
 }
 
 const stills = new WeakSet<HTMLMediaElement>();

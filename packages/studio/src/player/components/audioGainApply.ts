@@ -22,9 +22,6 @@ export async function writeClipGains(
   writers: VolumeWriters,
   label = AUDIO_GAIN_LABEL,
 ): Promise<void> {
-  if (edits.some(({ element }) => volumeLaneOwnsGain(element))) {
-    throw new Error(VOLUME_LANE_REFUSAL);
-  }
   const values = edits.map(({ element, gain }) => ({ element, value: formatAudioGain(gain) }));
   if (values.length > 1 && writers.onSetElementsAttributeQuiet) {
     throwUnlessSaved(await writers.onSetElementsAttributeQuiet(values, "data-volume", label));
