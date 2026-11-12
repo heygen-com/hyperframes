@@ -10,6 +10,7 @@ import {
   isAbsolute as nodeIsAbsolute,
 } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isSafePath } from "@hyperframes/core/safe-path";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -62,6 +63,11 @@ export function isPathInside(
   // is above the parent, and an absolute path when they live on different
   // drives/volumes (Windows) — none of which count as "inside".
   return rel !== "" && !LEADING_PARENT_SEGMENT_RE.test(rel) && !isPathAbsolute(rel);
+}
+
+/** True when `assetRoot` is set and `path`, symlinks resolved, leaves it. */
+export function escapesAssetRoot(path: string, assetRoot: string | undefined): boolean {
+  return assetRoot !== undefined && !isSafePath(assetRoot, path);
 }
 
 /**

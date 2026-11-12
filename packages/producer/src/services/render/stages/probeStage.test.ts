@@ -266,7 +266,7 @@ function makeProbeInput(overrides: {
   };
 
   return {
-    projectDir: "/tmp/hf-probe-test-project",
+    projectDir: workDir,
     workDir: workDir,
     job: {
       id: "probe-test",

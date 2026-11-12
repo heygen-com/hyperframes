@@ -57,6 +57,7 @@ import {
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
+import type { CompileForRenderOptions } from "./htmlCompiler.js";
 import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
 import {
   type EngineConfig,
@@ -439,6 +440,7 @@ export interface RenderConfig {
   strictness?: RenderStrictness;
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
+  allowOutsideProjectAssets?: CompileForRenderOptions["allowOutsideProjectAssets"];
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -3733,6 +3735,7 @@ async function executeRenderPipeline(input: {
           port: 0,
           preHeadScripts: [VIRTUAL_TIME_SHIM],
           fps: job.config.fps,
+          allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);

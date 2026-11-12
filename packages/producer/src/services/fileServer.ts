@@ -716,6 +716,8 @@ export interface FileServerOptions {
   fps?: Fps;
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
+  /** Serve project symlinks that lead outside projectDir, as local preview does. Default: false. */
+  allowOutsideProjectAssets?: boolean;
 }
 
 export interface FileServerHandle {
@@ -786,7 +788,13 @@ function openRegularFile(filePath: string) {
 }
 
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
-  const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
+  const {
+    projectDir,
+    compiledDir,
+    port = 0,
+    stripEmbeddedRuntime = true,
+    allowOutsideProjectAssets = false,
+  } = options;
 
   // HF_EARLY_STUB must run before *any* page script so libraries that write
   // to window.__hf during page-script execution (e.g. shader-transitions
@@ -826,12 +834,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     // Each candidate is rejected if `..` segments push it outside the
     // intended root: `path.join` normalizes traversal but does not enforce
     // containment, so a request like `GET /../etc/passwd` would otherwise
-    // be served straight off the filesystem. Keep this lexical so project
-    // symlinks to sibling asset directories behave like preview mode.
+    // be served straight off the filesystem. compiledDir stays lexical: it
+    // links extracted frame directories in from the work directory.
     let file: ReturnType<typeof openRegularFile> = null;
     for (const root of compiledDir ? [compiledDir, projectDir] : [projectDir]) {
       const candidate = join(root, relativePath);
-      if (isPathInside(candidate, root)) file = openRegularFile(candidate);
+      const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
+      if (isPathInside(candidate, root, { resolveSymlinks })) file = openRegularFile(candidate);
       if (file) break;
     }
 

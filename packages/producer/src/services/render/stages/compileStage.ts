@@ -51,7 +51,10 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
 
 export interface CompileStageInput {
   projectDir: string;
@@ -239,6 +242,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
       ? join(cfg.extractCacheDir, "animated-gif")
       : undefined,
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -362,6 +366,9 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
+  if (!job.config.allowOutsideProjectAssets) {
+    dropMediaOutsideProject({ projectDir, compiledDir: join(workDir, "compiled"), composition });
+  }
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),

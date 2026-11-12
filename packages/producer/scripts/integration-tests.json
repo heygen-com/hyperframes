@@ -27,6 +27,7 @@
   "src/services/fileServer.test.ts",
   "src/services/fileServer.file-race.test.ts",
   "src/services/fileServer.listenError.test.ts",
+  "src/services/outsideProjectAssets.test.ts",
   "src/services/healthWorker.test.ts",
   "src/services/scriptFailureAttribution.test.ts",
   "src/services/strictVariablesSession.test.ts",

@@ -11,6 +11,7 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
+import { escapesAssetRoot } from "../utils/paths.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
 
@@ -86,6 +87,23 @@ interface MediaReference {
 
 function isRemoteOrInlineSource(src: string): boolean {
   return /^(?:https?:|data:|blob:|about:)/i.test(src.trim());
+}
+
+/** Drops local media that leaves both projectDir and compiledDir, so no probe or extraction opens it. */
+export function dropMediaOutsideProject(input: {
+  projectDir: string;
+  compiledDir: string;
+  composition: { videos: VideoElement[]; audios: AudioElement[]; images: ImageElement[] };
+}): void {
+  const { projectDir, compiledDir, composition } = input;
+  const staysInside = ({ src }: { src: string }) => {
+    if (!src || isRemoteOrInlineSource(src)) return true;
+    const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+    return !escapesAssetRoot(path, projectDir) || !escapesAssetRoot(path, compiledDir);
+  };
+  composition.videos = composition.videos.filter(staysInside);
+  composition.audios = composition.audios.filter(staysInside);
+  composition.images = composition.images.filter(staysInside);
 }
 
 /**

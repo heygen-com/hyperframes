@@ -79,7 +79,7 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import { escapesAssetRoot, isPathInside, toExternalAssetKey } from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -529,6 +529,7 @@ async function resolveMediaDuration(
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
+  assetRoot?: string,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
 
@@ -547,6 +548,7 @@ async function resolveMediaDuration(
   } else {
     filePath = decodedUrlPath(src);
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
+    if (escapesAssetRoot(filePath, assetRoot)) return { duration: null, resolvedPath: filePath };
     // ffprobe reads only the header of a remote source, so it is probed in place.
     filePath = urlByAbsentLocalPath?.get(filePath) ?? filePath;
     if (!isHttpUrl(filePath) && namesAnotherNetworkRoot(baseDir, filePath)) {
@@ -669,6 +671,7 @@ async function compileHtmlFile(
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
+  assetRoot?: string,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
 
@@ -692,6 +695,7 @@ async function compileHtmlFile(
         log,
         urlByAbsentLocalPath,
         probes,
+        assetRoot,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
   );
@@ -722,6 +726,7 @@ async function compileHtmlFile(
           log,
           undefined,
           probes,
+          assetRoot,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
       }),
@@ -791,6 +796,7 @@ async function parseSubCompositions(
   visited: Set<string> = new Set(),
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
+  assetRoot?: string,
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
 
@@ -839,6 +845,7 @@ async function parseSubCompositions(
         undefined,
         urlByAbsentLocalPath,
         probes,
+        assetRoot,
       );
 
       const nested = await parseSubCompositions(
@@ -848,6 +855,7 @@ async function parseSubCompositions(
         item.nestedVisited,
         urlByAbsentLocalPath,
         probes,
+        assetRoot,
       );
 
       return {
@@ -1915,7 +1923,11 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
 }
 
 // fallow-ignore-next-line complexity
-async function embedLocalFontFaces(html: string, projectDir: string): Promise<string> {
+async function embedLocalFontFaces(
+  html: string,
+  projectDir: string,
+  assetRoot: string | undefined,
+): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
@@ -1937,7 +1949,7 @@ async function embedLocalFontFaces(html: string, projectDir: string): Promise<st
         const localPath = urlMatch[1];
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
-        if (!isPathInside(absPath, projectDir)) continue;
+        if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2030,6 +2042,8 @@ export interface CompileForRenderOptions {
    */
   variables?: Record<string, unknown>;
   pageMotionBlur?: "off";
+  /** Trusted local renders only (CLI, Studio): import files markup reaches outside projectDir. */
+  allowOutsideProjectAssets?: boolean;
 }
 
 /** Renders follow the same `HYPERFRAMES_GSAP_BASE_URL` mirror as Studio preview. */
@@ -2148,6 +2162,7 @@ export async function compileForRender(
   assertSubCompositionsUsable(rawHtml, projectDir);
 
   const probes: SourceProbes = new Map();
+  const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -2155,6 +2170,7 @@ export async function compileForRender(
     options.log,
     options.urlByAbsentLocalPath,
     probes,
+    assetRoot,
   );
 
   // Compile each referenced sub-composition so the inliner can hoist it.
@@ -2165,6 +2181,7 @@ export async function compileForRender(
     undefined,
     options.urlByAbsentLocalPath,
     probes,
+    assetRoot,
   );
 
   // Ensure the HTML is a full document before inlining sub-compositions.
@@ -2282,6 +2299,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    assetRoot,
   });
   if (preparedHeifImages.length > 0) {
     defaultLogger.debug(`[Compiler] Converted ${preparedHeifImages.length} HEIC image(s) to JPEG`);
@@ -2298,17 +2316,20 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
+    assetRoot,
   });
   if (preparedGifs.length > 0) {
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
-  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir);
+  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir, assetRoot);
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
-  const { html, externalAssets } = collectExternalAssets(embeddedHtml, projectDir);
+  const { html, externalAssets } = options.allowOutsideProjectAssets
+    ? collectExternalAssets(embeddedHtml, projectDir)
+    : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 
   for (const [relPath, absPath] of remoteMediaAssets) {
     externalAssets.set(relPath, absPath);
@@ -2345,7 +2366,12 @@ export async function compileForRender(
   for (const video of videos) {
     if (isHttpUrl(video.src)) continue;
     const videoPath = resolve(projectDir, video.src);
-    if (advised.has(videoPath) || namesAnotherNetworkRoot(projectDir, videoPath)) continue;
+    if (
+      advised.has(videoPath) ||
+      namesAnotherNetworkRoot(projectDir, videoPath) ||
+      escapesAssetRoot(videoPath, assetRoot)
+    )
+      continue;
     advised.add(videoPath);
     const reencode = `ffmpeg -i "${video.src}" -c:v libx264 -r 30 -g 30 -keyint_min 30 -movflags +faststart -c:a copy output.mp4`;
     (async () => {
@@ -2947,6 +2973,7 @@ export async function recompileWithResolutions(
   resolutions: ResolvedDuration[],
   projectDir: string,
   downloadDir: string,
+  assetRoot?: string,
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
 
@@ -2957,7 +2984,15 @@ export async function recompileWithResolutions(
   // `data-end` on its host, and re-collecting would newly clamp clips to it —
   // a retiming, not an identity fix. `compiled.videos` was already collected
   // from this same inlined document, so it is complete and correctly keyed.
-  const { subCompositions } = await parseSubCompositions(html, projectDir, downloadDir);
+  const { subCompositions } = await parseSubCompositions(
+    html,
+    projectDir,
+    downloadDir,
+    undefined,
+    undefined,
+    undefined,
+    assetRoot,
+  );
   const { videos, audios, images } = compiled;
 
   const remaining = compiled.unresolvedCompositions.filter(
