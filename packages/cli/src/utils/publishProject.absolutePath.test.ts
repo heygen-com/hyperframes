@@ -115,7 +115,7 @@ describe("a reference to a file outside the project in a private location", () =
     });
     expect(ext).toEqual([]);
     expect(warnings).toEqual([
-      `index.html references ${join(root, ".aws", "credentials")}, which is outside the project in a private location; it was left out of the upload.`,
+      `index.html references ${root}/.aws/credentials, which is outside the project in a private location; it was left out of the upload.`,
     ]);
   });
 
@@ -245,6 +245,27 @@ describe("a reference to a file outside the project in a private location", () =
       const ext = [...staged.keys()].filter((key) => key.startsWith("_ext/"));
       expect(ext).toEqual([expect.stringMatching(/Mobile Documents\/shared\/logo\.png$/)]);
       expect(warnings).toHaveLength(2);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("still copies outside assets for a project that itself sits in the home AppData", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const temps = join(home, "AppData", "Local", "Temp");
+      mkdirSync(join(temps, "shared"), { recursive: true });
+      mkdirSync(join(temps, "p"));
+      writeFileSync(join(temps, "shared", "logo.png"), "png");
+      writeFileSync(join(temps, "p", "index.html"), `<img src="../shared/logo.png">`);
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(join(temps, "p"), Infinity, (w) => warnings.push(w));
+      expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([
+        "_ext/shared/logo.png",
+      ]);
+      expect(warnings).toEqual([]);
     } finally {
       vi.unstubAllEnvs();
     }

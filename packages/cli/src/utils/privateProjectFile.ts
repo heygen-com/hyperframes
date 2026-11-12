@@ -1,4 +1,3 @@
-import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
@@ -19,22 +18,31 @@ function inPrivateLocation(projectDir: string, path: string): boolean {
     .split(/[\\/]/)
     .filter((segment) => segment !== "..");
   return (
-    segmentsPastProjectFolders.some((segment) => segment.startsWith(".")) || inHomeAppData(path)
+    segmentsPastProjectFolders.some((segment) => segment.startsWith(".")) ||
+    inHomeAppData(projectDir, path)
   );
 }
 
-function inHomeAppData(path: string): boolean {
+function isUnder(path: string, ...dir: string[]): boolean {
   const lowerPath = path.toLowerCase();
-  const under = (...dir: string[]) => {
-    const lowerDir = join(homedir(), ...dir).toLowerCase();
-    return lowerPath === lowerDir || lowerPath.startsWith(`${lowerDir}${sep}`);
-  };
-  return (under("AppData") || under("Library")) && !under("Library", "Mobile Documents");
+  const lowerDir = join(homedir(), ...dir).toLowerCase();
+  return lowerPath === lowerDir || lowerPath.startsWith(`${lowerDir}${sep}`);
+}
+
+function homeAppDataFolder(path: string): string | null {
+  if (isUnder(path, "AppData")) return "AppData";
+  if (isUnder(path, "Library") && !isUnder(path, "Library", "Mobile Documents")) return "Library";
+  return null;
+}
+
+function inHomeAppData(projectDir: string, path: string): boolean {
+  const folder = homeAppDataFolder(path);
+  return folder !== null && !isUnder(projectDir, folder);
 }
 
 /** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */
 export function isPrivateOutsideFile(projectDir: string, absPath: string): boolean {
-  const realPath = realpathSync(absPath);
+  const realPath = realFilePath(absPath);
   return (
     isEnvOrGitPath(absPath) ||
     isEnvOrGitPath(realPath) ||
@@ -44,7 +52,7 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
 }
 
 export function linksToPrivateOutsideFile(projectDir: string, filePath: string): boolean {
-  const fromProject = relative(realFilePath(projectDir), realpathSync(filePath));
+  const fromProject = relative(realFilePath(projectDir), realFilePath(filePath));
   const outside =
     fromProject === ".." || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject);
   return outside && isPrivateOutsideFile(projectDir, filePath);
