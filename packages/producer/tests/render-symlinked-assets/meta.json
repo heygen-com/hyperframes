@@ -8,6 +8,7 @@
   "maxAudioLagWindows": 1,
   "renderConfig": {
     "fps": 24,
-    "workers": 1
+    "workers": 1,
+    "allowOutsideProjectAssets": true
   }
 }

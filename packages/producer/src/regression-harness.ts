@@ -148,6 +148,8 @@ type TestMetadata = {
      * `--mode=in-process`. Default is the plan's own default (16).
      */
     maxParallelChunks?: number;
+    /** Render as a trusted local caller (CLI, Studio) that may import files outside `src/`. */
+    allowOutsideProjectAssets?: boolean;
   };
 };
 
@@ -391,6 +393,12 @@ function validateMetadata(meta: unknown): TestMetadata {
   }
   if (rc.hdr !== undefined && typeof rc.hdr !== "boolean") {
     throw new Error("meta.json: 'renderConfig.hdr' must be a boolean (or omit for false)");
+  }
+  if (
+    rc.allowOutsideProjectAssets !== undefined &&
+    typeof rc.allowOutsideProjectAssets !== "boolean"
+  ) {
+    throw new Error("meta.json: 'renderConfig.allowOutsideProjectAssets' must be a boolean");
   }
   if (rc.experimentalFastCapture !== undefined && typeof rc.experimentalFastCapture !== "boolean") {
     throw new Error(
@@ -1132,6 +1140,7 @@ export async function runTestSuite(
         chunkSize: suite.meta.renderConfig.chunkSize,
         maxParallelChunks: suite.meta.renderConfig.maxParallelChunks,
         variables: suite.meta.renderConfig.variables,
+        allowOutsideProjectAssets: suite.meta.renderConfig.allowOutsideProjectAssets,
       };
       if (options.mode === "lambda-local") {
         const runLambdaLocalRender = await loadLambdaLocalRender();
@@ -1166,6 +1175,7 @@ export async function runTestSuite(
           debug: false,
           hdrMode: suite.meta.renderConfig.hdr ? "force-hdr" : "force-sdr",
           variables: suite.meta.renderConfig.variables,
+          allowOutsideProjectAssets: suite.meta.renderConfig.allowOutsideProjectAssets,
         });
 
         await executeRenderJob(job, tempSrcDir, renderedOutputPath);
