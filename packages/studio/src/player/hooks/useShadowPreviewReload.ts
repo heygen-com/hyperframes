@@ -338,7 +338,8 @@ export function useShadowPreviewReload({
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
     const gen = budgetGenRef.current;
-    if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current) return;
+    if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
+      return;
     shadowFrameLeftPageRef.current = false;
     budgetsSpentRef.current = 0;
     logReload("shadow-reattached", { gen });
