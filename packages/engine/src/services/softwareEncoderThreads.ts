@@ -1,4 +1,4 @@
-import { availableParallelism } from "node:os";
+import { usableCpuCount } from "./systemMemory.js";
 
 export const X265_MAX_THREADS = 16;
 
@@ -6,7 +6,7 @@ export const X265_MAX_THREADS = 16;
 export function appendSoftwareEncoderThreadsArg(
   args: string[],
   encoder: "libx264" | "libx265",
-  parallelism: number = availableParallelism(),
+  parallelism: number = usableCpuCount(),
 ): void {
   const cap = encoder === "libx265" ? X265_MAX_THREADS : Infinity;
   args.push("-threads", String(Math.min(cap, Math.max(1, Math.floor(parallelism)))));

@@ -85,6 +85,8 @@ export {
 export {
   getCgroupMemoryLimitMb,
   getSystemTotalMb,
+  hostCpuCount,
+  usableCpuCount,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";

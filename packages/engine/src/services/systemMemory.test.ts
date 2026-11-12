@@ -1,4 +1,8 @@
 // fallow-ignore-file code-duplication
+import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
+import { cpus } from "node:os";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import {
   _resetCgroupLimitCacheForTests,
@@ -401,5 +405,48 @@ describe("getSystemTotalMb", () => {
         expect(isLowMemorySystem()).toBe(false);
       },
     );
+  });
+});
+
+const hasTaskset = process.platform === "linux" && spawnSync("taskset", ["-V"]).status === 0;
+
+describe.skipIf(!hasTaskset)("usableCpuCount under a cpuset", () => {
+  it("is the CPUs the process may run on, while hostCpuCount stays the machine's", () => {
+    const run = spawnSync(
+      "taskset",
+      [
+        ...["-c", "0", process.execPath, "--experimental-strip-types", "--no-warnings", "-e"],
+        `import(${JSON.stringify(join(import.meta.dirname, "systemMemory.ts"))})` +
+          ".then((m) => console.log(m.usableCpuCount(), m.hostCpuCount()))",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(run.stderr).toBe("");
+    expect(run.stdout.trim()).toBe(`1 ${cpus().length}`);
+  });
+});
+
+describe("work is sized by usableCpuCount", () => {
+  it("leaves os.cpus() to systemMemory.ts in engine and producer sources", () => {
+    const packages = join(import.meta.dirname, "../../..");
+    const callers: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (/\.ts$/.test(entry.name) && !/\.test\.ts$/.test(entry.name)) {
+          if (/\bcpus\(\)/.test(readFileSync(path, "utf8")))
+            callers.push(
+              path
+                .slice(packages.length + 1)
+                .split(sep)
+                .join("/"),
+            );
+        }
+      }
+    };
+    walk(join(packages, "engine/src"));
+    walk(join(packages, "producer/src"));
+    expect(callers).toEqual(["engine/src/services/systemMemory.ts"]);
   });
 });

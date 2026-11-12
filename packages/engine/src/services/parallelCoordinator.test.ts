@@ -1,4 +1,4 @@
-import { cpus, totalmem } from "os";
+import { availableParallelism, totalmem } from "os";
 import { getHeapStatistics } from "v8";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
@@ -132,7 +132,12 @@ describe("calculateOptimalWorkers", () => {
 
 vi.mock("os", async (importOriginal) => {
   const os = await importOriginal<typeof import("os")>();
-  return { ...os, default: os, cpus: vi.fn(os.cpus), totalmem: vi.fn(os.totalmem) };
+  return {
+    ...os,
+    default: os,
+    availableParallelism: vi.fn(os.availableParallelism),
+    totalmem: vi.fn(os.totalmem),
+  };
 });
 vi.mock("v8", async (importOriginal) => {
   const v8 = await importOriginal<typeof import("v8")>();
@@ -141,16 +146,14 @@ vi.mock("v8", async (importOriginal) => {
 
 describe("computeWorkerSizing", () => {
   afterEach(() => {
-    vi.mocked(cpus).mockRestore();
+    vi.mocked(availableParallelism).mockRestore();
     vi.mocked(totalmem).mockRestore();
     vi.mocked(getHeapStatistics).mockRestore();
   });
 
   // The field case: a 24GB 14-core Mac, Node's default ~4GB heap, a long 1080x1920 project.
   it("never auto-picks more workers than the V8 heap can feed", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 2096 * 1024 ** 2,
@@ -168,9 +171,7 @@ describe("computeWorkerSizing", () => {
   });
 
   it("keeps the desktop app's 4,192 MB heap at the old per-worker figure (#5149)", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 4192 * 1024 ** 2,
@@ -197,9 +198,7 @@ describe("computeWorkerSizing", () => {
   });
 
   it("sizes Apple-GPU disk capture by its own heap and core budget", () => {
-    vi.mocked(cpus).mockReturnValue(
-      Array.from({ length: 14 }, () => ({}) as ReturnType<typeof cpus>[number]),
-    );
+    vi.mocked(availableParallelism).mockReturnValue(14);
     vi.mocked(totalmem).mockReturnValue(24 * 1024 ** 3);
     vi.mocked(getHeapStatistics).mockReturnValue({
       heap_size_limit: 4192 * 1024 ** 2,

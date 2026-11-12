@@ -13,6 +13,7 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => ({
 // Enough cores that every preparation starts at once, so they can finish in reverse.
 vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
+  availableParallelism: () => 16,
   cpus: () =>
     Array.from({ length: 16 }, () => ({}) as ReturnType<typeof import("node:os").cpus>[number]),
 }));

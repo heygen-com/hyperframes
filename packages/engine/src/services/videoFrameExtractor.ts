@@ -6,10 +6,10 @@
  * Videos are replaced with <img> elements during capture.
  */
 
+import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
-import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
@@ -1051,7 +1051,7 @@ function undoTickRoundingOnTheSourceFrameGrid(
 }
 
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
-const EXTRACTION_SLOTS = Math.max(1, Math.floor(cpus().length / 2));
+const EXTRACTION_SLOTS = Math.max(1, Math.floor(usableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
 const TAIL_PROBE_SLOTS = Math.max(1, Number(process.env.HF_TAIL_PROBE_SLOTS) || 16);
 const inTailProbeSlot = createConcurrencyLimit(TAIL_PROBE_SLOTS);
