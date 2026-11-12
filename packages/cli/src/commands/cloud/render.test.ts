@@ -139,6 +139,46 @@ describe("cloud render --dry-run", () => {
   });
 });
 
+describe("cloud render --dry-run of an imported project", () => {
+  it("leaves out an outside file an imported page references, and names it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-cloud-render-received-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const dir = join(root, "p");
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(root, "notes.txt"), "outside");
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><link href="../notes.txt"></div></body></html>`,
+    );
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: root,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as { archive: { file_count: number } };
+    expect(archive.file_count).toBe(1);
+    expect(result.stderr).toContain(
+      "index.html references ../notes.txt, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    );
+  });
+});
+
 describe("cloud render --dry-run with heavy media", () => {
   it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
     const dir = writeComposition(1920, 1080);

@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stagePublishFiles } from "./publishProject.js";
+import AdmZip from "adm-zip";
+import { buildPublishFileMap, createPublishArchive, stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];
 const temp = () => {
@@ -335,4 +336,168 @@ describe("a reference to a file outside the project in a private location", () =
     const { warnings } = stageIn("p", { "p/index.html": `<a href="../.nothing/here.png">x</a>` });
     expect(warnings).toEqual([]);
   });
+});
+
+describe("outside references in files that came in with an imported project", () => {
+  /** A project `p` beside `shared/logo.png`; `received` lists project files as the desktop app records them. */
+  function stageReceived(files: Record<string, string>, received: unknown) {
+    const root = temp();
+    mkdirSync(join(root, "shared"));
+    writeFileSync(join(root, "shared", "logo.png"), "png");
+    mkdirSync(join(root, "p", ".hyperframes"), { recursive: true });
+    for (const [name, body] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, "p", name)), { recursive: true });
+      writeFileSync(join(root, "p", name), body.replaceAll("<root>", root));
+    }
+    writeFileSync(
+      join(root, "p", ".hyperframes", "received-files.json"),
+      typeof received === "string" ? received : JSON.stringify(received),
+    );
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    const ext = [...staged.keys()].filter((key) => key.startsWith("_ext/"));
+    return { root, staged, warnings, ext };
+  }
+
+  it("leaves out ../, absolute and percent-encoded spellings, and names the file and reference", () => {
+    const { root, warnings, ext } = stageReceived(
+      {
+        "index.html": `<img src="../shared/logo.png"><img src="<root>/shared/logo.png">`,
+        "scenes/a.html": `<img srcset="%2e%2e/%2e%2e/shared/logo.png 1x">`,
+        "style.css": `body { background: url("../shared/logo.png"); }`,
+      },
+      { files: ["index.html", "scenes/a.html", "style.css"] },
+    );
+    expect(ext).toEqual([]);
+    expect(warnings.sort()).toEqual(
+      [
+        `index.html references ${root}/shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.`,
+        "index.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+        "scenes/a.html references %2e%2e/%2e%2e/shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+        "style.css references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+      ].sort(),
+    );
+  });
+
+  it("still copies the same reference from a file the person wrote", () => {
+    const { ext, warnings } = stageReceived(
+      {
+        "index.html": `<img src="../shared/logo.png">`,
+        "mine.html": `<img src="../shared/logo.png">`,
+      },
+      { files: ["index.html"] },
+    );
+    expect(ext).toEqual(["_ext/shared/logo.png"]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("is left out of publish's file map and feedback's repro archive, with the warning", () => {
+    const { root } = stageReceived(
+      { "index.html": `<img src="../shared/logo.png">` },
+      { files: ["index.html"] },
+    );
+    const published: string[] = [];
+    const map = buildPublishFileMap(join(root, "p"), (w) => published.push(w));
+    const repro: string[] = [];
+    const zip = new AdmZip(createPublishArchive(join(root, "p"), (w) => repro.push(w)).buffer);
+    expect([...map.keys()]).toEqual(["index.html"]);
+    expect(zip.getEntries().map((entry) => entry.entryName)).toEqual(["index.html"]);
+    expect(published).toEqual([
+      expect.stringMatching(/^index\.html references \.\.\/shared\/logo\.png,/),
+    ]);
+    expect(repro).toEqual(published);
+  });
+
+  it("never reads a file: URL", () => {
+    const { staged, ext } = stageReceived(
+      { "index.html": `<img src="file://<root>/shared/logo.png">` },
+      { files: ["index.html"] },
+    );
+    expect(ext).toEqual([]);
+    expect(staged.get("index.html")!.toString()).toContain("file://");
+  });
+
+  it("treats every file as received when the record cannot be read", () => {
+    const { ext, warnings } = stageReceived(
+      { "index.html": `<img src="../shared/logo.png">` },
+      "{not json",
+    );
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "leaves out a received link that leads outside, and a reference through a linked folder",
+    () => {
+      const root = temp();
+      mkdirSync(join(root, "shared"));
+      writeFileSync(join(root, "shared", "logo.png"), "png");
+      mkdirSync(join(root, "p", ".hyperframes"), { recursive: true });
+      symlinkSync(join(root, "shared", "logo.png"), join(root, "p", "logo.png"));
+      symlinkSync(join(root, "shared"), join(root, "p", "linked"));
+      writeFileSync(join(root, "p", "index.html"), `<img src="linked/logo.png">`);
+      writeFileSync(
+        join(root, "p", ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: ["index.html", "logo.png"] }),
+      );
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+      expect([...staged.keys()]).toEqual(["index.html"]);
+      expect(warnings.sort()).toEqual([
+        "index.html references linked/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+        "logo.png links to a file outside the project and came in with an imported project; it was left out of the upload.",
+      ]);
+    },
+  );
+});
+
+describe("a project inside a hidden or app-data folder", () => {
+  /** Stages `<home>/<project>` whose index.html refers to `<home>/<secret>` by `spell(secret, project)`. */
+  function reach(project: string, secret: string, spell: (abs: string, rel: string) => string) {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const projectDir = join(home, project);
+      const secretPath = join(home, secret);
+      mkdirSync(projectDir, { recursive: true });
+      mkdirSync(dirname(secretPath), { recursive: true });
+      writeFileSync(secretPath, "KEY");
+      symlinkSync(dirname(secretPath), join(home, "alias"));
+      const rel = relative(projectDir, secretPath).replaceAll("\\", "/");
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<link href="${spell(secretPath, rel).replace("<alias>", join(home, "alias"))}">`,
+      );
+      const warnings: string[] = [];
+      const staged = stagePublishFiles(projectDir, Infinity, (w) => warnings.push(w));
+      return { ext: [...staged.keys()].filter((key) => key.startsWith("_ext/")), warnings };
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }
+
+  const cases: [string, string][] = [
+    [".tool/worktrees/x/p", ".tool/auth.json"],
+    ["AppData/Local/Temp/p", "AppData/Roaming/app/token.json"],
+    ["Library/Application Support/app/p", "Library/Cookies/Cookies.binarycookies"],
+  ];
+  const spellings: [string, (abs: string, rel: string) => string][] = [
+    ["a ../ chain", (_abs, rel) => rel],
+    ["an absolute path", (abs) => abs],
+    ["a percent-encoded chain", (_abs, rel) => rel.replaceAll(".", "%2e").replaceAll(" ", "%20")],
+    ["a linked spelling", (abs) => `<alias>/${basename(abs)}`],
+  ];
+  for (const [project, secret] of cases) {
+    for (const [name, spell] of spellings) {
+      it.skipIf(process.platform === "win32")(
+        `leaves out ${secret} from ${project}, written as ${name}`,
+        () => {
+          const { ext, warnings } = reach(project, secret, spell);
+          expect(ext).toEqual([]);
+          expect(warnings).toHaveLength(1);
+        },
+      );
+    }
+  }
 });

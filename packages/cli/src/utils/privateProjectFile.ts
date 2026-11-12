@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 
 const ENV_FILE = /^\.env([._-].*|rc)?$/;
@@ -11,14 +12,15 @@ export function isEnvOrGitPath(path: string): boolean {
 
 const SYSTEM_DIRS = ["/etc", "/proc", "/sys", "/dev", "/private/etc"];
 
+const isOutside = (fromDir: string) =>
+  fromDir === ".." || fromDir.startsWith(`..${sep}`) || isAbsolute(fromDir);
+
 function inPrivateLocation(projectDir: string, path: string): boolean {
   const posixPath = path.replaceAll("\\", "/");
   if (SYSTEM_DIRS.some((dir) => posixPath === dir || posixPath.startsWith(`${dir}/`))) return true;
-  const segmentsPastProjectFolders = relative(projectDir, path)
-    .split(/[\\/]/)
-    .filter((segment) => segment !== "..");
+  const fromParent = relative(dirname(projectDir), path);
   return (
-    segmentsPastProjectFolders.some((segment) => segment.startsWith(".")) ||
+    (isOutside(fromParent) ? path : fromParent).split(/[\\/]/).some((s) => s.startsWith(".")) ||
     inHomeAppData(projectDir, path)
   );
 }
@@ -40,7 +42,10 @@ function homeAppDataFolder(path: string): string | null {
 
 function inHomeAppData(projectDir: string, path: string): boolean {
   const folder = homeAppDataFolder(path);
-  return folder !== null && homeAppDataFolder(projectDir) !== folder;
+  const parent = dirname(projectDir);
+  return (
+    folder !== null && (homeAppDataFolder(parent) !== folder || isOutside(relative(parent, path)))
+  );
 }
 
 /** An existing file outside the project that publish leaves out: env files, Git data, hidden, system and app-data folders. */
@@ -54,11 +59,25 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
   );
 }
 
+export const linksOutside = (projectDir: string, filePath: string): boolean =>
+  isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
+
 export function linksToPrivateOutsideFile(projectDir: string, filePath: string): boolean {
-  const fromProject = relative(realFilePath(projectDir), realFilePath(filePath));
-  const outside =
-    fromProject === ".." || fromProject.startsWith(`..${sep}`) || isAbsolute(fromProject);
-  return outside && isPrivateOutsideFile(projectDir, filePath);
+  return linksOutside(projectDir, filePath) && isPrivateOutsideFile(projectDir, filePath);
+}
+
+export function receivedFiles(projectDir: string): (path: string) => boolean {
+  let listed: unknown;
+  try {
+    listed = JSON.parse(
+      readFileSync(join(projectDir, ".hyperframes", "received-files.json"), "utf-8"),
+    ).files;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return () => false;
+  }
+  if (!Array.isArray(listed)) return () => true;
+  const files = new Set(listed.map((path) => String(path).normalize("NFC")));
+  return (path) => files.has(path.normalize("NFC"));
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
