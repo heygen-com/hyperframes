@@ -1,10 +1,10 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * The port goes to `window.parent` once, when the parent asks for it, so only
- * the parent holds a channel. A connect posted by anything else, including the
- * page itself, is ignored and does not use up the handoff. Requests on the port
- * are validated before they run; a bad one gets a typed error reply, never a throw.
+ * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
+ * remounted client is served too; a connect from anything else is ignored. Earlier ports stay
+ * open: a client may take any one of them, and a disposed client closes its own.
+ * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
 import {
@@ -99,7 +99,7 @@ function failure(id: number, err: unknown): EditingReply {
 }
 
 export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  let port: MessagePort | null = null;
+  const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.
     if (parent === window || event.source !== parent) return;
@@ -107,9 +107,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    window.removeEventListener("message", onMessage);
     const channel = new MessageChannel();
-    port = channel.port1;
+    const port = channel.port1;
+    ports.add(port);
     serve(port);
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
@@ -121,13 +121,15 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     } catch (err) {
       swallow("editingAgent.handoff", err);
       port.close();
+      ports.delete(port);
     }
   };
   window.addEventListener("message", onMessage);
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      port?.close();
+      for (const port of ports) port.close();
+      ports.clear();
     },
   };
 }

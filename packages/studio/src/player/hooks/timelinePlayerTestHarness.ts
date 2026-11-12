@@ -60,13 +60,18 @@ export function renderTimelinePlayerHarness(options?: UseTimelinePlayerOptions) 
   };
 }
 
-export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
+export function detachedFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   Object.defineProperty(iframe, "contentWindow", { value: iframeWindow, configurable: true });
   Object.defineProperty(iframe, "contentDocument", {
     value: document.implementation.createHTMLDocument("preview"),
     configurable: true,
   });
+  return iframe;
+}
+
+export function makeFakeIframe(iframeWindow: Record<string, unknown>): HTMLIFrameElement {
+  const iframe = detachedFakeIframe(iframeWindow);
   document.body.appendChild(iframe);
   return iframe;
 }
@@ -147,4 +152,24 @@ export async function paintShadow(getApi: () => TimelinePlayerApi, shadow: HTMLI
     getApi().onShadowReadyChange(slot.gen, true);
   });
   return slot.gen;
+}
+
+export function serveEditingRequests(
+  frame: Record<string, unknown>,
+  answer: (kind: string, params: unknown) => unknown,
+): () => void {
+  const ports: MessagePort[] = [];
+  frame.postMessage = (message: { type?: string } | null) => {
+    if (message?.type !== "editing-connect") return;
+    const { port1, port2 } = new MessageChannel();
+    ports.push(port1);
+    port1.onmessage = (event: MessageEvent<{ id: number; kind: string; params: unknown }>) => {
+      const { id, kind, params } = event.data;
+      port1.postMessage({ v: 1, id, ok: true, result: answer(kind, params) });
+    };
+    const handoff = { source: "hf-preview", type: "editing-port", v: 1 };
+    const source = frame as unknown as Window;
+    window.dispatchEvent(new MessageEvent("message", { source, data: handoff, ports: [port2] }));
+  };
+  return () => ports.forEach((port) => port.close());
 }
