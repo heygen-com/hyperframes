@@ -27,7 +27,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function mount(kind: "drag" | "resize" | "rotate", { overlayWidth = 500 } = {}) {
+function mount(
+  kind: "drag" | "resize" | "rotate",
+  { overlayWidth = 500, height = 60, stageHeight = 400 } = {},
+) {
   const host = document.createElement("div");
   const overlay = document.createElement("div");
   const iframe = document.createElement("iframe");
@@ -44,9 +47,8 @@ function mount(kind: "drag" | "resize" | "rotate", { overlayWidth = 500 } = {}) 
   let x = 70.25;
   let y = 40.75;
   const width = 100;
-  const height = 60;
   overlay.getBoundingClientRect = () => new DOMRect(20, 30, overlayWidth, 400);
-  iframe.getBoundingClientRect = () => new DOMRect(20, 30, overlayWidth, 400);
+  iframe.getBoundingClientRect = () => new DOMRect(20, 30, overlayWidth, stageHeight);
   composition.getBoundingClientRect = () => new DOMRect(0, 0, 1000, 800);
   element.getBoundingClientRect = () => new DOMRect(x, y, width, height);
   Object.defineProperties(element, {
@@ -255,5 +257,38 @@ describe("gesture readout", () => {
     updateGestureReadoutAngle(readout, 0);
     expect(readout?.rect.width).toBeCloseTo(50, 5);
     expect(readout?.text).toBe("↻ 0°");
+  });
+  const inside = (label: HTMLElement, top: number, bottom: number) => {
+    const y = Number.parseFloat(label.style.top);
+    expect(y).toBeGreaterThanOrEqual(top);
+    expect(y + 32).toBeLessThanOrEqual(bottom);
+  };
+  it("stays inside the stage when the element touches the bottom edge", () => {
+    const view = mount("drag");
+    view.move(300, 740);
+    view.draw();
+    inside(view.label, 4, 396);
+  });
+  it("stays inside the stage when the element touches the top edge", () => {
+    const view = mount("drag");
+    view.move(300, 0);
+    view.draw();
+    inside(view.label, 4, 396);
+  });
+  it("stays inside the stage for an element as tall as the stage", () => {
+    const view = mount("drag", { height: 800 });
+    view.move(300, 0);
+    view.draw();
+    inside(view.label, 4, 396);
+    const narrow = mount("drag", { height: 800, overlayWidth: 150 });
+    narrow.move(100, 0);
+    narrow.draw();
+    inside(narrow.label, 4, 396);
+  });
+  it("bounds the chip by the stage, not the larger canvas area around it", () => {
+    const view = mount("drag", { stageHeight: 300 });
+    view.move(300, 500);
+    view.draw();
+    inside(view.label, 4, 296);
   });
 });

@@ -33,10 +33,15 @@ function positionGestureReadout(
   if (!readout) return;
   const bounds = readout.basis.overlayRect;
   const rect = readout.rect;
-  const minX = Math.max(0, -bounds.left) + 4;
-  const minY = Math.max(0, -bounds.top) + 4;
-  const maxX = Math.min(bounds.width, readout.viewportWidth - bounds.left) - 4;
-  const maxY = Math.min(bounds.height, readout.viewportHeight - bounds.top) - 4;
+  const stage = readout.basis.iframeRect;
+  const stageLeft = stage.left - bounds.left;
+  const stageTop = stage.top - bounds.top;
+  const minX = Math.max(0, -bounds.left, stageLeft) + 4;
+  const minY = Math.max(0, -bounds.top, stageTop) + 4;
+  const maxX =
+    Math.min(bounds.width, readout.viewportWidth - bounds.left, stageLeft + stage.width) - 4;
+  const maxY =
+    Math.min(bounds.height, readout.viewportHeight - bounds.top, stageTop + stage.height) - 4;
   const width = text.length * CHAR_PX + CHIP_PADDING_PX;
   const right = rect.left + rect.width;
   const middle = rect.top + rect.height / 2 - CHIP_HEIGHT_PX / 2;
