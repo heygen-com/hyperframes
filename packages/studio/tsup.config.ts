@@ -6,6 +6,7 @@ export default defineConfig({
     index: "src/index.ts",
     ui: "src/ui.ts",
     player: "src/playerEntry.ts",
+    keys: "src/keys.ts",
     "styles/tailwind-preset": "src/styles/tailwind-preset.ts",
   },
   format: ["esm"],

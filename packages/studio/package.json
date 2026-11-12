@@ -33,6 +33,11 @@
       "import": "./src/playerEntry.ts",
       "types": "./src/playerEntry.ts"
     },
+    "./keys": {
+      "bun": "./src/keys.ts",
+      "import": "./src/keys.ts",
+      "types": "./src/keys.ts"
+    },
     "./tailwind-preset": {
       "bun": "./src/styles/tailwind-preset.ts",
       "import": "./src/styles/tailwind-preset.ts",
@@ -57,6 +62,10 @@
       "./player": {
         "import": "./dist/player.js",
         "types": "./dist/player.d.ts"
+      },
+      "./keys": {
+        "import": "./dist/keys.js",
+        "types": "./dist/keys.d.ts"
       },
       "./tailwind-preset": {
         "import": "./dist/styles/tailwind-preset.js",
