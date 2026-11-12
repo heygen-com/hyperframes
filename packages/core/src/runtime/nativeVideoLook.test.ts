@@ -50,16 +50,37 @@ it("applies to Chromium on a Mac and to nothing else", () => {
   expect(nativeVideoLookNeeded()).toBe(false);
 });
 
+const factsFor = (entries: Record<string, number | undefined>) => {
+  window.__HF_MEDIA_SOURCE_FACTS__ = Object.fromEntries(
+    Object.entries(entries).map(([path, bitDepth]) => [
+      path,
+      { width: 64, height: 36, bitrate: 1, bitDepth: bitDepth as number },
+    ]),
+  );
+};
+const videoAt = (src: string) => {
+  const video = document.createElement("video");
+  video.setAttribute("src", src);
+  document.body.append(video);
+  return video;
+};
+const lookOf = (video: HTMLVideoElement, authored = "none") => {
+  const canvas = document.createElement("canvas");
+  applyNativeVideoLook(canvas, video, authored);
+  return canvas.style.filter;
+};
+const LOOK = new RegExp(`^url\\("?#${NATIVE_VIDEO_LOOK_FILTER_ID}"?\\)`);
+
+afterEach(() => {
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+});
+
 it("puts the look ahead of an authored filter and defines it once", () => {
   asBrowser(MAC_CHROME);
-  const first = document.createElement("canvas");
-  const second = document.createElement("canvas");
-  applyNativeVideoLook(first, "none");
-  applyNativeVideoLook(second, "blur(2px)");
-  expect(first.style.filter).toMatch(new RegExp(`^url\\("?#${NATIVE_VIDEO_LOOK_FILTER_ID}"?\\)$`));
-  expect(second.style.filter).toMatch(
-    new RegExp(`^url\\("?#${NATIVE_VIDEO_LOOK_FILTER_ID}"?\\) blur\\(2px\\)$`),
-  );
+  factsFor({ "/a.mp4": 8 });
+  const video = videoAt("/a.mp4");
+  expect(lookOf(video)).toMatch(new RegExp(`${LOOK.source}$`));
+  expect(lookOf(video, "blur(2px)")).toMatch(new RegExp(`${LOOK.source} blur\\(2px\\)$`));
   expect(document.querySelectorAll(`#${NATIVE_VIDEO_LOOK_FILTER_ID}`)).toHaveLength(1);
   // Saved source drops every element carrying the preview-canvas mark, so the filter never reaches a project file.
   expect(document.querySelector("svg")?.hasAttribute("data-hf-preview-video-canvas")).toBe(true);
@@ -67,8 +88,41 @@ it("puts the look ahead of an authored filter and defines it once", () => {
 
 it("leaves the canvas alone where the video layer already agrees with it", () => {
   asBrowser(WINDOWS_CHROME);
-  const canvas = document.createElement("canvas");
-  applyNativeVideoLook(canvas, "blur(2px)");
-  expect(canvas.style.filter).toBe("");
+  factsFor({ "/a.mp4": 8 });
+  expect(lookOf(videoAt("/a.mp4"), "blur(2px)")).toBe("");
   expect(document.getElementById(NATIVE_VIDEO_LOOK_FILTER_ID)).toBeNull();
+});
+
+it("applies only to a source known to be 8-bit", () => {
+  asBrowser(MAC_CHROME);
+  factsFor({ "/ten.mp4": 10, "/unknown.mp4": undefined });
+  expect(lookOf(videoAt("/ten.mp4"))).toBe("");
+  expect(lookOf(videoAt("/unknown.mp4"))).toBe("");
+});
+
+it("leaves a source alone when the scan has no facts for it", () => {
+  asBrowser(MAC_CHROME);
+  expect(lookOf(videoAt("/a.mp4"))).toBe("");
+  factsFor({ "/other.mp4": 8 });
+  expect(lookOf(videoAt("/a.mp4"))).toBe("");
+});
+
+it("leaves a remote source alone even when its path matches a scanned file", () => {
+  asBrowser(MAC_CHROME);
+  factsFor({ "/a.mp4": 8 });
+  expect(lookOf(videoAt("https://cdn.example.com/a.mp4"))).toBe("");
+});
+
+it("finds a source's facts the way the media proxy does: prefix, case and normalization", () => {
+  asBrowser(MAC_CHROME);
+  factsFor({ "/assets/a.mp4": 8, "/Original.WEBM": 10, "/Café.mp4": 8 });
+  expect(lookOf(videoAt("/api/projects/p/preview/assets/a.mp4"))).toMatch(LOOK);
+  expect(lookOf(videoAt("/original.webm"))).toBe("");
+  expect(lookOf(videoAt(`/Cafe\u0301.mp4`))).toMatch(LOOK);
+});
+
+it("does not guess between two equally good normalized matches", () => {
+  asBrowser(MAC_CHROME);
+  factsFor({ "/Clip.mp4": 8, "/clip.MP4": 8 });
+  expect(lookOf(videoAt("/CLIP.mp4"))).toBe("");
 });

@@ -1,5 +1,6 @@
 import { isWebKit } from "./mediaClock";
 import { PREVIEW_VIDEO_CANVAS_ATTR } from "../studioPreviewMark";
+import { sourceFactsOf } from "./mediaSourceLookup";
 
 /** The one owner of how a decoded frame on a canvas is made to look like the browser's own video layer, which on
  * macOS Chromium shows 8-bit SDR video with Apple's video gamma (about 1.961) where a canvas shows it as sRGB.
@@ -21,24 +22,10 @@ export function nativeVideoLookNeeded(): boolean {
   return /Macintosh/.test(userAgent) && !isWebKit() && /Chrom(e|ium)\//.test(userAgent);
 }
 
-type SourceFacts = Record<string, { bitDepth?: number } | undefined>;
-
-/** Whether the studio's scan (keyed by the end of the file's path) says this video has more than 8 bits per channel. */
-export function isHighBitDepthSource(video: HTMLVideoElement): boolean {
-  const facts = (window as unknown as { __HF_MEDIA_SOURCE_FACTS__?: SourceFacts })
-    .__HF_MEDIA_SOURCE_FACTS__;
-  const src = video.currentSrc || video.getAttribute("src");
-  if (!facts || !src) return false;
-  let path: string;
-  try {
-    path = decodeURIComponent(new URL(src, video.ownerDocument.baseURI).pathname);
-  } catch {
-    return false;
-  }
-  const match = Object.keys(facts)
-    .filter((suffix) => path.endsWith(suffix))
-    .sort((a, b) => b.length - a.length)[0];
-  return (match === undefined ? 8 : (facts[match]?.bitDepth ?? 8)) > 8;
+/** Only a source the studio's scan positively reports as 8-bit is measured; unknown or higher depth is left alone. */
+function isKnownSdrSource(video: HTMLVideoElement): boolean {
+  const bitDepth = sourceFactsOf(video)?.bitDepth;
+  return typeof bitDepth === "number" && bitDepth > 0 && bitDepth <= 8;
 }
 
 function ensureFilter(doc: Document): void {
@@ -57,8 +44,12 @@ function ensureFilter(doc: Document): void {
 }
 
 /** Gives the visible stand-in canvas the look its video layer has, ahead of any authored filter. */
-export function applyNativeVideoLook(canvas: HTMLCanvasElement, authoredFilter: string): void {
-  if (!nativeVideoLookNeeded()) return;
+export function applyNativeVideoLook(
+  canvas: HTMLCanvasElement,
+  video: HTMLVideoElement,
+  authoredFilter: string,
+): void {
+  if (!nativeVideoLookNeeded() || !isKnownSdrSource(video)) return;
   ensureFilter(canvas.ownerDocument);
   const look = `url(#${NATIVE_VIDEO_LOOK_FILTER_ID})`;
   canvas.style.setProperty(

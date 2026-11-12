@@ -10,7 +10,6 @@ const syncRuntimeMedia = (
 ) => syncRuntimeMediaWithDuration({ getCompositionDuration: () => 0, ...params });
 
 import {
-  deriveCodecMapKey,
   handleErrorForProxy,
   describeVideoSources,
   handleMetadataForProxy,
@@ -18,6 +17,7 @@ import {
   swapToProxy,
   type MediaCodecMapEntry,
 } from "./mediaProxy";
+import { deriveCodecMapKey } from "./mediaSourceLookup";
 import { recordOpenedAtInPoint, unproxiedSrc } from "./proxySrc";
 
 vi.mock("./bridge", () => ({
