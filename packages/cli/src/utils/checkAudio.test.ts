@@ -12,7 +12,12 @@ const dir = mkdtempSync(join(tmpdir(), "hf-check-audio-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 /** A mono 16-bit WAV of `seconds`, each sample from `fill`; `byteRate` is the header's claim. */
-function wav(name: string, seconds: number, fill: (t: number) => number, byteRate = RATE * 2): string {
+function wav(
+  name: string,
+  seconds: number,
+  fill: (t: number) => number,
+  byteRate = RATE * 2,
+): string {
   const frames = Math.round(seconds * RATE);
   const data = Buffer.alloc(frames * 2);
   for (let i = 0; i < frames; i++) data.writeInt16LE(Math.round(fill(i / RATE) * 32767), i * 2);
