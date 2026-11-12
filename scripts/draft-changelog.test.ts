@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   escapeForMdx,
   findSkippedReleaseTags,
+  releaseVersionsInSubjects,
   parseArgs,
   parseCommit,
   renderCommitBullet,
@@ -148,6 +149,28 @@ describe("skipped release tags", () => {
 
   it("accepts a baseline with or without the v prefix", () => {
     assert.deepEqual(findSkippedReleaseTags(TAGS, "0.8.50", "0.8.52"), ["0.8.51"]);
+  });
+});
+
+describe("releases found by their commit", () => {
+  it("reads the version of each release commit, squash-merge suffix or not", () => {
+    assert.deepEqual(
+      releaseVersionsInSubjects([
+        "fix(core): a change (#1)",
+        "chore: release v0.9.37 (#7578)",
+        "chore: release v0.9.36",
+        "chore: release v0.9.35-alpha.1",
+      ]),
+      ["0.9.37", "0.9.36"],
+    );
+  });
+
+  it("names a release whose tag this clone never fetched", () => {
+    // The v0.9.38 cut: tags v0.9.32 to v0.9.37 were missing, so describe chose v0.9.31.
+    const released = releaseVersionsInSubjects(["chore: release v0.9.37 (#7578)"]);
+    assert.deepEqual(findSkippedReleaseTags(["0.9.31", ...released], "v0.9.31", "0.9.38"), [
+      "0.9.37",
+    ]);
   });
 });
 
