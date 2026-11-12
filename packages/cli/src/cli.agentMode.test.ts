@@ -291,7 +291,6 @@ describe("agent-mode contract", () => {
     ["find crossfade", "Did you mean 'hyperframes catalog'?"],
     ["list", "Did you mean 'hyperframes catalog'?"],
     ["browse", "Did you mean 'hyperframes catalog'?"],
-    ["registry", "Did you mean 'hyperframes catalog'?"],
   ])(
     "unknown command `%s` suggests the closest one, usage on stderr, exit 2",
     async (args, hint) => {
@@ -302,6 +301,17 @@ describe("agent-mode contract", () => {
       expect(run.stderr).toContain(hint);
     },
   );
+
+  it("`registry search` runs catalog, unlisted", async () => {
+    const [alias, catalog] = await Promise.all([
+      runAsAgent(["registry", "search", "--help"]),
+      runAsAgent(["catalog", "--help"]),
+    ]);
+    expectQuiet(alias);
+    expect(alias.code).toBe(0);
+    expect(alias.stdout).toBe(catalog.stdout);
+    expect((await runAsAgent(["--help"])).stdout).not.toMatch(/^\s+registry\b/m);
+  });
 
   it.each([["lint"], ["check"], ["info"], ["validate"], ["layout"], ["inspect"]])(
     "%s --json in an empty directory names the real failure, and no notice",
