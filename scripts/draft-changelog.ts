@@ -11,6 +11,7 @@ import {
   validateCliVersion,
   type InlineValueOption,
 } from "./cli-options.ts";
+import { skipsChangelog } from "./changelog-skip.mjs";
 import { CHANGELOG_REVIEW_TODO, CHANGELOG_STYLE_NOTE, compareSemver } from "./set-version.ts";
 
 /**
@@ -304,12 +305,7 @@ function getCommits(from: string, to: string): RawCommit[] {
 }
 
 export function shouldSkipCommit(commit: RawCommit) {
-  const subject = commit.subject.toLowerCase();
-  return (
-    subject.includes("[skip changelog]") ||
-    /^chore: release v\d+\.\d+\.\d+/.test(subject) ||
-    /^chore: bump version/.test(subject)
-  );
+  return skipsChangelog(commit.subject);
 }
 
 export function parseCommit(commit: RawCommit): ParsedCommit {
