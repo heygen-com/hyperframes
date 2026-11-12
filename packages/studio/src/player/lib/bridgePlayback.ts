@@ -8,7 +8,12 @@ interface PlaybackMirror {
   time: number;
   duration: number;
   playing: boolean;
+  /** A seek the runtime has not confirmed yet, and until when to wait for it. */
+  seekTo: number | null;
+  seekUntil: number;
 }
+
+const SEEK_CONFIRM_MS = 500;
 
 /** Keyed by the frame's window, which a frame keeps across its loads. */
 const mirrors = new WeakMap<object, PlaybackMirror>();
@@ -16,7 +21,7 @@ const mirrors = new WeakMap<object, PlaybackMirror>();
 function mirrorFor(frame: object): PlaybackMirror {
   let mirror = mirrors.get(frame);
   if (!mirror) {
-    mirror = { time: 0, duration: 0, playing: false };
+    mirror = { time: 0, duration: 0, playing: false, seekTo: null, seekUntil: 0 };
     mirrors.set(frame, mirror);
   }
   return mirror;
@@ -46,7 +51,13 @@ function mirrorRuntimePlayback(event: MessageEvent): void {
     if (finiteAtLeastZero(message.durationSeconds)) mirror.duration = message.durationSeconds;
     return;
   }
-  if (finiteAtLeastZero(message.currentTime)) mirror.time = message.currentTime;
+  if (!finiteAtLeastZero(message.currentTime)) return;
+  // A state posted before the runtime handled our seek would put the playhead back.
+  if (mirror.seekTo !== null && performance.now() < mirror.seekUntil) {
+    if (Math.abs(message.currentTime - mirror.seekTo) > 0.001) return;
+  }
+  mirror.seekTo = null;
+  mirror.time = message.currentTime;
   mirror.playing = message.isPlaying === true;
 }
 
@@ -70,7 +81,7 @@ export function bridgePlaybackAdapter(iframe: HTMLIFrameElement): PlaybackAdapte
     // The bridge's seek takes no keepPlaying or settled option yet.
     seek: (time) => {
       send("seek", { timeSeconds: time });
-      mirror.time = time;
+      Object.assign(mirror, { time, seekTo: time, seekUntil: performance.now() + SEEK_CONFIRM_MS });
     },
     getTime: () => mirror.time,
     getDuration: () => mirror.duration,

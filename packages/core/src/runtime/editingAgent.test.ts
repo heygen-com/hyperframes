@@ -57,21 +57,25 @@ describe("installEditingAgent", () => {
     expect(transfer).toHaveLength(1);
   });
 
-  it("hands a fresh port to a later connect from the parent and closes the old one", async () => {
+  it("hands a fresh port to each later connect from the parent and keeps the earlier one working", async () => {
     const old = connectedPort();
-    const oldClosed = new Promise<void>((resolve) =>
-      old.addEventListener("close", () => resolve(), { once: true }),
-    );
     post(parent, CONNECT);
     expect(handoff).toHaveBeenCalledTimes(2);
     const fresh = (handoff.mock.calls[1][2] as MessagePort[])[0];
     expect(fresh).not.toBe(old);
-    await oldClosed;
-    const unanswered = vi.fn();
-    old.onmessage = unanswered;
-    old.postMessage({ v: 1, id: 1, kind: "hello" });
+    expect(await ask(old, { v: 1, id: 1, kind: "hello" })).toMatchObject({ id: 1, ok: true });
     expect(await ask(fresh, { v: 1, id: 2, kind: "hello" })).toMatchObject({ id: 2, ok: true });
-    expect(unanswered).not.toHaveBeenCalled();
+  });
+
+  it("closes every port it handed over when disposed", async () => {
+    const first = connectedPort();
+    post(parent, CONNECT);
+    const second = (handoff.mock.calls[1][2] as MessagePort[])[0];
+    const closed = [first, second].map(
+      (port) => new Promise<void>((resolve) => port.addEventListener("close", () => resolve())),
+    );
+    agent.dispose();
+    await Promise.all(closed);
   });
 
   it("ignores a connect from the page itself or another frame, without using up the handoff", () => {

@@ -47,13 +47,24 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
   });
 }
 
-export function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number): Promise<void> {
-  return previewEditingClient(iframe)
-    .request("wait-for-seek", {}, { timeoutMs })
-    .then(
-      () => {},
-      () => {},
-    );
+export const AGENT_PROBE_MS = 1_000;
+
+/** Gives up after AGENT_PROBE_MS with no port: a runtime without the editing agent never answers. */
+export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {
+  const client = previewEditingClient(iframe);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const probe = new Promise<boolean>(
+    (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
+  );
+  const connected = await Promise.race([
+    client.ready.then(
+      () => true,
+      () => false,
+    ),
+    probe,
+  ]);
+  clearTimeout(timer);
+  if (connected) await client.request("wait-for-seek", {}, { timeoutMs }).catch(() => {});
 }
 
 /** The reply is frame data, so its shape is checked. */

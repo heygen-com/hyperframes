@@ -93,6 +93,43 @@ describe("createEditingPortClient", () => {
     }
   });
 
+  // The runtime posts `ready` before it installs its agent, so a client can send its connect
+  // twice and receive two ports. Each step below is one queued delivery, run in the order given.
+  it.each([
+    ["ready before either port", ["ready", "agent", "agent", "port", "port"]],
+    ["ready between the connects", ["agent", "ready", "port", "agent", "port"]],
+    ["first port before ready", ["agent", "port", "ready", "agent", "port"]],
+  ])("keeps a working port when %s", async (_name, steps) => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    const toAgent: unknown[] = [];
+    const toHost: Partial<MessageEvent>[] = [];
+    parent.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) => {
+      ports.push(...transfer);
+      toHost.push({ source: frame, data, ports: transfer });
+    }) as Window["postMessage"];
+    frame.postMessage = ((data: unknown) => toAgent.push(data)) as Window["postMessage"];
+    const agent = installEditingAgent(parent);
+    try {
+      const client = createEditingPortClient({ iframe, host, timeoutMs: 300 });
+      clients.push(client);
+      for (const step of steps) {
+        if (step === "ready")
+          deliver({ source: frame, data: { source: "hf-preview", type: "ready" } });
+        else if (step === "port") deliver(toHost.shift() ?? {});
+        else if (toAgent.length > 0)
+          window.dispatchEvent(
+            new MessageEvent("message", { source: parent, data: toAgent.shift() }),
+          );
+      }
+      await client.ready;
+      await expect(client.request("hello", {})).resolves.toMatchObject({ version: 1 });
+    } finally {
+      agent.dispose();
+    }
+  });
+
   it("asks for the port at once and on ready, and takes it only from its own frame", async () => {
     const { iframe, frame, connects } = previewFrame();
     const { host, deliver } = fakeHost();

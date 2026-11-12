@@ -1,8 +1,9 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * Each connect from `window.parent` closes the previous port and hands it a fresh
- * one, so only the parent holds a channel; a connect from anything else is ignored.
+ * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
+ * remounted client is served too; a connect from anything else is ignored. Earlier ports stay
+ * open: a client may take any one of them, and a disposed client closes its own.
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
@@ -98,7 +99,7 @@ function failure(id: number, err: unknown): EditingReply {
 }
 
 export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  let port: MessagePort | null = null;
+  const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.
     if (parent === window || event.source !== parent) return;
@@ -106,9 +107,9 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
     if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    port?.close();
     const channel = new MessageChannel();
-    port = channel.port1;
+    const port = channel.port1;
+    ports.add(port);
     serve(port);
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
@@ -120,15 +121,15 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     } catch (err) {
       swallow("editingAgent.handoff", err);
       port.close();
-      port = null;
+      ports.delete(port);
     }
   };
   window.addEventListener("message", onMessage);
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      port?.close();
-      port = null;
+      for (const port of ports) port.close();
+      ports.clear();
     },
   };
 }

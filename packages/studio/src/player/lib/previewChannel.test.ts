@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  AGENT_PROBE_MS,
   previewClipManifest,
   previewEditingClient,
   previewFrameOpaque,
@@ -107,7 +108,9 @@ describe("previewEditingClient", () => {
     const { iframe, handed } = servedFrame(() => ({ waited: true }));
     await previewSeekPainted(iframe);
     expect(handed).toHaveBeenCalledWith("wait-for-seek", {});
-    await expect(previewSeekPainted(opaqueFrame().iframe, 20)).resolves.toBeUndefined();
+    const started = Date.now();
+    await previewSeekPainted(opaqueFrame().iframe, 15_000);
+    expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);
   });
 
   it("returns the runtime's manifest only when its reply has the manifest's shape", async () => {
@@ -146,6 +149,26 @@ describe("bridge playback for a frame Studio cannot script", () => {
     ]);
     expect(adapter!.getTime()).toBe(4);
     expect(adapter!.isPlaying()).toBe(false);
+  });
+
+  it("keeps a seek until the runtime confirms it, so a state posted before it cannot undo it", () => {
+    const { iframe, frame } = opaqueFrame();
+    const adapter = bridgePlaybackAdapter(iframe)!;
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1_000);
+    try {
+      adapter.seek(4);
+      fromFrame(frame, { type: "state", currentTime: 1, isPlaying: false });
+      expect(adapter.getTime()).toBe(4);
+      fromFrame(frame, { type: "state", currentTime: 4, isPlaying: false });
+      fromFrame(frame, { type: "state", currentTime: 4.5, isPlaying: true });
+      expect(adapter.getTime()).toBe(4.5);
+      adapter.seek(99);
+      clock.mockReturnValue(2_000);
+      fromFrame(frame, { type: "state", currentTime: 12, isPlaying: false });
+      expect(adapter.getTime()).toBe(12);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("takes time, play state and duration from its own frame's state and timeline messages", () => {
