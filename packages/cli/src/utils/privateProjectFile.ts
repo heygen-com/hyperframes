@@ -29,9 +29,12 @@ function isUnder(path: string, ...dir: string[]): boolean {
   return lowerPath === lowerDir || lowerPath.startsWith(`${lowerDir}${sep}`);
 }
 
+const CLOUD_DRIVE_FOLDERS = ["Mobile Documents", "CloudStorage"];
+
 function homeAppDataFolder(path: string): string | null {
   if (isUnder(path, "AppData")) return "AppData";
-  if (isUnder(path, "Library") && !isUnder(path, "Library", "Mobile Documents")) return "Library";
+  const cloudDrive = CLOUD_DRIVE_FOLDERS.some((folder) => isUnder(path, "Library", folder));
+  if (isUnder(path, "Library") && !cloudDrive) return "Library";
   return null;
 }
 

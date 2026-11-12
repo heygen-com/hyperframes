@@ -291,6 +291,36 @@ describe("a reference to a file outside the project in a private location", () =
     }
   });
 
+  it("treats Library/CloudStorage like iCloud Drive, in both directions", () => {
+    const home = temp();
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    try {
+      const dropbox = join(home, "Library", "CloudStorage", "Dropbox");
+      const token = join(home, "Library", "Application Support", "app", "token.json");
+      const logo = join(dropbox, "shared", "logo.png");
+      for (const file of [token, logo]) {
+        mkdirSync(dirname(file), { recursive: true });
+        writeFileSync(file, "x");
+      }
+      mkdirSync(join(dropbox, "p"));
+      writeFileSync(join(dropbox, "p", "index.html"), `<img src="${token}">`);
+      const inDrive: string[] = [];
+      const fromDrive = stagePublishFiles(join(dropbox, "p"), Infinity, (w) => inDrive.push(w));
+      expect([...fromDrive.keys()].some((key) => key.startsWith("_ext/"))).toBe(false);
+      expect(inDrive).toHaveLength(1);
+
+      const project = temp();
+      writeFileSync(join(project, "index.html"), `<img src="${logo}">`);
+      const outside: string[] = [];
+      const toDrive = stagePublishFiles(project, Infinity, (w) => outside.push(w));
+      expect([...toDrive.keys()].filter((key) => key.startsWith("_ext/"))).toHaveLength(1);
+      expect(outside).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("still copies a sibling asset folder named library or AppData outside the home folder", () => {
     const { ext, warnings } = stageIn("p", {
       "library/logo.png": "png",
