@@ -13,9 +13,13 @@ export function chromeKillCommand(
   };
 }
 
-const WATCHDOG = `let clean = false;
+export const WATCHDOG = `let clean = false;
+let gone = false;
+const alive = () => { try { return process.kill(Number(process.env.HF_CHROME_PID), 0); } catch { return false; } };
+const watch = setInterval(() => { gone ||= !alive(); }, 500);
 const done = () => {
-  if (!clean) {
+  clearInterval(watch);
+  if (!clean && !gone && alive()) {
     const { file, args } = JSON.parse(process.env.HF_CHROME_KILL);
     require("node:child_process").spawnSync(file, args, { windowsHide: true, timeout: 20000 });
   }
@@ -45,6 +49,7 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
     detached: true,
     env: {
       ...process.env,
+      HF_CHROME_PID: String(chrome.pid),
       HF_CHROME_KILL: JSON.stringify(chromeKillCommand(chrome.pid, executable)),
     },
     stdio: ["pipe", "ignore", "ignore"],
