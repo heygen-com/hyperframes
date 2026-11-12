@@ -114,6 +114,8 @@ export function useShadowPreviewReload({
   const budgetsSpentRef = useRef(0);
   // The shadow still owed a wait budget, so a hidden tab can resume it when it becomes visible.
   const budgetGenRef = useRef<number | null>(null);
+  // The shadow's frame left the page (its pane unmounted): no budget runs until a new frame mounts.
+  const shadowDetachedRef = useRef(false);
   const cancelPendingLoadRef = useRef<() => void>(() => {});
   const stopHoldRef = useRef<() => void>(() => {});
   const shadowUrlRef = useRef("");
@@ -127,6 +129,7 @@ export function useShadowPreviewReload({
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
     budgetGenRef.current = null;
+    shadowDetachedRef.current = false;
     cancelPendingLoadRef.current();
     stopHoldRef.current();
     pendingCommitRef.current = null;
@@ -296,14 +299,10 @@ export function useShadowPreviewReload({
     [promoteWhenReady],
   );
 
-  const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
-    shadowIframeRef.current = node;
-  }, []);
-
   const armReadyTimer = useCallback(
     (gen: number) => {
       clearTimeout(readyTimerRef.current);
-      if (isDocumentHidden()) return;
+      if (isDocumentHidden() || shadowDetachedRef.current) return;
       let drew = false;
       let starved = false;
       requestAnimationFrame(() => {
@@ -315,6 +314,14 @@ export function useShadowPreviewReload({
         if (!drew) {
           starved = true;
           logReload("shadow-starved", { gen });
+          return;
+        }
+        // A frame that is no longer on the page can never load. Its Player unmounted (the pane closed),
+        // and the next Player for this slot passes its own frame to setShadowIframeNode, which resumes.
+        const frame = shadowIframeRef.current;
+        if (frame && !frame.isConnected) {
+          shadowDetachedRef.current = true;
+          logReload("shadow-detached", { gen });
           return;
         }
         budgetsSpentRef.current += 1;
@@ -330,6 +337,17 @@ export function useShadowPreviewReload({
   );
   const armReadyTimerRef = useRef(armReadyTimer);
   armReadyTimerRef.current = armReadyTimer;
+
+  const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
+    shadowIframeRef.current = node;
+    const gen = budgetGenRef.current;
+    if (!node || !shadowDetachedRef.current || gen == null || gen !== shadowGenRef.current) return;
+    // A new frame for a shadow whose frame had left the page: it loads from the start, so all its budgets.
+    shadowDetachedRef.current = false;
+    budgetsSpentRef.current = 0;
+    logReload("shadow-reattached", { gen });
+    armReadyTimerRef.current(gen);
+  }, []);
 
   const beginShadowReload = useCallback(
     (url: string) => {
