@@ -67,6 +67,7 @@ async function silentPart(
       sampleRate: probed.sampleRate,
       channels: probed.channels,
       duration: probed.durationSeconds,
+      misstatedByteRate: probed.misstatedByteRate,
     },
     { mono: true, sampleRate: SILENCE_SAMPLE_RATE },
   );

@@ -12,7 +12,7 @@ import {
   videoStreamHasAlpha,
 } from "@hyperframes/parsers/media-alpha";
 import { urlInputArgs } from "./urlInput.js";
-import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
+import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
@@ -1349,16 +1349,6 @@ async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promi
     audioStream: audioStreamIndex,
     misstatedByteRate: misstatesPcmByteRate(audioStream),
   };
-}
-
-function misstatesPcmByteRate(stream: FFProbeStream): boolean {
-  const declared = Number(stream.bit_rate);
-  const { channels, bits_per_sample: bits } = stream;
-  const rate = Number(stream.sample_rate);
-  if (!stream.codec_name?.startsWith("pcm_") || !declared || !channels || !bits || !rate) {
-    return false;
-  }
-  return declared !== rate * channels * bits;
 }
 
 /** A stream starting after the earliest of these plays that much after it. */
