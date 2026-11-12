@@ -76,7 +76,7 @@ export function priceOf(r: GenerateRequest): Price {
   switch (r.type) {
     case "image": {
       const refs = r.references?.length ?? 0;
-      const model = r.model ?? "nano-banana-2";
+      const model = r.model ?? "nano-banana-2.1";
       if (model === "nano-banana-2") return image(NANO_IMAGE, "nano-banana-2, $0.067 an image");
       if (model === "nano-banana-2.1")
         return image(

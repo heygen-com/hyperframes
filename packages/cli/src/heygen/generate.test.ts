@@ -134,7 +134,7 @@ describe("generate", () => {
       references: [ref],
     });
     expect(sent[0]!.body).toMatchObject({
-      model: "nano-banana-2",
+      model: "nano-banana-2.1",
       prompt: "empty room",
       reference_images: [{ type: "base64", media_type: "image/jpeg" }],
     });
@@ -883,7 +883,7 @@ describe("generate", () => {
     } as const;
     await expect(
       generate(request, undefined, creditsOf(priceOf(request)) ?? undefined),
-    ).rejects.toThrow("this step needs about 111");
+    ).rejects.toThrow("this step needs about 56");
   });
 
   it("prices before making", () => {
@@ -930,7 +930,7 @@ describe("generate", () => {
       "gpt-image-2.5 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
     );
     expect(priceOf({ type: "image", out: "a.png" }).basis).toBe(
-      "nano-banana-2, $0.067 an image; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+      "nano-banana-2.1, $0.0336 an image and $0.00168 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
     );
   });
 
@@ -1184,7 +1184,7 @@ describe("generate", () => {
   it("keeps a call under the person's credit limit, or refuses it before sending", () => {
     const shot = creditsOf(priceOf({ type: "video", out: "a.mp4", seconds: 6 }));
     expect(shot).toBe(108);
-    expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(111);
+    expect(creditsOf(priceOf({ type: "image", out: "a.png" }))).toBe(56);
     expect(() => checkLimit(shot, 108)).not.toThrow();
     expect(() => checkLimit(shot, 30)).toThrow("about 108 credits, over --max-credits 30");
     expect(() => checkLimit(null, 30)).toThrow("cannot be priced ahead");
