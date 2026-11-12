@@ -49,8 +49,6 @@ export interface VolumeAutomationBinding {
   volumeAutomated: boolean;
   onAutomateVolume: () => void;
   onRemoveVolumeAutomation: () => void;
-  onCommitVolumeAt: (v: number) => void;
-  automatedVolumeValue: number | undefined;
   /** Speed: the `rate` lane, plus the CapCut-style presets that seed it. */
   rate: RateBinding;
 }
@@ -118,10 +116,8 @@ export function useVolumeAutomation(
   );
   return {
     volumeAutomated: volume.automated,
-    automatedVolumeValue: volume.automatedValue,
     onAutomateVolume: volume.onAutomate,
     onRemoveVolumeAutomation: volume.onRemoveAutomation,
-    onCommitVolumeAt: volume.onCommitAt,
     rate: {
       ...rate,
       canApplyPreset: elDuration > 0,
