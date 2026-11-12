@@ -145,6 +145,7 @@ describe("installEditingAgent", () => {
           "describe",
           "ancestors",
           "query",
+          "geometry",
         ],
       },
     });
@@ -292,6 +293,24 @@ describe("installEditingAgent", () => {
     ].map((params, index) => [
       { v: 1, id: 90 + index, kind: "query", params },
       90 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { handles: [] },
+      { handles: ["1"] },
+      { handles: [1] },
+      { handles: Array(257).fill("0123456789abcdef:1") },
+      { handles: ["0123456789abcdef:1"], extra: 1 },
+      { children: "0123456789abcdef:1" },
+      { handles: ["0123456789abcdef:1"], children: undefined },
+      { handles: ["0123456789abcdef:1"], children: null },
+      { handles: ["0123456789abcdef:1"], children: true },
+      { handles: ["0123456789abcdef:1"], children: ["0123456789abcdef:1"] },
+      { handles: ["0123456789abcdef:1"], children: "0123456789abcdef:0" },
+    ].map((params, index) => [
+      { v: 1, id: 100 + index, kind: "geometry", params },
+      100 + index,
       "invalid-params",
     ]),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(

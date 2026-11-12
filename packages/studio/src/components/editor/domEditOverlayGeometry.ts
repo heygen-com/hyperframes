@@ -6,7 +6,14 @@ import {
 } from "./domEditOverlayBasis";
 import { isElementVisibleThroughAncestors } from "./domEditingDom";
 import { hugRectForElement } from "./domEditOverlayCrop";
-import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
+import {
+  elementCornerPoints,
+  readElementTransformSnapshot,
+  rotationDegreesFromMatrix,
+  ROTATION_GATE_EPSILON_DEG,
+  type EditingCorners,
+  type ElementTransformSnapshot,
+} from "@hyperframes/core/runtime/editing-port";
 import { type OverlayMeasurePass, readThroughPass } from "./domEditOverlayMeasurePass";
 
 export const RESIZE_HANDLE_HIT_PX = 16;
@@ -134,95 +141,6 @@ export function toVisibleOverlayRects(
   });
 }
 
-/**
- * getComputedStyle(element).transform decomposed into a DOMMatrix, read ONCE.
- * Shared by orientedOverlayRect's rotation gate and elementCornerOverlayPoints
- * so a single measurement pass serves both — constructing this twice per frame
- * (one read per consumer) was redundant work; see orientedOverlayRect below.
- */
-interface ElementTransformSnapshot {
-  matrix: DOMMatrix;
-  cs: CSSStyleDeclaration;
-}
-
-/**
- * The transform from the element's own box to the composition's, ACCUMULATED
- * over its ancestors rather than read from the element alone.
- *
- * What the user sees is the product of every transform between the element and
- * the composition root, and an element is routinely a child of something
- * scaled or rotated. Reading only its own transform drew the selection box at
- * the element's untransformed size: a text layer inside a card carrying
- * `scale(1.2)` got a box at 1/1.2 of the text, with the top-left correct (the
- * caller anchors that to the real bounding rect) and the right and bottom
- * edges falling short. The same read decides whether to draw the box rotated,
- * so an element inside a rotated parent got an upright box too.
- *
- * Only the linear part matters here. Each transform's origin contributes
- * translation, and the caller discards translation by matching the corners'
- * bounding box to the element's real one, so composing the matrices alone is
- * enough and there is no per-ancestor origin to unpick.
- *
- * The walk stops at the composition document's root. The canvas zoom lives on
- * the iframe element in Studio's own document and is applied separately by
- * `computeOverlayRootScale`; including it here would count it twice.
- */
-function readElementTransformSnapshot(
-  win: Window,
-  element: HTMLElement,
-  pass?: OverlayMeasurePass,
-): ElementTransformSnapshot | null {
-  const DOMMatrixCtor = (win as Window & typeof globalThis).DOMMatrix;
-  if (!DOMMatrixCtor) return null;
-  const cs = win.getComputedStyle(element);
-  // The corner math transforms points, so this algebra keeps the full matrix,
-  // translation included, where the crop frame's keeps only 2D components.
-  const ops: PlanarTransformOps<DOMMatrix> = {
-    identity: () => new DOMMatrixCtor(),
-    fromTransform: (value) => new DOMMatrixCtor(value),
-    fromRotate: (degrees) => new DOMMatrixCtor().rotateSelf(degrees),
-    compose: (outer, inner) => outer.multiply(inner),
-  };
-  try {
-    const matrix = composeElementTransform(
-      element,
-      ops,
-      (node) => (node === element ? cs : win.getComputedStyle(node)),
-      pass?.transform,
-    );
-    return matrix ? { matrix, cs } : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The element's live transform rotation, in DEGREES (screen/CSS convention, CW
- * positive), decomposed from its transform matrix (rotation = atan2(b, a)).
- * GSAP folds rotation and scale into the same matrix; this reads rotation only.
- * Skew is ignored (does not affect atan2(b, a)).
- */
-function rotationDegreesFromMatrix(matrix: DOMMatrix): number {
-  const a = Number.isFinite(matrix.a) ? matrix.a : 1;
-  const b = Number.isFinite(matrix.b) ? matrix.b : 0;
-  const c = Number.isFinite(matrix.c) ? matrix.c : 0;
-  const d = Number.isFinite(matrix.d) ? matrix.d : 1;
-  const fromX = (Math.atan2(b, a) * 180) / Math.PI;
-  const determinant = a * d - b * c;
-  // A reflection makes one basis direction read 180° away from the authored
-  // rotation. For cursor/handle orientation those directions are equivalent;
-  // choose the representative nearest zero instead of drawing a pure mirror's
-  // rotate handle on the opposite side of the element.
-  const fromY = (Math.atan2(-c, d) * 180) / Math.PI;
-  const deg = determinant < 0 && Math.abs(fromY) < Math.abs(fromX) ? fromY : fromX;
-  return Number.isFinite(deg) ? deg : 0;
-}
-
-/** Below this, orientedOverlayRect treats the element as unrotated and returns
- *  the AABB directly (see its doc comment) — tight enough to only swallow
- *  matrix-decomposition floating-point noise, never an actual rotation. */
-const ROTATION_GATE_EPSILON_DEG = 1e-4;
-
 function toOverlayRect(
   overlayEl: HTMLDivElement,
   iframe: HTMLIFrameElement,
@@ -233,7 +151,6 @@ function toOverlayRect(
   const scale =
     precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, iframe.contentDocument);
   if (!scale) return null;
-  const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
   const elementRect = element.getBoundingClientRect();
   const sourceBoundary = findSourceBoundary(element, pass);
@@ -245,13 +162,35 @@ function toOverlayRect(
           sourceBoundary.getBoundingClientRect(),
         )
       : sourceBoundary?.getBoundingClientRect();
+  return frameRectToOverlay(scale, elementRect, {
+    width: sourceBoundaryRect?.width,
+    height: sourceBoundaryRect?.height,
+    declaredWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
+    declaredHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+  });
+}
+
+type FrameSource = {
+  width?: number;
+  height?: number;
+  declaredWidth: number | null;
+  declaredHeight: number | null;
+} | null;
+
+/** A client rect measured in the frame, and its source boundary's, in overlay coordinates. */
+export function frameRectToOverlay(
+  scale: OverlayRootScale,
+  elementRect: { left: number; top: number; width: number; height: number },
+  source: FrameSource,
+): OverlayRect {
+  const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
   const editScale = resolveDomEditCoordinateScale({
     rootScaleX,
     rootScaleY,
-    sourceRectWidth: sourceBoundaryRect?.width,
-    sourceRectHeight: sourceBoundaryRect?.height,
-    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
-    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+    sourceRectWidth: source?.width,
+    sourceRectHeight: source?.height,
+    sourceWidth: source?.declaredWidth,
+    sourceHeight: source?.declaredHeight,
   });
 
   return {
@@ -261,6 +200,23 @@ function toOverlayRect(
     height: elementRect.height * rootScaleY,
     editScaleX: editScale.scaleX,
     editScaleY: editScale.scaleY,
+  };
+}
+
+/** Corners measured in the frame's viewport px, in overlay coordinates. */
+export function frameCornersToOverlay(
+  { iframeRect, overlayRect, rootScaleX, rootScaleY }: OverlayRootScale,
+  corners: EditingCorners,
+): Record<FixedCorner, { x: number; y: number }> {
+  const toOverlay = (pt: { x: number; y: number }): { x: number; y: number } => ({
+    x: iframeRect.left - overlayRect.left + pt.x * rootScaleX,
+    y: iframeRect.top - overlayRect.top + pt.y * rootScaleY,
+  });
+  return {
+    nw: toOverlay(corners.nw),
+    ne: toOverlay(corners.ne),
+    se: toOverlay(corners.se),
+    sw: toOverlay(corners.sw),
   };
 }
 
@@ -309,55 +265,15 @@ export function elementCornerOverlayPoints(
   const win = iframe.contentWindow;
   const doc = iframe.contentDocument;
   if (!win || !doc) return null;
-  const DOMPointCtor = (win as Window & typeof globalThis).DOMPoint;
-  if (!DOMPointCtor) return null;
+  if (!(win as Window & typeof globalThis).DOMPoint) return null;
 
   const scale = precomputedScale ?? computeOverlayRootScale(overlayEl, iframe, doc);
   if (!scale) return null;
-  const { iframeRect, overlayRect, rootScaleX, rootScaleY } = scale;
 
-  // The element's local border box maps to viewport coords by the SAME transform
-  // matrix the browser used for its BCR. We recover the transform's screen-space
-  // action from the BCR: transformPoint(localCorner - origin) gives a corner
-  // RELATIVE to the transformed origin. We anchor those relative corners to the
-  // BCR by matching the AABB of the transformed corners to the real BCR — the
-  // constant offset cancels in the before/after difference the caller takes, but
-  // we resolve it fully here so callers can also read absolute overlay positions.
   const transform = precomputedTransform ?? readElementTransformSnapshot(win, element);
   if (!transform) return null;
-  const { matrix, cs } = transform;
-  const w = element.offsetWidth;
-  const h = element.offsetHeight;
-  const originParts = cs.transformOrigin.split(" ").map((p) => Number.parseFloat(p));
-  const ox = Number.isFinite(originParts[0]!) ? originParts[0]! : w / 2;
-  const oy = Number.isFinite(originParts[1]!) ? originParts[1]! : h / 2;
-  const rel = (lx: number, ly: number): { x: number; y: number } => {
-    const p = matrix.transformPoint(new DOMPointCtor(lx - ox, ly - oy));
-    return { x: p.x, y: p.y };
-  };
-  const relCorners = {
-    nw: rel(0, 0),
-    ne: rel(w, 0),
-    se: rel(w, h),
-    sw: rel(0, h),
-  };
-  // Recover the absolute viewport position by matching to the element's BCR:
-  // the relative corners' AABB min corresponds to the BCR's top-left.
-  const xs = [relCorners.nw.x, relCorners.ne.x, relCorners.se.x, relCorners.sw.x];
-  const ys = [relCorners.nw.y, relCorners.ne.y, relCorners.se.y, relCorners.sw.y];
-  const bcr = element.getBoundingClientRect();
-  const dx = bcr.left - Math.min(...xs);
-  const dy = bcr.top - Math.min(...ys);
-  const toOverlay = (pt: { x: number; y: number }): { x: number; y: number } => ({
-    x: iframeRect.left - overlayRect.left + (pt.x + dx) * rootScaleX,
-    y: iframeRect.top - overlayRect.top + (pt.y + dy) * rootScaleY,
-  });
-  return {
-    nw: toOverlay(relCorners.nw),
-    ne: toOverlay(relCorners.ne),
-    se: toOverlay(relCorners.se),
-    sw: toOverlay(relCorners.sw),
-  };
+  const corners = elementCornerPoints(win, element, transform);
+  return corners && frameCornersToOverlay(scale, corners);
 }
 
 /**
@@ -397,11 +313,20 @@ export function orientedOverlayRect(
   if (!base) return null;
 
   const win = iframe.contentWindow;
-  const transform = win ? readElementTransformSnapshot(win, element, pass) : null;
+  const transform = win ? readElementTransformSnapshot(win, element, pass?.transform) : null;
   const angle = transform ? rotationDegreesFromMatrix(transform.matrix) : 0;
   if (Math.abs(angle) < ROTATION_GATE_EPSILON_DEG) return base;
 
   const corners = elementCornerOverlayPoints(overlayEl, iframe, element, scale, transform);
+  return orientOverlayRect(base, angle, corners);
+}
+
+/** The oriented box whose corners are `corners`, at `angle`; `base` when they cannot describe one. */
+export function orientOverlayRect(
+  base: OverlayRect,
+  angle: number,
+  corners: Record<FixedCorner, { x: number; y: number }> | null,
+): OverlayRect {
   if (!corners) return base;
   // Unrotated edge lengths (in overlay px): nw→ne is the width, nw→sw the height.
   const width = cornerEdgeLength(corners.nw, corners.ne);

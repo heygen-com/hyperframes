@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EDITING_ELEMENT_HANDLE } from "@hyperframes/core/runtime/editing-port";
+import { EDITING_ELEMENT_HANDLE, MAX_ELEMENT_TEXT } from "@hyperframes/core/runtime/editing-port";
 // The frame's real runtime agent, serving the opaque frame from this document.
 import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
 import {
@@ -13,6 +13,7 @@ import {
   type DomEditSelection,
 } from "./domEditing";
 import { setCompositionSourceMap } from "./domEditingDom";
+import { domEditSelectionToFacts } from "./domEditingLayers";
 import {
   findPreviewElementForSelection,
   findPreviewElementForTimelineElement,
@@ -30,6 +31,11 @@ import { useDomSelection } from "../../hooks/useDomSelection";
 import type { TimelineElement } from "../../player";
 
 installReactActEnvironment();
+
+const selectLog = vi.hoisted(() => ({ on: null as null | ((event: string) => void) }));
+vi.mock("../../utils/selectDebug", () => ({
+  logSelect: (event: string) => selectLog.on?.(event),
+}));
 
 const closers: Array<() => void> = [];
 afterEach(() => {
@@ -78,7 +84,9 @@ const CONTEXT: PreviewSelectionOptions = {
 function shared(selection: DomEditSelection | null) {
   if (!selection) return null;
   const { element: _element, handle: _handle, textFields: _fields, ...rest } = selection;
-  return rest;
+  // Read off the description only when `element` is a stand-in; checked on their own below.
+  const { hasAudio: _audio, src: _src, ...compared } = rest;
+  return compared;
 }
 
 /** The opaque frame's description of `element`, as a hit-test would hand it over. */
@@ -300,6 +308,63 @@ describe("opaque frame selection handles", () => {
   });
 });
 
+describe("opaque frame selections read only what arrived whole", () => {
+  it("reads audio and src off the description, not the tag-only stand-in", async () => {
+    document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080">
+      <video id="muted" muted src="a.mp4"></video><video id="silent" data-has-audio="false"></video>
+      <video id="loud" src="b.mp4"></video><img id="pic" src="pic.png"></div>`;
+    for (const [id, audible] of [
+      ["muted", false],
+      ["silent", false],
+      ["loud", true],
+    ] as const) {
+      const { live, remote } = await bothPaths(document.getElementById(id)!);
+      expect(domEditSelectionToFacts(live!).hasAudio).toBe(audible);
+      expect(domEditSelectionToFacts(remote!).hasAudio).toBe(audible);
+    }
+    const { remote } = await bothPaths(document.getElementById("pic")!);
+    expect(remote!.src).toBe("pic.png");
+    expect(remote!.element.getAttribute("src")).toBeNull();
+  });
+
+  it("builds nothing when an attribute or inline style was cut, and is not stopped by long text", async () => {
+    const chain = JSON.stringify(Array.from({ length: 200 }, (_, i) => ({ id: `node-${i}` })));
+    document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080">
+      <p id="fx" data-audio-fx='${chain}'>fx</p>
+      <p id="bg-img" style="background-image: url(data:image/png;base64,${"A".repeat(3000)})">i</p>
+      <p id="essay">${"y".repeat(MAX_ELEMENT_TEXT + 5)}</p></div>`;
+    for (const id of ["fx", "bg-img"]) {
+      const { live, remote } = await bothPaths(document.getElementById(id)!);
+      expect(live).not.toBeNull();
+      expect(remote).toBeNull();
+    }
+    const essay = await bothPaths(document.getElementById("essay")!);
+    expect(essay.remote).toMatchObject({ id: "essay", selector: "#essay" });
+  });
+
+  it("builds nothing when the frame cannot read computed styles or the composition root", async () => {
+    document.body.innerHTML = FIXTURE;
+    const opaque = opaqueFrame();
+    const locked = await describedOnOpaque(opaque, document.querySelector("#locked")!);
+    const bg = await describedOnOpaque(opaque, document.querySelector("#bg")!);
+    expect(await resolvePreviewSelection(opaque, bg, CONTEXT)).not.toBeNull();
+
+    const styles = vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+      throw new Error("parked");
+    });
+    expect(await resolvePreviewSelection(opaque, locked, CONTEXT)).toBeNull();
+    styles.mockRestore();
+
+    const query = document.querySelectorAll.bind(document);
+    const roots = vi.spyOn(document, "querySelectorAll").mockImplementation((selector: string) => {
+      if (selector === "[data-composition-id]") throw new Error("reloading");
+      return query(selector);
+    });
+    expect(await resolvePreviewSelection(opaque, bg, CONTEXT)).toBeNull();
+    roots.mockRestore();
+  });
+});
+
 describe("useDomSelection on an opaque frame", () => {
   function renderSelection(iframe: HTMLIFrameElement) {
     let hook: ReturnType<typeof useDomSelection> | null = null;
@@ -372,5 +437,32 @@ describe("useDomSelection on an opaque frame", () => {
     await act(() => hook().refreshDomEditSelectionFromPreview(first));
     expect(hook().domEditGroupSelections.map((s) => s.id)).toEqual(["plain"]);
     expect(hook().domEditSelection!.handle).toBe(second.handle);
+  });
+
+  it("leaves a group the user changed while its refresh was reading the frame", async () => {
+    document.body.innerHTML = FIXTURE;
+    const hook = renderSelection(opaqueFrame());
+    await act(() => hook().handleTimelineElementSelect(clip("#plain")));
+    const plain = hook().domEditSelection!;
+    await act(() => hook().handleTimelineElementSelect(clip("#locked")));
+    const locked = hook().domEditSelection!;
+    act(() => hook().applyDomSelection(plain, { additive: true }));
+    await act(() => hook().handleTimelineElementSelect(clip("#scene")));
+    const scene = hook().domEditSelection!;
+    act(() => hook().applyDomSelection(locked, { additive: true }));
+    act(() => hook().applyDomSelection(plain, { additive: true }));
+
+    // The primary is gone, so the refresh re-reads the group; meanwhile the user picks one clip.
+    document.querySelector("#plain")!.remove();
+    selectLog.on = (event) => {
+      if (event === "refresh-lost") hook().applyDomSelection(scene, { revealPanel: false });
+    };
+    try {
+      await act(() => hook().refreshDomEditSelectionFromPreview(hook().domEditSelection!));
+    } finally {
+      selectLog.on = null;
+    }
+    expect(hook().domEditSelection!.id).toBe("scene");
+    expect(hook().domEditGroupSelections.map((s) => s.id)).toEqual(["scene"]);
   });
 });

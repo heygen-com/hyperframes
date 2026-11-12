@@ -11,6 +11,8 @@
  * Its own module because it is the one piece of that file every other piece
  * depends on and nothing in it is about a single element's geometry.
  */
+import { previewStageSize } from "../../player/lib/bridgePlayback";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 /** iframe→overlay mapping basis shared by every overlay-geometry function. */
 export interface OverlayRootScale {
@@ -52,7 +54,8 @@ function resolveRootDimensions(root: HTMLElement | null): { width: number; heigh
  * instead of rootRect.width/height: when GSAP applies transforms (scale,
  * translate) to the root, rootRect dimensions change but the composition's
  * canonical size stays fixed, and using rootRect misaligns the overlay during
- * animated playback. Returns null when the geometry is unmeasurable.
+ * animated playback. A frame Studio cannot script is scaled by the size its
+ * runtime posts. Returns null when the geometry is unmeasurable.
  */
 export function computeOverlayRootScale(
   overlayEl: HTMLDivElement,
@@ -61,7 +64,9 @@ export function computeOverlayRootScale(
 ): OverlayRootScale | null {
   const iframeRect = iframe.getBoundingClientRect();
   const overlayRect = overlayEl.getBoundingClientRect();
-  const dims = resolveRootDimensions(findOverlayRootElement(doc));
+  const dims = previewFrameOpaque(iframe)
+    ? previewStageSize(iframe)
+    : resolveRootDimensions(findOverlayRootElement(doc));
   if (!dims) return null;
   return {
     iframeRect,

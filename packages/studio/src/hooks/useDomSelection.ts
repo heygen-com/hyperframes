@@ -42,6 +42,15 @@ export type {
   UseDomSelectionReturn,
 } from "./useDomSelectionTypes";
 
+/** A refreshed group lands only when it found someone and the user has not picked another meanwhile. */
+function groupStillLive(
+  live: { current: DomEditSelection[] },
+  refreshed: DomEditSelection[],
+  next: DomEditSelection[],
+): boolean {
+  return next.length > 0 && live.current === refreshed;
+}
+
 // ── Hook ──
 
 export function useDomSelection({
@@ -366,7 +375,7 @@ export function useDomSelection({
   // refresher falls back to it when the primary is gone, and a ref keeps that from
   // forcing either callback to be declared in the other's dependency list.
   const refreshDomEditGroupSelectionsFromPreviewRef = useRef<
-    (selections: DomEditSelection[]) => Promise<void>
+    (selections: DomEditSelection[], iframe: HTMLIFrameElement | null) => Promise<void>
   >(async () => {});
 
   const refreshDomEditSelectionFromPreview = useCallback(
@@ -386,7 +395,7 @@ export function useDomSelection({
           group: group.length,
         });
         if (group.length > 1) {
-          await refreshDomEditGroupSelectionsFromPreviewRef.current(group);
+          await refreshDomEditGroupSelectionsFromPreviewRef.current(group, iframe);
           return;
         }
         applyDomSelection(null, { revealPanel: false });
@@ -410,17 +419,20 @@ export function useDomSelection({
 
   const refreshDomEditGroupSelectionsFromPreview = useCallback(
     // fallow-ignore-next-line complexity
-    async (selections: DomEditSelection[]) => {
-      const iframe = previewIframeRef.current;
+    async (selections: DomEditSelection[], iframe = previewIframeRef.current) => {
       const nextGroup: DomEditSelection[] = [];
       for (const selection of selections) {
         const element = await findSelectionElement(iframe, selection, activeCompPath);
         if (element === undefined) return;
         if (!element) continue;
-        const nextSelection = await buildDomSelectionFromTarget(element, { previous: selection });
+        const nextSelection = await buildDomSelectionFromTarget(
+          element,
+          { previous: selection },
+          iframe,
+        );
         if (nextSelection) nextGroup.push(nextSelection);
       }
-      if (nextGroup.length === 0) return;
+      if (!groupStillLive(domEditGroupSelectionsRef, selections, nextGroup)) return;
 
       const currentSelection = domEditSelectionRef.current;
       const nextSelection =

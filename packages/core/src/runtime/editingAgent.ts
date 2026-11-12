@@ -27,6 +27,7 @@ import {
   elementsAtPoint,
   queryElements,
 } from "./editingHandles";
+import { elementGeometry } from "./editingGeometry";
 import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
@@ -83,6 +84,7 @@ const HANDLERS: Handlers = {
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
   ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
   query: ({ selector }) => queryElements(selector),
+  geometry: ({ handles, children }) => elementGeometry(handles, children),
 };
 
 function serve(port: MessagePort): void {

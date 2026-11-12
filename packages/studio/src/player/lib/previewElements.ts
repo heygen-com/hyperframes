@@ -5,7 +5,12 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_VALUE,
+  MAX_GEOMETRY_CHILDREN,
+  type EditingElementBox,
   type EditingElementDescription,
+  type EditingElementGeometry,
   type EditingElementHit,
   type EditingElementMatch,
   type EditingElementSource,
@@ -50,11 +55,12 @@ function hasPlainFields(value: Fields): boolean {
   return groupsOk && attributesOk && childrenOk && typeof value.truncated === "boolean";
 }
 
+const isRect = (value: unknown) =>
+  isFields(value) && [value.x, value.y, value.width, value.height].every(Number.isFinite);
+
 function readHit(value: unknown): PreviewElementHit | null {
   if (!isFields(value) || !isHandle(value.handle) || !isText(value.tag)) return null;
-  const { rect } = value;
-  const rectOk = isFields(rect) && [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite);
-  return rectOk ? (value as unknown as PreviewElementHit) : null;
+  return isRect(value.rect) ? (value as unknown as PreviewElementHit) : null;
 }
 
 /** Frame data checked against `EditingElementDescription`; null when any field is off. */
@@ -141,4 +147,68 @@ export function previewElementSelectorIndex(
   return element.matchesBefore
     .filter((group) => resolveElementSourceFile(group.source, activeCompositionPath) === file)
     .reduce((sum, group) => sum + group.count, 0);
+}
+
+const isPoint = (value: unknown) =>
+  isFields(value) && Number.isFinite(value.x) && Number.isFinite(value.y);
+const isSizeOrNull = (value: unknown) =>
+  value === null || (Number.isFinite(value) && (value as number) > 0);
+
+const CORNERS = ["nw", "ne", "se", "sw"] as const;
+const isCorners = (value: unknown) =>
+  value === null || (isFields(value) && CORNERS.every((corner) => isPoint(value[corner])));
+
+const isSourceBox = (value: unknown) =>
+  value === null ||
+  (isFields(value) &&
+    Number.isFinite(value.width) &&
+    Number.isFinite(value.height) &&
+    isSizeOrNull(value.declaredWidth) &&
+    isSizeOrNull(value.declaredHeight));
+
+const isClipPath = (value: unknown) =>
+  value === null || (isText(value) && (value as string).length <= MAX_ELEMENT_VALUE);
+
+const isBox = (value: unknown): value is EditingElementBox =>
+  isFields(value) &&
+  isRect(value.rect) &&
+  Number.isFinite(value.angle) &&
+  isCorners(value.corners) &&
+  isSourceBox(value.source) &&
+  isClipPath(value.clipPath);
+
+const readGeometry = (value: unknown): EditingElementGeometry | null => {
+  if (!isBox(value) || !isFields(value) || typeof value.visible !== "boolean") return null;
+  const { members } = value;
+  const membersOk =
+    members === null ||
+    (Array.isArray(members) && members.length <= MAX_ELEMENT_ENTRIES && members.every(isRect));
+  return membersOk ? (value as unknown as EditingElementGeometry) : null;
+};
+
+export interface PreviewGeometry {
+  /** One entry per handle, in order: null for an element the frame no longer has. */
+  elements: Array<EditingElementGeometry | null>;
+  /** The `children` element's descendants, when it has 1 to MAX_GEOMETRY_CHILDREN; else empty. */
+  children: EditingElementBox[] | null;
+}
+
+/** Overlay geometry for `handles`, and `children`'s descendant boxes; null when the runtime cannot answer. */
+export async function previewGeometry(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+  children?: string,
+): Promise<PreviewGeometry | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const params = { handles: [...handles], ...(children ? { children } : {}) };
+  const reply = await previewRequest(iframe, "geometry", params);
+  const elements: unknown = reply?.elements;
+  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  const boxes: unknown = reply?.children;
+  const childrenOk =
+    Array.isArray(boxes) && boxes.length <= MAX_GEOMETRY_CHILDREN && boxes.every(isBox);
+  return {
+    elements: elements.map(readGeometry),
+    children: children && childrenOk ? (boxes as EditingElementBox[]) : null,
+  };
 }
