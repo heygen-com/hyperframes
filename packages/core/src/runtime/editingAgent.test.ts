@@ -135,7 +135,7 @@ describe("installEditingAgent", () => {
       ok: true,
       result: {
         version: 1,
-        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start"],
+        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start", "computed-styles"],
       },
     });
     expect((await ask(port, { v: 1, id: 2, kind: "runtime-snapshot", params: {} })).result).toEqual(
@@ -175,12 +175,79 @@ describe("installEditingAgent", () => {
       15,
       "invalid-params",
     ],
+    [{ v: 1, id: 16, kind: "computed-styles", params: { selector: "p" } }, 16, "invalid-params"],
+    [
+      { v: 1, id: 17, kind: "computed-styles", params: { selector: "", properties: [] } },
+      17,
+      "invalid-params",
+    ],
+    [
+      { v: 1, id: 18, kind: "computed-styles", params: { selector: "p", properties: ["color;"] } },
+      18,
+      "invalid-params",
+    ],
+    [
+      { v: 1, id: 19, kind: "computed-styles", params: { selector: "p", properties: [1] } },
+      19,
+      "invalid-params",
+    ],
+    [
+      {
+        v: 1,
+        id: 20,
+        kind: "computed-styles",
+        params: { selector: "p", properties: Array(65).fill("color") },
+      },
+      20,
+      "invalid-params",
+    ],
+    [
+      {
+        v: 1,
+        id: 21,
+        kind: "computed-styles",
+        params: { selector: "p".repeat(2001), properties: ["color"] },
+      },
+      21,
+      "invalid-params",
+    ],
+    [
+      {
+        v: 1,
+        id: 22,
+        kind: "computed-styles",
+        params: { selector: "p", properties: ["color"], extra: 1 },
+      },
+      22,
+      "invalid-params",
+    ],
   ])("rejects %j with a typed error", async (request, id, code) => {
     const setLoopStart = vi.fn();
     window.__hf = { setLoopStart };
     const reply = await ask(connectedPort(), request);
     expect(reply).toMatchObject({ v: 1, id, ok: false, error: { code } });
     expect(setLoopStart).not.toHaveBeenCalled();
+  });
+
+  it("answers computed styles for the element a selector names", async () => {
+    document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
+      <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
+      <video id="clip" data-hf-preview-video-frame style="opacity: 0"></video>`;
+    const port = connectedPort();
+    const ask_ = (id: number, selector: string, properties: string[]) =>
+      ask(port, { v: 1, id, kind: "computed-styles", params: { selector, properties } });
+
+    expect((await ask_(1, "#title", ["color", "opacity", "--unset"])).result).toEqual({
+      styles: { color: "rgb(1, 2, 3)", opacity: "0.5" },
+    });
+    // A paused video's canvas carries its authored opacity.
+    expect((await ask_(2, "#clip", ["opacity"])).result).toEqual({ styles: { opacity: "0.25" } });
+    expect((await ask_(3, "#missing", ["color"])).result).toEqual({ styles: null });
+    expect(await ask_(4, "p[", ["color"])).toMatchObject({
+      id: 4,
+      ok: false,
+      error: { code: "failed" },
+    });
   });
 
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {

@@ -60,7 +60,7 @@ describe("createEditingPortClient", () => {
       await client.ready;
       expect(await client.request("hello", {})).toEqual({
         version: 1,
-        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start"],
+        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start", "computed-styles"],
       });
     } finally {
       agent.dispose();

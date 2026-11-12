@@ -23,6 +23,7 @@ export const EDITING_REQUEST_KINDS = [
   "runtime-snapshot",
   "wait-for-seek",
   "set-loop-start",
+  "computed-styles",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -48,6 +49,11 @@ export interface EditingRequests {
   "wait-for-seek": { params: NoParams; result: { waited: boolean } };
   /** Where a looping playback wraps to; null stops looping from a custom start. */
   "set-loop-start": { params: { seconds: number | null }; result: { applied: boolean } };
+  /** `styles` is null when no element matches `selector`; empty values are left out. */
+  "computed-styles": {
+    params: { selector: string; properties: string[] };
+    result: { styles: Record<string, string> | null };
+  };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -78,6 +84,10 @@ export function isPlainRecord(value: unknown): value is Record<string, unknown> 
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+const MAX_SELECTOR_LENGTH = 2_000;
+const MAX_STYLE_PROPERTIES = 64;
+const STYLE_PROPERTY = /^(--)?[a-z][a-z0-9-]*$/;
+
 const noParams = (params: unknown): NoParams | null =>
   params === undefined || (isPlainRecord(params) && Object.keys(params).length === 0) ? {} : null;
 
@@ -94,6 +104,20 @@ const PARAM_PARSERS: {
     return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
       ? { seconds }
       : null;
+  },
+  "computed-styles": (params) => {
+    if (!isPlainRecord(params) || Object.keys(params).sort().join() !== "properties,selector") {
+      return null;
+    }
+    const { selector, properties } = params;
+    if (typeof selector !== "string" || !selector || selector.length > MAX_SELECTOR_LENGTH) {
+      return null;
+    }
+    if (!Array.isArray(properties) || properties.length > MAX_STYLE_PROPERTIES) return null;
+    const names = properties.filter(
+      (name): name is string => typeof name === "string" && STYLE_PROPERTY.test(name),
+    );
+    return names.length === properties.length ? { selector, properties: names } : null;
   },
 };
 

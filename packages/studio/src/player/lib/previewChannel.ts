@@ -79,3 +79,22 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   if (!Number.isFinite(durationInFrames)) return null;
   return manifest as ClipManifest;
 }
+
+/** The runtime's computed `properties` for the element `selector` names; null when it has none. */
+export async function previewComputedStyles(
+  iframe: HTMLIFrameElement,
+  selector: string,
+  properties: string[],
+): Promise<Record<string, string> | null> {
+  const reply = await previewEditingClient(iframe)
+    .request("computed-styles", { selector, properties })
+    .catch(() => null);
+  const styles: unknown = reply?.styles;
+  if (typeof styles !== "object" || styles === null) return null;
+  const read: Record<string, string> = {};
+  for (const name of properties) {
+    const value: unknown = Object.getOwnPropertyDescriptor(styles, name)?.value;
+    if (typeof value === "string" && value) read[name] = value;
+  }
+  return read;
+}

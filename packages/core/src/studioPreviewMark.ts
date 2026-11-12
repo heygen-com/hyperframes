@@ -6,6 +6,17 @@ export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
 export const PREVIEW_VIDEO_SOURCE_ATTR = "data-hf-preview-video-source";
 export const PREVIEW_VIDEO_CANVAS_ATTR = "data-hf-preview-video-canvas";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
+
+export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
+  const overlay = el.previousElementSibling;
+  if (
+    el.hasAttribute(PREVIEW_VIDEO_FRAME_ATTR) &&
+    overlay?.localName === "canvas" &&
+    overlay.hasAttribute(PREVIEW_VIDEO_CANVAS_ATTR)
+  )
+    return el.ownerDocument.defaultView?.getComputedStyle(overlay).opacity ?? computed.opacity;
+  return computed.opacity;
+}
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
 
 export function inPlayerFrame(doc: Document): boolean {
