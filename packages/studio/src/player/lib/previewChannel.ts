@@ -1,7 +1,10 @@
 // Runtime-state reads over a preview frame's editing port; an opaque frame's window is out of reach.
 import {
   createEditingPortClient,
+  type EditingParams,
   type EditingPortClient,
+  type EditingRequestKind,
+  type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 
@@ -51,9 +54,7 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 
 export const AGENT_PROBE_MS = 1_000;
 
-/** Gives up after AGENT_PROBE_MS with no port: a runtime without the editing agent never answers. */
-export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {
-  const client = previewEditingClient(iframe);
+async function agentConnected(client: EditingPortClient): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const probe = new Promise<boolean>(
     (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
@@ -66,12 +67,28 @@ export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: 
     probe,
   ]);
   clearTimeout(timer);
-  if (connected) await client.request("wait-for-seek", {}, { timeoutMs }).catch(() => {});
+  return connected;
+}
+
+/** Null when no port comes within AGENT_PROBE_MS (a runtime without the editing agent), or on error. */
+export async function previewRequest<K extends EditingRequestKind>(
+  iframe: HTMLIFrameElement,
+  kind: K,
+  params: EditingParams<K>,
+  timeoutMs?: number,
+): Promise<EditingResult<K> | null> {
+  const client = previewEditingClient(iframe);
+  if (!(await agentConnected(client))) return null;
+  return client.request(kind, params, { timeoutMs }).catch(() => null);
+}
+
+export async function previewSeekPainted(iframe: HTMLIFrameElement, timeoutMs?: number) {
+  await previewRequest(iframe, "wait-for-seek", {}, timeoutMs);
 }
 
 /** The reply is frame data, so its shape is checked. */
 export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<ClipManifest | null> {
-  const snapshot = await previewEditingClient(iframe).request("runtime-snapshot", {});
+  const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const manifest: unknown = snapshot?.clipManifest;
   if (typeof manifest !== "object" || manifest === null) return null;
   const { clips, durationInFrames } = manifest as Partial<ClipManifest>;
@@ -86,9 +103,7 @@ export async function previewComputedStyles(
   selector: string,
   properties: string[],
 ): Promise<Record<string, string> | null> {
-  const reply = await previewEditingClient(iframe)
-    .request("computed-styles", { selector, properties })
-    .catch(() => null);
+  const reply = await previewRequest(iframe, "computed-styles", { selector, properties });
   const styles: unknown = reply?.styles;
   if (typeof styles !== "object" || styles === null) return null;
   const read: Record<string, string> = {};

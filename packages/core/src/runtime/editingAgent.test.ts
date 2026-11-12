@@ -135,7 +135,15 @@ describe("installEditingAgent", () => {
       ok: true,
       result: {
         version: 1,
-        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start", "computed-styles"],
+        kinds: [
+          "hello",
+          "runtime-snapshot",
+          "wait-for-seek",
+          "set-loop-start",
+          "computed-styles",
+          "elements-at-point",
+          "describe",
+        ],
       },
     });
     expect((await ask(port, { v: 1, id: 2, kind: "runtime-snapshot", params: {} })).result).toEqual(
@@ -221,6 +229,40 @@ describe("installEditingAgent", () => {
       22,
       "invalid-params",
     ],
+    ...[
+      { y: 1 },
+      { x: 1, y: Number.NaN },
+      { x: "1", y: 1 },
+      { x: 1, y: Infinity },
+      { x: 1, y: 2, z: 3 },
+    ].map((params, index) => [
+      { v: 1, id: 30 + index, kind: "elements-at-point", params },
+      30 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { handles: [] },
+      { handles: [0] },
+      { handles: [-1] },
+      { handles: [1.5] },
+      { handles: ["1"] },
+      { handles: [2 ** 53] },
+      { handles: Array(257).fill(1) },
+      { handles: [1], extra: 1 },
+      { handles: { 0: 1, length: 1 } },
+    ].map((params, index) => [
+      { v: 1, id: 40 + index, kind: "describe", params },
+      40 + index,
+      "invalid-params",
+    ]),
+    ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
+      (properties, index) => [
+        { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },
+        60 + index,
+        "invalid-params",
+      ],
+    ),
   ])("rejects %j with a typed error", async (request, id, code) => {
     const setLoopStart = vi.fn();
     window.__hf = { setLoopStart };
@@ -248,6 +290,21 @@ describe("installEditingAgent", () => {
       ok: false,
       error: { code: "failed" },
     });
+  });
+
+  it("reads custom properties whose names use any case or an underscore", async () => {
+    document.body.innerHTML = `<p id="title" style="--Brand_Color: red; --x2: 4px">Hi</p>`;
+    const properties = ["--Brand_Color", "--x2", "--é"];
+    const reply = await ask(connectedPort(), {
+      v: 1,
+      id: 1,
+      kind: "computed-styles",
+      params: { selector: "#title", properties },
+    });
+    expect(reply).toMatchObject({ ok: true });
+    expect(Object.keys((reply.result as { styles: object }).styles)).toEqual(
+      expect.arrayContaining(["--Brand_Color", "--x2"]),
+    );
   });
 
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {
