@@ -3,33 +3,44 @@
 // so the download site cannot read this one. Mintlify runs every .js file in docs/ on every page
 // (mintlify.com/docs/customize/custom-scripts). The id is added at click time only, so a copied link never carries it,
 // and only when PostHog is running here and the visitor has not opted out of it.
-// They also name where this visit began, as the homepage's download links do: the first docs page's utm tags, the
-// kind of ad click id it came with (never the id) and `ref`, the site that sent it. The download site reads them as
-// the visit's landing source: the click's own Referer is these docs, or nothing at all, since Mintlify's navbar
-// button is rel="noreferrer".
+// Every link to hyperframes.studio (download, pricing, changelog, community) also names where this visit began, as
+// the homepage's links do: its utm tags, the kind of ad click id it came with (never the id) and `ref`, the site that
+// sent it. hyperframes.studio keeps that as the visit's landing source for a later download or sign-in: the click's
+// own Referer is these docs, or nothing at all, since Mintlify's navbar button is rel="noreferrer".
 (function () {
   var TOKEN = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
   var STATE = "ph_" + TOKEN + "_posthog";
   // posthog-js keeps a visitor's opt-out under this key: "0" opted out, "1" opted in. It lives in localStorage by
   // default, in a cookie when a site configures that, so both are read.
   var OPT_OUT = "__ph_opt_in_out_" + TOKEN;
-  // The one download address the docs link to (docs.json navbar and footer, quickstart.mdx).
-  var DOWNLOAD = { protocol: "https:", hostname: "hyperframes.studio", pathname: "/studio/download" };
+  var STUDIO = "hyperframes.studio";
+  // The one address that reads `ph_id` (docs.json navbar and footer, quickstart.mdx link to it).
+  var DOWNLOAD = "/studio/download";
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   // The campaign tags and ad click ids the download site reads, in its order.
   var CAMPAIGN = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"];
   var AD_CLICKS = ["gclid", "gbraid", "wbraid", "dclid", "fbclid", "msclkid", "ttclid", "twclid", "li_fat_id", "rdt_cid", "sccid", "epik"];
   // Our own sites and HeyGen's sign-in: a visit that moved between them says nothing about where it began.
   var NOT_A_SOURCE = /(^|\.)hyperframes\.(heygen\.com|studio|dev)$|^(app|accounts|api2)\.heygen\.com$/;
-  // The first docs page of this visit's source, kept for the tab: a later page's Referer is these docs.
-  var LANDING = "hf_docs_landing";
+  // Where this visit began, shared with the homepage (web-marketing downloadUtms.ts, the same name, rules and
+  // .heygen.com scope), so a visit that moves between the docs and the homepage keeps its first source either way, for
+  // 30 days. A page that names no source keeps nothing; the first source is never replaced.
+  var LANDING = "hf_hub_landing";
+  var LANDING_DAYS = 30;
+  // Longer tags than hyperframes.studio keeps (its TAG_MAX): it drops them, and the shared cookie must stay small.
+  var TAG_MAX = 64;
 
-  function cookie(name) {
+  function rawCookie(name) {
     var prefix = name + "=";
     var raw = document.cookie.split("; ").find(function (c) {
       return c.indexOf(prefix) === 0;
     });
-    return raw ? decodeURIComponent(raw.slice(prefix.length)) : null;
+    return raw ? raw.slice(prefix.length) : null;
+  }
+
+  function cookie(name) {
+    var raw = rawCookie(name);
+    return raw === null ? null : decodeURIComponent(raw);
   }
 
   function stored(name) {
@@ -73,7 +84,7 @@
     var out = new URLSearchParams();
     CAMPAIGN.forEach(function (name) {
       var value = page.get(name);
-      if (value) out.set(name, value);
+      if (value && value.length <= TAG_MAX) out.set(name, value);
     });
     var adClick = AD_CLICKS.find(function (name) {
       return (page.get(name) || "").trim();
@@ -89,13 +100,17 @@
     return out.toString();
   }
 
-  // Kept from the first page this script ran on in the tab; sessionStorage blocked (some privacy modes) falls back
-  // to this page's own source.
+  // The kept source, else this page's own (cookies blocked: this page's). URLSearchParams' encoding is already
+  // cookie-safe (no space, comma or semicolon).
   var landing = visitSource();
   try {
-    var kept = window.sessionStorage.getItem(LANDING);
-    if (kept === null) window.sessionStorage.setItem(LANDING, landing);
-    else landing = kept;
+    // Read as written: its value is already URL-encoded, and decoding would split a tag holding "&" or "=".
+    var kept = rawCookie(LANDING);
+    if (kept) landing = kept;
+    else if (landing) {
+      var heygen = /(^|\.)heygen\.com$/.test(window.location.hostname) ? "; domain=.heygen.com" : "";
+      document.cookie = LANDING + "=" + landing + "; path=/" + heygen + "; max-age=" + LANDING_DAYS * 86400 + "; SameSite=Lax; Secure";
+    }
   } catch {
     // keep this page's
   }
@@ -109,14 +124,7 @@
     } catch {
       return;
     }
-    if (
-      url.protocol !== DOWNLOAD.protocol ||
-      url.hostname !== DOWNLOAD.hostname ||
-      url.port !== "" ||
-      url.pathname !== DOWNLOAD.pathname
-    ) {
-      return;
-    }
+    if (url.protocol !== "https:" || url.hostname !== STUDIO || url.port !== "") return;
     var original = link.getAttribute("href");
     // A tag the link already names keeps its own value. Only the source's own names come back from storage, so a value
     // kept there can never add any other parameter (ph_id belongs to the consent check below).
@@ -124,7 +132,7 @@
       var known = CAMPAIGN.indexOf(name) !== -1 || name === "ref" || (name === "ad_click" && AD_CLICKS.indexOf(value) !== -1);
       if (known && !url.searchParams.has(name)) url.searchParams.set(name, value);
     });
-    var id = posthogLoaded() && !optedOut() && posthogId();
+    var id = url.pathname === DOWNLOAD && posthogLoaded() && !optedOut() && posthogId();
     if (id) url.searchParams.set("ph_id", id);
     if (url.toString() === new URL(link.href).toString()) return;
     // Mintlify's <Card> (its anchor carries data-client-link) opens its own href prop from React, never the link's current
