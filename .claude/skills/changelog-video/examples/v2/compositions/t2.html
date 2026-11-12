@@ -1,0 +1,182 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #f6f5f1; }
+    #t2-pan { position: absolute; inset: 0; }
+    #t2-cam { position: absolute; inset: 0; transform-origin: 0 0; }
+    #t2-win { left: 60px; top: 262px; width: 960px; height: 712px; }
+
+    /* Studio preview (dark) */
+    #t2-prev { left: 28px; top: 88px; width: 500px; height: 596px; }
+    #t2-prev-dots { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,.07) 18%, rgba(0,0,0,0) 22%);
+      background-size: 22px 22px; }
+    #t2-prev-lab { position: absolute; left: 26px; top: 22px; font-size: 24px; color: rgba(255,255,255,.62); letter-spacing: -0.01em; }
+    #t2-floor { position: absolute; left: 26px; right: 26px; top: 392px; height: 2px; background: rgba(255,255,255,.12); }
+    .t2-shape { position: absolute; left: 0; top: 0; width: 110px; height: 110px; border-radius: 28px; background: #3ce6ac; }
+    #t2-ghosts .t2-shape { opacity: 0; }
+    #t2-scrub { position: absolute; left: 26px; right: 26px; top: 500px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.14); }
+    #t2-scrub i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 3px; background: rgba(255,255,255,.7);
+      transform-origin: 0 50%; display: block; }
+    #t2-tc { position: absolute; left: 26px; top: 528px; font-family: "TT Mono", monospace; font-size: 24px; color: rgba(255,255,255,.7); }
+    #t2-tc2 { position: absolute; right: 26px; top: 528px; font-family: "TT Mono", monospace; font-size: 24px; color: rgba(255,255,255,.45); }
+
+    /* inspector */
+    #t2-insp { position: absolute; left: 552px; top: 88px; width: 380px; height: 596px; border-radius: 16px;
+      background: #f1f1ee; border: 1px solid rgba(19,17,9,.07); }
+    #t2-insp-t { position: absolute; left: 24px; top: 22px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: #131109; }
+    #t2-insp-sel { position: absolute; right: 24px; top: 24px; font-family: "TT Mono", monospace; font-size: 24px; color: rgba(19,17,9,.6); }
+    .t2-hr { position: absolute; left: 24px; right: 24px; height: 1px; background: rgba(19,17,9,.1); }
+    .t2-row { position: absolute; left: 24px; width: 332px; }
+    .t2-key { font-family: "TT Mono", monospace; font-size: 24px; color: rgba(19,17,9,.66); letter-spacing: -0.02em; white-space: nowrap; }
+    .t2-key em { font-style: normal; font-family: "TT Norms", sans-serif; font-size: 24px; color: rgba(19,17,9,.42); margin-left: 10px; }
+    .t2-val { position: absolute; left: 0; top: 42px; display: flex; align-items: center; gap: 14px; }
+    #t2-on { height: 44px; padding: 0 18px; font-family: "TT Mono", monospace; font-size: 24px; }
+    .t2-note { font-size: 24px; color: rgba(19,17,9,.45); }
+    #t2-tier { font-size: 30px; font-weight: 400; letter-spacing: -0.02em; color: #131109; white-space: nowrap; }
+    #t2-arrow { color: rgba(19,17,9,.45); }
+    #t2-filter { position: relative; display: inline-block; padding: 2px 10px 4px; margin-left: 4px; }
+    #t2-filter i { position: absolute; inset: 0; border-radius: 10px; background: #131109; transform-origin: 0 50%; display: block; }
+    #t2-filter span { position: relative; }
+    #t2-phase-sub { position: absolute; left: 0; top: 38px; font-size: 24px; color: rgba(19,17,9,.5); white-space: nowrap; }
+    #t2-track { position: absolute; left: 0; top: 94px; width: 332px; height: 8px; border-radius: 4px; background: rgba(19,17,9,.12); }
+    #t2-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; border-radius: 4px; background: #131109; transform-origin: 0 50%; }
+    #t2-knob { position: absolute; left: -17px; top: -13px; width: 34px; height: 34px; border-radius: 50%; background: #fff;
+      border: 3px solid #131109; box-shadow: 0 4px 10px rgba(19,17,9,.18); }
+
+    #t2-next { position: absolute; inset: 0; }
+  </style>
+
+  <div id="root" data-composition-id="t2" data-width="1080" data-height="1080">
+    <div id="t2-pan">
+      <h1 id="t2-hl" class="k-hl">
+        <span class="k-line" id="t2-l1"><b>Motion blur</b></span>
+        <span class="k-line" id="t2-l2">uses the filter tier by default.</span>
+      </h1>
+
+      <div id="t2-cam">
+        <div id="t2-win" class="k-win">
+          <div class="k-bar"><i class="k-dot"></i><i class="k-dot"></i><i class="k-dot"></i><span style="margin-left:14px">motion.html</span></div>
+
+          <div id="t2-prev" class="k-dark">
+            <div id="t2-prev-dots" data-layout-ignore></div>
+            <div id="t2-prev-lab">Preview</div>
+            <div id="t2-floor" data-layout-ignore></div>
+            <div id="t2-ghosts" data-layout-ignore></div>
+            <div id="t2-shape" class="t2-shape"></div>
+            <div id="t2-scrub" data-layout-ignore><i></i></div>
+            <div id="t2-tc">0:00.00</div>
+            <div id="t2-tc2">30 fps</div>
+          </div>
+
+          <div id="t2-insp">
+            <div id="t2-insp-t">Inspector</div>
+            <div id="t2-insp-sel">#ball</div>
+            <div class="t2-hr" style="top:78px"></div>
+
+            <div class="t2-row" id="t2-r1" style="top:100px">
+              <div class="t2-key">data-motion-blur</div>
+              <div class="t2-val"><span id="t2-on" class="k-chip">on</span><span class="t2-note">opt-in</span></div>
+            </div>
+            <div class="t2-hr" style="top:214px"></div>
+
+            <div class="t2-row" id="t2-r2" style="top:236px">
+              <div class="t2-key">tier<em id="t2-def">default</em></div>
+              <div class="t2-val" id="t2-tier">auto<span id="t2-to"><span id="t2-arrow"> → </span><span id="t2-filter"><i></i><span id="t2-ft">filter</span></span></span></div>
+            </div>
+            <div class="t2-hr" id="t2-hr3" style="top:352px"></div>
+
+            <div class="t2-row" id="t2-r3" style="top:374px">
+              <div class="t2-key">data-motion-blur-phase</div>
+              <div id="t2-phase-sub">when the shutter opens</div>
+              <div id="t2-track"><div id="t2-fill"></div><div id="t2-knob"></div></div>
+            </div>
+          </div>
+
+          <svg id="t2-cur" class="k-cursor" viewBox="0 0 32 32"><path d="M6 3 L6 25 L11.5 19.8 L15.2 28 L19 26.3 L15.4 18.4 L23 18.4 Z" fill="#131109" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <div id="t2-next" class="k-stage" data-layout-ignore></div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const q = (s) => document.querySelector(s);
+      const DUR = 5.6;
+
+      // ---------- the moving shape and its streak: a pure function of time (seek-safe)
+      const N = 8, SPAN = 0.22, A = 150, CX = 195, CY = 282, P = 1.5;
+      const ghostHost = q("#t2-ghosts");
+      const ghosts = [];
+      for (let i = 0; i < N; i++) { const g = document.createElement("div"); g.className = "t2-shape"; ghostHost.appendChild(g); ghosts.push(g); }
+      const shape = q("#t2-shape");
+      const xAt = (t) => CX + A * Math.sin((2 * Math.PI * t) / P);
+      const phEase = gsap.parseEase("power2.inOut");
+      const PH0 = 4.47, PH1 = 4.9;
+      const phAt = (t) => 0.5 * phEase(Math.min(1, Math.max(0, (t - PH0) / (PH1 - PH0))));
+      const fill = q("#t2-fill"), knob = q("#t2-knob"), scrub = q("#t2-scrub i"), tc = q("#t2-tc");
+      function render(t) {
+        const ph = phAt(t);
+        gsap.set(shape, { x: xAt(t), y: CY });
+        ghosts.forEach((g, i) => {
+          const d = SPAN * (ph - (i + 1) / (N + 1));            // sample offset from now: trailing (ph 0) to centred (ph .5)
+          const w = Math.max(0, 1 - Math.abs(d) / SPAN);
+          gsap.set(g, { x: xAt(t + d), y: CY, opacity: 0.55 * Math.pow(w, 1.4) });
+        });
+        // slider: 0 = shutter opens at the frame (trailing), 50% = centred on it
+        gsap.set(fill, { scaleX: ph });
+        gsap.set(knob, { x: 332 * ph });
+        gsap.set(scrub, { scaleX: (t % 3) / 3 });
+        const s = t % 3; tc.textContent = "0:0" + s.toFixed(2);
+      }
+      render(0);
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => render(clock.t) }, 0);
+
+      // ---------- open: arrive from below, carrying t1's upward whip
+      tl.fromTo("#t2-win", { y: 260, filter: "blur(10px)" }, { y: 0, filter: "blur(0px)", duration: 0.32, ease: "power3.out" }, 0);
+      tl.fromTo("#t2-l1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.08);
+      tl.fromTo("#t2-l2", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 1.06);
+
+      // ---------- "filter tier" (1.70) "by default" (2.43)
+      gsap.set("#t2-to", { opacity: 0 });
+      gsap.set("#t2-filter i", { scaleX: 0 });
+      gsap.set("#t2-def", { opacity: 0 });
+      tl.fromTo("#t2-to", { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.18, ease: "power3.out" }, 1.6);
+      tl.to("#t2-filter i", { scaleX: 1, duration: 0.2, ease: "power3.out" }, 1.72);
+      tl.to("#t2-ft", { color: "#ffffff", duration: 0.1 }, 1.74);
+      tl.fromTo("#t2-def", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.25, ease: "power3.out" }, 2.45);
+
+      // ---------- "a new setting" (3.36): punch-in hard cut on the inspector, the row slides in
+      gsap.set(["#t2-r3", "#t2-hr3"], { opacity: 0 });
+      const S = 2.3, FX = 802, FY = 800;
+      tl.set("#t2-cam", { x: 540 - FX * S, y: 540 - FY * S, scale: S }, 3.3);
+      tl.set("#t2-hl", { opacity: 0 }, 3.3);
+      tl.set("#t2-hr3", { opacity: 1 }, 3.36);
+      tl.fromTo("#t2-r3", { opacity: 0, x: 60 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 3.36);
+
+      // human cursor comes to the slider knob and presses
+      const KX = 552 + 24, KY = 88 + 374 + 94 + 4;              // knob centre, window space
+      gsap.set("#t2-cur", { x: KX + 140, y: KY + 160, opacity: 0, transformOrigin: "8px 4px" });
+      tl.to("#t2-cur", { opacity: 1, duration: 0.08 }, 3.72);
+      tl.to("#t2-cur", { x: KX - 6, y: KY - 2, duration: 0.36, ease: "power3.out" }, 3.72);
+      tl.to("#t2-cur", { scale: 0.86, duration: 0.06, ease: "power2.out" }, 4.16);
+      tl.to("#t2-knob", { scale: 1.12, duration: 0.06 }, 4.16);
+
+      // ---------- cut back wide (4.30); "shutter opens" (4.47-4.9): drag, streak re-centres
+      tl.set("#t2-cam", { x: 0, y: 0, scale: 1 }, 4.3);
+      tl.set("#t2-hl", { opacity: 1 }, 4.3);
+      tl.to("#t2-cur", { x: KX - 6 + 166, duration: PH1 - PH0, ease: "power2.inOut" }, PH0);
+      tl.to("#t2-cur", { scale: 1, duration: 0.1, ease: "power2.out" }, 4.96);
+      tl.to("#t2-knob", { scale: 1, duration: 0.1 }, 4.96);
+
+      // ---------- exit: whip left; the stage for Studio slides in as the next ground
+      tl.to("#t2-pan", { x: -1080, filter: "blur(12px)", duration: 0.25, ease: "power3.in" }, 5.25);
+      tl.fromTo("#t2-next", { x: 1080 }, { x: 0, duration: 0.25, ease: "power3.in" }, 5.25);
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["t2"] || []);
+      window.__timelines["t2"] = tl;
+    })();
+  </script>
+</template>

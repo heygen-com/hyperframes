@@ -1,0 +1,95 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #t5-hl code { font-size: 72px; -webkit-text-stroke: 2.2px #131109; letter-spacing: 0; }
+    #t5-term { left: 72px; top: 236px; width: 936px; height: 760px; box-shadow: 0 40px 100px rgba(19,17,9,.28); }
+    .t5-tbar { position: absolute; left: 0; right: 0; top: 0; height: 58px; border-bottom: 1px solid rgba(255,255,255,.08);
+      display: flex; align-items: center; gap: 10px; padding: 0 24px; }
+    .t5-tbar i { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,.18); display: block; }
+    .t5-tbar span { margin-left: 14px; font-size: 22px; color: rgba(255,255,255,.5); }
+    .t5-mono { font-family: "TT Mono", ui-monospace, monospace; letter-spacing: -0.02em; white-space: nowrap; }
+    #t5-cmd { position: absolute; left: 48px; top: 104px; font-size: 40px; color: #fff; }
+    #t5-cmd .t5-ps { color: rgba(255,255,255,.45); }
+    #t5-cmd .t5-ch { display: none; }
+    #t5-caret { display: inline-block; width: 20px; height: 42px; margin-left: 4px; vertical-align: -7px; background: rgba(255,255,255,.85); }
+    .t5-line { position: absolute; left: 48px; font-size: 32px; color: rgba(255,255,255,.62); }
+    .t5-line b { font-weight: 400; color: #fff; }
+    #t5-rule { position: absolute; left: 48px; right: 48px; top: 400px; height: 1px; background: rgba(255,255,255,.1); }
+    #t5-ok { position: absolute; left: 48px; top: 560px; font-size: 44px; color: #fff; }
+    #t5-ok span { color: rgba(255,255,255,.5); font-size: 30px; margin-left: 10px; }
+    #t5-time { position: absolute; right: 52px; top: 470px; font-size: 168px; line-height: 1; color: #3ce6ac; letter-spacing: -0.05em; text-align: right; }
+    #t5-tlab { position: absolute; right: 56px; top: 436px; font-size: 26px; color: rgba(255,255,255,.5); text-align: right; }
+    #t5-track { position: absolute; left: 48px; right: 48px; top: 696px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+    #t5-time small { font-size: 72px; letter-spacing: -0.02em; }
+    #t5-track i { position: absolute; inset: 0; background: rgba(255,255,255,.85); transform-origin: 0 50%; display: block; }
+  </style>
+
+  <div id="root" data-composition-id="t5" data-width="1080" data-height="1080">
+    <div class="k-stage" data-layout-ignore></div>
+
+    <h1 id="t5-hl" class="k-hl">
+      <span class="k-line" id="t5-l1"><b><code>check</code></b> in about a second.</span>
+    </h1>
+
+    <div id="t5-term" class="k-dark">
+      <div class="t5-tbar"><i></i><i></i><i></i><span>~/weekly · zsh</span></div>
+      <div id="t5-cmd" class="t5-mono"></div>
+      <div class="t5-line t5-mono" id="t5-a" style="top:196px">project unchanged since the last pass</div>
+      <div class="t5-line t5-mono" id="t5-b" style="top:256px"><b>↻</b> replaying last pass<span id="t5-dots"></span></div>
+      <div class="t5-line t5-mono" id="t5-c" style="top:316px">lint · runtime · layout</div>
+      <div id="t5-rule"></div>
+      <div id="t5-ok" class="t5-mono">✓ 0 errors</div>
+      <div id="t5-time" class="t5-mono"><span id="t5-num">0.0</span><small> s</small></div>
+      <div id="t5-tlab">replayed in</div>
+      <div id="t5-track"><i></i></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const $ = (s) => document.querySelector("#root[data-composition-id='t5'] " + s) || document.querySelector(s);
+
+      // headline lands and stays
+      tl.fromTo("#t5-l1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.1);
+      tl.fromTo("#t5-term", { y: 70, scale: 0.97 }, { y: 0, scale: 1, duration: 0.45, ease: "power3.out" }, 0);
+
+      // ---- 0.40-0.90 the command types fast
+      const cmd = $("#t5-cmd");
+      cmd.innerHTML = '<span class="t5-ps">$ </span>';
+      const chars = [];
+      for (const ch of "npx hyperframes check") {
+        const s = document.createElement("span"); s.className = "t5-ch"; s.textContent = ch; cmd.appendChild(s); chars.push(s);
+      }
+      const caret = document.createElement("i"); caret.id = "t5-caret"; cmd.appendChild(caret);
+      [0.12, 0.28].forEach((t) => { tl.set(caret, { opacity: 0 }, t); tl.set(caret, { opacity: 1 }, t + 0.08); });
+      chars.forEach((s, i) => tl.set(s, { display: "inline" }, 0.4 + i * 0.023));
+      tl.set(caret, { opacity: 0 }, 1.0);
+
+      // ---- output lines
+      gsap.set(["#t5-a", "#t5-b", "#t5-c", "#t5-ok", "#t5-time", "#t5-tlab", "#t5-rule", "#t5-track"], { opacity: 0 });
+      gsap.set("#t5-track i", { scaleX: 0 });
+      tl.fromTo("#t5-a", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.2, ease: "power3.out" }, 1.3);
+      tl.fromTo("#t5-b", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.2, ease: "power3.out" }, 1.6);
+      [".", "..", "..."].forEach((d, i) => tl.set("#t5-dots", { innerHTML: d }, 1.72 + i * 0.12));
+      tl.fromTo("#t5-c", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.2, ease: "power3.out" }, 1.9);
+      tl.to("#t5-rule", { opacity: 1, duration: 0.15 }, 2.1);
+
+      // ---- 2.20-2.90 "in about a second": result + the timer runs 0.0 s -> 1.0 s
+      tl.fromTo("#t5-ok", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.24, ease: "power3.out" }, 2.2);
+      tl.fromTo(["#t5-time", "#t5-tlab"], { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.2, ease: "power3.out" }, 2.2);
+      tl.set("#t5-track", { opacity: 1 }, 2.2);
+      tl.to("#t5-track i", { scaleX: 1, duration: 0.7, ease: "none" }, 2.2);
+      const timer = $("#t5-num");
+      for (let k = 0; k <= 10; k++) tl.set(timer, { innerHTML: (k / 10).toFixed(1) }, 2.2 + k * 0.07);
+      tl.to("#t5-time", { scale: 1.06, duration: 0.06, ease: "power2.out", transformOrigin: "100% 50%" }, 2.9);
+      tl.to("#t5-time", { scale: 1, duration: 0.14, ease: "power2.out" }, 2.96);
+
+      // ---- exit: whip up with blur, ready for the paper outro
+      tl.to(["#t5-term", "#t5-hl"], { y: -420, filter: "blur(10px)", opacity: 0, duration: 0.22, ease: "power3.in" }, 3.03);
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["t5"] || []);
+      window.__timelines["t5"] = tl;
+    })();
+  </script>
+</template>
