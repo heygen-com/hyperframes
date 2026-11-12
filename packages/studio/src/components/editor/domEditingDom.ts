@@ -3,10 +3,7 @@
  * selector utilities, and composition source resolution.
  * No imports from other domEditing* modules — safe to import from anywhere.
  */
-import {
-  PREVIEW_VIDEO_FRAME_ATTR,
-  PREVIEW_VIDEO_CANVAS_ATTR,
-} from "@hyperframes/core/studio-preview-mark";
+import { getLogicalOpacity } from "@hyperframes/core/studio-preview-mark";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { CURATED_STYLE_PROPERTIES } from "./domEditingTypes";
@@ -38,17 +35,7 @@ export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
 }
 
-/** The preview canvas keeps the source's authored opacity while its native pixels are hidden. */
-export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
-  const overlay = el.previousElementSibling;
-  if (
-    el.hasAttribute(PREVIEW_VIDEO_FRAME_ATTR) &&
-    overlay?.localName === "canvas" &&
-    overlay.hasAttribute(PREVIEW_VIDEO_CANVAS_ATTR)
-  )
-    return el.ownerDocument.defaultView?.getComputedStyle(overlay).opacity ?? computed.opacity;
-  return computed.opacity;
-}
+export { getLogicalOpacity };
 
 /** Does this node render AT ALL, ignoring what it inherits? Sole owner of the
  *  rule; the walk below only decides which nodes to ask it about. */

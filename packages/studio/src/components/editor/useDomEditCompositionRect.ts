@@ -1,6 +1,8 @@
 import { useState, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { subscribeOverlayFrame } from "./overlayFrameLoop";
+import { previewStageSize } from "../../player/lib/bridgePlayback";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 export interface DomEditCompositionRect {
   left: number;
@@ -21,6 +23,16 @@ function sameRect(a: DomEditCompositionRect, b: DomEditCompositionRect): boolean
     d("scaleX") < 0.001 &&
     d("scaleY") < 0.001
   );
+}
+
+function declaredCompositionSize(iframe: HTMLIFrameElement): { width: number; height: number } {
+  if (previewFrameOpaque(iframe)) return previewStageSize(iframe) ?? { width: NaN, height: NaN };
+  const doc = iframe.contentDocument;
+  const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
+  return {
+    width: Number.parseFloat(root?.getAttribute("data-width") ?? ""),
+    height: Number.parseFloat(root?.getAttribute("data-height") ?? ""),
+  };
 }
 
 export function useDomEditCompositionRect({
@@ -50,10 +62,7 @@ export function useDomEditCompositionRect({
       const left = iRect.left - oRect.left;
       const top = iRect.top - oRect.top;
       if (iRect.width <= 0 || iRect.height <= 0) return;
-      const doc = iframe.contentDocument;
-      const root = doc?.querySelector<HTMLElement>("[data-composition-id]") ?? doc?.documentElement;
-      const dw = Number.parseFloat(root?.getAttribute("data-width") ?? "");
-      const dh = Number.parseFloat(root?.getAttribute("data-height") ?? "");
+      const { width: dw, height: dh } = declaredCompositionSize(iframe);
       const scaleX = dw > 0 ? iRect.width / dw : 1;
       const scaleY = dh > 0 ? iRect.height / dh : 1;
       const next = { left, top, width: iRect.width, height: iRect.height, scaleX, scaleY };

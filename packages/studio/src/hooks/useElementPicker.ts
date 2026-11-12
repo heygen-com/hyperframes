@@ -12,7 +12,10 @@ import {
   postRuntimeControlMessage,
 } from "../player/lib/runtimeProtocol";
 import { compositionPathOfPreviewUrl } from "../player/components/CompositionThumbnail";
-import { getLogicalOpacity, getSourceFileForElement } from "../components/editor/domEditingDom";
+import { frameOrigins } from "../player/lib/bridgePlayback";
+import { previewComputedStyles, previewFrameOpaque } from "../player/lib/previewChannel";
+import { PICKED_STYLE_PROPERTIES, readComputedStyles } from "./elementPickerStyles";
+import { getSourceFileForElement } from "../components/editor/domEditingDom";
 import {
   createElementPickerHoverLabel,
   type ElementPickerHoverInfo,
@@ -173,7 +176,19 @@ function useElementPickerSession(
     setPickedElement(null);
   }, []);
 
-  const windowsThatWerePrimary = useRef(new WeakSet<MessageEventSource>());
+  const originsOfWindowsThatWerePrimary = useRef(new WeakMap<MessageEventSource, string[]>());
+
+  const showPicked = useCallback((next: PickedElement, iframe: HTMLIFrameElement) => {
+    pickedElementRef.current = next;
+    setPickedElement(next);
+    if (!previewFrameOpaque(iframe)) return;
+    void previewComputedStyles(iframe, next.selector, PICKED_STYLE_PROPERTIES).then((styles) => {
+      if (!styles || pickedElementRef.current !== next) return;
+      const filled = { ...next, computedStyles: styles };
+      pickedElementRef.current = filled;
+      setPickedElement(filled);
+    });
+  }, []);
 
   useEffect(() => {
     if (!isPickMode) return;
@@ -204,13 +219,14 @@ function useElementPickerSession(
       const activeIframe = getActiveIframe();
       if (!activeIframe) return;
       if (!e.source) return;
-      if (e.source === iframeRef.current?.contentWindow)
-        windowsThatWerePrimary.current.add(e.source);
-      else if (
-        e.source !== activeIframe.contentWindow &&
-        !windowsThatWerePrimary.current.has(e.source)
-      )
-        return;
+      const primary = iframeRef.current;
+      if (primary && e.source === primary.contentWindow)
+        originsOfWindowsThatWerePrimary.current.set(e.source, frameOrigins(primary));
+      const origins =
+        e.source === activeIframe.contentWindow
+          ? frameOrigins(activeIframe)
+          : originsOfWindowsThatWerePrimary.current.get(e.source);
+      if (!origins?.includes(e.origin)) return;
 
       if (data.type === "element-hovered") {
         if (e.source !== activeIframe.contentWindow || !isPickModeRef.current) return;
@@ -220,9 +236,7 @@ function useElementPickerSession(
       }
 
       if (data.type === "element-picked" && data.elementInfo) {
-        const next = toPickedElement(data.elementInfo, activeIframe);
-        pickedElementRef.current = next;
-        setPickedElement(next);
+        showPicked(toPickedElement(data.elementInfo, activeIframe), activeIframe);
         pickStartSelectionRef.current = undefined;
         isPickModeRef.current = false;
         clearHover();
@@ -230,11 +244,7 @@ function useElementPickerSession(
       } else if (data.type === "element-pick-candidates") {
         // Multiple candidates at click point — pick the first one
         const el = data.candidates?.[data.selectedIndex ?? 0];
-        if (el) {
-          const next = toPickedElement(el, activeIframe);
-          pickedElementRef.current = next;
-          setPickedElement(next);
-        }
+        if (el) showPicked(toPickedElement(el, activeIframe), activeIframe);
       }
 
       if (data.type === "pick-mode-cancelled") {
@@ -548,53 +558,4 @@ function patchByHfId(
   const path = matches.includes(ownFile) ? ownFile : matches.length === 1 ? matches[0] : undefined;
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatchByTarget(before, { hfId }, op) } : null;
-}
-
-/** Read a subset of computed styles from an element in the iframe */
-function readComputedStyles(iframe: HTMLIFrameElement, selector: string): Record<string, string> {
-  const styles: Record<string, string> = {};
-  try {
-    const doc = iframe.contentDocument;
-    const el = doc?.querySelector(selector);
-    if (!el) return styles;
-    const computed = iframe.contentWindow?.getComputedStyle(el);
-    if (!computed) return styles;
-
-    const props = [
-      "position",
-      "top",
-      "left",
-      "right",
-      "bottom",
-      "width",
-      "height",
-      "margin-top",
-      "margin-right",
-      "margin-bottom",
-      "margin-left",
-      "padding-top",
-      "padding-right",
-      "padding-bottom",
-      "padding-left",
-      "font-size",
-      "font-weight",
-      "font-family",
-      "color",
-      "background-color",
-      "background",
-      "opacity",
-      "border-radius",
-      "transform",
-      "z-index",
-    ];
-
-    for (const prop of props) {
-      const val =
-        prop === "opacity" ? getLogicalOpacity(el, computed) : computed.getPropertyValue(prop);
-      if (val) styles[prop] = val;
-    }
-  } catch {
-    /* cross-origin */
-  }
-  return styles;
 }

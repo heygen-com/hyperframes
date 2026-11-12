@@ -20,6 +20,7 @@ import {
   type EditingResult,
 } from "./editingPort";
 import type { ClipNode } from "./clipTree";
+import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -54,6 +55,18 @@ const HANDLERS: Handlers = {
     if (typeof setLoopStart !== "function") return { applied: false };
     setLoopStart(seconds);
     return { applied: true };
+  },
+  "computed-styles": ({ selector, properties }) => {
+    const element = document.querySelector(selector);
+    if (!element) return { styles: null };
+    const computed = window.getComputedStyle(element);
+    const styles: Record<string, string> = {};
+    for (const name of properties) {
+      const value =
+        name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
+      if (value) styles[name] = value;
+    }
+    return { styles };
   },
 };
 

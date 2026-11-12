@@ -12,6 +12,8 @@ interface PlaybackMirror {
   /** A seek the runtime has not confirmed yet, and until when to wait for it. */
   seekTo: number | null;
   seekUntil: number;
+  /** The composition's declared size from the runtime's `stage-size` post. */
+  stageSize: { width: number; height: number } | null;
 }
 
 const SEEK_CONFIRM_MS = 500;
@@ -26,7 +28,15 @@ function mirrorOf(iframe: HTMLIFrameElement): PlaybackMirror | null {
   if (!frame) return null;
   let mirror = mirrors.get(frame);
   if (!mirror) {
-    mirror = { iframe, time: 0, duration: 0, playing: false, seekTo: null, seekUntil: 0 };
+    mirror = {
+      iframe,
+      time: 0,
+      duration: 0,
+      playing: false,
+      seekTo: null,
+      seekUntil: 0,
+      stageSize: null,
+    };
     mirrors.set(frame, mirror);
   }
   mirror.iframe = iframe;
@@ -38,11 +48,18 @@ export function watchPreviewFrame(iframe: HTMLIFrameElement): void {
   mirrorOf(iframe);
 }
 
+/** The composition size a registered frame's runtime last posted. */
+export function previewStageSize(
+  iframe: HTMLIFrameElement,
+): { width: number; height: number } | null {
+  const frame = iframe.contentWindow;
+  return (frame && mirrors.get(frame)?.stageSize) ?? null;
+}
+
 /** The origins a post from this frame can carry, given its sandbox and what it loads. */
-function frameOrigins(iframe: HTMLIFrameElement): string[] {
-  if (iframe.hasAttribute("sandbox") && !iframe.sandbox.contains("allow-same-origin")) {
-    return ["null"];
-  }
+export function frameOrigins(iframe: HTMLIFrameElement): string[] {
+  const sandbox = iframe.getAttribute("sandbox")?.toLowerCase().split(/\s+/);
+  if (sandbox && !sandbox.includes("allow-same-origin")) return ["null"];
   const src = iframe.getAttribute("src");
   if (iframe.hasAttribute("srcdoc") || !src) return [window.location.origin];
   try {
@@ -56,6 +73,7 @@ function frameOrigins(iframe: HTMLIFrameElement): string[] {
 
 const finiteAtLeastZero = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value >= 0;
+const finitePositive = (value: unknown): value is number => finiteAtLeastZero(value) && value > 0;
 
 /** The runtime lands a seek on the frame at or before it, so only that frame confirms it. */
 function confirmsSeek(currentTime: number, seekTo: number, fps: number | null): boolean {
@@ -90,18 +108,23 @@ function mirrorState(
   mirror.playing = playing;
 }
 
+function mirrorPost(mirror: PlaybackMirror, message: Record<string, unknown>, fps: number | null) {
+  if (message.type === "timeline" && finiteAtLeastZero(message.durationSeconds)) {
+    mirror.duration = message.durationSeconds;
+  } else if (message.type === "state" && finiteAtLeastZero(message.currentTime)) {
+    mirrorState(mirror, message.currentTime, message.isPlaying === true, fps);
+  } else if (message.type === "stage-size") {
+    const { width, height } = message;
+    if (finitePositive(width) && finitePositive(height)) mirror.stageSize = { width, height };
+  }
+}
+
 function mirrorRuntimePlayback(event: MessageEvent): void {
   // Only a frame Studio built, posting from an origin that frame can have.
   const mirror = event.source ? mirrors.get(event.source) : undefined;
   if (!mirror || !frameOrigins(mirror.iframe).includes(event.origin)) return;
   const post = runtimePost(event.data);
-  if (!post) return;
-  const { message, fps } = post;
-  if (message.type === "timeline" && finiteAtLeastZero(message.durationSeconds)) {
-    mirror.duration = message.durationSeconds;
-  } else if (message.type === "state" && finiteAtLeastZero(message.currentTime)) {
-    mirrorState(mirror, message.currentTime, message.isPlaying === true, fps);
-  }
+  if (post) mirrorPost(mirror, post.message, post.fps);
 }
 
 if (typeof window !== "undefined") window.addEventListener("message", mirrorRuntimePlayback);
