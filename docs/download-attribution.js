@@ -29,6 +29,8 @@
   var LANDING_DAYS = 30;
   // Longer tags than hyperframes.studio keeps (its TAG_MAX): it drops them, and the shared cookie must stay small.
   var TAG_MAX = 64;
+  // The address a link had before a right-click menu put the source on it.
+  var UNTAGGED = "data-hf-untagged-href";
 
   function rawCookie(name) {
     var prefix = name + "=";
@@ -148,7 +150,9 @@
     addSource(url);
     var id = url.pathname === DOWNLOAD && posthogLoaded() && !optedOut() && posthogId();
     if (id) url.searchParams.set("ph_id", id);
-    if (url.toString() === new URL(link.href).toString()) return;
+    // Nothing to add: the link as written (before a right-click menu tagged it) is what it already says. A Card compares
+    // against that, not its current href: it follows its own href prop, which a menu-tagged href doesn't change.
+    if (url.toString() === new URL(link.getAttribute(UNTAGGED) || link.href, location.href).toString()) return;
     // Mintlify's <Card> (its anchor carries data-client-link) opens its own href prop from React, never the link's current
     // href, so its click is followed here: a new tab for a middle click, Cmd/Ctrl-click or a target="_blank" link, else
     // this tab. Every other link keeps the browser's own follow of the href set below, so Mintlify's click handlers
@@ -175,7 +179,9 @@
     var found = studioLink(event);
     if (!found) return;
     addSource(found.url);
-    if (found.url.toString() !== found.link.href) found.link.href = found.url.toString();
+    if (found.url.toString() === found.link.href) return;
+    if (!found.link.hasAttribute(UNTAGGED)) found.link.setAttribute(UNTAGGED, found.link.href);
+    found.link.href = found.url.toString();
   }
 
   // Capture phase, before the browser follows the link; auxclick covers a middle-click into a new tab.
