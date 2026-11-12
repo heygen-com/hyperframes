@@ -1,15 +1,10 @@
-/**
- * Which element a selection lands on, and where to look for a selection's element. Pure over a
- * target's ancestor chain, so a frame Studio can script (live elements) and one it reaches only
- * through its runtime (element descriptions) take the same answer.
- */
+/** Selection rules over an ancestor chain: one answer for live elements and for descriptions. */
 import type { TimelineElementDomTarget, TimelineElementDomTargetOptions } from "./domEditingTypes";
 import { escapeCssString, normalizeTimelineCompositionSource } from "./domEditingDom";
 
 /** Reads one element of a chain: the target first, then each parent up to the document element. */
 export interface SelectionChainReader<N> {
   attr(node: N, name: string): string | null;
-  /** The node's `buildStableSelector`. */
   selector(node: N): string | undefined;
   /** The document's `body` or root element, where the walk to an addressable element stops. */
   isDocumentRoot(node: N): boolean;
@@ -51,11 +46,7 @@ function clipAncestorIndex<N>(chain: readonly N[], read: SelectionChainReader<N>
   return null;
 }
 
-/**
- * The index in `chain` of the element a selection of `chain[0]` lands on, or null for none.
- * `activeGroupIndex` is the drilled-into group's index in `chain` (-1 when it is not in it).
- * Drill-in is non-sticky: a target outside the drilled-into group resolves as from the top level.
- */
+/** Where a selection of `chain[0]` lands; `activeGroupIndex` is -1 for a drilled group not in `chain`. */
 export function selectionTargetIndex<N>(
   chain: readonly N[],
   read: SelectionChainReader<N>,
@@ -72,7 +63,6 @@ export function selectionTargetIndex<N>(
   return null;
 }
 
-/** Is `chain[index]`, or anything above it, timeline-locked? */
 export function chainLocked<N>(
   chain: readonly N[],
   read: SelectionChainReader<N>,
