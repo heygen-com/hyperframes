@@ -29,7 +29,12 @@ afterEach(() => {
 
 function mount(
   kind: "drag" | "resize" | "rotate",
-  { overlayWidth = 500, height = 60, stageHeight = 400, angle = undefined as number | undefined } = {},
+  {
+    overlayWidth = 500,
+    height = 60,
+    stageHeight = 400,
+    angle = undefined as number | undefined,
+  } = {},
 ) {
   const host = document.createElement("div");
   const overlay = document.createElement("div");
