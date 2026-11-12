@@ -23,6 +23,7 @@ export interface HistoryTarget {
   hfId?: string;
   selector?: string;
   selectorIndex?: number;
+  name?: string;
 }
 
 export interface HistoryEntry {

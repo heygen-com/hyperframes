@@ -66,6 +66,8 @@ function targetOf(item: unknown): HistoryTarget | null {
   if (typeof fields.file !== "string") return null;
   const target: HistoryTarget = { file: fields.file, ...identityOf(fields) };
   if (!target.id && !target.hfId && !target.selector) return null;
+  const name = nameOf(fields.name);
+  if (name) target.name = name;
   if (isSelectorIndex(fields.selectorIndex)) target.selectorIndex = fields.selectorIndex;
   return target;
 }
@@ -79,6 +81,13 @@ function identityOf(
     if (typeof field === "string" && field) identity[key] = field;
   }
   return identity;
+}
+
+const MAX_TARGET_NAME = 200;
+
+function nameOf(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim().slice(0, MAX_TARGET_NAME) || undefined;
 }
 
 const isSelectorIndex = (value: unknown): value is number =>

@@ -23,8 +23,10 @@ import {
 } from "../player/lib/timelineElementHelpers";
 import { resolveTimelinePlaybackRate } from "../player/components/timelineGroupEditing";
 import {
+  editContextTarget,
   saveProjectFilesWithHistory,
   writeProjectFilesWithHistoryInQueue,
+  type EditContextTarget,
   type RecordEditInput,
 } from "../utils/studioFileHistory";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
@@ -140,6 +142,12 @@ export function buildPatchTarget(element: {
   return null;
 }
 export type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
+
+/** A clip's entry in the history: how to find the element again, and the name the clip wears on the timeline. */
+function timelineEditTarget(path: string, element: TimelineElement): EditContextTarget | null {
+  const patchTarget = buildPatchTarget(element);
+  return patchTarget && editContextTarget(path, { ...patchTarget, label: element.label });
+}
 // The runtime re-reads data-start/data-duration from the DOM on each sync tick
 // (packages/core/src/runtime/init.ts:1324-1368), so attribute mutations here are
 // picked up automatically on the next frame without a rebind call.
@@ -354,6 +362,7 @@ export async function persistTimelineEdit(input: PersistTimelineEditInput): Prom
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
+    targets: [editContextTarget(targetPath, { ...patchTarget, label: input.element.label })],
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files: {
@@ -457,6 +466,10 @@ export async function persistTimelineBatchEdit(
   await saveProjectFilesWithHistory({
     projectId: input.projectId,
     label: input.label,
+    targets: input.changes.flatMap((change) => {
+      const path = change.element.sourceFile || input.activeCompPath || "index.html";
+      return timelineEditTarget(path, change.element) ?? [];
+    }),
     coalesceKey: input.coalesceKey,
     coalesceMs: input.coalesceMs,
     files: Object.fromEntries([...changesByPath.keys()].map((path) => [path, buildFile(path)])),
