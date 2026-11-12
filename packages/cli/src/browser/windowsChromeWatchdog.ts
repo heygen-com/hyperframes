@@ -1,11 +1,24 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { win32 } from "node:path";
 
-const SWEEP = `$b=[int]$env:HF_CHROME_PID; $x=$env:HF_CHROME_EXE; $t=[DateTimeOffset]::FromUnixTimeMilliseconds([int64]$env:HF_CHROME_SINCE).UtcDateTime; Get-CimInstance Win32_Process | Where-Object { ($_.ProcessId -eq $b -or $_.ParentProcessId -eq $b) -and $_.ExecutablePath -eq $x -and $_.CreationDate.ToUniversalTime() -ge $t } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+export function chromeKillCommand(
+  pid: number,
+  executable: string,
+  env: NodeJS.ProcessEnv = process.env,
+): { file: string; args: string[] } {
+  return {
+    file: win32.join(env.SystemRoot || "C:\\Windows", "System32", "taskkill.exe"),
+    args: ["/PID", String(pid), "/T", "/F", "/FI", `IMAGENAME eq ${win32.basename(executable)}`],
+  };
+}
 
 const WATCHDOG = `let clean = false;
 const done = () => {
-  if (!clean) require("node:child_process").spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ${JSON.stringify(SWEEP)}], { windowsHide: true, timeout: 20000 });
+  if (!clean) {
+    const { file, args } = JSON.parse(process.env.HF_CHROME_KILL);
+    require("node:child_process").spawnSync(file, args, { windowsHide: true, timeout: 20000 });
+  }
   process.exit(0);
 };
 process.stdin.on("data", (data) => { clean ||= String(data).includes("clean"); });
@@ -25,19 +38,14 @@ function executableOf(chrome: ChildProcess): string | undefined {
 }
 
 /** Windows does not end a process's children with it, so Chrome's children outlive a killed CLI without this. */
-export function watchChromeTree(
-  chrome: ChildProcess,
-  launchedAt: number,
-): ChromeWatchdog | undefined {
+export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
   const executable = process.platform === "win32" ? executableOf(chrome) : undefined;
   if (!executable || chrome.pid === undefined) return undefined;
   const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
     detached: true,
     env: {
       ...process.env,
-      HF_CHROME_PID: String(chrome.pid),
-      HF_CHROME_EXE: executable,
-      HF_CHROME_SINCE: String(launchedAt),
+      HF_CHROME_KILL: JSON.stringify(chromeKillCommand(chrome.pid, executable)),
     },
     stdio: ["pipe", "ignore", "ignore"],
     windowsHide: true,
