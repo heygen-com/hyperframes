@@ -107,6 +107,8 @@ async function download(url: string, pack: TemplatePack): Promise<Buffer> {
   return data;
 }
 
+const PLAIN_FILE_OR_FOLDER_LISTING = /^[-d]/;
+
 function assertSafeEntries(data: Buffer): void {
   const names = execFileSync("tar", ["-tzf", "-"], {
     input: data,
@@ -116,14 +118,13 @@ function assertSafeEntries(data: Buffer): void {
   for (const name of names.split("\n"))
     if (name.startsWith("/") || name.split("/").includes(".."))
       throw new PullRefused(`The template holds an unsafe path (${name}); nothing was unpacked.`);
-  // The long listing starts each line with the entry type: only plain files and folders unpack.
   const kinds = execFileSync("tar", ["-tvzf", "-"], {
     input: data,
     encoding: "utf8",
     maxBuffer: 1 << 26,
   });
   for (const line of kinds.split("\n"))
-    if (line && line[0] !== "-" && line[0] !== "d")
+    if (line && !PLAIN_FILE_OR_FOLDER_LISTING.test(line))
       throw new PullRefused("The template holds a link or special file; nothing was unpacked.");
 }
 
