@@ -236,7 +236,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
     "sharp": "^0.35.0"
