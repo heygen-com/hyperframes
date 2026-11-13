@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeftOutReference } from "./leftOutReference.js";
-import { OUTSIDE_FILE_EXTENSIONS } from "@hyperframes/studio-server/outside-file";
+import { OUTSIDE_FILE_EXTENSIONS } from "./outsideFileType.js";
 import { stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];

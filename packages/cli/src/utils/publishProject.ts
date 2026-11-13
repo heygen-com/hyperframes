@@ -35,7 +35,7 @@ import {
   type LeftOutReason,
   type OnLeftOut,
 } from "./leftOutReference.js";
-import { isCopiedOutsideFileType } from "@hyperframes/studio-server/outside-file";
+import { isCopiedOutsideFileType } from "./outsideFileType.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
