@@ -33,6 +33,7 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
+import { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, VIDEO_EXTS } from "./mediaExtensions.js";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   archiveKey,
@@ -69,39 +70,6 @@ const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
   ".wav": { contentType: "audio/wav", maxBytes: AUDIO_MAX_BYTES },
   ".mp3": { contentType: "audio/mpeg", maxBytes: AUDIO_MAX_BYTES },
 };
-
-const VIDEO_EXTS = new Set([
-  ".mp4",
-  ".m4v",
-  ".mov",
-  ".webm",
-  ".mkv",
-  ".avi",
-  ".mpg",
-  ".mpeg",
-  ".ts",
-  ".m2ts",
-  ".mts",
-  ".flv",
-  ".wmv",
-  ".ogv",
-  ".3gp",
-]);
-const AUDIO_EXTS = new Set([
-  ".wav",
-  ".mp3",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".oga",
-  ".opus",
-  ".flac",
-  ".aif",
-  ".aiff",
-  ".wma",
-]);
-// Still images the API refuses; converted to PNG unless animated.
-const CONVERTIBLE_IMAGE_EXTS = new Set([".gif", ".avif", ".bmp", ".tif", ".tiff"]);
 
 /** Visually lossless re-encodes for media the asset API refuses or caps. Quality lives here. */
 const REENCODE_PRESETS = {

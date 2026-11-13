@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const cliEntry = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "cli.ts");
 
-/** `<root>/p` whose received index.html points at `<root>/notes.txt` and whose own page points at `<root>/.env`. */
+/** `<root>/p` whose received index.html points at `<root>/notes.txt`; its own page points at `<root>/.env` and `<root>/data.json`. */
 function importedProject(): string {
   const root = mkdtempSync(join(tmpdir(), "hf-cloud-left-out-"));
   onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -15,11 +15,12 @@ function importedProject(): string {
   mkdirSync(join(dir, ".hyperframes"), { recursive: true });
   writeFileSync(join(root, "notes.txt"), "outside");
   writeFileSync(join(root, ".env"), "SECRET=1");
+  writeFileSync(join(root, "data.json"), "{}");
   writeFileSync(
     join(dir, "index.html"),
     `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><link href="../notes.txt"></div></body></html>`,
   );
-  writeFileSync(join(dir, "mine.html"), `<link href="../.env">`);
+  writeFileSync(join(dir, "mine.html"), `<link href="../.env"><link href="../data.json">`);
   writeFileSync(
     join(dir, ".hyperframes", "received-files.json"),
     JSON.stringify({ files: ["index.html"] }),
@@ -64,8 +65,15 @@ describe("cloud render --dry-run --json lists what the upload leaves out", () =>
         reason: "blocklisted",
         levels_up: 1,
       },
+      {
+        file: "mine.html",
+        reference: "../data.json",
+        path: "../data.json",
+        reason: "file_type",
+        levels_up: 1,
+      },
     ];
-    expect(archive.left_out).toHaveLength(2);
+    expect(archive.left_out).toHaveLength(3);
     expect(archive.left_out).toEqual(expect.arrayContaining(expected));
     const events = result.stderr
       .split("\n")

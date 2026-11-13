@@ -2674,13 +2674,16 @@ authenticating, uploading, or starting anything. If you are over, add only
 paths you have verified are unneeded to `.hyperframesignore`.
 
 A file outside the project folder that a composition points at is copied into
-the zip, unless it sits in a private location (env files, Git data, hidden,
-system and app-data folders) or is reached from a file that came in with an
-imported project: then it is left out, with a warning naming it. Under
-`--json`, the result lists those as `left_out`, each with the `file` that points
-at it, the `reference` as written, its `path` from the project folder, the
-`reason` (`blocklisted` or `received`) and `levels_up`, how many folders above
-the project it is. A full run also prints each as a `{"event":"left_out",…}`
+the zip only if it is an image, video, audio, font, CSS or JS file, judged by
+its extension. Any other outside file (a Lottie `.json`, a `.pdf`, a file with
+no extension), one in a private location (env files, Git data, hidden, system
+and app-data folders), and one reached from a file that came in with an
+imported project are left out, with a warning naming each. To include such a
+file, move it into the project folder. Under `--json`, the result lists those
+as `left_out`, each with the `file` that points at it, the `reference` as
+written, its `path` from the project folder, the `reason` (`blocklisted`,
+`received` or `file_type`) and `levels_up`, how many folders above the project
+it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
