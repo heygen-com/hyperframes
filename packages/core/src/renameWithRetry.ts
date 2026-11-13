@@ -96,3 +96,18 @@ export async function renameWithRetryAsync(
     }
   }
 }
+
+export async function retryWindowsHold<T>(
+  operation: () => T,
+  options: { platform?: NodeJS.Platform } = {},
+): Promise<T> {
+  const platform = options.platform ?? process.platform;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return operation();
+    } catch (error) {
+      if (!isWindowsHold(error, platform) || attempt >= BACKOFF_MS.length) throw error;
+      await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+    }
+  }
+}

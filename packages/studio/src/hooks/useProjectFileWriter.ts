@@ -17,7 +17,8 @@ async function fetchProjectFile(projectId: string | null, path: string, query: s
   const response = await studioApiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(path)}${query}`,
   );
-  if (!response.ok) throw new Error(`Failed to read ${path}`);
+  if (!response.ok)
+    throw await createStudioSaveHttpError(response, `Failed to read ${path}`, { path });
   const data = (await response.json()) as { content?: string; version?: string };
   return { content: data.content, version: data.version ?? response.headers.get("etag") };
 }
@@ -78,7 +79,9 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
         } else if (preflight.status === 404) {
           expectedVersion = null;
         } else {
-          throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`);
+          throw await createStudioSaveHttpError(preflight, `Failed to read ${path} before save`, {
+            path,
+          });
         }
       }
       // fallow-ignore-next-line complexity
@@ -121,7 +124,8 @@ export function useProjectFileWriter({ projectId }: UseProjectFileWriterOptions)
             attemptedContent: content,
           });
         }
-        if (!response.ok) throw await createStudioSaveHttpError(response, `Failed to save ${path}`);
+        if (!response.ok)
+          throw await createStudioSaveHttpError(response, `Failed to save ${path}`, { path });
         const result = (await response.json()) as { version?: string };
         const version = result.version ?? response.headers.get("etag");
         if (!version)
