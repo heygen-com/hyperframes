@@ -63,6 +63,8 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { withMeta } from "../../utils/updateCheck.js";
+import type { LeftOutReference, OnLeftOut } from "../../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../../telemetry/uploadLeftOut.js";
 import type { Example } from "../_examples.js";
 
 import {
@@ -338,6 +340,7 @@ export default defineCommand({
             withMeta({
               render: { render_id: renderId, status: "queued" as const },
               swapped_fonts: preparedArchive?.swappedFonts ?? [],
+              left_out: preparedArchive?.leftOut ?? [],
             }),
             null,
             2,
@@ -384,6 +387,7 @@ export default defineCommand({
             output_path: outputPath,
             bytes_written: downloadResult.bytes,
             swapped_fonts: preparedArchive?.swappedFonts ?? [],
+            left_out: preparedArchive?.leftOut ?? [],
           }),
           null,
           2,
@@ -664,6 +668,7 @@ interface PreparedLocalArchive {
   largestFiles: ArchiveFileSummary[];
   offloaded: OffloadedMedia[];
   swappedFonts: string[];
+  leftOut: LeftOutReference[];
 }
 
 function summarizeLargestFiles(fileMap: Map<string, StagedFile>): ArchiveFileSummary[] {
@@ -685,9 +690,13 @@ async function prepareLocalArchive(
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
-  const { fileMap, entryPath } = stageProjectFiles(project, composition, (warning) =>
-    (asJson ? console.error : console.log)(c.warn(`   ${warning}`)),
+  const leftOut: LeftOutReference[] = [];
+  const { fileMap, entryPath } = stageProjectFiles(
+    project,
+    composition,
+    warnAndListLeftOut(leftOut, asJson),
   );
+  trackUploadLeftOut("cloud_render", leftOut, !upload);
   const swappedFonts = await embedSystemFonts({
     dir: project.dir,
     entryFile: composition,
@@ -718,6 +727,7 @@ async function prepareLocalArchive(
     largestFiles,
     offloaded,
     swappedFonts,
+    leftOut,
   };
   if (upload) assertArchiveFits(sizeBytes, largestFiles);
   if (!asJson && sizeBytes >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
@@ -726,10 +736,19 @@ async function prepareLocalArchive(
   return prepared;
 }
 
+function warnAndListLeftOut(leftOut: LeftOutReference[], asJson: boolean): OnLeftOut {
+  return (warning, reference) => {
+    leftOut.push(reference);
+    if (!asJson) return console.log(c.warn(`   ${warning}`));
+    console.error(c.warn(`   ${warning}`));
+    console.error(JSON.stringify({ event: "left_out", ...reference }));
+  };
+}
+
 function stageProjectFiles(
   project: ProjectDir,
   composition: string | undefined,
-  onLeftOut: (warning: string) => void,
+  onLeftOut: OnLeftOut,
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
     const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut);
@@ -874,6 +893,7 @@ function reportDryRun(prepared: PreparedLocalArchive, asJson: boolean): void {
             largest_files: prepared.largestFiles,
             offloaded_media: prepared.offloaded,
             swapped_fonts: prepared.swappedFonts,
+            left_out: prepared.leftOut,
           },
         }),
         null,

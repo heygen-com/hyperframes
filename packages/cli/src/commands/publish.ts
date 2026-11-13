@@ -31,6 +31,8 @@ import {
   writeTeamProject,
 } from "../utils/projectLink.js";
 import { cliSourced } from "../utils/sourceTag.js";
+import type { LeftOutReference } from "../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
 
 export const examples: Example[] = [
   ["Publish the current project privately to a stable URL", "hyperframes publish"],
@@ -234,7 +236,12 @@ export default defineCommand({
       const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
       const leftOut: string[] = [];
-      const fileMap = buildPublishFileMap(dir, (warning) => leftOut.push(warning));
+      const references: LeftOutReference[] = [];
+      const fileMap = buildPublishFileMap(dir, (warning, reference) => {
+        leftOut.push(warning);
+        references.push(reference);
+      });
+      trackUploadLeftOut("publish", references);
       let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {
         proxyBakeManifest = await bakeMediaProxies(dir, fileMap);
