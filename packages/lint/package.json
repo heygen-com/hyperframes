@@ -60,7 +60,7 @@
     "ignore": "^5.3.2",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.4"
+    "postcss-selector-parser": "^7.1.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",

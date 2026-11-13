@@ -54,10 +54,10 @@
     "bench:startup": "node scripts/bench-startup.mjs"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.5",
+    "@hono/node-server": "^2.1.6",
     "@puppeteer/browsers": "^3.2.2",
     "acorn": "^8.17.0",
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "css-tree": "^3.2.1",
@@ -65,7 +65,7 @@
     "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
-    "hono": "^4.0.0",
+    "hono": "^4.13.16",
     "ignore": "^5.3.2",
     "open": "^10.0.0",
     "postcss": "^8.5.8",
@@ -100,7 +100,7 @@
     "vitest": "^4.1.12"
   },
   "optionalDependencies": {
-    "sharp": "^0.35.0"
+    "sharp": "^0.35.5"
   },
   "engines": {
     "node": ">=22"
