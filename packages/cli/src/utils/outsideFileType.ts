@@ -13,6 +13,5 @@ export const OUTSIDE_FILE_EXTENSIONS: ReadonlySet<string> = new Set(
 
 const hasCopiedType = (path: string) => OUTSIDE_FILE_EXTENSIONS.has(extname(path).toLowerCase());
 
-/** Whether an outside file is one of those types, both as named and where a link leads. */
 export const isCopiedOutsideFileType = (absPath: string): boolean =>
   hasCopiedType(absPath) && hasCopiedType(realFilePath(absPath));
