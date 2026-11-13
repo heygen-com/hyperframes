@@ -3,6 +3,7 @@
  * resize here, on the element's inline style, so the preview moves with the pointer. What the
  * element had before its first draft is kept until the parent ends the draft or the frame loads again.
  */
+import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
 import type { EditingDraft } from "./editingPort";
 
@@ -24,10 +25,6 @@ interface Before {
 }
 
 const before = new WeakMap<Element, Before>();
-
-type Styled = Element & ElementCSSInlineStyle;
-const isStyled = (element: Element | null): element is Styled =>
-  element instanceof HTMLElement || element instanceof SVGElement;
 
 /** "calc(50% + 2px) 4px" as its top-level parts. */
 function axes(value: string): string[] {
@@ -104,7 +101,7 @@ export function drawDrafts(drafts: readonly EditingDraft[]): { drawn: number } {
   let drawn = 0;
   for (const draft of drafts) {
     const element = elementForHandle(draft.handle);
-    if (!isStyled(element)) continue;
+    if (!isStylableElement(element)) continue;
     apply(element, draft);
     drawn++;
   }
