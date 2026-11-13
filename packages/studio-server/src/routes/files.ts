@@ -2801,7 +2801,7 @@ function heldFileAnswer(c: RouteContext, error: unknown) {
   const code = (error as NodeJS.ErrnoException | null)?.code;
   if (code === "EBUSY") return c.json({ error: "file in use", why: "busy" }, 423);
   if (code === "EPERM" || code === "EACCES") {
-    return c.json({ error: "file not writable", why: "permission" }, 403);
+    return c.json({ error: "permission denied", why: "permission" }, 403);
   }
   return null;
 }

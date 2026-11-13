@@ -1,4 +1,4 @@
-name: Studio server: files on Windows
+name: Studio server files on Windows
 
 # A file another program holds open, or a read-only one, must not read as missing or as a server error.
 on:
