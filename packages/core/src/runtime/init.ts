@@ -4989,8 +4989,9 @@ export function initSandboxRuntimeModular(): void {
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
     webAudio.stopAll();
     clock.detachAudioSource();
-    const wasPlaying = clock.isPlaying();
-    if (wasPlaying) clock.pause();
+    // A film held for data is still playing, so a seek that keeps playing resumes it.
+    const wasPlaying = clock.isPlaying() || bufferingFor.length > 0;
+    if (clock.isPlaying()) clock.pause();
     clock.seek(quantized);
     state.currentTime = clock.now();
     state.isPlaying = false;
@@ -5160,7 +5161,7 @@ export function initSandboxRuntimeModular(): void {
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
-      (options?.keepPlaying && clock.isPlaying())
+      (options?.keepPlaying && (clock.isPlaying() || bufferingFor.length > 0))
     ) {
       previewSeek?.cancel();
       pausedFrames.clear();
