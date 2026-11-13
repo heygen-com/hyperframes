@@ -36,6 +36,7 @@
   "src/services/htmlCompiler.mediaType.test.ts",
   "src/services/htmlCompiler.naturalDuration.test.ts",
   "src/services/htmlCompiler.probeCount.test.ts",
+  "src/services/htmlCompiler.remoteBoundMedia.test.ts",
   "src/services/htmlCompiler.variableMedia.test.ts",
   "src/services/render/audioDeliveryLimit.integration.test.ts",
   "src/services/render/audioPadTrim.integration.test.ts",
