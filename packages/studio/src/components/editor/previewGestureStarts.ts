@@ -23,14 +23,16 @@ import { playheadMoment } from "../../hooks/editMoment";
 import type { EditMoment } from "./manualEditsTypes";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { findPreviewElementForSelection } from "./previewSelection";
-import { measurePreviewRects } from "./previewOverlayRects";
+import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
+import type { SnapContext } from "./snapTargetCollection";
 
-type Shown = { selection: DomEditSelection; rect: OverlayRect };
+type Shown = { selection: DomEditSelection; rect: OverlayRect; start?: PreviewGestureStart };
+type OverChannel = { shown: Shown[]; snap: SnapContext };
 type ShownStart = (
   e: React.PointerEvent<HTMLElement>,
   at: EditMoment,
   waited: boolean,
-  overChannel?: Shown[],
+  overChannel?: OverChannel,
 ) => boolean;
 
 const MAX_SETTLED_WAIT_FRAMES = 60;
@@ -139,11 +141,11 @@ export function createPreviewGestureStarts(
     };
   };
 
-  /** An opaque frame's `selections` on the page it shows now, read over its channel; null when any is gone. */
+  /** An opaque frame's `selections` on the page it shows now and what a gesture on them starts from. */
   const shownOverChannel = async (
     iframe: HTMLIFrameElement,
     selections: DomEditSelection[],
-  ): Promise<Shown[] | null> => {
+  ): Promise<OverChannel | null> => {
     const overlay = opts.overlayRef.current;
     const path = opts.activeCompositionPathRef.current;
     const found = await Promise.all(
@@ -151,12 +153,12 @@ export function createPreviewGestureStarts(
     );
     const handles = found.map((element) => element?.handle);
     if (!overlay || !handles.length || !handles.every(Boolean)) return null;
-    const rects = await measurePreviewRects(iframe, overlay, handles as string[]);
+    const read = await measurePreviewGestureStart(iframe, overlay, handles as string[]);
     const shown = selections.flatMap((selection, i) => {
-      const rect = rects?.[i];
-      return rect ? [{ selection: { ...selection, handle: handles[i] }, rect }] : [];
+      const element = read?.elements[i];
+      return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
     });
-    return shown.length === selections.length ? shown : null;
+    return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
   };
 
   // A press on the page a reload is replacing would edit it by its old rules: it starts on the new page instead.
@@ -168,7 +170,10 @@ export function createPreviewGestureStarts(
     targets: () => DomEditSelection[] = () => [],
   ): boolean => {
     const at = playheadMoment();
-    if (!isPreviewChanging() && !opts.waitingPressRef.current) return start(e, at, false);
+    const iframe = opts.iframeRef.current;
+    const channel = iframe && previewFrameOpaque(iframe) ? iframe : null;
+    if (!channel && !isPreviewChanging() && !opts.waitingPressRef.current)
+      return start(e, at, false);
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -203,9 +208,7 @@ export function createPreviewGestureStarts(
       return elements.length;
     };
     // An opaque frame's pressed elements are found over its channel, once the preview settles.
-    const iframe = opts.iframeRef.current;
-    const channel = iframe && previewFrameOpaque(iframe) ? iframe : null;
-    let overChannel: Shown[] | null | undefined;
+    let overChannel: OverChannel | null | undefined;
     let asked = false;
     const channelStep = (frame: HTMLIFrameElement): "wait" | "lost" | "run" => {
       const overdue = performance.now() - since > PRESS_WAIT_MAX_MS;
@@ -275,11 +278,12 @@ export function createPreviewGestureStarts(
       (pressed, at, waited, overChannel) => {
         if (!waited) return _startGroupDrag(pressed, opts, at);
         if (overChannel) {
-          const measured = items.map((item, i) => ({ ...item, ...overChannel[i]! }));
+          const measured = items.map((item, i) => ({ ...item, ...overChannel.shown[i]! }));
           return _startGroupDrag(
             pressed,
             { ...opts, groupOverlayItemsRef: { current: measured } },
             at,
+            overChannel.snap,
           );
         }
         const overlay = opts.overlayRef.current;
@@ -335,7 +339,7 @@ export function createPreviewGestureStarts(
       },
       (pressed, at, waited, overChannel) => {
         if (!waited) return _startGesture(kind, pressed, opts, { ...options, at });
-        const shown = overChannel ? overChannel[0] : shownOnPage(target);
+        const shown = overChannel ? overChannel.shown[0] : shownOnPage(target);
         return (
           !!shown &&
           _startGesture(kind, pressed, opts, {
@@ -344,6 +348,8 @@ export function createPreviewGestureStarts(
             resizeHandle: options?.resizeHandle,
             resizeCorner: options?.resizeCorner,
             at,
+            start: shown.start,
+            snap: overChannel?.snap,
           })
         );
       },

@@ -8,9 +8,11 @@ import {
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
+  MAX_SNAP_TARGETS,
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
+  type EditingGestureStart,
   type EditingElementHit,
   type EditingElementMatch,
   type EditingElementSource,
@@ -224,6 +226,41 @@ export async function previewGeometry(
     elements: elements.map(readGeometry),
     children: children && childrenOk ? (boxes as EditingElementBox[]) : null,
   };
+}
+
+const isFlag = (value: unknown) => typeof value === "boolean";
+const isFiniteFields = (value: unknown, keys: string[]) =>
+  isFields(value) && keys.every((key) => Number.isFinite(value[key]));
+
+const readGestureStart = (value: unknown): EditingGestureStart | null => {
+  if (!readGeometry(value) || !isFields(value)) return null;
+  const { layout, move, gsap } = value;
+  const valid = [
+    isFiniteFields(layout, ["width", "height"]),
+    move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
+    gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
+  ];
+  return valid.includes(false) ? null : (value as unknown as EditingGestureStart);
+};
+
+export interface PreviewGestureStartReply {
+  /** One entry per handle, in order: null for an element the frame no longer has. */
+  elements: Array<EditingGestureStart | null>;
+  snap: EditingElementBox[];
+}
+
+/** What a gesture on `handles` starts from, in one read; null when the runtime cannot answer. */
+export async function previewGestureStart(
+  iframe: HTMLIFrameElement,
+  handles: readonly string[],
+): Promise<PreviewGestureStartReply | null> {
+  if (!handles.length || handles.length > MAX_DESCRIBE_HANDLES) return null;
+  const reply = await previewRequest(iframe, "gesture-start", { handles: [...handles] });
+  const elements: unknown = reply?.elements;
+  const snap: unknown = reply?.snap;
+  if (!Array.isArray(elements) || elements.length !== handles.length) return null;
+  if (!Array.isArray(snap) || snap.length > MAX_SNAP_TARGETS || !snap.every(isBox)) return null;
+  return { elements: elements.map(readGestureStart), snap };
 }
 
 const LAYER_KINDS = new Set(["image", "video", "audio", "vector", "group", "text", "shape"]);
