@@ -666,10 +666,8 @@ export function initSandboxRuntimeModular(): void {
   const clock = new TransportClock();
   state.transportClock = clock;
   const webAudio = new WebAudioTransport();
-  let webAudioReady = false;
-  void webAudio.init().then((ok) => {
-    webAudioReady = ok;
-  });
+  let webAudioOpened: boolean | null = null;
+  const openWebAudio = () => (webAudioOpened ??= webAudio.open());
   window.__hf = window.__hf || {};
   /** Hidden by an ancestor, or by the BUS this clip belongs to. The bus is
    *  never an ancestor — membership is on the member's `data-audio-group` — so
@@ -4513,8 +4511,10 @@ export function initSandboxRuntimeModular(): void {
     const pageAnimations = seekTimelineAndAdapters(state.currentTime);
     runAdapters("pause", 0, pageAnimations);
     runAdapters("play");
-    if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled)
-      scheduleWebAudioFor(hosts.flatMap(webAudioMediaIn), webAudio.currentGeneration());
+    const clips = hosts.flatMap(webAudioMediaIn);
+    const mayRoute =
+      clips.length > 0 && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled;
+    if (mayRoute && openWebAudio()) scheduleWebAudioFor(clips, webAudio.currentGeneration());
   };
   // What a load does after scene markup changed: bindings, media, captions, the root timeline, then a redraw.
   const settleChangedScenes = (
@@ -5241,7 +5241,12 @@ export function initSandboxRuntimeModular(): void {
       // Schedule audio through WebAudio for sample-accurate timing.
       // Falls back to HTMLMediaElement playback if WebAudio isn't ready
       // or decoding fails (the syncRuntimeMedia path handles that).
-      if (webAudioReady && !state.nativeMediaSyncDisabled && !state.webAudioMediaDisabled) {
+      if (
+        !state.nativeMediaSyncDisabled &&
+        !state.webAudioMediaDisabled &&
+        webAudioMediaIn(document).length > 0 &&
+        openWebAudio()
+      ) {
         scheduleWebAudioForActiveClips();
       }
       runAdapters("play");
@@ -6554,7 +6559,7 @@ export function initSandboxRuntimeModular(): void {
       changed &&
       !state.nativeMediaSyncDisabled &&
       !state.webAudioMediaDisabled &&
-      webAudioReady &&
+      webAudioOpened === true &&
       clock.isPlaying() &&
       (webAudio.hasBoundedActiveSources() || webAudio.hasHandedOverSources())
     ) {
