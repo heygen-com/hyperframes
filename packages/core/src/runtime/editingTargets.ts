@@ -269,7 +269,10 @@ export function pointerTarget(doc: Document, point: EditingLocalPointer): HTMLEl
     const visualTarget = candidates.find((el) => !isFullBleedTarget(el, point.viewport)) ?? null;
     if (visualTarget) return visualTarget;
   }
+  return pointerFallbackTarget(doc, point);
+}
 
+function pointerFallbackTarget(doc: Document, point: EditingLocalPointer): HTMLElement | null {
   const groupHit = findGroupAtPoint(doc, point.x, point.y);
   if (groupHit && !hasAuthorPointerEventsNone(groupHit) && isDomLayerElement(groupHit))
     return groupHit;
@@ -316,7 +319,11 @@ export function pointerTargetsAt(
 ): { target: EditingElementHit | null; stack: EditingElementHit[] } {
   const point = compositionPoint(document, x, y);
   if (!point) return { target: null, stack: [] };
-  const target = pointerTarget(document, point);
-  const stack = pointerTargets(document, point).slice(0, MAX_POINT_STACK);
-  return { target: target && elementHit(target), stack: stack.map(elementHit) };
+  const stack = pointerTargets(document, point);
+  const visual = typeof document.elementsFromPoint === "function" ? stack[0] : undefined;
+  const target = visual ?? pointerFallbackTarget(document, point);
+  return {
+    target: target && elementHit(target),
+    stack: stack.slice(0, MAX_POINT_STACK).map(elementHit),
+  };
 }

@@ -147,6 +147,7 @@ describe("installEditingAgent", () => {
           "ancestors",
           "query",
           "geometry",
+          "layers",
         ],
       },
     });
@@ -314,6 +315,20 @@ describe("installEditingAgent", () => {
     ].map((params, index) => [
       { v: 1, id: 100 + index, kind: "geometry", params },
       100 + index,
+      "invalid-params",
+    ]),
+    ...[
+      { group: null },
+      { group: "0123456789abcdef:0" },
+      { group: ["0123456789abcdef:1"] },
+      { group: "0123456789abcdef:1", max: 5 },
+      { scope: "0123456789abcdef:1" },
+      { offset: -1 },
+      { offset: 1.5 },
+      { offset: "2" },
+    ].map((params, index) => [
+      { v: 1, id: 130 + index, kind: "layers", params },
+      130 + index,
       "invalid-params",
     ]),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(

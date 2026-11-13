@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_POINT_STACK } from "./editingElement";
+import { elementForHandle } from "./editingHandles";
 import { pointerTargetsAt } from "./editingTargets";
 
 function sized(element: Element, [x, y, width, height]: number[]) {
@@ -36,6 +37,19 @@ describe("pointer-targets", () => {
     expect(asked[0]).toEqual([480, 540]);
     expect(answer.target).toMatchObject({ tag: "p", rect: { x: 10, y: 20, width: 300 } });
     expect(answer.stack.map((hit) => hit.handle)).toEqual([answer.target!.handle]);
+    expect(asked).toHaveLength(1);
+  });
+
+  it("reads the stack once, and falls back to a group's gap only when it is empty", () => {
+    document.body.innerHTML = `<main data-composition-id="m"><div id="g" data-hf-group="g"><i id="a"></i><i id="b"></i></div></main>`;
+    sized(document.querySelector("main")!, [0, 0, 1920, 1080]);
+    sized(document.getElementById("a")!, [0, 0, 100, 100]);
+    sized(document.getElementById("b")!, [400, 400, 100, 100]);
+    stackAt([]);
+    const answer = pointerTargetsAt(0.1, 0.2);
+    expect(asked).toHaveLength(1);
+    expect(answer.stack).toEqual([]);
+    expect(elementForHandle(answer.target!.handle)).toBe(document.getElementById("g"));
   });
 
   it("caps the stack, and answers nothing when the composition has no size", () => {

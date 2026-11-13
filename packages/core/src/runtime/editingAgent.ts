@@ -29,6 +29,7 @@ import {
 } from "./editingHandles";
 import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
+import { layersOf } from "./editingLayers";
 import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
@@ -87,6 +88,7 @@ const HANDLERS: Handlers = {
   ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
+  layers: ({ group, offset }) => layersOf(group, offset),
 };
 
 function serve(port: MessagePort): void {

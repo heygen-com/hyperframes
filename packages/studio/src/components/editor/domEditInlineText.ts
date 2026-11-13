@@ -1,4 +1,4 @@
-import { isRichTextFormattingTag } from "@hyperframes/core/rich-text-sanitize";
+import { hasOnlyFormattingChildren } from "@hyperframes/core/runtime/editing-port";
 import type { DomEditSelection } from "./domEditingTypes";
 import { isTextEditableSelection } from "./domEditingLayers";
 
@@ -51,21 +51,6 @@ export function canEditElementTextInline(element: HTMLElement | null): boolean {
   if (!hasOnlyFormattingChildren(element)) return false;
   if (element.isContentEditable) return false;
   return (element.textContent ?? "").trim().length > 0;
-}
-
-export function hasOnlyFormattingChildren(element: HTMLElement): boolean {
-  for (const child of Array.from(element.children)) {
-    if (!isRichTextFormattingTag(child.tagName)) return false;
-    if (!isHtmlFromAnyWindow(child)) return false;
-    // Formatting nests, and a structural child hidden inside a span is still
-    // structural.
-    if (!hasOnlyFormattingChildren(child as HTMLElement)) return false;
-  }
-  return true;
-}
-
-function isHtmlFromAnyWindow(node: Element): boolean {
-  return node.namespaceURI === "http://www.w3.org/1999/xhtml";
 }
 
 /** Where and when a press landed, for recognising the next one as a pair. */

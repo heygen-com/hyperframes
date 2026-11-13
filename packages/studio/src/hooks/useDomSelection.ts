@@ -104,6 +104,7 @@ export function useDomSelection({
       announceSelectionToTimeline(
         {
           timelineElements,
+          activeCompPath,
           getTimelineSelectionSet,
           setSelectedTimelineElementId,
           setTimelineSelectionSet,
@@ -113,6 +114,7 @@ export function useDomSelection({
         replaceSet,
       ),
     [
+      activeCompPath,
       getTimelineSelectionSet,
       setSelectedTimelineElementId,
       setTimelineSelectionSet,

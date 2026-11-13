@@ -14,6 +14,7 @@ import {
   type EditingElementHit,
   type EditingElementMatch,
   type EditingElementSource,
+  type EditingLayer,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -223,4 +224,34 @@ export async function previewGeometry(
     elements: elements.map(readGeometry),
     children: children && childrenOk ? (boxes as EditingElementBox[]) : null,
   };
+}
+
+const LAYER_KINDS = new Set(["image", "video", "audio", "vector", "group", "text", "shape"]);
+const isLayer = (value: unknown): value is EditingLayer =>
+  isFields(value) &&
+  isHandle(value.handle) &&
+  isCount(value.depth) &&
+  isCount(value.childCount) &&
+  Number.isFinite(value.zIndex) &&
+  LAYER_KINDS.has(value.kind as string);
+
+export interface PreviewLayers {
+  layers: EditingLayer[];
+  truncated: boolean;
+  missingGroup: boolean;
+}
+
+/** One page of the frame's layers in document order from `offset`, scoped to `group` when given; null when the runtime cannot answer. */
+export async function previewLayers(
+  iframe: HTMLIFrameElement,
+  group?: string,
+  offset = 0,
+): Promise<PreviewLayers | null> {
+  const params = { ...(group ? { group } : {}), ...(offset ? { offset } : {}) };
+  const reply = await previewRequest(iframe, "layers", params);
+  const layers: unknown = reply?.layers;
+  const { truncated, missingGroup } = reply ?? {};
+  if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
+  if (typeof missingGroup !== "boolean") return null;
+  return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }

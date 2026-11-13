@@ -1,6 +1,6 @@
 import type { PatchTarget } from "../../utils/sourcePatcher";
 import type { GsapAnimation } from "@hyperframes/parsers/gsap-parser";
-import type { EditingElementHandle } from "@hyperframes/core/runtime/editing-port";
+import type { EditingElementHandle, LayerKind } from "@hyperframes/core/runtime/editing-port";
 
 export const CURATED_STYLE_PROPERTIES = [
   "position",
@@ -112,6 +112,12 @@ export interface DomEditLayerItem {
   selector?: string;
   selectorIndex?: number;
   sourceFile: string;
+  preview?: {
+    handle: string;
+    zIndex: number;
+    kind: LayerKind;
+    dataAttributes: Record<string, string>;
+  };
 }
 
 export interface DomEditContextOptions {
