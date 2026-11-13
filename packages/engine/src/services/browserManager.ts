@@ -923,9 +923,11 @@ async function launchBrowser(
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
-  const launch = (args: readonly string[]) =>
-    launchWithChromeSandboxFallback(args, (launchArgs) =>
-      launchInsideSandbox(ppt, {
+  const launch = (args: readonly string[]) => {
+    let attempted = args;
+    return launchWithChromeSandboxFallback(args, (launchArgs) => {
+      attempted = launchArgs;
+      return launchInsideSandbox(ppt, {
         ...ownedLaunchOptions(),
         headless: true,
         args: withHyperframesBrowserMarker(launchArgs),
@@ -934,18 +936,19 @@ async function launchBrowser(
         env,
         timeout: fingerprint.browserTimeoutMs,
         protocolTimeout: fingerprint.protocolTimeoutMs,
-      }),
-    ).catch(async (error: unknown) => {
+      });
+    }).catch(async (error: unknown) => {
       const remediation =
         process.platform === "darwin" &&
         sandboxDeniedRemediation(error instanceof Error ? error.message : "");
       if (remediation) throw new Error(remediation, { cause: error });
       const defaults = await ppt.defaultArgs({
         headless: true,
-        args: withHyperframesBrowserMarker(args),
+        args: withHyperframesBrowserMarker(attempted),
       });
       throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults);
     });
+  };
   const probe = (target: Browser, timeoutMs?: number) =>
     probeBeginFrameSupport(target, timeoutMs).catch((error) => ({
       supported: true,

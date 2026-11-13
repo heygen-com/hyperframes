@@ -110,21 +110,22 @@ export async function launchManagedBrowser(
 ): Promise<Browser> {
   const sandboxed = isOneProcessOverPipe(options) || inAgentSandbox();
   const prepared = sandboxed ? oneProcessOverPipe(options) : options;
+  let attempted = prepared;
   try {
-    return await launchWithChromeSandboxFallback(prepared.args ?? [], (args) =>
-      launchOwnedBrowser(puppeteer, { ...prepared, args }),
-    );
+    return await launchWithChromeSandboxFallback(prepared.args ?? [], (args) => {
+      attempted = { ...prepared, args };
+      return launchOwnedBrowser(puppeteer, attempted);
+    });
   } catch (error) {
     const unnamedSeatbelt =
       !sandboxed &&
       (machServiceDenied(normalizeErrorMessage(error)) || pipeLaunchClosedOnMac(error));
     if (!unnamedSeatbelt)
-      throw await withStartupDiagnosis(withRemediation(error), puppeteer, options, diagnose);
-    return launchOwnedBrowser(puppeteer, oneProcessOverPipe(options)).catch(
-      async (retryError: unknown) => {
-        throw await withStartupDiagnosis(withRemediation(retryError), puppeteer, options, diagnose);
-      },
-    );
+      throw await withStartupDiagnosis(withRemediation(error), puppeteer, attempted, diagnose);
+    const retry = oneProcessOverPipe(options);
+    return launchOwnedBrowser(puppeteer, retry).catch(async (retryError: unknown) => {
+      throw await withStartupDiagnosis(withRemediation(retryError), puppeteer, retry, diagnose);
+    });
   }
 }
 
