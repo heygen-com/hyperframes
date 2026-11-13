@@ -297,6 +297,12 @@ export class WebAudioTransport {
   private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
+    return this.open();
+  }
+
+  /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
+  open(): boolean {
+    if (this._ctx) return true;
     try {
       this._ctx = new AudioContext();
       this._ctx.onstatechange = () => this.rest();
