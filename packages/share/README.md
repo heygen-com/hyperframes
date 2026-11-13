@@ -80,7 +80,9 @@ an explicit choice to omit source. The CLI exposes `--video-only` for that choic
 
 The adapter uses the portable-source-v4 capture/manifest rules and
 multipart transport. The pinned policy, Unicode 15.1 registry (with its license),
-and manifest test vectors are checked into this repository. Source is captured through
+and manifest test vectors are checked into this repository. They are copies from the
+HyperFrames sync contract, which owns the rules: change a rule there first, then
+copy it here. The rules must match; descriptive text may differ. Source is captured through
 verified file handles; upload bytes are streamed and checked against their hash.
 Workspace limits, upload receipts and published snapshot identity are checked.
 Pending uploads retain their original idempotency key across retries. A conflict
