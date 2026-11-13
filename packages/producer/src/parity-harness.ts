@@ -306,7 +306,6 @@ function sha256(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-// Both sides are compared against renders, so they get a screenshot render's Chrome flags.
 export function parityChromeArgs(width: number, height: number): string[] {
   return buildChromeArgs({ width, height, captureMode: "screenshot", sandbox: false });
 }
