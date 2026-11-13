@@ -148,7 +148,10 @@ async function withStartupDiagnosis(
   const abort = new AbortController();
   diagnosing.add(abort);
   try {
-    return await explainChromeLaunchFailure(error, options.executablePath, args, abort.signal);
+    return await explainChromeLaunchFailure(error, options.executablePath, args, {
+      signal: abort.signal,
+      env: options.env,
+    });
   } finally {
     diagnosing.delete(abort);
   }
