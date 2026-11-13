@@ -940,6 +940,66 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 });
 
+it.each([
+  ["--samples", "0"],
+  ["--samples", "ten"],
+  ["--samples", "5abc"],
+  ["--samples", "2.5"],
+  ["--max-issues", "-5"],
+  ["--max-transition-samples", "abc"],
+  ["--tolerance", "-1"],
+  ["--tolerance", "px"],
+  ["--tolerance", "2px"],
+])("rejects %s %s as a usage error instead of using the default", async (flag, value) => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async () => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await expect(
+    runCommand(command, { rawArgs: ["--json", `${flag}=${value}`] }),
+  ).rejects.toMatchObject({ result: { exitCode: 2, kind: "usage_error" } });
+
+  expect(runPipeline).not.toHaveBeenCalled();
+  const output = JSON.parse(String(log.mock.calls[0]?.[0]));
+  expect(output.error.code).toBe("usage_error");
+  expect(output.error.message).toContain(`Invalid ${flag}: "${value}"`);
+});
+
+it("passes valid numeric check flags through and keeps defaults for absent ones", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--json", "--samples", "3", "--max-transition-samples", "4", "--tolerance", "0.5"],
+  });
+  await runCommand(command, { rawArgs: ["--json", "--tolerance", "0"] });
+
+  expect(runPipeline.mock.calls[0]?.[1]).toMatchObject({
+    samples: 3,
+    maxTransitionSamples: 4,
+    maxIssues: DEFAULT_CHECK_OPTIONS.maxIssues,
+    tolerance: 0.5,
+  });
+  expect(runPipeline.mock.calls[1]?.[1]).toMatchObject({
+    samples: DEFAULT_CHECK_OPTIONS.samples,
+    maxTransitionSamples: undefined,
+    tolerance: 0,
+  });
+});
+
 it("flags text whose DOM box overlaps the caption band at the default end seek", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
