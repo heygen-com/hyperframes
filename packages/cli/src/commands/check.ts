@@ -477,17 +477,17 @@ function checkReview(): ToolContext["checkReview"] {
 }
 
 function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
-  const maxTransitionSamples = positiveInteger(args["max-transition-samples"], 0);
+  const maxTransitionSamples = positiveInteger(args, "max-transition-samples", 0);
   return {
-    samples: positiveInteger(args.samples, DEFAULT_CHECK_OPTIONS.samples),
+    samples: positiveInteger(args, "samples", DEFAULT_CHECK_OPTIONS.samples),
     range: parseCheckRange(args.range),
     components: typeof args.components === "string" ? [args.components] : undefined,
     at: parseAt(args.at),
     atTransitions: args["at-transitions"] === true,
     maxTransitionSamples: maxTransitionSamples > 0 ? maxTransitionSamples : undefined,
-    maxIssues: positiveInteger(args["max-issues"], DEFAULT_CHECK_OPTIONS.maxIssues),
+    maxIssues: positiveInteger(args, "max-issues", DEFAULT_CHECK_OPTIONS.maxIssues),
     collapseStatic: args["collapse-static"] !== false,
-    tolerance: nonNegativeNumber(args.tolerance, DEFAULT_CHECK_OPTIONS.tolerance),
+    tolerance: nonNegativeNumber(args, "tolerance", DEFAULT_CHECK_OPTIONS.tolerance),
     timeout: parseTimeoutMs(args.timeout, DEFAULT_CHECK_OPTIONS.timeout, 500),
     budget: parseBudget(args.budget),
     cache: args.cache !== false,
@@ -718,14 +718,30 @@ function captionZoneError(): Error {
   );
 }
 
-function positiveInteger(value: unknown, fallback: number): number {
-  const parsed = parseInt(String(value ?? ""), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function positiveInteger(args: Record<string, unknown>, flag: string, fallback: number): number {
+  const value = args[flag];
+  if (value === undefined) return fallback;
+  const parsed = numericFlag(value);
+  if (!Number.isInteger(parsed) || parsed < 1)
+    throw new CliUsageError(`Invalid --${flag}: ${JSON.stringify(value)}; use a positive integer`);
+  return parsed;
 }
 
-function nonNegativeNumber(value: unknown, fallback: number): number {
-  const parsed = parseFloat(String(value ?? ""));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+function nonNegativeNumber(args: Record<string, unknown>, flag: string, fallback: number): number {
+  const value = args[flag];
+  if (value === undefined) return fallback;
+  const parsed = numericFlag(value);
+  if (!Number.isFinite(parsed) || parsed < 0)
+    throw new CliUsageError(
+      `Invalid --${flag}: ${JSON.stringify(value)}; use a non-negative number`,
+    );
+  return parsed;
+}
+
+// Number(), not parseInt/parseFloat: "5abc" and "2px" are typos, not 5 and 2.
+function numericFlag(value: unknown): number {
+  const text = String(value).trim();
+  return text === "" ? NaN : Number(text);
 }
 
 function browserSkippedLine(report: CheckReport): string {
