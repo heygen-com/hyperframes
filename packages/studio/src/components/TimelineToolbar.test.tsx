@@ -12,6 +12,7 @@ import { dispatchPlainKey, type HotkeyCallbacks } from "../hooks/appHotkeysDispa
 import { AudioMeterStrip } from "./nle/AudioMeterStrip";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { registerTimelineZoomViewport } from "../player/components/timelineZoomInput";
+import { useTimelineTrackDensity } from "../player/components/useTimelineTrackHeight";
 
 vi.mock("../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => ({
@@ -31,6 +32,7 @@ afterEach(() => {
     thumbnailMode: "adaptive",
     zoomMode: "fit",
   });
+  useTimelineTrackDensity.setState({ density: "comfortable" });
 });
 
 function renderToolbar(
@@ -92,6 +94,44 @@ describe("TimelineToolbar — adaptive thumbnails", () => {
     expect(button.getAttribute("aria-label")).toBe(
       "Show thumbnails: posters stay visible; richer previews appear on interaction",
     );
+    act(() => root.unmount());
+  });
+});
+
+describe("TimelineToolbar — track density", () => {
+  it("switches to compact tracks and remembers the choice", () => {
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Compact track height"]',
+    );
+    if (!button) throw new Error("track density toggle not rendered");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    act(() => button.click());
+
+    expect(useTimelineTrackDensity.getState().density).toBe("compact");
+    expect(readStudioUiPreferences().timelineTrackDensity).toBe("compact");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    act(() => button.click());
+
+    expect(useTimelineTrackDensity.getState().density).toBe("comfortable");
+    expect(readStudioUiPreferences().timelineTrackDensity).toBe("comfortable");
+    act(() => root.unmount());
+  });
+
+  it("keeps the tooltip on the accessible name while pressed", async () => {
+    useTimelineTrackDensity.setState({ density: "compact" });
+    const { host, root } = renderToolbar();
+    const button = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="Compact track height"]',
+    );
+    expect(button?.getAttribute("aria-pressed")).toBe("true");
+    act(() => button?.focus());
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe("Compact track height");
     act(() => root.unmount());
   });
 });
