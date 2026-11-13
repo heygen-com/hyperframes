@@ -121,6 +121,28 @@ describe("parseGradeCompareArgs", () => {
       parseGradeCompareArgs({ for: "frame.png", grades: "grades.json", luts: "a.cube" }),
     ).toThrow("Exactly one of --grades or --luts is required");
   });
+
+  it.each([
+    ["1s", 1_000],
+    ["2500", 2_500],
+    [undefined, 5_000],
+  ])("reads --timeout %s as %i ms", (timeout, expected) => {
+    const parsed = parseGradeCompareArgs({ for: "frame.png", grades: "grades.json", timeout });
+    expect(parsed.timeoutMs).toBe(expected);
+  });
+
+  it("warns and keeps the default for a --timeout that is not a duration", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const parsed = parseGradeCompareArgs({
+      for: "frame.png",
+      grades: "grades.json",
+      timeout: "abc",
+    });
+    expect(parsed.timeoutMs).toBe(5_000);
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('--timeout "abc" is not a duration'),
+    );
+  });
 });
 
 describe("buildGradeCompareHtml", () => {

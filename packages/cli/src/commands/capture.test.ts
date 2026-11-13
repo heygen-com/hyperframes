@@ -237,6 +237,23 @@ describe("capture command — vision control", () => {
     expect(captureWebsiteMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["1s", 1_000],
+    ["2m", 120_000],
+    ["45000", 45_000],
+    [undefined, 120_000],
+  ])("reads --timeout %s as %i ms", async (timeout, expected) => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: { url: "https://example.com", output: "/tmp/hf-timeout", timeout, json: true },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: expected }),
+      undefined,
+    );
+  });
+
   it("passes a validated screenshot limit into capture", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     await captureCommand.run!({

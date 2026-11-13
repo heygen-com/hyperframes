@@ -8,6 +8,9 @@ import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
 import { jsonFailure } from "../utils/jsonError.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
+
+const DEFAULT_CAPTURE_TIMEOUT_MS = 120_000;
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
 
@@ -94,7 +97,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Page load timeout in ms (default: 120000)",
+      description: "Page load timeout in ms, or with a unit like 30s or 2m (default: 120000)",
     },
     "capture-budget": {
       type: "string",
@@ -236,7 +239,7 @@ export default defineCommand({
           skipAssets: args["skip-assets"] as boolean,
           skipVision: args["skip-vision"] as boolean,
           maxScreenshots,
-          timeout: args.timeout ? parseInt(args.timeout as string) : undefined,
+          timeout: parseTimeoutMs(args.timeout, DEFAULT_CAPTURE_TIMEOUT_MS),
           postNavigationBudgetMs: captureBudgetMs,
           captureDeadlineMs: parseCaptureDeadline(process.env.HYPERFRAMES_CAPTURE_DEADLINE_MS),
           json: isJson,

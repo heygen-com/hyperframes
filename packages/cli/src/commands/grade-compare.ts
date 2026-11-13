@@ -31,6 +31,7 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { failCaught } from "../utils/jsonError.js";
 import { CliUsageError } from "../utils/commandResult.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -289,7 +290,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
-    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
+    timeoutMs: parseTimeoutMs(args.timeout, 5000),
   };
 }
 
@@ -612,7 +613,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Render-ready timeout in ms before capture (default: 5000)",
+      description:
+        "Render-ready timeout in ms before capture, or with a unit (30s, 2m) (default: 5000)",
     },
     baseline: {
       type: "boolean",
