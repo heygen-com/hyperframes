@@ -284,7 +284,7 @@ it("a pause while buffering stays paused once the track is ready", () => {
 });
 
 // A Studio preview reloading a far scene re-seeks with keepPlaying. When that lands while the film is held
-// for data, the hold must survive it: the film used to stop for good at the start of its second loop.
+// for data, the hold must survive it and the film plays on.
 it("a seek that keeps playing during a hold for data plays on once the track is ready", () => {
   const mark = document.createElement("meta");
   mark.name = STUDIO_PREVIEW_MARK_META;

@@ -3233,6 +3233,7 @@ export function initSandboxRuntimeModular(): void {
     }
   };
   let bufferingFor: HTMLMediaElement[] = [];
+  const playingOrHeldForData = () => clock.isPlaying() || bufferingFor.length > 0;
   let keepLateMedia = false;
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
@@ -4989,8 +4990,7 @@ export function initSandboxRuntimeModular(): void {
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
     webAudio.stopAll();
     clock.detachAudioSource();
-    // A film held for data is still playing, so a seek that keeps playing resumes it.
-    const wasPlaying = clock.isPlaying() || bufferingFor.length > 0;
+    const wasPlaying = playingOrHeldForData();
     if (clock.isPlaying()) clock.pause();
     clock.seek(quantized);
     state.currentTime = clock.now();
@@ -5161,7 +5161,7 @@ export function initSandboxRuntimeModular(): void {
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
-      (options?.keepPlaying && (clock.isPlaying() || bufferingFor.length > 0))
+      (options?.keepPlaying && playingOrHeldForData())
     ) {
       previewSeek?.cancel();
       pausedFrames.clear();
