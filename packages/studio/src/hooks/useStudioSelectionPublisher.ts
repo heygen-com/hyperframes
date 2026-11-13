@@ -2,6 +2,7 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { usePlayerStore } from "../player";
 import { buildStudioSelectionSnapshot } from "../utils/studioSelectionSnapshot";
+import { selectionElementLive } from "../components/editor/previewSelection";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { studioApiFetch } from "../utils/studioApiFetch";
 
@@ -49,13 +50,14 @@ export function useStudioSelectionPublisher({
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!projectId) return;
-    const selection = domEditSelection?.element.isConnected
-      ? buildStudioSelectionSnapshot({
-          projectId,
-          selection: domEditSelection,
-          currentTime: usePlayerStore.getState().currentTime,
-        })
-      : null;
+    const selection =
+      domEditSelection && selectionElementLive(domEditSelection)
+        ? buildStudioSelectionSnapshot({
+            projectId,
+            selection: domEditSelection,
+            currentTime: usePlayerStore.getState().currentTime,
+          })
+        : null;
     const controller = new AbortController();
     void putSelection(projectId, selection, controller.signal).catch(reportSelectionPublishError);
     return () => controller.abort();

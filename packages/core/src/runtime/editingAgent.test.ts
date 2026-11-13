@@ -142,6 +142,7 @@ describe("installEditingAgent", () => {
           "set-loop-start",
           "computed-styles",
           "elements-at-point",
+          "pointer-targets",
           "describe",
           "ancestors",
           "query",
@@ -238,11 +239,13 @@ describe("installEditingAgent", () => {
       { x: "1", y: 1 },
       { x: 1, y: Infinity },
       { x: 1, y: 2, z: 3 },
-    ].map((params, index) => [
-      { v: 1, id: 30 + index, kind: "elements-at-point", params },
-      30 + index,
-      "invalid-params",
-    ]),
+    ].flatMap((params, index) =>
+      (["elements-at-point", "pointer-targets"] as const).map((kind, k) => [
+        { v: 1, id: 30 + index * 2 + k, kind, params },
+        30 + index * 2 + k,
+        "invalid-params",
+      ]),
+    ),
     ...[
       {},
       { handles: [] },

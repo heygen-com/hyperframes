@@ -55,6 +55,18 @@ export {
   type ElementTransformSnapshot,
 } from "./editingGeometry";
 export {
+  compositionPoint,
+  coversComposition,
+  isDomLayerElement,
+  isInspectableLayerElement,
+  pointerTarget,
+  pointerTargets,
+  resolveAllVisualDomEditTargets,
+  resolveLayerSelector,
+  type EditingLocalPointer,
+  type EditingViewport,
+} from "./editingTargets";
+export {
   composeElementTransform,
   individualRotateDegrees,
   type PlanarTransformOps,
@@ -73,6 +85,7 @@ export const EDITING_REQUEST_KINDS = [
   "set-loop-start",
   "computed-styles",
   "elements-at-point",
+  "pointer-targets",
   "describe",
   "ancestors",
   "query",
@@ -111,6 +124,11 @@ export interface EditingRequests {
   "elements-at-point": {
     params: { x: number; y: number };
     result: { elements: EditingElementHit[] };
+  };
+  /** The pick at fractions `x`, `y` of the root's box, and the stack a press cycles, MAX_POINT_STACK. */
+  "pointer-targets": {
+    params: { x: number; y: number };
+    result: { target: EditingElementHit | null; stack: EditingElementHit[] };
   };
   /** One entry per handle, in order; null for an unknown or removed element. */
   describe: {
@@ -206,6 +224,12 @@ function handleList(params: unknown): { handles: EditingElementHandle[] } | null
   return handles.every(isHandle) ? { handles } : null;
 }
 
+function point(params: unknown): { x: number; y: number } | null {
+  if (!hasKeys(params, "x,y")) return null;
+  const { x, y } = params;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
+}
+
 const PARAM_PARSERS: {
   [K in EditingRequestKind]: (params: unknown) => EditingParams<K> | null;
 } = {
@@ -226,11 +250,8 @@ const PARAM_PARSERS: {
     const properties = styleProperties(params.properties);
     return target && properties ? { ...target, properties } : null;
   },
-  "elements-at-point": (params) => {
-    if (!hasKeys(params, "x,y")) return null;
-    const { x, y } = params;
-    return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
-  },
+  "elements-at-point": point,
+  "pointer-targets": point,
   describe: handleList,
   ancestors: handleList,
   query: (params) =>

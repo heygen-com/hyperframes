@@ -47,11 +47,12 @@ function mount() {
 function render(
   hoverSelection: DomEditSelection | null,
   selection: DomEditSelection | null = null,
+  iframe = document.createElement("iframe"),
 ) {
   act(() =>
     root.render(
       <DomEditOverlay
-        iframeRef={{ current: document.createElement("iframe") }}
+        iframeRef={{ current: iframe }}
         activeCompositionPath={null}
         selection={selection}
         hoverSelection={hoverSelection}
@@ -119,4 +120,19 @@ it("a shift+click on a selected box that cannot move toggles it once", () => {
 
   expect(onSelectionChange).toHaveBeenCalledTimes(1);
   expect(onCanvasMouseDown).not.toHaveBeenCalled();
+});
+
+it("on a frame Studio cannot script, a press with no pointer answer yet selects, not starts a band", () => {
+  const { host } = mount();
+  const frame = {};
+  Object.defineProperty(frame, "document", {
+    get: () => {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  const opaque = document.createElement("iframe");
+  Object.defineProperty(opaque, "contentWindow", { value: frame });
+  render(null, null, opaque);
+  press(host.firstElementChild!);
+  expect(onCanvasMouseDown).toHaveBeenCalledTimes(1);
 });

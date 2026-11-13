@@ -85,6 +85,18 @@ export async function previewElementsAtPoint(
   return elements.map(readHit).filter((element) => element !== null);
 }
 
+export async function previewPointerTargets(
+  iframe: HTMLIFrameElement,
+  rootFractionX: number,
+  rootFractionY: number,
+): Promise<{ target: PreviewElementHit | null; stack: PreviewElementHit[] } | null> {
+  const params = { x: rootFractionX, y: rootFractionY };
+  const reply = await previewRequest(iframe, "pointer-targets", params);
+  const stack: unknown = reply?.stack;
+  if (!reply || !Array.isArray(stack)) return null;
+  return { target: readHit(reply.target), stack: stack.map(readHit).filter((hit) => hit !== null) };
+}
+
 /**
  * One entry per handle, in order: null for an element the frame no longer has. The whole answer is
  * null when the runtime cannot answer, or when there are no handles or more than the runtime takes.

@@ -87,12 +87,12 @@ const NO_TEXT = new Set(["script", "style"]);
 
 type Cut = { truncated: boolean };
 
-/** A `dataUrl` value starting `data:` keeps only its header; text is cut by length alone. */
+/** A value over `limit` is cut: a `dataUrl` one starting `data:` to its header, any other by length. */
 function cut(value: string, limit: number, state: Cut, dataUrl = false): string {
+  if (value.length <= limit) return value;
+  state.truncated = true;
   const header = dataUrl && value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
-  const kept = header || value.slice(0, limit);
-  if (kept.length < value.length) state.truncated = true;
-  return kept.slice(0, limit);
+  return (header || value).slice(0, limit);
 }
 
 function renderedText(element: Element, state: Cut): string {
@@ -151,7 +151,7 @@ function children(element: Element, state: Cut): EditingElementDescription["chil
   return out;
 }
 
-function hit(element: Element): EditingElementHit {
+export function elementHit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
@@ -164,7 +164,7 @@ function describeElement(element: Element): EditingElementDescription {
   const selector = buildStableSelector(element);
   const state: Cut = { truncated: false };
   return {
-    ...hit(element),
+    ...elementHit(element),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
     id: element.id || null,
     selector: selector ?? null,
@@ -180,7 +180,7 @@ function describeElement(element: Element): EditingElementDescription {
 }
 
 export function elementsAtPoint(x: number, y: number): EditingElementHit[] {
-  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(hit);
+  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(elementHit);
 }
 
 export function describeHandles(
