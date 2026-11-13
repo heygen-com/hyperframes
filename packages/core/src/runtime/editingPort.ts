@@ -18,6 +18,7 @@ import {
   type EditingElementMatch,
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
+import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 
@@ -67,6 +68,14 @@ export {
   type EditingViewport,
 } from "./editingTargets";
 export {
+  elementZIndex,
+  hasOnlyFormattingChildren,
+  isCompositionHost,
+  layerKindOf,
+  type EditingLayer,
+  type LayerKind,
+} from "./editingLayers";
+export {
   composeElementTransform,
   individualRotateDegrees,
   type PlanarTransformOps,
@@ -90,6 +99,7 @@ export const EDITING_REQUEST_KINDS = [
   "ancestors",
   "query",
   "geometry",
+  "layers",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -152,6 +162,11 @@ export interface EditingRequests {
       elements: Array<EditingElementGeometry | null>;
       children: EditingElementBox[] | null;
     };
+  };
+  /** The Layers walk in document order, up to MAX_QUERY_MATCHES; `group` scopes it to a drilled-into group. */
+  layers: {
+    params: { group?: EditingElementHandle };
+    result: { layers: EditingLayer[]; truncated: boolean };
   };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -264,6 +279,10 @@ const PARAM_PARSERS: {
     const list = handleList(rest);
     if (!list || !("children" in params)) return list;
     return isHandle(children) ? { ...list, children } : null;
+  },
+  layers: (params) => {
+    if (noParams(params)) return {};
+    return hasKeys(params, "group") && isHandle(params.group) ? { group: params.group } : null;
   },
 };
 

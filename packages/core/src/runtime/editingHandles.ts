@@ -34,7 +34,7 @@ const collected = new FinalizationRegistry<number>((n) => {
 });
 let lastNumber = 0;
 
-function handleFor(element: Element): EditingElementHandle {
+export function handleFor(element: Element): EditingElementHandle {
   let n = numbers.get(element);
   if (n === undefined) {
     n = ++lastNumber;

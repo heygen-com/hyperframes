@@ -76,7 +76,7 @@ const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
 const standInHandles = new WeakMap<Element, string>();
 const standInAncestors = new WeakMap<Element, string[]>();
 
-function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLElement {
+export function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLElement {
   const client = previewEditingClient(iframe);
   const byHandle = standIns.get(client) ?? new Map<string, HTMLElement>();
   standIns.set(client, byHandle);
@@ -93,7 +93,7 @@ function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLEle
  * The description as an element of the inert document, discarded after the read, so the label,
  * data-attribute and inline-style helpers read it as they read a live element.
  */
-function readable(element: PreviewElement): HTMLElement {
+export function readable(element: PreviewElement): HTMLElement {
   const probe = inertElement(element.tag);
   for (const [name, value] of element.attributes) {
     if (name !== "id" && name !== "class" && !name.startsWith("data-")) continue;
@@ -262,7 +262,7 @@ function chainIndex(
   });
 }
 
-function previewIdentity(current: PreviewElement, path: string | null) {
+export function previewIdentity(current: PreviewElement, path: string | null) {
   const selector = current.selector ?? undefined;
   return {
     id: current.id || undefined,
@@ -414,6 +414,8 @@ export async function findOpaqueTimelineElement(
   return (await findPreviewElementForTimelineElement(iframe, element, lookup)) ?? null;
 }
 
+export const standInHandle = (element: Element) => standInHandles.get(element);
+
 export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
   const handle = standInHandles.get(container);
   if (handle === undefined) return container.contains(element);
@@ -440,7 +442,8 @@ export function pointerMayHitElement(iframe: HTMLIFrameElement, clientX: number,
   if (!previewFrameOpaque(iframe))
     return Boolean(getPreviewTargetFromPointer(iframe, clientX, clientY));
   const answer = pointerAnswers.get(iframe);
-  return answer?.x === clientX && answer.y === clientY ? answer.found : true;
+  const near = answer && Math.hypot(answer.x - clientX, answer.y - clientY) <= 2;
+  return near ? answer.found : true;
 }
 
 export async function findPointerTarget(

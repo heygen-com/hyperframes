@@ -16,6 +16,12 @@ import {
 } from "../../utils/marqueeGeometry";
 import { toVisibleOverlayRect } from "./domEditOverlayGeometry";
 import { movesGesture } from "./domEditOverlayGestures";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import {
+  collectPreviewMarqueeCandidates,
+  resolvePreviewMarqueeHits,
+  type PreviewMarqueeHit,
+} from "./previewLayers";
 
 interface MarqueeState {
   startX: number;
@@ -42,6 +48,7 @@ const MARQUEE_THRESHOLD_PX = 4;
 interface MarqueeHit {
   element: HTMLElement;
   rect: Rect;
+  description?: PreviewMarqueeHit["description"];
 }
 
 /**
@@ -118,6 +125,25 @@ async function resolveDomEditSelections(
   return hits;
 }
 
+/** The band's candidates: an opaque frame's are measured over its channel, once per band. */
+function bandCandidates(
+  iframe: HTMLIFrameElement,
+  overlay: HTMLDivElement,
+  acp: string,
+  measured: { cached: MarqueeHit[] | null; measuring: Promise<MarqueeHit[]> | null },
+): MarqueeHit[] | Promise<MarqueeHit[]> {
+  if (!previewFrameOpaque(iframe))
+    return currentMarqueeCandidates(measured.cached, iframe, overlay, acp);
+  return measured.measuring ?? collectPreviewMarqueeCandidates(iframe, overlay);
+}
+
+/** Studio's edit selections for the hits; an opaque frame's are read from their descriptions. */
+function resolveMarqueeHits(iframe: HTMLIFrameElement, hits: MarqueeHit[], acp: string) {
+  const elements = hits.map((hit) => hit.element);
+  if (!previewFrameOpaque(iframe)) return resolveDomEditSelections(elements, acp);
+  return resolvePreviewMarqueeHits(iframe, hits as PreviewMarqueeHit[], acp);
+}
+
 export interface MarqueeGesturesDeps<T = DomEditSelection> {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   overlayRef: React.RefObject<HTMLDivElement | null>;
@@ -176,6 +202,8 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
   const [candidateRects, setCandidateRects] = useState<Rect[]>([]);
   // Measured once when the drag passes the threshold and reused until it ends.
   const candidatesRef = useRef<MarqueeHit[] | null>(null);
+  const opaqueCandidatesRef = useRef<Promise<MarqueeHit[]> | null>(null);
+  const bandRef = useRef<{ rect: Rect; mode: MarqueeSelectionMode } | null>(null);
 
   const commitMarquee = useCallback(
     async (rect: Rect, mode: MarqueeSelectionMode) => {
@@ -183,12 +211,12 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay || !deps.onMarqueeSelectRef.current) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
-      const candidates = currentMarqueeCandidates(candidatesRef.current, iframe, overlay, acp);
-      const elements = hitsWithin(rect, candidates).map((hit) => hit.element);
+      const measured = { cached: candidatesRef.current, measuring: opaqueCandidatesRef.current };
+      const hits = hitsWithin(rect, await bandCandidates(iframe, overlay, acp, measured));
       const resolveHits = deps.resolveHits;
       const picks = resolveHits
-        ? await resolveHits(elements)
-        : ((await resolveDomEditSelections(elements, acp)) as T[]);
+        ? await resolveHits(hits.map((hit) => hit.element))
+        : ((await resolveMarqueeHits(iframe, hits, acp)) as T[]);
       const applySelection = deps.onMarqueeSelectRef.current;
       if (!applySelection) return;
       const result = applySelection(picks, mode);
@@ -208,6 +236,8 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
     setMarqueeRect(null);
     setCandidateRects([]);
     candidatesRef.current = null;
+    opaqueCandidatesRef.current = null;
+    bandRef.current = null;
   }, []);
 
   const begin = useCallback(
@@ -261,6 +291,18 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
       const overlay = deps.overlayRef.current;
       if (!iframe || !overlay) return;
       const acp = deps.activeCompositionPathRef.current ?? "index.html";
+      bandRef.current = { rect, mode };
+      if (!candidatesRef.current && previewFrameOpaque(iframe)) {
+        if (opaqueCandidatesRef.current) return;
+        const measuring = collectPreviewMarqueeCandidates(iframe, overlay);
+        opaqueCandidatesRef.current = measuring;
+        void measuring.then((hits) => {
+          if (opaqueCandidatesRef.current !== measuring || !bandRef.current) return;
+          candidatesRef.current = hits;
+          showCandidates(bandRef.current.rect, bandRef.current.mode);
+        });
+        return;
+      }
       candidatesRef.current ??= collectMarqueeCandidates(iframe, overlay, acp);
       let hits = hitsWithin(rect, candidatesRef.current);
       if (mode === "subtract") hits = hits.filter((h) => isSelectedElement(h.element));
@@ -284,6 +326,7 @@ export function useMarqueeGestures<T>(deps: MarqueeGesturesDeps<T>): MarqueeGest
           if (Math.hypot(dx, dy) < MARQUEE_THRESHOLD_PX) return;
           m.pastThreshold = true;
           candidatesRef.current = null;
+          opaqueCandidatesRef.current = null;
         }
         const rect: Rect = {
           left: Math.min(m.startX, m.currentX),

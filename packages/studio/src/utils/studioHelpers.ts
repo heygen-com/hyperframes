@@ -133,7 +133,18 @@ export type ElementMatchSelection = Pick<
   | "sourceFile"
   | "compositionSrc"
   | "isCompositionHost"
->;
+> &
+  Partial<Pick<DomEditSelection, "handle">>;
+
+function matchesByClipId(
+  selection: ElementMatchSelection,
+  element: TimelineElement,
+  file: string,
+  value: string | undefined,
+) {
+  if (!selection.handle || element.domId || element.hfId || element.selector) return false;
+  return element.id === value && (element.sourceFile || "index.html") === file;
+}
 
 function matchesByDomId(
   selection: ElementMatchSelection,
@@ -141,6 +152,7 @@ function matchesByDomId(
   selectionSourceFile: string,
 ): boolean {
   if (!selection.id) return false;
+  if (matchesByClipId(selection, element, selectionSourceFile, selection.id)) return true;
   return (
     element.domId === selection.id && (element.sourceFile || "index.html") === selectionSourceFile
   );
@@ -152,6 +164,7 @@ function matchesByHfId(
   selectionSourceFile: string,
 ): boolean {
   if (!selection.hfId) return false;
+  if (matchesByClipId(selection, element, selectionSourceFile, selection.hfId)) return true;
   return (
     element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );

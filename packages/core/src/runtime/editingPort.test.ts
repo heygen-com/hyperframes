@@ -72,6 +72,7 @@ describe("createEditingPortClient", () => {
           "ancestors",
           "query",
           "geometry",
+          "layers",
         ],
       });
     } finally {

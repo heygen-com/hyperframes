@@ -4,6 +4,7 @@
  * `domEditOverlayGeometry`'s, so both kinds of frame draw an element's chrome in the same place.
  */
 import {
+  MAX_DESCRIBE_HANDLES,
   ROTATION_GATE_EPSILON_DEG,
   type EditingElementBox,
   type EditingElementGeometry,
@@ -120,4 +121,30 @@ export async function measurePreviewRects(
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
   return reply.elements.map((geometry) => geometry && groupAwareRect(scale, geometry, true));
+}
+
+/** `toVisibleOverlayRect` for each handle, with its frame rect and whether it renders. */
+export async function measurePreviewVisibleRects(
+  iframe: HTMLIFrameElement,
+  overlayEl: HTMLDivElement,
+  handles: string[],
+) {
+  const measured: Array<{ rect: OverlayRect; frame: EditingRect; visible: boolean } | null> = [];
+  for (let at = 0; at < handles.length; at += MAX_DESCRIBE_HANDLES) {
+    const reply = await previewGeometry(iframe, handles.slice(at, at + MAX_DESCRIBE_HANDLES));
+    const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
+    if (!reply || !scale) return null;
+    for (const box of reply.elements) {
+      const rect = box && baseRect(scale, box);
+      measured.push(
+        box &&
+          rect && {
+            rect: { ...rect, ...hugRectForClipPath(rect, box.clipPath) },
+            frame: box.rect,
+            visible: box.visible,
+          },
+      );
+    }
+  }
+  return measured;
 }
