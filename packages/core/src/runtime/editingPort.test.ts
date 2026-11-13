@@ -70,6 +70,7 @@ describe("createEditingPortClient", () => {
           "describe",
           "ancestors",
           "query",
+          "geometry",
         ],
       });
     } finally {

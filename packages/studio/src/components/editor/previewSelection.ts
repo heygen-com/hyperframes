@@ -9,7 +9,11 @@
  * the selection's `handle`.
  */
 import { resolveEditingAffordances } from "@hyperframes/core/editing";
-import type { EditingPortClient } from "@hyperframes/core/runtime/editing-port";
+import {
+  MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_VALUE,
+  type EditingPortClient,
+} from "@hyperframes/core/runtime/editing-port";
 import {
   previewComputedStyles,
   previewEditingClient,
@@ -49,6 +53,7 @@ import {
   type TimelineElementDomTargetOptions,
 } from "./domEditingTypes";
 import { existsInSourceFile } from "./probeSourceElement";
+import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -100,6 +105,23 @@ function readable(element: PreviewElement): HTMLElement {
 
 const attr = (element: PreviewElement, name: string) =>
   element.attributes.find(([key]) => key === name)?.[1] ?? null;
+
+const mayBeCut = (value: string) =>
+  value.length >= MAX_ELEMENT_VALUE || (value.startsWith("data:") && value.endsWith(","));
+
+/** A cut attribute or style (a long `data-audio-fx`, say) would be written back cut; text is not read back. */
+function valuesWhole(element: PreviewElement): boolean {
+  if (!element.truncated) return true;
+  const styles = Object.values(element.inlineStyles);
+  if (element.attributes.length >= MAX_ELEMENT_ENTRIES || styles.length >= MAX_ELEMENT_ENTRIES)
+    return false;
+  return ![...element.attributes.map(([, value]) => value), ...styles].some(mayBeCut);
+}
+
+const hasAudio = (element: PreviewElement) =>
+  element.tag === "video" &&
+  attr(element, "muted") === null &&
+  isVideoAudible({ tag: "video", hasAudioAttr: attr(element, "data-has-audio"), muted: false });
 
 /** Undefined when the frame cannot answer; null when nothing matches. */
 type Found = PreviewElement | null | undefined;
@@ -184,8 +206,10 @@ function chainReader(chain: readonly PreviewElement[]): SelectionChainReader<Pre
 
 async function compositionRoot(iframe: HTMLIFrameElement, documentElement: PreviewElement) {
   const reply = await queryPreviewElements(iframe, "[data-composition-id]");
-  const first = reply?.matches[0];
-  const [root] = first ? ((await describePreviewElements(iframe, [first.handle])) ?? []) : [];
+  if (!reply) return null;
+  const first = reply.matches[0];
+  const [root] = first ? ((await describePreviewElements(iframe, [first.handle])) ?? [null]) : [];
+  if (root === null) return null;
   const element = root ?? documentElement;
   const { x, y, width, height } = element.rect;
   return {
@@ -232,7 +256,7 @@ async function isPreviewCompositionRoot(
   chain: readonly PreviewElement[],
   index: number,
   computedStyles: Record<string, string>,
-): Promise<boolean> {
+): Promise<boolean | null> {
   const current = chain[index]!;
   if (attr(current, "data-composition-id") !== null && !compositionSourceOf(current)) return true;
   const parent = chain[index + 1];
@@ -240,10 +264,8 @@ async function isPreviewCompositionRoot(
   if (!underBody || attr(current, "data-hf-allow-root-edit") !== null) return false;
   const { x, y, width, height } = current.rect;
   const rect = { left: x, top: y, width, height };
-  return coversCompositionRoot(
-    { rect, computedStyles },
-    await compositionRoot(iframe, chain.at(-1)!),
-  );
+  const root = await compositionRoot(iframe, chain.at(-1)!);
+  return root && coversCompositionRoot({ rect, computedStyles }, root);
 }
 
 const compositionSourceOf = (element: PreviewElement) =>
@@ -262,14 +284,18 @@ export async function resolvePreviewSelection(
   const index = chain && chainIndex(chain, chainReader(chain), options);
   if (!chain || index === null) return null;
   const current = chain[index]!;
+  if (!valuesWhole(current)) return null;
   const element = standInFor(iframe, current);
   const identity = previewIdentity(current, options.activeCompositionPath);
   const compositionSrc = compositionSourceOf(current);
   const probe = readable(current);
   const inlineStyles = getInlineStyles(probe);
-  const computedStyles =
-    (await previewComputedStyles(iframe, current, [...CURATED_STYLE_PROPERTIES])) ?? {};
+  const computedStyles = await previewComputedStyles(iframe, current, [
+    ...CURATED_STYLE_PROPERTIES,
+  ]);
+  if (!computedStyles) return null;
   const isCompositionRoot = await isPreviewCompositionRoot(iframe, chain, index, computedStyles);
+  if (isCompositionRoot === null) return null;
   const isInsideLocked = chainLocked(chain, chainReader(chain), index);
   const { sourceFile } = identity;
   const existsInSource = await existsInSourceFile(
@@ -297,6 +323,8 @@ export async function resolvePreviewSelection(
   return {
     element,
     handle: current.handle,
+    hasAudio: hasAudio(current),
+    src: attr(current, "src"),
     ...identity,
     compositionPath: sourceFile,
     compositionSrc,

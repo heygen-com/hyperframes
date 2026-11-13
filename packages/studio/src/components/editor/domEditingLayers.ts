@@ -248,7 +248,7 @@ export function domEditSelectionToFacts(
     hasEditableText: selection.textFields.length > 0,
     hasTimingStart: selection.dataAttributes.start != null,
     animationCount,
-    hasAudio: isAudibleVideoNode(selection.element),
+    hasAudio: selection.hasAudio ?? isAudibleVideoNode(selection.element),
   };
 }
 

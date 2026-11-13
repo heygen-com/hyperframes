@@ -101,7 +101,7 @@ export function ImageFillField({
   const track = useTrackDesignInput();
   const sourceFile = element.sourceFile;
   const isImage = element.tagName === "img";
-  const imageUrl = isImage ? (element.element.getAttribute("src") ?? "") : value;
+  const imageUrl = isImage ? (selectionSrc(element) ?? "") : value;
   const commitImage = (next: string, projectAsset = false) => {
     if (isImage) {
       if (next)
@@ -509,4 +509,8 @@ export function GradientField({
       </div>
     </div>
   );
+}
+
+function selectionSrc(selection: DomEditSelection): string | null {
+  return selection.src === undefined ? selection.element.getAttribute("src") : selection.src;
 }

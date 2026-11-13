@@ -17,6 +17,7 @@ import {
   type EditingElementHit,
   type EditingElementMatch,
 } from "./editingElement";
+import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 
@@ -40,6 +41,24 @@ export {
   type EditingElementSource,
   type EditingRect,
 } from "./editingElement";
+export {
+  elementCornerPoints,
+  isElementVisibleThroughAncestors,
+  readElementTransformSnapshot,
+  rotationDegreesFromMatrix,
+  MAX_GEOMETRY_CHILDREN,
+  ROTATION_GATE_EPSILON_DEG,
+  type EditingCorner,
+  type EditingCorners,
+  type EditingElementBox,
+  type EditingElementGeometry,
+  type ElementTransformSnapshot,
+} from "./editingGeometry";
+export {
+  composeElementTransform,
+  individualRotateDegrees,
+  type PlanarTransformOps,
+} from "./elementTransform";
 
 export const EDITING_PROTOCOL_VERSION = 1 as const;
 /** Parent to frame, on the window: asks the runtime for the port. */
@@ -57,6 +76,7 @@ export const EDITING_REQUEST_KINDS = [
   "describe",
   "ancestors",
   "query",
+  "geometry",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -106,6 +126,14 @@ export interface EditingRequests {
   query: {
     params: { selector: string };
     result: { matches: EditingElementMatch[]; truncated: boolean };
+  };
+  /** Each handle's overlay geometry, null as in `describe`; `children` names whose descendant boxes to add. */
+  geometry: {
+    params: { handles: EditingElementHandle[]; children?: EditingElementHandle };
+    result: {
+      elements: Array<EditingElementGeometry | null>;
+      children: EditingElementBox[] | null;
+    };
   };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -209,6 +237,13 @@ const PARAM_PARSERS: {
     hasKeys(params, "selector") && isSelector(params.selector)
       ? { selector: params.selector }
       : null,
+  geometry: (params) => {
+    if (!isPlainRecord(params)) return null;
+    const { children, ...rest } = params;
+    const list = handleList(rest);
+    if (!list || !("children" in params)) return list;
+    return isHandle(children) ? { ...list, children } : null;
+  },
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
