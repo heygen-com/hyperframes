@@ -11,6 +11,7 @@ const STRUCTURE_CODES = new Set([
   "multiple_caption_tracks",
   "clip_ends_past_root_duration",
   "nested_clip_never_visible",
+  "start_reference_unknown_id",
 ]);
 
 function htmlFiles(dir: string): string[] {
