@@ -80,7 +80,13 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { escapesAssetRoot, isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import {
+  escapesAssetRoot,
+  isPathInside,
+  leftOutOfRender,
+  outsideAssetRefusal,
+  toExternalAssetKey,
+} from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -275,6 +281,10 @@ function assertSubCompositionsUsable(
     const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });
+      continue;
+    }
+    if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
+      problems.push({ srcPath, detail: "it is outside the project in a private location" });
       continue;
     }
     if (isPrivateCompositionFile(projectDir, filePath)) {
@@ -1403,9 +1413,12 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 export function collectExternalAssets(
   html: string,
   projectDir: string,
+  log: ProducerLogger = defaultLogger,
+  file = "index.html",
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
+  const leftOut = new Set<string>();
 
   function processPath(rawPath: string): string | null {
     const trimmed = rawPath.trim();
@@ -1415,6 +1428,12 @@ export function collectExternalAssets(
       return null; // inside projectDir, file server handles this
     }
     if (!existsSync(absPath)) return null;
+    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    if (refusal) {
+      if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
+      leftOut.add(trimmed);
+      return null;
+    }
     // resolve() already canonicalises the path (no .. components remain);
     // toExternalAssetKey() produces a cross-platform relative key that
     // `path.join(compileDir, key)` cannot escape on any OS.
@@ -2166,6 +2185,11 @@ function bindVariableMediaSources(html: string, variables: Record<string, unknow
   return changed ? document.toString() : html;
 }
 
+const entryFileName = (projectDir: string, htmlPath: string) =>
+  isPathInside(htmlPath, projectDir)
+    ? relative(projectDir, htmlPath).split(sep).join("/")
+    : basename(htmlPath);
+
 /**
  * Compile an HTML composition project into a single self-contained HTML string
  * with all media metadata resolved.
@@ -2362,7 +2386,12 @@ export async function compileForRender(
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
   const { html, externalAssets } = options.allowOutsideProjectAssets
-    ? collectExternalAssets(embeddedHtml, projectDir)
+    ? collectExternalAssets(
+        embeddedHtml,
+        projectDir,
+        options.log,
+        entryFileName(projectDir, htmlPath),
+      )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 
   for (const [relPath, absPath] of remoteMediaAssets) {
