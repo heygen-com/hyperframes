@@ -235,13 +235,23 @@ const isLayer = (value: unknown): value is EditingLayer =>
   Number.isFinite(value.zIndex) &&
   LAYER_KINDS.has(value.kind as string);
 
-/** The frame's layers in document order, scoped to `group` when given; null when the runtime cannot answer. */
+export interface PreviewLayers {
+  layers: EditingLayer[];
+  truncated: boolean;
+  missingGroup: boolean;
+}
+
+/** One page of the frame's layers in document order from `offset`, scoped to `group` when given; null when the runtime cannot answer. */
 export async function previewLayers(
   iframe: HTMLIFrameElement,
   group?: string,
-): Promise<{ layers: EditingLayer[]; truncated: boolean } | null> {
-  const reply = await previewRequest(iframe, "layers", group ? { group } : {});
+  offset = 0,
+): Promise<PreviewLayers | null> {
+  const params = { ...(group ? { group } : {}), ...(offset ? { offset } : {}) };
+  const reply = await previewRequest(iframe, "layers", params);
   const layers: unknown = reply?.layers;
-  if (!Array.isArray(layers) || typeof reply?.truncated !== "boolean") return null;
-  return layers.every(isLayer) ? { layers, truncated: reply.truncated } : null;
+  const { truncated, missingGroup } = reply ?? {};
+  if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
+  if (typeof missingGroup !== "boolean") return null;
+  return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }

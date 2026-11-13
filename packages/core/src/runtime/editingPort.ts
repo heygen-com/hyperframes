@@ -163,10 +163,11 @@ export interface EditingRequests {
       children: EditingElementBox[] | null;
     };
   };
-  /** The Layers walk in document order, up to MAX_QUERY_MATCHES; `group` scopes it to a drilled-into group. */
+  /** The Layers walk from `offset`, MAX_QUERY_MATCHES at a time, scoped to a drilled-into `group`;
+   * `missingGroup` says this page has no such group, and lists nothing. */
   layers: {
-    params: { group?: EditingElementHandle };
-    result: { layers: EditingLayer[]; truncated: boolean };
+    params: { group?: EditingElementHandle; offset?: number };
+    result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -245,6 +246,21 @@ function point(params: unknown): { x: number; y: number } | null {
   return Number.isFinite(x) && Number.isFinite(y) ? { x: x as number, y: y as number } : null;
 }
 
+const isOffset = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+
+function layerParams(params: unknown): EditingParams<"layers"> | null {
+  if (!isPlainRecord(params)) return null;
+  const { group, offset, ...rest } = params;
+  const valid = [
+    Object.keys(rest).length === 0,
+    group === undefined || isHandle(group),
+    offset === undefined || isOffset(offset),
+  ];
+  if (valid.includes(false)) return null;
+  return { ...(isHandle(group) && { group }), ...(isOffset(offset) && { offset }) };
+}
+
 const PARAM_PARSERS: {
   [K in EditingRequestKind]: (params: unknown) => EditingParams<K> | null;
 } = {
@@ -280,10 +296,7 @@ const PARAM_PARSERS: {
     if (!list || !("children" in params)) return list;
     return isHandle(children) ? { ...list, children } : null;
   },
-  layers: (params) => {
-    if (noParams(params)) return {};
-    return hasKeys(params, "group") && isHandle(params.group) ? { group: params.group } : null;
-  },
+  layers: (params) => noParams(params) ?? layerParams(params),
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

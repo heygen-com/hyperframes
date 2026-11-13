@@ -27,4 +27,11 @@ describe("timelineElementsForDelete", () => {
     const elements = [clip("a", "clip-a")];
     expect(timelineElementsForDelete([sel("nested-text")], elements)).toBeNull();
   });
+
+  it("leaves an opaque frame's selection on the DOM path, as its clip-id row has no patch target", () => {
+    // An opaque frame's rows carry only the clip id; the selection carries the frame's handle.
+    const row = { id: "title", sourceFile: "index.html", start: 0, duration: 1, track: 0 };
+    const opaque = { ...sel("title"), handle: "0123456789abcdef:1" } as DomEditSelection;
+    expect(timelineElementsForDelete([opaque], [row as TimelineElement])).toBeNull();
+  });
 });

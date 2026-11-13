@@ -150,19 +150,23 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
   const livePreviewIframe = useLivePreviewIframe();
-  const opaqueRead = useRef<object | null>(null);
+  // The opaque read in flight; `again` holds a refresh that arrived meanwhile, run once it settles.
+  const opaqueRead = useRef<{ again: boolean } | null>(null);
   const collectLayers = useCallback(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
     if (previewFrameOpaque(iframe)) {
-      if (opaqueRead.current) return;
-      const read = {};
+      if (opaqueRead.current) return void (opaqueRead.current.again = true);
+      const read = { again: false };
       opaqueRead.current = read;
       const scope = { activeCompositionPath: activeCompPath, activeGroupElement };
-      void collectPreviewLayerItems(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((items) => {
+      void collectPreviewLayerItems(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((reply) => {
         if (opaqueRead.current !== read) return;
         opaqueRead.current = null;
-        if (items) setLayers(sortLayersByZIndex(items));
+        // A reload took the drilled-into group; leave it as same-origin does below.
+        if (reply?.missingGroup) return setActiveGroupElement(null);
+        if (reply) setLayers(sortLayersByZIndex(reply.items));
+        if (read.again) collectLayers();
       });
       return;
     }
@@ -251,7 +255,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       const selection = await resolveSelection(layer);
       if (!selection) return;
 
-      let matchedId = findMatchingTimelineElementId(selection, timelineElements);
+      const scope = activeCompPath || "index.html";
+      let matchedId = findMatchingTimelineElementId(selection, timelineElements, scope);
 
       if (!matchedId) {
         const sourceFile = selection.sourceFile ?? "index.html";
@@ -276,7 +281,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         }
       }
     },
-    [currentTime, resolveSelection, timelineElements],
+    [activeCompPath, currentTime, resolveSelection, timelineElements],
   );
 
   const handleSelectLayer = useCallback(

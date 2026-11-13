@@ -323,6 +323,9 @@ describe("installEditingAgent", () => {
       { group: ["0123456789abcdef:1"] },
       { group: "0123456789abcdef:1", max: 5 },
       { scope: "0123456789abcdef:1" },
+      { offset: -1 },
+      { offset: 1.5 },
+      { offset: "2" },
     ].map((params, index) => [
       { v: 1, id: 130 + index, kind: "layers", params },
       130 + index,

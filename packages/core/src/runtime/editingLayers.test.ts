@@ -51,5 +51,27 @@ describe("layers", () => {
       ["a", 0],
       ["b", 0],
     ]);
+    expect(layersOf(pair).missingGroup).toBe(false);
+  });
+
+  it("pages past the cap from an offset, so a caller can read every layer", () => {
+    const tiles = Array.from({ length: MAX_QUERY_MATCHES + 3 }, (_, i) => `<i id="t${i}"></i>`);
+    document.body.innerHTML = `<main data-composition-id="m">${tiles.join("")}</main>`;
+    const rest = layersOf(undefined, MAX_QUERY_MATCHES);
+    expect(rest).toMatchObject({ truncated: false, missingGroup: false });
+    expect(rest.layers.map((layer) => named(layer.handle))).toEqual([
+      `t${MAX_QUERY_MATCHES}`,
+      `t${MAX_QUERY_MATCHES + 1}`,
+      `t${MAX_QUERY_MATCHES + 2}`,
+    ]);
+    expect(layersOf(undefined, 2).layers[0]!.handle).toBe(layersOf().layers[2]!.handle);
+  });
+
+  it("lists nothing for a group this page no longer has, and says so", () => {
+    document.body.innerHTML = `<main data-composition-id="m"><div id="pair" data-hf-group="g"><i id="a"></i></div></main>`;
+    const pair = layersOf().layers[0]!.handle;
+    document.getElementById("pair")!.remove();
+    expect(layersOf(pair)).toEqual({ layers: [], truncated: false, missingGroup: true });
+    expect(layersOf("0123456789abcdef:1")).toMatchObject({ layers: [], missingGroup: true });
   });
 });

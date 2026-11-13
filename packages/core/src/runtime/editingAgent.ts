@@ -88,7 +88,7 @@ const HANDLERS: Handlers = {
   ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
   query: ({ selector }) => queryElements(selector),
   geometry: ({ handles, children }) => elementGeometry(handles, children),
-  layers: ({ group }) => layersOf(group),
+  layers: ({ group, offset }) => layersOf(group, offset),
 };
 
 function serve(port: MessagePort): void {

@@ -58,12 +58,15 @@ function layerItem(
   };
 }
 
-/** `collectDomEditLayerItems` over the frame's runtime; null when it cannot answer. */
+/**
+ * `collectDomEditLayerItems` over the frame's runtime; null when it cannot answer. `missingGroup`
+ * says the drilled-into group is gone from the frame, as after a reload, and lists nothing.
+ */
 export async function collectPreviewLayerItems(
   iframe: HTMLIFrameElement,
   options: Pick<DomEditContextOptions, "activeCompositionPath" | "activeGroupElement">,
   maxItems = Number.POSITIVE_INFINITY,
-): Promise<DomEditLayerItem[] | null> {
+): Promise<{ items: DomEditLayerItem[]; missingGroup: boolean } | null> {
   const group = options.activeGroupElement && standInHandle(options.activeGroupElement);
   const reply = await previewLayers(iframe, group ?? undefined);
   const layers = reply?.layers.slice(0, maxItems) ?? [];
@@ -73,11 +76,27 @@ export async function collectPreviewLayerItems(
       iframe,
       layers.map((layer) => layer.handle),
     ));
-  if (!described) return null;
-  return layers.flatMap((layer, index) => {
+  if (!reply || !described) return null;
+  const items = layers.flatMap((layer, index) => {
     const element = described[index];
     return element ? [layerItem(iframe, layer, element, options.activeCompositionPath)] : [];
   });
+  return { items, missingGroup: reply.missingGroup };
+}
+
+// A bound on the pages one read follows, so a frame that never stops paging cannot hold it open.
+const MAX_LAYER_PAGES = 64;
+
+/** Every layer the frame lists, page by page past its per-reply cap; null when it cannot answer. */
+async function allPreviewLayers(iframe: HTMLIFrameElement): Promise<EditingLayer[] | null> {
+  const layers: EditingLayer[] = [];
+  for (let page = 0; page < MAX_LAYER_PAGES; page += 1) {
+    const reply = await previewLayers(iframe, undefined, layers.length);
+    if (!reply) return null;
+    layers.push(...reply.layers);
+    if (!reply.truncated || !reply.layers.length) break;
+  }
+  return layers;
 }
 
 /** A layer's `data-` attribute; a stand-in's comes from its description. */
@@ -111,8 +130,9 @@ export async function collectPreviewMarqueeCandidates(
   iframe: HTMLIFrameElement,
   overlayEl: HTMLDivElement,
 ): Promise<PreviewMarqueeHit[]> {
-  const reply = await previewLayers(iframe);
-  const handles = reply?.layers.map((layer) => layer.handle) ?? [];
+  // Hit-testing takes the whole document, as same-origin does: a layer past one reply's cap still selects.
+  const layers = await allPreviewLayers(iframe);
+  const handles = layers?.map((layer) => layer.handle) ?? [];
   const viewport = handles.length ? await compositionViewport(iframe) : null;
   const described = viewport && (await describeAll(iframe, handles));
   const measured = described && (await measurePreviewVisibleRects(iframe, overlayEl, handles));

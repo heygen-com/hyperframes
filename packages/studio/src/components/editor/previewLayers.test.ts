@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, createElement, useRef } from "react";
+import { MAX_QUERY_MATCHES } from "@hyperframes/core/runtime/editing-port";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The frame's real runtime agent, serving the opaque frame from this document.
@@ -117,7 +118,7 @@ const row = ({ element: _e, preview: _p, ...rest }: DomEditLayerItem) => rest;
 describe("Layers rows on an opaque frame match same-origin ones", () => {
   it("lists the same rows, with the kind and z-index each row shows", async () => {
     const live = collectDomEditLayerItems(document.querySelector("main"), CONTEXT);
-    const remote = (await collectPreviewLayerItems(opaqueFrame(), CONTEXT))!;
+    const remote = (await collectPreviewLayerItems(opaqueFrame(), CONTEXT))!.items;
     expect(remote.map(row)).toEqual(live.map(row));
     expect(remote.map((item) => item.preview!.kind)).toEqual(
       live.map((item) => layerKindOf(item.element, item.childCount > 0)),
@@ -141,12 +142,21 @@ describe("Layers rows on an opaque frame match same-origin ones", () => {
       ...CONTEXT,
       activeGroupElement: document.getElementById("pair"),
     });
-    expect((await collectPreviewLayerItems(opaque, scoped))!.map(row)).toEqual(live.map(row));
-    expect(await collectPreviewLayerItems(opaque, CONTEXT, 2)).toHaveLength(2);
+    const inGroup = (await collectPreviewLayerItems(opaque, scoped))!;
+    expect(inGroup.items.map(row)).toEqual(live.map(row));
+    expect(inGroup.missingGroup).toBe(false);
+    expect((await collectPreviewLayerItems(opaque, CONTEXT, 2))!.items).toHaveLength(2);
+
+    // A reload takes the group with it: the frame lists nothing and says so, not the whole page.
+    document.getElementById("pair")!.remove();
+    expect(await collectPreviewLayerItems(opaque, scoped)).toEqual({
+      items: [],
+      missingGroup: true,
+    });
   });
 
   it("reads a row's attributes off its description, and does not offer it for reordering", async () => {
-    const remote = (await collectPreviewLayerItems(opaqueFrame(), CONTEXT))!;
+    const remote = (await collectPreviewLayerItems(opaqueFrame(), CONTEXT))!.items;
     const pair = remote.find((item) => item.id === "pair")!;
     expect(layerDataAttribute(pair, "data-hf-group")).toBe("pair");
     expect(pair.element.hasAttribute("data-hf-group")).toBe(false);
@@ -202,18 +212,19 @@ describe("a marquee on an opaque frame matches a same-origin one", () => {
     return { picked, pointer };
   }
 
+  const ids = async (iframe: HTMLIFrameElement) => {
+    const { picked, pointer } = band(iframe);
+    pointer("pointerdown", 130, 70);
+    pointer("pointermove", 500, 200);
+    pointer("pointermove", 520, 220);
+    await vi.waitFor(() => expect(picked.candidates).toBeGreaterThan(0));
+    const candidates = picked.candidates;
+    pointer("pointerup", 520, 220);
+    await vi.waitFor(() => expect(picked.selections).not.toBeNull());
+    return { candidates, ids: picked.selections!.map((s) => s.id ?? s.hfId), picked };
+  };
+
   it("outlines and selects the same elements: visible, not full-bleed, inside the band", async () => {
-    const ids = async (iframe: HTMLIFrameElement) => {
-      const { picked, pointer } = band(iframe);
-      pointer("pointerdown", 130, 70);
-      pointer("pointermove", 500, 200);
-      pointer("pointermove", 520, 220);
-      await vi.waitFor(() => expect(picked.candidates).toBeGreaterThan(0));
-      const candidates = picked.candidates;
-      pointer("pointerup", 520, 220);
-      await vi.waitFor(() => expect(picked.selections).not.toBeNull());
-      return { candidates, ids: picked.selections!.map((s) => s.id ?? s.hfId), picked };
-    };
     const live = await ids(liveFrame());
     const remote = await ids(opaqueFrame());
     expect(remote.ids).toEqual(live.ids);
@@ -222,6 +233,15 @@ describe("a marquee on an opaque frame matches a same-origin one", () => {
     expect(remote.ids).toEqual(["card", "title", "pic", "pair", "pair"]);
     expect(remote.picked.selections!.every((selection) => selection.handle)).toBe(true);
   });
+
+  it("selects layers past the cap on one layers reply, as same-origin does", async () => {
+    // Unmeasured fillers first, so every element in the band sits past the first reply.
+    const fillers = Array.from({ length: MAX_QUERY_MATCHES }, (_, i) => `<i id="f${i}"></i>`);
+    document.querySelector("main")!.insertAdjacentHTML("afterbegin", fillers.join(""));
+    expect((await previewLayers(opaqueFrame()))!.truncated).toBe(true);
+    const remote = await ids(opaqueFrame());
+    expect(remote.ids).toEqual(["card", "title", "pic", "pair", "pair"]);
+  }, 20_000);
 });
 
 it("maps an opaque selection to a timeline clip the frame knows only by its clip id", () => {
@@ -236,10 +256,19 @@ it("maps an opaque selection to a timeline clip the frame knows only by its clip
     isCompositionHost: false,
     handle: "0123456789abcdef:1",
   };
-  expect(findMatchingTimelineElementId(selection, [clip])).toBe("index.html:card:0");
-  expect(findMatchingTimelineElementId({ ...selection, handle: undefined }, [clip])).toBeNull();
+  expect(findMatchingTimelineElementId(selection, [clip], "index.html")).toBe("index.html:card:0");
+  const unhandled = { ...selection, handle: undefined };
+  expect(findMatchingTimelineElementId(unhandled, [clip], "index.html")).toBeNull();
   const hydrated = { ...clip, domId: "other" } as TimelineElement;
-  expect(findMatchingTimelineElementId(selection, [hydrated])).toBeNull();
+  expect(findMatchingTimelineElementId(selection, [hydrated], "index.html")).toBeNull();
+  // Without a scope (delete, group) the row is not this selection: it has no patch target.
+  expect(findMatchingTimelineElementId(selection, [clip])).toBeNull();
+
+  // A row naming no file is in the open composition, as the forward lookup reads it.
+  const bare = { id: "card", key: "compositions/a.html:card:0" } as TimelineElement;
+  const inSub = { ...selection, sourceFile: "compositions/a.html" };
+  expect(findMatchingTimelineElementId(inSub, [bare], "compositions/a.html")).toBe(bare.key);
+  expect(findMatchingTimelineElementId(inSub, [bare], "index.html")).not.toBe(bare.key);
 });
 
 it("refuses a layers reply that names an unknown kind", async () => {
@@ -265,7 +294,7 @@ it("refuses a layers reply that names an unknown kind", async () => {
       v: 1,
       id: data.id,
       ok: true,
-      result: { layers: [layer], truncated: false },
+      result: { layers: [layer], truncated: false, missingGroup: false },
     });
   frame.postMessage = () =>
     window.dispatchEvent(

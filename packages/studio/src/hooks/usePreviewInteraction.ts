@@ -74,6 +74,7 @@ export function usePreviewInteraction({
 }: UsePreviewInteractionParams) {
   const cycleRef = useRef<ClickCycleState | null>(null);
   const lastDownRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const hoverSeqRef = useRef(0);
 
   const pausePreviewPlayback = useCallback(() => {
     const pausedTime = pauseStudioPreviewPlayback(previewIframeRef.current);
@@ -238,6 +239,7 @@ export function usePreviewInteraction({
   const handlePreviewCanvasPointerMove = useCallback(
     // fallow-ignore-next-line complexity
     async (e: React.PointerEvent<HTMLDivElement>, options?: { preferClipAncestor?: boolean }) => {
+      const seq = ++hoverSeqRef.current;
       if (captionEditMode || compositionLoading) {
         updateDomEditHoverSelection(null);
         return null;
@@ -247,6 +249,7 @@ export function usePreviewInteraction({
         preferClipAncestor: options?.preferClipAncestor ?? false,
         skipSourceProbe: true,
       });
+      if (seq !== hoverSeqRef.current) return null;
       updateDomEditHoverSelection(nextSelection);
       return nextSelection;
     },
@@ -259,6 +262,7 @@ export function usePreviewInteraction({
   );
 
   const handlePreviewCanvasPointerLeave = useCallback(() => {
+    hoverSeqRef.current += 1;
     updateDomEditHoverSelection(null);
   }, [updateDomEditHoverSelection]);
 

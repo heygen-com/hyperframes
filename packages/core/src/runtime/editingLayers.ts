@@ -88,18 +88,23 @@ function walkLayers(
   return { layers, truncated };
 }
 
-/** `layers`: the composition's layers, or the drilled-into group's when `group` names one. */
-export function layersOf(group?: EditingElementHandle): {
-  layers: EditingLayer[];
-  truncated: boolean;
-} {
+/**
+ * `layers`: the composition's layers, or the drilled-into group's when `group` names one, from the
+ * `offset`th on. A `group` this page no longer has lists nothing, so Studio can leave the drill-in.
+ */
+export function layersOf(
+  group?: EditingElementHandle,
+  offset = 0,
+): { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean } {
   const scope = group ? elementForHandle(group) : null;
+  if (group && !scope) return { layers: [], truncated: false, missingGroup: true };
   const root = document.querySelector("[data-composition-id]") ?? document.documentElement;
   const roots = scope ? Array.from(scope.children) : root ? [root] : [];
-  const walk = walkLayers(roots, MAX_QUERY_MATCHES);
+  const walk = walkLayers(roots, offset + MAX_QUERY_MATCHES);
   return {
     truncated: walk.truncated,
-    layers: walk.layers.map(({ element, depth, childCount }) => ({
+    missingGroup: false,
+    layers: walk.layers.slice(offset).map(({ element, depth, childCount }) => ({
       handle: handleFor(element),
       depth,
       childCount,

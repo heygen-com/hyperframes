@@ -20,6 +20,7 @@ import type { PreviewElement } from "../../player/lib/previewElements";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { useDomSelection } from "../../hooks/useDomSelection";
+import { usePreviewInteraction } from "../../hooks/usePreviewInteraction";
 import type { TimelineElement } from "../../player";
 
 installReactActEnvironment();
@@ -172,7 +173,9 @@ describe("canvas hit-tests on an opaque frame match same-origin ones", () => {
 });
 
 describe("useDomSelection over an opaque frame's canvas", () => {
-  function renderSelection(iframe: HTMLIFrameElement) {
+  type Resolve = ReturnType<typeof useDomSelection>["resolveDomSelectionFromPreviewPoint"];
+  let interaction: ReturnType<typeof usePreviewInteraction> | null = null;
+  function renderSelection(iframe: HTMLIFrameElement, wrapResolve = (resolve: Resolve) => resolve) {
     let hook: ReturnType<typeof useDomSelection> | null = null;
     function Harness() {
       hook = useDomSelection({
@@ -192,6 +195,17 @@ describe("useDomSelection over an opaque frame's canvas", () => {
         refreshKey: 0,
         rightPanelTab: "design",
       });
+      interaction = usePreviewInteraction({
+        captionEditMode: false,
+        compositionLoading: false,
+        previewIframeRef: { current: iframe },
+        showToast: vi.fn(),
+        applyDomSelection: hook.applyDomSelection,
+        resolveDomSelectionFromPreviewPoint: wrapResolve(hook.resolveDomSelectionFromPreviewPoint),
+        resolveAllDomSelectionsFromPreviewPoint: hook.resolveAllDomSelectionsFromPreviewPoint,
+        updateDomEditHoverSelection: hook.updateDomEditHoverSelection,
+        setActiveGroupElement: hook.setActiveGroupElement,
+      });
       return null;
     }
     const root = createRoot(document.createElement("div"));
@@ -209,6 +223,37 @@ describe("useDomSelection over an opaque frame's canvas", () => {
     expect(hook().domEditHoverSelection).toBe(picked);
     const cycle = await act(() => hook().resolveAllDomSelectionsFromPreviewPoint(...point));
     expect(cycle.map((selection) => selection.id)).toEqual(["title", "mask", "block"]);
+  });
+
+  const move = (x: number, y: number) => {
+    const [clientX, clientY] = client(x, y);
+    const event = { clientX, clientY } as React.PointerEvent<HTMLDivElement>;
+    return interaction!.handlePreviewCanvasPointerMove(event);
+  };
+
+  it.each([
+    ["opaque", opaqueFrame],
+    ["same-origin", liveFrame],
+  ])("drops a hover the pointer left before it resolved (%s)", async (_kind, frame) => {
+    const hook = renderSelection(frame());
+    const moved = move(60, 60);
+    act(() => interaction!.handlePreviewCanvasPointerLeave());
+    await act(() => moved);
+    expect(hook().domEditHoverSelection).toBeNull();
+  });
+
+  it("keeps the newest move's hover when an older one resolves after it", async () => {
+    let calls = 0;
+    const hook = renderSelection(opaqueFrame(), (resolve) => async (...args) => {
+      const delay = ++calls === 1 ? 60 : 0;
+      const picked = await resolve(...args);
+      await new Promise((done) => setTimeout(done, delay));
+      return picked;
+    });
+    const older = move(60, 60);
+    const newer = move(1050, 650);
+    await act(() => Promise.all([older, newer]));
+    expect(hook().domEditHoverSelection).toMatchObject({ id: "pair" });
   });
 
   it("takes a hover of the same element from a reloaded frame, whose handle is new", async () => {
