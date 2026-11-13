@@ -507,7 +507,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
   };
 }
 
-export function prelaunchBrowserForCheck(rawArgs: string[]) {
+export async function prelaunchBrowserForCheck(rawArgs: string[]) {
   const args = parseArgs(rawArgs, CHECK_COMMAND_ARGS);
   return prelaunchBrowserForNextCheck(resolveProject(args.dir), parseCheckOptions(args));
 }

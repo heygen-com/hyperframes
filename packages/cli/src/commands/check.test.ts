@@ -22,7 +22,7 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
-import { createCheckCommand, parseCheckRange } from "./check.js";
+import { createCheckCommand, parseCheckRange, prelaunchBrowserForCheck } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
 import {
@@ -950,6 +950,8 @@ it.each([
   ["--tolerance", "-1"],
   ["--tolerance", "px"],
   ["--tolerance", "2px"],
+  ["--tolerance", ""],
+  ["--tolerance", "Infinity"],
 ])("rejects %s %s as a usage error instead of using the default", async (flag, value) => {
   const { report } = await runScenario(fakeDriver());
   const runPipeline = vi.fn(async () => report);
@@ -969,6 +971,17 @@ it.each([
   const output = JSON.parse(String(log.mock.calls[0]?.[0]));
   expect(output.error.code).toBe("usage_error");
   expect(output.error.message).toContain(`Invalid ${flag}: "${value}"`);
+});
+
+it("rejects bad check flags in the warm prelaunch as a promise, so its catch handles them", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-check-prelaunch-"));
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  let prelaunch: Promise<unknown> | undefined;
+  expect(() => {
+    prelaunch = prelaunchBrowserForCheck([dir, "--samples", "0"]);
+  }).not.toThrow();
+  await expect(prelaunch).rejects.toThrow('Invalid --samples: "0"');
+  rmSync(dir, { recursive: true, force: true });
 });
 
 it("passes valid numeric check flags through and keeps defaults for absent ones", async () => {
