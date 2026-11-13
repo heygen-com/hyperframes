@@ -28,15 +28,19 @@ function stage(files: Record<string, string>) {
 }
 
 describe("a file outside the project", () => {
-  it("is still copied when it is an image, video, font or stylesheet, without a warning", () => {
+  it("is still copied when it is an image, video, audio, font or stylesheet, without a warning", () => {
     const { ext, warnings } = stage({
       "shared/logo.png": "png",
       "shared/LOUD.PNG": "png",
       "shared/clip.mp4": "mp4",
       "shared/brand.woff2": "woff2",
       "shared/theme.css": "body {}",
+      "shared/old.avi": "avi",
+      "shared/scan.tif": "tif",
+      "shared/take.aiff": "aiff",
       "p/index.html": [
-        `<img src="../shared/logo.png"><img src="../shared/LOUD.PNG">`,
+        `<img src="../shared/logo.png"><img src="../shared/LOUD.PNG"><img src="../shared/scan.tif">`,
+        `<video src="../shared/old.avi"></video><audio src="../shared/take.aiff"></audio>`,
         `<video src="../shared/clip.mp4"></video><link rel="stylesheet" href="../shared/theme.css">`,
         `<style>@font-face { font-family: B; src: url("../shared/brand.woff2"); }</style>`,
       ].join(""),
@@ -46,6 +50,9 @@ describe("a file outside the project", () => {
       "_ext/shared/brand.woff2",
       "_ext/shared/clip.mp4",
       "_ext/shared/logo.png",
+      "_ext/shared/old.avi",
+      "_ext/shared/scan.tif",
+      "_ext/shared/take.aiff",
       "_ext/shared/theme.css",
     ]);
     expect(warnings).toEqual([]);
@@ -156,7 +163,10 @@ describe("a file outside the project", () => {
 
 describe("the outside file types", () => {
   it("are images, video, audio, fonts, CSS and JS, and nothing else", () => {
-    for (const extension of [".png", ".avif", ".svg", ".mp4", ".mov", ".webm", ".mp3", ".wav"]) {
+    for (const extension of [".png", ".avif", ".svg", ".bmp", ".tif", ".mp4", ".mov", ".webm"]) {
+      expect(OUTSIDE_FILE_EXTENSIONS).toContain(extension);
+    }
+    for (const extension of [".avi", ".ogv", ".mp3", ".wav", ".aiff"]) {
       expect(OUTSIDE_FILE_EXTENSIONS).toContain(extension);
     }
     for (const extension of [".woff", ".woff2", ".ttf", ".otf", ".css", ".js", ".mjs"]) {
