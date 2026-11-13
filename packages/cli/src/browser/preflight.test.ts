@@ -197,7 +197,11 @@ describe("runEnvironmentChecks", () => {
     });
 
     it.each([
-      { platform: "darwin" as const, expectedHint: "brew install ffmpeg" },
+      {
+        platform: "darwin" as const,
+        expectedHint:
+          "brew install ffmpeg, or without Homebrew point HYPERFRAMES_FFMPEG_PATH and HYPERFRAMES_FFPROBE_PATH at ffmpeg and ffprobe binaries, or copy both into .hyperframes/bin",
+      },
       { platform: "sunos" as const, expectedHint: "https://ffmpeg.org/download.html" },
       {
         platform: "win32" as const,

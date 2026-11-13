@@ -32,9 +32,9 @@ const tailwindScript =
 // (package.json scripts), so assuming it's on PATH is safe.
 function runInit(
   args: string[],
-  opts: { skillsEnvOptOut?: boolean } = {},
+  opts: { skillsEnvOptOut?: boolean; env?: Record<string, string> } = {},
 ): { status: number; stdout: string; stderr: string } {
-  const env = { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" } as Record<
+  const env = { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1", ...opts.env } as Record<
     string,
     string | undefined
   >;
@@ -90,6 +90,30 @@ describe("hyperframes init flag rename", () => {
       expect(html).toMatch(/#root\s*\{[^}]*width:\s*100%/);
       expect(html).not.toContain("window.__timelines = window.__timelines || {}");
       expectScaffoldedScripts(target);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("warns at the end of init when FFmpeg and FFprobe cannot be found", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    try {
+      const missing = runInit([join(dir, "missing"), "--non-interactive"], {
+        env: {
+          HYPERFRAMES_FFMPEG_PATH: join(dir, "no-ffmpeg"),
+          HYPERFRAMES_FFPROBE_PATH: join(dir, "no-ffprobe"),
+        },
+      });
+      expect(missing.status).toBe(0);
+      expect(missing.stdout).toContain("FFmpeg and FFprobe not found");
+      expect(missing.stdout).toContain("render needs both");
+
+      // Overrides only have to exist to count as found, so the test does not depend on a real install.
+      const found = runInit([join(dir, "found"), "--non-interactive"], {
+        env: { HYPERFRAMES_FFMPEG_PATH: cliEntry, HYPERFRAMES_FFPROBE_PATH: cliEntry },
+      });
+      expect(found.status).toBe(0);
+      expect(found.stdout).not.toContain("not found");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
