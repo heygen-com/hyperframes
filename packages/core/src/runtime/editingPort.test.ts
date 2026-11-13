@@ -73,6 +73,7 @@ describe("createEditingPortClient", () => {
           "query",
           "geometry",
           "layers",
+          "draft",
         ],
       });
     } finally {

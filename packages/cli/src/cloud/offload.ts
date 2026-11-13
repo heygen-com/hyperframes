@@ -33,7 +33,11 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
-import { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, VIDEO_EXTS } from "./mediaExtensions.js";
+import {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  VIDEO_EXTS,
+} from "@hyperframes/studio-server/outside-file";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   archiveKey,

@@ -34,6 +34,7 @@ import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import { refusesOutsideLink } from "../utils/paths.js";
 
 const readFileAsync = promisify(readFile);
 
@@ -812,6 +813,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
+  const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
@@ -840,7 +842,10 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     for (const root of compiledDir ? [compiledDir, projectDir] : [projectDir]) {
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
-      if (isPathInside(candidate, root, { resolveSymlinks })) file = openRegularFile(candidate);
+      if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
+      const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
+      if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
+      file = openRegularFile(candidate);
       if (file) break;
     }
 

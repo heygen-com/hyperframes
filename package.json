@@ -76,7 +76,7 @@
     "@types/node": "^25.0.10",
     "esbuild": "^0.28.2",
     "fallow": "^3.34.1",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^21.0.4",
     "knip": "^6.0.3",
     "lefthook": "^2.1.4",
     "oxfmt": "^0.41.0",
@@ -84,19 +84,21 @@
     "picomatch": "^4.0.4",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "resolutions": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tinypool": "2.1.2"
   },
   "overrides": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tinypool": "2.1.2"
   },
   "engines": {
     "bun": "1.4.4"

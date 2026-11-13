@@ -100,6 +100,7 @@ export const EDITING_REQUEST_KINDS = [
   "query",
   "geometry",
   "layers",
+  "draft",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -113,6 +114,17 @@ export interface EditingRuntimeSnapshot {
   /** `[childId, parentId]` for each nested clip in the runtime's clip tree. */
   clipParents: Array<[string, string]>;
 }
+
+export const MAX_DRAFT_PX = 100_000;
+
+/** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
+export type EditingDraft =
+  | {
+      handle: EditingElementHandle;
+      translate: { x: number; y: number } | null;
+      size: { width: number; height: number } | null;
+    }
+  | { handle: EditingElementHandle; end: "keep" | "restore" };
 
 type NoParams = Record<string, never>;
 export interface EditingRequests {
@@ -169,6 +181,8 @@ export interface EditingRequests {
     params: { group?: EditingElementHandle; offset?: number };
     result: { layers: EditingLayer[]; truncated: boolean; missingGroup: boolean };
   };
+  /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
+  draft: { params: { drafts: EditingDraft[] }; result: { drawn: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -261,6 +275,33 @@ function layerParams(params: unknown): EditingParams<"layers"> | null {
   return { ...(isHandle(group) && { group }), ...(isOffset(offset) && { offset }) };
 }
 
+const isDraftPx = (value: unknown, min: number): value is number =>
+  Number.isFinite(value) && (value as number) >= min && Math.abs(value as number) <= MAX_DRAFT_PX;
+
+function draftPart(value: unknown, keys: string, min: number): boolean {
+  if (value === null) return true;
+  if (!hasKeys(value, keys)) return false;
+  return keys.split(",").every((key) => isDraftPx(value[key], min));
+}
+
+function draftEntry(value: unknown): EditingDraft | null {
+  if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
+  const { handle, end, translate, size } = value;
+  if (hasKeys(value, "end,handle"))
+    return end === "keep" || end === "restore" ? { handle, end } : null;
+  if (!hasKeys(value, "handle,size,translate")) return null;
+  const valid = draftPart(translate, "x,y", -MAX_DRAFT_PX) && draftPart(size, "height,width", 0);
+  return valid ? (value as EditingDraft) : null;
+}
+
+function draftList(params: unknown): EditingParams<"draft"> | null {
+  if (!hasKeys(params, "drafts") || !Array.isArray(params.drafts)) return null;
+  const { drafts } = params;
+  if (!drafts.length || drafts.length > MAX_DESCRIBE_HANDLES) return null;
+  const parsed = drafts.map(draftEntry);
+  return parsed.includes(null) ? null : { drafts: parsed as EditingDraft[] };
+}
+
 const PARAM_PARSERS: {
   [K in EditingRequestKind]: (params: unknown) => EditingParams<K> | null;
 } = {
@@ -297,6 +338,7 @@ const PARAM_PARSERS: {
     return isHandle(children) ? { ...list, children } : null;
   },
   layers: (params) => noParams(params) ?? layerParams(params),
+  draft: draftList,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

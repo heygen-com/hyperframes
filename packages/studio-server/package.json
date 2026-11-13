@@ -117,6 +117,12 @@
       "import": "./src/helpers/mime.ts",
       "types": "./src/helpers/mime.ts"
     },
+    "./outside-file": {
+      "bun": "./src/helpers/outsideFile.ts",
+      "node": "./dist/helpers/outsideFile.js",
+      "import": "./src/helpers/outsideFile.ts",
+      "types": "./src/helpers/outsideFile.ts"
+    },
     "./media-range": {
       "bun": "./src/helpers/mediaRange.ts",
       "node": "./dist/helpers/mediaRange.js",
@@ -196,6 +202,10 @@
         "import": "./dist/helpers/mime.js",
         "types": "./dist/helpers/mime.d.ts"
       },
+      "./outside-file": {
+        "import": "./dist/helpers/outsideFile.js",
+        "types": "./dist/helpers/outsideFile.d.ts"
+      },
       "./media-range": {
         "import": "./dist/helpers/mediaRange.js",
         "types": "./dist/helpers/mediaRange.d.ts"
@@ -226,7 +236,7 @@
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
     "sharp": "^0.35.0"

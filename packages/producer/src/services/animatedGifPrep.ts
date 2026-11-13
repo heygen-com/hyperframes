@@ -7,7 +7,7 @@ import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes
 import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
-import { escapesAssetRoot } from "../utils/paths.js";
+import { escapesAssetRoot, outsideAssetRefusal } from "../utils/paths.js";
 import { encoderFailureError } from "./render/encoderInterruption.js";
 
 const PREPARED_GIF_SUBDIR = "_animated_gif";
@@ -109,7 +109,8 @@ export function resolveLocalImageSourcePath(
   ];
 
   const allowed = (candidate: string) =>
-    !escapesAssetRoot(candidate, options.assetRoot) ||
+    (!escapesAssetRoot(candidate, options.assetRoot) &&
+      outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
     !escapesAssetRoot(candidate, options.downloadDir);
   return candidates.find((candidate) => existsSync(candidate) && allowed(candidate)) ?? null;
 }

@@ -83,8 +83,8 @@
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.4.0",
-    "puppeteer": "~25.11.0",
-    "puppeteer-core": "^25.11.0"
+    "puppeteer": "~25.13.0",
+    "puppeteer-core": "^25.13.0"
   },
   "devDependencies": {
     "@hyperframes/aws-lambda": "workspace:*",
@@ -93,7 +93,7 @@
     "esbuild": "^0.28.2",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": ">=22"

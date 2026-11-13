@@ -128,7 +128,7 @@ describe("measureManualOffsetDragScreenToOffsetMatrix", () => {
   });
 
   it("measures movement in parent viewport pixels when the element is inside a scaled iframe", () => {
-    const window = new Window();
+    const window = new Window({ settings: { enableIframePageLoading: true } });
     const iframe = window.document.createElement("iframe");
     window.document.body.append(iframe);
     const iframeWindow = iframe.contentWindow;

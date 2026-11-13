@@ -64,6 +64,7 @@ import {
   declareProbeFactsUrl,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import { refusesOutsideLink } from "../../utils/paths.js";
 import {
   applyRenderWarningPolicy,
   type RenderJob,
@@ -1277,7 +1278,9 @@ async function compilePlanComposition(
       // false-positive every descendant.
       const rel = relative(projectDir, src);
       if (rel === "" || rel.startsWith("..")) return true;
-      if (!job.config.allowOutsideProjectAssets && !isSafePath(projectDir, src)) return false;
+      if (job.config.allowOutsideProjectAssets) {
+        if (refusesOutsideLink(projectDir, src, (line) => log.warn(`[Plan] ${line}`))) return false;
+      } else if (!isSafePath(projectDir, src)) return false;
       const firstSegment = rel.split(sep, 1)[0];
       return firstSegment === undefined || !PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(firstSegment);
     },

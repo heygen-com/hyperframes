@@ -31,6 +31,7 @@ import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { lengthIsTimeline } from "../helpers/compositionInputs.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { retryWindowsHold } from "@hyperframes/core/rename-retry";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
@@ -2796,6 +2797,15 @@ async function processUploadedFiles(
 const MAX_TEXT_READ_BYTES = 32 * 1024 * 1024;
 const GIT_BINARY_SNIFF_BYTES = 8000;
 
+function heldFileAnswer(c: RouteContext, error: unknown) {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "EBUSY") return c.json({ error: "file in use", why: "busy" }, 423);
+  if (code === "EPERM" || code === "EACCES") {
+    return c.json({ error: "permission denied", why: "permission" }, 403);
+  }
+  return null;
+}
+
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // ── Read ──
 
@@ -2808,8 +2818,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     // and the read can't land a stale answer — both act on the identical inode.
     let fd: number;
     try {
-      fd = openSync(res.absPath, "r");
-    } catch {
+      fd = await retryWindowsHold(() => openSync(res.absPath, "r"));
+    } catch (error) {
+      const held = heldFileAnswer(c, error);
+      if (held) return held;
       if (c.req.query("optional") === "1") {
         // `missing: true` separates the absent-file shim from a genuinely
         // 0-byte file — both answer `content: ""`, and the caller could not
@@ -2912,8 +2924,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } else {
       let fd: number | null;
       try {
-        fd = openSync(res.absPath, "r+");
+        fd = await retryWindowsHold(() => openSync(res.absPath, "r+"));
       } catch (error) {
+        const held = heldFileAnswer(c, error);
+        if (held) return held;
         if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
           throw error;
         }

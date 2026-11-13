@@ -3,10 +3,11 @@
  * descriptions. Which element a selection lands on comes from `domEditSelectionRules.ts`, the
  * rules a scriptable frame's selections use, so both kinds of frame select the same element.
  *
- * Such a selection's `element` is a stand-in: an element with only the target's tag, in a
- * document with no window, the same one for a handle for the whole frame load. Nothing in it
- * loads, runs or renders, and nothing from the frame is copied into it. The frame's element is
- * the selection's `handle`.
+ * Such a selection's `element` is a stand-in: an element with the target's tag, in a document
+ * with no window, the same one for a handle for the whole frame load. Nothing in it loads, runs or
+ * renders; from the frame it takes only the inline translate, box and Studio marks a gesture starts
+ * from, and the px the frame renders that translate as. The frame's element is the selection's
+ * `handle`.
  */
 import { resolveEditingAffordances } from "@hyperframes/core/editing";
 import {
@@ -60,6 +61,17 @@ import {
   getPreviewTargetFromPointer,
 } from "../../utils/studioPreviewHelpers";
 import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
+import { registerPreviewStandIn } from "./previewDrafts";
+import {
+  STUDIO_HEIGHT_PROP,
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+  STUDIO_ORIGINAL_TRANSLATE_ATTR,
+  STUDIO_PATH_OFFSET_ATTR,
+  STUDIO_WIDTH_PROP,
+} from "./manualEditsTypes";
+import { rememberFrameTranslate, TRANSLATE_PX_PROPERTIES, translatePx } from "./plainTranslate";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -72,6 +84,18 @@ function inertElement(tag: string): HTMLElement {
   }
 }
 
+const GESTURE_START_STYLES = [
+  "translate",
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+  STUDIO_HEIGHT_PROP,
+];
+const GESTURE_START_ATTRS = [
+  STUDIO_PATH_OFFSET_ATTR,
+  STUDIO_ORIGINAL_TRANSLATE_ATTR,
+  STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
+];
 const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
 const standInHandles = new WeakMap<Element, string>();
 const standInAncestors = new WeakMap<Element, string[]>();
@@ -83,8 +107,17 @@ export function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): 
   let standIn = byHandle.get(element.handle);
   if (!standIn) {
     standIn = inertElement(element.tag);
+    for (const name of GESTURE_START_STYLES) {
+      const value = element.inlineStyles[name];
+      if (value && !mayBeCut(value)) standIn.style.setProperty(name, value);
+    }
+    for (const name of GESTURE_START_ATTRS) {
+      const value = attr(element, name);
+      if (value !== null && !mayBeCut(value)) standIn.setAttribute(name, value);
+    }
     byHandle.set(element.handle, standIn);
     standInHandles.set(standIn, element.handle);
+    registerPreviewStandIn(standIn, iframe, element.handle);
   }
   return standIn;
 }
@@ -316,10 +349,18 @@ export async function resolvePreviewSelection(
   const compositionSrc = compositionSourceOf(current);
   const probe = readable(current);
   const inlineStyles = getInlineStyles(probe);
-  const computedStyles = await previewComputedStyles(iframe, current, [
-    ...CURATED_STYLE_PROPERTIES,
+  const styles = await previewComputedStyles(iframe, current, [
+    ...new Set([...CURATED_STYLE_PROPERTIES, ...TRANSLATE_PX_PROPERTIES]),
   ]);
-  if (!computedStyles) return null;
+  if (!styles) return null;
+  // The stand-in has no box to size a % or em against: a move starts from what the frame renders.
+  rememberFrameTranslate(
+    element,
+    translatePx(styles.translate ?? "none", (p) => styles[p] ?? ""),
+  );
+  const computedStyles = Object.fromEntries(
+    CURATED_STYLE_PROPERTIES.flatMap((p) => (p in styles ? [[p, styles[p]!]] : [])),
+  );
   const isCompositionRoot = await isPreviewCompositionRoot(iframe, chain, index, computedStyles);
   if (isCompositionRoot === null) return null;
   const isInsideLocked = chainLocked(chain, chainReader(chain), index);

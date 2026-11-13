@@ -75,7 +75,7 @@ export async function readProjectFileContent(pid: string, path: string): Promise
     buildProjectApiPath(pid, `/files/${encodeURIComponent(path)}`),
   );
   if (!response.ok) {
-    throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
+    throw await createStudioSaveHttpError(response, `Failed to read ${path}`, { path });
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {
