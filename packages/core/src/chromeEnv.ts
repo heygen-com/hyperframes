@@ -85,7 +85,9 @@ const CHROME_ENV_PASSTHROUGH = "HYPERFRAMES_CHROME_ENV_PASSTHROUGH";
 
 function nameMatcher(env: NodeJS.ProcessEnv): (name: string) => boolean {
   const extra = (env[CHROME_ENV_PASSTHROUGH] ?? "").split(",").map((name) => name.trim());
-  const exact = new Set([...CHROME_ENV_ALLOWLIST, ...extra].map((name) => name.toUpperCase()));
+  const exact = new Set(
+    [...CHROME_ENV_ALLOWLIST, CHROME_ENV_PASSTHROUGH, ...extra].map((name) => name.toUpperCase()),
+  );
   const prefixes = CHROME_ENV_ALLOWLIST.filter((name) => name.endsWith("*")).map((name) =>
     name.slice(0, -1),
   );

@@ -95,9 +95,21 @@ describe("buildChromeLaunchEnv", () => {
       RADV_PERFTEST: "gpl",
     };
     expect(buildChromeLaunchEnv(env)).toEqual({
+      HYPERFRAMES_CHROME_ENV_PASSTHROUGH: " KRB5CCNAME, radv_perftest ",
       KRB5CCNAME: "FILE:/tmp/krb5cc",
       RADV_PERFTEST: "gpl",
     });
+  });
+
+  it("keeps the passthrough names when an env is filtered twice", () => {
+    const env = {
+      PATH: "/usr/bin",
+      HYPERFRAMES_CHROME_ENV_PASSTHROUGH: "RADV_PERFTEST",
+      RADV_PERFTEST: "gpl",
+    };
+    const once = buildChromeLaunchEnv(env);
+    expect(buildChromeLaunchEnv(once)).toEqual(once);
+    expect(once.RADV_PERFTEST).toBe("gpl");
   });
 
   it("reads process.env by default and leaves it untouched", () => {
