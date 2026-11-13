@@ -180,6 +180,13 @@ export function restoreStudioPathOffset(
   previous: StudioPathOffsetSnapshot,
 ): void {
   endPreviewDraft(element, "restore");
+  restoreStudioPathOffsetStyles(element, previous);
+}
+
+export function restoreStudioPathOffsetStyles(
+  element: HTMLElement,
+  previous: StudioPathOffsetSnapshot,
+): void {
   if (previous.translate) element.style.setProperty("translate", previous.translate);
   else element.style.removeProperty("translate");
 

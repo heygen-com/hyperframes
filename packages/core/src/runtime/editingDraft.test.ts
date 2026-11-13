@@ -48,6 +48,14 @@ describe("drafts", () => {
     expect(shown(element)).toEqual([-25, -10]);
   });
 
+  it("adds a resize's shift to the px a % translate is at its start, so the new size can't move it", () => {
+    const { element, handle } = card("width: 200px; height: 100px; translate: -50% -50%");
+    drawDrafts([{ handle, translate: { x: -50, y: 0 }, size: { width: 300, height: 100 } }]);
+    expect(shown(element)).toEqual([-150, -50]);
+    drawDrafts([{ handle, end: "restore" }]);
+    expect(element.style.translate).toBe("-50% -50%");
+  });
+
   it("puts back only the part a draft stops drawing", () => {
     const { element, handle } = card("height: 30px");
     drawDrafts([{ handle, translate: { x: 1, y: 2 }, size: { width: 10, height: 10 } }]);

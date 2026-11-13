@@ -62,7 +62,7 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   send(target.iframe, queue);
 }
 
-/** Ends the stand-in's draft on its frame element: "keep" once its edit is saved, else "restore". */
+/** Ends the stand-in's draft on its frame: "keep" once saved or regrabbed mid-save, else "restore". */
 export function endPreviewDraft(element: Element, end: "keep" | "restore"): void {
   const target = standIns.get(element);
   if (!target) return;

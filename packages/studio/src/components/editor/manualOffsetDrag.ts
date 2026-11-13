@@ -10,6 +10,7 @@ import {
   isStudioManualEditGestureCurrent,
   readAppliedStudioPathOffset,
   restoreStudioPathOffset,
+  restoreStudioPathOffsetStyles,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import type { EditMoment } from "./manualEditsTypes";
@@ -290,7 +291,7 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
 
     return { ok: true, matrix: screenToOffset };
   } finally {
-    restoreStudioPathOffset(element, snapshot);
+    restoreStudioPathOffsetStyles(element, snapshot);
   }
 }
 
@@ -368,6 +369,7 @@ export function createManualOffsetDragMember(input: {
     scaleY: input.rect.editScaleY,
     plainTranslate,
   });
+  endPreviewDraft(input.element, "keep");
   if (!measured.ok) {
     // GSAP transforms can defeat the probe: approximate with the preview scale. The commit
     // reads GSAP's real position, so only the drag preview is imprecise.

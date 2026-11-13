@@ -20,7 +20,7 @@ const DRAWN = ["translate", ...SIZE_PROPERTIES] as const;
 
 interface Before {
   inline: Array<[name: string, value: string, priority: string]>;
-  /** The computed translate, split into its axes, that a draft's translate adds to. */
+  /** The computed translate, split into its axes with each % as px, that a draft's translate adds to. */
   translate: string[];
 }
 
@@ -42,18 +42,42 @@ function axes(value: string): string[] {
   return parts;
 }
 
+/** The side a translate's % takes a share of: the box `transform-box` names. */
+function percentSide(computed: CSSStyleDeclaration, size: "width" | "height"): number {
+  const [a, b] = size === "width" ? ["left", "right"] : ["top", "bottom"];
+  const n = (name: string) => Number.parseFloat(computed.getPropertyValue(name)) || 0;
+  const pad =
+    n(`padding-${a}`) + n(`padding-${b}`) + n(`border-${a}-width`) + n(`border-${b}-width`);
+  const content = n(size) - (computed.getPropertyValue("box-sizing") === "border-box" ? pad : 0);
+  const box = computed.getPropertyValue("transform-box");
+  return box === "content-box" || box === "fill-box" ? content : content + pad;
+}
+
+/** Each % as the px it is now, so a resize drawn with it does not move the element again. */
+function percentAsPx(axis: string, side: number): string {
+  return axis.replace(
+    /(-?\d*\.?\d+(?:e[-+]?\d+)?)%/gi,
+    (_, n: string) => `${(Number(n) * side) / 100}px`,
+  );
+}
+
 function beforeOf(element: Styled): Before {
   let saved = before.get(element);
   if (!saved) {
     const { style } = element;
-    const translate = getComputedStyle(element).getPropertyValue("translate");
+    const computed = getComputedStyle(element);
+    const translate = computed.getPropertyValue("translate");
+    const sides = [percentSide(computed, "width"), percentSide(computed, "height")];
     saved = {
       inline: DRAWN.map((name) => [
         name,
         style.getPropertyValue(name),
         style.getPropertyPriority(name),
       ]),
-      translate: translate && translate !== "none" ? axes(translate) : [],
+      translate:
+        translate && translate !== "none"
+          ? axes(translate).map((axis, i) => (i < 2 ? percentAsPx(axis, sides[i]!) : axis))
+          : [],
     };
     before.set(element, saved);
   }

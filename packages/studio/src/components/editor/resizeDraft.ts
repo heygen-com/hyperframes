@@ -9,7 +9,8 @@ import {
 import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
 import type { ResizeDraftSizes } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
-import { drawPreviewDraft } from "./previewDrafts";
+import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEdits";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
@@ -108,6 +109,12 @@ function resolveUnmeasuredResizeDraft(
     editScaleY: g.editScaleY,
     angle: g.actualRotation,
   };
+}
+
+/** Ends a settled resize that has no offset member; a frame it drew on keeps the new size. */
+export function endResizeWithoutMember(element: HTMLElement, token: string | undefined): void {
+  if (!token || isStudioManualEditGestureCurrent(element, token)) endPreviewDraft(element, "keep");
+  endStudioManualEditGesture(element, token);
 }
 
 /** The overlay rect to paint for the current resize pointer-move frame. */
