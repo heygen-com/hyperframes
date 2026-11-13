@@ -21,6 +21,7 @@ import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { useDomSelection } from "../../hooks/useDomSelection";
 import { usePreviewInteraction } from "../../hooks/usePreviewInteraction";
+import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import type { TimelineElement } from "../../player";
 
 installReactActEnvironment();
@@ -175,6 +176,7 @@ describe("canvas hit-tests on an opaque frame match same-origin ones", () => {
 describe("useDomSelection over an opaque frame's canvas", () => {
   type Resolve = ReturnType<typeof useDomSelection>["resolveDomSelectionFromPreviewPoint"];
   let interaction: ReturnType<typeof usePreviewInteraction> | null = null;
+  let menu: ReturnType<typeof useCanvasContextMenuState> | null = null;
   function renderSelection(iframe: HTMLIFrameElement, wrapResolve = (resolve: Resolve) => resolve) {
     let hook: ReturnType<typeof useDomSelection> | null = null;
     function Harness() {
@@ -205,6 +207,14 @@ describe("useDomSelection over an opaque frame's canvas", () => {
         resolveAllDomSelectionsFromPreviewPoint: hook.resolveAllDomSelectionsFromPreviewPoint,
         updateDomEditHoverSelection: hook.updateDomEditHoverSelection,
         setActiveGroupElement: hook.setActiveGroupElement,
+      });
+      // The overlay's right-click path, which awaits the same lookup a pointer move runs.
+      menu = useCanvasContextMenuState({
+        selection: hook.domEditSelection,
+        selectionRef: { current: hook.domEditSelection },
+        hoverSelectionRef: { current: hook.domEditHoverSelection },
+        onCanvasPointerMoveRef: { current: interaction.handlePreviewCanvasPointerMove },
+        onSelectionChangeRef: { current: hook.applyDomSelection },
       });
       return null;
     }
@@ -253,6 +263,18 @@ describe("useDomSelection over an opaque frame's canvas", () => {
     const older = move(60, 60);
     const newer = move(1050, 650);
     await act(() => Promise.all([older, newer]));
+    expect(hook().domEditHoverSelection).toMatchObject({ id: "pair" });
+  });
+
+  it("opens the menu on a right-click whose lookup a pointer move overtook", async () => {
+    const hook = renderSelection(opaqueFrame());
+    const [clientX, clientY] = client(60, 60);
+    const rightClick = { clientX, clientY, preventDefault: () => {} };
+    const opened = menu!.handleContextMenu(rightClick as React.MouseEvent<HTMLDivElement>);
+    const jitter = move(1050, 650);
+    await act(() => Promise.all([opened, jitter]));
+    expect(hook().domEditSelection).toMatchObject({ id: "title" });
+    expect(menu!.contextMenu?.sel).toMatchObject({ id: "title" });
     expect(hook().domEditHoverSelection).toMatchObject({ id: "pair" });
   });
 
