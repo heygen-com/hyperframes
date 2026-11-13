@@ -41,7 +41,7 @@ import {
   type HtmlSourceLike,
 } from "@hyperframes/studio-server/media-codec-map";
 import { ProxyTranscodeError, resolveProxies } from "@hyperframes/studio-server/proxy-transcoder";
-import { rewriteHtmlAttributes } from "./publishProject.js";
+import { archiveKey, rewriteHtmlAttributes } from "./publishProject.js";
 
 /** Archive-path prefix for baked proxy files, mirroring `localizeExternalAssets`'s `_ext/`. */
 export const PROXY_ARCHIVE_PREFIX = "_proxy";
@@ -94,7 +94,11 @@ export async function bakeMediaProxies(
   }));
 
   const codecMap = await scanProjectMediaCodecMap(absProjectDir, htmlSources);
-  const hostileEntries = Object.entries(codecMap).filter(([, facts]) => facts.browserHostile);
+  const keptByStaging = (pathname: string) =>
+    fileContents.has(archiveKey(pathname.replace(/^\/+/, "")));
+  const hostileEntries = Object.entries(codecMap).filter(
+    ([pathname, facts]) => facts.browserHostile && keptByStaging(pathname),
+  );
   if (hostileEntries.length === 0) return manifest;
 
   // Absolute source path -> archive path of its baked proxy. Built by
