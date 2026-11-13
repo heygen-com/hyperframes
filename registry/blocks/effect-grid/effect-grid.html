@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>effect-grid</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: #0a0a0a;
+      }
+      #root-EG {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #0a0a0a;
+        font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      /* Сетка: N колонок. Каждая ячейка — один вариант обработки. */
+      .eg-grid {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-columns: repeat(var(--eg-cols, 3), 1fr);
+        gap: 18px;
+        padding: 18px;
+      }
+      .eg-cell {
+        position: relative;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #111827;
+        border: 1px solid rgba(248, 250, 252, 0.14);
+        display: flex;
+        flex-direction: column;
+      }
+      /* Плейсхолдер: четыре альфа-шага чернил, без оттенка. */
+      .eg-plate {
+        flex: 1 1 0;
+        position: relative;
+        overflow: hidden;
+        background: rgba(248, 250, 252, 0.08);
+      }
+      .eg-plate::before {
+        content: "";
+        position: absolute;
+        left: 10%;
+        right: 10%;
+        top: 22%;
+        height: 46%;
+        border-radius: 10px;
+        background: rgba(248, 250, 252, 0.18);
+      }
+      .eg-plate::after {
+        content: "";
+        position: absolute;
+        left: 34%;
+        right: 34%;
+        top: 8%;
+        height: 12%;
+        border-radius: 999px;
+        background: rgba(248, 250, 252, 0.45);
+      }
+      /* Медиа-слой, если он есть: перекрывает плейсхолдер. */
+      .eg-media {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .eg-label {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        background: #111827;
+        border-top: 1px solid rgba(248, 250, 252, 0.14);
+      }
+      .eg-name {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: -0.01em;
+        color: #f8fafc;
+      }
+      .eg-tag {
+        font-size: 18px;
+        font-weight: 500;
+        color: rgba(248, 250, 252, 0.72);
+        font-variant-numeric: tabular-nums;
+      }
+      /* Акцент — ровно на одной ячейке, и только на её подписи. */
+      .eg-cell.eg-accent .eg-tag {
+        color: #0a0a0a;
+        background: #f8fafc;
+        padding: 3px 9px;
+        border-radius: 999px;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root-EG"
+      data-composition-id="effect-grid"
+      data-composition-variables='[{"id":"frameSrc","type":"string","label":"Frame source","description":"Path or URL of the frame to grade in every cell. Defaults to the shipped monochrome placeholder.","default":""}]'
+      data-start="0"
+      data-duration="6"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="eg-grid" id="eg-grid"></div>
+    </div>
+    <script>
+      (function () {
+        window.__timelines = window.__timelines || {};
+
+        // КОНФИГУРАЦИЯ: замените на свои варианты.
+        // src — опционально: пустая строка рисует монохромный плейсхолдер.
+        // grading — data-color-grading JSON: грейд или эффект для этого варианта.
+        // Монохромный плейсхолдер как PNG data URI (не SVG: WebGL-грейдинг
+        // не умеет грузить SVG — texImage2D: bad image data): он остаётся <img>, поэтому
+        // data-color-grading применяется к нему так же, как к кадру пользователя.
+        var PLACEHOLDER =
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAlgAAAMgCAYAAAD/YBzEAAANSElEQVR42u3aMYryUBSG4S/h4iIC6bImGxtLQXAxgmBpY+MSJRALS6sZZjTxPs8Gfv6bA+fljE3XD1MAAPgzrScAABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAQGABACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAAAEFgCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBgDoonAD7leDr/+79x2O88NPB2TdcPk2cAlhpQAgwQWICQWgjhBQgsQEyJLkBgAYJKcAECCxBUCC5AYAGiSmwBAgsQVWILEFiAqEJsAQILhBVCCxBYgKgSW4DAAoQVQgsElsACYYXQAgQWIKyEFjBjrScAcYXvC8QFCyxeizeuWYDAAoQVQgviT4SAuMIcAHHBAguVuGYBccECxBXmA+KCBVicxDULiAsWiCvMDSCwwJIE8wMCC7AcMUeAwAJLEfMECCywDMFcgcACLEHMFwgswPLDnAECCyw9MG8gsMCyA3MHAguw5DB/gMACyw3MIQgsAACBBcTVAPMICCywzMBcgsACABBYQFwJMJ8gsDwBAIDAgrgOgDkFgQUAILCAuApgXgGBBQAgsAAABBYQf27B3AICCwBAYAEACCwAAAQWxO9YwPyCwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMCCRTrsdx4B8wsILAAAgQUAILAAAAQWEL9jwdwCAgsAQGABAAgsIP7cgnkFBBYAgMCCuAqAOQWBBQCAwIK4DoD5BIEFACCwgLgSYC5BYAGWGeYREFgAAAIL4moA5hAEFmC5Yf4AgQWWHJg7EFhg2YF5A4EFWHqYM0BggeWH+QIEFliCYK5AYAGWIeYJEFhgKWKOAIEFliOYHxBYgCWJuYEKNV0/TJ4B5ul4OnsEhBXEBQuwPDEfEBcsFyyIaxbCCogLFliqmAMgLlhAXLMQViCwAKGFsALiT4Rg+eL7AnHBAuKahbACgQUILYQVILBAaCGsAIEFiC1RBQgsQGghrACBBWILUQUILEBsiSpAYAFiS1QBAgtAcAkqQGABgktQAQILEF1iChBYAN8bXkIKEFiAABNQgMACAKhP6wkAAAQWAMCsFU/war3ZegQA+IHb9eIR4jdYwgoAhJbAElYAILTiN1jiCgDsV4Hl4wMA9qzA8tEBwL4VWAAAAktNAwD2rsACABBYKhoA7F+BBQCAwAIAEFgAAAILAACBBQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAIDA8gQAAAILAEBgAQAILAAABBYAgMACABBYAAAILAAAgQUAILAAABBYAAACCwBAYAEACCwAAAQWAIDAAgAQWAAACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAILAAABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAQGABACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAAQWAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMACABBYAAAILAAAgQUAILAAABBYAAACCwBAYAEACCwAAAQWAIDAAgAQWAAACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAAEFgAAAILAEBgAQAgsAAABBYAgMACABBYAAAILAAAgQUAILAAABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAAQWAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMACABBYAAAILAAAgQUAILAAAASWJwAAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAAQWAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAAAEFgCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAgMACABBYAAAILAAAgQUAILAAAARWJW7Xi68OAPavwAIAEFgqGgCoeO+6YAEACCw1DQD2rcDy0QHAnhVYPj4AYL/+XtP1w2QMntabrUcAAGElsIQWAAgrgQUAEL/BAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAAAEFgCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAABBYAwHuU6v7DZeWrA8AHjOM9LlgAAAgsAACBBQAgsAAAEFgAAAILAEBgAQAgsAAABBYAgMACABBYAAAILAAAgQUAILAAABBYAAACCwBAYAEAILAAAAQWAIDAAgDgqdT2Hx7Hu68OAMQFCwBAYAEACCwAAAQWAIDAAgAQWAAACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAILAAABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgAAAgsAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAAgeUJAAAEFgCAwAIAEFgAAAgsAACBBQAgsAAAEFgAAAILAEBgAQAgsAAABBYAgMACABBYAAAILAAAgQUAILAAABBYAAACCwBAYAEAILAAAAQWAIDAAgBAYAEACCwAAIEFACCwAAAQWAAAAgsAQGABACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAEBgAQAgsAAABBYAgMACAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAIDAAgBAYAEACCwAAIEFAIDAAgAQWAAAAgsAAIEFACCwAAAEFgCAwAIAQGABAAgsAACBBQCAwAIAEFgAAAILAACBBQAgsAAABBYAAAILAEBgAQAILAAAgQUAgMACABBYAAACCwAAgQUAILAAAAQWAAACCwBAYAEACCwAAAQWAIDAAgAQWAAAAgsAAIEFACCwAAC+2wMD11eLbFzD1wAAAABJRU5ErkJggg==";
+
+        // Кадр можно подменить: объявите переменную frameSrc (data-variable-values
+        // на хосте) — тогда все ячейки покажут ваш кадр вместо плейсхолдера.
+        var v = window.__hyperframes ? window.__hyperframes.getVariables() : {};
+        var FRAME_SRC = v.frameSrc || PLACEHOLDER;
+
+        var CELLS = [
+          { name: "Original", tag: "0.0", src: FRAME_SRC, grading: null },
+          {
+            name: "Clean Studio",
+            tag: "0.9",
+            src: FRAME_SRC,
+            grading: { preset: "clean-studio", intensity: 0.9 },
+          },
+          {
+            name: "Halftone",
+            tag: "0.6",
+            src: FRAME_SRC,
+            grading: { effects: { halftone: 0.6 } },
+          },
+          {
+            name: "Pixelate",
+            tag: "0.55",
+            src: FRAME_SRC,
+            grading: { effects: { pixelate: 0.55 } },
+          },
+          {
+            name: "ASCII",
+            tag: "0.8",
+            src: FRAME_SRC,
+            grading: { effects: { ascii: 0.8 } },
+          },
+          {
+            name: "Bloom",
+            tag: "0.45",
+            src: FRAME_SRC,
+            grading: { effects: { bloom: 0.45 } },
+          },
+        ];
+
+        var grid = document.getElementById("eg-grid");
+        var cols = Math.min(CELLS.length, 3);
+        grid.style.setProperty("--eg-cols", String(cols));
+
+        CELLS.forEach(function (c, i) {
+          var cell = document.createElement("div");
+          cell.className = "eg-cell";
+          cell.id = "eg-cell-" + i;
+
+          var plate = document.createElement("div");
+          plate.className = "eg-plate";
+          plate.id = "eg-plate-" + i;
+
+          if (c.src) {
+            var img = document.createElement("img");
+            img.className = "eg-media";
+            img.id = "eg-media-" + i;
+            img.src = c.src;
+            img.alt = "";
+            plate.appendChild(img);
+          }
+
+          var label = document.createElement("div");
+          label.className = "eg-label";
+          label.id = "eg-label-" + i;
+
+          var name = document.createElement("span");
+          name.className = "eg-name";
+          name.id = "eg-name-" + i;
+          name.textContent = c.name;
+
+          var tag = document.createElement("span");
+          tag.className = "eg-tag";
+          tag.id = "eg-tag-" + i;
+          tag.textContent = c.tag;
+
+          label.appendChild(name);
+          label.appendChild(tag);
+          cell.appendChild(plate);
+          cell.appendChild(label);
+          grid.appendChild(cell);
+
+          // Грейдинг цепляется ТОЛЬКО к img/video/canvas — на div он не сработает.
+          // Поэтому атрибут ставим на сам <img>, а не на ячейку.
+          if (c.grading) {
+            var media = plate.querySelector(".eg-media");
+            if (media) media.setAttribute("data-color-grading", JSON.stringify(c.grading));
+          }
+          // Акцент — только на первой ячейке.
+          if (i === 0) cell.classList.add("eg-accent");
+        });
+
+        var tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          "#eg-grid > .eg-cell",
+          { opacity: 0, y: 26, scale: 0.97 },
+          { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "power3.out", stagger: 0.09 },
+          0.1,
+        );
+        tl.fromTo(
+          "#eg-grid > .eg-cell .eg-label",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.36, ease: "power2.out", stagger: 0.09 },
+          0.4,
+        );
+
+        window.__timelines["effect-grid"] = tl;
+      })();
+    </script>
+  </body>
+</html>
