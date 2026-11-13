@@ -29,7 +29,13 @@ import {
   linksToPrivateOutsideFile,
   receivedFiles,
 } from "./privateProjectFile.js";
-import { leftOutReference, type OnLeftOut } from "./leftOutReference.js";
+import {
+  leftOutReference,
+  leftOutWarning,
+  type LeftOutReason,
+  type OnLeftOut,
+} from "./leftOutReference.js";
+import { isCopiedOutsideFileType } from "./outsideFileType.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -449,7 +455,7 @@ function includeReferencedProjectFile(
     if (staysOut(ctx, rel, absPath)) return;
     if (!existsSync(absPath)) continue;
     if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) {
-      return leaveOut(ctx, entryPath, rawPath, absPath, RECEIVED);
+      return leaveOut(ctx, entryPath, rawPath, absPath, "received");
     }
     if (statSync(absPath).isFile()) {
       ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
@@ -466,20 +472,16 @@ const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
   encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
 
-const PRIVATE = "which is outside the project in a private location";
-const RECEIVED = "which leads outside the project and came in with an imported project";
-
 function leaveOut(
   ctx: ExternalAssetContext,
   entryPath: string,
   rawPath: string,
   absPath: string,
-  why = PRIVATE,
+  reason: LeftOutReason = "blocklisted",
 ): void {
-  const warning = `${entryPath} references ${rawPath}, ${why}; it was left out of the upload.`;
+  const warning = leftOutWarning(entryPath, rawPath, reason);
   if (ctx.leftOut.has(warning)) return;
   ctx.leftOut.add(warning);
-  const reason = why === RECEIVED ? "received" : "blocklisted";
   ctx.onLeftOut?.(
     warning,
     leftOutReference(ctx.absProjectDir, entryPath, rawPath, absPath, reason),
@@ -499,11 +501,15 @@ function archiveTargetOf(
   try {
     if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
     if (ctx.received(options.entryPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath, RECEIVED);
+      leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
       return undefined;
     }
     if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) {
       leaveOut(ctx, options.entryPath, rawPath, absPath);
+      return undefined;
+    }
+    if (!isCopiedOutsideFileType(absPath)) {
+      leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
       return undefined;
     }
   } catch {

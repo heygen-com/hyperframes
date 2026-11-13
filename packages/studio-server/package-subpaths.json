@@ -104,6 +104,12 @@
       "types": "./dist/helpers/encoderOptions.d.ts",
       "environments": ["bun", "node"]
     },
+    "./mime": {
+      "source": "./src/helpers/mime.ts",
+      "runtime": "./dist/helpers/mime.js",
+      "types": "./dist/helpers/mime.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-range": {
       "source": "./src/helpers/mediaRange.ts",
       "runtime": "./dist/helpers/mediaRange.js",
