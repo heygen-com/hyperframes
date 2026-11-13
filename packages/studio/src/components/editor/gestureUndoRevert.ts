@@ -1,8 +1,11 @@
 import {
   captureStudioPathOffset,
+  readAppliedStudioPathOffset,
   restoreStudioPathOffset,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
+import { readTranslatePx } from "./plainTranslate";
+import { drawPreviewDraft } from "./previewDrafts";
 import {
   getOffsetDragGsap,
   stampGestureBase,
@@ -49,6 +52,16 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
     stampGestureBase(member.element, member.initialOffset, member.baseGsap);
 }
 
+function redrawMemberOnFrame(member: ManualOffsetDragMember): void {
+  const { element, initialOffset } = member;
+  const offset = member.plainTranslate
+    ? readTranslatePx(element)
+    : readAppliedStudioPathOffset(element);
+  const translate = { x: offset.x - initialOffset.x, y: offset.y - initialOffset.y };
+  if (Number.isFinite(translate.x) && Number.isFinite(translate.y) && (translate.x || translate.y))
+    drawPreviewDraft(element, { translate });
+}
+
 /** Undo's live revert of a move: its members at gesture start. */
 export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): StudioEditRevert {
   const startPlacement = members.map((member) => placementOf(member.element));
@@ -61,7 +74,11 @@ export function manualOffsetMoveRevert(members: ManualOffsetDragMember[]): Studi
         placement: startPlacement[i]!,
       }),
     );
-    return () => members.forEach((member, i) => showMemberPosition(member, shown[i]!));
+    return () =>
+      members.forEach((member, i) => {
+        showMemberPosition(member, shown[i]!);
+        redrawMemberOnFrame(member);
+      });
   };
 }
 

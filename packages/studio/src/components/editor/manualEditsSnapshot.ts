@@ -36,6 +36,7 @@ import {
   STUDIO_ORIGINAL_ROTATION_TRANSFORM_ORIGIN_ATTR,
   STUDIO_ROTATION_DRAFT_ATTR,
 } from "./manualEditsTypes";
+import { endPreviewDraft } from "./previewDrafts";
 import type {
   StudioBoxSizeSnapshot,
   StudioRotationSnapshot,
@@ -117,6 +118,7 @@ function restoreStyleProperty(element: HTMLElement, property: string, value: str
 }
 
 export function restoreStudioBoxSize(element: HTMLElement, previous: StudioBoxSizeSnapshot): void {
+  endPreviewDraft(element, "restore");
   forgetStudioBoxSizeDraftBase(element);
   restoreStyleProperty(element, "width", previous.width);
   restoreStyleProperty(element, "height", previous.height);
@@ -174,6 +176,14 @@ export function restoreStudioRotation(
 }
 
 export function restoreStudioPathOffset(
+  element: HTMLElement,
+  previous: StudioPathOffsetSnapshot,
+): void {
+  endPreviewDraft(element, "restore");
+  restoreStudioPathOffsetStyles(element, previous);
+}
+
+export function restoreStudioPathOffsetStyles(
   element: HTMLElement,
   previous: StudioPathOffsetSnapshot,
 ): void {

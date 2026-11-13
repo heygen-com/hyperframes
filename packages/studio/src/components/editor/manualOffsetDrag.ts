@@ -10,12 +10,14 @@ import {
   isStudioManualEditGestureCurrent,
   readAppliedStudioPathOffset,
   restoreStudioPathOffset,
+  restoreStudioPathOffsetStyles,
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import type { EditMoment } from "./manualEditsTypes";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 
 interface OffsetDragGsap {
   set: (el: Element, vars: Record<string, number | string>) => void;
@@ -289,7 +291,7 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
 
     return { ok: true, matrix: screenToOffset };
   } finally {
-    restoreStudioPathOffset(element, snapshot);
+    restoreStudioPathOffsetStyles(element, snapshot);
   }
 }
 
@@ -367,6 +369,7 @@ export function createManualOffsetDragMember(input: {
     scaleY: input.rect.editScaleY,
     plainTranslate,
   });
+  endPreviewDraft(input.element, "keep");
   if (!measured.ok) {
     // GSAP transforms can defeat the probe: approximate with the preview scale. The commit
     // reads GSAP's real position, so only the drag preview is imprecise.
@@ -426,6 +429,8 @@ function drawMemberOffset(
   offset: { x: number; y: number },
   commit: boolean,
 ): void {
+  const { x, y } = member.initialOffset;
+  drawPreviewDraft(member.element, { translate: { x: offset.x - x, y: offset.y - y } });
   if (member.plainTranslate) writeTranslatePx(member.element, offset);
   else if (applyOffsetDragDraftViaGsap(member.element, offset, member.baseGsap)) return;
   else if (commit) applyStudioPathOffset(member.element, offset);
@@ -537,6 +542,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
   for (const member of members) {
     if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
+    endPreviewDraft(member.element, "keep");
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");

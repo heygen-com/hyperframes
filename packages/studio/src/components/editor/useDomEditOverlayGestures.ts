@@ -45,7 +45,7 @@ import {
   resolveDomEditRotationGesture,
 } from "./domEditOverlayGestures";
 import { resolveCenterResizeSize } from "./domEditResizeLocal";
-import { resolveResizeDraftRect } from "./resizeDraft";
+import { endResizeWithoutMember, resolveResizeDraftRect } from "./resizeDraft";
 import { notifyBlockedPress } from "./domEditOverlayStartGesture";
 import { hugRectForElement } from "./domEditOverlayCrop";
 import {
@@ -530,7 +530,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         })
         .finally(() => {
           if (member) endManualOffsetDragMembers([member]);
-          else endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+          else endResizeWithoutMember(sel.element, g.manualEditDragToken);
         });
       edit.settle(saved);
       logResizeSettle(sel.element, "post-release");

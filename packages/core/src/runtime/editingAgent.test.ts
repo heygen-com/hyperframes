@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
+const H = "0123456789abcdef:1";
 
 function frameWindow(): Window {
   const iframe = document.createElement("iframe");
@@ -148,6 +149,7 @@ describe("installEditingAgent", () => {
           "query",
           "geometry",
           "layers",
+          "draft",
         ],
       },
     });
@@ -329,6 +331,25 @@ describe("installEditingAgent", () => {
     ].map((params, index) => [
       { v: 1, id: 130 + index, kind: "layers", params },
       130 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { drafts: [] },
+      { drafts: Array(257).fill({ handle: H, end: "keep" }) },
+      { drafts: [{ handle: "1", end: "keep" }] },
+      { drafts: [{ handle: H, end: "drop" }] },
+      { drafts: [{ handle: H, end: "keep", translate: null }] },
+      { drafts: [{ handle: H, translate: null }] },
+      { drafts: [{ handle: H, translate: { x: 1 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: "1", y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: Infinity, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+    ].map((params, index) => [
+      { v: 1, id: 150 + index, kind: "draft", params },
+      150 + index,
       "invalid-params",
     ]),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
