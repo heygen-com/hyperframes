@@ -19,12 +19,18 @@ export interface StudioSaveFailureInput {
 export class StudioSaveHttpError extends Error {
   readonly statusCode: number;
   readonly alreadyToasted: boolean;
+  readonly heldFile: boolean;
 
-  constructor(message: string, statusCode: number, options: { alreadyToasted?: boolean } = {}) {
+  constructor(
+    message: string,
+    statusCode: number,
+    options: { alreadyToasted?: boolean; heldFile?: boolean } = {},
+  ) {
     super(message);
     this.name = "StudioSaveHttpError";
     this.statusCode = statusCode;
     this.alreadyToasted = options.alreadyToasted ?? false;
+    this.heldFile = options.heldFile ?? false;
   }
 }
 
@@ -217,13 +223,17 @@ export async function createStudioSaveHttpError(
     body = "";
   }
   const detail = body.trim().slice(0, 300);
+  const held = heldFileMessage(body, options.path);
   const message =
-    heldFileMessage(body, options.path) ??
+    held ??
     (detail
       ? `${fallbackMessage} (${response.status}): ${detail}`
       : `${fallbackMessage} (${response.status})`);
-  return new StudioSaveHttpError(message, response.status, options);
+  return new StudioSaveHttpError(message, response.status, { ...options, heldFile: held !== null });
 }
+
+export const heldFileWords = (error: unknown): string | null =>
+  error instanceof StudioSaveHttpError && error.heldFile ? error.message : null;
 
 export async function retryStudioSave<T>(
   operation: (attempt: number) => Promise<T>,
