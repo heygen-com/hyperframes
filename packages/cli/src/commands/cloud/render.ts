@@ -668,7 +668,6 @@ interface PreparedLocalArchive {
   largestFiles: ArchiveFileSummary[];
   offloaded: OffloadedMedia[];
   swappedFonts: string[];
-  /** Files the zip leaves out, each also warned on its own line and, under --json, as a `left_out` event on stderr. */
   leftOut: LeftOutReference[];
 }
 
@@ -695,7 +694,7 @@ async function prepareLocalArchive(
   const { fileMap, entryPath } = stageProjectFiles(
     project,
     composition,
-    reportLeftOut(leftOut, asJson),
+    warnAndListLeftOut(leftOut, asJson),
   );
   trackUploadLeftOut("cloud_render", leftOut, !upload);
   const swappedFonts = await embedSystemFonts({
@@ -737,8 +736,7 @@ async function prepareLocalArchive(
   return prepared;
 }
 
-/** Each file the zip leaves out: kept for the result, warned, and under --json also a `left_out` line on stderr. */
-function reportLeftOut(leftOut: LeftOutReference[], asJson: boolean): OnLeftOut {
+function warnAndListLeftOut(leftOut: LeftOutReference[], asJson: boolean): OnLeftOut {
   return (warning, reference) => {
     leftOut.push(reference);
     if (!asJson) return console.log(c.warn(`   ${warning}`));
