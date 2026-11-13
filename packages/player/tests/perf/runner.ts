@@ -3,15 +3,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer, { type Browser, type LaunchOptions, type Page } from "puppeteer-core";
 
-/**
- * Puppeteer browser + page helpers shared across all perf scenarios.
- *
- * Browser launch args mirror packages/producer/src/parity-harness.ts so we get
- * the same SwiftShader-backed WebGL output and font hinting between perf runs
- * and visual parity runs. That parity matters for P0-1c (live-playback parity)
- * and is harmless for the load/scrub/drift scenarios.
- */
-
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLAYER_PKG = resolve(HERE, "../..");
 
