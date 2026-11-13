@@ -1097,6 +1097,44 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
+
+  it("gives ids that differ only by case their own frames on a case-insensitive disk", () => {
+    // macOS and Windows disks fold case: `s12-vB1` and `s12-vb1` named as-is are one folder.
+    const entries = new Map<string, string>();
+    const fold = (path: string) => path.toLowerCase();
+    const clip = (videoId: string, cacheDir: string, frameCount: number) => ({
+      videoId,
+      outputDir: cacheDir,
+      framePaths: new Map(
+        Array.from({ length: frameCount }, (_, i): [number, string] => [
+          i,
+          join(cacheDir, `frame_${String(i + 1).padStart(5, "0")}.jpg`),
+        ]),
+      ),
+    });
+    const short = clip("s12-vB1", "/cache/hook", 64);
+    const long = clip("s12-vb1", "/cache/sparks", 66);
+
+    materializeExtractedFramesForCompiledDir([short, long], "/job/compiled", {
+      fileSystem: {
+        existsSync: (path) => entries.has(fold(String(path))),
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          if (entries.has(fold(String(path)))) {
+            throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+          }
+          entries.set(fold(String(path)), String(target));
+        },
+        cpSync: () => {
+          throw new Error("a symlink is expected");
+        },
+      },
+    });
+
+    const targetOf = (framePath: string) => entries.get(fold(join(framePath, "..")));
+    expect(targetOf(long.framePaths.get(64)!)).toBe("/cache/sparks");
+    expect(targetOf(short.framePaths.get(63)!)).toBe("/cache/hook");
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
