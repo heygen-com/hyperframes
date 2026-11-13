@@ -75,7 +75,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
     await lease.release();
 
     const envs = launch.mock.calls.map(([options]) => options.env);
-    expect(envs[0]).toBeUndefined();
+    expect(envs[0]).toMatchObject({ WAYLAND_DISPLAY: "wayland-0" });
     expect(envs[1]).toMatchObject({ PATH: process.env.PATH });
     expect(envs[1]).not.toHaveProperty("WAYLAND_DISPLAY");
     expect(envs[2]).not.toHaveProperty("WAYLAND_DISPLAY");

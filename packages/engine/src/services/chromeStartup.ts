@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import { removeTreeBestEffort } from "@hyperframes/core/remove-tree";
 
 const STDERR_TAIL_LINES = 8;
@@ -57,6 +58,7 @@ export async function diagnoseChromeStartup(
     return await new Promise<string>((resolve) => {
       let stderr = "";
       const child = spawn(executablePath, startupArgs(args, profile), {
+        env: buildChromeLaunchEnv(),
         stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
       });

@@ -63,11 +63,19 @@ describe("SwiftShader launch environment", () => {
 
   it("keeps the pins for a hardware render", async () => {
     Object.assign(process.env, PINS);
-    expect(await launchEnvFor("hardware")).toBeUndefined();
+    expect(await launchEnvFor("hardware")).toMatchObject({ PATH: process.env.PATH, ...PINS });
   });
 
-  it("inherits the environment when nothing pins a Vulkan driver", async () => {
-    for (const name of Object.keys(PINS)) delete process.env[name];
-    expect(await launchEnvFor("software")).toBeUndefined();
+  it("hands Chrome only the allowlisted environment", async () => {
+    process.env.AWS_SECRET_ACCESS_KEY = "kept-from-chrome";
+    try {
+      for (const mode of ["software", "hardware"] as const) {
+        const env = await launchEnvFor(mode);
+        expect(env).toMatchObject({ PATH: process.env.PATH });
+        expect(env).not.toHaveProperty("AWS_SECRET_ACCESS_KEY");
+      }
+    } finally {
+      delete process.env.AWS_SECRET_ACCESS_KEY;
+    }
   });
 });

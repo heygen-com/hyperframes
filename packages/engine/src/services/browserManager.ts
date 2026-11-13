@@ -8,6 +8,7 @@
 
 import { explainChromeLaunchFailure } from "./chromeStartup.js";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import {
   inAgentSandbox,
   machServiceDenied,
@@ -127,7 +128,7 @@ async function probeHardwareWebGlInfo(
       args: withHyperframesBrowserMarker(options.args),
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
-      env: options.env,
+      env: buildChromeLaunchEnv(options.env),
       timeout: options.browserTimeout,
       waitForInitialPage: false,
     };
@@ -681,15 +682,13 @@ const VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER = [
   "VK_LOADER_DRIVERS_DISABLE",
 ];
 
-function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.ProcessEnv | undefined {
-  if (fingerprint.withoutWaylandDisplay) return envWithoutWaylandDisplay();
+function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.ProcessEnv {
+  if (fingerprint.withoutWaylandDisplay) return buildChromeLaunchEnv(envWithoutWaylandDisplay());
+  const env = buildChromeLaunchEnv();
   const swiftShader = fingerprint.args.some(
     (arg) => arg === "--use-angle=swiftshader" || arg === "--use-vulkan=swiftshader",
   );
-  const overriding = VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER.filter((name) => name in process.env);
-  if (!swiftShader || overriding.length === 0) return undefined;
-  const env = { ...process.env };
-  for (const name of overriding) delete env[name];
+  if (swiftShader) for (const name of VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER) delete env[name];
   return env;
 }
 
