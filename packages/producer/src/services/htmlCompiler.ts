@@ -1577,13 +1577,31 @@ export async function localizeRemoteMediaSources(
       if (m[1]) urlSet.add(m[1]);
     }
   }
-  return downloadAndRewriteUrls(
+  const localized = await downloadAndRewriteUrls(
     urlSet,
     html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote media download failed",
     "Localized remote media source(s)",
   );
+  return { ...localized, html: dropBindingOnLocalizedMedia(localized.html) };
+}
+
+/**
+ * A bound element now holds the downloaded copy. Its `data-var-src` would make the browser set the
+ * link back, giving the clip a second name and its sound a second lane.
+ */
+function dropBindingOnLocalizedMedia(html: string): string {
+  if (!html.includes("data-var-src")) return html;
+  const { document } = parseHTML(html);
+  let changed = false;
+  for (const el of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
+    if (el.closest("[data-variable-values]")) continue;
+    if (!el.getAttribute("src")?.startsWith(`${REMOTE_MEDIA_SUBDIR}/`)) continue;
+    el.removeAttribute("data-var-src");
+    changed = true;
+  }
+  return changed ? document.toString() : html;
 }
 
 /**
