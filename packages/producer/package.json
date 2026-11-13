@@ -83,8 +83,8 @@
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
     "postcss": "^8.4.0",
-    "puppeteer": "~25.11.0",
-    "puppeteer-core": "^25.11.0"
+    "puppeteer": "~25.13.0",
+    "puppeteer-core": "^25.13.0"
   },
   "devDependencies": {
     "@hyperframes/aws-lambda": "workspace:*",

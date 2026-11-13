@@ -110,8 +110,8 @@
     "@hyperframes/parsers": "workspace:^",
     "hono": "^4.6.0",
     "linkedom": "^0.18.12",
-    "puppeteer": "~25.11.0",
-    "puppeteer-core": "^25.11.0",
+    "puppeteer": "~25.13.0",
+    "puppeteer-core": "^25.13.0",
     "undici": "7.30.1"
   },
   "devDependencies": {
