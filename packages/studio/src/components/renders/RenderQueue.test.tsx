@@ -36,6 +36,7 @@ afterEach(() => {
 function mountRenderQueue(
   onStartRender: Mock<StartRenderHandler>,
   compositionDimensions = { width: 1920, height: 1080 },
+  isRendering = false,
 ) {
   const host = document.createElement("div");
   document.body.append(host);
@@ -48,7 +49,7 @@ function mountRenderQueue(
         onDelete={vi.fn()}
         onClearCompleted={vi.fn()}
         onStartRender={onStartRender}
-        isRendering={false}
+        isRendering={isRendering}
         compositionDimensions={compositionDimensions}
         ffmpeg={ffmpegStatus}
         ffmpegChecking={false}
@@ -276,6 +277,307 @@ describe("RenderQueue FFmpeg gate", () => {
   });
 });
 
+function advancedButtonIn(host: HTMLElement): HTMLButtonElement {
+  const button = [...host.querySelectorAll("button")].find(
+    (item) => item.textContent === "Advanced",
+  );
+  if (!button) throw new Error("Advanced disclosure did not render");
+  return button;
+}
+
+function expandAdvanced(host: HTMLElement) {
+  act(() => advancedButtonIn(host).click());
+}
+
+async function chooseOption(host: HTMLElement, label: string, text: string) {
+  const trigger = triggerFor(host, label);
+  act(() => trigger.click());
+  await settle();
+  const popup = document.getElementById(trigger.getAttribute("aria-controls") ?? "");
+  if (!popup) throw new Error(`no popup for ${label}`);
+  const option = [...popup.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (item) => item.textContent === text,
+  );
+  if (!option) throw new Error(`no ${label} option ${text}`);
+  act(() => option.click());
+  await settle();
+}
+
+function editInput(host: HTMLElement, label: string, value: string) {
+  const input = host.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`);
+  if (!input) throw new Error(`no input ${label}`);
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  if (!setter) throw new Error("input value setter missing");
+  act(() => {
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  return input;
+}
+
+function savedSettings(): unknown {
+  return JSON.parse(localStorage.getItem("hf-studio-render-settings") ?? "{}");
+}
+
+async function mountWithCrf(onStartRender: Mock<StartRenderHandler> = vi.fn(), value = "18") {
+  const host = mountRenderQueue(onStartRender);
+  expandAdvanced(host);
+  await chooseOption(host, "Rate control", "CRF");
+  editInput(host, "CRF", value);
+  return host;
+}
+
+async function chooseFramesAndHdr(host: HTMLElement, frames = "PNG", hdr = "Force off") {
+  await chooseOption(host, "Source video frames", frames);
+  await chooseOption(host, "HDR", hdr);
+}
+
+const autoAdvanced = {
+  rateControl: { mode: "auto" },
+  videoFrameFormat: "auto",
+  hdrMode: "auto",
+};
+
+describe("RenderQueue advanced export settings", () => {
+  it("starts collapsed and links its disclosure to the controls", () => {
+    const host = mountRenderQueue(vi.fn());
+    const advanced = advancedButtonIn(host);
+    expect(advanced.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector('[aria-label="Rate control"]')).toBeNull();
+    expandAdvanced(host);
+    expect(advanced.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(advanced.getAttribute("aria-controls") ?? "")).not.toBeNull();
+    expect(triggerFor(host, "Rate control")).not.toBeNull();
+    expandAdvanced(host);
+    expect(host.querySelector('[aria-label="Rate control"]')).toBeNull();
+  });
+
+  it.each([0, 51])(
+    "preserves MP4 CRF %s and passes advanced settings after the GIF loop argument",
+    async (crf) => {
+      const onStartRender: Mock<StartRenderHandler> = vi.fn();
+      const host = mountRenderQueue(onStartRender);
+      expandAdvanced(host);
+      await chooseOption(host, "Rate control", "CRF");
+      const input = editInput(host, "CRF", String(crf));
+      expect(input.min).toBe("0");
+      expect(input.max).toBe("51");
+      expect(input.step).toBe("1");
+      act(() => exportButtonIn(host).click());
+      expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30, false, undefined, {
+        ...autoAdvanced,
+        rateControl: { mode: "crf", value: crf },
+      });
+    },
+  );
+
+  it.each(["-1", "52", "18.5"])(
+    "blocks invalid CRF %s without replacing the saved valid value",
+    async (draft) => {
+      const onStartRender: Mock<StartRenderHandler> = vi.fn();
+      const host = mountRenderQueue(onStartRender);
+      expandAdvanced(host);
+      await chooseOption(host, "Rate control", "CRF");
+      editInput(host, "CRF", "18");
+      const saved = savedSettings();
+      const input = editInput(host, "CRF", draft);
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      const error = document.getElementById(input.getAttribute("aria-errormessage") ?? "");
+      expect(error?.textContent).toMatch(/CRF|integer/i);
+      expect(exportButtonIn(host).disabled).toBe(true);
+      act(() => exportButtonIn(host).click());
+      expect(onStartRender).not.toHaveBeenCalled();
+      expect(savedSettings()).toEqual(saved);
+    },
+  );
+
+  it.each([
+    ["CRF", "52", "18"],
+    ["Target bitrate", "10MB", "1.5M"],
+  ])(
+    "keeps invalid %s feedback visible when Advanced is collapsed",
+    async (label, invalid, valid) => {
+      const onStartRender: Mock<StartRenderHandler> = vi.fn();
+      const host = mountRenderQueue(onStartRender);
+      expandAdvanced(host);
+      await chooseOption(host, "Rate control", label);
+      editInput(host, label, invalid);
+      const message = host.querySelector('[role="alert"]')?.textContent;
+      expect(message).toBeTruthy();
+      expandAdvanced(host);
+      expect(host.querySelector(`[aria-label="${label}"]`)).toBeNull();
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe(message);
+      expect(exportButtonIn(host).disabled).toBe(true);
+      act(() => exportButtonIn(host).click());
+      expect(onStartRender).not.toHaveBeenCalled();
+      expandAdvanced(host);
+      expect(host.querySelector<HTMLInputElement>(`[aria-label="${label}"]`)?.value).toBe(invalid);
+      editInput(host, label, valid);
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(exportButtonIn(host).disabled).toBe(false);
+    },
+  );
+
+  it("clears a CRF override on blank and keeps the legacy default callback", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+    expandAdvanced(host);
+    await chooseOption(host, "Rate control", "CRF");
+    editInput(host, "CRF", "0");
+    editInput(host, "CRF", "");
+    expect(exportButtonIn(host).disabled).toBe(false);
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30, false);
+    expect(savedSettings()).not.toHaveProperty("rateControl");
+  });
+
+  it("switches rate modes atomically, trims bitrate, and rejects invalid bitrate", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = await mountWithCrf(onStartRender);
+    await chooseOption(host, "Rate control", "Target bitrate");
+    expect(host.querySelector('[aria-label="CRF"]')).toBeNull();
+    expect(savedSettings()).not.toHaveProperty("rateControl");
+    editInput(host, "Target bitrate", " 1.5M ");
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenLastCalledWith(
+      "mp4",
+      "standard",
+      "auto",
+      30,
+      false,
+      undefined,
+      {
+        ...autoAdvanced,
+        rateControl: { mode: "bitrate", value: "1.5M" },
+      },
+    );
+    const saved = savedSettings();
+    editInput(host, "Target bitrate", "10MB");
+    expect(exportButtonIn(host).disabled).toBe(true);
+    expect(savedSettings()).toEqual(saved);
+    editInput(host, "Target bitrate", "");
+    expect(exportButtonIn(host).disabled).toBe(false);
+    expect(savedSettings()).not.toHaveProperty("rateControl");
+  });
+
+  it("accepts WebM CRF63 and resets it with an explanation when switching to MP4", async () => {
+    const host = mountRenderQueue(vi.fn());
+    await chooseOption(host, "Format", "WebM");
+    expandAdvanced(host);
+    await chooseOption(host, "Rate control", "CRF");
+    expect(editInput(host, "CRF", "63").max).toBe("63");
+    expect(savedSettings()).toHaveProperty("rateControl", { mode: "crf", value: 63 });
+    await chooseOption(host, "Format", "MP4");
+    expect(triggerFor(host, "Rate control").textContent).toContain("Quality preset");
+    expect(host.textContent).toContain("cleared");
+    expect(savedSettings()).not.toHaveProperty("rateControl");
+  });
+
+  it("preserves valid advanced settings when basic settings change", async () => {
+    const host = await mountWithCrf();
+    await chooseFramesAndHdr(host);
+    await chooseOption(host, "Format", "WebM");
+    await chooseOption(host, "Frame rate", "60 fps");
+    await chooseOption(host, "Quality", "High Quality");
+    expect(savedSettings()).toMatchObject({
+      format: "webm",
+      quality: "high",
+      fps: 60,
+      rateControl: { mode: "crf", value: 18 },
+      videoFrameFormat: "png",
+      hdrMode: "force-sdr",
+    });
+  });
+
+  it("clears and disables MOV rate controls while retaining frame and HDR choices", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = await mountWithCrf(onStartRender);
+    await chooseFramesAndHdr(host, "JPG", "Force on");
+    await chooseOption(host, "Format", "MOV (ProRes)");
+    expect(triggerFor(host, "Rate control").hasAttribute("disabled")).toBe(true);
+    expect(host.textContent).toContain("ProRes");
+    expect(host.textContent).toContain("SDR");
+    expect(host.textContent).toContain("native HDR");
+    expect(host.textContent).toContain("source video");
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenLastCalledWith(
+      "mov",
+      "standard",
+      "auto",
+      30,
+      false,
+      undefined,
+      {
+        rateControl: { mode: "auto" },
+        videoFrameFormat: "jpg",
+        hdrMode: "force-hdr",
+      },
+    );
+    await chooseOption(host, "Format", "MP4");
+    expect(triggerFor(host, "Rate control").textContent).toContain("Quality preset");
+    expect(savedSettings()).not.toHaveProperty("rateControl");
+  });
+
+  it("removes all advanced overrides when the user returns each selector to Auto", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = await mountWithCrf(onStartRender);
+    await chooseFramesAndHdr(host);
+    await chooseOption(host, "Rate control", "Quality preset");
+    await chooseOption(host, "Source video frames", "Auto");
+    await chooseOption(host, "HDR", "Auto");
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledWith("mp4", "standard", "auto", 30, false);
+    expect(savedSettings()).toEqual({ format: "mp4", quality: "standard", fps: 30, gpu: false });
+  });
+
+  it("restores valid stored overrides but always mounts Advanced collapsed", () => {
+    localStorage.setItem(
+      "hf-studio-render-settings",
+      JSON.stringify({
+        format: "webm",
+        quality: "high",
+        fps: 60,
+        gpu: true,
+        rateControl: { mode: "crf", value: 63 },
+        videoFrameFormat: "png",
+        hdrMode: "force-sdr",
+      }),
+    );
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+    expect(advancedButtonIn(host).getAttribute("aria-expanded")).toBe("false");
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledWith("webm", "high", "auto", 60, true, undefined, {
+      rateControl: { mode: "crf", value: 63 },
+      videoFrameFormat: "png",
+      hdrMode: "force-sdr",
+    });
+  });
+
+  it("disables advanced editing and export while rendering", () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    localStorage.setItem(
+      "hf-studio-render-settings",
+      JSON.stringify({
+        format: "mp4",
+        quality: "standard",
+        fps: 30,
+        gpu: false,
+        rateControl: { mode: "crf", value: 18 },
+      }),
+    );
+    const host = mountRenderQueue(onStartRender, undefined, true);
+    expandAdvanced(host);
+    expect(host.querySelector<HTMLInputElement>('[aria-label="CRF"]')?.disabled).toBe(true);
+    for (const label of ["Rate control", "Source video frames", "HDR"]) {
+      expect(triggerFor(host, label).hasAttribute("disabled")).toBe(true);
+    }
+    expect(exportButtonIn(host).disabled).toBe(true);
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).not.toHaveBeenCalled();
+  });
+});
+
 function mountGifQueue() {
   localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "gif" }));
   const onStartRender: Mock<StartRenderHandler> = vi.fn();
@@ -350,5 +652,45 @@ describe("GIF frame-rate controls", () => {
     expect(getPersistedRenderSettings()).toMatchObject({ format: "gif", fps: 30 });
     act(() => exportButtonIn(host).click());
     expect(onStartRender).toHaveBeenLastCalledWith("gif", "standard", "auto", 30, false, 0);
+  });
+});
+
+describe("GIF and advanced export integration", () => {
+  it("hides advanced controls and exports GIF without the video's saved advanced overrides", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = await mountWithCrf(onStartRender);
+    await chooseFramesAndHdr(host, "PNG", "Force on");
+    await chooseOption(host, "Format", "GIF");
+    expect(
+      [...host.querySelectorAll("button")].some((button) => button.textContent === "Advanced"),
+    ).toBe(false);
+    expect(host.querySelector('[aria-label="Rate control"]')).toBeNull();
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledExactlyOnceWith("gif", "standard", "auto", 30, false, 0);
+  });
+
+  it("discards an invalid video draft when switching to GIF", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = await mountWithCrf(onStartRender);
+    editInput(host, "CRF", "52");
+    expect(exportButtonIn(host).disabled).toBe(true);
+    await chooseOption(host, "Format", "GIF");
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(exportButtonIn(host).disabled).toBe(false);
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledExactlyOnceWith("gif", "standard", "auto", 30, false, 0);
+  });
+
+  it("restores the video's requested 60 fps after returning from GIF", async () => {
+    localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "mp4", fps: 60 }));
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+    await chooseOption(host, "Format", "GIF");
+    expect(triggerFor(host, "Frame rate").textContent).toContain("30 fps");
+    await chooseOption(host, "Format", "MP4");
+    expect(triggerFor(host, "Frame rate").textContent).toContain("60 fps");
+    expect(getPersistedRenderSettings()).toMatchObject({ format: "mp4", fps: 60 });
+    act(() => exportButtonIn(host).click());
+    expect(onStartRender).toHaveBeenCalledExactlyOnceWith("mp4", "standard", "auto", 60, false);
   });
 });

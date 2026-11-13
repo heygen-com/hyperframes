@@ -10,9 +10,11 @@ import {
   useRenderQueue,
   type FfmpegStatus,
   type RenderJob,
+  type RenderQueueProps,
 } from "@hyperframes/studio";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+type StartRenderHandler = RenderQueueProps["onStartRender"];
 
 describe("render queue package exports", () => {
   it("exposes the hook and settings helpers", () => {
@@ -34,6 +36,16 @@ describe("render queue package exports", () => {
       createdAt: 0,
     };
     const ffmpeg: FfmpegStatus = { ok: true };
+    const onStartRender = vi.fn(
+      (
+        _format: Parameters<StartRenderHandler>[0],
+        _quality: Parameters<StartRenderHandler>[1],
+        _resolution: Parameters<StartRenderHandler>[2],
+        _fps: number,
+        _gpu?: boolean,
+        _gifLoop?: number,
+      ) => {},
+    );
     const el = document.createElement("div");
     document.body.append(el);
     const root = createRoot(el);
@@ -44,7 +56,7 @@ describe("render queue package exports", () => {
           projectId="p"
           onDelete={vi.fn()}
           onClearCompleted={vi.fn()}
-          onStartRender={vi.fn()}
+          onStartRender={onStartRender}
           isRendering={false}
           ffmpeg={ffmpeg}
           ffmpegChecking={false}
