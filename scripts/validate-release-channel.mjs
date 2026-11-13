@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const VERSION_RE = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+)(?:\.[0-9A-Za-z-]+)*)?$/;
 const PRERELEASE_BRANCH_RE = /^origin\/(next|alpha|beta|rc|canary|prerelease\/.+)$/;
@@ -129,6 +130,6 @@ function main() {
   reportValidation(input, validateReleaseChannel(input));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   main();
 }

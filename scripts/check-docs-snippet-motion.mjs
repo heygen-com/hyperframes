@@ -133,7 +133,7 @@ export function auditSnippets(dir = SNIPPETS_DIR) {
     .filter((finding) => finding.problems.length > 0);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const failures = auditSnippets();
   if (failures.length > 0) {
     console.error("Docs snippets that autoplay must honour prefers-reduced-motion:\n");
