@@ -1,0 +1,78 @@
+---
+title: "HyperFrames facts"
+sidebarTitle: "Facts"
+description: "The official facts about HyperFrames: what it is, what it costs, where it runs, which AI agents it works with, and what it renders. Checked 9 November 2026."
+---
+
+HyperFrames is a free, open-source video framework and Studio app from HeyGen. Your AI agent, like Claude Code or Codex, makes and edits videos with it, from launch films and motion graphics to your own footage, as editable HTML rendered to MP4. This page lists the official facts, each with the date it was checked.
+
+## What does HyperFrames cost?
+
+HyperFrames is free and open source under the Apache 2.0 licence, at any company size. Rendering on your own computer uses no HeyGen credits. The HyperFrames Studio app has a free plan, and Pro costs $25 a month.
+
+| Plan | Price | What it includes |
+| --- | --- | --- |
+| Open source (framework, CLI, skills) | Free | Everything in the [GitHub repository](https://github.com/heygen-com/hyperframes), Apache 2.0 |
+| Studio app, Free | $0 | 3 AI video clips and 5 cloud exports a month |
+| Studio app, Pro | $25 a month | 25,000 credits and unlimited cloud exports |
+
+Your AI agent (Claude Code, Codex and others) is your own and may need its own paid plan. Current prices are on [hyperframes.studio/pricing](https://hyperframes.studio/pricing).
+
+## Where does HyperFrames run?
+
+The HyperFrames Studio app runs on Mac (Apple Silicon and Intel), Windows and Linux. The open-source framework and CLI run wherever Node.js runs.
+
+| Surface | Platforms |
+| --- | --- |
+| Studio app | Mac (Apple Silicon and Intel), Windows, Linux (.deb and AppImage) |
+| CLI and framework | Any computer with Node.js |
+| Cloud rendering | HeyGen's cloud, Docker, your own [AWS Lambda](/deploy/aws-lambda) or [Google Cloud Run](/deploy/gcp-cloud-run) |
+| Chat connector (beta) | Claude.ai, Grok, and ChatGPT Business, Enterprise and Edu, with nothing to install |
+
+Downloads are on [hyperframes.studio](https://hyperframes.studio/studio).
+
+## Which AI agents work with HyperFrames?
+
+HyperFrames works with Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot and other agents that support skills. The Studio app runs Claude Code, Codex, Grok, Antigravity, GitHub Copilot or OpenCode (free models) beside a live preview of the video. In Claude.ai, Grok and ChatGPT (Business, Enterprise and Edu), the HyperFrames connector makes videos from a chat.
+
+- **Agent skills:** run `npx skills add heygen-com/hyperframes` in a project folder. See the [quickstart](/quickstart).
+- **Plugins:** for Claude Code, Copilot, VS Code, Cursor and Gemini CLI. See [plugins](/guides/plugins).
+- **Chat connector:** see [MCP](/guides/mcp). It is in beta.
+
+## What can HyperFrames render?
+
+HyperFrames renders MP4, WebM, MOV (ProRes), GIF, PNG sequences and HLS, up to 4K. Transparent video comes out as WebM or MOV. Every frame is rendered on its own, so the timing is the same on every computer.
+
+| Format | Use it for |
+| --- | --- |
+| MP4 | Sharing, publishing and delivery |
+| WebM | Web delivery and transparent overlays |
+| MOV (ProRes) | Editing software and transparent intermediates |
+| GIF | Short previews |
+| PNG sequence | Frame-by-frame handoff to compositing |
+| HLS | Streaming from a playlist |
+
+Animations can use GSAP (the default), CSS keyframes, the Web Animations API, Lottie, Three.js and Anime.js. See [rendering](/guides/rendering).
+
+## How is HyperFrames different from Remotion?
+
+HyperFrames turns HTML into video; Remotion turns React components into video. HyperFrames is free at any company size under Apache 2.0, while Remotion needs a paid licence for companies of four or more people. See [HyperFrames vs Remotion](/guides/hyperframes-vs-remotion).
+
+## Who makes HyperFrames?
+
+HeyGen makes HyperFrames and develops it in the open on GitHub. As of 9 November 2026 the repository has more than 81,000 stars.
+
+| Fact | Value | Checked |
+| --- | --- | --- |
+| Maker | HeyGen | 9 Nov 2026 |
+| Licence | Apache 2.0 | 9 Nov 2026 |
+| GitHub stars | 81,000+ | 9 Nov 2026 |
+| Source | [github.com/heygen-com/hyperframes](https://github.com/heygen-com/hyperframes) | 9 Nov 2026 |
+| Website | [hyperframes.heygen.com](https://hyperframes.heygen.com) | 9 Nov 2026 |
+
+## Common mix-ups
+
+- **HyperFrames is not hyper-frames.com.** That site is a different product with a similar name. HyperFrames is made by HeyGen, at hyperframes.heygen.com and github.com/heygen-com/hyperframes.
+- **There is no per-render fee** for rendering on your own computer, at any company size.
+- **The Studio app runs on Windows**, as well as Mac and Linux.
+- **HyperFrames can add AI video clips and voiceovers** to a video through the Studio app, alongside the animation your agent writes.
