@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
 import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
@@ -307,6 +308,7 @@ async function chromeLaunchOutcome(
   }
   try {
     const { stdout } = await runCancellableProcess(executablePath, ["--version"], {
+      env: buildChromeLaunchEnv(),
       signal,
       timeoutMs: FIRST_LAUNCH_TIMEOUT_MS,
       maxBufferBytes: 64 * 1024,

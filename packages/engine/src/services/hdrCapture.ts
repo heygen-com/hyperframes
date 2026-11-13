@@ -20,6 +20,7 @@
  */
 
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
 
@@ -250,6 +251,7 @@ export async function launchHdrBrowser(
     ...ownedLaunchOptions(),
     headless: false,
     executablePath: chromePath,
+    env: buildChromeLaunchEnv(),
     args: withHyperframesBrowserMarker(buildHdrChromeArgs(width, height)),
   });
 

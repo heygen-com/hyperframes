@@ -11,6 +11,7 @@ import {
 import { explainChromeLaunchFailure } from "@hyperframes/engine/chrome-startup";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
@@ -175,6 +176,7 @@ async function launchOwnedBrowser(
     puppeteer.launch({
       ...options,
       args: withHyperframesBrowserMarker(options.args),
+      env: buildChromeLaunchEnv(options.env),
       pipe: true,
       signal,
       handleSIGINT: false,

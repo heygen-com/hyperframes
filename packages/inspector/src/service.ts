@@ -1,5 +1,6 @@
 import type { TimelineRequest } from "../../core/src/runtime/timelineInspection";
 import { withHyperframesBrowserMarker } from "../../core/src/browserMarker";
+import { buildChromeLaunchEnv } from "../../core/src/chromeEnv";
 import {
   inspectComponents,
   inspectElementMap,
@@ -177,6 +178,7 @@ export class Inspector {
       if (!this.browser) {
         this.browser = await puppeteer.launch({
           executablePath: this.options.executablePath ?? chromePath(),
+          env: buildChromeLaunchEnv(),
           headless: true,
           args: withHyperframesBrowserMarker([
             "--disable-dev-shm-usage",

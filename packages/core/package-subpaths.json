@@ -62,6 +62,12 @@
       "types": "./dist/browserMarker.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-env": {
+      "source": "./src/chromeEnv.ts",
+      "runtime": "./dist/chromeEnv.js",
+      "types": "./dist/chromeEnv.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./atomic-file": {
       "source": "./src/atomicFile.ts",
       "runtime": "./dist/atomicFile.js",

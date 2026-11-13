@@ -74,6 +74,12 @@
       "import": "./src/browserMarker.ts",
       "types": "./src/browserMarker.ts"
     },
+    "./chrome-env": {
+      "bun": "./src/chromeEnv.ts",
+      "node": "./dist/chromeEnv.js",
+      "import": "./src/chromeEnv.ts",
+      "types": "./src/chromeEnv.ts"
+    },
     "./atomic-file": {
       "bun": "./src/atomicFile.ts",
       "node": "./dist/atomicFile.js",
@@ -675,6 +681,10 @@
       "./browser-marker": {
         "import": "./dist/browserMarker.js",
         "types": "./dist/browserMarker.d.ts"
+      },
+      "./chrome-env": {
+        "import": "./dist/chromeEnv.js",
+        "types": "./dist/chromeEnv.d.ts"
       },
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
