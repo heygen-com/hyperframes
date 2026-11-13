@@ -1321,6 +1321,28 @@ describe("audio-aware project rules", () => {
       expect(codes).not.toContain("duplicate_audio_track");
     });
 
+    it("names the clip without data-duration in the fix hint when it is counted to the end", async () => {
+      const line = (id: string, start: number) =>
+        `<audio id="${id}" src="${id}.wav" data-start="${start}" data-track-index="2"></audio>`;
+      const project = makeProject(composition(line("vo1", 0) + line("vo2", 4)));
+      const { results } = await lintProject(project);
+      const finding = results
+        .flatMap((result) => result.result.findings)
+        .find((f) => f.code === "duplicate_audio_track");
+      expect(finding?.fixHint).toContain("vo1.wav and vo2.wav have no data-duration");
+    });
+
+    it("keeps the plain fix hint when both overlapping clips set data-duration", async () => {
+      const project = makeProject(
+        composition(video('data-has-audio="true"', 0) + video('data-has-audio="true"', 2)),
+      );
+      const { results } = await lintProject(project);
+      const finding = results
+        .flatMap((result) => result.result.findings)
+        .find((f) => f.code === "duplicate_audio_track");
+      expect(finding?.fixHint).toBe("Use non-overlapping time windows or different track indices.");
+    });
+
     it("stays quiet for back-to-back clips whose start plus duration only rounds past the next start", async () => {
       // 21.03 + 0.1 is 21.130000000000003 in floating point.
       const clip = (id: string, start: string, duration: string) =>
