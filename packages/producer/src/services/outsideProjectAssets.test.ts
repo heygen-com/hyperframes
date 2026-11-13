@@ -180,13 +180,16 @@ function privateOutsideProject() {
   writeFileSync(join(shared, "notes.txt"), "notes");
   symlinkSync(join(ssh, "pic.png"), join(projectDir, "link.png"));
   symlinkSync(join(shared, "logo.png"), join(projectDir, "keep.png"));
+  symlinkSync(join(ssh, "id_key"), join(projectDir, "brand.ttf"));
+  symlinkSync(join(shared, "notes.txt"), join(projectDir, "notes.ttf"));
   const pic = join(ssh, "pic.png");
   const video = (id: string, src: string) =>
     `<video id="${id}" src="${src}" data-start="0" data-duration="1" muted></video>`;
   writeFileSync(
     join(projectDir, "index.html"),
     `<!doctype html><html><head><link rel="stylesheet" href="../../.ssh/id_key">
-<style>.bg { background-image: url("../../.ssh/pic.png"); }</style></head><body>
+<style>.bg { background-image: url("../../.ssh/pic.png"); }
+@font-face { font-family: B; src: url("brand.ttf"); } @font-face { font-family: N; src: url("notes.ttf"); }</style></head><body>
   <div data-composition-id="root" data-width="320" data-height="240" data-duration="1">
     <img src="../../.ssh/pic.png"><img src="${pic}"><img src="${pathToFileURL(pic).href}">
     <img src="..%2F..%2F.ssh%2Fpic.png"><div style="background: url(${pic})"></div>
@@ -294,19 +297,30 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     expect(warned).toContain(
       "../shared/notes.txt, which is outside the project and is not an image",
     );
+    expect(warned).toMatch(
+      /brand\.ttf references .*\.ssh\/id_key, which is outside the project in a private/,
+    );
+    expect(warned).toMatch(
+      /notes\.ttf references .*notes\.txt, which is outside the project and is not an image/,
+    );
+    const compiledHtml = readFileSync(join(compiledDir, "index.html"), "utf-8");
+    expect(compiledHtml).not.toContain(Buffer.from("PRIVATE").toString("base64"));
+    expect(compiledHtml).not.toContain(Buffer.from("notes").toString("base64"));
+    expect(compiledHtml).toContain('url("brand.ttf")');
     expect(
       await statusOf(await serve(), [
         ...privateKeys.map((k) => `/${k}`),
         "/link.png",
         `/${logo}`,
         "/keep.png",
+        "/brand.ttf",
       ]),
-    ).toEqual([404, 404, 404, 200, 200]);
+    ).toEqual([404, 404, 404, 200, 200, 404]);
 
     const planDir = join(root, "plan");
     await plan(projectDir, config, planDir, { allowOutsideProjectAssets: true });
     const planned = filesUnder(join(planDir, "compiled"));
-    expect(planned.filter((file) => /\.ssh|notes|link\.png/.test(file))).toEqual([]);
+    expect(planned.filter((file) => /\.ssh|notes|link\.png|brand\.ttf/.test(file))).toEqual([]);
     expect(planned).toEqual(expect.arrayContaining([logo, "keep.png"]));
   });
 

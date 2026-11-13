@@ -85,6 +85,7 @@ import {
   isPathInside,
   leftOutOfRender,
   outsideAssetRefusal,
+  refusesOutsideLink,
   toExternalAssetKey,
 } from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
@@ -1976,6 +1977,7 @@ async function embedLocalFontFaces(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
+  log: ProducerLogger = defaultLogger,
 ): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
@@ -1999,6 +2001,11 @@ async function embedLocalFontFaces(
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
+        // A project font that is a link leading outside obeys the same policy as the file server.
+        if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+          embeddedPaths.add(localPath);
+          continue;
+        }
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2380,7 +2387,12 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
-  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir, assetRoot);
+  const embeddedHtml = await embedLocalFontFaces(
+    htmlWithPreparedGifs,
+    projectDir,
+    assetRoot,
+    options.log,
+  );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
