@@ -15,6 +15,7 @@ import {
   type ElementTransformSnapshot,
 } from "@hyperframes/core/runtime/editing-port";
 import { type OverlayMeasurePass, readThroughPass } from "./domEditOverlayMeasurePass";
+import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 export const RESIZE_HANDLE_HIT_PX = 16;
 
@@ -40,6 +41,7 @@ export interface GroupOverlayItem {
   selection: DomEditSelection;
   element: HTMLElement;
   rect: OverlayRect;
+  start?: PreviewGestureStart;
 }
 
 export type ResolvedElementRef = {

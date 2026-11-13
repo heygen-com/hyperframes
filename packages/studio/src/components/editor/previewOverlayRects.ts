@@ -39,7 +39,7 @@ function orientedRect(scale: OverlayRootScale, box: EditingElementBox): OverlayR
 }
 
 /** `groupAwareOverlayRect`, or with `oriented`, `orientedGroupAwareOverlayRect`. */
-function groupAwareRect(
+export function groupAwareRect(
   scale: OverlayRootScale,
   geometry: EditingElementGeometry,
   oriented: boolean,
@@ -52,6 +52,12 @@ function groupAwareRect(
   );
   const union = resolveDomEditGroupOverlayRect(members);
   return union ? { ...union, editScaleX: rect.editScaleX, editScaleY: rect.editScaleY } : rect;
+}
+
+/** `toVisibleOverlayRect`. */
+export function flatVisibleRect(scale: OverlayRootScale, box: EditingElementBox): OverlayRect {
+  const rect = baseRect(scale, box);
+  return { ...rect, ...hugRectForClipPath(rect, box.clipPath) };
 }
 
 /** `orientedVisibleOverlayRect`. */
@@ -111,18 +117,6 @@ export async function measurePreviewOverlay(
   };
 }
 
-/** `orientedGroupAwareOverlayRect` for each handle; null when the frame cannot answer. */
-export async function measurePreviewRects(
-  iframe: HTMLIFrameElement,
-  overlayEl: HTMLDivElement,
-  handles: string[],
-): Promise<Array<OverlayRect | null> | null> {
-  const reply = await previewGeometry(iframe, handles);
-  const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
-  if (!reply || !scale) return null;
-  return reply.elements.map((geometry) => geometry && groupAwareRect(scale, geometry, true));
-}
-
 /** `toVisibleOverlayRect` for each handle, with its frame rect and whether it renders. */
 export async function measurePreviewVisibleRects(
   iframe: HTMLIFrameElement,
@@ -135,14 +129,8 @@ export async function measurePreviewVisibleRects(
     const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
     if (!reply || !scale) return null;
     for (const box of reply.elements) {
-      const rect = box && baseRect(scale, box);
       measured.push(
-        box &&
-          rect && {
-            rect: { ...rect, ...hugRectForClipPath(rect, box.clipPath) },
-            frame: box.rect,
-            visible: box.visible,
-          },
+        box && { rect: flatVisibleRect(scale, box), frame: box.rect, visible: box.visible },
       );
     }
   }

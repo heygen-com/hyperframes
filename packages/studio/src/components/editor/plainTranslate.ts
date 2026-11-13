@@ -128,6 +128,8 @@ export function readTranslatePxLeavingPercent(el: HTMLElement): Point {
 
 export const UNREADABLE_TRANSLATE =
   "Studio can't read this layer's translate. Move it in the Code tab.";
+export const MOVING_LAYER_UNREADABLE =
+  "This preview can't save a move of a layer its animation moves yet. Move it in the Code tab.";
 
 /** Plain px only: GSAP's CSSPlugin splits `translate` on spaces and drops a calc(). */
 function formatTranslatePx(p: Point): string {

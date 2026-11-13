@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type Server } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { Socket } from "node:net";
@@ -21,7 +20,7 @@ vi.mock("node:dns", async (importOriginal) => {
   };
 });
 
-// Trust the committed fixture certificate; verification itself stays on.
+// Trust only this test's generated certificate; verification itself stays on.
 vi.mock("node:tls", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:tls")>();
   return {
@@ -34,6 +33,7 @@ vi.mock("node:tls", async (importOriginal) => {
 import { safeFetch } from "./assetDownloader.js";
 import { publicRequest } from "./publicNetwork.js";
 import { startCaptureProxy } from "./captureProxy.js";
+import { createCaptureTlsFixture } from "./fixtures/captureTls.js";
 
 const DESTINATION = "assets.capture-fixture.com";
 
@@ -104,13 +104,9 @@ function dialTarget(args: unknown[]): string {
 
 describe("capture with the opt-in upstream proxy", () => {
   beforeAll(async () => {
-    const fixture = (name: string) =>
-      new URL(`./fixtures/capture-fixture-${name}`, import.meta.url);
-    transport.certificate = await readFile(fixture("certificate.pem"), "utf8");
-    destination.setSecureContext({
-      key: await readFile(fixture("key.pem")),
-      cert: transport.certificate,
-    });
+    const fixture = await createCaptureTlsFixture();
+    transport.certificate = fixture.cert;
+    destination.setSecureContext(fixture);
     await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
     const address = upstream.address();
     if (!address || typeof address === "string") throw new Error("Missing upstream port");
