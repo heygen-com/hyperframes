@@ -7,11 +7,45 @@ import {
   StudioFileConflictError,
   StudioSaveHttpError,
   StudioSaveNetworkError,
+  createStudioSaveHttpError,
   buildStudioSaveFailureProperties,
   getStudioSaveStatusCode,
   retryStudioSave,
   trackStudioEditBlocked,
 } from "./studioSaveDiagnostics";
+
+describe("a file the server says is held or protected", () => {
+  // fails without the fix: the person read 'Failed to read ... (423): {"error":"file in use",...}' or no status at all.
+  it.each([
+    [423, "busy", "index.html is open in another program. Close it there, then try again."],
+    [
+      403,
+      "permission",
+      "index.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+    ],
+  ])("tells a %i %s in words naming the file, not the folder", async (status, why, words) => {
+    const response = new Response(JSON.stringify({ error: "x", why }), { status });
+    const error = await createStudioSaveHttpError(response, "Failed to save a/b/index.html", {
+      path: "a/b/index.html",
+    });
+    expect(error.message).toBe(words);
+    expect(error.statusCode).toBe(status);
+  });
+
+  it("keeps the status and body for any other answer, and without a path", async () => {
+    const other = await createStudioSaveHttpError(
+      new Response("boom", { status: 500 }),
+      "Failed to save index.html",
+      { path: "index.html" },
+    );
+    expect(other.message).toBe("Failed to save index.html (500): boom");
+    const noPath = await createStudioSaveHttpError(
+      new Response(JSON.stringify({ why: "busy" }), { status: 423 }),
+      "Failed to save index.html",
+    );
+    expect(noPath.message).toMatch(/^Failed to save index.html \(423\)/);
+  });
+});
 
 describe("studio save diagnostics", () => {
   it("preserves conflict versions and both sides for explicit recovery UI", () => {

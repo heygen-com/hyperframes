@@ -188,10 +188,27 @@ export function trackStudioEditBlocked(input: StudioSaveFailureInput): void {
   trackStudioEvent("edit_blocked", buildStudioSaveFailureProperties(input));
 }
 
+const HELD_FILE_WORDS = {
+  busy: (file: string) => `${file} is open in another program. Close it there, then try again.`,
+  permission: (file: string) =>
+    `${file} can't be changed: it is read-only or protected. Check its permissions, then try again.`,
+} as const;
+
+function heldFileMessage(body: string, path: string | undefined): string | null {
+  if (!path) return null;
+  try {
+    const why: unknown = (JSON.parse(body) as { why?: unknown }).why;
+    if (why !== "busy" && why !== "permission") return null;
+    return HELD_FILE_WORDS[why](path.split(/[\\/]/).pop() ?? path);
+  } catch {
+    return null;
+  }
+}
+
 export async function createStudioSaveHttpError(
   response: Response,
   fallbackMessage: string,
-  options: { alreadyToasted?: boolean } = {},
+  options: { alreadyToasted?: boolean; path?: string } = {},
 ): Promise<StudioSaveHttpError> {
   let body = "";
   try {
@@ -200,9 +217,11 @@ export async function createStudioSaveHttpError(
     body = "";
   }
   const detail = body.trim().slice(0, 300);
-  const message = detail
-    ? `${fallbackMessage} (${response.status}): ${detail}`
-    : `${fallbackMessage} (${response.status})`;
+  const message =
+    heldFileMessage(body, options.path) ??
+    (detail
+      ? `${fallbackMessage} (${response.status}): ${detail}`
+      : `${fallbackMessage} (${response.status})`);
   return new StudioSaveHttpError(message, response.status, options);
 }
 

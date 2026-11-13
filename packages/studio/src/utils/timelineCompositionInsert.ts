@@ -25,7 +25,9 @@ async function insertTimelineComposition(input: {
     buildProjectApiPath(input.projectId, `/files/${encodeURIComponent(input.targetPath)}`),
   );
   if (!current.ok) {
-    throw await createStudioSaveHttpError(current, `Failed to read ${input.targetPath}`);
+    throw await createStudioSaveHttpError(current, `Failed to read ${input.targetPath}`, {
+      path: input.targetPath,
+    });
   }
   const snapshot = (await current.json()) as { version?: string };
   if (typeof snapshot.version !== "string") throw new Error("Missing composition file version");
