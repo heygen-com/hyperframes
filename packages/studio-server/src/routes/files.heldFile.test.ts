@@ -7,9 +7,9 @@ import { join } from "node:path";
 import { registerFileRoutes } from "./files";
 import type { StudioApiAdapter } from "../types";
 
-const cleanups: Array<() => void> = [];
-afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+const cleanups: Array<() => void | Promise<void>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
 function fixture(name: string) {
@@ -70,7 +70,13 @@ async function holdOpen(file: string) {
     "-Command",
     `$f=[IO.File]::Open('${file}','Open','ReadWrite','None'); 'held'; Start-Sleep 120`,
   ]);
-  cleanups.push(() => holder.kill());
+  cleanups.push(
+    () =>
+      new Promise<void>((resolve) => {
+        holder.once("exit", () => resolve());
+        holder.kill();
+      }),
+  );
   await new Promise((resolve) => holder.stdout?.once("data", resolve));
 }
 
