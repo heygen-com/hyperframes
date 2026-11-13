@@ -721,7 +721,7 @@ function captionZoneError(): Error {
 function positiveInteger(args: Record<string, unknown>, flag: string, fallback: number): number {
   const value = args[flag];
   if (value === undefined) return fallback;
-  const parsed = numericFlag(value);
+  const parsed = wholeStringNumber(value);
   if (!Number.isInteger(parsed) || parsed < 1)
     throw new CliUsageError(`Invalid --${flag}: ${JSON.stringify(value)}; use a positive integer`);
   return parsed;
@@ -730,7 +730,7 @@ function positiveInteger(args: Record<string, unknown>, flag: string, fallback: 
 function nonNegativeNumber(args: Record<string, unknown>, flag: string, fallback: number): number {
   const value = args[flag];
   if (value === undefined) return fallback;
-  const parsed = numericFlag(value);
+  const parsed = wholeStringNumber(value);
   if (!Number.isFinite(parsed) || parsed < 0)
     throw new CliUsageError(
       `Invalid --${flag}: ${JSON.stringify(value)}; use a non-negative number`,
@@ -738,8 +738,7 @@ function nonNegativeNumber(args: Record<string, unknown>, flag: string, fallback
   return parsed;
 }
 
-// Number(), not parseInt/parseFloat: "5abc" and "2px" are typos, not 5 and 2.
-function numericFlag(value: unknown): number {
+function wholeStringNumber(value: unknown): number {
   const text = String(value).trim();
   return text === "" ? NaN : Number(text);
 }
