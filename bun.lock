@@ -27,7 +27,7 @@
     },
     "packages/aws-lambda": {
       "name": "@hyperframes/aws-lambda",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@aws-sdk/client-ecr": "^3.1146.0",
         "@aws-sdk/client-lambda": "^3.1146.0",
@@ -63,7 +63,7 @@
     },
     "packages/cli": {
       "name": "@hyperframes/cli",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "bin": {
         "hyperframes": "./bin/hyperframes.mjs",
         "hyperframes-localize-fonts": "./bin/hyperframes-localize-fonts.mjs",
@@ -85,7 +85,7 @@
         "open": "^10.0.0",
         "postcss": "^8.5.8",
         "puppeteer-core": "^25.10.0",
-        "undici": "7.25.0",
+        "undici": "7.30.1",
         "yauzl": "^3.4.0",
       },
       "devDependencies": {
@@ -120,7 +120,7 @@
     },
     "packages/core": {
       "name": "@hyperframes/core",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@chenglou/pretext": "^0.0.5",
         "@hyperframes/lint": "workspace:*",
@@ -165,7 +165,7 @@
     },
     "packages/engine": {
       "name": "@hyperframes/engine",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hono/node-server": "^2.0.5",
         "@hyperframes/core": "workspace:^",
@@ -174,7 +174,7 @@
         "linkedom": "^0.18.12",
         "puppeteer": "~25.11.0",
         "puppeteer-core": "^25.11.0",
-        "undici": "7.25.0",
+        "undici": "7.30.1",
       },
       "devDependencies": {
         "@types/node": "^25.0.10",
@@ -185,7 +185,7 @@
     },
     "packages/gcp-cloud-run": {
       "name": "@hyperframes/gcp-cloud-run",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@google-cloud/storage": "^7.14.0",
         "@google-cloud/workflows": "^4.2.0",
@@ -206,7 +206,7 @@
     },
     "packages/inspector": {
       "name": "@hyperframes/inspector",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "bin": {
         "hyperframes-inspector": "./dist/server.js",
       },
@@ -229,7 +229,7 @@
     },
     "packages/lint": {
       "name": "@hyperframes/lint",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hyperframes/parsers": "workspace:*",
         "acorn": "^8.17.0",
@@ -250,7 +250,7 @@
     },
     "packages/parsers": {
       "name": "@hyperframes/parsers",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@babel/parser": "^7.27.0",
         "acorn": "^8.17.0",
@@ -271,7 +271,7 @@
     },
     "packages/player": {
       "name": "@hyperframes/player",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
       },
@@ -286,7 +286,7 @@
     },
     "packages/producer": {
       "name": "@hyperframes/producer",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hono/node-server": "^2.0.5",
         "@hyperframes/core": "workspace:*",
@@ -312,7 +312,7 @@
     },
     "packages/sdk": {
       "name": "@hyperframes/sdk",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -342,7 +342,7 @@
     },
     "packages/shader-transitions": {
       "name": "@hyperframes/shader-transitions",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "html2canvas": "^1.4.1",
       },
@@ -363,7 +363,7 @@
     },
     "packages/studio": {
       "name": "@hyperframes/studio",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@base-ui/react": "1.7.0",
         "@codemirror/autocomplete": "^6.20.1",
@@ -417,7 +417,7 @@
     },
     "packages/studio-server": {
       "name": "@hyperframes/studio-server",
-      "version": "0.9.10",
+      "version": "0.9.19",
       "dependencies": {
         "@hyperframes/core": "workspace:*",
         "@hyperframes/parsers": "workspace:*",
@@ -2147,7 +2147,7 @@
 
     "unbash": ["unbash@3.0.0", "", {}, "sha512-FeFPZ/WFT0mbRCuydiZzpPFlrYN8ZUpphQKoq4EeElVIYjYyGzPMxQR/simUwCOJIyVhpFk4RbtyO7RuMpMnHA=="],
 
-    "undici": ["undici@7.25.0", "", {}, "sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ=="],
+    "undici": ["undici@7.30.1", "", {}, "sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg=="],
 
     "undici-types": ["undici-types@7.21.0", "", {}, "sha512-w9IMgQrz4O0YN1LtB7K5P63vhlIOvC7opSmouCJ+ZywlPAlO9gIkJ+otk6LvGpAs2wg4econaCz3TvQ9xPoyuQ=="],
 
