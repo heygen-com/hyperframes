@@ -377,9 +377,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
-  if (!job.config.allowOutsideProjectAssets) {
-    dropMediaOutsideProject({ projectDir, workDir, composition, log });
-  }
+  dropMediaOutsideProject({
+    projectDir,
+    workDir,
+    composition,
+    log,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+  });
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),

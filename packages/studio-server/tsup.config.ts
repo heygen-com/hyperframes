@@ -19,6 +19,7 @@ export default defineConfig({
     "helpers/encoderOptions": "src/helpers/encoderOptions.ts",
     "helpers/mediaRange": "src/helpers/mediaRange.ts",
     "helpers/mime": "src/helpers/mime.ts",
+    "helpers/outsideFile": "src/helpers/outsideFile.ts",
     "history/index": "src/history/index.ts",
   },
   format: ["esm"],

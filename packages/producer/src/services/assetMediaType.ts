@@ -12,7 +12,7 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
-import { escapesAssetRoot } from "../utils/paths.js";
+import { escapesAssetRoot, leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
 import type { ProducerLogger } from "../logger.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
@@ -97,6 +97,7 @@ export function dropMediaOutsideProject(input: {
   workDir: string;
   composition: { videos: VideoElement[]; audios: AudioElement[]; images: ImageElement[] };
   log: ProducerLogger;
+  allowOutsideProjectAssets?: boolean;
 }): void {
   const { projectDir, workDir, composition, log } = input;
   const compiledDir = join(workDir, "compiled");
@@ -105,6 +106,11 @@ export function dropMediaOutsideProject(input: {
     if (!src || isRemoteOrInlineSource(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
     if (roots.some((root) => !escapesAssetRoot(path, root))) return true;
+    if (input.allowOutsideProjectAssets) {
+      const refusal = outsideAssetRefusal(projectDir, path);
+      if (refusal) log.warn(`[Render] ${leftOutOfRender(`Media "${id}"`, src, refusal)}`);
+      return refusal === null;
+    }
     log.warn(`[Render] Media "${id}" source is missing: it is outside the project folder`, { src });
     return false;
   };

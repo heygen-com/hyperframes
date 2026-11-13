@@ -80,7 +80,14 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { escapesAssetRoot, isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import {
+  escapesAssetRoot,
+  isPathInside,
+  leftOutOfRender,
+  outsideAssetRefusal,
+  refusesOutsideLink,
+  toExternalAssetKey,
+} from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -275,6 +282,10 @@ function assertSubCompositionsUsable(
     const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });
+      continue;
+    }
+    if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
+      problems.push({ srcPath, detail: "it is outside the project in a private location" });
       continue;
     }
     if (isPrivateCompositionFile(projectDir, filePath)) {
@@ -1403,9 +1414,12 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 export function collectExternalAssets(
   html: string,
   projectDir: string,
+  log: ProducerLogger = defaultLogger,
+  file = "index.html",
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
+  const leftOut = new Set<string>();
 
   function processPath(rawPath: string): string | null {
     const trimmed = rawPath.trim();
@@ -1415,6 +1429,12 @@ export function collectExternalAssets(
       return null; // inside projectDir, file server handles this
     }
     if (!existsSync(absPath)) return null;
+    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    if (refusal) {
+      if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
+      leftOut.add(trimmed);
+      return null;
+    }
     // resolve() already canonicalises the path (no .. components remain);
     // toExternalAssetKey() produces a cross-platform relative key that
     // `path.join(compileDir, key)` cannot escape on any OS.
@@ -1957,6 +1977,7 @@ async function embedLocalFontFaces(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
+  log: ProducerLogger = defaultLogger,
 ): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
@@ -1980,6 +2001,11 @@ async function embedLocalFontFaces(
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
+        // A project font that is a link leading outside obeys the same policy as the file server.
+        if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+          embeddedPaths.add(localPath);
+          continue;
+        }
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2165,6 +2191,11 @@ function bindVariableMediaSources(html: string, variables: Record<string, unknow
   }
   return changed ? document.toString() : html;
 }
+
+const entryFileName = (projectDir: string, htmlPath: string) =>
+  isPathInside(htmlPath, projectDir)
+    ? relative(projectDir, htmlPath).split(sep).join("/")
+    : basename(htmlPath);
 
 /**
  * Compile an HTML composition project into a single self-contained HTML string
@@ -2356,13 +2387,23 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
-  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir, assetRoot);
+  const embeddedHtml = await embedLocalFontFaces(
+    htmlWithPreparedGifs,
+    projectDir,
+    assetRoot,
+    options.log,
+  );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
   const { html, externalAssets } = options.allowOutsideProjectAssets
-    ? collectExternalAssets(embeddedHtml, projectDir)
+    ? collectExternalAssets(
+        embeddedHtml,
+        projectDir,
+        options.log,
+        entryFileName(projectDir, htmlPath),
+      )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 
   for (const [relPath, absPath] of remoteMediaAssets) {
