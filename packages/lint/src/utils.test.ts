@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  findRootTag,
   isAudibleVideoTag,
   parseHtmlStructure,
   readAttr,
@@ -291,5 +292,53 @@ describe("isAudibleVideoTag", () => {
     expect(isAudibleVideoTag('<video data-has-audio="false">')).toBe(false);
     expect(isAudibleVideoTag('<video data-has-audio="">')).toBe(false);
     expect(isAudibleVideoTag('<video data-has-audio="TRUE">')).toBe(false);
+  });
+});
+
+describe("findRootTag", () => {
+  const rootRaw = (src: string) => findRootTag(src)?.raw ?? null;
+
+  it("returns the first body tag when nothing marks a root", () => {
+    const src = `<body><div id="a"></div><div id="b"></div></body>`;
+    expect(rootRaw(src)).toContain('id="a"');
+  });
+
+  it("keeps the body as root when it carries the composition markers", () => {
+    const src = `<body data-composition-id="m" data-width="1920" data-height="1080"><div id="frame"></div></body>`;
+    expect(rootRaw(src)).toContain("<body");
+  });
+
+  it("prefers a data-root composition over a leading unmarked container", () => {
+    // The swiss-grid --video scaffold wiring: a body-level A-roll container
+    // placed before the composition root. The runtime binds the root marked
+    // data-root="true" (compositionDimension.ts), so lint must pick it too
+    // instead of manufacturing root_missing_composition_id on the container.
+    const src = `<body>
+  <div id="frame"><video src="a.mp4" muted></video></div>
+  <div id="master" data-composition-id="master" data-root="true" data-width="1920" data-height="1080"></div>
+</body>`;
+    const rootTag = findRootTag(src);
+    expect(rootTag?.raw).toContain('data-composition-id="master"');
+    expect(rootTag?.raw).toContain('data-root="true"');
+  });
+
+  it("takes the first data-root composition in document order", () => {
+    const src = `<body>
+  <div data-composition-id="first" data-root="true" data-width="1" data-height="1"></div>
+  <div data-composition-id="second" data-root="true" data-width="2" data-height="2"></div>
+</body>`;
+    expect(rootRaw(src)).toContain('"first"');
+  });
+
+  it("ignores data-root without a composition id (the runtime requires both)", () => {
+    // The explicit-root branch needs data-root AND a composition id, so this
+    // falls back to the plain first-tag rule instead of jumping to the later
+    // marked element.
+    const src = `<body>
+  <div data-root="true"></div>
+  <div data-composition-id="m" data-width="100" data-height="100"></div>
+</body>`;
+    expect(rootRaw(src)).toContain('data-root="true"');
+    expect(rootRaw(src)).not.toContain('data-composition-id="m"');
   });
 });
