@@ -1158,6 +1158,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
     "--ignore-gpu-blocklist",
     ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
+    "--disable-lcd-text",
     "--force-color-profile=srgb",
     "--force-device-scale-factor=1",
     `--window-size=${options.width},${options.height}`,

@@ -244,6 +244,17 @@ describe("BeginFrame capability probe", () => {
 describe("buildChromeArgs browser GPU mode", () => {
   const base = { width: 1920, height: 1080 };
 
+  // Windows ClearType otherwise paints red/blue fringes on glyph edges in every capture mode.
+  it.each(["beginframe", "screenshot", "drawelement"] as CaptureMode[])(
+    "always disables LCD text (%s)",
+    (captureMode) => {
+      expect(buildChromeArgs({ ...base, captureMode })).toContain("--disable-lcd-text");
+      expect(buildChromeArgs({ ...base, captureMode, platform: "win32" })).toContain(
+        "--disable-lcd-text",
+      );
+    },
+  );
+
   it("uses SwiftShader software GL by default for reproducible local renders", () => {
     const args = buildChromeArgs(base);
     expect(args).toContain("--enable-features=CanvasDrawElement");
