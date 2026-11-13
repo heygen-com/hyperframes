@@ -46,11 +46,16 @@ function tail(stderr: string): string {
     .join("\n");
 }
 
-/** Starts the browser once more with the failed launch's flags and says how it ended. */
+/** Starts the browser again with the failed launch's flags and env, and says how it ended. */
 export async function diagnoseChromeStartup(
   executablePath: string,
   args: readonly string[],
-  options: { timeoutMs?: number; platform?: NodeJS.Platform; signal?: AbortSignal } = {},
+  options: {
+    timeoutMs?: number;
+    platform?: NodeJS.Platform;
+    signal?: AbortSignal;
+    env?: NodeJS.ProcessEnv;
+  } = {},
 ): Promise<string> {
   const profile = mkdtempSync(join(tmpdir(), "hf-chrome-probe-"));
   const timeoutMs = options.timeoutMs ?? PROBE_TIMEOUT_MS;
@@ -58,7 +63,7 @@ export async function diagnoseChromeStartup(
     return await new Promise<string>((resolve) => {
       let stderr = "";
       const child = spawn(executablePath, startupArgs(args, profile), {
-        env: buildChromeLaunchEnv(),
+        env: buildChromeLaunchEnv(options.env),
         stdio: ["ignore", "ignore", "pipe"],
         windowsHide: true,
       });
@@ -104,7 +109,7 @@ export async function explainChromeLaunchFailure(
   error: unknown,
   executablePath: string | undefined,
   args: readonly string[] | undefined,
-  signal?: AbortSignal,
+  { signal, env }: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {},
 ): Promise<unknown> {
   if (!(error instanceof Error)) return error;
   const { code, errno, syscall } = error as NodeJS.ErrnoException;
@@ -117,6 +122,6 @@ export async function explainChromeLaunchFailure(
       { cause: error },
     );
   if (!executablePath) return error;
-  const diagnosis = await diagnoseChromeStartup(executablePath, args ?? [], { signal });
+  const diagnosis = await diagnoseChromeStartup(executablePath, args ?? [], { signal, env });
   return new Error(`${error.message}\n${diagnosis}`, { cause: error });
 }

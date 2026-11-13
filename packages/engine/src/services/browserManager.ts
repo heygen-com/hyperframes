@@ -945,7 +945,7 @@ async function launchBrowser(
         headless: true,
         args: withHyperframesBrowserMarker(attempted),
       });
-      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults);
+      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, { env });
     });
   };
   const probe = (target: Browser, timeoutMs?: number) =>
