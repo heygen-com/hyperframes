@@ -1,10 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { TimelineElement } from "../player";
 import {
-  getAllPreviewTargetsFromPointer,
-  getPreviewTargetFromPointer,
-} from "../utils/studioPreviewHelpers";
-import {
   domEditSelectionsEqual,
   domEditSelectionsTargetSame,
   domEditSelectionInGroup,
@@ -17,9 +13,13 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import {
+  elementWithin,
   findOpaqueTimelineElement,
+  findPointerTarget,
+  findPointerTargets,
   findSelectionElement,
   resolveFoundSelection,
+  selectionElementLive,
 } from "../components/editor/previewSelection";
 import type { PreviewElement } from "../player/lib/previewElements";
 import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits";
@@ -189,7 +189,7 @@ export function useDomSelection({
       // Selecting something outside the drilled-into group exits the drill-in, so
       // a later click on the group selects it as a unit again (non-sticky drill-in).
       const activeGroup = activeGroupElementRef.current;
-      if (activeGroup && nextSelection && !activeGroup.contains(nextSelection.element)) {
+      if (activeGroup && nextSelection && !elementWithin(activeGroup, nextSelection.element)) {
         activeGroupElementRef.current = null;
         setActiveGroupElementState(null);
       }
@@ -269,7 +269,7 @@ export function useDomSelection({
       } catch {
         /* cross-origin guard */
       }
-      const target = getPreviewTargetFromPointer(iframe, clientX, clientY, activeCompPath);
+      const target = await findPointerTarget(iframe, clientX, clientY);
       if (!target) return null;
       return buildDomSelectionFromTarget(
         target,
@@ -285,7 +285,7 @@ export function useDomSelection({
             },
       );
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
 
   const resolveAllDomSelectionsFromPreviewPoint = useCallback(
@@ -298,7 +298,7 @@ export function useDomSelection({
       } catch {
         /* cross-origin guard */
       }
-      const targets = getAllPreviewTargetsFromPointer(iframe, clientX, clientY, activeCompPath);
+      const targets = await findPointerTargets(iframe, clientX, clientY);
       const results: DomEditSelection[] = [];
       for (const target of targets) {
         const sel = await buildDomSelectionFromTarget(target, { skipSourceProbe: true });
@@ -306,11 +306,13 @@ export function useDomSelection({
       }
       return results;
     },
-    [activeCompPath, buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
+    [buildDomSelectionFromTarget, captionEditMode, previewIframeRef],
   );
 
   const updateDomEditHoverSelection = useCallback((selection: DomEditSelection | null) => {
-    if (domEditSelectionsTargetSame(domEditHoverSelectionRef.current, selection)) return;
+    const current = domEditHoverSelectionRef.current;
+    const sameHandle = current?.handle === selection?.handle;
+    if (domEditSelectionsTargetSame(current, selection) && sameHandle) return;
     domEditHoverSelectionRef.current = selection;
     setDomEditHoverSelection(selection);
   }, []);
@@ -481,7 +483,7 @@ export function useDomSelection({
       captionEditMode ||
       domEditSelectionsTargetSame(domEditHoverSelection, domEditSelection) ||
       domEditSelectionInGroup(domEditGroupSelections, domEditHoverSelection) ||
-      !domEditHoverSelection.element.isConnected;
+      !selectionElementLive(domEditHoverSelection);
     if (shouldClear) updateDomEditHoverSelection(null);
   }, [
     captionEditMode,

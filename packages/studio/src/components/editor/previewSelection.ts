@@ -23,6 +23,7 @@ import {
   describePreviewElements,
   previewAncestors,
   previewElementSelectorIndex,
+  previewPointerTargets,
   previewElementSourceFile,
   queryPreviewElements,
   type PreviewElement,
@@ -53,6 +54,11 @@ import {
   type TimelineElementDomTargetOptions,
 } from "./domEditingTypes";
 import { existsInSourceFile } from "./probeSourceElement";
+import {
+  framePointFraction,
+  getAllPreviewTargetsFromPointer,
+  getPreviewTargetFromPointer,
+} from "../../utils/studioPreviewHelpers";
 import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
 
 let inertDocument: Document | undefined;
@@ -68,6 +74,7 @@ function inertElement(tag: string): HTMLElement {
 
 const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
 const standInHandles = new WeakMap<Element, string>();
+const standInAncestors = new WeakMap<Element, string[]>();
 
 function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): HTMLElement {
   const client = previewEditingClient(iframe);
@@ -161,6 +168,19 @@ export async function findPreviewElementForSelection(
   return null;
 }
 
+/** A clip built without the frame's document has only the runtime's clip id: an id, else a hf-id. */
+async function findByClipId(
+  iframe: HTMLIFrameElement,
+  element: TimelineElementDomTarget,
+  sourceFile: string,
+  path: string | null,
+): Promise<Found> {
+  if (!element.id || element.domId || element.selector || element.compositionSrc) return null;
+  const byId = await findPreviewElementForSelection(iframe, { id: element.id, sourceFile }, path);
+  if (byId !== null) return byId;
+  return findPreviewElementForSelection(iframe, { hfId: element.id, sourceFile }, path);
+}
+
 /** `findElementForTimelineElement` over the frame's runtime. */
 export async function findPreviewElementForTimelineElement(
   iframe: HTMLIFrameElement,
@@ -171,6 +191,8 @@ export async function findPreviewElementForTimelineElement(
   const path = options.activeCompositionPath;
   const found = target && (await findPreviewElementForSelection(iframe, target, path));
   if (found !== null) return found;
+  const byClipId = await findByClipId(iframe, element, sourceFile, path);
+  if (byClipId !== null) return byClipId;
   if (!rootFallback) return null;
   const reply = await queryPreviewElements(iframe, "[data-composition-id]");
   if (!reply) return undefined;
@@ -286,6 +308,10 @@ export async function resolvePreviewSelection(
   const current = chain[index]!;
   if (!valuesWhole(current)) return null;
   const element = standInFor(iframe, current);
+  standInAncestors.set(
+    element,
+    chain.slice(index + 1).map((node) => node.handle),
+  );
   const identity = previewIdentity(current, options.activeCompositionPath);
   const compositionSrc = compositionSourceOf(current);
   const probe = readable(current);
@@ -387,3 +413,60 @@ export async function findOpaqueTimelineElement(
   if (!iframe || !previewFrameOpaque(iframe)) return null;
   return (await findPreviewElementForTimelineElement(iframe, element, lookup)) ?? null;
 }
+
+export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
+  const handle = standInHandles.get(container);
+  if (handle === undefined) return container.contains(element);
+  return element === container || (standInAncestors.get(element)?.includes(handle) ?? false);
+}
+
+/** A `data-` attribute of the selection's element; a stand-in's comes from its description. */
+export function selectionDataAttribute(selection: DomEditSelection, name: `data-${string}`) {
+  if (!selection.handle) return selection.element.getAttribute(name);
+  return selection.dataAttributes[name.slice("data-".length)] ?? null;
+}
+
+const pointerAnswers = new WeakMap<HTMLIFrameElement, { x: number; y: number; found: boolean }>();
+
+async function previewPointerTarget(iframe: HTMLIFrameElement, clientX: number, clientY: number) {
+  const { x, y } = framePointFraction(iframe, clientX, clientY);
+  const reply = await previewPointerTargets(iframe, x, y);
+  if (reply) pointerAnswers.set(iframe, { x: clientX, y: clientY, found: reply.target !== null });
+  return reply;
+}
+
+/** An opaque frame answers from its last pointer read at this point, and assumes a hit without one. */
+export function pointerMayHitElement(iframe: HTMLIFrameElement, clientX: number, clientY: number) {
+  if (!previewFrameOpaque(iframe))
+    return Boolean(getPreviewTargetFromPointer(iframe, clientX, clientY));
+  const answer = pointerAnswers.get(iframe);
+  return answer?.x === clientX && answer.y === clientY ? answer.found : true;
+}
+
+export async function findPointerTarget(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+): Promise<HTMLElement | Found> {
+  if (!previewFrameOpaque(iframe)) return getPreviewTargetFromPointer(iframe, clientX, clientY);
+  const reply = await previewPointerTarget(iframe, clientX, clientY);
+  if (!reply?.target) return reply ? null : undefined;
+  const [described] = (await describePreviewElements(iframe, [reply.target.handle])) ?? [];
+  return described ?? undefined;
+}
+
+export async function findPointerTargets(
+  iframe: HTMLIFrameElement,
+  clientX: number,
+  clientY: number,
+): Promise<Array<HTMLElement | PreviewElement>> {
+  if (!previewFrameOpaque(iframe)) return getAllPreviewTargetsFromPointer(iframe, clientX, clientY);
+  const reply = await previewPointerTarget(iframe, clientX, clientY);
+  const handles = reply?.stack.map((hit) => hit.handle) ?? [];
+  const described = handles.length ? await describePreviewElements(iframe, handles) : [];
+  return (described ?? []).filter((element) => element !== null);
+}
+
+/** A stand-in is never connected: an opaque frame's selection stands until it is replaced. */
+export const selectionElementLive = (selection: DomEditSelection) =>
+  selection.handle !== undefined || selection.element.isConnected;

@@ -3,6 +3,7 @@ import { useCallback, useRef } from "react";
 import { liveTime, usePlayerStore } from "../player";
 import { pauseStudioPreviewPlayback } from "../utils/studioPreviewHelpers";
 import { type DomEditSelection } from "../components/editor/domEditing";
+import { selectionDataAttribute } from "../components/editor/previewSelection";
 import type { ApplyDomSelectionOptions, ResolveDomSelectionOptions } from "./useDomSelection";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 
@@ -119,7 +120,7 @@ export function usePreviewInteraction({
           cycle.candidates.length > 1 &&
           Math.hypot(e.clientX - cycle.x, e.clientY - cycle.y) < CYCLE_RADIUS_PX &&
           downTs - cycle.at < CYCLE_WINDOW_MS;
-        if (hit?.element.hasAttribute("data-hf-group")) {
+        if (hit && selectionDataAttribute(hit, "data-hf-group") !== null) {
           e.preventDefault();
           e.stopPropagation();
           cycleRef.current = null;
@@ -134,8 +135,8 @@ export function usePreviewInteraction({
         if (
           hit &&
           !hasStackCycleAtSpot &&
-          !hit.element.hasAttribute("data-composition-src") &&
-          !hit.element.hasAttribute("data-composition-file")
+          selectionDataAttribute(hit, "data-composition-src") === null &&
+          selectionDataAttribute(hit, "data-composition-file") === null
         ) {
           e.preventDefault();
           e.stopPropagation();

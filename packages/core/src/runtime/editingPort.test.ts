@@ -67,6 +67,7 @@ describe("createEditingPortClient", () => {
           "set-loop-start",
           "computed-styles",
           "elements-at-point",
+          "pointer-targets",
           "describe",
           "ancestors",
           "query",

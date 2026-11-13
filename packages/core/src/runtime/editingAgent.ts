@@ -28,6 +28,7 @@ import {
   queryElements,
 } from "./editingHandles";
 import { elementGeometry } from "./editingGeometry";
+import { pointerTargetsAt } from "./editingTargets";
 import { getLogicalOpacity } from "../studioPreviewMark";
 
 type Handlers = {
@@ -81,6 +82,7 @@ const HANDLERS: Handlers = {
     return { styles };
   },
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
+  "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
   ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
   query: ({ selector }) => queryElements(selector),

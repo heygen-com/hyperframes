@@ -342,6 +342,19 @@ describe("opaque frame selections read only what arrived whole", () => {
     expect(essay.remote).toMatchObject({ id: "essay", selector: "#essay" });
   });
 
+  it("selects an image with a short data: src, and not one whose data: src was cut", async () => {
+    const icon = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`;
+    document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080">
+      <img id="icon"><img id="photo" src="data:image/png;base64,${"A".repeat(3000)}"></div>`;
+    document.getElementById("icon")!.setAttribute("src", icon);
+    const short = await bothPaths(document.getElementById("icon")!);
+    expect(shared(short.remote)).toEqual(shared(short.live));
+    expect(short.remote!.src).toBe(icon);
+    const long = await bothPaths(document.getElementById("photo")!);
+    expect(long.live).not.toBeNull();
+    expect(long.remote).toBeNull();
+  });
+
   it("builds nothing when the frame cannot read computed styles or the composition root", async () => {
     document.body.innerHTML = FIXTURE;
     const opaque = opaqueFrame();

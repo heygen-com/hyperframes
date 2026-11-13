@@ -165,13 +165,21 @@ describe("usePreviewInteraction", () => {
     cleanup();
   });
 
-  it("preserves group drill-in on double-click", async () => {
+  it.each([
+    ["a wrapper Studio can script", false],
+    ["an opaque frame's tag-only stand-in", true],
+  ])("preserves group drill-in on double-click on %s", async (_, opaque) => {
     const group = document.createElement("div");
-    group.setAttribute("data-hf-group", "hero");
+    if (!opaque) group.setAttribute("data-hf-group", "hero");
     const child = document.createElement("span");
     child.id = "headline";
     group.append(child);
     const groupSelection = makeSelection("Hero Group", group);
+    if (opaque)
+      Object.assign(groupSelection, {
+        handle: "0123456789abcdef:1",
+        dataAttributes: { "hf-group": "hero" },
+      });
     const childSelection = makeSelection("Headline", child);
     const applyDomSelection = vi.fn();
     const setActiveGroupElement = vi.fn();

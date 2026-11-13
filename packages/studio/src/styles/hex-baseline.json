@@ -1,5 +1,5 @@
 {
-  "total": 226,
+  "total": 223,
   "files": {
     "packages/studio/src/captions/components/CaptionOverlay.tsx": 5,
     "packages/studio/src/captions/components/CaptionTimeline.tsx": 11,
@@ -18,7 +18,6 @@
     "packages/studio/src/components/editor/SnapGuideOverlay.tsx": 3,
     "packages/studio/src/components/editor/Transform3DCube.tsx": 5,
     "packages/studio/src/components/editor/colorValue.ts": 3,
-    "packages/studio/src/components/editor/domEditingElement.ts": 1,
     "packages/studio/src/components/editor/gradientValue.ts": 6,
     "packages/studio/src/components/editor/panelTokens.ts": 4,
     "packages/studio/src/components/editor/propertyPanelColor.tsx": 7,

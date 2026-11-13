@@ -103,19 +103,6 @@ export function isManualGeometryStyleProperty(property: string): boolean {
   return property === "left" || property === "top" || property === "width" || property === "height";
 }
 
-export function getEventTargetElement(target: EventTarget | null): HTMLElement | null {
-  if (!target || typeof target !== "object") return null;
-  const maybeNode = target as {
-    nodeType?: number;
-    parentElement?: Element | null;
-  };
-  if (maybeNode.nodeType === 1) return target as HTMLElement;
-  if (maybeNode.nodeType === 3 && maybeNode.parentElement) {
-    return maybeNode.parentElement as HTMLElement;
-  }
-  return null;
-}
-
 export function shouldIgnoreHistoryShortcut(target: EventTarget | null): boolean {
   return isTypingTarget(target);
 }

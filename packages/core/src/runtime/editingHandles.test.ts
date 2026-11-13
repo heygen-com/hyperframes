@@ -157,7 +157,7 @@ describe("element handles over the editing port", () => {
     }
   });
 
-  it("cuts long values, keeps only a data: header, and leaves script and style text out", async () => {
+  it("cuts long values, keeps only a long data: value's header, and leaves script and style text out", async () => {
     const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
     document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">
       <img src="data:image/png;base64,${"A".repeat(5000)}"><style>.a{color:red}</style>
@@ -175,6 +175,16 @@ describe("element handles over the editing port", () => {
 
     const style = await describeOne(card.querySelector("style")!);
     expect(style).toMatchObject({ text: "", children: [], truncated: false });
+
+    const icon = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`;
+    document.body.innerHTML = `<img>`;
+    const iconImg = document.querySelector("img")!;
+    iconImg.setAttribute("src", icon);
+    iconImg.style.setProperty("background", `url('${icon}')`);
+    const small = await describeOne(iconImg);
+    expect(small.attributes).toEqual([["src", icon]]);
+    expect(small.inlineStyles.background).toContain("data:image/svg+xml,");
+    expect(small.truncated).toBe(false);
 
     document.body.innerHTML = `<p>data: 42 users, up 3%</p>`;
     const dataText = await describeOne(document.querySelector("p")!);

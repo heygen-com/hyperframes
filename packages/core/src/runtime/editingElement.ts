@@ -28,7 +28,7 @@ export interface EditingElementHit {
 }
 
 /**
- * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value keeps only its header.
+ * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value over its limit keeps only its header.
  * `truncated` says something was cut, so the description is not safe to write back to source.
  */
 export interface EditingElementDescription extends EditingElementHit {
