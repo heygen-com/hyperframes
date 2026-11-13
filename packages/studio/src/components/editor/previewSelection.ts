@@ -3,10 +3,10 @@
  * descriptions. Which element a selection lands on comes from `domEditSelectionRules.ts`, the
  * rules a scriptable frame's selections use, so both kinds of frame select the same element.
  *
- * Such a selection's `element` is a stand-in: an element with only the target's tag, in a
- * document with no window, the same one for a handle for the whole frame load. Nothing in it
- * loads, runs or renders, and nothing from the frame is copied into it. The frame's element is
- * the selection's `handle`.
+ * Such a selection's `element` is a stand-in: an element with the target's tag, in a document
+ * with no window, the same one for a handle for the whole frame load. Nothing in it loads, runs or
+ * renders; from the frame it takes only the inline translate and box a gesture starts from. The
+ * frame's element is the selection's `handle`.
  */
 import { resolveEditingAffordances } from "@hyperframes/core/editing";
 import {
@@ -60,6 +60,13 @@ import {
   getPreviewTargetFromPointer,
 } from "../../utils/studioPreviewHelpers";
 import { isVideoAudible } from "../../player/lib/timelineElementHelpers";
+import { registerPreviewStandIn } from "./previewDrafts";
+import {
+  STUDIO_HEIGHT_PROP,
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+} from "./manualEditsTypes";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -72,6 +79,13 @@ function inertElement(tag: string): HTMLElement {
   }
 }
 
+const GESTURE_START_STYLES = [
+  "translate",
+  STUDIO_OFFSET_X_PROP,
+  STUDIO_OFFSET_Y_PROP,
+  STUDIO_WIDTH_PROP,
+  STUDIO_HEIGHT_PROP,
+];
 const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
 const standInHandles = new WeakMap<Element, string>();
 const standInAncestors = new WeakMap<Element, string[]>();
@@ -83,8 +97,13 @@ export function standInFor(iframe: HTMLIFrameElement, element: PreviewElement): 
   let standIn = byHandle.get(element.handle);
   if (!standIn) {
     standIn = inertElement(element.tag);
+    for (const name of GESTURE_START_STYLES) {
+      const value = element.inlineStyles[name];
+      if (value && !mayBeCut(value)) standIn.style.setProperty(name, value);
+    }
     byHandle.set(element.handle, standIn);
     standInHandles.set(standIn, element.handle);
+    registerPreviewStandIn(standIn, iframe, element.handle);
   }
   return standIn;
 }

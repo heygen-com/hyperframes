@@ -9,6 +9,8 @@ import {
 import { computeNextResizeAnchor, resizeRemainderShift } from "./domEditResizeLocal";
 import type { ResizeDraftSizes } from "./domEditResizeLocal";
 import { applyManualOffsetDragDraft } from "./manualOffsetDrag";
+import { drawPreviewDraft } from "./previewDrafts";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 type Corners = ReturnType<typeof elementCornerOverlayPoints>;
 
@@ -80,6 +82,34 @@ function resolveAnchoredResizeDraft(
   );
 }
 
+/** A frame Studio cannot measure: the box grows about its centre by the size the draft wrote. */
+function resolveUnmeasuredResizeDraft(
+  g: GestureState,
+  element: HTMLElement,
+  { written }: ResizeDraftSizes,
+): OverlayRect {
+  const width = (g.originWidth * written.width) / g.actualWidth;
+  const height = (g.originHeight * written.height) / g.actualHeight;
+  if (g.pathOffsetMember) {
+    const anchor = {
+      dx: ((g.actualWidth - written.width) / 2) * g.editScaleX,
+      dy: ((g.actualHeight - written.height) / 2) * g.editScaleY,
+    };
+    g.lastResizeAnchor = anchor;
+    applyManualOffsetDragDraft(g.pathOffsetMember, anchor.dx, anchor.dy);
+  }
+  drawPreviewDraft(element, { size: written });
+  return {
+    left: g.originLeft + (g.originWidth - width) / 2,
+    top: g.originTop + (g.originHeight - height) / 2,
+    width,
+    height,
+    editScaleX: g.editScaleX,
+    editScaleY: g.editScaleY,
+    angle: g.actualRotation,
+  };
+}
+
 /** The overlay rect to paint for the current resize pointer-move frame. */
 export function resolveResizeDraftRect(
   g: GestureState,
@@ -89,6 +119,7 @@ export function resolveResizeDraftRect(
   measureOrientedRect: () => OverlayRect | null,
   sizes: ResizeDraftSizes,
 ): OverlayRect {
+  if (iframe && previewFrameOpaque(iframe)) return resolveUnmeasuredResizeDraft(g, element, sizes);
   if (g.pathOffsetMember) {
     return resolveAnchoredResizeDraft(
       g,
