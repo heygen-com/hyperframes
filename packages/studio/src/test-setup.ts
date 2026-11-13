@@ -12,3 +12,6 @@ if (typeof CSS.escape !== "function") {
 if (typeof globalThis.confirm !== "function") {
   (globalThis as Record<string, unknown>).confirm = () => false;
 }
+
+// happy-dom now has `getAnimations`, so Base UI would defer every popup unmount to animation frames.
+(globalThis as Record<string, unknown>).BASE_UI_ANIMATIONS_DISABLED = true;
