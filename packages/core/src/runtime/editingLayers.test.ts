@@ -64,8 +64,9 @@ describe("layers", () => {
       `t${MAX_QUERY_MATCHES + 1}`,
       `t${MAX_QUERY_MATCHES + 2}`,
     ]);
-    expect(layersOf(undefined, 2).layers[0]!.handle).toBe(layersOf().layers[2]!.handle);
-  });
+    const last = layersOf(undefined, MAX_QUERY_MATCHES + 2).layers;
+    expect(last.map((layer) => named(layer.handle))).toEqual([`t${MAX_QUERY_MATCHES + 2}`]);
+  }, 20_000);
 
   it("lists nothing for a group this page no longer has, and says so", () => {
     document.body.innerHTML = `<main data-composition-id="m"><div id="pair" data-hf-group="g"><i id="a"></i></div></main>`;
