@@ -314,3 +314,65 @@ describe("a press held across a preview change on an opaque frame", () => {
     expect(press.start).not.toHaveBeenCalled();
   });
 });
+
+describe("a press on a settled preview", () => {
+  function pressOn(iframe: HTMLIFrameElement, selection: DomEditSelection) {
+    press.changing = false;
+    press.start.mockClear();
+    const opts = {
+      waitingPressRef: { current: null },
+      boxRef: { current: null },
+      rafPausedRef: { current: false },
+      iframeRef: { current: iframe },
+      overlayRef: { current: sized(document.createElement("div"), [20, 10, 1200, 800]) },
+      activeCompositionPathRef: { current: "index.html" },
+      selectionRef: { current: selection },
+      overlayRectRef: { current: null },
+      setOverlayRect: vi.fn(),
+    } as unknown as UseDomEditOverlayGesturesOptions;
+    const { startGesture } = createPreviewGestureStarts(opts, vi.fn(), vi.fn());
+    const down = {
+      pointerId: 1,
+      clientX: 5,
+      clientY: 6,
+      currentTarget: { setPointerCapture: vi.fn() },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    };
+    startGesture("drag", down as unknown as React.PointerEvent<HTMLElement>);
+    return opts;
+  }
+
+  it("on a scriptable frame starts the gesture at once", () => {
+    pressOn(liveFrame(), makeSelection("turned", document.getElementById("turned")!));
+    expect(press.start).toHaveBeenCalledOnce();
+    // Synchronously, with nothing read over a channel.
+    expect(press.start.mock.calls[0]![3]).toEqual({ at: expect.any(Object) });
+  });
+
+  it("on an opaque frame waits for what the gesture starts from, read in one request", async () => {
+    const { port1 } = new MessageChannel();
+    const send = vi.spyOn(Object.getPrototypeOf(port1) as MessagePort, "postMessage");
+    const kinds = () => send.mock.calls.map(([message]) => (message as { kind?: string }).kind);
+    const iframe = opaqueFrame();
+    const handle = (await queryPreviewElements(iframe, "#turned"))!.matches[0]!.handle;
+    const turned = document.getElementById("turned")!;
+    send.mockClear();
+    const opts = pressOn(iframe, { ...makeSelection("turned", turned), handle });
+    expect(press.start).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(press.start).toHaveBeenCalledOnce());
+    const started = press.start.mock.calls[0]![3] as {
+      rect: OverlayRect;
+      start: { layout: { width: number } };
+      snap: { targets: unknown[] };
+    };
+    expect(started.start.layout.width).toBe(300);
+    expect(started.snap.targets.length).toBeGreaterThan(0);
+    const overlay = opts.overlayRef.current!;
+    const live = orientedGroupAwareOverlayRect(overlay, liveFrame(), turned);
+    expect(close(started.rect)).toEqual(close(live));
+    expect(kinds().filter((kind) => kind === "gesture-start")).toHaveLength(1);
+    expect(kinds()).not.toContain("geometry");
+    send.mockRestore();
+  });
+});

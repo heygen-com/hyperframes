@@ -150,6 +150,7 @@ describe("installEditingAgent", () => {
           "geometry",
           "layers",
           "draft",
+          "gesture-start",
         ],
       },
     });
@@ -352,6 +353,13 @@ describe("installEditingAgent", () => {
       150 + index,
       "invalid-params",
     ]),
+    ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(
+      (params, index) => [
+        { v: 1, id: 170 + index, kind: "gesture-start", params },
+        170 + index,
+        "invalid-params",
+      ],
+    ),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },
