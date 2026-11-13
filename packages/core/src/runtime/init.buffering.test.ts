@@ -283,6 +283,25 @@ it("a pause while buffering stays paused once the track is ready", () => {
   expect(states.at(-1)).toEqual({ isPlaying: false, buffering: false });
 });
 
+// A Studio preview reloading a far scene re-seeks with keepPlaying. When that lands while the film is held
+// for data, the hold must survive it and the film plays on.
+it("a seek that keeps playing during a hold for data plays on once the track is ready", () => {
+  const mark = document.createElement("meta");
+  mark.name = STUDIO_PREVIEW_MARK_META;
+  document.head.append(mark);
+  const { voiceReady, states, playFor } = playPodcast(0, "video");
+
+  playFor(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+  window.__player!.seek(0, { keepPlaying: true });
+  voiceReady.value = 4;
+  playFor(1);
+
+  mark.remove();
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
 afterEach(() => {
   window.__hfRuntimeTeardown?.();
   vi.restoreAllMocks();

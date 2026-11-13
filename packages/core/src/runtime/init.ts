@@ -3231,6 +3231,7 @@ export function initSandboxRuntimeModular(): void {
     }
   };
   let bufferingFor: HTMLMediaElement[] = [];
+  const playingOrHeldForData = () => clock.isPlaying() || bufferingFor.length > 0;
   let keepLateMedia = false;
   const preloadNearPlayhead = (
     el: HTMLMediaElement,
@@ -4989,8 +4990,8 @@ export function initSandboxRuntimeModular(): void {
   const applySeek = (quantized: number, options?: { keepPlaying?: boolean }) => {
     webAudio.stopAll();
     clock.detachAudioSource();
-    const wasPlaying = clock.isPlaying();
-    if (wasPlaying) clock.pause();
+    const wasPlaying = playingOrHeldForData();
+    if (clock.isPlaying()) clock.pause();
     clock.seek(quantized);
     state.currentTime = clock.now();
     state.isPlaying = false;
@@ -5160,7 +5161,7 @@ export function initSandboxRuntimeModular(): void {
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
-      (options?.keepPlaying && clock.isPlaying())
+      (options?.keepPlaying && playingOrHeldForData())
     ) {
       previewSeek?.cancel();
       pausedFrames.clear();
