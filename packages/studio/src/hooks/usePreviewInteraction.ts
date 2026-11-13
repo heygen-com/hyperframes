@@ -249,8 +249,7 @@ export function usePreviewInteraction({
         preferClipAncestor: options?.preferClipAncestor ?? false,
         skipSourceProbe: true,
       });
-      if (seq !== hoverSeqRef.current) return null;
-      updateDomEditHoverSelection(nextSelection);
+      if (seq === hoverSeqRef.current) updateDomEditHoverSelection(nextSelection);
       return nextSelection;
     },
     [
