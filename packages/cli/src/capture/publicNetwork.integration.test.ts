@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -65,6 +64,7 @@ vi.mock("node:https", async (importOriginal) => {
 });
 
 import { publicRequest } from "./publicNetwork.js";
+import { createCaptureTlsFixture } from "./fixtures/captureTls.js";
 
 type RequestReceipt = {
   host: string | undefined;
@@ -136,14 +136,9 @@ async function waitForStreamClose() {
 
 describe("publicRequest controlled socket integration", () => {
   beforeAll(async () => {
-    // A committed self-signed pair (valid to 2126), so this 30 s hook starts no openssl child.
-    const fixture = (name: string) =>
-      new URL(`./fixtures/capture-fixture-${name}`, import.meta.url);
-    transport.certificate = await readFile(fixture("certificate.pem"), "utf8");
-    httpsServer.setSecureContext({
-      key: await readFile(fixture("key.pem")),
-      cert: transport.certificate,
-    });
+    const fixture = await createCaptureTlsFixture();
+    transport.certificate = fixture.cert;
+    httpsServer.setSecureContext(fixture);
     httpsServer.on("tlsClientError", () => {});
     for (const server of servers) {
       server.on("connection", (socket) => {
