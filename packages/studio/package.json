@@ -138,8 +138,8 @@
     "tailwindcss": "^4.3.3",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vite": "^6.4.2",
-    "vitest": "^4.1.11",
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12",
     "zustand": "^5.0.0"
   },
   "peerDependencies": {
