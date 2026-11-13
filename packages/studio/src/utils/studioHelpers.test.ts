@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  getHistoryShortcutLabel,
   historyTooltipLabel,
   findMatchingTimelineElementId,
   findTimelineIdByAncestor,
@@ -247,16 +248,23 @@ describe("historyTooltipLabel", () => {
   // A disabled control gets no pointer events, so its tooltip cannot be opened
   // to read. The wording is checked here instead of through the DOM.
   it("names the action that would be undone", () => {
-    expect(historyTooltipLabel("undo", "Move layer")).toMatch(/^Undo Move layer \(.+\)$/);
+    expect(historyTooltipLabel("undo", "Move layer")).toBe("Undo Move layer");
   });
 
   it("names the action that would be redone", () => {
-    expect(historyTooltipLabel("redo", "Move layer")).toMatch(/^Redo Move layer \(.+\)$/);
+    expect(historyTooltipLabel("redo", "Move layer")).toBe("Redo Move layer");
   });
 
-  it("keeps the shortcut when the history is empty", () => {
-    expect(historyTooltipLabel("undo", undefined)).toMatch(/^Undo \(.+\)$/);
-    expect(historyTooltipLabel("redo", null)).toMatch(/^Redo \(.+\)$/);
+  it("is just the verb when the history is empty", () => {
+    expect(historyTooltipLabel("undo", undefined)).toBe("Undo");
+    expect(historyTooltipLabel("redo", null)).toBe("Redo");
+  });
+});
+
+describe("getHistoryShortcutLabel", () => {
+  it("gives redo the shift variant of undo's key", () => {
+    expect(getHistoryShortcutLabel("undo")).toMatch(/\+Z$/);
+    expect(getHistoryShortcutLabel("redo")).toMatch(/\+Shift\+Z$/);
   });
 });
 
