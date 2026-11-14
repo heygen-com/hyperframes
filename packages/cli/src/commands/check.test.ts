@@ -1986,6 +1986,50 @@ describe("check pipeline", () => {
     expect(said).not.toContain("Browser session never ran");
   });
 
+  it("marks a contrast finding by its severity and quotes the text it judged", async () => {
+    const finding = (severity: "error" | "warning", text: string): CheckContrastFinding => ({
+      ...checkFindingOf("contrast_aa_failure", severity, { x: 0, y: 0, width: 10, height: 10 }),
+      selector: "div > div:nth-of-type(35) > div:nth-of-type(3)",
+      text,
+      fg: "rgb(110,110,110)",
+      bg: "rgb(30,30,30)",
+      ratio: 2.39,
+      requiredRatio: 3,
+      suggestedColor: "rgb(219,108,80)",
+      large: true,
+    });
+    const report = reportWithFindings({
+      contrast: {
+        ...emptySection([
+          finding("warning", "passing through"),
+          finding("error", "held on screen"),
+        ]),
+        errorCount: 1,
+        warningCount: 1,
+        enabled: true,
+        samples: [1],
+        checked: 2,
+        passed: 0,
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runViaCli(command, { rawArgs: [] });
+
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    const lineOf = (text: string) => lines.find((line) => line.includes(`"${text}"`)) ?? "";
+    expect(lineOf("passing through")).toContain("⚠");
+    expect(lineOf("passing through")).not.toContain("✗");
+    expect(lineOf("held on screen")).toContain("✗");
+    expect(lineOf("held on screen")).toContain("2.39:1 (need 3:1");
+  });
+
   describe("remembers the newest check for hyperframes feedback", () => {
     const run = (runPipeline: () => Promise<CheckReport>) =>
       runViaCli(

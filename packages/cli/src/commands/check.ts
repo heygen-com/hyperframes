@@ -847,8 +847,9 @@ function printContrastSection(report: CheckReport): void {
     return;
   }
   for (const finding of section.findings) {
+    const text = finding.text ? ` ${c.dim(`"${terminalText(finding.text)}"`)}` : "";
     console.log(
-      `  ${c.error("✗")} ${terminalText(finding.selector)} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
+      `  ${findingIcon(finding)} ${terminalText(finding.selector)}${text} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
     const source = `Try ${terminalText(finding.suggestedColor)}; source ${terminalText(finding.sourceFile)}`;
     console.log(`    ${c.dim(source)}`);
