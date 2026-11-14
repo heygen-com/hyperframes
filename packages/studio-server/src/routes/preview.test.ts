@@ -1950,6 +1950,41 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
+    it("makes at most four stills at once and answers 503 once 32 more wait", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      let running = 0;
+      let mostRunning = 0;
+      const resolveStillMock = vi.fn(async () => {
+        mostRunning = Math.max(mostRunning, ++running);
+        await new Promise<void>((resolve) => finishers.push(resolve));
+        running--;
+        return stillPath;
+      });
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const accepted = Array.from({ length: 36 }, (_, i) => app.request(`${url}${i}`));
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(4));
+      const refused = await app.request(`${url}99`);
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("Retry-After")).toBe("2");
+
+      while (resolveStillMock.mock.calls.length < 36 || finishers.length > 0) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+      }
+      for (const res of await Promise.all(accepted)) expect(res.status).toBe(200);
+      expect(mostRunning).toBe(4);
+    });
+
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");

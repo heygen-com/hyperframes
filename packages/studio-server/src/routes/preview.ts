@@ -103,8 +103,11 @@ import {
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
+import { createJobSlots, JobSlotsFullError } from "../helpers/jobSlots.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
+const runStillJob = createJobSlots(4, 32);
+
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
@@ -778,12 +781,17 @@ export function registerPreviewRoutes(
         return c.text("not found", 404);
       }
       try {
-        const still = await resolveStill(project.dir, file, at, proxyBox);
+        const still = await runStillJob(
+          () => resolveStill(project.dir, file, at, proxyBox),
+          c.req.raw.signal,
+        );
         return new Response(readFileSync(still), {
           headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
         });
       } catch (err) {
         if (isProjectRootMissing(err)) throw err;
+        if (err instanceof JobSlotsFullError)
+          return c.text("media still busy", 503, { "Retry-After": "2" });
         return c.text("media still failed", 502);
       }
     }
