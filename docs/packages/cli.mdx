@@ -1649,12 +1649,20 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `cuts`       | Hard cuts from the frame-to-frame difference, and the shots between them                |
 | `events`     | Cuts, flashes, appears, disappears and holds; `--map` adds the sound's hits             |
 | `frames`     | Frames as pictures: chosen moments, an overview sheet, a range, or strips around events |
+| `trail`      | A window's motion as one picture: onion skin, the moving part's path, a heat map        |
 | `extract`    | A still or a clip cut from the video, cropped to a region, as project media             |
+| `box`        | One graphic found by its colour: box, ink, colours, text lines; `--track` adds moves    |
 | `curve`      | Each move of one element: start, duration, overshoot and the closest GSAP ease          |
 | `energy`     | How much two clips move, and whether at the same moments                                |
+| `ink`        | The bounds, size and lines of the text or marks in a region of one frame                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
+| `rhythm`     | Moving share, holds, update rate (ones, twos), cuts, and each shot's zoom or pan        |
+| `objects`    | Separate elements at one time: count, sizes, and a ring, grid, row, column or stack     |
+| `track`      | One textured thing (a cursor, a hand) followed from its box until a cut or lost match   |
+| `flow`       | One element's moves from optical flow as tweens, or against your render's               |
 | `face`       | The face's size and position over a window                                              |
 | `sync`       | The lag between mouth motion and the voice                                              |
+| `continuity` | Seams your render has and the original lacks: jumps, flicker, extra or missing shapes   |
 
 ### `diff`
 
