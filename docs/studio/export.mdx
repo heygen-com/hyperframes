@@ -18,10 +18,10 @@ set those first.
 
 | Setting | Choose |
 | --- | --- |
-| **Format** | **MP4** for sharing and uploading; **WebM** for the web and transparent overlays; **MOV** (ProRes) when another editor needs a high-quality master |
+| **Format** | **MP4** for sharing and uploading; **WebM** for the web and transparent overlays; **MOV** (ProRes) when another editor needs a high-quality master; **GIF** for docs and chat (no audio, up to 30 fps); **PNG sequence** when a compositing tool needs one lossless image per frame |
 | **Resolution** | **Auto** keeps the project's size. Bigger renders are slower and don't sharpen low-resolution footage |
 | **Frame rate** | 30 unless the destination or the footage needs 24 or 60 |
-| **Quality** | Hidden for MOV, which always uses ProRes quality |
+| **Quality** | Hidden for MOV, which always uses ProRes quality, and for PNG sequence, which is lossless |
 | **Use GPU encoding** | Faster on machines that support it |
 
 **About video formats**, next to the settings, explains the choices.
@@ -30,6 +30,12 @@ set those first.
 
 Each export becomes a row in **Renders**, with its progress. Cancel a running one, download or delete a finished
 one, and **Hide finished** to tidy the list without deleting files.
+
+A finished **PNG sequence** is a folder of numbered frames (`frame_000001.png`, `frame_000002.png`, …) plus an
+`audio.m4a` track when the composition has sound. Its row shows a **PNG** badge and the frame count instead of a
+video thumbnail. There is nothing to play in a new tab, so that control is hidden; **Download as ZIP** packs the
+folder into a single archive. **Delete** removes the folder and its metadata, and leaves a video of the same name
+alone.
 
 Before sending: open the file itself, watch the start and the end, check captions, cuts and sound at the busiest
 moment, and give it a name that says which version it is. If a render fails, keep the error and see

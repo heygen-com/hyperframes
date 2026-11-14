@@ -5,6 +5,13 @@ export {
 } from "./helpers/requestIdentity.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export {
+  renderDirectoryMetadata,
+  renderMetadataPath,
+  removeRenderArtifacts,
+} from "./helpers/renderArtifactFs.js";
+export { readRenderDirectoryStats } from "./helpers/renderDirectoryStats.js";
+export type { RenderDirectoryStats } from "./helpers/renderDirectoryStats.js";
+export {
   createProjectSignature,
   createProjectSignatureAsync,
   affectsProjectSignature,
