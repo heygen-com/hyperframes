@@ -225,12 +225,13 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toContain('[data-hf-authored-id="intro"]');
   });
 
-  it("with flattenInnerRoot: an anonymous host carries the composition id itself", () => {
+  it("with flattenInnerRoot: restores data-composition-id on the wrapper for an anonymous host", () => {
     // Regression test: a host mounted via data-composition-src with no
-    // data-composition-id of its own (an "anonymous" host) is stamped with a
-    // unique runtime id — the mount's scope for variables, scripts and styles —
-    // so authored [data-composition-id="X"] selectors and self-referencing
-    // scripts still resolve even though flattenInnerRoot strips the wrapper's.
+    // data-composition-id of its own (an "anonymous" host). The composition
+    // styles its own root box via the bare composition-id selector and a
+    // script self-references it too — both need something in the render DOM
+    // to actually carry that id once flattenInnerRoot strips it from the
+    // wrapper by default.
     const { document } = parseHTML(`<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main">
@@ -263,9 +264,9 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       flattenInnerRoot,
     });
 
-    expect(host.getAttribute("data-composition-id")).toBe("scoped-text");
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
     const wrapper = host.querySelector("[data-hf-inner-root]");
-    expect(wrapper?.hasAttribute("data-composition-id")).toBe(false);
+    expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
     const scopedCss = result.styles.map((style) => style.css).join("\n");
     expect(scopedCss).toContain("display: flex");
@@ -588,95 +589,36 @@ describe("inlineSubCompositions – variable defaults on a template sub-comp roo
       parseHostVariables: parseHostVariableValues,
     });
     expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
-    expect(host.getAttribute("data-composition-id")).toBe("card");
+    // The host stays anonymous; the preserved wrapper is what carries the id.
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
+    expect(host.querySelector('[data-composition-id="card"]')).not.toBeNull();
   });
 
-  it("gives an anonymous mount its own scope instead of clobbering a named mount of the same file", () => {
-    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+  it.each([
+    ["named first", ["named", "anonymous"]],
+    ["anonymous first", ["anonymous", "named"]],
+  ] as const)(
+    "keeps a named mount's values when an anonymous mount of the same file shares its scope (%s)",
+    (_order, order) => {
+      // Both mounts resolve through `[data-composition-id="card"]`: the named
+      // host carries it, the anonymous wrapper keeps it. The explicit instance
+      // values on the named host must win whichever mount is inlined first.
+      const { document } = parseHTML(`<!DOCTYPE html><html><body>
       <div data-composition-id="main">
-        <div data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
-        <div data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="1"></div>
+        <div id="named" data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
+        <div id="anonymous" data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="1"></div>
       </div></body></html>`);
-    const mounts = Array.from(document.querySelectorAll('[data-composition-src="card.html"]'));
-    const named = mounts[0]!;
-    const anonymous = mounts[1]!;
-    const result = inlineSubCompositions(document, [named, anonymous], {
-      resolveHtml: () => SUB_COMP_WITH_VAR,
-      parseHtml: (h) => parseHTML(h).document,
-      readVariableDefaults: readDeclaredDefaults,
-      parseHostVariables: parseHostVariableValues,
-    });
-    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Custom" });
-    const anonymousId = anonymous.getAttribute("data-composition-id")!;
-    expect(anonymousId).not.toBe("card");
-    expect(result.variablesByComp[anonymousId]).toMatchObject({ headline: "Hi there" });
-  });
-
-  it("renames a nested named mount whose authored id an earlier anonymous mount claimed", () => {
-    // Queue order: anonymous mount claims "card" first; the named "card" mount
-    // nested inside outer.html only becomes visible once outer is inlined, so
-    // it must take a unique runtime id instead of clobbering the claim.
-    const outerHtml = `<!DOCTYPE html><html><body><div data-composition-id="outer-inner">
-      <div data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
-    </div></body></html>`;
-    const { document } = parseHTML(`<!DOCTYPE html><html><body>
-      <div data-composition-id="main">
-        <div data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="0"></div>
-        <div data-composition-id="outer" data-composition-src="outer.html" data-start="0" data-duration="4" data-track-index="1"></div>
-      </div></body></html>`);
-    const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
-    const result = inlineSubCompositions(document, hosts, {
-      resolveHtml: (src) => (src === "outer.html" ? outerHtml : SUB_COMP_WITH_VAR),
-      parseHtml: (h) => parseHTML(h).document,
-      readVariableDefaults: readDeclaredDefaults,
-      parseHostVariables: parseHostVariableValues,
-    });
-    const anonymousCard = hosts[0]!;
-    const nestedCard = document.querySelector('[data-hf-original-composition-id="card"]')!;
-    expect(anonymousCard.getAttribute("data-composition-id")).toBe("card");
-    expect(nestedCard.getAttribute("data-composition-id")).not.toBe("card");
-    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
-    expect(result.variablesByComp[nestedCard.getAttribute("data-composition-id")!]).toMatchObject({
-      headline: "Custom",
-    });
-  });
-
-  it("keeps a nested anonymous mount off the id of a named mount processed after the first scan", () => {
-    // Queue order: the anonymous "a" mount claims first and scans the DOM
-    // before outer.html is inlined. The named "card" nested in outer is
-    // processed next, so the anonymous card after it must not take "card".
-    const aHtml = `<template id="a-template">
-      <div data-composition-id="a" data-width="1920" data-height="1080"><p>a</p></div>
-    </template>`;
-    const outerHtml = `<!DOCTYPE html><html><body><div data-composition-id="outer-inner">
-      <div data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
-      <div data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="1"></div>
-    </div></body></html>`;
-    const { document } = parseHTML(`<!DOCTYPE html><html><body>
-      <div data-composition-id="main">
-        <div data-composition-src="a.html" data-start="0" data-duration="4" data-track-index="0"></div>
-        <div data-composition-id="outer" data-composition-src="outer.html" data-start="0" data-duration="4" data-track-index="1"></div>
-      </div></body></html>`);
-    const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
-    const result = inlineSubCompositions(document, hosts, {
-      resolveHtml: (src) =>
-        src === "a.html" ? aHtml : src === "outer.html" ? outerHtml : SUB_COMP_WITH_VAR,
-      parseHtml: (h) => parseHTML(h).document,
-      readVariableDefaults: readDeclaredDefaults,
-      parseHostVariables: parseHostVariableValues,
-    });
-    const cards = Array.from(
-      document.querySelectorAll('[data-composition-file="card.html"][data-track-index]'),
-    );
-    expect(cards).toHaveLength(2);
-    const [namedCard, anonymousCard] = cards as [Element, Element];
-    const anonymousId = anonymousCard.getAttribute("data-composition-id")!;
-    expect(namedCard.getAttribute("data-composition-id")).toBe("card");
-    expect(anonymousId).not.toBe("card");
-    expect(anonymousCard.getAttribute("data-hf-original-composition-id")).toBe("card");
-    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Custom" });
-    expect(result.variablesByComp[anonymousId]).toMatchObject({ headline: "Hi there" });
-  });
+      const hosts = order.map((id) => document.querySelector(`#${id}`)!);
+      const result = inlineSubCompositions(document, hosts, {
+        resolveHtml: () => SUB_COMP_WITH_VAR,
+        parseHtml: (h) => parseHTML(h).document,
+        readVariableDefaults: readDeclaredDefaults,
+        parseHostVariables: parseHostVariableValues,
+      });
+      expect(result.variablesByComp).toEqual({ card: { headline: "Custom" } });
+      expect(document.querySelector("#anonymous")!.hasAttribute("data-composition-id")).toBe(false);
+    },
+  );
 });
 
 describe("inlineSubCompositions – recursive host discovery", () => {

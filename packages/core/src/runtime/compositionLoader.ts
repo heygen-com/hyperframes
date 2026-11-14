@@ -488,7 +488,9 @@ async function mountCompositionContent(params: {
   // `querySelector('[data-composition-id="..."]')`.
   const scriptScopeCompositionId = plan.scriptCompositionId;
   // No fallback to the authored id: an anonymous host has no runtime id, and
-  // the compiler emits no runtime scope selector and no variable table for one.
+  // the compiler emits no runtime scope selector for one. (Its declared
+  // defaults are keyed by the authored id its restored wrapper carries — see
+  // inlineSubCompositions — which is also the scope variableScope.ts resolves.)
   const runtimeScopeCompositionId = params.runtimeCompositionId || null;
   const authoredRootId = plan.authoredRootId;
   const runtimeScopeSelector = runtimeScopeCompositionId
