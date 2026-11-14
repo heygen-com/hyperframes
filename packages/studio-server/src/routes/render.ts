@@ -37,8 +37,7 @@ const RENDER_MIME: Record<string, string> = {
   ".gif": "image/gif",
   ".png": "image/png",
 };
-// `.png` is only a MIME type for frames inside a directory render, never a
-// standalone render artifact, so it stays out of the delete/list candidates.
+// `.png` serves frames inside a directory render; a loose PNG is never a render artifact.
 const RENDER_FILE_EXTENSIONS = [".mp4", ".webm", ".mov", ".gif"] as const;
 const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_FILE_EXTENSIONS, ".meta.json"] as const;
 const RENDER_FILE_PATTERN = /\.(mp4|webm|mov|gif)$/;
@@ -74,9 +73,9 @@ function isRenderFormat(format: unknown): format is RenderFormat {
 
 interface RenderArtifact {
   kind: RenderArtifactKind;
-  /** Containment-checked path (symlinks resolved). */
+  /** Containment-checked, symlinks resolved. */
   path: string;
-  /** The literal `renders/<name>` entry, used where symlinks must not be followed. */
+  /** The literal `renders/<name>` entry, for removals that must not follow a symlink. */
   candidatePath: string;
 }
 
@@ -88,11 +87,7 @@ function resolveRenderArtifacts(
   const artifacts: RenderArtifact[] = [];
   for (const directory of new Set(directories)) {
     if (!existsSync(directory)) continue;
-    // A job only ever owns artifacts of its own kind. The bare job-id entry is
-    // a candidate only for a directory render — a same-stemmed directory
-    // beside a file render (`intro/` next to `intro.mp4`) is another render's
-    // frames — and a directory render has no suffixed outputs, so those
-    // candidates are dropped for it.
+    // A job owns only artifacts of its kind: `intro/` beside `intro.mp4` is another render.
     const names: Array<{ kind: RenderArtifactKind; name: string }> =
       kind === "directory"
         ? [
@@ -104,10 +99,7 @@ function resolveRenderArtifacts(
             name: `${jobId}${extension}`,
           }));
     for (const { kind, name } of names) {
-      // Defense in depth: a candidate always names an entry inside the
-      // directory — never the directory itself or its parent — so a delete
-      // can never remove `renders/` wholesale, whatever the route allowed
-      // through.
+      // A candidate names an entry inside `renders/`, never the folder itself or its parent.
       if (name === "" || name === "." || name === "..") return null;
       const path = resolveWithinProject(directory, name);
       if (!path) return null;
@@ -126,12 +118,8 @@ function isRealDirectory(path: string): boolean {
 }
 
 /**
- * The artifact kind of a job the server has no record of (after a restart, or
- * for a client that deletes before it lists), read from disk the way the
- * listing decides it: a real directory at `renders/<jobId>` that holds frames
- * or is paired with a sidecar is a directory render. A file render of the
- * same stem wins, so a bare name never becomes a recursive removal while a
- * file artifact exists, and a folder that is not render-shaped is left alone.
+ * Kind of a job this process has no record of, judged like the listing does. A same-stem
+ * file render wins, so a bare name is never removed recursively while a file artifact exists.
  */
 function renderKindOnDisk(directories: readonly string[], jobId: string): RenderArtifactKind {
   const candidates = [...new Set(directories)];
@@ -146,7 +134,7 @@ function renderKindOnDisk(directories: readonly string[], jobId: string): Render
     try {
       if (readRenderDirectoryStats(candidate).frameCount > 0) return "directory";
     } catch {
-      // Unreadable while scanning: not a render we can vouch for.
+      continue;
     }
   }
   return "file";
@@ -157,8 +145,7 @@ function deleteRenderArtifact(artifact: RenderArtifact): void {
     if (existsSync(artifact.path)) unlinkSync(artifact.path);
     return;
   }
-  // lstat on the literal entry: a symlink is never followed into a recursive
-  // removal, even one whose target is inside the project.
+  // lstat on the literal entry: a symlink is never followed into a recursive removal.
   if (isRealDirectory(artifact.candidatePath)) {
     rmSync(artifact.candidatePath, { recursive: true, force: true });
   }
@@ -231,10 +218,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState>();
   const CANCEL_SETTLE_MS = 45_000;
-  // Artifact identity outlives transient progress. Only validated render
-  // requests and disk listings populate this store and only DELETE removes
-  // entries: each is a few bytes, bounded by the renders on disk plus this
-  // session's jobs, so no eviction is needed.
+  // Outlives the swept job records; a few bytes per render on disk, so never evicted.
   const renderArtifacts = new Map<string, { kind: RenderArtifactKind; outputPath: string }>();
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
@@ -370,8 +354,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     );
     const outputName = `${jobId}${ext}`;
     const outputPath = join(rendersDir, outputName);
-    // A directory output is later removed recursively, so make sure it can
-    // only ever land inside the renders folder.
+    // A directory output is later removed recursively, so it must resolve inside renders/.
     const checkedOutput = resolveWithinProject(rendersDir, outputName);
     if (!checkedOutput || isPrivateProjectFile(project.dir, checkedOutput)) {
       return c.json({ error: "forbidden" }, 403);
@@ -459,7 +442,6 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   };
 
   // Serve render inline (for in-browser playback — opens in a new tab).
-  // Directory renders are not playable, so they fall through to 404.
   api.get("/render/:jobId/view", (c) => {
     const job = renderJobs.get(c.req.param("jobId"));
     if (!job?.outputPath || job.kind === "directory" || !isPlainFile(job.outputPath)) {
@@ -468,7 +450,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     return renderFileResponse(job.outputPath, "inline", basename(job.outputPath), c.req.method);
   });
 
-  // Download render. A directory render streams as a ZIP64 archive.
+  // Download render
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
     const job = renderJobs.get(jobId);
@@ -493,10 +475,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Delete render
   api.delete("/render/:jobId", async (c) => {
     const { jobId } = c.req.param();
-    // `.` and `..` would name the renders directory itself (or its parent)
-    // as the directory candidate, and an empty id has no artifact; refuse
-    // them before any candidate path is built. The router normalizes the
-    // raw forms away, but the handler must not trust that.
+    // `.` and `..` would name the renders folder itself; the router's normalizing is not trusted.
     if (
       jobId === "" ||
       jobId === "." ||
@@ -507,16 +486,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     ) {
       return c.json({ error: "forbidden" }, 403);
     }
-    // While rendering, the producer writes to a hidden staging sibling and
-    // publishes the final artifact only at the end. Deleting now would remove
-    // nothing and the render would reappear once it commits.
+    // The producer publishes from a hidden staging sibling at the end; a delete now removes nothing.
     if (renderJobs.get(jobId)?.status === "rendering") {
       return c.json({ error: "render in progress; cancel it first" }, 409);
     }
-    // Only a directory render owns the bare job-id directory; every other
-    // job resolves file candidates only. A job this process never saw is
-    // judged by what is on disk, which still never turns an id without a
-    // render-shaped directory into a recursive removal.
     const directories = await renderDirectories(jobId);
     const kind: RenderArtifactKind =
       renderArtifacts.get(jobId)?.kind ?? renderKindOnDisk(directories, jobId);
@@ -555,10 +528,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
     const rows: RenderListingRow[] = [];
     for (const entry of readdirSync(rendersDir, { withFileTypes: true })) {
-      // Dot-prefixed entries include the producer's in-progress staging dirs.
+      // Dot-prefixed entries include the producer's staging dirs; Dirent never follows symlinks.
       if (entry.name.startsWith(".")) continue;
-      // Dirent does not follow symlinks, so a symlinked directory is neither
-      // listed as a directory render nor matched by the file extensions.
       const isDirectory = entry.isDirectory();
       if (!isDirectory && !RENDER_FILE_PATTERN.test(entry.name)) continue;
       const fp = resolveWithinProject(rendersDir, entry.name);
@@ -605,13 +576,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         size = meta.size;
         audioSidecar = meta.audioSidecar === true;
       } else {
-        // No cached facts (e.g. a CLI-rendered directory): scan once.
         try {
           ({ frameCount, size, audioSidecar } = readRenderDirectoryStats(fp));
         } catch {
           continue;
         }
-        // An arbitrary folder without frames or a sidecar is not a render.
         if (frameCount === 0 && !meta) continue;
       }
       rows.push({ ...base, kind: "directory", size, frameCount, audioSidecar });

@@ -1,4 +1,3 @@
-/** RFC 6266 header with an ASCII fallback plus the UTF-8 `filename*` form. */
 export function contentDispositionHeader(
   disposition: "inline" | "attachment",
   filename: string,

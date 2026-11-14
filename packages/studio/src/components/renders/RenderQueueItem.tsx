@@ -19,11 +19,9 @@ interface RenderArtifactActions {
   downloadSrc: string;
   downloadName: string;
   downloadLabel: string;
-  /** Appended to the age line, e.g. " · 90 frames". */
   detail: string;
 }
 
-/** A directory render (PNG sequence) has no playable file; the route zips it on download. */
 function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactActions {
   if (job.kind !== "directory") {
     return {
@@ -44,9 +42,6 @@ function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactA
 }
 
 /** Static frame extracted once via hidden video + canvas. */
-
-// The PNG-sequence branch adds the directory-thumbnail case to a component
-// that already renders per-status thumbnails and a confirm-to-delete flow.
 // fallow-ignore-next-line complexity
 export const RenderQueueItem = memo(function RenderQueueItem({
   job,
@@ -184,9 +179,7 @@ export const RenderQueueItem = memo(function RenderQueueItem({
             </>
           ) : (
             <>
-              {/* The tooltip explains the control whether or not it is
-                  reachable; `disabled:` on the shared Button keeps pointer
-                  events alive precisely so a disabled one can still say why. */}
+              {/* The shared Button keeps pointer events on `disabled:` so the tooltip can say why. */}
               <Tooltip label={isComplete ? downloadLabel : "Available when the render finishes"}>
                 <IconButton
                   size="sm"

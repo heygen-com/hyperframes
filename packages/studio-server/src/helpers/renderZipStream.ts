@@ -14,6 +14,7 @@ const ZIP64_END_RECORD = 0x0606_4b50;
 const ZIP64_END_LOCATOR = 0x0706_4b50;
 const ZIP_END_RECORD = 0x0605_4b50;
 const ZIP_FLAGS = 0x0808; // UTF-8 names and a trailing data descriptor.
+const ZIP_METHOD_STORE = 0;
 
 interface ArchiveEntry {
   name: string;
@@ -113,7 +114,7 @@ function localFileHeader(entry: ArchiveEntry): Buffer {
   header.writeUInt32LE(ZIP_LOCAL_FILE_HEADER, 0);
   header.writeUInt16LE(45, 4);
   header.writeUInt16LE(ZIP_FLAGS, 6);
-  header.writeUInt16LE(0, 8); // STORE
+  header.writeUInt16LE(ZIP_METHOD_STORE, 8);
   const modified = dosDateTime(entry.mtime);
   header.writeUInt16LE(modified.time, 10);
   header.writeUInt16LE(modified.date, 12);
@@ -148,7 +149,7 @@ function centralDirectoryHeader(entry: ArchiveEntry, crc: number, localOffset: b
   header.writeUInt16LE(45, 4); // ZIP64 creator version.
   header.writeUInt16LE(45, 6);
   header.writeUInt16LE(ZIP_FLAGS, 8);
-  header.writeUInt16LE(0, 10); // STORE
+  header.writeUInt16LE(ZIP_METHOD_STORE, 10);
   const modified = dosDateTime(entry.mtime);
   header.writeUInt16LE(modified.time, 12);
   header.writeUInt16LE(modified.date, 14);
@@ -157,10 +158,10 @@ function centralDirectoryHeader(entry: ArchiveEntry, crc: number, localOffset: b
   header.writeUInt32LE(UINT32_MAX, 24);
   header.writeUInt16LE(filename.length, 28);
   header.writeUInt16LE(28, 30);
-  header.writeUInt16LE(0, 32); // No file comment.
-  header.writeUInt16LE(0, 34); // Disk number.
-  header.writeUInt16LE(0, 36); // Internal attributes.
-  header.writeUInt32LE(0, 38); // External attributes.
+  header.writeUInt16LE(0, 32); // Comment length, disk number, internal and external attributes.
+  header.writeUInt16LE(0, 34);
+  header.writeUInt16LE(0, 36);
+  header.writeUInt32LE(0, 38);
   header.writeUInt32LE(UINT32_MAX, 42);
   filename.copy(header, 46);
 
