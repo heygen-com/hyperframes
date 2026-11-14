@@ -254,6 +254,37 @@ describe("capture command — vision control", () => {
   });
 
   it.each([
+    ["1s", 1_000],
+    ["2m", 120_000],
+    ["45000", 45_000],
+    [undefined, 120_000],
+  ])("passes --timeout %s into capture as %i ms", async (timeout, expectedMs) => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: { url: "https://example.com", output: "/tmp/hf-timeout", timeout, json: true },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: expectedMs }),
+      undefined,
+    );
+  });
+
+  it("warns and keeps the default page-load timeout when --timeout is not a duration", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await captureCommand.run!({
+      args: { url: "https://example.com", output: "/tmp/hf-timeout", timeout: "abc", json: true },
+    } as never);
+    expect(captureWebsiteMock).toHaveBeenCalledWith(
+      expect.objectContaining({ timeout: 120_000 }),
+      undefined,
+    );
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('--timeout "abc" is not a duration'),
+    );
+  });
+
+  it.each([
     [true, 0],
     [false, 1],
   ])("asks to end the process once its result is out (ok %s)", async (ok, exitCode) => {
