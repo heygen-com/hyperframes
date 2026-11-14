@@ -753,6 +753,11 @@ async function keepSkillsCurrent(destDir: string): Promise<void> {
       console.log(
         c.dim("Workflow skills not installed here are added on demand, when first used."),
       );
+      console.log(
+        c.dim(
+          "These skills are global: every project on this machine uses them. `init --skip-skills` (or HYPERFRAMES_SKIP_SKILLS=1) leaves skills alone.",
+        ),
+      );
     }
   } catch (err) {
     console.log(
@@ -833,7 +838,8 @@ export default defineCommand({
     },
     "skip-skills": {
       type: "boolean",
-      description: "Skip installing missing core AI skills (also HYPERFRAMES_SKIP_SKILLS=1)",
+      description:
+        "Leave AI skills alone. Without it, init installs missing core skills globally (~/.claude/skills, ~/.agents/skills), for every project. Also HYPERFRAMES_SKIP_SKILLS=1",
     },
     tailwind: {
       type: "boolean",
