@@ -1175,13 +1175,9 @@ async function makeStill(
 ): Promise<string> {
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) throw new FfmpegUnavailableError();
-  const filter = await buildVideoFilter(
-    ffmpegPath,
-    source.sourcePath,
-    await probeMediaMetadata(source.sourcePath),
-    false,
-    box,
-  );
+  const metadata = await probeMediaMetadata(source.sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
+  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {

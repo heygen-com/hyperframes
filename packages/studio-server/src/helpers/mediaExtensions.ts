@@ -33,9 +33,11 @@ export const CONVERTIBLE_IMAGE_EXTS = new Set([".gif", ".avif", ".bmp", ".tif", 
 
 export const NOT_MEDIA = "not a media file";
 
-const PLAYLIST_START = /^(?:\xEF\xBB\xBF)?\s*(?:#EXTM3U|ffconcat|<)/;
+const PLAYLIST_START = /^(?:\xEF\xBB\xBF)?\s*(?:#EXTM3U|ffconcat)/;
+const MARKUP_START = /^(?:\xEF\xBB\xBF)?\s*</;
 const isControlByte = (byte: number) => byte < 0x09 || (byte > 0x0d && byte < 0x20);
 
 export function startsAsMediaPlaylist(head: Buffer): boolean {
-  return PLAYLIST_START.test(head.toString("latin1")) && !head.some(isControlByte);
+  const text = head.toString("latin1");
+  return PLAYLIST_START.test(text) || (MARKUP_START.test(text) && !head.some(isControlByte));
 }

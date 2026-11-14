@@ -292,10 +292,24 @@ function metadataFromProbe(kind: MediaMetadata["kind"], parsed: ProbeOutput): Me
 }
 
 /** The audio track ffmpeg can decode in a file, with its channel count; null when it has none. */
+function readsAsMediaPlaylist(filePath: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    const head = Buffer.alloc(64);
+    return startsAsMediaPlaylist(head.subarray(0, readSync(fd, head, 0, head.length, 0)));
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export async function probeAudioTrack(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
 ): Promise<{ stream: number; channels: number } | null> {
+  if (readsAsMediaPlaylist(filePath)) return null;
   const ffprobePath =
     findFfBinary("ffprobe", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffprobe");
@@ -313,19 +327,6 @@ export async function probeAudioTrack(
   const streams = (JSON.parse(String(result.stdout || "{}")) as Probed).streams ?? [];
   const stream = decodableAudioStream(streams);
   return stream === null ? null : { stream, channels: streams[stream]?.channels ?? 0 };
-}
-
-function readsAsMediaPlaylist(filePath: string): boolean {
-  let fd: number | undefined;
-  try {
-    fd = openSync(filePath, "r");
-    const head = Buffer.alloc(64);
-    return startsAsMediaPlaylist(head.subarray(0, readSync(fd, head, 0, head.length, 0)));
-  } catch {
-    return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
 }
 
 export async function probeMediaMetadata(

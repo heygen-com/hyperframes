@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NOT_MEDIA } from "./mediaExtensions.js";
-import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
+import { NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
+import { classifyMediaColor, probeAudioTrack, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -278,5 +278,35 @@ describe("probeMediaMetadata", () => {
       stderr: "",
     }));
     expect(metadata).toMatchObject({ kind: "video", color: { codecName: "h264" } });
+  });
+});
+
+describe("startsAsMediaPlaylist", () => {
+  it.each([
+    [
+      "a concat script with a control byte in a comment",
+      "ffconcat version 1.0\n#\u0001\nfile seg.ts",
+      true,
+    ],
+    ["an HLS playlist with a control byte", "#EXTM3U\n\u0002", true],
+    ["markup", '<?xml version="1.0"?><MPD>', true],
+    ["binary that starts with <", "<\u0000\u0001\u0002binary", false],
+    ["an MP4 header", "\u0000\u0000\u0000\u0018ftypisom", false],
+  ])("reads %s as %s", (_name, text, playlist) => {
+    expect(startsAsMediaPlaylist(Buffer.from(text, "latin1"))).toBe(playlist);
+  });
+});
+
+describe("probeAudioTrack", () => {
+  it("never hands a playlist named as audio to ffprobe", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+    try {
+      writeFileSync(join(dir, "song.mp3"), "#EXTM3U\n#EXT-X-TARGETDURATION:10\n/elsewhere.mp3\n");
+      const runner = vi.fn();
+      expect(await probeAudioTrack(join(dir, "song.mp3"), runner)).toBeNull();
+      expect(runner).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

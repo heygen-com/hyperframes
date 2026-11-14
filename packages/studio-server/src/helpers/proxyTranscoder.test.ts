@@ -1994,6 +1994,21 @@ describe("resolveProxy", () => {
 describe("resolveStill", () => {
   const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
 
+  it("refuses a playlist named as a video without running ffmpeg", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: () => FFMPEG_PATH }));
+    vi.doUnmock("./mediaMetadata.js");
+    const { resolveStill } = await import("./proxyTranscoder.js");
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "ffconcat version 1.0\n#\u0001\nfile seg.ts\n");
+
+    await expect(resolveStill(projectDir, clip, 1)).rejects.toThrow("not a media file");
+    expect(calls).toHaveLength(0);
+  });
+
   it.skipIf(!canStill)(
     "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
     async () => {
