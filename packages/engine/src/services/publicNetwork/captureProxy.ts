@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect, type Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { assertPublicHostname, resolvePublicAddress } from "./publicNetwork.js";
 import {
@@ -215,4 +218,14 @@ export function browserProxyArgs(proxyUrl: string, directHost?: string): string[
     "--disable-quic",
     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
   ];
+}
+
+export async function createPublicOnlyProfile(prefix: string): Promise<string> {
+  const profile = await mkdtemp(join(tmpdir(), prefix));
+  await mkdir(join(profile, "Default"));
+  await writeFile(
+    join(profile, "Default", "Preferences"),
+    JSON.stringify({ webrtc: { ip_handling_policy: "disable_non_proxied_udp" } }),
+  );
+  return profile;
 }

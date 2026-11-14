@@ -31,7 +31,12 @@ import {
   pickSharedShell,
 } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, resolveRestrictPageNetwork, type EngineConfig } from "../config.js";
-import { browserProxyArgs, startCaptureProxy } from "./publicNetwork/captureProxy.js";
+import {
+  browserProxyArgs,
+  createPublicOnlyProfile,
+  startCaptureProxy,
+} from "./publicNetwork/captureProxy.js";
+import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
@@ -920,6 +925,24 @@ async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): 
   }
 }
 
+async function publicOnlyNetwork(pageServerHost: string | undefined) {
+  const proxy = await startCaptureProxy(null);
+  try {
+    const userDataDir = await createPublicOnlyProfile("hf-render-profile-");
+    return {
+      args: browserProxyArgs(proxy.url, pageServerHost),
+      userDataDir,
+      async close() {
+        await proxy.close();
+        await removeTreeBestEffortAsync(userDataDir);
+      },
+    };
+  } catch (error) {
+    await proxy.close();
+    throw error;
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
@@ -928,10 +951,10 @@ async function launchBrowser(
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
-  const proxy = fingerprint.publicOnly ? await startCaptureProxy(null) : undefined;
-  const browserArgs = proxy
-    ? [...fingerprint.args, ...browserProxyArgs(proxy.url, fingerprint.publicOnly?.pageServerHost)]
-    : fingerprint.args;
+  const network = fingerprint.publicOnly
+    ? await publicOnlyNetwork(fingerprint.publicOnly.pageServerHost)
+    : undefined;
+  const browserArgs = network ? [...fingerprint.args, ...network.args] : fingerprint.args;
   const launch = (args: readonly string[]) => {
     let attempted = args;
     return launchWithChromeSandboxFallback(args, (launchArgs) => {
@@ -941,6 +964,7 @@ async function launchBrowser(
         headless: true,
         args: withHyperframesBrowserMarker(launchArgs),
         defaultViewport: null,
+        userDataDir: network?.userDataDir,
         executablePath: fingerprint.executablePath,
         env,
         timeout: fingerprint.browserTimeoutMs,
@@ -1000,11 +1024,11 @@ async function launchBrowser(
       }
     }
 
-    if (proxy) browser.once("disconnected", () => void proxy.close());
+    if (network) browser.once("disconnected", () => void network.close());
     return { browser, captureMode };
   } catch (error) {
     await browser?.close().catch(() => {});
-    await proxy?.close();
+    await network?.close();
     throw error;
   }
 }
