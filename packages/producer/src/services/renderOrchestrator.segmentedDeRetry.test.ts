@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
   DrawElementCaptureError,
   DrawElementVerificationError,
@@ -19,10 +27,12 @@ const { state, RETRY_REACHED } = vi.hoisted(() => ({
       kind: string;
       probeSession: unknown;
       completedSegments: number;
+      segmentDir: string;
       segmentDirEntries: string[];
     }>,
     failures: [] as unknown[],
     resumable: false,
+    storedForceScreenshot: undefined as boolean | undefined,
     sessions: [] as object[],
     closed: [] as object[],
   },
@@ -113,15 +123,43 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
   }),
 }));
 // A previous run left segment 0 complete; validating it for real needs ffprobe on a real file.
+// With storedForceScreenshot set, that segment is real and only the probe is faked.
 vi.mock("./render/segmentManifest.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./render/segmentManifest.js")>();
+  const storedSegmentManifest = (dir: string, forceScreenshot: boolean) => {
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, "segment_00000.mp4");
+    writeFileSync(path, "stored segment");
+    return {
+      version: 1 as const,
+      planHash: basename(dir),
+      forceScreenshot,
+      totalFrames: 1200,
+      segmentFrames: 600,
+      completed: [{ index: 0, startFrame: 0, endFrame: 600, path, bytes: 14, completedAt: "" }],
+    };
+  };
   return {
     ...actual,
     readSegmentManifest: (dir: string) =>
-      state.resumable
-        ? { version: 1, planHash: "", totalFrames: 1200, segmentFrames: 600, completed: [] }
-        : actual.readSegmentManifest(dir),
-    validateCompletedSegments: async () => new Set(state.resumable ? [0] : []),
+      state.storedForceScreenshot !== undefined
+        ? storedSegmentManifest(dir, state.storedForceScreenshot)
+        : state.resumable
+          ? {
+              version: 1,
+              planHash: "",
+              forceScreenshot: false,
+              totalFrames: 1200,
+              segmentFrames: 600,
+              completed: [],
+            }
+          : actual.readSegmentManifest(dir),
+    validateCompletedSegments: async (
+      ...args: Parameters<typeof actual.validateCompletedSegments>
+    ) =>
+      state.storedForceScreenshot !== undefined
+        ? actual.validateCompletedSegments(args[0], args[1], async () => 600)
+        : new Set(state.resumable ? [0] : []),
   };
 });
 vi.mock("./render/stages/captureSegmentedStage.js", async (importOriginal) => ({
@@ -144,15 +182,16 @@ vi.mock("./render/stages/captureSegmentedStage.js", async (importOriginal) => ({
       kind: input.plan.kind,
       probeSession: input.probeSession,
       completedSegments: input.completedSegments?.size ?? 0,
+      segmentDir: input.segmentDir,
       segmentDirEntries: existsSync(input.segmentDir) ? readdirSync(input.segmentDir) : [],
     });
     const failure = state.failures.shift();
-    if (failure === undefined) throw new Error(RETRY_REACHED);
     // A segment finished before the failing frame, as it would mid-render.
     mkdirSync(input.segmentDir, { recursive: true });
     const path = join(input.segmentDir, "segment_00000.mp4");
     writeFileSync(path, "drawElement segment");
     input.onSegmentComplete?.({ index: 0, startFrame: 0, endFrame: 600, path, bytes: 19 });
+    if (failure === undefined) throw new Error(RETRY_REACHED);
     throw new CaptureStageError({ cause: failure, browserConsole: [] });
   },
 }));
@@ -164,6 +203,7 @@ beforeEach(() => {
   state.sessions = [];
   state.closed = [];
   state.resumable = false;
+  state.storedForceScreenshot = undefined;
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "true");
   vi.stubEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "");
   vi.stubEnv("HF_DE_PARALLEL_STREAM", "");
@@ -192,6 +232,14 @@ function render(resumeSegments = false): Promise<void> {
   return executeRenderJob(job, root, join(root, "output.mp4"));
 }
 
+function sequentialStall(): Error {
+  const err = new Error(
+    "[Render] Sequential drawElement capture stalled: no frame progress for 1000ms (stuck at frame 640/1200).",
+  );
+  err.name = "SequentialCaptureStallError";
+  return err;
+}
+
 function stalledRenderer(): Error {
   const err = new Error("drawElement frame exceeded 5000ms (renderer stopped scheduling)");
   err.name = "DeFrameTimeoutError";
@@ -202,6 +250,7 @@ it.each([
   ["a suspect small frame", () => new DrawElementCaptureError(640, "suspect small frame")],
   ["no cached paint record", () => new DrawElementCaptureError(640, "No cached paint record")],
   ["a stalled renderer", stalledRenderer],
+  ["a sequential capture stall", sequentialStall],
   [
     "a failed self-verification",
     () => new DrawElementVerificationError("drawElement PSNR too low", { kind: "psnr" }),
@@ -226,6 +275,27 @@ it("re-captures every segment, including resumed ones, after a drawElement failu
   expect(state.attempts.map((a) => a.completedSegments)).toEqual([1, 0]);
   expect(state.attempts[1]?.segmentDirEntries).toEqual([]);
 });
+
+it("records the screenshot capture mode in the manifest the retry writes", async () => {
+  state.failures = [new DrawElementCaptureError(640, "suspect small frame")];
+  await expect(render()).rejects.toThrow(RETRY_REACHED);
+  const retryDir = state.attempts[1]?.segmentDir ?? "";
+  const manifest = JSON.parse(readFileSync(join(retryDir, "segments.json"), "utf-8"));
+  expect(manifest.forceScreenshot).toBe(true);
+});
+
+it.each([
+  ["reuses", false, 1],
+  ["does not reuse", true, 0],
+])(
+  "%s segments a drawElement resume finds captured with forceScreenshot %s",
+  async (_label, storedForceScreenshot, reused) => {
+    state.storedForceScreenshot = storedForceScreenshot;
+    await expect(render(true)).rejects.toThrow(RETRY_REACHED);
+    expect(state.attempts[0]?.forceScreenshot).toBe(false);
+    expect(state.attempts[0]?.completedSegments).toBe(reused);
+  },
+);
 
 it("does not retry a second drawElement failure", async () => {
   state.failures = [
