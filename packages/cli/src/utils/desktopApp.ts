@@ -247,17 +247,30 @@ function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void 
   };
 }
 
-function shownDir(dir: string, cwd: string): string {
-  return shellArg(relative(cwd, dir) || ".");
+function shownDir(
+  dir: string,
+  cwd: string,
+  platform: NodeJS.Platform,
+): { word: string; from: string } {
+  const word = shellArg(relative(cwd, dir) || ".", platform);
+  return word === null
+    ? { word: "", from: " from the project folder" }
+    : { word: ` ${word}`, from: "" };
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */
-export function openCommandFor(dir: string, cwd = process.cwd()): string {
-  return `hyperframes open ${shownDir(dir, cwd)}`;
+export function openCommandFor(
+  dir: string,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const { word, from } = shownDir(dir, cwd, platform);
+  return `hyperframes open${word}${from}`;
 }
 
 export function previewStopCommandFor(dir: string, port: number, cwd = process.cwd()): string {
-  return `hyperframes preview ${shownDir(dir, cwd)} --stop --port ${port}`;
+  const { word, from } = shownDir(dir, cwd, process.platform);
+  return `hyperframes preview${word} --stop --port ${port}${from}`;
 }
 
 /** Spotlight's copies of an app with this bundle id; an updater's hidden leftover (`.X.app.installing-…`) is none. */
@@ -309,7 +322,7 @@ export function desktopHint(
 ): string | null {
   if (insideHostApp(env) || !someoneToTell(env, tty)) return null;
   if (ready && (installed ?? desktopInstalled({ platform, env }))) {
-    const open = openCommandFor(dir);
+    const open = openCommandFor(dir, process.cwd(), platform);
     const how =
       preview === "background"
         ? `${open} (this stops the background preview)`

@@ -400,6 +400,14 @@ describe("openCommandFor", () => {
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
   });
 
+  it("spells a Windows folder so PowerShell and Git Bash run no part of its name", () => {
+    const work = resolve("work");
+    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe("hyperframes open '$(calc)'");
+    expect(openCommandFor(join(work, "$(calc)&calc"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+  });
+
   it("names the matching `preview --stop` the same way", () => {
     const work = resolve("work");
     expect(previewStopCommandFor(work, 3002, work)).toBe(
