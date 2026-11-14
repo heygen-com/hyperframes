@@ -2132,6 +2132,11 @@ plugin) with its path, Node.js, CPU, memory, disk, the extracted-frame cache,
 the archive extractor, `/dev/shm` on Linux, environment, whisper-cpp, local TTS
 and BGM models, FFmpeg, FFprobe, Chrome, and Docker.
 
+whisper-cpp and the local TTS and BGM models are optional. When one is missing
+its row shows `○` with the install command, and it does not fail the run: the
+summary reads `All required checks passed`, and in `--json` the row carries
+`"optional": true` and leaves the top-level `ok` true.
+
 The **frames cache** row is worth knowing about: it prints the effective cache
 directory, its free space, and whether the location came from
 `HYPERFRAMES_EXTRACT_CACHE_DIR` or the default. Under 2 GB free it fails, since

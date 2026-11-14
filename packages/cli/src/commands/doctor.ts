@@ -48,6 +48,7 @@ interface CheckResult {
   ok: boolean;
   detail: string;
   hint?: string;
+  optional?: boolean;
 }
 
 export { parseToolVersion };
@@ -294,6 +295,7 @@ async function checkWhisper(): Promise<CheckResult> {
     ok: false,
     detail: "Not found (optional \u2014 needed for transcription)",
     hint: getInstallInstructions(),
+    optional: true,
   };
 }
 
@@ -308,6 +310,7 @@ function checkLocalVoice(): CheckResult {
     ok: false,
     detail: notInstalledDetail("Not installed (optional \u2014 local voice fallback)"),
     hint: KOKORO_PIP,
+    optional: true,
   };
 }
 
@@ -317,6 +320,7 @@ function checkLocalMusic(): CheckResult {
     ok: false,
     detail: notInstalledDetail("Not installed (optional \u2014 local music fallback)"),
     hint: MUSICGEN_PIP,
+    optional: true,
   };
 }
 
@@ -338,6 +342,40 @@ export interface CheckOutcome {
   ok: boolean;
   detail: string;
   hint?: string;
+  optional?: boolean;
+}
+
+function toOutcome(name: string, result: CheckResult): CheckOutcome {
+  return {
+    name,
+    ok: result.ok,
+    detail: result.detail,
+    ...(result.hint ? { hint: result.hint } : {}),
+    ...(result.optional ? { optional: true } : {}),
+  };
+}
+
+function requiredChecksPass(outcomes: CheckOutcome[]): boolean {
+  return outcomes.every((o) => o.ok || o.optional);
+}
+
+function rowStyle(o: CheckOutcome): { icon: string; paint: (s: string) => string } {
+  if (o.ok) return { icon: c.success("\u2713"), paint: c.dim };
+  if (o.optional) return { icon: c.warn("\u25CB"), paint: c.warn };
+  return { icon: c.error("\u2717"), paint: c.error };
+}
+
+/** The closing line of the human report; optional rows that are missing never turn it into a failure. */
+export function doctorSummary(outcomes: CheckOutcome[]): { ok: boolean; text: string } {
+  if (!requiredChecksPass(outcomes)) {
+    return { ok: false, text: "Some checks failed \u2014 see hints above" };
+  }
+  const missing = outcomes.filter((o) => !o.ok).map((o) => o.name);
+  if (missing.length === 0) return { ok: true, text: "All checks passed" };
+  return {
+    ok: true,
+    text: `All required checks passed \u2014 optional, not installed: ${missing.join(", ")}`,
+  };
 }
 
 /**
@@ -357,6 +395,7 @@ function redactOutcome(o: CheckOutcome): CheckOutcome {
     ok: o.ok,
     detail: redactHome(o.detail),
     ...(o.hint ? { hint: redactHome(o.hint) } : {}),
+    ...(o.optional ? { optional: true } : {}),
   };
 }
 
@@ -373,7 +412,7 @@ function redactOutcome(o: CheckOutcome): CheckOutcome {
 export function buildDoctorReport(outcomes: CheckOutcome[], options: { redact?: boolean } = {}) {
   const checks = options.redact ? outcomes.map(redactOutcome) : outcomes;
   return withMeta({
-    ok: checks.every((o) => o.ok),
+    ok: requiredChecksPass(checks),
     platform: process.platform,
     arch: process.arch,
     checks,
@@ -414,13 +453,7 @@ export default defineCommand({
 
     const outcomes: CheckOutcome[] = [];
     for (const check of checks) {
-      const result = await check.run();
-      outcomes.push({
-        name: check.name,
-        ok: result.ok,
-        detail: result.detail,
-        ...(result.hint ? { hint: result.hint } : {}),
-      });
+      outcomes.push(toOutcome(check.name, await check.run()));
     }
     for (const result of environment.outcomes) {
       outcomes.push({
@@ -435,15 +468,8 @@ export default defineCommand({
       { name: "Docker", run: checkDocker },
       { name: "Docker running", run: checkDockerRunning },
     ]) {
-      const result = await check.run();
-      outcomes.push({
-        name: check.name,
-        ok: result.ok,
-        detail: result.detail,
-        ...(result.hint ? { hint: result.hint } : {}),
-      });
+      outcomes.push(toOutcome(check.name, await check.run()));
     }
-    const allOk = outcomes.every((o) => o.ok);
 
     if (args.json) {
       // Exit code intentionally reflects command success, not environment
@@ -461,22 +487,18 @@ export default defineCommand({
     console.log();
 
     for (const outcome of outcomes) {
-      const icon = outcome.ok ? c.success("\u2713") : c.error("\u2717");
+      const { icon, paint } = rowStyle(outcome);
       const name = outcome.name.padEnd(16);
-      console.log(
-        `  ${icon} ${c.bold(name)} ${outcome.ok ? c.dim(outcome.detail) : c.error(outcome.detail)}`,
-      );
+      console.log(`  ${icon} ${c.bold(name)} ${paint(outcome.detail)}`);
       if (!outcome.ok && outcome.hint) {
         console.log(`  ${" ".repeat(19)}${c.accent(outcome.hint)}`);
       }
     }
 
     console.log();
-    if (allOk) {
-      console.log(`  ${c.success("\u25C7")}  ${c.success("All checks passed")}`);
-    } else {
-      console.log(`  ${c.warn("\u25C7")}  ${c.warn("Some checks failed \u2014 see hints above")}`);
-    }
+    const summary = doctorSummary(outcomes);
+    const tone = summary.ok ? c.success : c.warn;
+    console.log(`  ${tone("\u25C7")}  ${tone(summary.text)}`);
     console.log();
   },
 });
