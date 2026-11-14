@@ -27,6 +27,12 @@ describe("StudioToast", () => {
     expect(dismissed).toEqual(["info"]);
   });
 
+  it("keeps an error toast up on a click on it, so its text can be selected and copied", () => {
+    const dismissed = mount("error");
+    act(() => document.querySelector<HTMLElement>("[role=alert]")?.click());
+    expect(dismissed).toEqual([]);
+  });
+
   it("gives a persisting error toast a Dismiss button that dismisses it once", () => {
     const dismissed = mount("error");
     act(() => document.querySelector<HTMLElement>("[aria-label=Dismiss]")?.click());
