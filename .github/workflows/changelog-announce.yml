@@ -1,0 +1,46 @@
+name: Announce weekly digest
+
+# Posts the newest docs/weekly-updates.mdx entry to Slack and Discord when a NEW week lands on main.
+# Edits to an already-announced week don't repost. Needs repo secrets SLACK_WEBHOOK_URL and/or
+# DISCORD_WEBHOOK_URL; a missing one is skipped.
+
+on:
+  push:
+    branches: [main]
+    paths: [docs/weekly-updates.mdx]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-announce
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Is this a new week?
+        id: week
+        run: |
+          now=$(grep -m1 -o 'label="[^"]*"' docs/weekly-updates.mdx || true)
+          before=$(git show HEAD^:docs/weekly-updates.mdx 2>/dev/null | grep -m1 -o 'label="[^"]*"' || true)
+          echo "label=$now" >> "$GITHUB_OUTPUT"
+          if [ "$now" != "$before" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Post
+        if: steps.week.outputs.new == 'true'
+        run: npx --yes tsx@4 scripts/changelog-announce.ts --post
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.CHANGELOG_SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.CHANGELOG_DISCORD_WEBHOOK_URL }}
