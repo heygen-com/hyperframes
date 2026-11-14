@@ -33,6 +33,15 @@ type RealGsap = {
   ticker: { sleep: () => void };
   getProperty: (target: Element, property: string) => unknown;
 };
+function loadVendoredGsap(): RealGsap {
+  const exports: { gsap?: RealGsap } = {};
+  // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
+  const frame = window.requestAnimationFrame;
+  window.requestAnimationFrame = () => 0;
+  new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
+  window.requestAnimationFrame = frame;
+  return exports.gsap!;
+}
 
 type Tl = RuntimeTimelineLike & { kill: ReturnType<typeof vi.fn>; label: string };
 
@@ -1180,13 +1189,7 @@ describe("__hfSwapScenes", () => {
       asFresh,
     ],
   ])("a scene script with %s on %s", async (_, el, body, expected) => {
-    const exports: { gsap?: RealGsap } = {};
-    // Its ticker takes the frame callback as it loads, and this file's runs at once: give it one that never ticks.
-    const frame = window.requestAnimationFrame;
-    window.requestAnimationFrame = () => 0;
-    new Function("exports", "module", readFileSync(vendoredGsap(), "utf8"))(exports, { exports });
-    window.requestAnimationFrame = frame;
-    const gsap = exports.gsap!;
+    const gsap = loadVendoredGsap();
     vi.stubGlobal("gsap", gsap);
     quietMedia();
     const source = `const k = globalThis.document.querySelector(${JSON.stringify(el)});
@@ -1944,6 +1947,38 @@ describe("the preview's scene window", () => {
     expect(sceneHost("s2").getAttribute("style")).not.toContain("display: none");
   });
 
+  it("lays a parked scene out while its script runs, so a transform tween keeps the spaces between words", async () => {
+    vi.stubGlobal("gsap", loadVendoredGsap());
+    // As in a browser, nothing under display:none has an offset parent; jsdom gives none to anything.
+    vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+      function (this: HTMLElement) {
+        const undisplayed = (el: Element | null): boolean =>
+          el !== null && (getComputedStyle(el).display === "none" || undisplayed(el.parentElement));
+        return undisplayed(this) ? null : this.parentElement;
+      },
+    );
+    const row =
+      '<div class="row"><span class="w"><span>a</span> <span>b</span></span> <span class="w">c</span></div>';
+    const laidOut: boolean[] = [];
+    vi.stubGlobal("__laidOut", laidOut);
+    // Under display:none, gsap measures each target from <html> and puts it back before its next element.
+    const script =
+      "if (window.__made) { var r = document.querySelector('.row');" +
+      "window.__laidOut.push(r.offsetParent !== null);" +
+      "gsap.fromTo('.w', { y: 10 }, { y: 0, duration: 1 }); }";
+    const leaf: Scene = { ...S2, body: row, script, extraAttrs: ' style="position: static"' };
+    bootWindowed([S0, S1, leaf], trackingRoot().root);
+    await tick();
+    expect(sceneHost("s2").getAttribute("style")).toContain("display: none");
+    await seekAndSettle(5);
+    const words = sceneHost("s2").querySelector(".row")!;
+    expect(
+      [...words.childNodes].map((n) => (n.nodeType === Node.TEXT_NODE ? n.textContent : "w")),
+    ).toEqual(["w", " ", "w"]);
+    expect(words.textContent).toBe("a b c");
+    expect(laidOut).toEqual([true]);
+  });
+
   it("keeps a scene mounted whose script published its timeline under another id as well", async () => {
     bootWindowed([S0, S1, S2], trackingRoot().root);
     await tick();
@@ -1986,7 +2021,9 @@ describe("the preview's scene window", () => {
   });
 
   it("shows a scene mounted again after the visibility pass hid it by display and it unmounted", async () => {
-    const leaf: Scene = { ...S2, body: "<p>two</p>", extraAttrs: ' style="position: static"' };
+    // Kept in flow though the runtime stacks the film's clips absolutely, so the pass hides it by display.
+    const css = '[data-hf-scene="s2"] { position: static !important; }';
+    const leaf: Scene = { ...S2, body: "<p>two</p>", css };
     bootWindowed([S0, S1, leaf], trackingRoot().root);
     await tick();
     // Paused in the middle scene, the last one mounts as next, hidden until it plays.

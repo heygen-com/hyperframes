@@ -4809,12 +4809,16 @@ export function initSandboxRuntimeModular(): void {
     const hidden = displayBeforeHide.get(from as StylableElement);
     if (hidden) displayBeforeHide.set(to as StylableElement, hidden);
   };
-  // In three tasks, so frames draw between them; the scene counts as parked, its last frame held, until it settles.
+  // In three tasks, so frames draw between them; until it settles, it is laid out unseen and counts as parked, its last frame held.
   const mountScene = async (name: string) => {
     const unparked = unpark(name);
     if (!unparked) return;
     const { host, placeholder, scripts } = unparked;
     moveDisplayHide(placeholder, host);
+    if (isStylableElement(host)) {
+      restoreDisplay(host);
+      host.style.setProperty("visibility", "hidden", "important");
+    }
     recordAuthoredMedia(host);
     refreshSvgSelectorAliases();
     const captionHosts = host.querySelector(".caption-group") ? [host] : [];
