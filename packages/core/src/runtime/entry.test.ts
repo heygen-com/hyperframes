@@ -727,6 +727,23 @@ describe("runtime entry", () => {
       expect(loadsOf(now)).toEqual([2]);
     });
 
+    it("keeps a fully buffered audio clip's buffer when the playhead leaves it", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const now = timed(root, "audio", "0");
+      const later = timed(root, "audio", "9");
+      Object.defineProperty(now, "duration", { value: 5 });
+      Object.defineProperty(now, "buffered", {
+        value: { length: 1, start: () => 0, end: () => 5 },
+      });
+
+      await evaluateRuntime();
+      window.__player?.seek(7.6);
+      expect(armed(now, later)).toEqual([false, true]);
+      expect(loadsOf(now)).toEqual([1]);
+    });
+
     it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
       spyLoad();
       servePreview();

@@ -2738,7 +2738,7 @@ export function initSandboxRuntimeModular(): void {
   // A far clip can finish a load the parser started before its window was decided.
   const onMediaLoadedWhileFar = (event: Event) => {
     const el = event.currentTarget;
-    if (!isMediaElement(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0) return;
+    if (!isVideoElement(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0) return;
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -3283,9 +3283,14 @@ export function initSandboxRuntimeModular(): void {
     }
     mediaNearPlayhead.set(el, near);
     if (!near) {
+      const wasPreloading = el.preload !== "none";
       el.preload = "none";
-      const holdsPipeline = decided || el.readyState > 0 || el.networkState === 2;
-      if (holdsPipeline) withoutOwnTimingRecords(el, () => releaseMedia(el, true));
+      // Only a video holds the decoder threads that crash a big project; audio keeps its buffer (Safari stops it).
+      const video = isVideoElement(el);
+      const holdsPipeline = video
+        ? decided || el.readyState > 0 || el.networkState === 2
+        : wasPreloading && decided;
+      if (holdsPipeline) withoutOwnTimingRecords(el, () => releaseMedia(el, video || !loadsAhead));
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
       if (visible) preloadMedia(el);
