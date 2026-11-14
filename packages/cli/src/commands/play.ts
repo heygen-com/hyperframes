@@ -271,7 +271,6 @@ export async function registerCompositionRoute(
       const boxParam = ctx.req.query(PREVIEW_PROXY_BOX_PARAM);
       const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
       const proxyLight = ctx.req.query(PREVIEW_PROXY_LIGHT_PARAM) === "1";
-      // A light copy needs a box to be light for, as in the Studio preview.
       if (proxyBox === null || (proxyLight && !proxyBox)) return ctx.text("Not found", 404);
       try {
         const facts = await probeAssetCodec(filePath);
