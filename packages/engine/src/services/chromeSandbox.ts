@@ -51,12 +51,7 @@ function linuxCannotSandbox({ env, uid, exists, read }: ChromeSandboxHost): bool
   );
 }
 
-/**
- * Linux Chrome keeps its sandbox unless the host can't give it one: root, serverless, a container, or
- * blocked user namespaces. Windows and macOS run without it unless HYPERFRAMES_CHROME_SANDBOX=1: a
- * sandboxed GPU process there can crash at startup (a headless-shell install the restricted token can't
- * read on Windows, a nested seatbelt on macOS), and only a Linux launch falls back without the sandbox.
- */
+/** Only Linux keeps the sandbox by default (not as root, serverless, in a container, or with blocked user namespaces): only it falls back. */
 export function chromeSandboxEnabled(host: ChromeSandboxHost = currentHost()): boolean {
   const override = host.env.HYPERFRAMES_CHROME_SANDBOX;
   if (override === "0" || override === "1") return override === "1";
