@@ -74,7 +74,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 | Attribute                                      | Meaning                                                                                             |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `data-start`, `data-duration`                  | Seconds, local to the file that declares the element                                                |
-| `data-track-index`                             | Studio lane only; paint order is CSS `z-index`                                                      |
+| `data-track-index`                             | Studio lane only (see Lanes); paint order is CSS `z-index`                                          |
 | `data-track-kind`                              | `graphics` or `captions` on scene hosts (video and audio come from the tag)                         |
 | `data-composition-src`, `data-variable-values` | Mount a scene file; per-mount variable values (a JSON object)                                       |
 | `data-media-start`                             | Offset into the source media (a trim)                                                               |
@@ -84,6 +84,15 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 | `data-link`, `data-sync-origin`                | A video and audio edited as one (see Linked clips)                                                  |
 | `data-hidden`                                  | Hidden in preview and render; reversible                                                            |
 | `data-no-timeline`                             | On the root of a still composition: no timeline to wait for                                         |
+
+## Lanes
+
+`data-track-index` never changes the render; it is how the edit reads in Studio. Clips that never overlap in time share a lane:
+
+- Scenes and full-frame sections, back to back: one lane.
+- Overlays, cards and captions over a scene: the next lane; another only where two of them overlap.
+- Every sound effect: one lane. Music: its own lane. Voice: its own lane.
+- A new clip goes on the lowest lane of its kind where it overlaps nothing, never on a new lane of its own.
 
 ## Variables
 
@@ -113,7 +122,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 Write what a Studio drop writes, so the clip behaves like one the person dropped:
 
-- `id`, `class="clip"`, `data-start` (the playhead or the requested time, never a silent 0) and `data-track-index`. Video with sound: `playsinline data-has-audio="true"`; silent footage: `muted playsinline`. Audio: `data-volume="1"`.
+- `id`, `class="clip"`, `data-start` (the playhead or the requested time, never a silent 0) and `data-track-index` (see Lanes). Video with sound: `playsinline data-has-audio="true"`; silent footage: `muted playsinline`. Audio: `data-volume="1"`.
 - Images and video fill the frame: `position: absolute; left: 0; top: 0`, width and height equal to the canvas, `object-fit: contain`.
 - `z-index` is the number of top-level clips already in that file plus one.
 - Raise the root's `data-duration` to cover the new clip's end, or it never plays.
