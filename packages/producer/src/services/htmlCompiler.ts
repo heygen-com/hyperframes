@@ -102,7 +102,9 @@ import {
   probeMediaProfile,
 } from "@hyperframes/engine";
 import {
+  assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
@@ -1333,9 +1335,46 @@ function matchesScriptIntegrity(bytes: Uint8Array, metadata: string): boolean {
   );
 }
 
+const MAX_INLINED_SCRIPT_BYTES = 16 * 1024 * 1024;
+
+class ScriptNotInlinableError extends Error {}
+
+/** Whether `src` lies under the operator's `HYPERFRAMES_GSAP_BASE_URL` mirror, which may be loopback HTTP. */
+function isGsapMirrorScript(src: string): boolean {
+  const base = process.env.HYPERFRAMES_GSAP_BASE_URL?.trim();
+  if (!base) return false;
+  try {
+    return new URL(src).href.startsWith(`${normalizeGsapBaseUrl(base)}/`);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchGsapMirrorScript(src: string): Promise<Uint8Array> {
+  const response = await fetch(src, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+/**
+ * Fetch script bytes. Scripts outside the operator's GSAP mirror follow the downloader's
+ * public-HTTPS policy, which re-checks every redirect hop and bounds the body.
+ */
+async function fetchInlinableScript(src: string): Promise<Uint8Array> {
+  if (isGsapMirrorScript(src)) return fetchGsapMirrorScript(src);
+  try {
+    assertPublicHttpsUrl(src);
+  } catch {
+    throw new ScriptNotInlinableError("not a public HTTPS URL");
+  }
+  return fetchPublicHttpsBytes(src, { maxBytes: MAX_INLINED_SCRIPT_BYTES, timeoutMs: 15_000 });
+}
+
 /**
  * Download external CDN scripts and inline them into the HTML so rendering
  * works without network access (Docker, CI, restricted environments).
+ * Only public HTTPS scripts are fetched here; any other script tag is left
+ * for the capture browser to load.
  */
 export async function inlineExternalScripts(html: string): Promise<string> {
   const fullHtml = ensureFullDocument(html);
@@ -1361,11 +1400,7 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       if (bundled && matchesScriptIntegrity(bundled, integrity)) {
         return { src, text: new TextDecoder().decode(bundled) };
       }
-      const response = await fetch(src, {
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const bytes = await fetchInlinableScript(src);
       if (!matchesScriptIntegrity(bytes, integrity)) {
         throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
       }
@@ -1393,6 +1428,12 @@ export async function inlineExternalScripts(html: string): Promise<string> {
       // A verified mismatch must never fall back to an executable external tag:
       // browser support for integrity metadata (including casing) can differ.
       if (download.reason instanceof ScriptIntegrityError) throw download.reason;
+      if (download.reason instanceof ScriptNotInlinableError) {
+        defaultLogger.info(
+          `[Compiler] Left script for the browser to load: ${src} (${download.reason.message}).`,
+        );
+        continue;
+      }
       defaultLogger.warn(
         `[Compiler] WARNING: Failed to download CDN script: ${src} (${download.reason}). ` +
           `The render may fail if this script is required (e.g. GSAP). ` +

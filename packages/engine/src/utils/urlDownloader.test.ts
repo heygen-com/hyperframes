@@ -18,6 +18,7 @@ import {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   UrlDownloadError,
 } from "./urlDownloader.js";
@@ -341,6 +342,15 @@ describe("fetchPublicHttpsText", () => {
         timeoutMs: 20,
       }),
     ).rejects.toMatchObject({ kind: "timeout", retryable: true });
+  });
+});
+
+describe("fetchPublicHttpsBytes", () => {
+  it("returns the body's bytes undecoded, byte order mark included", async () => {
+    stubFetch(vi.fn().mockResolvedValue(new Response(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61]))));
+
+    const bytes = await fetchPublicHttpsBytes("https://cdn.example/a.js", { maxBytes: 16 });
+    expect(Array.from(bytes)).toEqual([0xef, 0xbb, 0xbf, 0x61]);
   });
 });
 

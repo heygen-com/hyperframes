@@ -539,12 +539,19 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
-// fallow-ignore-next-line complexity
+/** Fetch a bounded body, as UTF-8 text or as raw bytes, applying the downloader's redirect and SSRF policy to every hop. */
 export async function fetchPublicHttpsText(
   url: string,
   options: PublicHttpsTextOptions,
 ): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
+}
+
+// fallow-ignore-next-line complexity
+export async function fetchPublicHttpsBytes(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -566,14 +573,14 @@ export async function fetchPublicHttpsText(
 
   try {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, "Fetch cancelled");
     }
     const { response } = await fetchWithValidatedRedirects(url, controller);
     if (!response.ok) {
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -590,7 +597,7 @@ export async function fetchPublicHttpsText(
       throw new UrlDownloadError(
         "length_mismatch",
         false,
-        "Text response exceeded the configured byte limit",
+        "Response exceeded the configured byte limit",
         response.status,
       );
     }
@@ -607,7 +614,7 @@ export async function fetchPublicHttpsText(
         throw new UrlDownloadError(
           "length_mismatch",
           false,
-          "Text response exceeded the configured byte limit",
+          "Response exceeded the configured byte limit",
           response.status,
           { receivedBytes },
         );
@@ -618,18 +625,18 @@ export async function fetchPublicHttpsText(
       throw new UrlDownloadError(
         "length_mismatch",
         true,
-        "Text response byte count did not match its declared length",
+        "Response byte count did not match its declared length",
         response.status,
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, "Fetch cancelled");
     }
     if (timedOut) {
-      throw new UrlDownloadError("timeout", true, `Text fetch timeout after ${timeoutMs / 1000}s`);
+      throw new UrlDownloadError("timeout", true, `Fetch timeout after ${timeoutMs / 1000}s`);
     }
     throw classifyDownloadFailure(error);
   } finally {
