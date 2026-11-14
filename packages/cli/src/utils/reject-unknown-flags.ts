@@ -23,10 +23,10 @@ function nameVariants(name: string): string[] {
   return [name, kebabCase(name), camel];
 }
 
-function declaredLongFlags(args: ArgsDef | undefined): string[] {
+function visibleLongFlags(args: ArgsDef | undefined): string[] {
   return Object.entries(args ?? {})
     .filter(([, def]) => def?.type !== "positional" && !(def && "hidden" in def && def.hidden))
-    .map(([name]) => `--${kebabCase(name)}`);
+    .map(([name]) => kebabCase(name));
 }
 
 // Every spelling of one declared arg: name variants plus aliases. `def` may be undefined.
@@ -86,12 +86,7 @@ const FLAG_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   search: ["query"],
 };
 
-function unknownFlagError(
-  flag: string,
-  known: Set<string>,
-  declared: string[],
-  path: string,
-): CliUsageError {
+function unknownFlagError(flag: string, visible: string[], path: string): CliUsageError {
   const command = `hyperframes ${path ? `${path} ` : ""}`.trim();
   if (flag === "--json") {
     return new CliUsageError(`${command} has no JSON output.`, {
@@ -99,14 +94,13 @@ function unknownFlagError(
       hint: "Run it without --json.",
     });
   }
-  const longNames = [...known].filter((name) => name.length > 1);
   const name = flag.replace(/^--?/, "");
   const match =
-    FLAG_SYNONYMS[name]?.find((s) => known.has(s)) ??
-    (flag.startsWith("--") ? closestMatch(name, longNames) : undefined);
+    FLAG_SYNONYMS[name]?.find((s) => visible.includes(s)) ??
+    (flag.startsWith("--") ? closestMatch(name, visible) : undefined);
   const hint = [
     match && `Did you mean --${match}?`,
-    declared.length > 0 && `Its flags: ${declared.join(", ")}.`,
+    visible.length > 0 && `Its flags: ${visible.map((f) => `--${f}`).join(", ")}.`,
     `Run 'hyperframes ${path ? `${path} ` : ""}--help' for what each does.`,
   ]
     .filter(Boolean)
@@ -130,7 +124,7 @@ export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[], pa
   for (const tok of rawArgs) {
     if (tok === "--") break;
     const bad = unknownFlagIn(tok, known);
-    if (bad) throw unknownFlagError(bad, known, declaredLongFlags(args), path);
+    if (bad) throw unknownFlagError(bad, visibleLongFlags(args), path);
   }
 }
 

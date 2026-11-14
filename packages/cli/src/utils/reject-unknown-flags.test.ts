@@ -128,6 +128,21 @@ describe("assertKnownFlags", () => {
     );
   });
 
+  // fails without the fix: a typo near a hidden shim was told to use the shim.
+  it("never suggests a hidden flag for a typo", () => {
+    const init = {
+      args: {
+        example: { type: "string" },
+        template: { type: "string", hidden: true, description: "[renamed] Use --example instead." },
+      },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(init, ["--templat", "x"], "init")).toThrow(
+      expect.objectContaining({
+        hint: "Its flags: --example. Run 'hyperframes init --help' for what each does.",
+      }),
+    );
+  });
+
   it("points --search at the query flag", () => {
     const catalog = {
       args: { words: { type: "positional" }, query: { type: "string" }, json: { type: "boolean" } },
