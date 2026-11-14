@@ -14,10 +14,19 @@ const ALWAYS_KNOWN = new Set(["help", "h", "version", "v"]);
 
 // A camelCase arg name (`gifLoop`) is passed as `--gif-loop`; a kebab name is
 // passed as-is. Accept both spellings so the validator matches citty's parsing.
+function kebabCase(name: string): string {
+  return name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+}
+
 function nameVariants(name: string): string[] {
-  const kebab = name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
   const camel = name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-  return [name, kebab, camel];
+  return [name, kebabCase(name), camel];
+}
+
+function declaredLongFlags(args: ArgsDef | undefined): string[] {
+  return Object.entries(args ?? {})
+    .filter(([, def]) => def?.type !== "positional")
+    .map(([name]) => `--${kebabCase(name)}`);
 }
 
 // Every spelling of one declared arg: name variants plus aliases. `def` may be undefined.
@@ -74,9 +83,15 @@ const FLAG_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   start: ["from"],
   end: ["to"],
   o: ["out", "output"],
+  search: ["query"],
 };
 
-function unknownFlagError(flag: string, known: Set<string>, path: string): CliUsageError {
+function unknownFlagError(
+  flag: string,
+  known: Set<string>,
+  declared: string[],
+  path: string,
+): CliUsageError {
   const command = `hyperframes ${path ? `${path} ` : ""}`.trim();
   if (flag === "--json") {
     return new CliUsageError(`${command} has no JSON output.`, {
@@ -89,8 +104,13 @@ function unknownFlagError(flag: string, known: Set<string>, path: string): CliUs
   const match =
     FLAG_SYNONYMS[name]?.find((s) => known.has(s)) ??
     (flag.startsWith("--") ? closestMatch(name, longNames) : undefined);
-  const help = `Run 'hyperframes ${path ? `${path} ` : ""}--help' to see its flags.`;
-  const hint = match ? `Did you mean --${match}? ${help}` : help;
+  const hint = [
+    match && `Did you mean --${match}?`,
+    declared.length > 0 && `Its flags: ${declared.join(", ")}.`,
+    `Run 'hyperframes ${path ? `${path} ` : ""}--help' for what each does.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return new CliUsageError(`Unknown flag: ${flag}`, { hint, code: "unknown_flag" });
 }
 
@@ -110,7 +130,7 @@ export function assertKnownFlags(cmd: CommandDef<ArgsDef>, rawArgs: string[], pa
   for (const tok of rawArgs) {
     if (tok === "--") break;
     const bad = unknownFlagIn(tok, known);
-    if (bad) throw unknownFlagError(bad, known, path);
+    if (bad) throw unknownFlagError(bad, known, declaredLongFlags(args), path);
   }
 }
 
