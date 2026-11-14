@@ -294,21 +294,30 @@ export function createControls(
   };
 
   let scrubbing = false;
+  let playAfterScrub = false;
+
+  const startScrub = () => {
+    scrubbing = true;
+    playAfterScrub = isPlaying;
+    if (playAfterScrub) callbacks.onPause();
+    callbacks.onScrubStart?.();
+  };
+  const endScrub = () => {
+    scrubbing = false;
+    callbacks.onScrubEnd?.();
+    if (playAfterScrub) callbacks.onPlay();
+  };
 
   scrubber.addEventListener("mousedown", (e) => {
     e.stopPropagation();
-    scrubbing = true;
-    callbacks.onScrubStart?.();
+    startScrub();
     handleScrubAt(e.clientX);
   });
   const onMouseMove = (e: MouseEvent) => {
     if (scrubbing) handleScrubAt(e.clientX);
   };
   const onMouseUp = () => {
-    if (scrubbing) {
-      scrubbing = false;
-      callbacks.onScrubEnd?.();
-    }
+    if (scrubbing) endScrub();
   };
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
@@ -316,8 +325,7 @@ export function createControls(
   scrubber.addEventListener(
     "touchstart",
     (e) => {
-      scrubbing = true;
-      callbacks.onScrubStart?.();
+      startScrub();
       const touch = e.touches[0];
       if (touch) handleScrubAt(touch.clientX);
     },
@@ -329,11 +337,10 @@ export function createControls(
       if (touch) handleScrubAt(touch.clientX);
     }
   };
-  const onTouchEnd = () => {
-    if (scrubbing) {
-      scrubbing = false;
-      callbacks.onScrubEnd?.();
-    }
+  const onTouchEnd = (e: TouchEvent) => {
+    if (!scrubbing) return;
+    if (e.cancelable) e.preventDefault();
+    endScrub();
   };
   document.addEventListener("touchmove", onTouchMove, { passive: true });
   document.addEventListener("touchend", onTouchEnd);
@@ -368,6 +375,7 @@ export function createControls(
       time.textContent = `${formatTime(clampedCurrent)} / ${formatTime(duration)}`;
     },
     updatePlaying(playing: boolean) {
+      if (scrubbing && playAfterScrub) return;
       const changed = playing !== isPlaying;
       isPlaying = playing;
       playBtn.classList.toggle("hfp-playing", playing);
