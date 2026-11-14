@@ -26,6 +26,8 @@ interface Shown {
   block?: number;
   /** The block's rendered text; defaults to `text`. */
   blockText?: string;
+  /** Where the line sits; defaults to a few pixels below the previous key's. */
+  top?: number;
 }
 
 function part(shown: Shown): CraftTextPart {
@@ -40,7 +42,7 @@ function part(shown: Shown): CraftTextPart {
     blockText: shown.blockText ?? shown.text,
     opacity: 1,
     fontPx,
-    rect: { left: 100, top: 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
+    rect: { left: 100, top: shown.top ?? 100 + shown.key * 10, width: 800, height: fontPx * 1.2 },
     captions: shown.captions ?? false,
   };
 }
@@ -216,6 +218,31 @@ describe("line_unread", () => {
     }));
     shown.push({ key: 2, text: "End card here", from: 6, to: 12 });
     expect(await detectLineUnread(film(12, shown), 12, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  // fails without the fix: each scene's copy of the alert was its own line, so the first measured 2.1 s.
+  it("measures a line the next scene repeats in place as one line", async () => {
+    const alert =
+      "Ballistic missile threat inbound to Hawaii. Seek immediate shelter. This is not a drill.";
+    const shown: Shown[] = [
+      { key: 1, text: alert, from: 0, to: 2.1, top: 560 },
+      { key: 2, text: alert, from: 2.1, to: 7, top: 560 },
+      { key: 3, text: "The end", from: 7, to: 10 },
+    ];
+    expect(await detectLineUnread(film(10, shown), 10, CANVAS, probeFor(shown))).toEqual([]);
+  });
+
+  it("still measures the same words shown elsewhere on screen as another line", async () => {
+    const alert =
+      "Ballistic missile threat inbound to Hawaii. Seek immediate shelter. This is not a drill.";
+    const shown: Shown[] = [
+      { key: 1, text: alert, from: 0, to: 2.1, top: 100 },
+      { key: 2, text: alert, from: 2.1, to: 7, top: 700 },
+      { key: 3, text: "The end", from: 7, to: 10 },
+    ];
+    const findings = await detectLineUnread(film(10, shown), 10, CANVAS, probeFor(shown));
+    expect(findings.map((finding) => finding.selector)).toEqual(["#t1"]);
+    expect(findings[0]?.seconds).toBeCloseTo(2.1, 1);
   });
 
   it("skips text too small to be a reading line", async () => {
