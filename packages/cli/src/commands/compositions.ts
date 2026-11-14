@@ -49,6 +49,11 @@ function estimateDurationFromScripts(root: ParentNode): number {
   return duration;
 }
 
+function readDimension(raw: string | null | undefined, fallback: number): number {
+  const value = parseInt(raw ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 export function parseCompositions(html: string, baseDir: string): CompositionInfo[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
@@ -60,8 +65,8 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
 
   compositionDivs.forEach((div) => {
     const id = div.getAttribute("data-composition-id") ?? "unknown";
-    const width = parseInt(div.getAttribute("data-width") ?? "1920", 10);
-    const height = parseInt(div.getAttribute("data-height") ?? "1080", 10);
+    const width = readDimension(div.getAttribute("data-width"), 1920);
+    const height = readDimension(div.getAttribute("data-height"), 1080);
     const compositionSrc = div.getAttribute("data-composition-src");
 
     // If this references an external sub-composition, parse that file
@@ -130,8 +135,8 @@ export function parseSubComposition(
   const compDiv = searchDocument.querySelector("[data-composition-id]");
 
   const id = compDiv?.getAttribute("data-composition-id") ?? fallbackId;
-  const width = parseInt(compDiv?.getAttribute("data-width") ?? String(fallbackWidth), 10);
-  const height = parseInt(compDiv?.getAttribute("data-height") ?? String(fallbackHeight), 10);
+  const width = readDimension(compDiv?.getAttribute("data-width"), fallbackWidth);
+  const height = readDimension(compDiv?.getAttribute("data-height"), fallbackHeight);
 
   // Count timed elements inside the sub-composition
   const searchRoot = compDiv ?? searchDocument;
