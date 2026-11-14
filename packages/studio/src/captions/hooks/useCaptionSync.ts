@@ -6,6 +6,7 @@ import { trackEvent } from "../../telemetry/client";
 import type { CaptionStyle } from "../types";
 import { studioWriteHeaders } from "../../utils/studioFileVersion";
 import { studioApiFetch } from "../../utils/studioApiFetch";
+import { heldFileWordsOf } from "../../utils/studioSaveDiagnostics";
 
 interface CaptionOverrideEntry {
   wordId?: string;
@@ -93,6 +94,7 @@ export function useCaptionSync(projectId: string | null) {
 
     const seqAtSave = editSeqRef.current;
     const overrides = buildOverrides(state.model);
+    let held: string | null = null;
 
     studioApiFetch(
       buildProjectApiPath(pid, `/files/${encodeURIComponent("caption-overrides.json")}`),
@@ -102,8 +104,11 @@ export function useCaptionSync(projectId: string | null) {
         body: JSON.stringify(overrides, null, 2),
       },
     )
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      .then(async (res) => {
+        if (!res.ok) {
+          held = await heldFileWordsOf(res, "caption-overrides.json");
+          throw new Error(`HTTP ${res.status}`);
+        }
         // A newer edit may have re-armed the debounce while this PUT was in
         // flight — its beforeunload/unmount flush still needs pending=true.
         if (editSeqRef.current === seqAtSave) pendingRef.current = false;
@@ -114,7 +119,7 @@ export function useCaptionSync(projectId: string | null) {
         // Caption auto-save is a data-loss path: surface it to the user, not
         // just telemetry. pendingRef stays true so beforeunload still warns.
         trackEvent("studio_caption_autosave_failed", { error: String(error) });
-        useCaptionStore.getState().setSyncError("Caption changes couldn't be saved");
+        useCaptionStore.getState().setSyncError(held ?? "Caption changes couldn't be saved");
       });
   }, []);
 
