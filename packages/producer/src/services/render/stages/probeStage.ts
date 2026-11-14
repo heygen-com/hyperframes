@@ -660,7 +660,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
           // Convert absolute localhost URLs back to relative paths
           let src = el.src;
           if (fileServer && src.startsWith(fileServer.url)) {
-            src = servedPath(src.slice(fileServer.url.length));
+            src = src.slice(fileServer.url.length).replace(/^\//, "");
           }
 
           if (el.tagName === "video") {
@@ -669,7 +669,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -719,7 +719,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }

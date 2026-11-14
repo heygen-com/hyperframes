@@ -826,8 +826,8 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
-  it.each(["take one.mp4", "café.mp4"])(
-    "mixes the sound of a clip named %s once, though the browser percent-encodes its src",
+  it.each(["take one.mp4", "café.mp4", "take%20one.mp4", "caf%C3%A9.mp4"])(
+    "mixes the sound of a clip whose src is written %s once, however the browser spells it",
     async (name) => {
       resetRetryMocks();
       const timing = { start: 0, end: 5, duration: 5, mediaStart: 0, loop: false, volume: 1 };
@@ -835,7 +835,7 @@ describe("runProbeStage — forceScreenshot threading", () => {
         {
           id: "clip",
           tagName: "video",
-          src: `http://127.0.0.1:0/${encodeURIComponent(name)}`,
+          src: new URL(name, "http://127.0.0.1:0/").href,
           hasAudio: true,
           muted: false,
           ...timing,
