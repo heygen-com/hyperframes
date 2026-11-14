@@ -3,7 +3,7 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import { getIframeGsap, queryIframeElement, type IframeGsap } from "./gsapShared";
+import { getIframeGsap, queryIframeElement } from "./gsapShared";
 import { gsapWritesChannels } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
 
