@@ -15,6 +15,7 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveReferencedStart } from "@hyperframes/engine";
 import { withMeta } from "../utils/updateCheck.js";
+import { terminalText } from "../utils/terminalText.js";
 
 interface CompositionInfo {
   id: string;
@@ -208,16 +209,19 @@ export default defineCommand({
     console.log();
 
     // Calculate padding for alignment
-    const maxIdLen = compositions.reduce((max, comp) => Math.max(max, comp.id.length), 0);
+    const maxIdLen = compositions.reduce(
+      (max, comp) => Math.max(max, terminalText(comp.id).length),
+      0,
+    );
 
     for (const comp of compositions) {
-      const id = c.accent(comp.id.padEnd(maxIdLen));
+      const id = c.accent(terminalText(comp.id).padEnd(maxIdLen));
       const duration = c.bold(`${comp.duration.toFixed(1)}s`);
       const resolution = c.dim(`${comp.width}×${comp.height}`);
       const elements = c.dim(
         `${comp.elementCount} ${comp.elementCount === 1 ? "element" : "elements"}`,
       );
-      const source = comp.source ? c.dim(` ← ${comp.source}`) : "";
+      const source = comp.source ? c.dim(` ← ${terminalText(comp.source)}`) : "";
 
       console.log(`   ${id}   ${duration}   ${resolution}   ${elements}${source}`);
     }
