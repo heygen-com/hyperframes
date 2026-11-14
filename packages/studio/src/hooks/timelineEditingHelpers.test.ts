@@ -11,8 +11,11 @@ import {
   persistElementAttribute,
   persistTimelineBatchEdit,
   persistTimelineEdit,
+  readTargetAttribute,
   type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { parseTimelineFromDOM } from "../player/lib/timelineDOM";
 import type { TimelineElement } from "../player/store/playerStore";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -681,6 +684,51 @@ describe("persistElementAttribute", () => {
     expect(patchLive).not.toHaveBeenCalled();
     expect(writeProjectFile).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+});
+
+describe("a clip whose file has no ids yet", () => {
+  // Added outside Studio: no id, no class, and nothing has stamped the file since. The preview mints its hf-id.
+  const ON_DISK = `<div data-composition-id="main" data-start="0" data-duration="10"><img src="a.png" data-start="1" data-duration="3" data-volume="0.5"></div>`;
+  const served = () => {
+    const doc = document.implementation.createHTMLDocument("");
+    doc.body.innerHTML = ensureHfIds(ON_DISK);
+    const [clip] = parseTimelineFromDOM(doc, 10);
+    if (!clip?.hfId) throw new Error("expected the served clip to carry an hf-id");
+    return { hfId: clip.hfId };
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("saves an attribute on it by the id the preview served it with", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ content: ON_DISK }))),
+    );
+    const target = served();
+    const writes: string[] = [];
+
+    await persistElementAttribute({
+      projectId: "p",
+      targetPath: "index.html",
+      patchTarget: target,
+      attr: "data-volume",
+      value: "0.9",
+      label: "Set volume",
+      writeProjectFile: async (_path, content) => void writes.push(content),
+      recordEdit: vi.fn(async () => {}),
+      pendingTimelineEditPathRef: { current: new Set() },
+      onFileRead: vi.fn(),
+      patchLive: vi.fn(),
+    });
+
+    expect(readTargetAttribute(writes[0] ?? "", target, "data-volume")).toBe("0.9");
+  });
+
+  it("reads its attribute by that id", () => {
+    expect(readTargetAttribute(ON_DISK, served(), "data-volume")).toBe("0.5");
   });
 });
 

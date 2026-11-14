@@ -2121,7 +2121,8 @@ function parseGeometryIdentity(
   value: Record<string, unknown>,
 ): Pick<CheckGeometryCandidate, "kind" | "tag" | "text"> | null {
   const kindValue = Reflect.get(value, "kind");
-  const kind = kindValue === "text" || kindValue === "media" ? kindValue : null;
+  const kind =
+    kindValue === "text" || kindValue === "media" || kindValue === "block" ? kindValue : null;
   if (!kind) return null;
   const tag = stringValue(value, "tag");
   if (!tag) return null;
@@ -2291,6 +2292,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "video_alpha_unread",
   "text_not_painted",
   "caption_zone_collision",
+  "outside_safe_zone",
   "frame_out_of_frame",
   "escaped_container",
   "panel_out_of_canvas",

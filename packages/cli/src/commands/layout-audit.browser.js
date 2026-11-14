@@ -91,7 +91,8 @@
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
-  function uniqueSelectorFor(element) {
+  function uniqueSelectorFor(subject) {
+    const element = authoredElement(subject);
     const preferred = selectorFor(element);
     try {
       if (document.querySelectorAll(preferred).length === 1) return preferred;
@@ -124,6 +125,10 @@
 
   function hasAllowCaptionZoneFlag(element) {
     return !!authoredElement(element).closest("[data-layout-allow-caption-zone]");
+  }
+
+  function hasAllowSafeZoneFlag(element) {
+    return !!authoredElement(element).closest("[data-layout-allow-safe-zone]");
   }
 
   function hasTextClipOptOut(element) {
@@ -2813,10 +2818,34 @@
     };
   }
 
+  const CAPTION_STAGES = '[data-composition-id="captions"], .caption-layer, #caption-stage';
+
+  // One box per reading block (a caption stage counts as one), so a line split into word spans is one finding.
+  function addTextToBlock(blocks, block, element) {
+    const rect = textRectFor(element, true);
+    if (!rect) return;
+    const entry = blocks.get(block) ?? { rects: [], texts: [] };
+    entry.rects.push(rect);
+    entry.texts.push(textContentFor(element, true));
+    blocks.set(block, entry);
+  }
+
+  function blockCandidates(blocks) {
+    return Array.from(blocks, ([block, entry]) => ({
+      kind: "block",
+      tag: block.tagName.toLowerCase(),
+      text: entry.texts.join(" "),
+      rect: unionRects(entry.rects),
+      elementRect: toRect(block.getBoundingClientRect()),
+      ...candidateAnchor(block),
+    }));
+  }
+
   window.__hyperframesGeometryCandidates = function collectGeometryCandidates(options) {
     const includeText = options?.text === true;
     const includeMedia = options?.media === true;
-    if (!includeText && !includeMedia) return [];
+    const includeBlocks = options?.blocks === true;
+    if (!includeText && !includeMedia && !includeBlocks) return [];
     const tolerance = typeof options?.tolerance === "number" ? options.tolerance : 2;
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
@@ -2824,11 +2853,15 @@
       document.body;
     const rootRect = rootRectFor(root);
     const candidates = [];
+    const blocks = new Map();
     for (const element of Array.from(document.querySelectorAll("body *"))) {
-      if (element.closest('[data-composition-id="captions"], .caption-layer, #caption-stage')) {
-        continue;
-      }
+      const captionStage = element.closest(CAPTION_STAGES);
+      if (captionStage && !includeBlocks) continue;
       if (!isVisibleElement(element, 0.05, false)) continue;
+      if (includeBlocks && hasOwnTextCandidate(element, true) && !hasAllowSafeZoneFlag(element)) {
+        addTextToBlock(blocks, captionStage || readingBlock(element, root), element);
+      }
+      if (captionStage) continue;
       const elementRect = toRect(element.getBoundingClientRect());
       if (includeText && hasOwnTextCandidate(element, true) && !hasAllowCaptionZoneFlag(element)) {
         const rect = textRectFor(element, true);
@@ -2844,7 +2877,7 @@
         );
       }
     }
-    return candidates;
+    return candidates.concat(blockCandidates(blocks));
   };
 
   window.__hyperframesLayoutAudit = function auditLayout(options) {

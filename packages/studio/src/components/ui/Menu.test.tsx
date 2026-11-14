@@ -6,7 +6,15 @@ import React, { act, useState } from "react";
 import { compile } from "tailwindcss";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { loadStylesheet, STYLES_DIR } from "../../styles/styleSources";
-import { ContextMenu, Menu, MenuItem, MenuRadioGroup, MenuRadioItem, MenuSeparator } from "./Menu";
+import {
+  ContextMenu,
+  floatingMotion,
+  Menu,
+  MenuItem,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+} from "./Menu";
 import { Popover } from "./Popover";
 import { isTypingTarget } from "../../utils/typingTarget";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
@@ -441,5 +449,26 @@ describe("open motion", () => {
     const rowRadius = [...items()[0]!.classList].find((c) => c.startsWith("rounded-"))!;
     expect([...popup()!.classList]).toContain("rounded-lg");
     expect(compileStudioCss([rowRadius])).toMatch(/calc\(var\(--radius-lg\) \+ 6px\)/);
+  });
+});
+
+describe("floatingMotion", () => {
+  it("transitions every property its starting and ending styles set", () => {
+    const classes = floatingMotion("duration-open").split(/\s+/);
+    const transitioned = classes.flatMap(
+      (c) => c.match(/^transition-\[(.+)\]$/)?.[1].split(",") ?? [],
+    );
+    const animated = classes
+      .flatMap(
+        (c) =>
+          c
+            .match(
+              /^data-\[(?:starting|ending)-style\]:(?:\[([\w-]+):|(opacity|scale|translate|rotate)-)/,
+            )
+            ?.slice(1) ?? [],
+      )
+      .filter(Boolean);
+    expect(new Set(animated)).toEqual(new Set(["opacity", "scale"]));
+    for (const property of animated) expect(transitioned).toContain(property);
   });
 });

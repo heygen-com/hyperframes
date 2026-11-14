@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.42",
+  "version": "0.9.43",
   "description": "",
   "repository": {
     "type": "git",
@@ -67,6 +67,12 @@
       "node": "./dist/safePath.js",
       "import": "./src/safePath.ts",
       "types": "./src/safePath.ts"
+    },
+    "./safe-areas": {
+      "bun": "./src/safeAreas.ts",
+      "node": "./dist/safeAreas.js",
+      "import": "./src/safeAreas.ts",
+      "types": "./src/safeAreas.ts"
     },
     "./browser-marker": {
       "bun": "./src/browserMarker.ts",
@@ -677,6 +683,10 @@
       "./safe-path": {
         "import": "./dist/safePath.js",
         "types": "./dist/safePath.d.ts"
+      },
+      "./safe-areas": {
+        "import": "./dist/safeAreas.js",
+        "types": "./dist/safeAreas.d.ts"
       },
       "./browser-marker": {
         "import": "./dist/browserMarker.js",

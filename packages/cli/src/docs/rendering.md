@@ -1,6 +1,6 @@
 # Rendering
 
-Render compositions to MP4 with `npx hyperframes render`.
+Render compositions to MP4 (or another `--format`) with `npx hyperframes render`.
 
 ## Local Mode (default)
 
@@ -16,7 +16,9 @@ Requires: Docker installed and running.
 
 - `-f, --fps` — 1-240 or a rational such as 30000/1001 (default: root `data-fps`, else 30)
 - `-q, --quality` — draft, looks, delivery, or standard/high (default: looks)
-- `-w, --workers` — Parallel workers 1-8 (default: auto)
+- `--format` — Output format: `mp4`, `webm`, `mov`, `gif`, `png-sequence`, or `hls` (default: `mp4`). MOV and WebM keep transparency; `png-sequence` writes RGBA frames to a directory; `hls` writes a VOD playlist directory (H.264/AAC, SDR only, no GPU encoding)
+- `--gif-loop` — GIF loop count, `0` for infinite (`0`-`65535`). Only used with `--format gif`
+- `-w, --workers` — Parallel workers 1-24 or `auto`; higher values are capped at 24 (default: auto)
 - `--crf` — Override encoder CRF (mutually exclusive with `--video-bitrate`)
 - `--video-bitrate` — Target video bitrate such as `10M` (mutually exclusive with `--crf`)
 - `--keyframe-interval` — MP4 only: a keyframe at least every N seconds (default: encoder's choice)
