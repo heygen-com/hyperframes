@@ -25,7 +25,7 @@ function nameVariants(name: string): string[] {
 
 function declaredLongFlags(args: ArgsDef | undefined): string[] {
   return Object.entries(args ?? {})
-    .filter(([, def]) => def?.type !== "positional")
+    .filter(([, def]) => def?.type !== "positional" && !(def && "hidden" in def && def.hidden))
     .map(([name]) => `--${kebabCase(name)}`);
 }
 

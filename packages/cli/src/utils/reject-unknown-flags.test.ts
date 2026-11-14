@@ -112,6 +112,22 @@ describe("assertKnownFlags", () => {
     );
   });
 
+  // fails without the fix: the list sent agents to hidden rename shims that only print an error.
+  it("leaves hidden flags out of the list, as --help does", () => {
+    const init = {
+      args: {
+        example: { type: "string" },
+        template: { type: "string", hidden: true, description: "[renamed] Use --example instead." },
+        agent: { type: "boolean", hidden: true },
+      },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(init, ["--demo"], "init")).toThrow(
+      expect.objectContaining({
+        hint: "Its flags: --example. Run 'hyperframes init --help' for what each does.",
+      }),
+    );
+  });
+
   it("points --search at the query flag", () => {
     const catalog = {
       args: { words: { type: "positional" }, query: { type: "string" }, json: { type: "boolean" } },
