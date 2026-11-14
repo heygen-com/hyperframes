@@ -490,8 +490,12 @@ describe("a curve that starts at this very instant", () => {
 describe("cancelParamLane", () => {
   it("holds the value the envelope had reached rather than snapping back", () => {
     const { target, param } = fake();
-    cancelParamLane([target], 12);
-    expect(param.calls).toEqual([{ op: "hold", time: 12 }]);
+    const written: number[] = [];
+    Object.defineProperty(param, "value", { get: () => 0.42, set: (v: number) => written.push(v) });
+    cancelParamLane([target]);
+    // Never `cancelAndHoldAtTime`: Chromium before 160 crashes the page when that hold lands in a value curve.
+    expect(param.calls).toEqual([{ op: "cancel", time: 0 }]);
+    expect(written).toEqual([0.42]);
   });
 });
 

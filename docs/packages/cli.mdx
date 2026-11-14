@@ -379,7 +379,7 @@ thin with counts on it was cut short.
 | Flag                | Description                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | Output directory. Default `./capture`, then `./capture-2/`, `./capture-3/`, … if that name is taken.                                               |
-| `--timeout`         | Page load timeout in ms (default 120000)                                                                                                          |
+| `--timeout`         | Page load timeout in ms, or a duration such as `30s` or `2m` (default 120000)                                                                     |
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
@@ -1604,7 +1604,7 @@ npx hyperframes grade-compare --for frame.png --luts warm.cube,cool.cube
 | `--project`                    | Base directory for relative paths                        |
 | `--out`                        | Output PNG (default `<project>/grade-compare.png`)       |
 | `--baseline` / `--no-baseline` | Include the ungraded frame as an `original` cell (on)    |
-| `--timeout`                    | Render-ready timeout (default 5000 ms)                   |
+| `--timeout`                    | Render-ready timeout in ms, or a duration such as `30s` (default 5000 ms) |
 | `--json`                       | Machine-readable results                                 |
 
 ### Deprecated: `validate`, `inspect`, and `layout`
