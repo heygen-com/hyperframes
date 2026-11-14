@@ -64,3 +64,10 @@ broader Node.js ecosystem.
     `frost-sequence-camera-orbit/assets/shards-atlas.png`,
     `frost-sequence-camera-orbit/assets/textures/ice-inclusions-generated.png` and
     `frost-sequence-camera-orbit/assets/textures/bluenoise64.png`.
+- `north-korea-locked-down/assets/korea-map.png` is a static image of a CARTO basemap: map data
+  © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, under the
+  [Open Database License (ODbL-1.0)](https://opendatacommons.org/licenses/odbl/1-0/); map style
+  © [CARTO](https://carto.com/attributions), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+  CARTO's [basemap terms](https://carto.com/legal/basemap-terms/) (section 9.d) cover static images
+  and require both credits to be legible in the image. The block draws "© OpenStreetMap contributors
+  © CARTO" in its corner; keep that credit wherever the map is shown.
