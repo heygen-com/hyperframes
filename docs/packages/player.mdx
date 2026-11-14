@@ -44,7 +44,9 @@ import "@hyperframes/player";
 Set `autoplay muted` only when playback should start without a user gesture.
 
 Add or remove `controls` at any time. When shown, the controls reflect the current
-playback state, position and speed.
+playback state, position and speed. Clicking or dragging the scrubber keeps a
+playing film playing from the new spot, as a `<video>`'s own controls do, and
+leaves a paused film paused.
 
 ## Attributes
 
@@ -93,6 +95,7 @@ const player = document.querySelector("hyperframes-player");
 player.play();
 player.pause();
 player.seek(2.5);
+player.seek(2.5, { keepPlaying: true });
 
 player.currentTime = 5;
 player.playbackRate = 1.5;
@@ -101,6 +104,10 @@ player.muted = true;
 console.log(player.duration, player.paused, player.ready);
 console.log(player.compositionWidth, player.compositionHeight);
 ```
+
+`seek()` and setting `currentTime` pause at the new time. Pass `{ keepPlaying: true }`
+to keep a playing film playing from there, as setting a `<video>`'s `currentTime`
+does; a paused film stays paused.
 
 In Studio previews, scrubbing keeps the last complete picture visible while video
 layers decode at the requested time. Rapid seeks keep only the latest queued
