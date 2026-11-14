@@ -87,8 +87,9 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 ## Variables
 
-- Declare an array of `{id, type, label, default}`: the video's own on `index.html`'s `<html>`, a scene or block file's on that file's `<html>` (or root element), where they stay inside each mount. Types: `string` (`placeholder`, `maxLength`), `number` (`min`, `max`, `step`, `unit`), `color`, `boolean`, `enum` (`options: [{value, label}]`).
+- Declare an array of `{id, type, label, default}` in `data-composition-variables`: the video's own on `index.html`'s `<html>`, a scene or block file's on that file's `<html>` (or root element), where they stay inside each mount. Types: `string` (`placeholder`, `maxLength`), `number` (`min`, `max`, `step`, `unit`), `color`, `boolean`, `enum` (`options: [{value, label}]`), `font`, `image` (a video or audio link is a `string`).
 - Bind without script: `data-var-text="id"`, `data-var-src="id"` (keep a real fallback `src` on media with audio), `var(--id)` in CSS; for logic, `window.__hyperframes.getVariables()` once at init.
+- A bound id that is not declared silently keeps its fallback (`unknown_variable_binding`). Declare, then bind: `<html data-composition-variables='[{"id":"headline","type":"string","label":"Headline","default":"Hello"}]'>` … `<h1 data-var-text="headline">Hello</h1>`.
 - Values are an object keyed by id. A host's `data-variable-values` sets one mount; Studio's Variables panel and batch renders set only the root's variables, so to vary a block, change its host's values. Variables can't change the root's `data-duration`.
 
 ## Fonts
