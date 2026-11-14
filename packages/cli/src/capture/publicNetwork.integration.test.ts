@@ -63,7 +63,7 @@ vi.mock("node:https", async (importOriginal) => {
   };
 });
 
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 import { createCaptureTlsFixture } from "./fixtures/captureTls.js";
 
 type RequestReceipt = {

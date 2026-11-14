@@ -30,7 +30,8 @@ import {
   isManagedChromeDir,
   pickSharedShell,
 } from "./chromeHostCeiling.js";
-import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { DEFAULT_CONFIG, resolveRestrictPageNetwork, type EngineConfig } from "../config.js";
+import { browserProxyArgs, startCaptureProxy } from "./publicNetwork/captureProxy.js";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
 import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
@@ -854,7 +855,7 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
 
 type BrowserLaunchConfig = Partial<
   Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
-> & { withoutWaylandDisplay?: boolean };
+> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string };
 
 function createBrowserLaunchFingerprint(
   chromeArgs: string[],
@@ -887,6 +888,11 @@ function createBrowserLaunchFingerprint(
     browserTimeoutMs: launchConfig.browserTimeout,
     protocolTimeoutMs: launchConfig.protocolTimeout,
     requestedCaptureMode,
+    publicOnly: resolveRestrictPageNetwork()
+      ? {
+          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+        }
+      : undefined,
   };
 }
 
@@ -922,6 +928,10 @@ async function launchBrowser(
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
+  const proxy = fingerprint.publicOnly ? await startCaptureProxy(null) : undefined;
+  const browserArgs = proxy
+    ? [...fingerprint.args, ...browserProxyArgs(proxy.url, fingerprint.publicOnly?.pageServerHost)]
+    : fingerprint.args;
   const launch = (args: readonly string[]) => {
     let attempted = args;
     return launchWithChromeSandboxFallback(args, (launchArgs) => {
@@ -956,7 +966,7 @@ async function launchBrowser(
       timedOut: false,
     }));
   try {
-    browser = await launch(fingerprint.args);
+    browser = await launch(browserArgs);
 
     const browserVersion = await browser.version().catch(() => "unknown");
     const gpuFlags = fingerprint.args.filter(
@@ -975,7 +985,7 @@ async function launchBrowser(
             `${result.detail}; retrying once with a longer budget.`,
         );
         await closeBrowserAfterFailedProbe(browser);
-        browser = await launch(fingerprint.args);
+        browser = await launch(browserArgs);
         result = await probe(browser, BEGINFRAME_PROBE_RETRY_TIMEOUT_MS);
       }
       if (!result.supported) {
@@ -986,13 +996,15 @@ async function launchBrowser(
             `${result.detail}; falling back to screenshot mode.`,
         );
         captureMode = "screenshot";
-        browser = await launch([...stripBeginFrameFlags(fingerprint.args), WHOLE_TILE_RASTER_FLAG]);
+        browser = await launch([...stripBeginFrameFlags(browserArgs), WHOLE_TILE_RASTER_FLAG]);
       }
     }
 
+    if (proxy) browser.once("disconnected", () => void proxy.close());
     return { browser, captureMode };
   } catch (error) {
     await browser?.close().catch(() => {});
+    await proxy?.close();
     throw error;
   }
 }

@@ -107,13 +107,7 @@ import {
 } from "./riskFrames.js";
 import { getAvailableMemoryMb } from "./systemMemory.js";
 import { isPsnrFilterAvailable } from "../utils/psnrFilterAvailability.js";
-import {
-  DEFAULT_CONFIG,
-  applyConcreteGpuScreenshotClamp,
-  resolveRestrictPageNetwork,
-  type EngineConfig,
-} from "../config.js";
-import { restrictPageNetwork } from "./pageNetworkPolicy.js";
+import { DEFAULT_CONFIG, applyConcreteGpuScreenshotClamp, type EngineConfig } from "../config.js";
 import type {
   CaptureOptions,
   CaptureVideoMetadataHint,
@@ -1589,7 +1583,11 @@ export async function createCaptureSession(
   );
 
   const withoutWaylandDisplay = await captureWithoutWaylandDisplay(resolvedGpuMode);
-  const browserLease = await acquireBrowser(chromeArgs, { ...config, withoutWaylandDisplay });
+  const browserLease = await acquireBrowser(chromeArgs, {
+    ...config,
+    withoutWaylandDisplay,
+    pageServerUrl: serverUrl,
+  });
   return constructCaptureSessionWithRollback({
     browserLease,
     serverUrl,
@@ -1655,11 +1653,6 @@ async function constructCaptureSessionWithRollback(
   }
 }
 
-/** Every page that loads the composition goes through here, before it navigates. */
-async function guardPageNetwork(page: Page, serverUrl: string): Promise<void> {
-  if (resolveRestrictPageNetwork()) await restrictPageNetwork(page, serverUrl);
-}
-
 async function constructCaptureSession(
   input: CaptureSessionConstructionInput & { onPageCreated(page: Page): void },
 ): Promise<CaptureSession> {
@@ -1679,7 +1672,6 @@ async function constructCaptureSession(
 
   const page = await browser.newPage();
   onPageCreated(page);
-  await guardPageNetwork(page, serverUrl);
   // Cap the existing session's inspection buffer; new sessions have separate buffers.
   const frame = page.mainFrame();
   // Frame.client is runtime-only, so keep capture working when it is absent.
@@ -4140,7 +4132,6 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
   const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;
 
   try {
-    await guardPageNetwork(page, session.serverUrl);
     await page.evaluateOnNewDocument(() => {
       const w = window as unknown as { __name?: <T>(fn: T, _name: string) => T };
       if (typeof w.__name !== "function") {

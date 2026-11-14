@@ -9,7 +9,7 @@ import {
 } from "../browser/launch.js";
 import { captureBrowserArgs } from "./browserLaunchArgs.js";
 import { settleAcrossNavigation } from "./navigateForCapture.js";
-import { startCaptureProxy } from "./captureProxy.js";
+import { browserProxyArgs, startCaptureProxy } from "@hyperframes/engine/public-network";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 
 /** The launch-wide proxy covers pages, popups, workers and both extraction passes. */
@@ -61,10 +61,10 @@ export async function launchCaptureBrowser(options: {
       // Linux containers may lack the user namespaces Chromium's sandbox requires.
       args: [
         ...captureBrowserArgs(options.disableWebgl, options.width, options.height),
-        `--proxy-server=${proxy.url}`,
-        `--proxy-bypass-list=<-loopback>${options.localOrigin ? `;${new URL(options.localOrigin).host}` : ""}`,
-        "--disable-quic",
-        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        ...browserProxyArgs(
+          proxy.url,
+          options.localOrigin ? new URL(options.localOrigin).host : undefined,
+        ),
       ],
     });
     const newPage = browser.newPage.bind(browser);
