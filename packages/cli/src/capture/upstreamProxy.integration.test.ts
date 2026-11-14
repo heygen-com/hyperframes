@@ -31,8 +31,8 @@ vi.mock("node:tls", async (importOriginal) => {
 });
 
 import { safeFetch } from "./assetDownloader.js";
-import { publicRequest } from "./publicNetwork.js";
-import { startCaptureProxy } from "./captureProxy.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
+import { startCaptureProxy } from "@hyperframes/engine/public-network";
 import { createCaptureTlsFixture } from "./fixtures/captureTls.js";
 
 const DESTINATION = "assets.capture-fixture.com";

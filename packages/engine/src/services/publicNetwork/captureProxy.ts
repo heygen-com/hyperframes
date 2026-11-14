@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
 import { connect, type Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Duplex } from "node:stream";
 import { assertPublicHostname, resolvePublicAddress } from "./publicNetwork.js";
 import {
@@ -8,7 +11,7 @@ import {
   openUpstreamTunnel,
   type UpstreamProxy,
 } from "./upstreamProxy.js";
-import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import { listenOnBrowserSafePort } from "../../utils/browserSafePort.js";
 
 const CONNECTION_TIMEOUT_MS = 15_000;
 const HOP_HEADERS = new Set([
@@ -173,9 +176,11 @@ async function forwardTunnel(
   }
 }
 
-/** Every browser target uses this proxy; it dials a checked numeric IPv4 or the opt-in upstream proxy. */
-export async function startCaptureProxy(): Promise<{ url: string; close(): Promise<void> }> {
-  const proxy = captureUpstreamProxy();
+/** Every browser target uses this proxy; it dials a checked numeric IPv4, or (unless null) the upstream proxy. */
+export async function startCaptureProxy(
+  upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
+): Promise<{ url: string; close(): Promise<void> }> {
+  const proxy = upstream ?? undefined;
   const sockets = new Set<Socket>();
   const server = createServer(
     (incoming, response) => void forwardHttp(incoming, response, sockets, proxy),
@@ -204,4 +209,23 @@ export async function startCaptureProxy(): Promise<{ url: string; close(): Promi
       return closing;
     },
   };
+}
+
+export function browserProxyArgs(proxyUrl: string, directHost?: string): string[] {
+  return [
+    `--proxy-server=${proxyUrl}`,
+    `--proxy-bypass-list=<-loopback>${directHost ? `;${directHost}` : ""}`,
+    "--disable-quic",
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+  ];
+}
+
+export async function createPublicOnlyProfile(prefix: string): Promise<string> {
+  const profile = await mkdtemp(join(tmpdir(), prefix));
+  await mkdir(join(profile, "Default"));
+  await writeFile(
+    join(profile, "Default", "Preferences"),
+    JSON.stringify({ webrtc: { ip_handling_policy: "disable_non_proxied_udp" } }),
+  );
+  return profile;
 }

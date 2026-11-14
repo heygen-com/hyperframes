@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { expect, it, onTestFinished } from "vitest";
 import { startTestDnsServer } from "../utils/dnsTestServer.js";
 import { testProcessIsAlive, waitForTestCondition } from "../utils/processTestUtils.js";
-import { systemLookupInKillableChild } from "./publicNetwork.js";
+import { systemLookupInKillableChild } from "@hyperframes/engine/public-network";
 
 const fixture = join(dirname(fileURLToPath(import.meta.url)), "publicNetwork.fixture.ts");
 
