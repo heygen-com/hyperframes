@@ -211,8 +211,7 @@ interface CraftRect {
 }
 
 interface BlockTrack {
-  /** Block elements that showed this line; a split clip hands it to a second one. */
-  keys: Set<number>;
+  blockKeys: Set<number>;
   selector: string;
   sourceFile: string;
   /** Frame index → what the block showed there. */
@@ -263,17 +262,17 @@ function trackBlocks(frames: CraftFrame[], readHeight: number): BlockTrack[] {
   const byKey = new Map<number, BlockTrack>();
   frames.forEach((frame, index) => {
     for (const [key, block] of readableBlocks(frame, readHeight)) {
-      let track = byKey.get(key) ?? handedOver(tracks, index, block);
+      let track = byKey.get(key) ?? trackContinuedBy(tracks, index, block);
       if (!track) {
         track = {
-          keys: new Set(),
+          blockKeys: new Set(),
           selector: block.selector,
           sourceFile: block.sourceFile,
           seen: new Map(),
         };
         tracks.push(track);
       }
-      track.keys.add(key);
+      track.blockKeys.add(key);
       byKey.set(key, track);
       track.seen.set(index, { text: block.text, rect: block.rect });
     }
@@ -281,8 +280,7 @@ function trackBlocks(frames: CraftFrame[], readHeight: number): BlockTrack[] {
   return tracks;
 }
 
-/** The track a new element continues: the same text in the same place on this frame or the one before. */
-function handedOver(
+function trackContinuedBy(
   tracks: BlockTrack[],
   index: number,
   block: BlockFrame,
@@ -405,7 +403,7 @@ async function refineWindow(
   const readHeight = T.readHeightAt1080 * (Math.min(canvas.width, canvas.height) / 1080);
   const visibleAt = async (time: number) => {
     const blocks = readableBlocks(await probe(time), readHeight);
-    return [...candidate.track.keys].some((key) => blocks.has(key));
+    return [...candidate.track.blockKeys].some((key) => blocks.has(key));
   };
   const window = { ...candidate.window };
   for (let step = 0; step < T.refineSteps; step += 1) {
@@ -476,7 +474,7 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
-    measured: measuredAround(frames, track.keys, candidate.firstIndex, candidate.lastIndex),
+    measured: measuredAround(frames, track.blockKeys, candidate.firstIndex, candidate.lastIndex),
   };
 }
 
