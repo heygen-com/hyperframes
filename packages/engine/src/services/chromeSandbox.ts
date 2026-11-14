@@ -51,11 +51,11 @@ function linuxCannotSandbox({ env, uid, exists, read }: ChromeSandboxHost): bool
   );
 }
 
-/** Chrome keeps its sandbox unless the host can't give it one: root, serverless, a container, or blocked user namespaces. */
+/** Only Linux keeps the sandbox by default (not as root, serverless, in a container, or with blocked user namespaces): only it falls back. */
 export function chromeSandboxEnabled(host: ChromeSandboxHost = currentHost()): boolean {
   const override = host.env.HYPERFRAMES_CHROME_SANDBOX;
   if (override === "0" || override === "1") return override === "1";
-  return host.platform !== "linux" || !linuxCannotSandbox(host);
+  return host.platform === "linux" && !linuxCannotSandbox(host);
 }
 
 export function chromeSandboxArgs(sandbox = chromeSandboxEnabled()): string[] {
