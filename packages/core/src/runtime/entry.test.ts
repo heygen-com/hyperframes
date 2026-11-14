@@ -488,9 +488,9 @@ describe("runtime entry", () => {
       srcWrites.observe(now, { attributeFilter: ["src"] });
       window.__player?.seek(7.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
-      // The two that left are reloaded empty with src dropped for the reload, ending any fetch in flight.
+      // The two that left are released: now by setting its src again, soon (no src) by reloading empty.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
-      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
+      expect(loadsOf(now, soon, later)).toEqual([1, 2, 1]);
       expect(srcWrites.takeRecords()).toHaveLength(2);
       expect(now.getAttribute("src")).toBe("now.mp4");
     });
