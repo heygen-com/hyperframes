@@ -41,14 +41,16 @@ npm run dev          # human-operated foreground preview (blocks until stopped)
 npx hyperframes preview --background  # agent-safe persistent Studio preview
 npx hyperframes preview --status      # verify the persistent preview is listening
 npx hyperframes preview --stop        # stop it when review is finished
-npm run check        # lint + runtime + layout + motion + contrast (one command)
+npx hyperframes check  # lint + runtime + layout + motion + contrast (one command)
 npx hyperframes snapshot --at 1,3,5  # PNG frames at those seconds, to look at before rendering
-npm run render       # render to MP4
+npx hyperframes render  # render to MP4
 npm run publish      # publish and get a shareable link
 npx hyperframes lint --verbose  # include info-level findings
 npx hyperframes lint --json     # machine-readable output for CI
 npx hyperframes docs <topic> # reference docs in terminal
 ```
+
+> **Run `check` and `render` directly, not through `npm run`.** A tool timeout's SIGTERM ends npm at once, while the command keeps running and saves its report.
 
 > **Agents must use `npx hyperframes preview --background` for Studio handoff.** Do not rely
 > on a shell/tool `run_in_background` wrapper around `npm run dev`: that foreground process
@@ -90,7 +92,7 @@ https://hyperframes.heygen.com/llms.txt
 After creating or editing any `.html` composition, **always** run the full check before considering the task complete:
 
 ```bash
-npm run check
+npx hyperframes check
 ```
 
 Fix all errors before presenting the result. Warnings should be reviewed before rendering.
