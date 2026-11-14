@@ -410,8 +410,7 @@ function holdForCopy(el: HTMLMediaElement): boolean {
 
 const copyLandings = new WeakMap<HTMLMediaElement, () => void>();
 
-/** Ends a hold: with the copy served, the copy's swap writes the src and lets a frame capture go once it loads;
- * otherwise the file it held comes back now. */
+/** Without a served copy, the held file comes back now; a served copy's swap writes the src instead. */
 function letGoOfHold(el: HTMLMediaElement, giveBack: string | null): void {
   if (!waitingForCopy.delete(el) || giveBack === null) return;
   landCopy(el);
@@ -442,7 +441,6 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     return;
   }
-  // An oversized file never decodes whole while its copy is made: it holds no src and shows a still meanwhile.
   const held = lightFacts && box && isOversizedForPreview(lightFacts, box) && holdForCopy(el);
   const proxiedSrc = appendProxyParam(
     originalSrc,
@@ -587,8 +585,7 @@ function applyPreviewQuality(el: HTMLMediaElement): void {
   lightenIfHeavy(el, codecEntryOf(el));
 }
 
-/** The host's preview quality: below 1, heavy videos play lighter copies sized to the shown box times the level; at 1,
- * videos with at least twice the pixels they show play copies at the shown box. */
+/** The host's preview quality: below 1, heavy videos play lighter copies at the shown box times the level. */
 export function setPreviewQuality(level: number): void {
   if (!isPreviewQuality(level) || level === previewQuality) return;
   previewQuality = level;

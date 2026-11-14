@@ -66,7 +66,6 @@ export function scalePreviewProxyBox(box: PreviewProxyBox, level: PreviewQuality
   return quantizePreviewProxyBox(box.width * level, box.height * level) ?? box;
 }
 
-/** The source has at least twice the pixels the box shows: decoding it whole spends memory on pixels never seen. */
 export function isOversizedForPreview(facts: PreviewSourceFacts, box: PreviewProxyBox): boolean {
   return box.width * box.height <= HEAVY_PIXEL_SHARE * facts.width * facts.height;
 }
@@ -77,8 +76,6 @@ export function isHeavyForPreview(facts: PreviewSourceFacts, copyBox: PreviewPro
   );
 }
 
-/** Whether a video plays a lighter copy at `level`: below Full when heavy at the copy's box; at Full only when
- * oversized for its shown box, so a copy there looks the same and a 10-bit or HDR source keeps its own look. */
 export function wantsLighterCopy(
   facts: PreviewSourceFacts,
   box: PreviewProxyBox,
