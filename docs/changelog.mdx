@@ -9,6 +9,20 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.45"
+  description="Released - 2026-11-14"
+  tags={["Release", "Core"]}
+>
+A preview of 4K takes uses far less memory at full quality. Each 4K clip now plays a copy at the size the preview shows it, so long edits of 4K footage no longer run out of memory. Exports still use the original files.
+
+## Fixes
+
+- **Core:** At full quality a 4K clip plays a copy at the size the preview shows it ([2f0ade181](https://github.com/heygen-com/hyperframes/commit/2f0ade181585323ebb2b53a2e15d68098655c90e), [#7723](https://github.com/heygen-com/hyperframes/pull/7723)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.44...v0.9.45).
+</Update>
+
+<Update
   label="HyperFrames v0.9.44"
   description="Released - 2026-11-14"
   tags={["Release", "Studio", "CLI", "Core"]}
