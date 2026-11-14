@@ -23,7 +23,7 @@ import {
   type SkillDiff,
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
-import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
+import { EXTRA_GLOBAL_SKILL_DIRS, mirrorGlobalSkills } from "../utils/skillsMirror.js";
 import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
@@ -614,6 +614,7 @@ const checkCommand = defineCommand({
       dir: args.dir,
       source: args.source,
       cliVersion: VERSION,
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
     });
 
     if (args.json) console.log(JSON.stringify(withMeta(result, NO_UPDATE_NOTICE), null, 2));
