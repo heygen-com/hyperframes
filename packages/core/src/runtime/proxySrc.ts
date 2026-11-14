@@ -1,6 +1,9 @@
 /** Media elements swapped to their proxy, each with the src attribute it had before the swap. */
 export const swappedElements = new WeakMap<Element, string | null>();
 
+/** Videos holding no src while their lighter copy is made, so the whole file never decodes meanwhile. */
+export const waitingForCopy = new WeakSet<Element>();
+
 /** Media elements the runtime opened at their in-point: the src the author wrote, the one written in its
  * place (null while the clip is held with no src until it is due), and whether it is held again when idle. */
 const openedAtInPoint = new WeakMap<

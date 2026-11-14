@@ -16,8 +16,14 @@ import {
   lookupCodecMapEntry,
   sourceFactsOf,
 } from "./mediaSourceLookup";
-import { heldPosters, swappedElements, unproxiedSrc } from "./proxySrc";
-import { giveBackWhenDue } from "./preloadMedia";
+import {
+  heldPosters,
+  recordOpenedAtInPoint,
+  swappedElements,
+  unproxiedSrc,
+  waitingForCopy,
+} from "./proxySrc";
+import { giveBackWhenDue, stopMediaDownload } from "./preloadMedia";
 import { restartPlaybackHealth } from "./playbackHealth";
 import { failedCopyElements, noteCopy, setCopyReportingLevel } from "./previewCopies";
 import { waitForServedProxy } from "./proxyWait";
@@ -25,6 +31,7 @@ import { registerSeekCompletion } from "./adapters/seek-dispatch";
 import {
   formatPreviewProxyBox,
   isHeavyForPreview,
+  isOversizedForPreview,
   isPreviewQuality,
   PREVIEW_QUALITY_LEVELS,
   PREVIEW_PROXY_BOX_PARAM,
@@ -36,6 +43,7 @@ import {
   type PreviewProxyBox,
   type PreviewQuality,
   type PreviewSourceFacts,
+  wantsLighterCopy,
 } from "../previewProxyBox";
 
 /**
@@ -83,9 +91,8 @@ const unavailableDiagnosedElements = new WeakSet<HTMLMediaElement>();
 // keep that src, so nothing that reads it (timeline, player mirror) loads a copy still being made.
 const proxyRequested = new WeakMap<HTMLMediaElement, string | null>();
 
-// Below 1, heavy files get lighter copies at the shown box times this level; 1 is the preview as it always was.
+// Below 1, heavy files get lighter copies at the shown box times this level; at 1, files oversized for their box.
 let previewQuality: PreviewQuality = 1;
-const lightElements = new WeakSet<HTMLMediaElement>();
 // Elements whose next ask for a copy tells the server to forget its failure first.
 const retryNext = new WeakSet<HTMLMediaElement>();
 
@@ -156,7 +163,7 @@ function keepSized(el: HTMLMediaElement, scale: number): void {
   const lowered = previewQuality < 1;
   const needed = shown && lowered ? scalePreviewProxyBox(shown, previewQuality) : shown;
   if (lowered && !needed) return;
-  if (needed && lowered && copy.light && lightCopyNoLongerNeeded(el, needed)) {
+  if (needed && copy.light && lightCopyNoLongerNeeded(el, needed)) {
     return restoreOriginal(el);
   }
   if (boxCovers(copy.box, needed, lowered)) return dropUnneededCopy(el);
@@ -169,7 +176,7 @@ function dropUnneededCopy(el: HTMLMediaElement): void {
 
 function lightCopyNoLongerNeeded(el: HTMLMediaElement, needed: PreviewProxyBox): boolean {
   const facts = sourceFactsOf(el);
-  return facts !== null && !isHeavyForPreview(facts, needed);
+  return facts !== null && !wantsLighterCopy(facts, needed, previewQuality);
 }
 
 function boxCovers(current: PreviewProxyBox, needed: PreviewProxyBox | null, exact: boolean) {
@@ -215,7 +222,6 @@ function restoreOriginal(el: HTMLMediaElement): void {
   for (const state of [boxedElements, pendingUpgrades, proxyRequested, swappedElements]) {
     state.delete(el);
   }
-  lightElements.delete(el);
   evictMediaSyncState(el);
   restartPlaybackHealth();
   if (original === null) {
@@ -386,6 +392,37 @@ function emitUnavailableDiagnostic(
   console.info(`[hyperframes] ${DIAGNOSTIC_UNAVAILABLE_CODE}: "${asset}" (${reason}): ${note}`);
 }
 
+/** Stops `el` loading its file until its copy is served; readers of its src still see the file it plays. False when
+ * there is no src to hold. A frame capture waits for the copy, up to the same cap as for any loading video. */
+function holdForCopy(el: HTMLMediaElement): boolean {
+  const authored = unproxiedSrc(el);
+  if (authored === null) return false;
+  recordOpenedAtInPoint(el, authored, null);
+  waitingForCopy.add(el);
+  stopMediaDownload(el);
+  const copyLanded = new Promise<void>((landed) => copyLandings.set(el, landed));
+  registerSeekCompletion(
+    Promise.race([copyLanded, new Promise((cap) => wallSetTimeout(cap, HOLD_CAP_MS))]),
+    "video-frame",
+  );
+  return true;
+}
+
+const copyLandings = new WeakMap<HTMLMediaElement, () => void>();
+
+/** Ends a hold: with the copy served, the copy's swap writes the src and lets a frame capture go once it loads;
+ * otherwise the file it held comes back now. */
+function letGoOfHold(el: HTMLMediaElement, giveBack: string | null): void {
+  if (!waitingForCopy.delete(el) || giveBack === null) return;
+  landCopy(el);
+  if (el.getAttribute("src") === null) el.setAttribute("src", giveBack);
+}
+
+function landCopy(el: HTMLMediaElement): void {
+  copyLandings.get(el)?.();
+  copyLandings.delete(el);
+}
+
 type CopyJob = {
   originalSrc: string;
   originalAttr: string | null;
@@ -401,10 +438,12 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   // Asked once the shown size is known, so the copy is made at that size and only once.
   const shown = scale === null ? null : shownBox(el, scale);
   const box = shown && level < 1 ? scalePreviewProxyBox(shown, level) : shown;
-  if (lightFacts && !(box && isHeavyForPreview(lightFacts, box))) {
+  if (lightFacts && !(box && wantsLighterCopy(lightFacts, box, level))) {
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     return;
   }
+  // An oversized file never decodes whole while its copy is made: it holds no src and shows a still meanwhile.
+  const held = lightFacts && box && isOversizedForPreview(lightFacts, box) && holdForCopy(el);
   const proxiedSrc = appendProxyParam(
     originalSrc,
     variant,
@@ -420,9 +459,11 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     (fraction) => noteCopy(el, "making", fraction, light),
     () => isActiveAtPlayhead(el),
     false,
-    light ? undefined : () => showStill(el, originalSrc, variant, box),
+    light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
   );
-  if (!live()) {
+  const wanted = live();
+  if (held) letGoOfHold(el, served && wanted ? null : originalAttr);
+  if (!wanted) {
     dropStill(el);
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     if (lightFacts && el.isConnected && el.getAttribute("src") === originalAttr) {
@@ -431,20 +472,23 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     return;
   }
   if (!served) {
+    dropStill(el);
     noteCopy(el, "failed", null, light);
     emitUnavailableDiagnostic(el, "proxy_playback_failed", originalSrc);
     return;
   }
   noteCopy(el, "ready", null, light);
-  swappedElements.set(el, unproxiedSrc(el));
-  if (lightFacts) lightElements.add(el);
+  swappedElements.set(el, held ? originalAttr : unproxiedSrc(el));
   loadProxy(el, proxiedSrc, originalSrc, variant, box, lightFacts !== undefined);
   // The shown size may have grown while this copy was being made.
   if (displayScale !== null) keepSized(el, displayScale);
   return new Promise((landed) => {
     el.addEventListener("loadeddata", landed, { once: true });
     el.addEventListener("error", landed, { once: true });
-  }).then(() => dropStill(el));
+  }).then(() => {
+    landCopy(el);
+    dropStill(el);
+  });
 }
 
 /**
@@ -481,7 +525,8 @@ export function swapToProxy(
   // A lighter copy waits for no level but its own; a copy the file cannot play without finishes at any level.
   const live = () =>
     el.isConnected &&
-    el.getAttribute("src") === originalAttr &&
+    (el.getAttribute("src") === originalAttr ||
+      (waitingForCopy.has(el) && el.getAttribute("src") === null)) &&
     (!lightFacts || previewQuality === level);
   const job: CopyJob = { originalSrc, originalAttr, variant, lightFacts, level, live };
   const swap = shownScale().then((scale) => makeCopy(el, job, scale));
@@ -527,7 +572,7 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   const canPlay = entry?.representativeMime ? el.canPlayType(entry.representativeMime) : "";
   const playable = canPlay === "probably" || canPlay === "maybe";
   if (entry?.browserHostile && !playable) swapToProxy(el, entry, "proactive");
-  else if (previewQuality < 1) lightenIfHeavy(el, entry);
+  else lightenIfHeavy(el, entry);
 }
 
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {
@@ -538,12 +583,12 @@ function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null):
 
 function applyPreviewQuality(el: HTMLMediaElement): void {
   if (isRenderMode(el) || !isVideoElement(el)) return;
-  if (previewQuality === 1 && lightElements.has(el)) return restoreOriginal(el);
   if (boxedElements.has(el) && displayScale !== null) return keepSized(el, displayScale);
-  if (previewQuality < 1) lightenIfHeavy(el, codecEntryOf(el));
+  lightenIfHeavy(el, codecEntryOf(el));
 }
 
-/** The host's preview quality: below 1, heavy videos play lighter copies sized to the shown box times the level. */
+/** The host's preview quality: below 1, heavy videos play lighter copies sized to the shown box times the level; at 1,
+ * videos with at least twice the pixels they show play copies at the shown box. */
 export function setPreviewQuality(level: number): void {
   if (!isPreviewQuality(level) || level === previewQuality) return;
   previewQuality = level;
