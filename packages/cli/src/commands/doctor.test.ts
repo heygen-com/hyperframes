@@ -15,6 +15,7 @@ import { optionalPackageDir } from "../utils/optionalPackages.js";
 import {
   TESTED_FFMPEG_VERSION,
   buildDoctorReport,
+  doctorSummary,
   ffmpegDoctorDetail,
   checkFramesCache,
   checkOptionalPackage,
@@ -40,6 +41,28 @@ const OUTCOMES_WITH_FAILURE: CheckOutcome[] = [
     hint: "https://docs.docker.com/get-docker/",
   },
 ];
+
+const OPTIONAL_MISSING: CheckOutcome[] = [
+  { name: "TTS (Kokoro)", ok: false, detail: "Not installed (optional)", optional: true },
+  { name: "BGM (MusicGen)", ok: false, detail: "Not installed (optional)", optional: true },
+];
+
+describe("doctorSummary", () => {
+  it("passes when only optional checks are missing, and names them", () => {
+    expect(doctorSummary([...OUTCOMES_ALL_OK, ...OPTIONAL_MISSING])).toEqual({
+      ok: true,
+      text: "All required checks passed \u2014 optional, not installed: TTS (Kokoro), BGM (MusicGen)",
+    });
+  });
+
+  it("fails when a required check fails", () => {
+    expect(doctorSummary([...OUTCOMES_WITH_FAILURE, ...OPTIONAL_MISSING]).ok).toBe(false);
+  });
+
+  it("says all checks passed when nothing is missing", () => {
+    expect(doctorSummary(OUTCOMES_ALL_OK)).toEqual({ ok: true, text: "All checks passed" });
+  });
+});
 
 describe("redactHome", () => {
   const originalHome = process.env["HOME"];
@@ -166,6 +189,19 @@ describe("buildDoctorReport", () => {
 
   it("reports ok=false when any check fails", () => {
     expect(buildDoctorReport(OUTCOMES_WITH_FAILURE).ok).toBe(false);
+  });
+
+  it("reports ok=true when only optional checks are missing, and marks them", () => {
+    const report = buildDoctorReport([...OUTCOMES_ALL_OK, ...OPTIONAL_MISSING], { redact: true });
+    expect(report.ok).toBe(true);
+    expect(report.checks.filter((c) => c.optional).map((c) => c.name)).toEqual([
+      "TTS (Kokoro)",
+      "BGM (MusicGen)",
+    ]);
+  });
+
+  it("still reports ok=false when a required check fails beside optional ones", () => {
+    expect(buildDoctorReport([...OUTCOMES_WITH_FAILURE, ...OPTIONAL_MISSING]).ok).toBe(false);
   });
 
   it("preserves check order exactly as provided", () => {
