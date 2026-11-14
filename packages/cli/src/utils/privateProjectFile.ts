@@ -1,4 +1,4 @@
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
@@ -21,6 +21,24 @@ interface ReceivedRecord {
   listed: unknown;
 }
 
+function recordFileAt(dir: string): boolean {
+  try {
+    return statSync(join(dir, RECEIVED_RECORD)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
+  if (!ownFolder && !recordFileAt(dir)) return null;
+  try {
+    return { listed: JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return ownFolder && (code === "ENOENT" || code === "ENOTDIR") ? null : { listed: undefined };
+  }
+}
+
 function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | null {
   let start: string;
   try {
@@ -29,15 +47,13 @@ function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | nu
     start = resolve(projectDir);
   }
   for (let dir = start; ; ) {
-    const projectDirFromRoot = relative(dir, start).split(sep).join("/");
-    try {
-      const listed: unknown = JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files;
-      return { root: dir, projectDirFromRoot, listed };
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT" && code !== "ENOTDIR")
-        return { root: dir, projectDirFromRoot, listed: undefined };
-    }
+    const record = readRecord(dir, dir === start);
+    if (record)
+      return {
+        root: dir,
+        projectDirFromRoot: relative(dir, start).split(sep).join("/"),
+        ...record,
+      };
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;
