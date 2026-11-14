@@ -203,8 +203,11 @@ locked-down production renders, compile Tailwind to CSS and link the stylesheet.
 
 Every new project gets an `AGENTS.md` and an identical `CLAUDE.md`: they tell a
 coding agent what HyperFrames is and which commands preview, check, snapshot and
-render the video. After scaffolding, `init` checks and installs the core AI
-skills from the current GitHub source. See [`skills`](#skills).
+render the video. After scaffolding, `init` checks and installs any missing
+core AI skills from the current GitHub source. They install globally, into
+`~/.claude/skills` and `~/.agents/skills`, so every project on the machine uses
+them, even one with its own `hyperframes` dependency; pass `--skip-skills` to
+leave them alone. See [`skills`](#skills).
 
 ### `add`
 
