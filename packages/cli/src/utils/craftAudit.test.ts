@@ -166,6 +166,20 @@ describe("line_unread", () => {
     ]);
   });
 
+  // fails without the fix: the message gave no way out for a caption timed to speech, which cannot hold longer.
+  it("names the captions track as the way to exempt a caption timed to speech", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "만오천 원 정도 받은 것 같아요", from: 1, to: 2.6 },
+      { key: 2, text: "Try it today", from: 7, to: 10 },
+      { key: 3, text: "그렇게 한 1, 2년 정도 하고", from: 8.7, to: 10 },
+    ];
+    const findings = await detectLineUnread(film(10, shown), 10, CANVAS, probeFor(shown));
+    expect(findings.map((finding) => finding.words)).toEqual([6, 6]);
+    for (const finding of findings) {
+      expect(finding.message).toContain('put data-track-kind="captions" on its clip or host');
+    }
+  });
+
   it("does not warn on a landed title held 1.5 s, a 0.4 s chapter word, captions or a 2.5 s end card", async () => {
     const shown: Shown[] = [
       { key: 1, text: "Ship it faster", from: 0.5, to: 2 },

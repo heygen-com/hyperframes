@@ -413,6 +413,8 @@ export async function detectLineUnread(
   return findings;
 }
 
+const CAPTIONS_EXEMPT = `or, if it is a caption timed to speech, put data-track-kind="captions" on its clip or host so this check skips it`;
+
 function lineUnreadFinding(
   candidate: LineCandidate,
   window: LineWindow,
@@ -426,8 +428,8 @@ function lineUnreadFinding(
   const measured = `${seconds(held)} (±${Math.max(0.01, error).toFixed(2)} s)`;
   const target = lineTargetSec(words);
   const message = finalLine
-    ? `The film's last line ${quoted} (${wordLabel}) is on screen ${measured}, under the ${seconds(floor)} a closing line needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends; see references/motion.md.`
-    : `${quoted} (${wordLabel}) is on screen ${measured}, under its ${seconds(floor)} floor: hold it about 0.5 s + 0.3 s a word (${seconds(target)} here) before it leaves or changes; see references/motion.md.`;
+    ? `The film's last line ${quoted} (${wordLabel}) is on screen ${measured}, under the ${seconds(floor)} a closing line needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends, ${CAPTIONS_EXEMPT}; see references/motion.md.`
+    : `${quoted} (${wordLabel}) is on screen ${measured}, under its ${seconds(floor)} floor: hold it about 0.5 s + 0.3 s a word (${seconds(target)} here) before it leaves or changes, ${CAPTIONS_EXEMPT}; see references/motion.md.`;
   const firstSeen = track.seen.get(candidate.firstIndex);
   const rect = firstSeen?.rect;
   return {

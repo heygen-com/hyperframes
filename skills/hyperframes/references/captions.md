@@ -11,7 +11,7 @@
 
 ## Structure
 
-- One sub-composition host with `data-track-kind="captions"` holds every caption group, so Studio shows them on one captions track.
+- One sub-composition host with `data-track-kind="captions"` holds every caption group, so Studio shows them on one captions track and `check` does not time its lines against the reading floor (`line_unread`), as speech sets their length.
 - Ready-made styles: `npx hyperframes catalog --tag caption-style --json`. An installed one is source you can restyle.
 
 ## Groups
