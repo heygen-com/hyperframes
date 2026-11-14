@@ -1027,7 +1027,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timeline_track_too_dense
-  // ponytail: counts the whole file, so moving clips to other lanes never silences it.
+  // Counted per file, so moving clips to other lanes never silences it.
   ({ tags, options }) => {
     const count = tags.filter(
       (tag) =>
