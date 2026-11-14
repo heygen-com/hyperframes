@@ -18,7 +18,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/us-map-flow.html"
   title="US Flow Map"
   variables={[]}
-  meta={{"duration":12,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":429}}
+  meta={{"duration":12,"width":1920,"height":1080,"category":"Data","badge":"Stable","codeLines":434}}
   attribution={{"path":"registry/blocks/us-map-flow","tags":["data","map","geography","usa","flow","connections","arcs"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/blocks/us-map-flow/us-map-flow.html"
@@ -40,7 +40,11 @@ import { InstallCommand } from "/snippets/install-command.jsx";
       rel="stylesheet"
     />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
+      integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"
+      crossorigin="anonymous"
+    ></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
     <style>
       * {
@@ -267,7 +271,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
           }
 
           /* --- Load topology and render states --- */
-          d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(function (us) {
+          var US_TOPO_URL = "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
+          d3.json(US_TOPO_URL).then(function (us) {
             var states = topojson.feature(us, us.objects.states).features;
 
             states.forEach(function (feature) {
