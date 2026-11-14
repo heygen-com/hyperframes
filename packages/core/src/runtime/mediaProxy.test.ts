@@ -1255,6 +1255,50 @@ describe("preview quality: lighter copies of heavy files", () => {
       expect(el.hasAttribute("src")).toBe(false);
     });
 
+    type Prepare = (
+      el: HTMLVideoElement,
+      proxySrc: typeof import("./proxySrc"),
+      proactively: (el: HTMLMediaElement) => void,
+    ) => void;
+    async function copyFailsAfter(prepare: Prepare) {
+      vi.useFakeTimers();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("hf-proxy")
+            ? new Response(null, { status: 500 })
+            : new Response("x", { status: 206 }),
+        ),
+      );
+      const staged = await stage({ "/video.mp4": HEAVY });
+      const proxySrc = await import("./proxySrc");
+      const el = staged.video();
+      prepare(el, proxySrc, staged.maybeProxyProactively);
+      await vi.advanceTimersByTimeAsync(60_000);
+      return { el, proxySrc };
+    }
+
+    it("stays held until due when its copy fails, as it was before the copy", async () => {
+      const { el, proxySrc } = await copyFailsAfter((el, proxySrc, proactively) => {
+        proactively(el);
+        proxySrc.recordOpenedAtInPoint(el, "/video.mp4", null, true);
+        el.removeAttribute("src");
+      });
+
+      expect(el.getAttribute("src")).toBeNull();
+      expect(proxySrc.isHeldUntilDue(el)).toBe(true);
+    });
+
+    it("keeps its idle hold when its copy fails", async () => {
+      const { el, proxySrc } = await copyFailsAfter((el, proxySrc, proactively) => {
+        proxySrc.recordOpenedAtInPoint(el, "/video.mp4", "/video.mp4", true);
+        proactively(el);
+      });
+
+      expect(el.getAttribute("src")).toBe("/video.mp4");
+      expect(proxySrc.holdsWhenIdle(el)).toBe(true);
+    });
+
     it("gets its file back when the copy cannot be made", async () => {
       const { el, asks } = await waitingForItsCopy(() => new Response(null, { status: 500 }));
 

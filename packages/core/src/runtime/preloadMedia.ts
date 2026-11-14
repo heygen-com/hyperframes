@@ -5,7 +5,7 @@ import {
   isHeldUntilDue,
   recordOpenedAtInPoint,
   unproxiedSrc,
-  waitingForCopy,
+  isWaitingForCopy,
 } from "./proxySrc";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
@@ -172,7 +172,7 @@ function holdUntilDue(el: HTMLMediaElement): void {
 }
 
 export function giveBackWhenDue(el: HTMLMediaElement): void {
-  if (!isHeldUntilDue(el) || waitingForCopy.has(el)) return;
+  if (!isHeldUntilDue(el) || isWaitingForCopy(el)) return;
   const authored = authoredSrcOf(el)!;
   const start = readMediaStart(el);
   const written = start > 0 ? `${authored}#t=${start}` : authored;

@@ -17,11 +17,12 @@ import {
   sourceFactsOf,
 } from "./mediaSourceLookup";
 import {
+  endCopyHold,
   heldPosters,
-  recordOpenedAtInPoint,
+  isWaitingForCopy,
+  startCopyHold,
   swappedElements,
   unproxiedSrc,
-  waitingForCopy,
 } from "./proxySrc";
 import { giveBackWhenDue, stopMediaDownload } from "./preloadMedia";
 import { restartPlaybackHealth } from "./playbackHealth";
@@ -397,8 +398,7 @@ function emitUnavailableDiagnostic(
 function holdForCopy(el: HTMLMediaElement): boolean {
   const authored = unproxiedSrc(el);
   if (authored === null) return false;
-  recordOpenedAtInPoint(el, authored, null);
-  waitingForCopy.add(el);
+  startCopyHold(el, authored);
   stopMediaDownload(el);
   const copyLanded = new Promise<void>((landed) => copyLandings.set(el, landed));
   registerSeekCompletion(
@@ -410,11 +410,11 @@ function holdForCopy(el: HTMLMediaElement): boolean {
 
 const copyLandings = new WeakMap<HTMLMediaElement, () => void>();
 
-/** Without a served copy, the held file comes back now; a served copy's swap writes the src instead. */
+/** Without a served copy, the hold ends as it found the clip; a served copy's swap writes the src instead. */
 function letGoOfHold(el: HTMLMediaElement, giveBack: string | null): void {
-  if (!waitingForCopy.delete(el) || giveBack === null) return;
-  landCopy(el);
-  if (el.getAttribute("src") === null) el.setAttribute("src", giveBack);
+  if (!isWaitingForCopy(el)) return;
+  if (giveBack !== null) landCopy(el);
+  endCopyHold(el, giveBack);
 }
 
 function landCopy(el: HTMLMediaElement): void {
@@ -524,7 +524,7 @@ export function swapToProxy(
   const live = () =>
     el.isConnected &&
     (el.getAttribute("src") === originalAttr ||
-      (waitingForCopy.has(el) && el.getAttribute("src") === null)) &&
+      (isWaitingForCopy(el) && el.getAttribute("src") === null)) &&
     (!lightFacts || previewQuality === level);
   const job: CopyJob = { originalSrc, originalAttr, variant, lightFacts, level, live };
   const swap = shownScale().then((scale) => makeCopy(el, job, scale));
