@@ -1103,6 +1103,41 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     return findings;
   },
 
+  // invalid_data_duration + invalid_data_track_index
+  ({ tags }) => {
+    const findings: HyperframeLintFinding[] = [];
+    for (const tag of tags) {
+      const timing = readTagTiming(tag.raw);
+      const elementId = readAttr(tag.raw, "id") || undefined;
+      const element = `<${tag.name}${elementId ? ` id="${elementId}"` : ""}>`;
+      const invalidDuration = timing.diagnostics.find(({ code }) => code === "invalid-duration");
+      if (invalidDuration) {
+        findings.push({
+          code: "invalid_data_duration",
+          severity: "error",
+          message: `${element} has data-duration="${invalidDuration.value ?? ""}", which is not a valid number of seconds. The clip gets a different duration than written.`,
+          elementId,
+          fixHint: 'Use a plain number of seconds for data-duration, e.g. data-duration="2".',
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+      const invalidTrackIndex = timing.diagnostics.find(
+        ({ code }) => code === "invalid-track-index",
+      );
+      if (invalidTrackIndex) {
+        findings.push({
+          code: "invalid_data_track_index",
+          severity: "error",
+          message: `${element} has ${invalidTrackIndex.attribute}="${invalidTrackIndex.value ?? ""}", which is not a whole number. The clip lands on track 0 instead of the track written.`,
+          elementId,
+          fixHint: 'Use a whole number for the track index, e.g. data-track-index="1".',
+          snippet: truncateSnippet(tag.raw),
+        });
+      }
+    }
+    return findings;
+  },
+
   // split_data_attribute_selector
   ({ scripts, styles }) => {
     const findings: HyperframeLintFinding[] = [];
