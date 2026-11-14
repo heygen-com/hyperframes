@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { type ControlsCallbacks, createControls } from "./controls";
+import { FULLSCREEN_ENTER_ICON, FULLSCREEN_EXIT_ICON } from "./styles";
 
 function noopCallbacks(): ControlsCallbacks {
   return {
@@ -163,5 +164,178 @@ describe("createControls idle hide", () => {
     api.destroy();
     host.remove();
     vi.useRealTimers();
+  });
+});
+
+describe("createControls fullscreen", () => {
+  const mounted: { host: HTMLElement; api: ReturnType<typeof createControls> }[] = [];
+
+  function newHost(): HTMLElement {
+    return document.body.appendChild(document.createElement("div"));
+  }
+
+  function mount(host: HTMLElement) {
+    const api = createControls(host, noopCallbacks());
+    mounted.push({ host, api });
+    return api;
+  }
+
+  function serialized(html: string): string {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    return template.innerHTML;
+  }
+
+  function fullscreenButton(host: HTMLElement): HTMLButtonElement {
+    const button = host.querySelector<HTMLButtonElement>(".hfp-fullscreen-btn");
+    if (!button) throw new Error("no fullscreen button");
+    return button;
+  }
+
+  function fakeFullscreen(host: HTMLElement) {
+    let active = false;
+    const announce = (target: EventTarget) =>
+      target.dispatchEvent(new Event("fullscreenchange", { bubbles: true, composed: true }));
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    vi.spyOn(host, "matches").mockImplementation((selector: string) =>
+      selector === ":fullscreen" ? active : Element.prototype.matches.call(host, selector),
+    );
+    const requestFullscreen = vi.fn(async () => {
+      active = true;
+      announce(host);
+    });
+    const exitFullscreen = vi.fn(async () => {
+      active = false;
+      announce(host);
+    });
+    host.requestFullscreen = requestFullscreen;
+    document.exitFullscreen = exitFullscreen;
+    return {
+      requestFullscreen,
+      exitFullscreen,
+      outside: (next: boolean) => {
+        active = next;
+        announce(document);
+      },
+    };
+  }
+
+  afterEach(() => {
+    for (const { host, api } of mounted.splice(0)) {
+      api.destroy();
+      host.remove();
+    }
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    Reflect.deleteProperty(document, "fullscreenElement");
+    Reflect.deleteProperty(document, "exitFullscreen");
+    vi.restoreAllMocks();
+  });
+
+  it("leaves the button out where the page cannot go fullscreen", () => {
+    const plain = newHost();
+    mount(plain);
+    expect(plain.querySelector(".hfp-fullscreen-btn")).toBeNull();
+
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: false });
+    const refused = newHost();
+    mount(refused);
+    expect(refused.querySelector(".hfp-fullscreen-btn")).toBeNull();
+  });
+
+  it("adds a Full screen button as the last control", () => {
+    const host = newHost();
+    fakeFullscreen(host);
+    mount(host);
+    const button = fullscreenButton(host);
+
+    expect(host.querySelector(".hfp-controls")?.lastElementChild).toBe(button);
+    expect(button.getAttribute("aria-label")).toBe("Full screen");
+    expect(button.innerHTML).toBe(serialized(FULLSCREEN_ENTER_ICON));
+  });
+
+  it("puts the host in fullscreen and back, naming the next action", () => {
+    const host = newHost();
+    const { requestFullscreen, exitFullscreen } = fakeFullscreen(host);
+    mount(host);
+    const button = fullscreenButton(host);
+
+    button.click();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen.mock.contexts[0]).toBe(host);
+    expect(button.getAttribute("aria-label")).toBe("Exit full screen");
+    expect(button.innerHTML).toBe(serialized(FULLSCREEN_EXIT_ICON));
+
+    button.click();
+    expect(exitFullscreen).toHaveBeenCalledTimes(1);
+    expect(button.getAttribute("aria-label")).toBe("Full screen");
+    expect(button.innerHTML).toBe(serialized(FULLSCREEN_ENTER_ICON));
+  });
+
+  it("follows fullscreen changes it did not cause", () => {
+    const host = newHost();
+    const { requestFullscreen, exitFullscreen, outside } = fakeFullscreen(host);
+    mount(host);
+    const button = fullscreenButton(host);
+
+    outside(true);
+    expect(button.getAttribute("aria-label")).toBe("Exit full screen");
+    outside(false);
+    expect(button.getAttribute("aria-label")).toBe("Full screen");
+
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: document.createElement("div"),
+    });
+    button.click();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen.mock.contexts[0]).toBe(host);
+    expect(exitFullscreen).not.toHaveBeenCalled();
+  });
+
+  it("keeps its name when the browser refuses", async () => {
+    const host = newHost();
+    fakeFullscreen(host);
+    let requests = 0;
+    host.requestFullscreen = () => {
+      requests += 1;
+      return Promise.reject(new TypeError("Permissions check failed"));
+    };
+    mount(host);
+    const button = fullscreenButton(host);
+
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off("unhandledRejection", unhandled);
+
+    expect(requests).toBe(1);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(button.getAttribute("aria-label")).toBe("Full screen");
+  });
+
+  it("starts as Exit full screen when built during fullscreen", () => {
+    const host = newHost();
+    fakeFullscreen(host).outside(true);
+    mount(host);
+    const button = fullscreenButton(host);
+
+    expect(button.getAttribute("aria-label")).toBe("Exit full screen");
+    expect(button.innerHTML).toBe(serialized(FULLSCREEN_EXIT_ICON));
+  });
+
+  it("removes its fullscreenchange listener on destroy", () => {
+    const host = newHost();
+    fakeFullscreen(host);
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+    const api = createControls(host, noopCallbacks());
+
+    const added = addSpy.mock.calls.find(([type]) => type === "fullscreenchange");
+    expect(added).toBeDefined();
+    api.destroy();
+
+    expect(removeSpy).toHaveBeenCalledWith("fullscreenchange", added?.[1]);
+    host.remove();
   });
 });

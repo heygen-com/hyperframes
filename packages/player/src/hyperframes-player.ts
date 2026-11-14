@@ -55,6 +55,7 @@ const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
 const BUFFERING_ATTR = "buffering";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
+const DISABLE_FULLSCREEN_ATTR = "disable-fullscreen";
 const RANGE_START_ATTR = "range-start";
 const RANGE_END_ATTR = "range-end";
 // paint-and-idle now always has a frame to wait on, so the overlay would
@@ -716,6 +717,13 @@ class HyperframesPlayer extends HTMLElement {
   }
   set disableClickToPlay(disabled: boolean) {
     this.toggleAttribute(DISABLE_CLICK_TO_PLAY_ATTR, disabled);
+  }
+
+  get disableFullscreen() {
+    return this.hasAttribute(DISABLE_FULLSCREEN_ATTR);
+  }
+  set disableFullscreen(disabled: boolean) {
+    this.toggleAttribute(DISABLE_FULLSCREEN_ATTR, disabled);
   }
 
   get loop() {
