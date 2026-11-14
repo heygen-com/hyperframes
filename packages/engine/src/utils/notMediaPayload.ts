@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { open as openFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 export const NOT_MEDIA_PAYLOAD = "NOT_MEDIA_PAYLOAD" as const;
 
@@ -44,7 +45,7 @@ export class NotMediaPayloadError extends Error {
     const elided = elementFingerprints.length - MAX_LISTED_FINGERPRINTS;
     super(
       `${elementFingerprints.length} media source(s) are text documents ` +
-        `(HTML/XML/JSON), not media containers ` +
+        `(HTML/XML/JSON, or a playlist naming files outside its own folder), not media containers ` +
         `[elements=${listed}${elided > 0 ? `,+${elided}` : ""}]. Either an unresolved ` +
         "nested-composition preview URL was authored as a media src, or the source answered with " +
         "an error page or API error body carrying a success status.",
@@ -83,11 +84,11 @@ function byteOrderMarkLength(head: Buffer): number {
   return 0;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file. */
-async function readHead(filePath: string): Promise<Buffer> {
+/** Read up to `bytes` (default {@link SNIFF_BYTES}) from the front of the file. */
+async function readHead(filePath: string, bytes = SNIFF_BYTES): Promise<Buffer> {
   const fh = await openFile(filePath, "r");
   try {
-    const buf = Buffer.alloc(SNIFF_BYTES);
+    const buf = Buffer.alloc(bytes);
     let filled = 0;
     // Looped because a single read can come back short on NFS/FUSE and on
     // FIFOs, which would truncate the window mid-prefix.
@@ -132,7 +133,9 @@ function startsWithDocumentByte(head: Buffer): boolean {
  */
 export async function isNotMediaPayload(filePath: string): Promise<boolean> {
   try {
-    return startsWithDocumentByte(await readHead(filePath));
+    return (
+      startsWithDocumentByte(await readHead(filePath)) || (await playlistLeavesItsFolder(filePath))
+    );
   } catch {
     return false;
   }
@@ -148,5 +151,68 @@ export async function isNotMediaPayload(filePath: string): Promise<boolean> {
 export async function assertMediaPayload(filePath: string, elementId: string): Promise<void> {
   if (await isNotMediaPayload(filePath)) {
     throw new NotMediaPayloadError([fingerprintElementId(elementId)]);
+  }
+}
+
+const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
+const HTTP_URL = /^https?:\/\//i;
+const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
+const DRIVE_PATH = /^[a-z]:[\\/]/i;
+
+function playlistEntries(text: string): string[] | undefined {
+  const body = text.replace(/^\uFEFF/, "").trimStart();
+  if (body.startsWith("#EXTM3U")) {
+    return body.split(/\r?\n/).flatMap((raw) => {
+      const line = raw.trim();
+      const uris = [...line.matchAll(/URI="([^"]*)"/gi)].map((match) => match[1]!);
+      return line && !line.startsWith("#") ? [line, ...uris] : uris;
+    });
+  }
+  if (/^ffconcat\s+version/i.test(body)) {
+    return body.split(/\r?\n/).flatMap((raw) => {
+      const match = /^\s*file\s+(.*)$/.exec(raw);
+      if (!match) return [];
+      const value = match[1]!.trim();
+      return [value.startsWith("'") ? value.slice(1, -1).replace(/\\(.)/g, "$1") : value];
+    });
+  }
+  return undefined;
+}
+
+function entryLeavesFolder(entry: string, folder: string): boolean {
+  if (HTTP_URL.test(entry)) return false;
+  if (OTHER_SCHEME.test(entry) && !DRIVE_PATH.test(entry)) return true;
+  return [entry, safeDecode(entry)].some((path) => {
+    if (isAbsolute(path) || DRIVE_PATH.test(path) || path.startsWith("\\")) return true;
+    const inside = relative(folder, resolve(folder, path));
+    return (
+      inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
+    );
+  });
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws. */
+export async function playlistLeavesItsFolder(filePath: string): Promise<boolean> {
+  try {
+    const head = (await readHead(filePath))
+      .toString("utf8")
+      .replace(/^\uFEFF/, "")
+      .trimStart();
+    if (!head.startsWith("#EXTM3U") && !/^ffconcat\s+version/i.test(head)) return false;
+    const body = await readHead(filePath, MAX_PLAYLIST_BYTES + 1);
+    if (body.length > MAX_PLAYLIST_BYTES) return true;
+    const entries = playlistEntries(body.toString("utf8")) ?? [];
+    const folder = dirname(resolve(filePath));
+    return entries.some((entry) => entryLeavesFolder(entry, folder));
+  } catch {
+    return false;
   }
 }

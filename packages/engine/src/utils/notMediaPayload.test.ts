@@ -7,6 +7,7 @@ import {
   fingerprintElementId,
   isNotMediaPayload,
   NotMediaPayloadError,
+  playlistLeavesItsFolder,
 } from "./notMediaPayload.js";
 
 function writeFixture(name: string, contents: string | Buffer): string {
@@ -173,5 +174,39 @@ describe("assertMediaPayload", () => {
     );
     expect(error.message).toContain("+4");
     expect(error.message.length).toBeLessThan(500);
+  });
+});
+
+describe("playlistLeavesItsFolder", () => {
+  const hls = (...lines: string[]) =>
+    ["#EXTM3U", "#EXT-X-TARGETDURATION:1", ...lines, "#EXT-X-ENDLIST"].join("\n");
+  const concat = (entry: string) => `ffconcat version 1.0\nfile ${entry}\n`;
+
+  it.each([
+    ["an absolute segment", hls("#EXTINF:1,", "/var/renders/other/out.mp4")],
+    ["a segment above its folder", hls("#EXTINF:1,", "../other/out.mp4")],
+    ["an encoded escape", hls("#EXTINF:1,", "%2e%2e/other/out.mp4")],
+    ["a file: segment", hls("#EXTINF:1,", "file:///var/renders/other/out.ts")],
+    [
+      "a key outside its folder",
+      hls('#EXT-X-KEY:METHOD=AES-128,URI="/etc/key.bin"', "#EXTINF:1,", "seg.ts"),
+    ],
+    ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
+    ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
+    ["a concat entry above its folder", concat("../other/out.mp4")],
+    ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
+  ])("refuses %s", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it.each([
+    ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
+    ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
+    ["a concat entry beside it", concat("'part 1.mp4'")],
+    ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
+  ])("keeps %s", async (_name, contents) => {
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
   });
 });
