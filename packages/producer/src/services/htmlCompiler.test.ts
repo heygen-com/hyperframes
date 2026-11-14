@@ -1,6 +1,8 @@
 // fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -382,6 +384,69 @@ describe("collectExternalAssets", () => {
 // ── inlineExternalScripts ──────────────────────────────────────────────────
 
 describe("inlineExternalScripts", () => {
+  it("fetches composition scripts only from public HTTPS addresses", async () => {
+    const hits: string[] = [];
+    const server = createServer((req, res) => {
+      hits.push(req.url ?? "");
+      res.end("window.fromLocalHost = 1;");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const html = `<html><body><script src="http://127.0.0.1:${port}/a.js"></script><script src="https://127.0.0.1:${port}/b.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect({ hits, inlined: result.includes("window.fromLocalHost") }).toEqual({
+        hits: [],
+        inlined: false,
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("trusts only the operator's GSAP mirror, not other paths on its host", async () => {
+    const hits: string[] = [];
+    const server = createServer((req, res) => {
+      hits.push(req.url ?? "");
+      res.end("window.fromMirrorHost = 1;");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = `http://127.0.0.1:${port}/vendor/npm`;
+    try {
+      const mirror = `http://127.0.0.1:${port}/vendor/npm/gsap@3.15.0/dist/gsap.min.js`;
+      const escape = `http://127.0.0.1:${port}/vendor/npm/../../admin.js`;
+      await inlineExternalScripts(
+        `<script src="${mirror}"></script><script src="${escape}"></script>`,
+      );
+      expect(hits).toEqual(["/vendor/npm/gsap@3.15.0/dist/gsap.min.js"]);
+    } finally {
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
+      else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
+      server.close();
+    }
+  });
+
+  it("checks every redirect of a CDN script before following it", async () => {
+    const asked: string[] = [];
+    _setDownloadFetchForTests(async (url) => {
+      asked.push(url);
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://169.254.169.254/latest/meta-data/" },
+      });
+    });
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/r.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(result).toContain('src="https://cdn.example.com/r.js"');
+      expect(asked).toEqual(["https://cdn.example.com/r.js"]);
+    } finally {
+      _setDownloadFetchForTests();
+    }
+  });
+
   it("returns HTML unchanged when no external scripts exist", async () => {
     const html = `<html><body><script>var x = 1;</script></body></html>`;
     const result = await inlineExternalScripts(html);
@@ -395,21 +460,21 @@ describe("inlineExternalScripts", () => {
   });
 
   it("leaves a CDN runtime link for the file server to strip", async () => {
-    const originalFetch = globalThis.fetch;
     const fetchMock = mock(async () => new Response("window.__hyperframeRuntime = {};"));
-    globalThis.fetch = fetchMock as any;
+    _setDownloadFetchForTests(fetchMock as any);
     try {
       const html = `<html><head><script src="https://cdn.example.com/hyperframe.runtime.iife.js"></script></head><body></body></html>`;
       expect(await inlineExternalScripts(html)).toBe(html);
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("inlines a CDN script on successful fetch", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response("var gsap = {};", { status: 200 })) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response("var gsap = {};", { status: 200 })) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
@@ -418,7 +483,7 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain("var gsap = {};");
       expect(result).not.toContain('src="https://cdn.example.com/gsap.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -445,8 +510,7 @@ describe("inlineExternalScripts", () => {
       { metadata: "sha384-YQ==", accepted: false },
       { metadata: "sha1-unknown malformed", accepted: true },
     ];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response(bytes)) as any;
+    _setDownloadFetchForTests(mock(async () => new Response(bytes)) as any);
     try {
       for (const { metadata, accepted } of cases) {
         const html = `<script src="https://cdn.example.com/script.js" integrity="${metadata}" crossorigin="anonymous"></script>`;
@@ -461,15 +525,14 @@ describe("inlineExternalScripts", () => {
         expect(result).not.toContain('src="https://cdn.example.com/script.js"');
       }
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("preserves non-src script attributes when inlining", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response('console.log("module");', { status: 200 }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response('console.log("module");', { status: 200 })) as any,
+    );
 
     try {
       const html =
@@ -481,15 +544,16 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain('console.log("module");');
       expect(result).not.toContain('src="https://cdn.example.com/module.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("escapes </script in downloaded content", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response('var x = "</script><script>alert(1)</script>";', { status: 200 }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(
+        async () => new Response('var x = "</script><script>alert(1)</script>";', { status: 200 }),
+      ) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/evil.js"></script></body></html>`;
@@ -498,18 +562,19 @@ describe("inlineExternalScripts", () => {
       expect(result).not.toContain("</script><script>alert(1)</script>");
       expect(result).toContain("<\\/script");
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("preserves literal replacement tokens in downloaded script content", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () =>
-        new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
-          status: 200,
-        }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(
+        async () =>
+          new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
+            status: 200,
+          }),
+      ) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/d3.min.js"></script><div>tail</div></body></html>`;
@@ -520,13 +585,14 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain('const both = "$&";');
       expect(result.match(/<script>/g)?.length).toBe(1);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("returns a fragment when the input has no html/body wrapper", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response("var d3 = {};", { status: 200 })) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response("var d3 = {};", { status: 200 })) as any,
+    );
 
     try {
       const html = '<script src="https://cdn.example.com/d3.min.js"></script><div>tail</div>';
@@ -537,15 +603,16 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain("<div>tail</div>");
       expect(result).not.toContain('src="https://cdn.example.com/d3.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("warns but keeps original tag when fetch fails", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => {
-      throw new Error("Network error");
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        throw new Error("Network error");
+      }) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
@@ -553,18 +620,19 @@ describe("inlineExternalScripts", () => {
       // Original script tag should remain since download failed
       expect(result).toContain('src="https://cdn.example.com/gsap.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("handles multiple CDN scripts with mixed success/failure", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async (url: string) => {
-      if (url.includes("gsap")) {
-        return new Response("var gsap = {};", { status: 200 });
-      }
-      throw new Error("404");
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async (url: string) => {
+        if (url.includes("gsap")) {
+          return new Response("var gsap = {};", { status: 200 });
+        }
+        throw new Error("404");
+      }) as any,
+    );
 
     try {
       const html = `<html><body>
@@ -577,17 +645,18 @@ describe("inlineExternalScripts", () => {
       // Lottie should remain as original tag
       expect(result).toContain('src="https://cdn.example.com/lottie.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("handles duplicate CDN URLs (same script referenced twice)", async () => {
-    const originalFetch = globalThis.fetch;
     let fetchCount = 0;
-    globalThis.fetch = mock(async () => {
-      fetchCount++;
-      return new Response("var gsap = {};", { status: 200 });
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        fetchCount++;
+        return new Response("var gsap = {};", { status: 200 });
+      }) as any,
+    );
 
     try {
       const html = `<html><body>
@@ -601,7 +670,7 @@ describe("inlineExternalScripts", () => {
         result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
       ).toBe(2);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 });
@@ -847,13 +916,14 @@ describe("detectRenderModeHints", () => {
 </template>`,
     );
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => {
-      return new Response(
-        "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
-        { status: 200 },
-      );
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        return new Response(
+          "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
+          { status: 200 },
+        );
+      }) as any,
+    );
 
     try {
       const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
@@ -861,7 +931,7 @@ describe("detectRenderModeHints", () => {
       expect(result.renderModeHints.recommendScreenshot).toBe(false);
       expect(result.renderModeHints.reasons).toEqual([]);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -3478,16 +3548,17 @@ describe("nested CDN integrity", () => {
       join(dir, "child.html"),
       `<html><head><script src="${src}" integrity="${integrity}" crossorigin="anonymous"></script></head><body><div data-composition-id="child" data-width="320" data-height="180" data-duration="1">Child</div></body></html>`,
     );
-    const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = mock(async () => new Response(bytes)) as any;
+      _setDownloadFetchForTests(mock(async () => new Response(bytes)) as any);
       await expect(compileForRender(dir, join(dir, "index.html"), dir)).resolves.toBeDefined();
-      globalThis.fetch = mock(async () => new Response("window.compromised = true;")) as any;
+      _setDownloadFetchForTests(
+        mock(async () => new Response("window.compromised = true;")) as any,
+      );
       await expect(compileForRender(dir, join(dir, "index.html"), dir)).rejects.toThrow(
         "Subresource integrity mismatch",
       );
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -3516,15 +3587,19 @@ describe("missing local GSAP in renders", () => {
     const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
     if (base === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
     else process.env.HYPERFRAMES_GSAP_BASE_URL = base;
-    globalThis.fetch = mock(async (input: string | URL | Request) => {
+    const fetchMock = mock(async (input: string | URL | Request) => {
       fetched.push(String(input instanceof Request ? input.url : input));
       return new Response("window.gsap = {};", { status: 200 });
-    }) as unknown as typeof fetch;
+    });
+    // The operator's mirror is fetched directly; every other URL goes through the checked transport.
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    _setDownloadFetchForTests(fetchMock);
     try {
       const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
       return { html: result.html, fetched };
     } finally {
       globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
       if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
       else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
       rmSync(projectDir, { recursive: true, force: true });
