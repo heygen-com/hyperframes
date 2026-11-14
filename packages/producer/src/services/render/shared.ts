@@ -309,6 +309,13 @@ function reportThrottled(
   updateJobStatus(job, status, stage, progress, due ? onProgress : undefined, stageProgress);
 }
 
+// Streaming capture spans 25-90%: encoding is fused into capture; assemble takes 90-99.
+export function streamingCaptureProgress(done: number, total: number): number {
+  if (total <= 0) return 25;
+  const frames = Math.min(Math.max(done, 0), total);
+  return Math.round(25 + (frames / total) * 65);
+}
+
 /** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
 export function reportFrameProgress(
   job: RenderJob,
