@@ -1,4 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NOT_MEDIA } from "./mediaExtensions.js";
 import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -245,6 +249,23 @@ describe("probeMediaMetadata", () => {
       color: { dynamicRange: "unknown", isHdr: false },
       probeError: "ffprobe unavailable",
     });
+  });
+
+  it.each([
+    ["an HLS playlist", "#EXTM3U\n#EXT-X-TARGETDURATION:10\n/elsewhere/clip.mp4\n"],
+    ["a DASH manifest", '\uFEFF<?xml version="1.0"?>\n<MPD xmlns="urn:mpeg:dash:schema:mpd:2011">'],
+    ["a concat script", "ffconcat version 1.0\nfile clip.mp4\n"],
+  ])("never hands %s named as a video to ffprobe", async (_name, text) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+    try {
+      writeFileSync(join(dir, "clip.mp4"), text);
+      const runner = vi.fn();
+      const metadata = await probeMediaMetadata(join(dir, "clip.mp4"), runner);
+      expect(metadata).toMatchObject({ kind: "video", probeError: NOT_MEDIA });
+      expect(runner).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("supports an injected async runner without requiring local ffprobe", async () => {

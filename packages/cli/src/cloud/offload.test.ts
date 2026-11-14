@@ -372,6 +372,32 @@ describe("offloadHeavyMedia", () => {
     });
   });
 
+  it.each([
+    ["an HLS playlist", "#EXTM3U\n#EXT-X-TARGETDURATION:10\n"],
+    ["a DASH manifest", '<?xml version="1.0"?><MPD>'],
+    ["a concat script", "ffconcat version 1.0\nfile clip.mp4\n"],
+  ])("leaves %s named as media in the zip without probing it", async (_name, text) => {
+    const playlist = Buffer.concat([Buffer.from(text), Buffer.alloc(OFFLOAD_MIN_BYTES, 0x20)]);
+    const dir = project({
+      "index.html": html(`<video src="clip.mp4"></video>`),
+      "clip.mp4": playlist,
+    });
+    const reencoder: Reencoder = { hasVideo: vi.fn(), choose: vi.fn(), run: vi.fn() };
+    const fileMap = buildPublishFileMap(dir);
+
+    const report = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      reencoder,
+      cachePath: cachePath(),
+    });
+
+    expect(report).toEqual([]);
+    expect(reencoder.hasVideo).not.toHaveBeenCalled();
+    expect(reencoder.choose).not.toHaveBeenCalled();
+    expect(fileMap.has("clip.mp4")).toBe(true);
+  });
+
   it("treats an audio-only MP4 named .mp4 as audio, whatever brand its ftyp box has", async () => {
     const audioOnly = Buffer.concat([
       HEADERS[".mp4"]!,

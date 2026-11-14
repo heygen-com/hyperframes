@@ -15,6 +15,7 @@ import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
+import { NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
@@ -731,6 +732,7 @@ async function runFfmpeg(
   isBackground: () => boolean = () => false,
 ): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();

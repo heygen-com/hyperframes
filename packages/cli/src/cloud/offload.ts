@@ -36,6 +36,7 @@ import { bytesMatchExtension } from "./offloadSniff.js";
 import {
   AUDIO_EXTS,
   CONVERTIBLE_IMAGE_EXTS,
+  startsAsMediaPlaylist,
   VIDEO_EXTS,
 } from "@hyperframes/studio-server/outside-file";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
@@ -603,14 +604,19 @@ function readHead(file: StagedFile): Buffer {
   }
 }
 
+function mediaFileKind(path: string, file: StagedFile): MediaKind | null {
+  const kind = mediaKind(path);
+  return kind && !startsAsMediaPlaylist(readHead(file)) ? kind : null;
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  let kind = mediaKind(path);
   const size = stagedSize(file);
-  if (!kind || size < OFFLOAD_MIN_BYTES) return null;
+  let kind = size < OFFLOAD_MIN_BYTES ? null : mediaFileKind(path, file);
+  if (!kind) return null;
   const ext = extname(path).toLowerCase();
   const accepted = ACCEPTED[ext];
   // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.

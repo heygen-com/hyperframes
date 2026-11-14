@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { closeSync, openSync, readSync } from "node:fs";
 import { extname } from "node:path";
 import {
   firstFrameColourArgs,
@@ -10,6 +11,7 @@ import {
   type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
@@ -313,6 +315,19 @@ export async function probeAudioTrack(
   return stream === null ? null : { stream, channels: streams[stream]?.channels ?? 0 };
 }
 
+function readsAsMediaPlaylist(filePath: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    const head = Buffer.alloc(64);
+    return startsAsMediaPlaylist(head.subarray(0, readSync(fd, head, 0, head.length, 0)));
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
@@ -320,6 +335,9 @@ export async function probeMediaMetadata(
   const kind = inferKindFromPath(filePath);
   if (kind === "audio" || kind === "unknown") {
     return { kind, color: classifyMediaColor(null) };
+  }
+  if (readsAsMediaPlaylist(filePath)) {
+    return { kind, color: classifyMediaColor(null), probeError: NOT_MEDIA };
   }
 
   // The default runner degrades a missing ffprobe to "unavailable" without
