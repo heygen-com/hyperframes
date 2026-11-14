@@ -3502,6 +3502,57 @@ describe("SVG draw-on rules", () => {
     expect(finding?.fixHint).toContain("gsap_timeline_set_initial_hide");
   });
 
+  it("gsap_repeated_fromto_without_baseline: keeps separate count-up objects apart", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080">
+    <div id="rev">0</div><div id="loss">0</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const rev = { v: 0 };
+    const loss = { v: 0 };
+    tl.fromTo(rev, { v: 0 }, { v: 163, duration: 1, onUpdate: () => { document.querySelector("#rev").textContent = rev.v.toFixed(0); } }, 1);
+    tl.fromTo(loss, { v: 0 }, { v: 807, duration: 1, onUpdate: () => { document.querySelector("#loss").textContent = loss.v.toFixed(0); } }, 3);
+    const count = (sel, to, t) => {
+      const o = { v: 0 };
+      tl.fromTo(o, { v: 0 }, { v: to, duration: 1, onUpdate: () => { document.querySelector(sel).textContent = o.v.toFixed(0); } }, t);
+    };
+    count("#rev", 200, 4.5);
+    count("#loss", 900, 5);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+    expect(finding).toBeUndefined();
+  });
+
+  it("gsap_repeated_fromto_without_baseline: still warns for one count-up object tweened twice", async () => {
+    const html = `
+<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080"><div id="rev">0</div></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const rev = { v: 0 };
+    tl.fromTo(rev, { v: 0 }, { v: 163, duration: 1, onUpdate: () => { document.querySelector("#rev").textContent = rev.v.toFixed(0); } }, 1);
+    tl.fromTo(rev, { v: 163 }, { v: 200, duration: 1, onUpdate: () => { document.querySelector("#rev").textContent = rev.v.toFixed(0); } }, 4);
+    window.__timelines.main = tl;
+  </script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const finding = result.findings.find(
+      (candidate) => candidate.code === "gsap_repeated_fromto_without_baseline",
+    );
+    expect(finding?.message).toContain("2 tl.fromTo() calls");
+  });
+
   it("does not warn when two fromTo calls on one element animate different properties", async () => {
     const html = `
 <html><body>
