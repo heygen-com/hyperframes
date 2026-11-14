@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readFileSync, realpathSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
   isPrivateOutsideFile,
@@ -13,18 +13,45 @@ export function linksToPrivateOutsideFile(projectDir: string, filePath: string):
   return linksOutside(projectDir, filePath) && isPrivateOutsideFile(projectDir, filePath);
 }
 
-export function receivedFiles(projectDir: string): (path: string) => boolean {
-  let listed: unknown;
+const RECEIVED_RECORD = join(".hyperframes", "received-files.json");
+
+interface ReceivedRecord {
+  root: string;
+  projectDirFromRoot: string;
+  listed: unknown;
+}
+
+function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | null {
+  let start: string;
   try {
-    listed = JSON.parse(
-      readFileSync(join(projectDir, ".hyperframes", "received-files.json"), "utf-8"),
-    ).files;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return () => false;
+    start = realpathSync(projectDir);
+  } catch {
+    start = resolve(projectDir);
   }
-  if (!Array.isArray(listed)) return () => true;
-  const files = new Set(listed.map((path) => String(path).normalize("NFC")));
-  return (path) => files.has(path.normalize("NFC"));
+  for (let dir = start; ; ) {
+    const projectDirFromRoot = relative(dir, start).split(sep).join("/");
+    try {
+      const listed: unknown = JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files;
+      return { root: dir, projectDirFromRoot, listed };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR")
+        return { root: dir, projectDirFromRoot, listed: undefined };
+    }
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+export function receivedFiles(projectDir: string): (path: string) => boolean {
+  const record = nearestReceivedRecordAtOrAbove(projectDir);
+  if (!record) return () => false;
+  if (!Array.isArray(record.listed)) return () => true;
+  const files = new Set(record.listed.map((path) => String(path).normalize("NFC")));
+  const keyOf = (path: string) =>
+    (record.projectDirFromRoot ? `${record.projectDirFromRoot}/${path}` : path).normalize("NFC");
+  return (path) => files.has(keyOf(path));
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */

@@ -417,6 +417,25 @@ describe("outside references in files that came in with an imported project", ()
     expect(staged.get("index.html")!.toString()).toContain("file://");
   });
 
+  it("leaves out a received file's outside reference when only its subfolder is staged", () => {
+    const { root } = stageReceived(
+      {
+        "index.html": "<html></html>",
+        "sub/index.html": `<img src="../../shared/logo.png">`,
+        "sub/mine.html": `<img src="../../shared/logo.png">`,
+      },
+      { files: ["index.html", "sub/index.html"] },
+    );
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p", "sub"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([
+      "_ext/shared/logo.png",
+    ]);
+    expect(warnings).toEqual([
+      "index.html references ../../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    ]);
+  });
+
   it("treats every file as received when the record cannot be read", () => {
     const { ext, warnings } = stageReceived(
       { "index.html": `<img src="../shared/logo.png">` },
