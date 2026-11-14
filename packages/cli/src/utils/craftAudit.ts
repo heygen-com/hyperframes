@@ -211,7 +211,7 @@ interface CraftRect {
 }
 
 interface BlockTrack {
-  key: number;
+  keys: Set<number>;
   selector: string;
   sourceFile: string;
   /** Frame index → what the block showed there. */
@@ -259,19 +259,39 @@ interface Anchor {
 
 function trackBlocks(frames: CraftFrame[], readHeight: number): BlockTrack[] {
   const tracks = new Map<number, BlockTrack>();
+  let previous = new Map<number, BlockFrame & Anchor>();
   frames.forEach((frame, index) => {
-    for (const [key, block] of readableBlocks(frame, readHeight)) {
-      const track = tracks.get(key) ?? {
-        key,
-        selector: block.selector,
-        sourceFile: block.sourceFile,
-        seen: new Map<number, BlockFrame>(),
-      };
-      track.seen.set(index, { text: block.text, rect: block.rect });
+    const blocks = readableBlocks(frame, readHeight);
+    for (const [key, block] of blocks) {
+      const track = tracks.get(key) ??
+        carriedOver(tracks, previous, block) ?? {
+          keys: new Set<number>(),
+          selector: block.selector,
+          sourceFile: block.sourceFile,
+          seen: new Map<number, BlockFrame>(),
+        };
+      track.keys.add(key);
+      if (!track.seen.has(index)) track.seen.set(index, { text: block.text, rect: block.rect });
       tracks.set(key, track);
     }
+    previous = blocks;
   });
-  return [...tracks.values()];
+  return [...new Set(tracks.values())];
+}
+
+function carriedOver(
+  tracks: Map<number, BlockTrack>,
+  previous: Map<number, BlockFrame>,
+  block: BlockFrame,
+): BlockTrack | undefined {
+  for (const [key, before] of previous) {
+    if (before.text === block.text && rectsOverlap(before.rect, block.rect)) return tracks.get(key);
+  }
+  return undefined;
+}
+
+function rectsOverlap(a: CraftRect, b: CraftRect): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
 /** Maximal runs of consecutive frame indices. */
@@ -374,8 +394,10 @@ async function refineWindow(
   canvas: Canvas,
 ): Promise<LineWindow> {
   const readHeight = T.readHeightAt1080 * (Math.min(canvas.width, canvas.height) / 1080);
-  const visibleAt = async (time: number) =>
-    readableBlocks(await probe(time), readHeight).has(candidate.track.key);
+  const visibleAt = async (time: number) => {
+    const blocks = readableBlocks(await probe(time), readHeight);
+    return [...candidate.track.keys].some((key) => blocks.has(key));
+  };
   const window = { ...candidate.window };
   for (let step = 0; step < T.refineSteps; step += 1) {
     if (window.startIn > window.startOut) {
@@ -445,7 +467,7 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
-    measured: measuredAround(frames, track.key, candidate.firstIndex, candidate.lastIndex),
+    measured: measuredAround(frames, track.keys, candidate.firstIndex, candidate.lastIndex),
   };
 }
 
@@ -454,7 +476,7 @@ const MEASURED_SPAN = 3;
 /** The samples at both ends of the line's run, as the sampler measured them. */
 function measuredAround(
   frames: CraftFrame[],
-  key: number,
+  keys: Set<number>,
   first: number,
   last: number,
 ): NonNullable<CraftFinding["measured"]> {
@@ -466,7 +488,7 @@ function measuredAround(
   for (const index of [...indices].sort((a, b) => a - b)) {
     const frame = frames[index];
     if (!frame) continue;
-    const parts = frame.parts.filter((part) => part.block === key && !part.captions);
+    const parts = frame.parts.filter((part) => keys.has(part.block) && !part.captions);
     if (parts.length === 0) {
       out.push({ time: round(frame.time), opacity: null, heightPx: null });
       continue;
