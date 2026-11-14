@@ -31,12 +31,16 @@ function fakeTimeline(): Record<string, () => unknown> {
 
 /** Runs the component's inline script and returns how many words each caption group shows. */
 function groupSizes(html: string): number[] {
-  const window = new Window();
-  window.document.write(html.replace(/<script\b[\s\S]*?<\/script>/gi, ""));
+  const window = new Window({
+    settings: { disableJavaScriptEvaluation: true, disableJavaScriptFileLoading: true },
+  });
+  window.document.write(html);
+  const scripts = [...window.document.querySelectorAll("script")];
+  const script = scripts.filter((el) => !el.hasAttribute("src")).at(-1)!.textContent;
+  for (const el of scripts) el.remove();
   const canvasContext = { font: "", measureText: () => ({ width: 0 }) };
   window.HTMLCanvasElement.prototype.getContext = (() =>
     canvasContext) as unknown as typeof window.HTMLCanvasElement.prototype.getContext;
-  const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gi)].at(-1)![1]!;
   const gsap = { timeline: fakeTimeline, set: () => undefined, to: () => undefined };
   vm.runInNewContext(script, { window, document: window.document, gsap, console });
   const container = window.document.querySelector('[id$="-container"]')!;
