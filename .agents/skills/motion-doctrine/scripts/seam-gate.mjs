@@ -366,8 +366,7 @@ const fmtV = (v, axis) =>
 async function verify() {
   const ledgerPath = flag("ledger", "ledger.json");
   const ledger = JSON.parse(readFileSync(ledgerPath, "utf8"));
-  const fps = ledger.fps || FPS,
-    dt = 1 / fps;
+  const fps = ledger.fps || FPS;
   const compUrl = await ensureServer();
   const { evalJs } = await openPage(compUrl);
   const results = [];
@@ -377,10 +376,17 @@ async function verify() {
     const add = (check, status, detail) => rows.push({ check, status, detail });
     const cut = seam.cut;
     const type = seam.type || "cut";
-    const tA1 = Math.max(0, cut - 0.1),
-      tA2 = Math.max(0, cut - dt);
-    const tB1 = cut + dt,
-      tB2 = cut + 0.1;
+    // The player floors every seek to the frame grid, so sampling at cut ± k/fps for an
+    // off-grid cut shifts both exit samples up to a frame early and the first entry sample
+    // onto the cut itself, under-reading exit and over-reading entry. Sample whole frames
+    // placed symmetrically around the nearest frame instead.
+    const cutFrame = Math.round(cut * fps);
+    const offGrid = Math.abs(cut * fps - cutFrame) > 1e-3;
+    const win = Math.max(1, Math.round(0.1 * fps));
+    const tA1 = Math.max(0, cutFrame - win) / fps,
+      tA2 = Math.max(0, cutFrame - 1) / fps;
+    const tB1 = (cutFrame + 1) / fps,
+      tB2 = (cutFrame + win) / fps;
     const sels = [
       seam.exit?.selector,
       seam.entry?.selector,
@@ -390,6 +396,12 @@ async function verify() {
     const S = {};
     for (const t of [tA1, tA2, tB1, tB2])
       S[t] = await evalJs(`__seamGate.sample(${t}, ${JSON.stringify([...new Set(sels)])})`, true);
+    if (offGrid)
+      add(
+        "cut-grid",
+        "WARN",
+        `cut ${cut}s is between frames at ${fps} fps; measured around ${(cutFrame / fps).toFixed(3)}s — put cuts on the frame grid`,
+      );
 
     if (type === "cut") {
       const ex = seam.exit,
