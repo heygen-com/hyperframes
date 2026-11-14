@@ -55,11 +55,11 @@ const sandboxPreviewForAnotherSiteOrCapture =
       c.header("Content-Security-Policy", "sandbox allow-scripts");
   };
 
-async function refuseThumbnailForAnotherSite(c: Context, next: Next) {
+const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
-    return c.json({ error: "forbidden: thumbnail requested by another site" }, 403);
+    return c.json({ error: `forbidden: ${what} requested by another site` }, 403);
   return next();
-}
+};
 
 function urlHost(url: string): string | undefined {
   try {
@@ -103,7 +103,9 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     if (!projectId) return c.json({ error: "not found" }, 404);
     return c.json({ token: frameTokens.tokenFor(projectId) }, 200, { "Cache-Control": "no-store" });
   });
-  api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
+  api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
+  api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
+  api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {

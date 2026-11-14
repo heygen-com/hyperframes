@@ -280,6 +280,32 @@ describe("createStudioApi cross-origin write guard", () => {
   });
 });
 
+describe("createStudioApi media analysis from another site", () => {
+  it.each([
+    ["waveform", "cross-site"],
+    ["waveform", "same-site"],
+    ["peaks", "cross-site"],
+    ["peaks", "same-site"],
+  ])("refuses a %s request marked %s", async (route, site) => {
+    const { app } = createApp();
+    const res = await app.request(`http://localhost/projects/demo/${route}/talk.mp4`, {
+      headers: { Host: "localhost", "Sec-Fetch-Site": site },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it.each([
+    ["waveform", "same-origin"],
+    ["peaks", "none"],
+  ])("answers a %s request marked %s", async (route, site) => {
+    const { app } = createApp();
+    const res = await app.request(`http://localhost/projects/demo/${route}/talk.mp4`, {
+      headers: { Host: "localhost", "Sec-Fetch-Site": site },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("previewAllowedHostsFromEnv", () => {
   it("parses a comma separated list, trimming blanks", () => {
     expect(
