@@ -3640,6 +3640,61 @@ describe("missing local GSAP in renders", () => {
     expect(fetched).toContain("https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js");
   });
 
+  async function inlineWithMirror(src: string, respond: (init?: RequestInit) => Response) {
+    const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
+    const originalFetch = globalThis.fetch;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = "http://127.0.0.1:8080/vendor/npm";
+    const fetched: string[] = [];
+    const record = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      fetched.push(String(input));
+      return respond(init);
+    });
+    globalThis.fetch = record as unknown as typeof fetch;
+    stubDownloadFetch.fetch = record;
+    try {
+      const html = await inlineExternalScripts(
+        `<html><body><script src="${src}"></script></body></html>`,
+      );
+      return { html, fetched };
+    } finally {
+      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
+      else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
+    }
+  }
+
+  it.each([
+    "http://127.0.0.1:8080/secret.js",
+    "http://127.0.0.1:8080/vendor/npm/other.js",
+    "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/..%2f..%2fsecret.js",
+    "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js?x=1",
+  ])("does not fetch %s from the mirror's origin outside its GSAP dist folder", async (src) => {
+    const { html, fetched } = await inlineWithMirror(src, () => new Response("leaked"));
+    expect(fetched).toEqual([]);
+    expect(html).not.toContain("leaked");
+  });
+
+  it("does not follow a redirect from the mirror", async () => {
+    const { html } = await inlineWithMirror(
+      "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js",
+      (init) => {
+        if (init?.redirect === "error") throw new TypeError("fetch failed: redirect");
+        return new Response("leaked");
+      },
+    );
+    expect(html).not.toContain("leaked");
+    expect(html).toContain('src="http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js"');
+  });
+
+  it("does not inline a mirror script larger than the size limit", async () => {
+    const { html } = await inlineWithMirror(
+      "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js",
+      () => new Response("leaked", { headers: { "content-length": String(17 * 1024 * 1024) } }),
+    );
+    expect(html).not.toContain("leaked");
+  });
+
   it.each(["http://mirror.example/npm", "/vendor/npm"])(
     "fails the render on an invalid mirror instead of using jsDelivr: %s",
     async (base) => {

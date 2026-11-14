@@ -1339,21 +1339,37 @@ const MAX_INLINED_SCRIPT_BYTES = 16 * 1024 * 1024;
 
 class ScriptNotInlinableError extends Error {}
 
-/** Whether `src` lies under the operator's `HYPERFRAMES_GSAP_BASE_URL` mirror, which may be loopback HTTP. */
+/** Whether `src` is a script file in the GSAP dist folder of the operator's `HYPERFRAMES_GSAP_BASE_URL` mirror. */
 function isGsapMirrorScript(src: string): boolean {
-  const base = process.env.HYPERFRAMES_GSAP_BASE_URL?.trim();
-  if (!base) return false;
+  if (!process.env.HYPERFRAMES_GSAP_BASE_URL?.trim()) return false;
   try {
-    return new URL(src).href.startsWith(`${normalizeGsapBaseUrl(base)}/`);
+    const dist = renderGsapDist();
+    const href = new URL(src).href;
+    return href.startsWith(dist) && GSAP_DIST_FILE.test(href.slice(dist.length));
   } catch {
     return false;
   }
 }
 
+const GSAP_DIST_FILE = /^(?:[\w-]+(?:\.[\w-]+)*\/)*[\w-]+(?:\.[\w-]+)*\.js$/;
+
 async function fetchGsapMirrorScript(src: string): Promise<Uint8Array> {
-  const response = await fetch(src, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(src, { signal: AbortSignal.timeout(15_000), redirect: "error" });
   if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-  return new Uint8Array(await response.arrayBuffer());
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_INLINED_SCRIPT_BYTES) {
+    await response.body?.cancel();
+    throw new Error(`Script exceeds ${MAX_INLINED_SCRIPT_BYTES} bytes: ${src}`);
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of response.body ?? []) {
+    size += chunk.byteLength;
+    if (size > MAX_INLINED_SCRIPT_BYTES) {
+      throw new Error(`Script exceeds ${MAX_INLINED_SCRIPT_BYTES} bytes: ${src}`);
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 /**
