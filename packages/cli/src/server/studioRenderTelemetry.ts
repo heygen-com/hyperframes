@@ -2,8 +2,6 @@
 // Maps studio-triggered renders into the existing `render_complete` /
 // `render_error` telemetry events with `source: "studio"`, so they land
 // alongside CLI renders in one unified taxonomy.
-//
-// Kept in its own file so `studioServer.ts` only needs two function calls.
 // ---------------------------------------------------------------------------
 
 import { freemem } from "node:os";
@@ -22,7 +20,6 @@ import type { RenderCpuTelemetryPayload } from "../telemetry/renderCpu.js";
 export interface StudioRenderOpts {
   fps: Fps;
   quality: string;
-  /** Output format; Studio requests are constrained to these five. */
   format?: "mp4" | "webm" | "mov" | "gif" | "png-sequence";
   /** Named canvas preset the Studio request asked for; undefined renders at the composition's native dimensions. */
   outputResolution?: CanvasResolution;

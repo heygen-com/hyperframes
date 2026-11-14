@@ -2,16 +2,11 @@ import { lstatSync, rmSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { readRenderDirectoryStats, type RenderDirectoryStats } from "./renderDirectoryStats.js";
 
-/**
- * The metadata sidecar sits beside the output and is named by job id. Deriving
- * it by swapping the output's extension breaks for extensionless directory
- * outputs, where it would land inside the frames directory.
- */
+/** Named by job id, not by swapping the output's extension: a directory output has none. */
 export function renderMetadataPath(outputPath: string, jobId: string): string {
   return join(dirname(outputPath), `${jobId}.meta.json`);
 }
 
-/** Directory facts cached in the sidecar so listing can skip a scan; empty for file outputs. */
 export function renderDirectoryMetadata(outputPath: string): Partial<RenderDirectoryStats> {
   try {
     return lstatSync(outputPath).isDirectory() ? readRenderDirectoryStats(outputPath) : {};
@@ -20,7 +15,6 @@ export function renderDirectoryMetadata(outputPath: string): Partial<RenderDirec
   }
 }
 
-/** Best-effort cleanup after a cancelled render. Never follows symlinks. */
 export function removeRenderArtifacts(paths: readonly string[]): void {
   for (const path of paths) {
     try {
@@ -30,7 +24,7 @@ export function removeRenderArtifacts(paths: readonly string[]): void {
         unlinkSync(path);
       }
     } catch {
-      // Missing or locked paths are fine; keep going so the sidecar is still tried.
+      continue;
     }
   }
 }
