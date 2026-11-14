@@ -39,6 +39,7 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
+import { SAFE_ZONE_PLATFORMS, type SafeZonePlatform } from "../utils/safeZones.js";
 import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
@@ -297,6 +298,11 @@ const CHECK_COMMAND_ARGS = {
     description:
       'Caption band "x0=0;y0=.82;x1=1;y1=1[;severity=warning|error][;seek=.5,1]" (fractions 0-1; defaults: warning, seek=1)',
   },
+  "safe-zone": {
+    type: "string",
+    description:
+      "9:16 only: warn when text leaves a platform's safe area: tiktok, reels, shorts, or off (default: all three)",
+  },
   "frame-check": {
     type: "string",
     description:
@@ -499,6 +505,7 @@ function parseCheckOptions(args: Record<string, unknown>): CheckOptions {
     ...(checkReview()?.findingFrames ? { findingFrames: true } : {}),
     ...(checkReview()?.inspect ? { inspect: true } : {}),
     captionZone: parseCaptionZone(args["caption-zone"]),
+    safeZones: parseSafeZone(args["safe-zone"]),
     frameCheck: parseFrameCheck(args["frame-check"]),
     layout: parseLayout(args.layout),
     autoProxy: args.proxy as boolean | undefined,
@@ -621,6 +628,14 @@ function parseNumberStrict(raw: string): number | null {
   if (raw === "") return null;
   const value = Number(raw);
   return Number.isFinite(value) ? value : null;
+}
+
+export function parseSafeZone(value: unknown): SafeZonePlatform[] {
+  if (value === undefined) return [...SAFE_ZONE_PLATFORMS];
+  if (value === "off") return [];
+  const platform = SAFE_ZONE_PLATFORMS.find((name) => name === value);
+  if (!platform) throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts or off.");
+  return [platform];
 }
 
 function parseCaptionZone(value: unknown): CaptionZoneOptions | undefined {

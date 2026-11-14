@@ -17,6 +17,12 @@ import {
 } from "./checkSnapshotDirectory.js";
 import { findingAtRoot, findingElementKey, groupSampledFindings } from "./checkFindings.js";
 import {
+  SAFE_AREAS,
+  isNineBySixteen,
+  safeZoneEdgesCrossed,
+  type SafeZonePlatform,
+} from "./safeZones.js";
+import {
   MAX_FINDING_FRAME_TIMES,
   selectFindingFrames,
   withFindingFrameFields,
@@ -317,13 +323,15 @@ function geometryRequest(
   time: number,
   grid: SampleGrid,
   options: CheckOptions,
+  sets: SampleSets,
 ): GeometryCandidateRequest | null {
   const text = grid.captionSamples.includes(time);
   const media = grid.frameSamples.includes(time);
-  if (!text && !media) return null;
+  const blocks = sets.safeZones.length > 0 && sets.layout.has(time);
+  if (!text && !media && !blocks) return null;
   const configuredTolerance = options.frameCheck?.tol;
   const tolerance = typeof configuredTolerance === "number" ? configuredTolerance : 2;
-  return { text, media, tolerance };
+  return { text, media, blocks, tolerance };
 }
 
 function candidateIsSized(candidate: CheckGeometryCandidate, canvas: Canvas): boolean {
@@ -385,6 +393,37 @@ function captionFinding(
   };
 }
 
+function safeZoneFinding(
+  candidate: CheckGeometryCandidate,
+  platforms: SafeZonePlatform[],
+  canvas: Canvas,
+  time: number,
+): AnchoredLayoutIssue | null {
+  if (candidate.kind !== "block" || candidate.rect.width < 4 || candidate.rect.height < 4) {
+    return null;
+  }
+  // Backstop for mocks/non-browser sources; the browser already drops opted-out text.
+  if ("data-layout-allow-safe-zone" in candidate.dataAttributes) return null;
+  const crossed = platforms.flatMap((platform) => {
+    const edges = safeZoneEdgesCrossed(candidate.rect, canvas, platform);
+    if (edges.length === 0) return [];
+    return [
+      `${SAFE_AREAS[platform].label} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`,
+    ];
+  });
+  if (crossed.length === 0) return null;
+  const text = candidate.text.slice(0, 48);
+  return {
+    ...geometryIssueAnchor(candidate, time),
+    code: "outside_safe_zone",
+    severity: "warning",
+    text,
+    message: `<${candidate.tag}> "${text}" is outside the safe area for ${crossed.join(", ")}.`,
+    fixHint:
+      "Move the text inside the clear area, or mark text that may sit under the platform buttons and caption with data-layout-allow-safe-zone.",
+  };
+}
+
 function maxOverflow(candidate: CheckGeometryCandidate): number {
   if (!candidate.overflow) return 0;
   return Math.max(
@@ -435,14 +474,19 @@ async function collectGeometryAt(
   driver: CheckAuditDriver,
   options: CheckOptions,
   grid: SampleGrid,
+  sets: SampleSets,
   canvas: Canvas,
   time: number,
 ): Promise<AnchoredLayoutIssue[]> {
-  const request = geometryRequest(time, grid, options);
+  const request = geometryRequest(time, grid, options, sets);
   if (!request) return [];
   const candidates = await driver.collectGeometryCandidates(time, request);
   const issues: AnchoredLayoutIssue[] = [];
   for (const candidate of candidates) {
+    if (request.blocks) {
+      const finding = safeZoneFinding(candidate, sets.safeZones, canvas, time);
+      if (finding) issues.push(finding);
+    }
     if (request.text) {
       const finding = captionFinding(candidate, options, canvas, time);
       if (finding) issues.push(finding);
@@ -490,6 +534,8 @@ interface SampleSets {
   motion: Set<number>;
   contrast: Set<number>;
   canvas: Canvas | null;
+  /** Platforms to judge text against; empty unless the frame is 9:16. */
+  safeZones: SafeZonePlatform[];
 }
 
 async function collectSampleAt(
@@ -519,7 +565,7 @@ async function collectSampleAt(
     collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
   }
   if (sets.canvas) {
-    const geometryIssues = await collectGeometryAt(driver, options, grid, sets.canvas, time);
+    const geometryIssues = await collectGeometryAt(driver, options, grid, sets, sets.canvas, time);
     collected.layoutIssues.push(...geometryIssues);
     issuesAtTime.push(...geometryIssues);
   }
@@ -545,12 +591,17 @@ async function collectGridSamples(
   report: CheckProgress,
   keep: (read: () => Partial<CheckBrowserResult>) => void,
 ): Promise<GridSamples> {
-  const geometryEnabled = grid.captionSamples.length > 0 || grid.frameSamples.length > 0;
+  const geometryEnabled =
+    grid.captionSamples.length > 0 ||
+    grid.frameSamples.length > 0 ||
+    (options.safeZones?.length ?? 0) > 0;
+  const canvas = geometryEnabled ? await driver.getCanvas() : null;
   const sets: SampleSets = {
     layout: new Set(grid.layoutSamples),
     motion: new Set(motion.times),
     contrast: new Set(grid.contrastSamples),
-    canvas: geometryEnabled ? await driver.getCanvas() : null,
+    canvas,
+    safeZones: canvas && isNineBySixteen(canvas) ? (options.safeZones ?? []) : [],
   };
   const gridStart = performance.now();
   const times = mergeSampleTimes(grid.layoutSamples, motion.times);
@@ -2072,8 +2123,12 @@ function buildReport(
     motionSection.errorCount +
     contrastSection.errorCount +
     craftSection.errorCount;
-  // Craft findings are judgment calls a film may break on purpose, so --strict gates defects only.
-  const strictWarningCount = warningCount - craftSection.warningCount;
+  // Craft findings are judgment calls a film may break on purpose, and safe zones are platform
+  // guidance, so --strict gates defects only.
+  const safeZoneWarnings = layout.findings.filter(
+    (finding) => finding.code === "outside_safe_zone",
+  ).length;
+  const strictWarningCount = warningCount - craftSection.warningCount - safeZoneWarnings;
   const report: CheckReport = {
     ok: errorCount === 0 && (!options.strict || strictWarningCount === 0),
     strict: options.strict,
