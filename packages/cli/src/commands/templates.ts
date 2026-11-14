@@ -21,7 +21,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
 import { c } from "../ui/colors.js";
-import { failCommand } from "../utils/commandResult.js";
+import { failCommand, failUsage } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
@@ -67,7 +67,9 @@ export const TEMPLATES: Record<string, TemplatePack> = {
 };
 
 /** A pull that stopped, with the one line the agent relays. Nothing was written. */
-export class PullRefused extends Error {}
+export class PullRefused extends Error {
+  override name = "PullRefused";
+}
 
 const LINK_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 20 * 60_000;
@@ -132,7 +134,7 @@ const PULLED_HASH = ".template-sha256";
 
 const extract = (data: Buffer, out: string) =>
   new Promise<void>((done, fail) => {
-    const tar = execFile("tar", ["-xzf", "-", "-C", out, "--no-same-owner"], (error) =>
+    const tar = execFile("tar", ["-xzf", "-", "--no-same-owner"], { cwd: out }, (error) =>
       error ? fail(error) : done(),
     );
     tar.stdin?.end(data);
@@ -272,11 +274,11 @@ export default defineCommand({
     description: "Pull a style template into this project (HyperFrames Pro)",
   },
   args: {
-    action: { type: "positional", description: "pull", required: true },
+    action: { type: "positional", description: "pull, or list", required: false },
     slug: {
       type: "positional",
       description: "The template's slug, from the style-sampling skill",
-      required: true,
+      required: false,
     },
     dir: {
       type: "string",
@@ -284,20 +286,30 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    if (args.action !== "pull") {
-      console.error(c.error("Use `templates pull <slug>`."));
-      failCommand();
+    const slugs = `Templates: ${Object.keys(TEMPLATES).join(", ")}.`;
+    if (!args.action || args.action === "list") {
+      console.log(`${slugs}\nPull one with \`npx hyperframes templates pull <slug>\`.`);
       return;
     }
-    try {
-      const path = await pullTemplate(String(args.slug), args.dir ?? ".");
-      tagStyleSamplingProject(args.dir ?? ".", path);
-      console.log(c.success(`✓ ${path}`));
-    } catch (error) {
-      if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
-      console.error(c.error(error.message));
-      if (error instanceof NetworkFailure) console.error(c.dim(error.hint));
-      failCommand();
+    const slug = args.action === "pull" ? args.slug : undefined;
+    if (!slug || !Object.hasOwn(TEMPLATES, slug)) {
+      const problem = slug ? `No template "${slug}".` : "Use `templates pull <slug>`.";
+      console.error(c.error(`${problem} ${slugs}`));
+      failUsage();
     }
+    await pullAndReport(slug, args.dir ?? ".");
   },
 });
+
+async function pullAndReport(slug: string, dir: string): Promise<void> {
+  try {
+    const path = await pullTemplate(slug, dir);
+    tagStyleSamplingProject(dir, path);
+    console.log(c.success(`✓ ${path}`));
+  } catch (error) {
+    if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
+    console.error(c.error(error.message));
+    if (error instanceof NetworkFailure) console.error(c.dim(error.hint));
+    failCommand(1, error);
+  }
+}

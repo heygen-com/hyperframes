@@ -25,11 +25,20 @@ vi.mock("../cloud/auth.js", () => ({
 }));
 
 type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
-const unpackGate = vi.hoisted(() => ({ hold: null as null | ((done: ExecFileCallback) => void) }));
+const unpackGate = vi.hoisted(() => ({
+  hold: null as null | ((done: ExecFileCallback) => void),
+  calls: [] as { args: string[]; cwd?: string }[],
+}));
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  const execFile = (file: string, args: string[], done: ExecFileCallback) => {
-    if (!unpackGate.hold) return actual.execFile(file, args, done);
+  const execFile = (
+    file: string,
+    args: string[],
+    options: { cwd?: string },
+    done: ExecFileCallback,
+  ) => {
+    unpackGate.calls.push({ args, cwd: options.cwd });
+    if (!unpackGate.hold) return actual.execFile(file, args, options, done);
     unpackGate.hold(done);
     return {};
   };
@@ -42,7 +51,13 @@ vi.mock("../telemetry/events.js", async (importOriginal) => ({
   trackSkillCommandRan: (run: { skill: string; command: string }) => void commandRuns.push(run),
 }));
 
-import { pullTemplate, PullRefused, tagStyleSamplingProject, TEMPLATES } from "./templates.js";
+import templates, {
+  pullTemplate,
+  PullRefused,
+  tagStyleSamplingProject,
+  TEMPLATES,
+} from "./templates.js";
+import { CliRuntimeError, CliUsageError } from "../utils/commandResult.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -326,6 +341,51 @@ describe("pullTemplate", () => {
 
   it("names the templates when the slug is unknown", async () => {
     await expect(pullTemplate("nope", dir)).rejects.toThrow("sample");
+  });
+
+  it("unpacks from inside the folder, since GNU tar reads `-C C:\\…` as a remote host", async () => {
+    serve({});
+    unpackGate.calls.length = 0;
+    await pullTemplate("sample", dir);
+    const unpack = unpackGate.calls.find((call) => call.args.includes("-xzf"));
+    expect(unpack?.args).not.toContain("-C");
+    expect(unpack?.cwd).toContain(join(dir, ".hyperframes", "template-pulls"));
+  });
+});
+
+describe("templates command", () => {
+  const run = (args: Record<string, string | undefined>) =>
+    templates.run?.({ args: { _: [], ...args }, rawArgs: [], cmd: templates } as never);
+
+  it("lists the templates when no action or `list` is given, and succeeds", async () => {
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await run({});
+    await run({ action: "list" });
+    expect(out).toHaveBeenCalledTimes(2);
+    expect(String(out.mock.calls[0]?.[0])).toContain("sample");
+    expect(String(out.mock.calls[0]?.[0])).toContain("templates pull <slug>");
+  });
+
+  it("names the templates when `pull` has no slug", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(run({ action: "pull" })).rejects.toBeInstanceOf(CliUsageError);
+    expect(String(err.mock.calls[0]?.[0])).toContain("sample");
+  });
+
+  it("rejects an unknown slug as usage, naming the templates", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(run({ action: "pull", slug: "nope", dir })).rejects.toBeInstanceOf(CliUsageError);
+    expect(String(err.mock.calls[0]?.[0])).toContain('No template "nope"');
+    expect(String(err.mock.calls[0]?.[0])).toContain("sample");
+  });
+
+  it("keeps the refusal as the failure's cause, so it is not reported as a bare failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    serve({ status: 402 });
+    const failure = await run({ action: "pull", slug: "sample", dir }).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(CliRuntimeError);
+    expect((failure as CliRuntimeError).cause).toBeInstanceOf(PullRefused);
+    expect((failure as CliRuntimeError).cause).toHaveProperty("name", "PullRefused");
   });
 });
 
