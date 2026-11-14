@@ -68,6 +68,12 @@
       "import": "./src/safePath.ts",
       "types": "./src/safePath.ts"
     },
+    "./safe-areas": {
+      "bun": "./src/safeAreas.ts",
+      "node": "./dist/safeAreas.js",
+      "import": "./src/safeAreas.ts",
+      "types": "./src/safeAreas.ts"
+    },
     "./browser-marker": {
       "bun": "./src/browserMarker.ts",
       "node": "./dist/browserMarker.js",
@@ -677,6 +683,10 @@
       "./safe-path": {
         "import": "./dist/safePath.js",
         "types": "./dist/safePath.d.ts"
+      },
+      "./safe-areas": {
+        "import": "./dist/safeAreas.js",
+        "types": "./dist/safeAreas.d.ts"
       },
       "./browser-marker": {
         "import": "./dist/browserMarker.js",

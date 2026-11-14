@@ -56,6 +56,12 @@
       "types": "./dist/safePath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./safe-areas": {
+      "source": "./src/safeAreas.ts",
+      "runtime": "./dist/safeAreas.js",
+      "types": "./dist/safeAreas.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./browser-marker": {
       "source": "./src/browserMarker.ts",
       "runtime": "./dist/browserMarker.js",
