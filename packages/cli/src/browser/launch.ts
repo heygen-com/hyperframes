@@ -174,7 +174,6 @@ async function launchOwnedBrowser(
   ownSignals();
   const abort = new AbortController();
   const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
-  const launchedAt = Date.now();
   const launch = untilLaunchOrAbort(
     puppeteer.launch({
       ...options,
@@ -202,7 +201,7 @@ async function launchOwnedBrowser(
     const child = browser.process();
     if (!child) throw new Error("A launched browser has no owned process.");
     browsers.add(browser);
-    const watchdog = watchChromeTree(child, launchedAt);
+    const watchdog = watchChromeTree(child, browser);
     if (watchdog) watchdogs.set(browser, watchdog);
     gracefulClose.set(browser, browser.close.bind(browser));
     browser.close = () => closeManagedBrowser(browser);
