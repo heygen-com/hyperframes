@@ -264,6 +264,7 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
       flattenInnerRoot,
     });
 
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
     const wrapper = host.querySelector("[data-hf-inner-root]");
     expect(wrapper?.getAttribute("data-composition-id")).toBe("scoped-text");
 
@@ -574,6 +575,50 @@ describe("inlineSubCompositions – variable defaults on a template sub-comp roo
     });
     expect(result.variablesByComp["card"]).toMatchObject({ headline: "Overridden" });
   });
+
+  it("keys an anonymous host's values by the sub-composition's own id, which its wrapper and scripts use", () => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="0"></div>
+      </div></body></html>`);
+    const host = document.querySelector('[data-composition-src="card.html"]')!;
+    const result = inlineSubCompositions(document, [host], {
+      resolveHtml: () => SUB_COMP_WITH_VAR,
+      parseHtml: (h) => parseHTML(h).document,
+      readVariableDefaults: readDeclaredDefaults,
+      parseHostVariables: parseHostVariableValues,
+    });
+    expect(result.variablesByComp["card"]).toMatchObject({ headline: "Hi there" });
+    // The host stays anonymous; the preserved wrapper is what carries the id.
+    expect(host.hasAttribute("data-composition-id")).toBe(false);
+    expect(host.querySelector('[data-composition-id="card"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["named first", ["named", "anonymous"]],
+    ["anonymous first", ["anonymous", "named"]],
+  ] as const)(
+    "keeps a named mount's values when an anonymous mount of the same file shares its scope (%s)",
+    (_order, order) => {
+      // Both mounts resolve through `[data-composition-id="card"]`: the named
+      // host carries it, the anonymous wrapper keeps it. The explicit instance
+      // values on the named host must win whichever mount is inlined first.
+      const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <div data-composition-id="main">
+        <div id="named" data-composition-id="card" data-composition-src="card.html" data-variable-values='{"headline":"Custom"}' data-start="0" data-duration="4" data-track-index="0"></div>
+        <div id="anonymous" data-composition-src="card.html" data-start="0" data-duration="4" data-track-index="1"></div>
+      </div></body></html>`);
+      const hosts = order.map((id) => document.querySelector(`#${id}`)!);
+      const result = inlineSubCompositions(document, hosts, {
+        resolveHtml: () => SUB_COMP_WITH_VAR,
+        parseHtml: (h) => parseHTML(h).document,
+        readVariableDefaults: readDeclaredDefaults,
+        parseHostVariables: parseHostVariableValues,
+      });
+      expect(result.variablesByComp).toEqual({ card: { headline: "Custom" } });
+      expect(document.querySelector("#anonymous")!.hasAttribute("data-composition-id")).toBe(false);
+    },
+  );
 });
 
 describe("inlineSubCompositions – recursive host discovery", () => {

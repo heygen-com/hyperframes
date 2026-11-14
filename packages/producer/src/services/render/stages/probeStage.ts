@@ -184,12 +184,23 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+type VariablesByComp = Record<string, Record<string, unknown>>;
+
+function scopedVariablesFor(element: Element, variablesByComp: VariablesByComp) {
+  const scope = element.closest("[data-composition-id]");
+  const compId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
+  return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+}
+
 function variableHasValue(
   element: Element,
   variableId: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp,
 ): boolean {
   if (variables && Object.hasOwn(variables, variableId)) return true;
+  const scoped = scopedVariablesFor(element, variablesByComp);
+  if (scoped) return Object.hasOwn(scoped, variableId);
   for (let scope = element.parentElement; scope; scope = scope.parentElement) {
     if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
     if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
@@ -199,11 +210,12 @@ function variableHasValue(
 
 /**
  * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
- * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
+ * element's variable has a value (the render's, its scope's compiled table entry, its mount's, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp = {},
 ): boolean {
   const { document } = parseHTML(html);
   return Array.from(
@@ -212,7 +224,7 @@ export function hasVariableBoundMedia(
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && variableHasValue(element, variableId, variables));
+    return Boolean(variableId && variableHasValue(element, variableId, variables, variablesByComp));
   });
 }
 
@@ -406,7 +418,11 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
-  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
+  const hasVariableMedia = hasVariableBoundMedia(
+    compiled.html,
+    job.config.variables,
+    compiled.variablesByComp,
+  );
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||

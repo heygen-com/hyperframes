@@ -433,6 +433,7 @@ export function inlineSubCompositions(
   const scopeCssToComposition = createCompositionCssScoper();
 
   const sceneHosts = new Map<string, Element>();
+
   const queue = hosts.map((element) => ({
     element,
     ancestry: [] as string[],
@@ -525,14 +526,26 @@ export function inlineSubCompositions(
     // document element (full-document sub-comps) AND the inner composition root
     // (template/fragment sub-comps store their schema on the root div, not a
     // synthetic <html>), then let per-instance host values override.
-    if (readVariableDefaults && parseHostVariables && runtimeCompId) {
+    //
+    // An anonymous host has no runtime id of its own. Its wrapper keeps the
+    // authored composition id (restored below), so that id is the scope its
+    // bound media and scripts resolve variables through (runtime/variableScope.ts)
+    // and the key the producer's probe gate reads — a full-document sub-comp's
+    // `<html data-composition-variables>` is dropped by inlining, so the table
+    // is the only place its declared defaults survive to compile time (#7505).
+    // A named mount of the same file shares that scope and its explicit
+    // instance values win, so an anonymous mount only fills the entry while
+    // nothing holds it; a named mount processed later still overwrites it.
+    const variablesCompId = runtimeCompId || scopeCompId;
+    if (readVariableDefaults && parseHostVariables && variablesCompId) {
       const mergedVariables: Record<string, unknown> = {};
       for (const carrier of plan.variableDefaultCarriers) {
         Object.assign(mergedVariables, readVariableDefaults(carrier));
       }
       Object.assign(mergedVariables, parseHostVariables(hostEl));
-      if (Object.keys(mergedVariables).length > 0) {
-        variablesByComp[runtimeCompId] = mergedVariables;
+      const holdsEntry = !runtimeCompId && Object.hasOwn(variablesByComp, variablesCompId);
+      if (Object.keys(mergedVariables).length > 0 && !holdsEntry) {
+        variablesByComp[variablesCompId] = mergedVariables;
       }
       // Compile time is the only place this defect is visible on the sub-comp
       // path: the instance value is baked into `__hfVariablesByComp` right
@@ -540,8 +553,8 @@ export function inlineSubCompositions(
       // runtime's identical guard never runs. Same helper, so the message and
       // the per-process dedupe set are shared with the runtime path and the
       // author sees one warning either way.
-      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, runtimeCompId);
-      warnUnknownEnumValues(innerRoot, mergedVariables, runtimeCompId);
+      warnUnknownEnumValues(compDoc.documentElement, mergedVariables, variablesCompId);
+      warnUnknownEnumValues(innerRoot, mergedVariables, variablesCompId);
     }
 
     // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
