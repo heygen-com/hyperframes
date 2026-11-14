@@ -41,6 +41,7 @@ import {
   CONTENT_OVERLAP_HELD_ERROR_MS,
   longestContiguousRunMs,
   dedupeLayoutIssues,
+  isGuidanceIssue,
   limitLayoutIssues,
   mergeSampleTimes,
   type LayoutIssue,
@@ -474,22 +475,11 @@ async function collectGeometryAt(
   const request = geometryRequest(time, grid, options, sets);
   if (!request) return [];
   const candidates = await driver.collectGeometryCandidates(time, request);
-  const issues: AnchoredLayoutIssue[] = [];
-  for (const candidate of candidates) {
-    if (request.blocks) {
-      const finding = safeZoneFinding(candidate, sets.safeZones, canvas, time);
-      if (finding) issues.push(finding);
-    }
-    if (request.text) {
-      const finding = captionFinding(candidate, options, canvas, time);
-      if (finding) issues.push(finding);
-    }
-    if (request.media) {
-      const finding = frameFinding(candidate, options, canvas, time);
-      if (finding) issues.push(finding);
-    }
-  }
-  return issues;
+  return candidates.flatMap((candidate) => [
+    request.blocks ? safeZoneFinding(candidate, sets.safeZones, canvas, time) : null,
+    request.text ? captionFinding(candidate, options, canvas, time) : null,
+    request.media ? frameFinding(candidate, options, canvas, time) : null,
+  ]).filter((finding): finding is AnchoredLayoutIssue => finding !== null);
 }
 
 function emptyGridSamples(): GridSamples {
@@ -572,6 +562,25 @@ async function collectSampleAt(
   return collected;
 }
 
+async function buildSampleSets(
+  driver: CheckAuditDriver,
+  options: CheckOptions,
+  grid: SampleGrid,
+  motion: MotionPlan,
+): Promise<SampleSets> {
+  const safeZones = options.safeZones ?? [];
+  const geometryEnabled =
+    grid.captionSamples.length > 0 || grid.frameSamples.length > 0 || safeZones.length > 0;
+  const canvas = geometryEnabled ? await driver.getCanvas() : null;
+  return {
+    layout: new Set(grid.layoutSamples),
+    motion: new Set(motion.times),
+    contrast: new Set(grid.contrastSamples),
+    canvas,
+    safeZones: canvas ? safeZonesFor(safeZones, canvas) : [],
+  };
+}
+
 // Frames are a function of time, so a helper page that is ready takes the next unclaimed sample
 // and the merge keeps the serial order. A helper only adds speed: one that fails hands its samples back.
 async function collectGridSamples(
@@ -584,18 +593,7 @@ async function collectGridSamples(
   report: CheckProgress,
   keep: (read: () => Partial<CheckBrowserResult>) => void,
 ): Promise<GridSamples> {
-  const geometryEnabled =
-    grid.captionSamples.length > 0 ||
-    grid.frameSamples.length > 0 ||
-    (options.safeZones?.length ?? 0) > 0;
-  const canvas = geometryEnabled ? await driver.getCanvas() : null;
-  const sets: SampleSets = {
-    layout: new Set(grid.layoutSamples),
-    motion: new Set(motion.times),
-    contrast: new Set(grid.contrastSamples),
-    canvas,
-    safeZones: canvas ? safeZonesFor(options.safeZones ?? [], canvas) : [],
-  };
+  const sets = await buildSampleSets(driver, options, grid, motion);
   const gridStart = performance.now();
   const times = mergeSampleTimes(grid.layoutSamples, motion.times);
   const pending = times.map((_, index) => index);
@@ -2116,12 +2114,11 @@ function buildReport(
     motionSection.errorCount +
     contrastSection.errorCount +
     craftSection.errorCount;
-  // Craft findings are judgment calls a film may break on purpose, and safe zones are platform
-  // guidance, so --strict gates defects only.
-  const safeZoneWarnings = layout.findings.filter(
-    (finding) => finding.code === "outside_safe_zone",
+  // Craft findings are judgment calls a film may break on purpose, so --strict gates defects only.
+  const guidanceWarnings = layout.findings.filter(
+    (finding) => finding.severity === "warning" && isGuidanceIssue(finding),
   ).length;
-  const strictWarningCount = warningCount - craftSection.warningCount - safeZoneWarnings;
+  const strictWarningCount = warningCount - craftSection.warningCount - guidanceWarnings;
   const report: CheckReport = {
     ok: errorCount === 0 && (!options.strict || strictWarningCount === 0),
     strict: options.strict,

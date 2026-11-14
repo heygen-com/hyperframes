@@ -345,8 +345,7 @@ function applyPersistenceTier(
   multiSampleRun: boolean,
   sampleTimes?: readonly number[],
 ): LayoutIssue {
-  if (!multiSampleRun) return issue;
-  if (!PERSISTENCE_TIERED_CODES.has(issue.code)) return issue;
+  if (!multiSampleRun || !PERSISTENCE_TIERED_CODES.has(issue.code)) return issue;
 
   const occurrences = issue.occurrences ?? 1;
   // A single collapsed occurrence is held 0ms by construction (firstSeen ===
@@ -355,13 +354,18 @@ function applyPersistenceTier(
   if (occurrences <= 1) {
     return caughtForWholeLifetime(issue, sampleTimes) ? issue : { ...issue, severity: "info" };
   }
+  const promoted = heldPromotion(issue, occurrences);
+  return promoted ? { ...issue, severity: promoted } : issue;
+}
+
+function heldPromotion(issue: LayoutIssue, occurrences: number): LayoutIssueSeverity | null {
   if (issue.code === "content_overlap" && isContentOverlapHeldLongEnough(issue, occurrences)) {
-    return { ...issue, severity: "error" };
+    return "error";
   }
   if (issue.code === "canvas_overflow" && isCanvasBreachHeldLarge(issue, occurrences)) {
-    return { ...issue, severity: "warning" };
+    return "warning";
   }
-  return issue;
+  return null;
 }
 
 // A held, canvas-scale, PARTIALLY visible breach is drift; a fully off-canvas rect is a parked entrance.
@@ -395,6 +399,11 @@ function isContentOverlapHeldLongEnough(issue: LayoutIssue, occurrences: number)
   return heldMs >= CONTENT_OVERLAP_HELD_ERROR_MS;
 }
 
+// Platform guidance, not a defect: it never fails --strict and is the first to go past --max-issues.
+export function isGuidanceIssue(issue: Pick<LayoutIssue, "code">): boolean {
+  return issue.code === "outside_safe_zone";
+}
+
 export function limitLayoutIssues(
   issues: LayoutIssue[],
   maxIssues: number,
@@ -403,7 +412,8 @@ export function limitLayoutIssues(
   const sortedIssues = [...issues].sort((a, b) => {
     const severityDelta = severityRank(a.severity) - severityRank(b.severity);
     if (severityDelta !== 0) return severityDelta;
-    return a.time - b.time;
+    const guidanceDelta = Number(isGuidanceIssue(a)) - Number(isGuidanceIssue(b));
+    return guidanceDelta !== 0 ? guidanceDelta : a.time - b.time;
   });
   return {
     issues: sortedIssues.slice(0, limit),

@@ -18,8 +18,18 @@ export const SOCIAL_SAFE_AREAS = {
       [560, 840, 80, 520],
     ],
   },
-  reels: { label: "Instagram Reels", width: 100, height: 100, clearBandsTopToBottom: [[14, 65, 6, 94]] },
-  shorts: { label: "YouTube Shorts", width: 1080, height: 1920, clearBandsTopToBottom: [[288, 1248, 48, 888]] },
+  reels: {
+    label: "Instagram Reels",
+    width: 100,
+    height: 100,
+    clearBandsTopToBottom: [[14, 65, 6, 94]],
+  },
+  shorts: {
+    label: "YouTube Shorts",
+    width: 1080,
+    height: 1920,
+    clearBandsTopToBottom: [[288, 1248, 48, 888]],
+  },
 } satisfies Record<string, SafeArea>;
 
 export type SocialSafeArea = keyof typeof SOCIAL_SAFE_AREAS;

@@ -1388,6 +1388,28 @@ describe("social safe zones", () => {
     expect(landscape.report.layout.findings).toEqual([]);
   });
 
+  it("never lets a safe-zone warning push a defect warning past --max-issues", async () => {
+    const { report } = await safeZoneScenario(
+      (time) => [
+        ...captionAndTitle(time),
+        geometryCandidate({
+          kind: "text",
+          tag: "p",
+          text: "Lower third",
+          selector: "#lower-third",
+          rect: fixtureRect(140, 1700, 800, 80),
+          time,
+        }),
+      ],
+      { maxIssues: 1, strict: true, captionZone: { x0: 0, y0: 0.85, x1: 1, y1: 1 } },
+    );
+
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({ code: "caption_zone_collision", selector: "#lower-third" }),
+    ]);
+    expect(report.ok).toBe(false);
+  });
+
   it("checks title-safe margins on any frame when asked for standard", async () => {
     const landscape = { width: 1920, height: 1080 };
     const { report } = await safeZoneScenario(
