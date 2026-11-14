@@ -659,6 +659,11 @@
           : {};
       const content = (id, fallback) =>
         typeof variables[id] === "string" && variables[id].trim() ? variables[id] : fallback;
+      const graphemes = (text) =>
+        Array.from(
+          new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
+          (part) => part.segment,
+        );
 
       const CONFIG = {
         status: { clock: "1:29", clockLate: "1:30", net: "5G+", battery: 89, batteryLate: 88 },
@@ -997,7 +1002,7 @@
         curEls.push(a);
       };
       mkCursor();
-      CONFIG.prompt.split("").forEach((c) => {
+      graphemes(CONFIG.prompt).forEach((c) => {
         const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
         typedEl.appendChild(sp);
         chEls.push(sp);
@@ -1177,7 +1182,7 @@
 
       /* ---- 2. typing. Each keystroke IS the cause: key flash -> width step. */
       const t0 = T.typeStart;
-      const chars = CONFIG.prompt.split("");
+      const chars = graphemes(CONFIG.prompt);
       const charT = [];
       let t = t0;
       chars.forEach((c, i) => {
