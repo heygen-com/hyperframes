@@ -2291,6 +2291,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "canvas_covered",
   "video_alpha_unread",
   "text_not_painted",
+  "text_word_split",
   "caption_zone_collision",
   "outside_safe_zone",
   "frame_out_of_frame",

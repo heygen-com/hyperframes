@@ -868,6 +868,98 @@
     return issues;
   }
 
+  // Korean puts spaces between words, yet under the default `word-break: normal`
+  // Chrome may end a line between any two Hangul syllables, or between a Hangul
+  // particle and the Latin word or number it is attached to ("HyperFrames로"),
+  // so a caption word wraps in half. `word-break: keep-all` keeps them together.
+  // Hangul Jamo, Compatibility Jamo, Jamo Extended-A, Syllables, Jamo Extended-B.
+  const HANGUL_CHAR = /[ᄀ-ᇿ㄰-㆏ꥠ-꥿가-힯ힰ-퟿]/;
+  const WORD_CHAR = /[\p{L}\p{M}\p{N}]/u;
+  const WORD_SPLIT_SCAN_LIMIT = 2000;
+
+  function joinsKoreanWord(left, right) {
+    return (
+      WORD_CHAR.test(left) &&
+      WORD_CHAR.test(right) &&
+      (HANGUL_CHAR.test(left) || HANGUL_CHAR.test(right))
+    );
+  }
+
+  function charRect(range, node, index) {
+    range.setStart(node, index);
+    range.setEnd(node, index + 1);
+    const rect = range.getBoundingClientRect();
+    return rect.width > 0.5 && rect.height > 0.5 ? rect : null;
+  }
+
+  // Line boxes stack vertically: two adjacent characters whose centres sit more
+  // than half a glyph apart are on different lines. A font-fallback fragment on
+  // the same line shifts by a few px; a small caption tilt barely moves it.
+  function onLaterLine(before, after) {
+    const centre = (rect) => rect.top + rect.height / 2;
+    return Math.abs(centre(after) - centre(before)) > Math.max(before.height, after.height) / 2;
+  }
+
+  function wordAround(text, index) {
+    let start = index;
+    while (start > 0 && WORD_CHAR.test(text[start - 1])) start--;
+    let end = index;
+    while (end < text.length && WORD_CHAR.test(text[end])) end++;
+    return `${text.slice(start, index)}|${text.slice(index, end)}`;
+  }
+
+  /** Where a line break first cuts a Korean word in this text node ("줄바꿈되는|지"), or null. */
+  function splitKoreanWord(node) {
+    const text = (node.textContent || "").slice(0, WORD_SPLIT_SCAN_LIMIT);
+    if (!HANGUL_CHAR.test(text)) return null;
+    const range = document.createRange();
+    try {
+      range.selectNodeContents(node);
+      // One client rect per line box: a node on a single line cannot split a word.
+      const lines = Array.from(range.getClientRects()).filter(
+        (rect) => rect.width > 0.5 && rect.height > 0.5,
+      );
+      if (lines.length < 2) return null;
+      let previous = null;
+      for (let index = 1; index < text.length; index++) {
+        if (!joinsKoreanWord(text[index - 1], text[index])) continue;
+        const before =
+          previous && previous.index === index - 1
+            ? previous.rect
+            : charRect(range, node, index - 1);
+        const after = charRect(range, node, index);
+        previous = { index, rect: after };
+        if (before && after && onLaterLine(before, after)) return wordAround(text, index);
+      }
+      return null;
+    } finally {
+      range.detach();
+    }
+  }
+
+  function koreanWordSplitIssue(element, time) {
+    for (const node of directTextNodes(element)) {
+      const split = splitKoreanWord(node);
+      if (!split) continue;
+      const keepAll = getComputedStyle(element).wordBreak === "keep-all";
+      return {
+        code: "text_word_split",
+        severity: "warning",
+        time,
+        selector: uniqueSelectorFor(element),
+        text: textContentFor(element, true),
+        message: `A line break cuts a Korean word in two ("${split}").`,
+        rect:
+          unionRects(textClientRects(element, true).map(toRect)) ||
+          toRect(element.getBoundingClientRect()),
+        fixHint: keepAll
+          ? "The word is wider than its line even with word-break: keep-all: widen the box or lower the font size."
+          : "Set word-break: keep-all on the text or a parent so Korean lines break only at spaces.",
+      };
+    }
+    return null;
+  }
+
   function isNowrapTextChild(child) {
     if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) return false;
     if (getComputedStyle(child).whiteSpace !== "nowrap") return false;
@@ -2905,6 +2997,8 @@
         const clipped = clippedTextIssue(element, time, tolerance);
         if (clipped) issues.push(clipped);
         issues.push(...textOverflowIssues(element, root, rootRect, time, tolerance, clipped));
+        const split = koreanWordSplitIssue(element, time);
+        if (split) issues.push(split);
         const occluded = occludedTextIssue(element, time, proseCoverageFloor, matteResults);
         if (occluded) {
           const lifetime = clipLifetime(element);

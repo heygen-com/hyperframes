@@ -30,6 +30,7 @@ tl.set(group, { opacity: 0, visibility: "hidden" }, end);
 ## Fit and place
 
 - Size each group to fit: `window.__hyperframes.fitTextFontSize(text, { fontFamily, fontWeight, maxWidth })` returns `{ fontSize }`. Defaults: `maxWidth` 1600 landscape, 900 portrait; base 78, minimum 42, step 2. When a word scales up for emphasis, divide `maxWidth` by that scale.
+- Korean caption text takes `word-break: keep-all`. Chrome otherwise wraps between any two syllables and cuts a word in half; `check` reports it as `text_word_split`.
 - A full-width absolute container, centred with text alignment. Never `left: 50%; transform: translateX(-50%)`, which clips at the frame edges.
 - `overflow: visible`, not `hidden`, which cuts off scaled words and glows.
 - Landscape: 80–120 px from the bottom. Portrait: about 600–700 px from the bottom. Never over the speaker's face; inside the 80% title-safe box.

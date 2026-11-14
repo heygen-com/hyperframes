@@ -21,6 +21,7 @@ export type LayoutIssueCode =
   | "canvas_covered"
   | "video_alpha_unread"
   | "text_not_painted"
+  | "text_word_split"
   | "caption_zone_collision"
   | "outside_safe_zone"
   | "frame_out_of_frame"
@@ -211,6 +212,7 @@ const PERSISTENCE_TIERED_CODES: ReadonlySet<LayoutIssueCode> = new Set([
   "content_overlap",
   "visibility_escapes_segment",
   "text_occluded",
+  "text_word_split",
   "escaped_container",
   "panel_out_of_canvas",
   "canvas_content_at_edge",
