@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { closeSync, openSync, readSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import { extname } from "node:path";
 import {
   firstFrameColourArgs,
@@ -291,25 +291,24 @@ function metadataFromProbe(kind: MediaMetadata["kind"], parsed: ProbeOutput): Me
   return metadata;
 }
 
-/** The audio track ffmpeg can decode in a file, with its channel count; null when it has none. */
-function readsAsMediaPlaylist(filePath: string): boolean {
-  let fd: number | undefined;
+async function readsAsMediaPlaylist(filePath: string): Promise<boolean> {
   try {
-    fd = openSync(filePath, "r");
-    const head = Buffer.alloc(64);
-    return startsAsMediaPlaylist(head.subarray(0, readSync(fd, head, 0, head.length, 0)));
+    const chunks: Buffer[] = [];
+    for await (const chunk of createReadStream(filePath, { start: 0, end: 63 })) {
+      chunks.push(chunk as Buffer);
+    }
+    return startsAsMediaPlaylist(Buffer.concat(chunks));
   } catch {
     return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
   }
 }
 
+/** The audio track ffmpeg can decode in a file, with its channel count; null when it has none. */
 export async function probeAudioTrack(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
 ): Promise<{ stream: number; channels: number } | null> {
-  if (readsAsMediaPlaylist(filePath)) return null;
+  if (await readsAsMediaPlaylist(filePath)) return null;
   const ffprobePath =
     findFfBinary("ffprobe", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffprobe");
@@ -337,7 +336,7 @@ export async function probeMediaMetadata(
   if (kind === "audio" || kind === "unknown") {
     return { kind, color: classifyMediaColor(null) };
   }
-  if (readsAsMediaPlaylist(filePath)) {
+  if (await readsAsMediaPlaylist(filePath)) {
     return { kind, color: classifyMediaColor(null), probeError: NOT_MEDIA };
   }
 
