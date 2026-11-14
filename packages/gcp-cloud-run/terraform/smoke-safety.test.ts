@@ -70,3 +70,9 @@ describe("GCP smoke ownership and protocol safety", () => {
     expect(cleanup).toContain("exit 7");
   });
 });
+
+describe("GCP render image", () => {
+  it("holds render pages to their project server and public addresses", () => {
+    expect(dockerfile).toMatch(/^ENV PRODUCER_RESTRICT_PAGE_NETWORK=true$/m);
+  });
+});

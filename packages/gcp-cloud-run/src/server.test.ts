@@ -504,6 +504,25 @@ describe("createApp HTTP mapping", () => {
     expect(res.status).toBe(400);
   });
 
+  it("refuses a browser-sent request before dispatching it", async () => {
+    let planned = false;
+    const app = createApp(
+      depsWith(new FakeGcs(), {
+        planV2WithPublisher: async () => {
+          planned = true;
+          throw new Error("must not run");
+        },
+      }),
+    );
+    const res = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "text/plain", origin: "http://127.0.0.1:41234" },
+      body: JSON.stringify(planBody),
+    });
+    expect(res.status).toBe(403);
+    expect(planned).toBe(false);
+  });
+
   it("healthz returns ok", async () => {
     const app = createApp(depsWith(new FakeGcs()));
     const res = await app.request("/healthz");
