@@ -67,13 +67,19 @@ function docsDir(): string {
   return existsSync(devPath) ? devPath : builtPath;
 }
 
-function formatInlineCode(line: string): string {
-  // Replace inline backtick spans with accented text
-  return line.replace(/`([^`]+)`/g, (_match, code: string) => c.accent(code));
+function formatInline(line: string): string {
+  return line.replace(
+    /`([^`]+)`|\*\*((?:`[^`]+`|[^*`])+)\*\*/g,
+    (_match, code: string | undefined, bold: string) =>
+      code === undefined
+        ? c.bold(bold.replace(/`([^`]+)`/g, (_span, innerCode: string) => c.accent(innerCode)))
+        : c.accent(code),
+  );
 }
 
-function renderMarkdown(content: string): void {
+export function renderMarkdown(content: string): string {
   const lines = content.split("\n");
+  const out: string[] = [];
 
   for (const line of lines) {
     // Skip code fences
@@ -83,26 +89,28 @@ function renderMarkdown(content: string): void {
 
     // H1 heading
     if (line.startsWith("# ")) {
-      console.log(c.bold(line.slice(2)));
+      out.push(c.bold(line.slice(2)));
       continue;
     }
 
     // H2 subheading
     if (line.startsWith("## ")) {
-      console.log(c.bold(c.dim(line.slice(3))));
+      out.push(c.bold(c.dim(line.slice(3))));
       continue;
     }
 
     // List items
     if (line.startsWith("- ")) {
-      const rest = formatInlineCode(line.slice(2));
-      console.log(`${c.dim("  \u2022")} ${rest}`);
+      const rest = formatInline(line.slice(2));
+      out.push(`${c.dim("  \u2022")} ${rest}`);
       continue;
     }
 
     // Everything else
-    console.log(formatInlineCode(line));
+    out.push(formatInline(line));
   }
+
+  return out.join("\n");
 }
 
 const TOPIC_NAMES = Object.keys(TOPICS).join(", ");
@@ -151,6 +159,6 @@ export default defineCommand({
 
     const content = readFileSync(filePath, "utf-8");
     console.log();
-    renderMarkdown(content);
+    console.log(renderMarkdown(content));
   },
 });
