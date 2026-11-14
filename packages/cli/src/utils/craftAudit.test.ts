@@ -188,6 +188,41 @@ describe("line_unread", () => {
     expect(findings[0]?.message).toContain("last line");
   });
 
+  // Fails without the fix: seven chunks of one closing card produced seven findings.
+  it("reports a closing card of seven lines as one finding, anchored on its longest line", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "설계자", from: 4.5, to: 6 },
+      { key: 2, text: "코드는 코덱스", from: 4.5, to: 6 },
+      { key: 3, text: 'UNTIL A 2ND ALERT SAID "FALSE ALARM"', from: 4.5, to: 6 },
+      { key: 4, text: "38", from: 4.5, to: 6 },
+      { key: 5, text: "MINUTES", from: 4.5, to: 6 },
+      { key: 6, text: "SENT 8:07 A.M. · CORRECTED 8:45 A.M. · FCC", from: 4.5, to: 6 },
+      { key: 7, text: "— 간고", from: 4.5, to: 6 },
+    ];
+    const findings = await detectLineUnread(film(6, shown), 6, CANVAS, probeFor(shown));
+    expect(findings).toHaveLength(1);
+    const [finding] = findings;
+    expect(finding).toMatchObject({ code: "line_unread", floorSeconds: 2.85 });
+    expect(finding?.message).toContain("closing card (7 lines)");
+    expect(finding?.message).toContain("its longest line");
+    expect(finding?.elements).toHaveLength(7);
+    expect(finding?.elements?.map((element) => element.words)).toEqual([11, 1, 2, 7, 1, 1, 1]);
+  });
+
+  it("keeps a line that arrives later than the closing card as its own finding", async () => {
+    const shown: Shown[] = [
+      { key: 1, text: "Headline words here now", from: 4.5, to: 6 },
+      { key: 2, text: "More card words here", from: 4.5, to: 6 },
+      { key: 3, text: "Signature", from: 5.2, to: 6 },
+    ];
+    const findings = await detectLineUnread(film(6, shown), 6, CANVAS, probeFor(shown));
+    expect(findings).toHaveLength(2);
+    const [card, single] = [...findings].sort((a, b) => a.time - b.time);
+    expect(card?.message).toContain("closing card (2 lines)");
+    expect(single?.message).toContain("last line");
+    expect(single?.selector).toBe("#t3");
+  });
+
   it("reads a headline split into inline word spans as one line", async () => {
     const words = ["Every", "team", "gets", "one", "shared", "calendar", "now"];
     const shown: Shown[] = words.map((text, index) => ({
