@@ -13,10 +13,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, renameSync: vi.fn(actual.renameSync) };
-});
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return {
@@ -32,7 +28,6 @@ import * as fsp from "node:fs/promises";
 import { onRestoredInPlace, openBlobStore } from "./blobStore.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 
-const { renameSync: realRenameSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
 const {
   rename: realRename,
   copyFile: realCopyFile,
@@ -50,7 +45,7 @@ describe("the history store on Windows, while another process briefly holds a fi
   });
   afterEach(() => {
     Object.defineProperty(process, "platform", { value: platform, configurable: true });
-    vi.mocked(fs.renameSync).mockImplementation(realRenameSync);
+    vi.mocked(fsp.rename).mockImplementation(realRename);
     vi.mocked(fsp.rename).mockImplementation(realRename);
     vi.mocked(fsp.copyFile).mockImplementation(realCopyFile);
     rmSync(root, { recursive: true, force: true });
@@ -63,7 +58,7 @@ describe("the history store on Windows, while another process briefly holds a fi
     const store = await openBlobStore(join(root, "history", "blobs"));
     const hash = await store.put(target);
     writeFileSync(target, "<p>after</p>");
-    vi.mocked(fs.renameSync).mockImplementation(() => {
+    vi.mocked(fsp.rename).mockImplementation(async () => {
       throw busy();
     });
     const heard: string[] = [];
@@ -126,9 +121,9 @@ describe("the history store on Windows, while another process briefly holds a fi
     const target = join(root, "index.html");
     writeFileSync(target, "<p>after</p>");
     let refused = 0;
-    vi.mocked(fs.renameSync).mockImplementation((from, to) => {
+    vi.mocked(fsp.rename).mockImplementation(async (from, to) => {
       if (refused++ < 2) throw busy();
-      return realRenameSync(from, to);
+      return realRename(from, to);
     });
 
     await store.writeTo(hash, target);
@@ -163,7 +158,7 @@ describe("a restore of a file the preview is serving", () => {
     root = mkdtempSync(join(tmpdir(), "hf-blob-served-"));
   });
   afterEach(() => {
-    vi.mocked(fs.renameSync).mockImplementation(realRenameSync);
+    vi.mocked(fsp.rename).mockImplementation(realRename);
     rmSync(root, { recursive: true, force: true });
   });
 
@@ -176,9 +171,9 @@ describe("a restore of a file the preview is serving", () => {
     await new Promise((resolve) => read.once("data", resolve));
     read.pause();
     let openAtReplace = true;
-    vi.mocked(fs.renameSync).mockImplementation((from, to) => {
+    vi.mocked(fsp.rename).mockImplementation(async (from, to) => {
       openAtReplace = !read.closed;
-      return realRenameSync(from, to);
+      return realRename(from, to);
     });
 
     await store.writeTo(hash, target);
@@ -192,7 +187,7 @@ describe("a restore of a file the preview is serving", () => {
     const store = await openBlobStore(join(root, "history", "blobs"));
     const hash = await store.put(target);
     writeFileSync(target, "<p>after</p>");
-    vi.mocked(fs.renameSync).mockImplementation(() => {
+    vi.mocked(fsp.rename).mockImplementation(async () => {
       throw busy();
     });
     const heard: string[] = [];

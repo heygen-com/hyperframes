@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, renameSync: vi.fn(actual.renameSync) };
+});
+
+import * as fs from "node:fs";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +19,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function fixture(name: string) {
+function fixture(name: string, onError?: (error: Error) => void) {
   const project = mkdtempSync(join(tmpdir(), "hf-held-file-"));
   mkdirSync(join(project, "sub"));
   const file = join(project, name);
@@ -28,6 +35,11 @@ function fixture(name: string) {
     startRender: () => ({ id: "job", status: "rendering", progress: 0, outputPath: "out.mp4" }),
   };
   const app = new Hono();
+  if (onError)
+    app.onError((error, c) => {
+      onError(error);
+      return c.json({ error: "failed" }, 500);
+    });
   registerFileRoutes(app, adapter);
   const get = (query = "") => app.request(`http://localhost/projects/demo/files/${name}${query}`);
   const put = () =>
@@ -118,4 +130,93 @@ describe.runIf(process.platform === "win32")("a file another program holds open 
     expect((await get()).status).toBe(200);
     expect(await answered(await put())).toEqual({ status: 403, why: "permission" });
   });
+});
+
+/** Windows refusing every replace of `file` (EBUSY, as a scanner's open handle does) for `ms`. */
+function holdFor(file: string, ms: number) {
+  const platform = process.platform;
+  const realRenameSync = vi.mocked(fs.renameSync).getMockImplementation()!;
+  const releaseAt = Date.now() + ms;
+  Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+  vi.mocked(fs.renameSync).mockImplementation((from, to) => {
+    if (to === file && Date.now() < releaseAt) {
+      throw Object.assign(new Error("EBUSY: resource busy or locked"), { code: "EBUSY" });
+    }
+    return realRenameSync(from, to);
+  });
+  cleanups.push(() => {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+    vi.mocked(fs.renameSync).mockImplementation(realRenameSync);
+  });
+}
+
+/** The longest the event loop went without running a 5 ms timer while `work` ran. */
+async function longestStall(work: () => Promise<unknown>) {
+  let last = performance.now();
+  let longest = 0;
+  const tick = setInterval(() => {
+    const now = performance.now();
+    longest = Math.max(longest, now - last);
+    last = now;
+  }, 5);
+  try {
+    await work();
+  } finally {
+    clearInterval(tick);
+  }
+  return longest;
+}
+
+describe("an element edit while Windows briefly holds the file", () => {
+  const edited = '<div id="keep">kept</div>';
+
+  it.each([200, 3_000])(
+    "still saves the edit when the hold clears after %i ms, and reports nothing",
+    async (ms) => {
+      const reported: unknown[] = [];
+      const { file, remove } = fixture("held.html", (error) => reported.push(error));
+      writeFileSync(file, `${edited}<p id="gone">tag</p>`);
+      holdFor(file, ms);
+      expect((await remove("gone")).status).toBe(200);
+      expect(readFileSync(file, "utf8")).not.toContain("tag");
+      expect(reported).toEqual([]);
+    },
+    10_000,
+  );
+
+  // fails without the fix: each retry slept the whole process, up to 640 ms in one go.
+  it("keeps the app answering while it waits", async () => {
+    const { file, remove } = fixture("held.html");
+    writeFileSync(file, `${edited}<p id="gone">tag</p>`);
+    holdFor(file, 1_500);
+    expect(
+      await longestStall(async () => expect((await remove("gone")).status).toBe(200)),
+    ).toBeLessThan(100);
+  }, 10_000);
+
+  it("answers 423 busy once the hold outlasts the wait, reports it once, and leaves the file as it was", async () => {
+    const reported: string[] = [];
+    const { file, remove } = fixture("held.html", (error) =>
+      reported.push(String((error as NodeJS.ErrnoException).code)),
+    );
+    writeFileSync(file, `${edited}<p id="gone">tag</p>`);
+    holdFor(file, 60_000);
+    expect(await answered(await remove("gone"))).toEqual({ status: 423, why: "busy" });
+    expect(readFileSync(file, "utf8")).toBe(`${edited}<p id="gone">tag</p>`);
+    expect(reported).toEqual(["EBUSY"]);
+  }, 15_000);
+
+  it.skipIf(process.getuid?.() === 0)(
+    "refuses a read-only file at once, without waiting",
+    async () => {
+      const { file, remove } = fixture("readonly.html");
+      writeFileSync(file, `${edited}<p id="gone">tag</p>`);
+      chmodSync(file, 0o444);
+      cleanups.push(() => chmodSync(file, 0o644));
+      holdFor(file, 0);
+      const started = performance.now();
+      expect((await remove("gone")).status).toBe(403);
+      expect(performance.now() - started).toBeLessThan(500);
+    },
+  );
 });

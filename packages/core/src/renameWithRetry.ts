@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { copyFileSync, renameSync } from "node:fs";
 import { copyFile, rename } from "node:fs/promises";
 import { removeScratch } from "./removeScratch.js";
@@ -16,6 +17,25 @@ interface Options {
 export function isWindowsHold(error: unknown, platform = process.platform): boolean {
   if (platform !== "win32") return false;
   return RETRYABLE.has((error as NodeJS.ErrnoException | undefined)?.code ?? "");
+}
+
+const holdScope = new AsyncLocalStorage<{ open: boolean }>();
+
+class HeldRename {
+  constructor(readonly error: unknown) {}
+}
+
+export async function catchHeldRename(work: () => Promise<void>): Promise<unknown> {
+  const scope = { open: true };
+  try {
+    await holdScope.run(scope, work);
+    return null;
+  } catch (thrown) {
+    if (thrown instanceof HeldRename) return thrown.error;
+    throw thrown;
+  } finally {
+    scope.open = false;
+  }
 }
 
 /** What a refused rename does next: wait and try again, fall back to a copy, or give up with the error. */
@@ -48,6 +68,7 @@ export function renameWithRetry(
     } catch (error) {
       const step = nextStep(error, attempt, options, platform);
       if (step === "throw") throw error;
+      if (holdScope.getStore()?.open) throw new HeldRename(error);
       if (step === "wait") {
         sleepSync(BACKOFF_MS[attempt]!);
         continue;

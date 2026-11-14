@@ -31,7 +31,7 @@ import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { lengthIsTimeline } from "../helpers/compositionInputs.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
-import { retryWindowsHold } from "@hyperframes/core/rename-retry";
+import { catchHeldRename, retryWindowsHold } from "@hyperframes/core/rename-retry";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
@@ -2797,6 +2797,28 @@ async function processUploadedFiles(
 const MAX_TEXT_READ_BYTES = 32 * 1024 * 1024;
 const GIT_BINARY_SNIFF_BYTES = 8000;
 
+const HELD_EDIT_WAITS = [10, 20, 40, 80, 160, 320, 640, 1280, 2560];
+const EDIT_ROUTE = /\/projects\/[^/]+\/(files|file-mutations)\//;
+const REPLAYED = "x-hyperframes-held-replay";
+const HELD = "x-hyperframes-held";
+
+function isEdit(request: Request): boolean {
+  return (
+    !["GET", "HEAD"].includes(request.method) &&
+    EDIT_ROUTE.test(new URL(request.url).pathname) &&
+    !(request.headers.get("content-type") ?? "").startsWith("multipart/")
+  );
+}
+
+function keptForReplay(request: Request): () => Request {
+  const kept = request.clone();
+  return () => {
+    const again = new Request(kept.clone(), { headers: new Headers(kept.headers) });
+    again.headers.set(REPLAYED, "1");
+    return again;
+  };
+}
+
 function heldFileAnswer(c: RouteContext, error: unknown) {
   const code = (error as NodeJS.ErrnoException | null)?.code;
   if (code === "EBUSY") return c.json({ error: "file in use", why: "busy" }, 423);
@@ -2811,6 +2833,27 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     await next();
     const refusedWrite = c.error ? heldFileAnswer(c, c.error) : null;
     if (refusedWrite) c.res = refusedWrite;
+  });
+
+  api.use("/projects/:id/*", async (c, next) => {
+    if (!isEdit(c.req.raw)) return next();
+    const replayed = c.req.raw.headers.has(REPLAYED);
+    const replay = replayed ? null : keptForReplay(c.req.raw);
+    const held = await catchHeldRename(next);
+    if (held === null) return;
+    if (!replay) {
+      c.res = new Response(null, { status: 423, headers: { [HELD]: "1" } });
+      return;
+    }
+    for (const ms of HELD_EDIT_WAITS) {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      const again = await api.fetch(replay());
+      if (!again.headers.has(HELD)) {
+        c.res = again;
+        return;
+      }
+    }
+    throw held;
   });
 
   // ── Read ──
