@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files";
@@ -36,7 +36,13 @@ function fixture(name: string) {
       headers: { "If-Match": '"any"' },
       body: "<div>edited</div>",
     });
-  return { file, get, put };
+  const remove = (id: string) =>
+    app.request(`http://localhost/projects/demo/file-mutations/remove-elements/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets: [{ id }] }),
+    });
+  return { file, get, put, remove };
 }
 
 const answered = async (response: Response) => ({
@@ -53,6 +59,16 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       chmodSync(file, 0o000);
       expect(await answered(await get())).toEqual({ status: 403, why: "permission" });
       expect(await answered(await put())).toEqual({ status: 403, why: "permission" });
+    });
+
+    // fails without the fix: the edit replaced the read-only file (a rename ignores its mode) and answered 200.
+    it("leaves a read-only file as it is when an element is removed, and answers 403", async () => {
+      const { file, remove } = fixture("readonly.html");
+      writeFileSync(file, '<div id="keep">kept</div><p id="gone">tag</p>');
+      chmodSync(file, 0o444);
+      cleanups.push(() => chmodSync(file, 0o644));
+      expect(await answered(await remove("gone"))).toEqual({ status: 403, why: "permission" });
+      expect(readFileSync(file, "utf8")).toBe('<div id="keep">kept</div><p id="gone">tag</p>');
     });
 
     it("does not answer an optional read of it as a blank file", async () => {

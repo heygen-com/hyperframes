@@ -2807,6 +2807,12 @@ function heldFileAnswer(c: RouteContext, error: unknown) {
 }
 
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  api.use("/projects/:id/*", async (c, next) => {
+    await next();
+    const refusedWrite = c.error ? heldFileAnswer(c, c.error) : null;
+    if (refusedWrite) c.res = refusedWrite;
+  });
+
   // ── Read ──
 
   api.get("/projects/:id/files/*", async (c) => {
