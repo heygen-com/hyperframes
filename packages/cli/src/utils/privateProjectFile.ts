@@ -63,7 +63,7 @@ function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | nu
 function fileIdentity(path: string): string | null {
   try {
     const stat = lstatSync(path, { bigint: true });
-    return `${stat.dev}:${stat.ino}`;
+    return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;
   } catch {
     return null;
   }
