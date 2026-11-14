@@ -35,6 +35,9 @@ export async function restrictPageNetwork(
 ): Promise<void> {
   const own = new URL(allowedOrigin).origin;
   const verdicts = new Map<string, Promise<HostVerdict>>();
+  const forgetFailedLookup = (host: string, asked: Promise<HostVerdict>, answer: HostVerdict) => {
+    if (answer === "unresolved" && verdicts.get(host) === asked) verdicts.delete(host);
+  };
   const allows = (url: string): Promise<boolean> => {
     let target: URL;
     try {
@@ -50,10 +53,7 @@ export async function restrictPageNetwork(
     if (!verdict) {
       const asked = hostVerdict(host, resolveHost);
       verdicts.set(host, asked);
-      // A failed lookup can be a passing blip, so only answers about resolved addresses are kept.
-      void asked.then((answer) => {
-        if (answer === "unresolved" && verdicts.get(host) === asked) verdicts.delete(host);
-      });
+      void asked.then((answer) => forgetFailedLookup(host, asked, answer));
       verdict = asked;
     }
     return verdict.then((answer) => answer === "public");
