@@ -51,6 +51,7 @@ import {
   resolveFinalFrameExtractionWindow,
   resolveVideoExtractionWindow,
   isHttpUrl,
+  assertPublicHttpsUrl,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
@@ -643,6 +644,15 @@ export function appendAutoDetectedVideoAudio(
   }
 }
 
+function isPublicHttpsUrl(url: string): boolean {
+  try {
+    assertPublicHttpsUrl(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
  * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
@@ -659,6 +669,7 @@ export async function appendVideoAudioFromProbe(input: {
   );
   const probed = await Promise.all(
     videos.map(async (video) => {
+      if (isHttpUrl(video.src) && !isPublicHttpsUrl(video.src)) return null;
       const path = isHttpUrl(video.src)
         ? video.src
         : resolveProjectRelativeSrc(video.src, projectDir, compiledDir);
