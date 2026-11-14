@@ -17,7 +17,7 @@ const SAFE_AREAS: Record<SafeZone, SafeArea> = {
     label: "title-safe margins",
     width: 100,
     height: 100,
-    bands: [[TITLE_INSET, 100 - TITLE_INSET, TITLE_INSET, 100 - TITLE_INSET]],
+    clearBandsTopToBottom: [[TITLE_INSET, 100 - TITLE_INSET, TITLE_INSET, 100 - TITLE_INSET]],
   },
 };
 
@@ -40,11 +40,11 @@ export function safeZoneEdgesCrossed(
   const x = (value: number) => (value / area.width) * canvas.width;
   const y = (value: number) => (value / area.height) * canvas.height;
   const edges = new Set<SafeZoneEdge>();
-  const first = area.bands[0];
-  const last = area.bands.at(-1);
+  const first = area.clearBandsTopToBottom[0];
+  const last = area.clearBandsTopToBottom.at(-1);
   if (first && box.top < y(first[0])) edges.add("top");
   if (last && box.bottom > y(last[1])) edges.add("bottom");
-  for (const [top, bottom, left, right] of area.bands) {
+  for (const [top, bottom, left, right] of area.clearBandsTopToBottom) {
     if (box.bottom <= y(top) || box.top >= y(bottom)) continue;
     if (box.left < x(left)) edges.add("left");
     if (box.right > x(right)) edges.add("right");

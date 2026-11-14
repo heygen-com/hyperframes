@@ -2,8 +2,7 @@ export interface SafeArea {
   label: string;
   width: number;
   height: number;
-  /** The clear area as horizontal bands, top to bottom: [top, bottom, left, right]. */
-  bands: [number, number, number, number][];
+  clearBandsTopToBottom: [top: number, bottom: number, left: number, right: number][];
 }
 
 // Vertical-ad guides checked 2026-10-13: TikTok in-feed ads template (720x1280, stepped right edge
@@ -14,13 +13,13 @@ export const SOCIAL_SAFE_AREAS = {
     label: "TikTok",
     width: 720,
     height: 1280,
-    bands: [
+    clearBandsTopToBottom: [
       [160, 560, 80, 640],
       [560, 840, 80, 520],
     ],
   },
-  reels: { label: "Instagram Reels", width: 100, height: 100, bands: [[14, 65, 6, 94]] },
-  shorts: { label: "YouTube Shorts", width: 1080, height: 1920, bands: [[288, 1248, 48, 888]] },
+  reels: { label: "Instagram Reels", width: 100, height: 100, clearBandsTopToBottom: [[14, 65, 6, 94]] },
+  shorts: { label: "YouTube Shorts", width: 1080, height: 1920, clearBandsTopToBottom: [[288, 1248, 48, 888]] },
 } satisfies Record<string, SafeArea>;
 
 export type SocialSafeArea = keyof typeof SOCIAL_SAFE_AREAS;
@@ -32,7 +31,6 @@ export const TITLE_SAFE_PERCENT = 80;
 
 export const SAFE_BOX_PERCENTS = [ACTION_SAFE_PERCENT, TITLE_SAFE_PERCENT] as const;
 
-/** Inset from each frame edge, as a percent of the frame. */
 export function safeBoxInsetPercent(boxPercent: number): number {
   return (100 - boxPercent) / 2;
 }
