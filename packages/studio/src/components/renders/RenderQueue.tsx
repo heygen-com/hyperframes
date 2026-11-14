@@ -244,7 +244,7 @@ function FormatInfoTooltip({ format }: { format: StudioRenderFormat }) {
             <p className="text-step-10 font-semibold text-text-1 mb-0.5">{info.label}</p>
             <p className="text-step-9 text-text-3 leading-tight">{info.desc}</p>
             <div className="mt-1.5 pt-1.5 border-t border-border">
-              {(["mp4", "mov", "webm", "gif", "png-sequence"] as const)
+              {(["mp4", "mov", "png-sequence", "webm", "gif"] as const)
                 .filter((f) => f !== format)
                 .map((f) => (
                   <p key={f} className="text-step-9 text-text-4 leading-relaxed">
@@ -264,9 +264,9 @@ function FormatInfoTooltip({ format }: { format: StudioRenderFormat }) {
 const FORMAT_OPTIONS: SelectOption[] = [
   { value: "mp4", label: "MP4" },
   { value: "mov", label: "MOV (ProRes)" },
+  { value: "png-sequence", label: "PNG sequence" },
   { value: "webm", label: "WebM" },
   { value: "gif", label: "GIF" },
-  { value: "png-sequence", label: "PNG sequence" },
 ];
 
 // MOV (ProRes) and PNG are fixed-quality — the quality selector has no effect.

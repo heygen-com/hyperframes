@@ -20,7 +20,7 @@ try {
   await page.setViewport({ width: 1440, height: 900 });
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(trigger("Format"), { visible: true, timeout: 60_000 });
-  // Format's last option is WebM, which keeps Quality on screen for the last pass.
+  // Format's last option is GIF, which keeps Quality on screen for the last pass.
   for (const label of LABELS) {
     if (!(await page.$(trigger(label)))) {
       failures.push(`${label}: no Select on the Renders panel`);
