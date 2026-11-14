@@ -211,6 +211,16 @@ function heldFileMessage(body: string, path: string | undefined): string | null 
   }
 }
 
+export async function heldFileWordsOf(response: Response, path: string): Promise<string | null> {
+  return heldFileMessage(
+    await response
+      .clone()
+      .text()
+      .catch(() => ""),
+    path,
+  );
+}
+
 export async function createStudioSaveHttpError(
   response: Response,
   fallbackMessage: string,

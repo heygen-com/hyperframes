@@ -17,6 +17,7 @@ import {
 } from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { heldFileWordsOf } from "../utils/studioSaveDiagnostics";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
@@ -142,6 +143,8 @@ async function commitStructuralMutation(
         },
       );
       if (!mutateResponse.ok) {
+        const held = await heldFileWordsOf(mutateResponse, targetPath);
+        if (held) throw new Error(held);
         const errBody = (await mutateResponse.json().catch(() => null)) as {
           error?: string;
         } | null;

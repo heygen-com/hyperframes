@@ -8,6 +8,7 @@ import {
   StudioSaveHttpError,
   StudioSaveNetworkError,
   createStudioSaveHttpError,
+  heldFileWordsOf,
   buildStudioSaveFailureProperties,
   getStudioSaveStatusCode,
   retryStudioSave,
@@ -30,6 +31,15 @@ describe("a file the server says is held or protected", () => {
     });
     expect(error.message).toBe(words);
     expect(error.statusCode).toBe(status);
+  });
+
+  it("reads a refused answer's words from a copy, leaving its body for the caller", async () => {
+    const response = new Response(JSON.stringify({ error: "x", why: "busy" }), { status: 423 });
+    expect(await heldFileWordsOf(response, "a/index.html")).toBe(
+      "index.html is open in another program. Close it there, then try again.",
+    );
+    expect(await response.json()).toEqual({ error: "x", why: "busy" });
+    expect(await heldFileWordsOf(new Response("boom", { status: 500 }), "index.html")).toBeNull();
   });
 
   it("keeps the status and body for any other answer, and without a path", async () => {
