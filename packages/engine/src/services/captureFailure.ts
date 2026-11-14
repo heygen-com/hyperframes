@@ -5,7 +5,9 @@ export type CaptureFailureKind =
   | "memory_exhaustion"
   | "verification"
   | "authoring"
-  | "io";
+  | "io"
+  // No rule names it: never blamed on the composition.
+  | "unknown";
 
 export interface CaptureWorkerDiagnostic {
   workerId: number;
@@ -56,6 +58,8 @@ const TRANSIENT_BROWSER_ERROR_PATTERNS = [
   /net::ERR_NETWORK_CHANGED/i,
   /Composition has zero duration[\s\S]*Runtime ready: false/,
   /Composition setup did not finish/,
+  /window\.__hf not ready after \d+ms/,
+  /net::ERR_INSUFFICIENT_RESOURCES/,
   // CDP can refuse a capture call outright with this exact wording; timed-out
   // variants of the same call hit PROTOCOL_TIMEOUT_PATTERNS, checked first.
   // Anchored to this literal reason (not just the CDP method) so an unrelated,
@@ -137,6 +141,9 @@ function hasIoOperationFailure(message: string): boolean {
  */
 const BROKEN_PIPE_MESSAGE = /\bwrite (?:EPIPE|EOF|ECONNRESET)\b/;
 
+/** The video frame extractor's own words for a full disk, which carry no errno code. */
+const DISK_FULL_MESSAGE = /The disk filled up/i;
+
 function ioError(error: unknown, message: string): boolean {
   const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
   return (
@@ -147,6 +154,7 @@ function ioError(error: unknown, message: string): boolean {
       ),
     ) ||
     BROKEN_PIPE_MESSAGE.test(message) ||
+    DISK_FULL_MESSAGE.test(message) ||
     hasIoOperationFailure(message)
   );
 }
@@ -176,7 +184,7 @@ function classifyKind(
   }
   const rule = ORDERED_KIND_RULES.find(([, matches]) => matches(message));
   if (rule) return rule[0];
-  return ioError(error, message) ? "io" : "authoring";
+  return ioError(error, message) ? "io" : "unknown";
 }
 
 export function classifyCaptureFailure(
