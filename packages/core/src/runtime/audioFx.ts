@@ -288,7 +288,7 @@ export function attachElementFxChain(
   const rescheduleAutomation = (next: HfAudioFxChain): void => {
     const at = timingNow();
     if (!at) return;
-    cancelParamLane(automated, at.scheduledAt);
+    cancelParamLane(automated);
     scheduleFor(next, at);
   };
 
@@ -303,7 +303,7 @@ export function attachElementFxChain(
    */
   const rebuild = (next: HfAudioFxChain): void => {
     const at = timingNow();
-    cancelParamLane(automated, at?.scheduledAt ?? 0);
+    cancelParamLane(automated);
     detach();
     attach(next, at?.elapsed ?? 0);
     scheduleFor(next, at);
@@ -348,7 +348,7 @@ export function attachElementFxChain(
   const retime = (next: AutomationTiming): void => {
     if (disposed) return;
     const at = timingNow();
-    if (at) cancelParamLane(automated, at.scheduledAt);
+    if (at) cancelParamLane(automated);
     frame = { ...next };
     scheduleFor(readChain(el).chain, frame);
   };
@@ -366,14 +366,14 @@ export function attachElementFxChain(
       // Rebased at the playhead the OLD rate carried us to, then replayed from
       // there at the new one.
       frame = { ...at, rate };
-      cancelParamLane(automated, at.scheduledAt);
+      cancelParamLane(automated);
       scheduleFor(readChain(el).chain, frame);
     },
     dispose: () => {
       disposed = true;
       observer?.disconnect();
       if (automated.length > 0) {
-        cancelParamLane(automated, typeof ctx.currentTime === "number" ? ctx.currentTime : 0);
+        cancelParamLane(automated);
       }
       handle?.dispose();
     },
