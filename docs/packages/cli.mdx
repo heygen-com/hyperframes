@@ -459,7 +459,10 @@ ru and uk; `auto` uses whisper for any other `--language`. If Parakeet fails und
 normalized instead: whisper.cpp JSON, OpenAI Whisper API JSON with word
 timestamps, SRT, and VTT all land as the same `[{text, start, end}]` word array
 in `transcript.json`. If the project has caption HTML, it is patched
-automatically.
+automatically. SRT and VTT files are read as UTF-8, or UTF-16 with a byte order
+mark. A file in another encoding, such as the CP949 (EUC-KR), Shift_JIS or GBK
+that older subtitle tools save, is refused with the `iconv` command that
+converts it, instead of being imported as replacement characters.
 
 Word-level transcripts get grouped into readable cues at sentence boundaries.
 Exporting straight from an `.srt` or `.vtt` keeps that file's cue boundaries.
