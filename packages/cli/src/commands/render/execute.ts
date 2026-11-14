@@ -1,8 +1,8 @@
 // fallow-ignore-file code-duplication
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { CanvasResolution, OutputResolutionIssueKind } from "@hyperframes/core";
-import { PRORES_PROFILES } from "@hyperframes/engine";
+import { PRORES_PROFILES, directorySizeBytes, resolveExtractCacheDir } from "@hyperframes/engine";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes } from "../../ui/format.js";
 import { formatLintStartupMessage } from "../../utils/lintFormat.js";
@@ -233,10 +233,34 @@ async function refuseLowDiskBeforeBrowserDownload(plan: RenderPlan): Promise<voi
   const { checkDisk } = await import("../../browser/preflight.js");
   await (await import("../../browser/manager.js")).sweepKilledInstalls();
   const paths = new Set([tmpdir(), renderOutputDirectory(plan)]);
-  const low = [...paths].map((path) => checkDisk(path)).filter((outcome) => !outcome.ok);
+  const low = [...paths]
+    .map((path) => ({ path, check: checkDisk(path) }))
+    .filter(({ check }) => !check.ok);
   if (low.length === 0) return;
-  for (const check of low) errorBox(check.title ?? "Low disk space", check.detail, check.hint);
+  for (const { path, check } of low) {
+    const hint = [check.hint, extractCacheHint(path)].filter(Boolean).join(" ");
+    errorBox(check.title ?? "Low disk space", check.detail, hint);
+  }
   failCommand();
+}
+
+function extractCacheHint(lowPath: string): string | undefined {
+  const { dir } = resolveExtractCacheDir();
+  if (!dir || !existsSync(dir) || !onSameVolume(dir, lowPath)) return undefined;
+  const bytes = directorySizeBytes(dir);
+  if (bytes === 0) return undefined;
+  return (
+    `The extracted-frame cache holds ${formatBytes(bytes)} at ${dir}; ` +
+    "`npx hyperframes clean` removes what no render used in the last hour."
+  );
+}
+
+function onSameVolume(a: string, b: string): boolean {
+  try {
+    return statSync(a).dev === statSync(b).dev;
+  } catch {
+    return false;
+  }
 }
 
 async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Promise<string> {

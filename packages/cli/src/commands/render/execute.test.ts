@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,6 +85,7 @@ describe("a render on a nearly full disk", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     rmSync(projectDir, { recursive: true, force: true });
   });
 
@@ -110,6 +111,28 @@ describe("a render on a nearly full disk", () => {
       );
       const said = vi.mocked(console.error).mock.calls.flat().join("\n");
       expect(said.includes("Low disk space")).toBe(!downloads);
+    },
+  );
+
+  it.each([{ cached: true }, { cached: false }])(
+    "names the extracted-frame cache on the full volume: cached $cached",
+    async ({ cached }) => {
+      const cacheDir = join(projectDir, "extract-cache");
+      if (cached) {
+        mkdirSync(join(cacheDir, "hfcache-v8-entry"), { recursive: true });
+        writeFileSync(join(cacheDir, "hfcache-v8-entry", "frame_00001.jpg"), Buffer.alloc(3 << 20));
+      }
+      vi.stubEnv("HYPERFRAMES_EXTRACT_CACHE_DIR", cacheDir);
+      vi.spyOn(manager, "sweepKilledInstalls").mockResolvedValue();
+      vi.spyOn(system, "getFreeDiskMb").mockReturnValue(400);
+      const plan = createRenderPlan({ dir: projectDir, quiet: true });
+
+      await expect(executeRenderPlan(plan, {} as never)).rejects.toThrow("Command failed");
+
+      const said = vi.mocked(console.error).mock.calls.flat().join("\n");
+      expect(said).toContain("Low disk space");
+      expect(said.includes(`The extracted-frame cache holds 3.0 MB at ${cacheDir}`)).toBe(cached);
+      expect(said.includes("npx hyperframes clean")).toBe(cached);
     },
   );
 });
