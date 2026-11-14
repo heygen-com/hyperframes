@@ -2929,6 +2929,55 @@ describe("contrast-audit.browser background sampling", () => {
     });
   });
 
+  it("keeps the stroke a keyword inherits from its outlined caption", async () => {
+    document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="640" data-height="360">
+        <div id="caption">Its own <em id="keyword">nukes?</em></div>
+      </div>
+    `;
+    const caption = document.getElementById("caption")!;
+    const keyword = document.getElementById("keyword")!;
+    // happy-dom drops -webkit-text-stroke-color, so watch the caption's hide; the keyword inherits it.
+    const captionStyle = vi.spyOn(caption.style, "setProperty");
+    const strokeColorOf = () =>
+      captionStyle.mock.calls.some(([name]) => name === "-webkit-text-stroke-color")
+        ? "rgba(0, 0, 0, 0)"
+        : "rgb(0, 0, 0)";
+    vi.spyOn(window, "getComputedStyle").mockImplementation(
+      (element) =>
+        ({
+          display: "block",
+          visibility: "visible",
+          opacity: "1",
+          color: element === keyword ? "rgb(255, 210, 31)" : "rgb(255, 255, 255)",
+          webkitTextStrokeWidth: "12px",
+          webkitTextStrokeColor: strokeColorOf(),
+          fontSize: "88px",
+          fontWeight: "700",
+          clipPath: "none",
+        }) as unknown as CSSStyleDeclaration,
+    );
+    vi.spyOn(caption, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 40, top: 100, width: 560, height: 90 }),
+    );
+    vi.spyOn(keyword, "getBoundingClientRect").mockReturnValue(
+      rect({ left: 330, top: 100, width: 270, height: 90 }),
+    );
+    (document as unknown as { elementFromPoint: () => Element | null }).elementFromPoint = () =>
+      null;
+
+    installContrastScript(
+      pixelsWithRegion({ left: 0, top: 0, width: 640, height: 360 }, [235, 194, 40], [0, 0, 0]),
+    );
+
+    const result = await runContrastAudit();
+    expect(result.find((entry) => entry.selector === "#keyword")).toMatchObject({
+      fg: "rgb(0,0,0)",
+      bg: "rgb(235,194,40)",
+      wcagAA: true,
+    });
+  });
+
   it("uses an element's own opaque background instead of the panel pixels around a circular avatar", async () => {
     document.body.innerHTML = `
       <div id="root" data-composition-id="main" data-width="640" data-height="360">
