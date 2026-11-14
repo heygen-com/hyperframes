@@ -55,7 +55,7 @@ playback state, position and speed.
 | `srcdoc`        | string  | —       | Composition HTML already available as a string            |
 | `width`         | number  | 1920    | Native composition width used for aspect ratio            |
 | `height`        | number  | 1080    | Native composition height used for aspect ratio           |
-| `controls`      | boolean | false   | Show playback, scrub, speed, time, and volume controls    |
+| `controls`      | boolean | false   | Show playback, scrub, speed, time, volume, and fullscreen controls |
 | `autoplay`      | boolean | false   | Start when the composition is ready                       |
 | `loop`          | boolean | false   | Restart at the end                                        |
 | `muted`         | boolean | false   | Mute audio                                                |
@@ -67,11 +67,14 @@ playback state, position and speed.
 | `assets-loading-ui` | `player` or `none` | `player` | `none` hides the loading-assets card; asset events still fire |
 | `low-power-idle` | boolean | false | While paused, check in once a second, not every 80 ms (many-player pages) |
 | `disable-click-to-play` | boolean | false | A click on the player no longer plays or pauses, so the page can handle it |
+| `disable-fullscreen` | boolean | false | Hide the fullscreen button in the controls (`disableFullscreen`) |
 | `no-load-timeout` | boolean | false | A slow load never fails at 8 s, so the page owns the deadline; script and runtime errors still fail at once |
 | `range-start` | number | — | Film second where playback starts, loops back to and parks when paused (`rangeStart`) |
 | `range-end` | number | — | Film second the range ends before: it stops or loops on the frame before it (`rangeEnd`) |
 
 `range-start` and `range-end` play the moment [start, end) of the film. The player parks on `range-start` at `ready`, and again when a paused playhead falls outside a new range; `play()` from outside the range starts there. At the end it holds the last frame before `range-end` and fires `ended`, or wraps to `range-start` with `loop`. `currentTime` at `ended` is then inside that frame, not `range-end` itself, so listen for `ended` rather than comparing times. A current runtime stops on that frame itself; video and `__timelines` players stop one clock tick early, predicted from the smaller of their last two steps, and a video in a background tab checks on its own `timeupdate`; an older runtime stops when the player sees its time pass the end. `currentTime` and `duration` stay in film time. A range past the film is cut to its end and an empty or negative one is ignored; both fire `rangeclamped`.
+
+The fullscreen button fills the screen with the whole player, controls included. It appears only where the page can go fullscreen, so not on iPhone Safari and not inside a cross-origin iframe without `allow="fullscreen"`. It follows every exit, including Esc. Set `disable-fullscreen` to hide it. A refused request fires the browser's `fullscreenerror` on the player.
 
 Player also accepts `shader-capture-scale` and `shader-loading` for previewing
 projects that use shader transitions. These are preview controls, not composition
