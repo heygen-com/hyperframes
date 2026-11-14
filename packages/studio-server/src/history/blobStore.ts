@@ -13,7 +13,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { atomicTempPath } from "@hyperframes/core/atomic-file";
+import { atomicTempPath, refuseReadOnly } from "@hyperframes/core/atomic-file";
 import {
   isWindowsHold,
   renameWithRetry,
@@ -105,6 +105,7 @@ async function cloneOrCopy(
   hash: string,
   beforeReplace?: () => void,
 ): Promise<void> {
+  refuseReadOnly(to);
   await mkdir(dirname(to), { recursive: true });
   const temp = atomicTempPath(to);
   try {

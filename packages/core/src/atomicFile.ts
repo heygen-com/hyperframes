@@ -48,10 +48,19 @@ export function replaceFileAtomically(
   operations: SiblingFileSystem & Pick<typeof fs, "renameSync"> = fs,
 ): void {
   traceWrite(filePath, content);
+  refuseReadOnly(filePath);
   // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
   publishSibling(filePath, content, mode, operations, (tempPath) =>
     renameWithRetry(tempPath, filePath, { rename: operations.renameSync }),
   );
+}
+
+export function refuseReadOnly(filePath: string): void {
+  try {
+    fs.accessSync(filePath, fs.constants.W_OK);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
 }
 
 /** Create a file that must not exist yet (EEXIST otherwise); readers never see it empty or partial. */

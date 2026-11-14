@@ -165,6 +165,28 @@ describe("replaceFileAtomically", () => {
   });
 });
 
+describe("replaceFileAtomically on a read-only file", () => {
+  // Root writes through read-only files, so the refusal is the owner's, as every system answers it.
+  it.skipIf(process.getuid?.() === 0)("refuses it and leaves it as it was", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-file-readonly-test-"));
+    const file = join(dir, "index.html");
+    writeFileSync(file, "kept");
+    fs.chmodSync(file, 0o444);
+    const before = fs.statSync(file);
+    try {
+      expect(() => replaceFileAtomically(file, "replaced", before.mode)).toThrow(
+        expect.objectContaining({ code: expect.stringMatching(/^(EACCES|EPERM)$/) }),
+      );
+      expect(readFileSync(file, "utf-8")).toBe("kept");
+      expect(fs.statSync(file).ino).toBe(before.ino);
+      expect(fs.readdirSync(dir)).toEqual(["index.html"]);
+    } finally {
+      fs.chmodSync(file, 0o644);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("createFileAtomically", () => {
   const dirs: string[] = [];
 
