@@ -916,9 +916,9 @@ Source: the project lint pass in `packages/lint/src/project.ts`, `packages/lint/
 
 ### `duplicate_audio_track`
 
-**Warning.** Two audible elements overlap on the same track index, so their audio doubles up.
+**Warning.** Two audible clips overlap in time on the same `data-track-index`. Both play at once: the render mixes every audible clip whatever its track, and `data-track-index` only picks the Studio lane, so Studio draws the two over each other in that lane. An overlap like this is either an accidental duplicate or two sounds sharing one lane.
 
-**Fix:** Use non-overlapping time windows or different track indices.
+**Fix:** If both should sound (a whoosh into a hit), give one its own `data-track-index`; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.
 
 ### `texture_mask_asset_not_found`
 
