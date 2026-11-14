@@ -8,17 +8,26 @@ import { afterAll, expect, it, vi } from "vitest";
 
 vi.mock("../telemetry/client", () => ({ trackEvent: vi.fn() }));
 
-const framer = { postMessage: vi.fn() };
+// A top-level window: the polyfill walks `parent` until it reaches itself.
+const framer = {
+  postMessage: vi.fn(),
+  get parent(): object {
+    return framer;
+  },
+};
 const ownParent = Object.getOwnPropertyDescriptor(window, "parent");
 afterAll(() => {
   if (ownParent) Object.defineProperty(window, "parent", ownParent);
   else Reflect.deleteProperty(window, "parent");
+  Reflect.deleteProperty(window, "isSecureContext");
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 it("answers no MCP client but Studio's own page when another site frames Studio", async () => {
   Object.defineProperty(window, "parent", { value: framer, configurable: true });
+  // jsdom leaves this undefined and the polyfill installs only in a secure context.
+  Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
   const ownMessages = vi.spyOn(window, "postMessage");
   const { loadModelContextPolyfill } = await import("./polyfill");
 
