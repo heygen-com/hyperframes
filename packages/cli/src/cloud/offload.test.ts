@@ -541,12 +541,7 @@ describe("offloadHeavyMedia", () => {
       cachePath: cachePath(),
     });
 
-    expect(reencoder.run).toHaveBeenCalledWith(
-      staged("take.mkv"),
-      "video",
-      undefined,
-      undefined,
-    );
+    expect(reencoder.run).toHaveBeenCalledWith(staged("take.mkv"), "video", undefined, undefined);
     expect(upload.mock.calls[0]![0]).toMatchObject({
       filename: "take.mp4",
       contentType: "video/mp4",
@@ -939,12 +934,7 @@ describe("offloadHeavyMedia", () => {
       cachePath: cachePath(),
     });
 
-    expect(run).toHaveBeenCalledWith(
-      join(dir, "take.mov"),
-      "video",
-      undefined,
-      undefined,
-    );
+    expect(run).toHaveBeenCalledWith(join(dir, "take.mov"), "video", undefined, undefined);
     expect(item).toMatchObject({ path: "take.mov", action: "reencode", size_bytes: 2 ** 32 + 1 });
     expect(fileMap.has("take.mov")).toBe(false);
   }, 60_000);
@@ -1172,12 +1162,7 @@ describe("offloadHeavyMedia", () => {
         reencoder: { choose: async () => "video", trimGrid: async () => 30, run },
         cachePath: cachePath(),
       });
-      expect(run).toHaveBeenCalledWith(
-        staged("long.mkv"),
-        "video",
-        undefined,
-        undefined,
-      );
+      expect(run).toHaveBeenCalledWith(staged("long.mkv"), "video", undefined, undefined);
       expect(fileMap.get("index.html")!.toString()).toContain(`data-media-start="10"`);
     }
   });
