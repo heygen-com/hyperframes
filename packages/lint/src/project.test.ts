@@ -943,7 +943,10 @@ describe("hevc_preview_codec", () => {
     const findings = await hevcFindings(project);
 
     expect(findings).toHaveLength(1);
-    expect(mockExecFile).toHaveBeenCalledTimes(1);
+    const codecProbes = mockExecFile.mock.calls.filter(([, args]) =>
+      args?.includes("stream=codec_name"),
+    );
+    expect(codecProbes).toHaveLength(1);
   });
 });
 
@@ -1047,6 +1050,58 @@ describe("video_media_start_at_or_past_eof", () => {
     mockDurationProbe(2);
 
     expect(await mediaStartFindings(project)).toEqual([]);
+  });
+
+  async function outlastsFindings(project: string): Promise<HyperframeLintFinding[]> {
+    const { results } = await lintProject(project);
+    return results
+      .flatMap((entry) => entry.result.findings)
+      .filter((finding) => finding.code === "video_slot_outlasts_source");
+  }
+
+  it("warns when a slot outlasts the source it plays from the start", async () => {
+    const { project } = videoProject(
+      '<video id="clip" src="clip.mp4" data-start="0" data-duration="9.019" muted></video>',
+    );
+    mockDurationProbe(1.9);
+
+    const findings = await outlastsFindings(project);
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({
+      severity: "warning",
+      file: "index.html",
+      elementId: "clip",
+    });
+    expect(findings[0]?.message).toContain("runs out after 1.9s of its 9.02s slot");
+    expect(findings[0]?.message).toContain("holds its final frame for the last 7.12s");
+    expect(findings[0]?.fixHint).toContain("Shorten data-duration to 1.9s");
+  });
+
+  it("counts data-media-start and data-playback-rate against the source", async () => {
+    const { project } = videoProject(`
+      <video id="late" src="clip.mp4" data-start="0" data-duration="4" data-media-start="3" muted></video>
+      <video id="fast" src="clip.mp4" data-start="0" data-duration="4" data-playback-rate="2" muted></video>
+      <video id="fits" src="clip.mp4" data-start="0" data-duration="3" data-playback-rate="2" muted></video>
+    `);
+    mockDurationProbe(6);
+
+    const ids = (await outlastsFindings(project)).map((finding) => finding.elementId);
+
+    expect(ids).toEqual(["late", "fast"]);
+  });
+
+  it("stays quiet for a hold inside rounding, a loop, a rate lane, or a start past EOF", async () => {
+    const { project } = videoProject(`
+      <video src="clip.mp4" data-start="0" data-duration="2.05" muted></video>
+      <video src="clip.mp4" data-start="0" data-duration="9" loop muted></video>
+      <video src="clip.mp4" data-start="0" data-duration="9" data-automation='{"lanes":[{"target":"rate","points":[[0,1],[1,0.5]]}]}' muted></video>
+      <video src="clip.mp4" data-start="0" data-duration="9" data-media-start="3" muted></video>
+    `);
+    mockDurationProbe(2);
+
+    expect(await outlastsFindings(project)).toEqual([]);
+    expect(await mediaStartFindings(project)).toHaveLength(1);
   });
 });
 
