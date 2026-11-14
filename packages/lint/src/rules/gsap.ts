@@ -106,6 +106,8 @@ function targetHasNoStableIdentity(selector: string, identity?: string): boolean
   );
 }
 
+const targetKey = (win: GsapWindow): string => win.targetIdentity ?? win.targetSelector;
+
 // ── GSAP parsing utilities ─────────────────────────────────────────────────
 
 /** Strip a `__raw:` prefix the parser adds to unresolvable values. */
@@ -1216,10 +1218,11 @@ export const gsapRules: LintRule<LintContext>[] = [
       const fromToWindowsBySelector = new Map<string, GsapWindow[]>();
       for (const win of gsapWindows) {
         if (win.method !== "fromTo" || win.immediateRender === false) continue;
-        if (win.targetSelector === UNRESOLVED_TARGET) continue;
-        const windows = fromToWindowsBySelector.get(win.targetSelector) ?? [];
+        if (targetHasNoStableIdentity(win.targetSelector, win.targetIdentity)) continue;
+        const target = targetKey(win);
+        const windows = fromToWindowsBySelector.get(target) ?? [];
         windows.push(win);
-        fromToWindowsBySelector.set(win.targetSelector, windows);
+        fromToWindowsBySelector.set(target, windows);
       }
 
       const repeatedFromToGroups = [...fromToWindowsBySelector.values()].filter(
@@ -1237,7 +1240,7 @@ export const gsapRules: LintRule<LintContext>[] = [
             (candidate) =>
               candidate.method === "set" &&
               !candidate.global &&
-              candidate.targetSelector === selector &&
+              targetKey(candidate) === targetKey(firstFromTo) &&
               candidate.position <= firstFromToPosition,
           );
         if (hasTimelineBaseline) continue;
