@@ -21,6 +21,7 @@ export interface Cue {
 }
 
 export interface WordsToCuesOptions {
+  /** Width budget per cue, in columns: a Hangul, Han or kana character takes two. Default 42. */
   maxChars?: number;
   maxGap?: number;
   /** Treat each entry as a finished cue (skip word-level grouping). Defaults to
@@ -354,6 +355,15 @@ function pushCue(cues: Cue[], cue: Cue | undefined): void {
 }
 
 /** Whether `word` should start a new cue rather than extend `current`. */
+const EAST_ASIAN_WIDE =
+  /[\u1100-\u115F\u2E80-\u303E\u3041-\u33FF\u3400-\u4DBF\u4E00-\u9FFF\uA960-\uA97F\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u;
+
+function displayWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) width += EAST_ASIAN_WIDE.test(ch) ? 2 : 1;
+  return width;
+}
+
 function breaksCue(
   current: Cue,
   word: Word,
@@ -361,7 +371,7 @@ function breaksCue(
   maxChars: number,
   maxGap: number,
 ): boolean {
-  const nextLength = current.text.length + 1 + text.length;
+  const nextLength = displayWidth(joinTokens(current.text, text));
   const gap = word.start - current.end;
   return nextLength > maxChars || gap > maxGap;
 }

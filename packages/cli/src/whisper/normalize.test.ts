@@ -464,6 +464,54 @@ Render video. Built for agents.
     expect(cues).toEqual([{ text: "你好世界", start: 0, end: 1 }]);
   });
 
+  it("counts Hangul, Han and kana as two columns of a cue's width budget", () => {
+    // whisper.cpp small, --language ko, on macOS `say -v Yuna`; Korean gets no punctuation
+    const korean = [
+      ["안녕하세요", 0.01, 1.06],
+      ["여러분", 1.06, 1.47],
+      ["오늘은", 1.72, 2.06],
+      ["서울", 2.16, 2.33],
+      ["여행", 2.33, 2.57],
+      ["코스를", 2.57, 2.9],
+      ["소개해", 3.01, 3.23],
+      ["드릴게요", 3.33, 4.32],
+      ["첫", 4.57, 4.72],
+      ["번째는", 4.72, 5.21],
+      ["경복궁입니다", 5.21, 6.56],
+    ].map(([text, start, end]) => ({
+      text: text as string,
+      start: start as number,
+      end: end as number,
+    }));
+    expect(wordsToCues(korean).map((c) => c.text)).toEqual([
+      "안녕하세요 여러분 오늘은 서울 여행 코스를",
+      "소개해 드릴게요 첫 번째는 경복궁입니다",
+    ]);
+
+    const japanese = Array.from(
+      "今日は東京の美術館を三つ回ってから夜は浅草で食事をしました",
+      (ch, i) => ({
+        text: ch,
+        start: i * 0.2,
+        end: i * 0.2 + 0.2,
+      }),
+    );
+    const cues = wordsToCues(japanese);
+    expect(cues.map((c) => c.text).join("")).toBe(japanese.map((w) => w.text).join(""));
+    expect(cues.map((c) => [...c.text].length)).toEqual([21, 8]);
+  });
+
+  it("still fits 42 Latin characters in a cue", () => {
+    const words = "one two three four five six seven eight nine ten eleven twelve".split(" ");
+    const cues = wordsToCues(
+      words.map((text, i) => ({ text, start: i * 0.3, end: i * 0.3 + 0.3 })),
+    );
+    expect(cues.map((c) => c.text)).toEqual([
+      "one two three four five six seven eight", // 39 + " nine" = 44
+      "nine ten eleven twelve",
+    ]);
+  });
+
   it("keeps phrase-level CJK entries as separate cues", () => {
     // Chinese has no inter-word spaces, so the whitespace test cannot see
     // that these are phrases; they used to collapse into one cue spanning
