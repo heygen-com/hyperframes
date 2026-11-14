@@ -15,7 +15,9 @@ vi.mock("node:dns", () => ({
 vi.mock("node:http", () => ({ request: mocks.request }));
 vi.mock("node:https", () => ({ request: mocks.request }));
 import {
+  assertPublicHostname,
   isPublicIPv4,
+  NonPublicHostError,
   publicRequest,
   resolvePublicAddress,
   systemLookupInKillableChild,
@@ -175,6 +177,34 @@ function fakeRequest() {
   });
   return req;
 }
+describe("refusal class", () => {
+  function refusedClass(run: () => unknown) {
+    try {
+      run();
+    } catch (error) {
+      return error instanceof NonPublicHostError ? error.hostClass : "untyped";
+    }
+    return "accepted";
+  }
+  it.each([
+    ["169.254.169.254", "link-local"],
+    ["10.0.0.1", "private"],
+    ["100.64.0.1", "carrier-grade"],
+    ["metadata.google.internal", "internal-name"],
+    ["localhost", "internal-name"],
+    ["[::1]", "ipv6"],
+  ])("names %s as %s", (host, hostClass) =>
+    expect(refusedClass(() => assertPublicHostname(host))).toBe(hostClass),
+  );
+  it("names the class of a DNS answer that points inside", async () => {
+    mocks.resolve4.mockResolvedValue(["8.8.8.8", "169.254.169.254"]);
+    const error = await resolvePublicAddress("rebind.example.org").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NonPublicHostError);
+    expect((error as NonPublicHostError).hostClass).toBe("link-local");
+    expect((error as Error).message).toBe("Capture DNS returned a non-public address");
+  });
+});
+
 describe("pinned request", () => {
   it("dials the checked numeric IP only, preserving TLS identity and manual redirects", async () => {
     mocks.resolve4.mockResolvedValueOnce(["8.8.8.8"]).mockResolvedValue(["127.0.0.1"]);

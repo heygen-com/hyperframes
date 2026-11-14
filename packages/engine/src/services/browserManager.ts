@@ -34,6 +34,7 @@ import { DEFAULT_CONFIG, resolveRestrictPageNetwork, type EngineConfig } from ".
 import {
   browserProxyArgs,
   createPublicOnlyProfile,
+  logRefusal,
   startCaptureProxy,
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
@@ -926,7 +927,7 @@ async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): 
 }
 
 async function publicOnlyNetwork(pageServerHost: string | undefined) {
-  const proxy = await startCaptureProxy(null);
+  const proxy = await startCaptureProxy(null, logRefusal);
   try {
     const userDataDir = await createPublicOnlyProfile("hf-render-profile-");
     return {
