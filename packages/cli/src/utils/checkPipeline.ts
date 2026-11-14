@@ -16,12 +16,7 @@ import {
   finishCheckSnapshots,
 } from "./checkSnapshotDirectory.js";
 import { findingAtRoot, findingElementKey, groupSampledFindings } from "./checkFindings.js";
-import {
-  SAFE_AREAS,
-  isNineBySixteen,
-  safeZoneEdgesCrossed,
-  type SafeZonePlatform,
-} from "./safeZones.js";
+import { safeZoneEdgesCrossed, safeZoneLabel, safeZonesFor, type SafeZone } from "./safeZones.js";
 import {
   MAX_FINDING_FRAME_TIMES,
   selectFindingFrames,
@@ -395,7 +390,7 @@ function captionFinding(
 
 function safeZoneFinding(
   candidate: CheckGeometryCandidate,
-  platforms: SafeZonePlatform[],
+  zones: SafeZone[],
   canvas: Canvas,
   time: number,
 ): AnchoredLayoutIssue | null {
@@ -404,11 +399,11 @@ function safeZoneFinding(
   }
   // Backstop for mocks/non-browser sources; the browser already drops opted-out text.
   if ("data-layout-allow-safe-zone" in candidate.dataAttributes) return null;
-  const crossed = platforms.flatMap((platform) => {
-    const edges = safeZoneEdgesCrossed(candidate.rect, canvas, platform);
+  const crossed = zones.flatMap((zone) => {
+    const edges = safeZoneEdgesCrossed(candidate.rect, canvas, zone);
     if (edges.length === 0) return [];
     return [
-      `${SAFE_AREAS[platform].label} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`,
+      `${safeZoneLabel(zone)} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`,
     ];
   });
   if (crossed.length === 0) return null;
@@ -418,9 +413,9 @@ function safeZoneFinding(
     code: "outside_safe_zone",
     severity: "warning",
     text,
-    message: `<${candidate.tag}> "${text}" is outside the safe area for ${crossed.join(", ")}.`,
+    message: `<${candidate.tag}> "${text}" is outside the safe area: ${crossed.join(", ")}.`,
     fixHint:
-      "Move the text inside the clear area, or mark text that may sit under the platform buttons and caption with data-layout-allow-safe-zone.",
+      "Move the text inside the safe area, or mark text meant to sit there with data-layout-allow-safe-zone.",
   };
 }
 
@@ -535,7 +530,7 @@ interface SampleSets {
   contrast: Set<number>;
   canvas: Canvas | null;
   /** Platforms to judge text against; empty unless the frame is 9:16. */
-  safeZones: SafeZonePlatform[];
+  safeZones: SafeZone[];
 }
 
 async function collectSampleAt(
@@ -601,7 +596,7 @@ async function collectGridSamples(
     motion: new Set(motion.times),
     contrast: new Set(grid.contrastSamples),
     canvas,
-    safeZones: canvas && isNineBySixteen(canvas) ? (options.safeZones ?? []) : [],
+    safeZones: canvas ? safeZonesFor(options.safeZones ?? [], canvas) : [],
   };
   const gridStart = performance.now();
   const times = mergeSampleTimes(grid.layoutSamples, motion.times);

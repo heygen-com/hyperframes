@@ -39,7 +39,8 @@ import {
 } from "../utils/checkPipeline.js";
 import type { CaptionZoneOptions, FrameCheckOptions, LayoutOptions } from "../utils/checkTypes.js";
 import { resolveLocalBrowserGpuMode } from "../browser/gpuPolicy.js";
-import { SAFE_ZONE_PLATFORMS, type SafeZonePlatform } from "../utils/safeZones.js";
+import { SOCIAL_SAFE_AREA_NAMES } from "@hyperframes/core/safe-areas";
+import type { SafeZone } from "../utils/safeZones.js";
 import { preResolveHostileMediaProxies, type PreparedMediaFile } from "../utils/checkBrowser.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
@@ -301,7 +302,7 @@ const CHECK_COMMAND_ARGS = {
   "safe-zone": {
     type: "string",
     description:
-      "9:16 only: warn when text leaves a platform's safe area: tiktok, reels, shorts, or off (default: all three)",
+      "Warn when text leaves a safe area: tiktok, reels or shorts on 9:16 (default: all three), standard (title-safe margins, any frame), or off",
   },
   "frame-check": {
     type: "string",
@@ -630,12 +631,12 @@ function parseNumberStrict(raw: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-export function parseSafeZone(value: unknown): SafeZonePlatform[] {
-  if (value === undefined) return [...SAFE_ZONE_PLATFORMS];
+export function parseSafeZone(value: unknown): SafeZone[] {
+  if (value === undefined) return [...SOCIAL_SAFE_AREA_NAMES];
   if (value === "off") return [];
-  const platform = SAFE_ZONE_PLATFORMS.find((name) => name === value);
-  if (!platform) throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts or off.");
-  return [platform];
+  const zone = [...SOCIAL_SAFE_AREA_NAMES, "standard" as const].find((name) => name === value);
+  if (!zone) throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts, standard or off.");
+  return [zone];
 }
 
 function parseCaptionZone(value: unknown): CaptionZoneOptions | undefined {

@@ -1334,7 +1334,7 @@ describe("social safe zones", () => {
         selector: "#caption",
         time: report.layout.samples[0],
         message:
-          '<p> "Follow for part two" is outside the safe area for TikTok (bottom edge), Instagram Reels (bottom edge), YouTube Shorts (bottom edge).',
+          '<p> "Follow for part two" is outside the safe area: TikTok (bottom edge), Instagram Reels (bottom edge), YouTube Shorts (bottom edge).',
       }),
     ]);
     expect(report.ok).toBe(true);
@@ -1349,7 +1349,7 @@ describe("social safe zones", () => {
     expect(report.layout.findings).toEqual([
       expect.objectContaining({
         selector: "#under-step",
-        message: '<p> "Under the buttons" is outside the safe area for TikTok (right edge).',
+        message: '<p> "Under the buttons" is outside the safe area: TikTok (right edge).',
       }),
     ]);
   });
@@ -1358,7 +1358,7 @@ describe("social safe zones", () => {
     const { report } = await safeZoneScenario(captionAndTitle, { safeZones: ["shorts"] });
 
     expect(report.layout.findings.map((finding) => finding.message)).toEqual([
-      '<p> "Follow for part two" is outside the safe area for YouTube Shorts (bottom edge).',
+      '<p> "Follow for part two" is outside the safe area: YouTube Shorts (bottom edge).',
     ]);
   });
 
@@ -1388,9 +1388,26 @@ describe("social safe zones", () => {
     expect(landscape.report.layout.findings).toEqual([]);
   });
 
+  it("checks title-safe margins on any frame when asked for standard", async () => {
+    const landscape = { width: 1920, height: 1080 };
+    const { report } = await safeZoneScenario(
+      (time) => [
+        block("#edge-title", "Near the edge", fixtureRect(96, 400, 600, 100), time),
+        block("#centred", "Centred", fixtureRect(660, 490, 600, 100), time),
+      ],
+      { safeZones: ["standard"] },
+      landscape,
+    );
+
+    expect(report.layout.findings.map((finding) => finding.message)).toEqual([
+      '<p> "Near the edge" is outside the safe area: title-safe margins (left edge).',
+    ]);
+  });
+
   it("parses --safe-zone", () => {
     expect(parseSafeZone(undefined)).toEqual(["tiktok", "reels", "shorts"]);
     expect(parseSafeZone("reels")).toEqual(["reels"]);
+    expect(parseSafeZone("standard")).toEqual(["standard"]);
     expect(parseSafeZone("off")).toEqual([]);
     expect(() => parseSafeZone("instagram")).toThrow(CliUsageError);
   });
