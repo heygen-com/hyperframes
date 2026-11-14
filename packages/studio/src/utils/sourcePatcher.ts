@@ -279,7 +279,9 @@ function findTagByClass(html: string, target: PatchTarget): TagMatch | null {
 }
 
 export function servedSource(html: string, target: PatchTarget): string {
-  return !target.hfId || findTagByTarget(html, target) ? html : stampHfIdsInPlace(html);
+  if (!target.hfId || findTagByTarget(html, target)) return html;
+  const stamped = stampHfIdsInPlace(html);
+  return findTagByTarget(stamped, target) ? stamped : html;
 }
 
 export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {
@@ -309,7 +311,7 @@ export function readAttributeByTarget(
   target: PatchTarget,
   attr: string,
 ): string | undefined {
-  const match = findTagByTarget(html, target);
+  const match = findTagByTarget(servedSource(html, target), target);
   if (!match) return undefined;
 
   return readTagAttribute(match.tag, attr.startsWith("data-") ? attr : `data-${attr}`);
@@ -321,7 +323,7 @@ export function readTagAttribute(tag: string, attr: string): string | undefined 
 }
 
 export function readTagSnippetByTarget(html: string, target: PatchTarget): string | undefined {
-  const match = findTagByTarget(html, target);
+  const match = findTagByTarget(servedSource(html, target), target);
   return match?.tag;
 }
 
@@ -459,22 +461,23 @@ export function applyPatch(html: string, elementId: string, op: PatchOperation):
 }
 
 export function applyPatchByTarget(html: string, target: PatchTarget, op: PatchOperation): string {
+  const source = servedSource(html, target);
   if (target.id) {
-    const patchedById = applyPatch(html, target.id, op);
-    if (patchedById !== html || !target.selector) {
+    const patchedById = applyPatch(source, target.id, op);
+    if (patchedById !== source || (!target.selector && !target.hfId)) {
       return patchedById;
     }
   }
 
   switch (op.type) {
     case "inline-style":
-      return patchInlineStyleByTarget(html, target, op.property, op.value);
+      return patchInlineStyleByTarget(source, target, op.property, op.value);
     case "attribute":
-      return patchAttributeByTarget(html, target, op.property, op.value);
+      return patchAttributeByTarget(source, target, op.property, op.value);
     case "html-attribute":
-      return patchHtmlAttributeByTarget(html, target, op.property, op.value);
+      return patchHtmlAttributeByTarget(source, target, op.property, op.value);
     case "text-content":
-      return op.value !== null ? patchTextContentByTarget(html, target, op.value) : html;
+      return op.value !== null ? patchTextContentByTarget(source, target, op.value) : html;
     default:
       return html;
   }

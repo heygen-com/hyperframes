@@ -4,9 +4,10 @@ import { syncStoredElementAttribute } from "../player/lib/automationStoreSync";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
-  buildPatchTarget,
   findTimelineElementInIframe,
+  patchTimelineChangesInSource,
   readFileContent,
+  type PersistTimelineBatchChange,
 } from "./timelineEditingHelpers";
 import type { UseTimelineElementVisibilityEditingInput } from "./timelineTrackVisibility";
 import { projectForTimelineSave, type TimelineEditOutcome } from "./timelineEditPermission";
@@ -15,18 +16,20 @@ type ElementAttributeEdits = Parameters<
   NonNullable<TimelineEditCallbacks["onSetElementsAttributeQuiet"]>
 >[0];
 
-type PatchTarget = NonNullable<ReturnType<typeof buildPatchTarget>>;
-
 function editsByFile(
   edits: ElementAttributeEdits,
+  attr: string,
   activeCompPath: string | null,
-): Map<string, Array<{ target: PatchTarget; value: string | null }>> {
-  const byFile = new Map<string, Array<{ target: PatchTarget; value: string | null }>>();
+): Map<string, PersistTimelineBatchChange[]> {
+  const byFile = new Map<string, PersistTimelineBatchChange[]>();
   for (const { element, value } of edits) {
-    const target = buildPatchTarget(element);
-    if (!target) throw new Error("A clip has no id to save it by");
     const path = element.sourceFile || activeCompPath || "index.html";
-    byFile.set(path, [...(byFile.get(path) ?? []), { target, value }]);
+    const change: PersistTimelineBatchChange = {
+      element,
+      buildPatches: (html, target) =>
+        applyPatchByTarget(html, target, { type: "attribute", property: attr, value }),
+    };
+    byFile.set(path, [...(byFile.get(path) ?? []), change]);
   }
   return byFile;
 }
@@ -70,16 +73,11 @@ export function useSetElementsAttribute({
       if (typeof projectId !== "string") return projectId;
       if (edits.length === 0) return { status: "saved" };
       try {
-        const byFile = editsByFile(edits, activeCompPath);
+        const byFile = editsByFile(edits, attr, activeCompPath);
         const files = Object.fromEntries(
-          [...byFile].map(([path, patches]) => [
+          [...byFile].map(([path, changes]) => [
             path,
-            (before: string) =>
-              patches.reduce(
-                (html, { target, value }) =>
-                  applyPatchByTarget(html, target, { type: "attribute", property: attr, value }),
-                before,
-              ),
+            (before: string) => patchTimelineChangesInSource(before, path, changes),
           ]),
         );
         for (const path of byFile.keys()) pendingTimelineEditPathRef.current.add(path);

@@ -8,10 +8,11 @@ import { useElementPicker } from "./useElementPicker";
 import { serveEditingRequests } from "../player/hooks/timelinePlayerTestHarness";
 
 // As the host leaves it on disk: hf-ids pinned, no element ids.
-const SAVED = ensureHfIds(`<!doctype html><html><body>
+const UNSTAMPED = `<!doctype html><html><body>
 <div data-composition-id="main" data-start="0" data-duration="10">
 <h1 class="clip" data-start="2" data-duration="3" data-track-index="0">Title</h1>
-</div></body></html>`);
+</div></body></html>`;
+const SAVED = ensureHfIds(UNSTAMPED);
 
 let root: Root | null = null;
 afterEach(() => {
@@ -352,6 +353,12 @@ describe("an edit to a picked element without an id", () => {
     expect(synced.at(-1)?.["index.html"]).toMatch(
       /style="color: red; background: blue; border: 0"/,
     );
+  });
+
+  it("writes the edit into a file nothing has stamped yet, by the id the preview served", () => {
+    const { picker, synced } = mountPicker({ "index.html": UNSTAMPED });
+    act(() => picker().setStyle("color", "red"));
+    expect(synced[0]?.["index.html"]).toMatch(/<h1 [^>]*style="color: red"[^>]*>Title<\/h1>/);
   });
 
   it("writes nothing when no saved file holds the element", () => {
