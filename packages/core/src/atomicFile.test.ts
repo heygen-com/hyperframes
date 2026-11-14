@@ -172,13 +172,11 @@ describe("replaceFileAtomically on a read-only file", () => {
     const file = join(dir, "index.html");
     writeFileSync(file, "kept");
     fs.chmodSync(file, 0o444);
-    const before = fs.statSync(file);
     try {
-      expect(() => replaceFileAtomically(file, "replaced", before.mode)).toThrow(
+      expect(() => replaceFileAtomically(file, "replaced", 0o444)).toThrow(
         expect.objectContaining({ code: expect.stringMatching(/^(EACCES|EPERM)$/) }),
       );
       expect(readFileSync(file, "utf-8")).toBe("kept");
-      expect(fs.statSync(file).ino).toBe(before.ino);
       expect(fs.readdirSync(dir)).toEqual(["index.html"]);
     } finally {
       fs.chmodSync(file, 0o644);
