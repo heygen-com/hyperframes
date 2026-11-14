@@ -50,6 +50,13 @@ export function formatTime(seconds: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+function iconSlot(name: string, fallbackSvg: string): HTMLSlotElement {
+  const slot = document.createElement("slot");
+  slot.name = name;
+  slot.innerHTML = fallbackSvg;
+  return slot;
+}
+
 export function createControls(
   parent: ShadowRoot | HTMLElement,
   callbacks: ControlsCallbacks,
@@ -80,7 +87,7 @@ export function createControls(
   // Both glyphs stay in the DOM, stacked; toggling `hfp-playing` crossfade-morphs
   // between them (see styles.ts) instead of swapping innerHTML, which would kill
   // the transition.
-  playBtn.innerHTML = `<span class="hfp-ico hfp-ico-play">${PLAY_ICON}</span><span class="hfp-ico hfp-ico-pause">${PAUSE_ICON}</span>`;
+  playBtn.innerHTML = `<span class="hfp-ico hfp-ico-play"><slot name="play-icon">${PLAY_ICON}</slot></span><span class="hfp-ico hfp-ico-pause"><slot name="pause-icon">${PAUSE_ICON}</slot></span>`;
   playBtn.setAttribute("aria-label", "Play");
 
   const scrubber = document.createElement("div");
@@ -126,8 +133,17 @@ export function createControls(
   const muteBtn = document.createElement("button");
   muteBtn.className = "hfp-mute-btn";
   muteBtn.type = "button";
-  muteBtn.innerHTML = VOLUME_HIGH_ICON;
   muteBtn.setAttribute("aria-label", "Mute");
+  const volumeIcons = {
+    high: iconSlot("volume-high-icon", VOLUME_HIGH_ICON),
+    low: iconSlot("volume-low-icon", VOLUME_LOW_ICON),
+    muted: iconSlot("volume-muted-icon", VOLUME_MUTED_ICON),
+  };
+  const showVolumeIcon = (muted: boolean, volume: number) => {
+    const icon = muted ? volumeIcons.muted : volume < 0.5 ? volumeIcons.low : volumeIcons.high;
+    if (muteBtn.firstChild !== icon) muteBtn.replaceChildren(icon);
+  };
+  showVolumeIcon(false, 1);
 
   const volumeSliderWrap = document.createElement("div");
   volumeSliderWrap.className = "hfp-volume-slider-wrap";
@@ -168,13 +184,6 @@ export function createControls(
   let speedIndex = presets.indexOf(1); // start at 1x
   if (speedIndex === -1) speedIndex = 0;
 
-  const getVolumeIcon = (muted: boolean, volume: number): string => {
-    if (muted) return VOLUME_MUTED_ICON;
-    if (volume === 0) return VOLUME_LOW_ICON;
-    if (volume < 0.5) return VOLUME_LOW_ICON;
-    return VOLUME_HIGH_ICON;
-  };
-
   playBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     if (isPlaying) callbacks.onPause();
@@ -195,7 +204,7 @@ export function createControls(
     volumeFill.style.width = `${fraction * 100}%`;
     volumeSlider.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
     if (isMuted && fraction > 0) callbacks.onMuteToggle();
-    muteBtn.innerHTML = getVolumeIcon(isMuted, fraction);
+    showVolumeIcon(isMuted, fraction);
     callbacks.onVolumeChange(fraction);
   };
 
@@ -250,7 +259,7 @@ export function createControls(
     volumeFill.style.width = `${newVol * 100}%`;
     volumeSlider.setAttribute("aria-valuenow", String(Math.round(newVol * 100)));
     if (isMuted && newVol > 0) callbacks.onMuteToggle();
-    muteBtn.innerHTML = getVolumeIcon(isMuted, newVol);
+    showVolumeIcon(isMuted, newVol);
     callbacks.onVolumeChange(newVol);
   });
 
@@ -386,14 +395,14 @@ export function createControls(
     },
     updateMuted(muted: boolean) {
       isMuted = muted;
-      muteBtn.innerHTML = getVolumeIcon(muted, currentVolume);
+      showVolumeIcon(muted, currentVolume);
       muteBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
     },
     updateVolume(volume: number) {
       currentVolume = volume;
       volumeFill.style.width = `${volume * 100}%`;
       volumeSlider.setAttribute("aria-valuenow", String(Math.round(volume * 100)));
-      muteBtn.innerHTML = getVolumeIcon(isMuted, volume);
+      showVolumeIcon(isMuted, volume);
     },
     setVolumeControlsHidden(hidden: boolean) {
       volumeWrap.style.display = hidden ? "none" : "";
