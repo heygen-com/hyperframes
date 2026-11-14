@@ -73,6 +73,7 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
@@ -94,6 +95,7 @@ import { computeCompositionObservabilityHash } from "../observability.js";
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  measuresShownBoxes?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -409,6 +411,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
+    input.measuresShownBoxes === true ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
       unresolvedCompositionCount: compiled.unresolvedCompositions.length,
@@ -429,6 +432,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (hasScriptedAudio) reasons.push("scripted audio volume");
       if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
       if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+      if (input.measuresShownBoxes) reasons.push("video(s) larger than the canvas");
 
       log.info("Launching browser for composition probe...", {
         reasons,
@@ -665,7 +669,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -715,7 +719,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -839,9 +843,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
-    if (!job.config.allowOutsideProjectAssets) {
-      dropMediaOutsideProject({ projectDir, workDir, composition, log });
-    }
+    dropMediaOutsideProject({
+      projectDir,
+      workDir,
+      composition,
+      log,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    });
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),

@@ -232,7 +232,8 @@
             var bgEl = document.getElementById("hl-bg-" + wi);
             var wordEl = document.getElementById("hl-w-" + wi);
 
-            tl.to(bgEl, { opacity: 1, scaleX: 1, duration: 0.15, ease: "power2.out" }, w.start);
+            var fadeIn = Math.min(0.15, w.end - w.start);
+            tl.to(bgEl, { opacity: 1, scaleX: 1, duration: fadeIn, ease: "power2.out" }, w.start);
             tl.to(
               wordEl,
               { filter: "brightness(1.05)", duration: 0.08, ease: "power2.out" },

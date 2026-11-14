@@ -22,7 +22,7 @@ vi.mock("../telemetry/events.js", () => ({
 }));
 
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
-import { createCheckCommand, parseCheckRange } from "./check.js";
+import { createCheckCommand, parseCheckRange, parseSafeZone } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
 import { readConfig } from "../telemetry/config.js";
 import {
@@ -234,7 +234,7 @@ function fakeDriver(overrides: Partial<CheckAuditDriver> = {}): CheckAuditDriver
 }
 
 interface GeometryFixture {
-  kind: "text" | "media";
+  kind: "text" | "media" | "block";
   tag: string;
   text: string;
   selector: string;
@@ -940,6 +940,66 @@ it("rejects malformed caption-zone specs instead of silently disabling the gate"
   });
 });
 
+it.each([
+  ["--samples", "0"],
+  ["--samples", "ten"],
+  ["--samples", "5abc"],
+  ["--samples", "2.5"],
+  ["--max-issues", "-5"],
+  ["--max-transition-samples", "abc"],
+  ["--tolerance", "-1"],
+  ["--tolerance", "px"],
+  ["--tolerance", "2px"],
+])("rejects %s %s as a usage error instead of using the default", async (flag, value) => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async () => report);
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await expect(
+    runCommand(command, { rawArgs: ["--json", `${flag}=${value}`] }),
+  ).rejects.toMatchObject({ result: { exitCode: 2, kind: "usage_error" } });
+
+  expect(runPipeline).not.toHaveBeenCalled();
+  const output = JSON.parse(String(log.mock.calls[0]?.[0]));
+  expect(output.error.code).toBe("usage_error");
+  expect(output.error.message).toContain(`Invalid ${flag}: "${value}"`);
+});
+
+it("passes valid numeric check flags through and keeps defaults for absent ones", async () => {
+  const { report } = await runScenario(fakeDriver());
+  const runPipeline = vi.fn(async (_project: ProjectDir, _options: CheckOptions) => report);
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline,
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, {
+    rawArgs: ["--json", "--samples", "3", "--max-transition-samples", "4", "--tolerance", "0.5"],
+  });
+  await runCommand(command, { rawArgs: ["--json", "--tolerance", "0"] });
+
+  expect(runPipeline.mock.calls[0]?.[1]).toMatchObject({
+    samples: 3,
+    maxTransitionSamples: 4,
+    maxIssues: DEFAULT_CHECK_OPTIONS.maxIssues,
+    tolerance: 0.5,
+  });
+  expect(runPipeline.mock.calls[1]?.[1]).toMatchObject({
+    samples: DEFAULT_CHECK_OPTIONS.samples,
+    maxTransitionSamples: undefined,
+    tolerance: 0,
+  });
+});
+
 it("flags text whose DOM box overlaps the caption band at the default end seek", async () => {
   const collectGeometryCandidates = vi.fn(async (time: number) => [
     geometryCandidate({
@@ -975,6 +1035,7 @@ it("flags text whose DOM box overlaps the caption band at the default end seek",
   expect(collectGeometryCandidates).toHaveBeenCalledWith(10, {
     text: true,
     media: false,
+    blocks: false,
     tolerance: 2,
   });
   expect(report.layout.samples).toEqual([5, 10]);
@@ -1150,6 +1211,7 @@ it("checks media overflow at the default midpoint and applies warning severity",
   expect(collectGeometryCandidates).toHaveBeenCalledWith(5, {
     text: false,
     media: true,
+    blocks: false,
     tolerance: 2,
   });
   expect(report.layout.findings[0]).toMatchObject({
@@ -1185,9 +1247,9 @@ it("converts progress seeks to time, gates each collector, and keeps distinct ca
 
   expect(report.layout.samples).toEqual([2, 4, 6]);
   expect(collectGeometryCandidates.mock.calls).toEqual([
-    [2, { text: true, media: false, tolerance: 2 }],
-    [4, { text: false, media: true, tolerance: 2 }],
-    [6, { text: true, media: false, tolerance: 2 }],
+    [2, { text: true, media: false, blocks: false, tolerance: 2 }],
+    [4, { text: false, media: true, blocks: false, tolerance: 2 }],
+    [6, { text: true, media: false, blocks: false, tolerance: 2 }],
   ]);
   expect(report.layout.findings).toEqual([
     expect.objectContaining({
@@ -1227,6 +1289,150 @@ it("does not collect or emit opt-in geometry findings when both flags are off", 
   expect(collectGeometryCandidates).not.toHaveBeenCalled();
   expect(JSON.stringify(report)).not.toContain("caption_zone_collision");
   expect(JSON.stringify(report)).not.toContain("frame_out_of_frame");
+});
+
+describe("social safe zones", () => {
+  const portrait = { width: 1080, height: 1920 };
+  const block = (selector: string, text: string, rect: LayoutRect, time: number) =>
+    geometryCandidate({ kind: "block", tag: "p", text, selector, rect, time });
+  // A caption in the bottom 30% and a title centred in the upper half.
+  const captionAndTitle = (time: number) => [
+    block("#caption", "Follow for part two", fixtureRect(140, 1400, 800, 120), time),
+    block("#title", "Centred title", fixtureRect(216, 600, 648, 120), time),
+  ];
+
+  async function safeZoneScenario(
+    candidates: (time: number) => ReturnType<typeof geometryCandidate>[],
+    options: Partial<CheckOptions> = {},
+    canvas = portrait,
+  ) {
+    const collectGeometryCandidates = vi.fn(async (time: number) => candidates(time));
+    const { report } = await runScenario(
+      fakeDriver({
+        getDuration: vi.fn(async () => 4),
+        getCanvas: vi.fn(async () => canvas),
+        collectGeometryCandidates,
+      }),
+      { samples: 2, contrast: false, safeZones: ["tiktok", "reels", "shorts"], ...options },
+    );
+    return { report, collectGeometryCandidates };
+  }
+
+  it("warns once, at the first time, for a caption below every platform's safe area", async () => {
+    const { report, collectGeometryCandidates } = await safeZoneScenario(captionAndTitle, {
+      strict: true,
+    });
+
+    expect(collectGeometryCandidates).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.objectContaining({ blocks: true }),
+    );
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        code: "outside_safe_zone",
+        severity: "warning",
+        selector: "#caption",
+        time: report.layout.samples[0],
+        message:
+          '<p> "Follow for part two" is outside the safe area: TikTok (bottom edge), Instagram Reels (bottom edge), YouTube Shorts (bottom edge).',
+      }),
+    ]);
+    expect(report.ok).toBe(true);
+  });
+
+  it("follows TikTok's stepped right edge", async () => {
+    const { report } = await safeZoneScenario((time) => [
+      block("#under-step", "Under the buttons", fixtureRect(756, 960, 108, 96), time),
+      block("#above-step", "Above the buttons", fixtureRect(756, 384, 108, 96), time),
+    ]);
+
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({
+        selector: "#under-step",
+        message: '<p> "Under the buttons" is outside the safe area: TikTok (right edge).',
+      }),
+    ]);
+  });
+
+  it("narrows to one platform", async () => {
+    const { report } = await safeZoneScenario(captionAndTitle, { safeZones: ["shorts"] });
+
+    expect(report.layout.findings.map((finding) => finding.message)).toEqual([
+      '<p> "Follow for part two" is outside the safe area: YouTube Shorts (bottom edge).',
+    ]);
+  });
+
+  it("skips text marked data-layout-allow-safe-zone", async () => {
+    const { report } = await safeZoneScenario((time) => [
+      geometryCandidate({
+        kind: "block",
+        tag: "p",
+        text: "Sticker",
+        selector: "#sticker",
+        rect: fixtureRect(140, 1400, 800, 120),
+        time,
+        dataAttributes: { "data-layout-allow-safe-zone": "" },
+      }),
+    ]);
+
+    expect(report.layout.findings).toEqual([]);
+  });
+
+  it("reports nothing when off or when the frame is not 9:16", async () => {
+    const off = await safeZoneScenario(captionAndTitle, { safeZones: [] });
+    const landscape = await safeZoneScenario(captionAndTitle, {}, { width: 1920, height: 1080 });
+
+    expect(off.collectGeometryCandidates).not.toHaveBeenCalled();
+    expect(landscape.collectGeometryCandidates).not.toHaveBeenCalled();
+    expect(off.report.layout.findings).toEqual([]);
+    expect(landscape.report.layout.findings).toEqual([]);
+  });
+
+  it("never lets a safe-zone warning push a defect warning past --max-issues", async () => {
+    const { report } = await safeZoneScenario(
+      (time) => [
+        ...captionAndTitle(time),
+        geometryCandidate({
+          kind: "text",
+          tag: "p",
+          text: "Lower third",
+          selector: "#lower-third",
+          rect: fixtureRect(140, 1700, 800, 80),
+          time,
+        }),
+      ],
+      { maxIssues: 1, strict: true, captionZone: { x0: 0, y0: 0.85, x1: 1, y1: 1 } },
+    );
+
+    expect(report.layout.findings).toEqual([
+      expect.objectContaining({ code: "caption_zone_collision", selector: "#lower-third" }),
+    ]);
+    expect(report.ok).toBe(false);
+  });
+
+  it("checks title-safe margins on any frame when asked for standard", async () => {
+    const landscape = { width: 1920, height: 1080 };
+    const { report } = await safeZoneScenario(
+      (time) => [
+        block("#edge-title", "Near the edge", fixtureRect(96, 400, 600, 100), time),
+        block("#centred", "Centred", fixtureRect(660, 490, 600, 100), time),
+      ],
+      { safeZones: ["standard"] },
+      landscape,
+    );
+
+    expect(report.layout.findings.map((finding) => finding.message)).toEqual([
+      '<p> "Near the edge" is outside the safe area: title-safe margins (left edge).',
+    ]);
+  });
+
+  it("parses --safe-zone", () => {
+    expect(parseSafeZone(undefined)).toEqual(["tiktok", "reels", "shorts"]);
+    expect(parseSafeZone("reels")).toEqual(["reels"]);
+    expect(parseSafeZone("standard")).toEqual(["standard"]);
+    expect(parseSafeZone("off")).toEqual([]);
+    expect(() => parseSafeZone("instagram")).toThrow(CliUsageError);
+  });
 });
 
 it("computes caption bands from a portrait composition viewport", async () => {

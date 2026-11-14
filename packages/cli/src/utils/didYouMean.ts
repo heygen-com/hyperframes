@@ -49,7 +49,6 @@ const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
   search: { command: "catalog" },
   find: { command: "catalog" },
   browse: { command: "catalog" },
-  registry: { command: "catalog" },
   list: { command: "catalog" },
   install: { command: "add" },
   captions: {

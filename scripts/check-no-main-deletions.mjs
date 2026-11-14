@@ -774,6 +774,14 @@ const PLAN_PARITY_HARNESS_FILES = [
 ];
 
 export const ALLOWED_DELETIONS = new Map([
+  [
+    "packages/cli/src/capture/fixtures/capture-fixture-key.pem",
+    "owner-directed removal of committed plaintext key material; capture integration tests generate ephemeral TLS fixtures in memory",
+  ],
+  [
+    "packages/cli/src/capture/fixtures/capture-fixture-certificate.pem",
+    "paired with the removed plaintext key; capture integration tests generate an ephemeral certificate in memory",
+  ],
   // Prompt Guide as six topic pages
   [
     "docs/prompting/anatomy.mdx",

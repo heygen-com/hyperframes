@@ -36,7 +36,7 @@ export interface UseLayerDragReturn {
 }
 
 export function isLayerDraggable(layer: DomEditLayerItem): boolean {
-  if (!(layer.selector || layer.id)) return false;
+  if (!(layer.selector || layer.id) || layer.preview) return false;
   let el: HTMLElement | null = layer.element;
   while (el) {
     if (el.hasAttribute("data-timeline-locked")) return false;

@@ -40,7 +40,7 @@ type PinnedPackage = keyof typeof PINNED_PACKAGES;
 export const CACHE_DIR = hyperframesCacheDir("optional");
 
 /** Installed on first use only when a host bundled the CLI without its sharp dependency. */
-export const SHARP_VERSION = "0.35.3";
+export const SHARP_VERSION = "0.35.5";
 
 type FirstUsePackage = OptionalPackage | "sharp";
 

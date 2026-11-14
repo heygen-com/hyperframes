@@ -184,6 +184,32 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     ]);
   });
 
+  it.each([
+    [
+      403,
+      "permission",
+      "index.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+    ],
+    [423, "busy", "index.html is open in another program. Close it there, then try again."],
+  ])("a delete the server refuses with %i names the file and why", async (status, why, words) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("/file-mutations/remove-elements/")
+          ? new Response(JSON.stringify({ error: "refused", why }), { status })
+          : new Response(JSON.stringify({ content: html }), { status: 200 }),
+      ),
+    );
+    const showToast = vi.fn();
+    const { b, getHook } = mountDeleteHarness({ handleTimelineGroupMove: vi.fn(), showToast });
+
+    await act(async () => {
+      await getHook().handleTimelineElementDelete(b);
+    });
+
+    expect(showToast.mock.calls.map(([message]) => message)).toEqual([words]);
+  });
+
   it("shows exactly one toast when a ripple fails to persist after a committed delete", async () => {
     const handleTimelineGroupMove = vi.fn().mockRejectedValue(new Error("persist failed"));
     const showToast = vi.fn();

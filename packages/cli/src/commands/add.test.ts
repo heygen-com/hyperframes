@@ -606,7 +606,9 @@ describe("add command run() — several names", () => {
     const out = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(out.error.message).toContain(`Project folder not found: ${missing}`);
     expect(out.error.message).toContain("--dir is the project root");
-    expect(out.error.message).toContain("hyperframes init");
+    expect(out.error.message).toContain(
+      `Create one with \`hyperframes init ${JSON.stringify(missing)}\``,
+    );
     expect(existsSync(missing)).toBe(false);
   });
 

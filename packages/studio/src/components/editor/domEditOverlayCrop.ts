@@ -1,4 +1,7 @@
-import { composeElementTransform, type PlanarTransformOps } from "./domEditOverlayTransform";
+import {
+  composeElementTransform,
+  type PlanarTransformOps,
+} from "@hyperframes/core/runtime/editing-port";
 import {
   parseInsetClipPathSides,
   type ClipPathInsetSides,
@@ -167,8 +170,19 @@ export function hugRectForElement(
   rect: CropScreenRect & { editScaleX: number; editScaleY: number },
   element: HTMLElement,
 ): CropScreenRect {
-  const insets = isElementCropLifted(element) ? null : readElementCropInsets(element);
-  // Uneditable or lifted clip — show the full element rect.
+  // A lifted clip shows the full element rect.
+  return isElementCropLifted(element)
+    ? rect
+    : hugRectForClipPath(rect, readElementClipPath(element));
+}
+
+/** `hugRectForElement` for a clip-path read elsewhere; null is one that could not be read. */
+export function hugRectForClipPath(
+  rect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  clipPath: string | null,
+): CropScreenRect {
+  const insets = clipPath === null ? null : parseCropClipPath(clipPath);
+  // Uneditable clip — show the full element rect.
   if (!insets || (insets.top <= 0 && insets.right <= 0 && insets.bottom <= 0 && insets.left <= 0))
     return rect;
   return cropRectFromInsets(rect, insets, rect.editScaleX, rect.editScaleY);

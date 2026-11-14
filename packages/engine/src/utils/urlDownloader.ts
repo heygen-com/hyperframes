@@ -23,7 +23,8 @@ import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -967,10 +968,36 @@ async function fetchToPartial(
   };
 }
 
-function syncAndPublishPartial(
+async function publishWithoutClobber(
   partialPath: string,
   localPath: string,
-): Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused"> {
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  try {
+    linkSync(partialPath, localPath);
+    unlinkSync(partialPath);
+    return;
+  } catch (error) {
+    if (!cannotHardLink(error)) throw error;
+  }
+  const releaseLock = await acquireCachePathLock(localPath, timeoutMs, signal);
+  try {
+    if (lstatSync(localPath, { throwIfNoEntry: false })) {
+      throw Object.assign(new Error(`${localPath} already exists`), { code: "EEXIST" });
+    }
+    renameWithRetry(partialPath, localPath);
+  } finally {
+    releaseLock();
+  }
+}
+
+async function syncAndPublishPartial(
+  partialPath: string,
+  localPath: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused">> {
   // Windows rejects fsync on a read-only handle (EPERM); the partial is ours
   // and writable, so r+ preserves the same flush semantics cross-platform.
   const fd = openSync(partialPath, "r+");
@@ -980,11 +1007,10 @@ function syncAndPublishPartial(
     closeSync(fd);
   }
 
-  // A hard-link publish is atomic and no-clobber: unlike rename(), it cannot
-  // replace a path that another successful caller has already returned.
+  // Atomic and no-clobber: a hard link, or a rename under the cache path lock where
+  // the drive has no hard links, never replaces a path another caller already returned.
   try {
-    linkSync(partialPath, localPath);
-    unlinkSync(partialPath);
+    await publishWithoutClobber(partialPath, localPath, timeoutMs, signal);
     return "published";
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -1057,7 +1083,7 @@ async function runDownloadAttempt(
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
     const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
-    let outcome = syncAndPublishPartial(partialPath, localPath);
+    let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {
       let inspection: Awaited<ReturnType<typeof inspectExistingFile>>;

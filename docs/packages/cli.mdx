@@ -104,8 +104,8 @@ machine-readable `code` and, when there is a next step, a `hint`:
   "ok": false,
   "error": {
     "code": "unknown_flag",
-    "message": "Unknown flag: --out",
-    "hint": "Did you mean --output? Run 'hyperframes render --help' to see its flags."
+    "message": "Unknown flag: --search",
+    "hint": "Did you mean --query? Its flags: --type, --tag, --json, --human-friendly, --query, --yes, --on-device. Run 'hyperframes catalog --help' for what each does."
   }
 }
 ```
@@ -363,7 +363,7 @@ thin with counts on it was cut short.
 | Flag                | Description                                                                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--output, -o`      | Output directory. Default `./capture`, then `./capture-2/`, `./capture-3/`, … if that name is taken.                                               |
-| `--timeout`         | Page load timeout in ms (default 120000)                                                                                                          |
+| `--timeout`         | Page load timeout in ms, or a duration such as `30s` or `2m` (default 120000)                                                                     |
 | `--capture-budget`  | Budget in ms for everything after the page loads (default 120000). Cooperative — it stops new work, but cannot interrupt work already running.     |
 | `--skip-assets`     | Do not download images and SVGs                                                                                                                   |
 | `--skip-vision`     | Do not run AI image captioning                                                                                                                    |
@@ -1288,6 +1288,7 @@ cover every finding from the full check.
 | `--no-craft`                                 | Skip the craft pass (dead stretches, unread lines, silent film), the longest part of a full check. The report marks it skipped. Use it for a render preflight; keep it on for the full check before a release. |
 | `--strict`                                   | Exit non-zero on warnings too (default: errors only)                                                                        |
 | `--caption-zone "<x0=..;y0=..;x1=..;y1=..>"` | Opt-in band gate. Flags a text element's DOM box that overlaps the fractional band. Optional `severity` and `seek`.         |
+| `--safe-zone <tiktok\|reels\|shorts\|standard\|off>` | Warn when text, captions included, leaves a safe area: a platform's on 9:16 compositions (default: all three), or `standard` title-safe margins (10% from each edge) on any frame. Never fails `--strict` |
 | `--frame-check`                              | Opt-in out-of-frame detection for `img`, `svg`, `video`, and `canvas`                                                       |
 | `--layout`                                   | Layout knobs, currently `proseCoverageFloor=0.05` (0–1, default 0.15)                                                       |
 | `--browser-gpu` / `--no-browser-gpu`         | Hardware GPU capture, or deterministic SwiftShader (default: auto-detect)                                                   |
@@ -1424,6 +1425,16 @@ For deliberate lower-third copy under `--caption-zone`, use
 nothing else — overflow, overlap, occlusion, and contrast still apply. Put it on
 the narrowest wrapper that owns the band copy.
 
+On a 9:16 composition, check samples every text block and caption line against the
+areas TikTok, Instagram Reels and YouTube Shorts leave clear of their buttons and
+captions. Each block that leaves one is an `outside_safe_zone` warning naming the
+platforms and the edges it crosses, at the first time it is seen. The areas are
+reference guides from each platform's vertical ad specs: TikTok 720x1280 with a
+stepped right edge, Reels with the bottom 35%, top 14% and 6% sides excluded, Shorts
+1080x1920 excluding 48px left, 192px right, 288px top and 672px bottom. `--safe-zone standard` checks the title-safe margins instead, 10% in from each
+edge, on any aspect ratio. Mark text that may sit outside them with
+`data-layout-allow-safe-zone`.
+
 #### Verify motion, not just layout
 
 Layout sampling cannot catch a render-≠-preview bug: an entrance the seek lands
@@ -1559,7 +1570,7 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--labels`  | Comma-separated labels, one per input path         |
 | `--out`     | Output path (default `./compare.png`)              |
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
-| `--timeout` | Render-ready timeout per variant (default 5000 ms) |
+| `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
@@ -1577,7 +1588,7 @@ npx hyperframes grade-compare --for frame.png --luts warm.cube,cool.cube
 | `--project`                    | Base directory for relative paths                        |
 | `--out`                        | Output PNG (default `<project>/grade-compare.png`)       |
 | `--baseline` / `--no-baseline` | Include the ungraded frame as an `original` cell (on)    |
-| `--timeout`                    | Render-ready timeout (default 5000 ms)                   |
+| `--timeout`                    | Render-ready timeout in ms, or a duration such as `30s` (default 5000 ms) |
 | `--json`                       | Machine-readable results                                 |
 
 ### Deprecated: `validate`, `inspect`, and `layout`
@@ -1893,6 +1904,23 @@ the parallelism inside the one render that runs.
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
 `PRODUCER_LOW_MEMORY_MODE` explicitly.
+
+Render Chrome keeps its sandbox on macOS, on Windows, and on Linux for a
+non-root user outside a container. It runs without one as root, in Docker,
+Podman or Kubernetes, on AWS Lambda and Cloud Run, and where Linux restricts
+unprivileged user namespaces (Ubuntu 23.10 and later). If a sandboxed Linux
+launch still fails, the render prints a warning and continues without the
+sandbox. Set `HYPERFRAMES_CHROME_SANDBOX=0` to always run without it, or `1` to
+require it: with `1`, a launch Chrome refuses fails instead of falling back.
+
+Chrome starts with only the environment variables it uses: the system path,
+home and temp dirs, locale and time zone, display and session bus, fonts,
+`LD_LIBRARY_PATH`, GPU driver settings (Mesa, Vulkan, NVIDIA), proxies and CA
+bundles, and the Windows and macOS system variables. Other variables, such as
+cloud credentials and API keys, stay with the CLI. If your Chrome needs a
+variable that is not passed through, list its name in
+`HYPERFRAMES_CHROME_ENV_PASSTHROUGH`, separated by commas, for example
+`HYPERFRAMES_CHROME_ENV_PASSTHROUGH=KRB5CCNAME,RADV_PERFTEST`.
 
 #### When a render times out
 
@@ -2655,6 +2683,20 @@ stops before uploading it and names the largest files left. Use `--dry-run`
 first to see which media would upload and the compressed size, without
 authenticating, uploading, or starting anything. If you are over, add only
 paths you have verified are unneeded to `.hyperframesignore`.
+
+A file outside the project folder that a composition points at is copied into
+the zip only if it is an image, video, audio, font, CSS or JS file, judged by
+its extension. Any other outside file (a Lottie `.json`, a `.pdf`, a file with
+no extension), one in a private location (env files, Git data, hidden, system
+and app-data folders), and one reached from a file that came in with an
+imported project are left out, with a warning naming each. To include such a
+file, move it into the project folder. Under `--json`, the result lists those
+as `left_out`, each with the `file` that points at it, the `reference` as
+written, its `path` from the project folder, the `reason` (`blocklisted`,
+`received` or `file_type`) and `levels_up`, how many folders above the project
+it is. A full run also prints each as a `{"event":"left_out",…}`
+line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
+and still hear about each one during the run.
 
 Render parameters mirror local `hyperframes render` where they overlap:
 

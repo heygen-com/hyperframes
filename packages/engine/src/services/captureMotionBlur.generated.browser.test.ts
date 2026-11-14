@@ -21,7 +21,7 @@ import {
 } from "./__fixtures__/motionBlur/generate.js";
 import { INVARIANTS } from "./__fixtures__/motionBlur/thresholds.js";
 
-const SEEDS = parseSeeds(process.env.HF_BLUR_SEEDS ?? "1,2,3");
+const SEEDS = parseSeeds(process.env.HF_BLUR_SEEDS ?? "1,2,3,63098");
 const FAILURES_FILE = process.env.HF_BLUR_FAILURES_FILE;
 const REQUIRED = process.env.HF_BLUR_REQUIRED === "1";
 

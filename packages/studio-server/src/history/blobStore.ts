@@ -7,18 +7,15 @@ import {
   open,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { atomicTempPath } from "@hyperframes/core/atomic-file";
-import {
-  isWindowsHold,
-  renameWithRetry,
-  renameWithRetryAsync,
-} from "@hyperframes/core/rename-retry";
+import { atomicTempPath, refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { isWindowsHold, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 import { stopServingAndClose } from "../helpers/servedFiles.js";
 
 /** File contents stored once by sha256, text and binary alike. */
@@ -105,14 +102,19 @@ async function cloneOrCopy(
   hash: string,
   beforeReplace?: () => void,
 ): Promise<void> {
+  refuseReadOnly(to);
   await mkdir(dirname(to), { recursive: true });
   const temp = atomicTempPath(to);
   try {
     await copyFile(from, temp, constants.COPYFILE_FICLONE);
     await stopServingAndClose(to);
-    beforeReplace?.();
     try {
-      renameWithRetry(temp, to);
+      await renameWithRetryAsync(temp, to, {
+        rename: async (from, to) => {
+          beforeReplace?.();
+          await rename(from, to);
+        },
+      });
     } catch (error) {
       if (!isWindowsHold(error)) throw error;
       await writeInPlace(temp, to, hash);

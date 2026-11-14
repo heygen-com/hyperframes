@@ -32,8 +32,10 @@ import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
+import { servedPath } from "./servedPath.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import { refusesOutsideLink } from "../utils/paths.js";
 
 const readFileAsync = promisify(readFile);
 
@@ -958,35 +960,25 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
+  const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
-    const relativePath = requestPath
-      .replace(/^\//, "")
-      .split("/")
-      .map((seg) => {
-        try {
-          return decodeURIComponent(seg);
-        } catch {
-          return seg;
-        }
-      })
-      .join("/");
+    const relativePath = servedPath(requestPath);
 
-    // Resolve against compiledDir first (preferred — overrides project files
-    // for compositions emitted by the build), then projectDir as fallback.
-    // Each candidate is rejected if `..` segments push it outside the
-    // intended root: `path.join` normalizes traversal but does not enforce
-    // containment, so a request like `GET /../etc/passwd` would otherwise
-    // be served straight off the filesystem. compiledDir stays lexical: it
-    // links extracted frame directories in from the work directory.
+    // compiledDir (the build's output) wins over projectDir. A candidate `..` pushes outside its root is
+    // rejected: `path.join` does not enforce containment, so `GET /../etc/passwd` would be served.
+    // compiledDir stays lexical: it links extracted frame directories in from the work directory.
     let file: ReturnType<typeof openRegularFile> = null;
     for (const root of compiledDir ? [compiledDir, projectDir] : [projectDir]) {
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
-      if (isPathInside(candidate, root, { resolveSymlinks })) file = openRegularFile(candidate);
+      if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
+      const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
+      if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
+      file = openRegularFile(candidate);
       if (file) break;
     }
 

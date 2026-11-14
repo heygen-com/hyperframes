@@ -25,8 +25,17 @@ import { writeProjectLink } from "./projectLink.js";
 import {
   isPrivateCompositionFile,
   isPrivateOutsideFile,
+  linksOutside,
   linksToPrivateOutsideFile,
+  receivedFiles,
 } from "./privateProjectFile.js";
+import {
+  leftOutReference,
+  leftOutWarning,
+  type LeftOutReason,
+  type OnLeftOut,
+} from "./leftOutReference.js";
+import { isCopiedOutsideFileType } from "./outsideFileType.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -396,7 +405,8 @@ interface ExternalAssetContext {
   externalMap: Map<string, string>;
   usedArchivePaths: Set<string>;
   leftOut: Set<string>;
-  onLeftOut?: (warning: string) => void;
+  onLeftOut?: OnLeftOut;
+  received: (path: string) => boolean;
 }
 
 function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
@@ -435,6 +445,7 @@ function includeReferencedProjectFile(
   resolvedPath: string,
   rawPath: string,
   requireOnDisk: boolean,
+  entryPath: string,
 ): void {
   const fromRoot = resolve(ctx.absProjectDir, rawPath);
   for (const candidate of [resolvedPath, fromRoot]) {
@@ -443,6 +454,9 @@ function includeReferencedProjectFile(
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
     if (staysOut(ctx, rel, absPath)) return;
     if (!existsSync(absPath)) continue;
+    if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) {
+      return leaveOut(ctx, entryPath, rawPath, absPath, "received");
+    }
     if (statSync(absPath).isFile()) {
       ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     }
@@ -458,11 +472,20 @@ const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
   encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
 
-function leaveOut(ctx: ExternalAssetContext, entryPath: string, rawPath: string): void {
-  const warning = `${entryPath} references ${rawPath}, which is outside the project in a private location; it was left out of the upload.`;
+function leaveOut(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+  reason: LeftOutReason = "blocklisted",
+): void {
+  const warning = leftOutWarning(entryPath, rawPath, reason);
   if (ctx.leftOut.has(warning)) return;
   ctx.leftOut.add(warning);
-  ctx.onLeftOut?.(warning);
+  ctx.onLeftOut?.(
+    warning,
+    leftOutReference(ctx.absProjectDir, entryPath, rawPath, absPath, reason),
+  );
 }
 
 function archiveTargetOf(
@@ -472,13 +495,21 @@ function archiveTargetOf(
   options: { entryPath: string; requireOnDisk: boolean; filesystemPath: boolean },
 ): string | null | undefined {
   if (isPathInside(absPath, ctx.absProjectDir)) {
-    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk);
+    includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk, options.entryPath);
     return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
   }
   try {
     if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
+    if (ctx.received(options.entryPath)) {
+      leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
+      return undefined;
+    }
     if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) {
-      leaveOut(ctx, options.entryPath, rawPath);
+      leaveOut(ctx, options.entryPath, rawPath, absPath);
+      return undefined;
+    }
+    if (!isCopiedOutsideFileType(absPath)) {
+      leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
       return undefined;
     }
   } catch {
@@ -670,7 +701,7 @@ export function localizeExternalAssets(
   absProjectDir: string,
   fileContents: Map<string, StagedFile>,
   onDiskMinBytes = Infinity,
-  onLeftOut?: (warning: string) => void,
+  onLeftOut?: OnLeftOut,
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -680,6 +711,7 @@ export function localizeExternalAssets(
     usedArchivePaths: new Set(),
     leftOut: new Set(),
     onLeftOut,
+    received: receivedFiles(absProjectDir),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
@@ -703,7 +735,7 @@ export function localizeExternalAssets(
  */
 export function buildPublishFileMap(
   projectDir: string,
-  onLeftOut?: (warning: string) => void,
+  onLeftOut?: OnLeftOut,
 ): Map<string, Buffer> {
   return stagePublishFiles(projectDir, Infinity, onLeftOut) as Map<string, Buffer>;
 }
@@ -732,7 +764,7 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
 export function stagePublishFiles(
   projectDir: string,
   onDiskMinBytes: number,
-  onLeftOut?: (warning: string) => void,
+  onLeftOut?: OnLeftOut,
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
@@ -745,10 +777,20 @@ export function stagePublishFiles(
 
   const fileContents = new Map<string, StagedFile>();
   const diskPathOf = new Map<string, string>();
+  const received = receivedFiles(absProjectDir);
   for (const filePath of filePaths) {
-    if (linksToPrivateOutsideFile(absProjectDir, join(absProjectDir, filePath))) {
+    const absPath = join(absProjectDir, filePath);
+    const reason = linksToPrivateOutsideFile(absProjectDir, absPath)
+      ? "blocklisted"
+      : received(filePath) && linksOutside(absProjectDir, absPath)
+        ? "received"
+        : null;
+    if (reason) {
+      const why =
+        reason === "received" ? "and came in with an imported project" : "in a private location";
       onLeftOut?.(
-        `${filePath} links to a file outside the project in a private location; it was left out of the upload.`,
+        `${filePath} links to a file outside the project ${why}; it was left out of the upload.`,
+        leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
       continue;
     }
@@ -760,7 +802,7 @@ export function stagePublishFiles(
       );
     }
     diskPathOf.set(key, filePath);
-    fileContents.set(key, stageFile(join(absProjectDir, filePath), onDiskMinBytes));
+    fileContents.set(key, stageFile(absPath, onDiskMinBytes));
   }
 
   composeNamesInText(fileContents, filePaths);
@@ -812,7 +854,7 @@ export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArc
  */
 export function createPublishArchive(
   projectDir: string,
-  onLeftOut?: (warning: string) => void,
+  onLeftOut?: OnLeftOut,
 ): PublishArchiveResult {
   return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut));
 }

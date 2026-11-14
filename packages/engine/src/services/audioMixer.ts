@@ -1,4 +1,5 @@
 // fallow-ignore-file complexity code-duplication
+import { usableCpuCount } from "./systemMemory.js";
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
@@ -23,7 +24,6 @@ import {
 } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { describeFfmpegFailure, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
-import { cpus } from "node:os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { encodeAac } from "./aacEncode.js";
 import { audioSubprocessEvidence } from "./audioFailureDiagnostic.js";
@@ -210,7 +210,7 @@ function legacyFilterScriptOptionIsUnsupported(stderr: string): boolean {
  * than a piecewise-linear volume envelope needs.
  */
 // Caps the ffmpeg runs that prepare clips; all of a long mix's clips at once starved the host (200 clips, 200 ffmpeg).
-const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(cpus().length / 2)));
+const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(usableCpuCount() / 2)));
 // A clip read from a URL spends its time waiting on the network, so it needs no CPU-sized limit.
 const inRemotePrepareSlot = createConcurrencyLimit(16);
 

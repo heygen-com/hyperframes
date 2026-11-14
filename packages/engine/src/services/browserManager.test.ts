@@ -244,6 +244,17 @@ describe("BeginFrame capability probe", () => {
 describe("buildChromeArgs browser GPU mode", () => {
   const base = { width: 1920, height: 1080 };
 
+  // Windows ClearType otherwise paints red/blue fringes on glyph edges in every capture mode.
+  it.each(["beginframe", "screenshot", "drawelement"] as CaptureMode[])(
+    "always disables LCD text (%s)",
+    (captureMode) => {
+      expect(buildChromeArgs({ ...base, captureMode })).toContain("--disable-lcd-text");
+      expect(buildChromeArgs({ ...base, captureMode, platform: "win32" })).toContain(
+        "--disable-lcd-text",
+      );
+    },
+  );
+
   it("uses SwiftShader software GL by default for reproducible local renders", () => {
     const args = buildChromeArgs(base);
     expect(args).toContain("--enable-features=CanvasDrawElement");
@@ -270,6 +281,22 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(
       buildChromeArgs({ ...base, captureMode, platform: "linux" }, { browserGpuMode: "hardware" }),
     ).not.toContain("--disable-gpu-compositing");
+  });
+
+  // HF#7111: partial raster makes a frame's pixels depend on the frames drawn before it.
+  it.each(["software", "hardware"] as const)(
+    "disables partial raster for %s screenshot capture",
+    (browserGpuMode) => {
+      expect(buildChromeArgs({ ...base, captureMode: "screenshot" }, { browserGpuMode })).toContain(
+        "--disable-partial-raster",
+      );
+    },
+  );
+
+  it("leaves partial raster alone under BeginFrame control", () => {
+    expect(buildChromeArgs({ ...base, captureMode: "beginframe" })).not.toContain(
+      "--disable-partial-raster",
+    );
   });
 
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
@@ -1856,5 +1883,9 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
 
     expect(result.captureMode).toBe("screenshot");
     expect(launch).toHaveBeenCalledTimes(3);
+    // HF#7111: this browser captures by screenshot, though its args were built for BeginFrame.
+    const fallbackArgs = launch.mock.lastCall?.[0]?.args;
+    expect(fallbackArgs).toContain("--disable-partial-raster");
+    expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
   });
 });

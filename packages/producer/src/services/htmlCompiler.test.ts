@@ -791,6 +791,21 @@ describe("detectRenderModeHints", () => {
     expect(detectRenderModeHints(html, "off").reasons).toEqual([]);
   });
 
+  it("detects html-in-canvas API via the content=drawable canvas of Chrome 157+", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="glass-canvas" content="drawable" width="1920" height="1080">
+      <div class="panel" drawable>Glass content</div>
+    </canvas>
+  </div>
+</body></html>`;
+
+    expect(detectRenderModeHints(html).reasons.map((reason) => reason.code)).toContain(
+      "htmlInCanvas",
+    );
+  });
+
   it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
     const html = `<!DOCTYPE html>
 <html><body>

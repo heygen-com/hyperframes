@@ -185,6 +185,7 @@ import {
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
+import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
 import { shouldWindowVideoFrames, trackSegmentFramePeak } from "./render/videoFrameWindow.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
@@ -3435,6 +3436,13 @@ async function executeRenderPipeline(input: {
     );
     const subTimelineWaitMemo: SubTimelineWaitMemo = {};
     const staticDedupMemo: StaticDedupMemo = {};
+    // Only a video larger than the canvas can be extracted smaller; the probe page then measures where it is drawn.
+    const largerThanCanvas = await oversizedVideos(
+      composition.videos,
+      projectDir,
+      join(workDir, "compiled"),
+      { width: outputWidth, height: outputHeight },
+    );
     const probeResult = await observeRenderStage(
       observability,
       "browser_probe",
@@ -3443,6 +3451,7 @@ async function executeRenderPipeline(input: {
         runProbeStage({
           projectDir,
           workDir,
+          measuresShownBoxes: largerThanCanvas.length > 0,
           job,
           cfg,
           forceScreenshot: captureForceScreenshot,
@@ -3468,6 +3477,11 @@ async function executeRenderPipeline(input: {
     compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
+    // Before the video layer may close the probe page; no box means full size, as before.
+    const shownBoxes =
+      largerThanCanvas.length > 0 && probeSession?.isInitialized
+        ? await measureLocalShownBoxes(probeSession.page, largerThanCanvas, job.config.fps, log)
+        : undefined;
     job.strictVariablesChecked = probeResult.strictVariablesChecked;
     lastBrowserConsole = probeResult.lastBrowserConsole;
     let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
@@ -3605,6 +3619,7 @@ async function executeRenderPipeline(input: {
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
           deferRangeExtraction: windowVideoFrames ? true : undefined,
+          shownBoxes,
           onProgress,
         }),
     );
@@ -3904,6 +3919,7 @@ async function executeRenderPipeline(input: {
           cfg,
           injectorOptions: frameCacheOptions(cfg, workerCount),
           abortSignal: executionSignal,
+          shownBoxes,
         }),
         workDir,
         (bytes) => updateCaptureObservability({ videoFrameWindowPeakBytes: bytes }),
@@ -3924,6 +3940,7 @@ async function executeRenderPipeline(input: {
         extractAllDeferredFrames(extracted, {
           fps: job.config.fps,
           cfg,
+          shownBoxes,
           signal: executionSignal,
           maxTransientRetries: resolveVideoExtractionPolicy().maxTransientRetries,
           onProgress: (done, total) => reportExtractProgress(job, done, total, onProgress),

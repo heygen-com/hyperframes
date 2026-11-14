@@ -57,6 +57,15 @@ describe("requestFreezeFrame", () => {
       requestFreezeFrame({ projectId: "p", path: "index.html", element, playhead: 7 }),
     ).rejects.toThrow("Move the playhead inside a video clip to freeze");
   });
+
+  it("names the file and why when the file is read-only", async () => {
+    stubFetch({ status: 403, body: { error: "permission denied", why: "permission" } });
+    await expect(
+      requestFreezeFrame({ projectId: "p", path: "scenes/intro.html", element, playhead: 7 }),
+    ).rejects.toThrow(
+      "intro.html can't be changed: it is read-only or protected. Check its permissions, then try again.",
+    );
+  });
 });
 
 describe("useFreezeFrame", () => {

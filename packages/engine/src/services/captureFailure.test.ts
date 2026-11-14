@@ -25,6 +25,17 @@ describe("classifyCaptureFailure", () => {
     ],
     // The timed-out variant of the same call stays protocol_timeout (checked first).
     ["Protocol error (Page.captureScreenshot): waiting for debugger timed out", "protocol_timeout"],
+    // A full disk and a struggling browser are the host's failure, never the composition's.
+    ["The disk filled up while video frames were extracted", "io"],
+    [
+      "[Parallel] Capture failed: Worker 0: net::ERR_INSUFFICIENT_RESOURCES at http://localhost:63145/index.html",
+      "transient_browser",
+    ],
+    [
+      "[FrameCapture] window.__hf not ready after 45000ms. Page must expose window.__hf = { duration, seek }.\nState: __hf=true, seek=true, player=true, renderReady=true, duration=241.5",
+      "transient_browser",
+    ],
+    ["something no rule names", "unknown"],
   ] as const)("classifies %s as %s", (message, kind) => {
     expect(classifyCaptureFailure(new Error(message)).kind).toBe(kind);
   });
@@ -81,20 +92,23 @@ describe("classifyCaptureFailure", () => {
       // the message alone must still classify.
       expect(classifyCaptureFailure(new Error(`[Parallel] write ${code}`)).kind).toBe("io");
     }
-    expect(classifyCaptureFailure(new Error("write to EPIPEline")).kind).toBe("authoring");
+    expect(classifyCaptureFailure(new Error("write to EPIPEline")).kind).toBe("unknown");
   });
 
   it("classifies repeated operation text in linear time", () => {
     const repeatedCopy = "copy".repeat(25_000);
 
-    expect(classifyCaptureFailure(new Error(repeatedCopy)).kind).toBe("authoring");
+    expect(classifyCaptureFailure(new Error(repeatedCopy)).kind).toBe("unknown");
     expect(classifyCaptureFailure(new Error(`${repeatedCopy} failed`)).kind).toBe("io");
-    expect(classifyCaptureFailure(new Error("copy\nfailed")).kind).toBe("authoring");
+    expect(classifyCaptureFailure(new Error("copy\nfailed")).kind).toBe("unknown");
   });
 
   it("marks structural failures fatal but leaves retryable failures non-fatal", () => {
     expect(
       isFatalCaptureFailure(new CaptureFailure({ kind: "authoring", message: "bad source" })),
+    ).toBe(true);
+    expect(
+      isFatalCaptureFailure(new CaptureFailure({ kind: "unknown", message: "unnamed failure" })),
     ).toBe(true);
     expect(
       isFatalCaptureFailure(

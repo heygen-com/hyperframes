@@ -2,6 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import {
   inAgentSandbox,
   isOneProcessOverPipe,
+  launchWithChromeSandboxFallback,
   machServiceDenied,
   oneProcessOverPipe,
   pipeLaunchClosedOnMac,
@@ -10,6 +11,7 @@ import {
 import { explainChromeLaunchFailure } from "@hyperframes/engine/chrome-startup";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
@@ -108,19 +110,23 @@ export async function launchManagedBrowser(
   { diagnose = true }: { diagnose?: boolean } = {},
 ): Promise<Browser> {
   const sandboxed = isOneProcessOverPipe(options) || inAgentSandbox();
+  const prepared = sandboxed ? oneProcessOverPipe(options) : options;
+  let attempted = prepared;
   try {
-    return await launchOwnedBrowser(puppeteer, sandboxed ? oneProcessOverPipe(options) : options);
+    return await launchWithChromeSandboxFallback(prepared.args ?? [], (args) => {
+      attempted = { ...prepared, args };
+      return launchOwnedBrowser(puppeteer, attempted);
+    });
   } catch (error) {
     const unnamedSeatbelt =
       !sandboxed &&
       (machServiceDenied(normalizeErrorMessage(error)) || pipeLaunchClosedOnMac(error));
     if (!unnamedSeatbelt)
-      throw await withStartupDiagnosis(withRemediation(error), puppeteer, options, diagnose);
-    return launchOwnedBrowser(puppeteer, oneProcessOverPipe(options)).catch(
-      async (retryError: unknown) => {
-        throw await withStartupDiagnosis(withRemediation(retryError), puppeteer, options, diagnose);
-      },
-    );
+      throw await withStartupDiagnosis(withRemediation(error), puppeteer, attempted, diagnose);
+    const retry = oneProcessOverPipe(options);
+    return launchOwnedBrowser(puppeteer, retry).catch(async (retryError: unknown) => {
+      throw await withStartupDiagnosis(withRemediation(retryError), puppeteer, retry, diagnose);
+    });
   }
 }
 
@@ -142,7 +148,10 @@ async function withStartupDiagnosis(
   const abort = new AbortController();
   diagnosing.add(abort);
   try {
-    return await explainChromeLaunchFailure(error, options.executablePath, args, abort.signal);
+    return await explainChromeLaunchFailure(error, options.executablePath, args, {
+      signal: abort.signal,
+      env: options.env,
+    });
   } finally {
     diagnosing.delete(abort);
   }
@@ -170,6 +179,7 @@ async function launchOwnedBrowser(
     puppeteer.launch({
       ...options,
       args: withHyperframesBrowserMarker(options.args),
+      env: buildChromeLaunchEnv(options.env),
       pipe: true,
       signal,
       handleSIGINT: false,

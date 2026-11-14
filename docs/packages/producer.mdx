@@ -192,6 +192,13 @@ For larger workloads, the `@hyperframes/producer/distributed` entry exposes the
 three rendering activities—`plan`, `renderChunk`, and `assemble`. Your
 orchestrator remains responsible for dispatch, retries, storage, and networking.
 
+A service that renders projects from other people should set
+`PRODUCER_RESTRICT_PAGE_NETWORK=true`. The render page can then reach only its own
+project server and public addresses, checked by host and by every address a name
+resolves to: the same rule asset downloads follow. A refused request fails like
+any other failed asset and shows in the render's browser diagnostics. Leave it
+unset for local renders that load assets from your own machine or network.
+
 ## Related topics
 
 <CardGroup cols={2}>

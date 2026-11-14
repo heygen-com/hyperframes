@@ -109,6 +109,7 @@ import {
   commandWordIndex,
   measureProbeShortcutArgv,
   openShortcutArgv,
+  registryAliasArgv,
 } from "./utils/projectShortcut.js";
 
 registerRunningCli();
@@ -199,7 +200,7 @@ const commandLoaders = {
 // `hyperframes <dir>` is `hyperframes open <dir>`; every later read of the command sees `open`.
 process.argv = [
   ...process.argv.slice(0, 2),
-  ...openShortcutArgv(argv, new Set(Object.keys(commandLoaders))),
+  ...registryAliasArgv(openShortcutArgv(argv, new Set(Object.keys(commandLoaders)))),
 ];
 argv = process.argv.slice(2);
 

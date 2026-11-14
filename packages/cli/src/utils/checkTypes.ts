@@ -11,6 +11,7 @@ import type { HdrAutoPromotion } from "@hyperframes/engine";
 import type { ComponentReport } from "@hyperframes/inspector/live";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import type { CheckPhase } from "./checkDeadline.js";
+import type { SafeZone } from "./safeZones.js";
 
 export interface CheckOptions {
   samples: number;
@@ -31,6 +32,7 @@ export interface CheckOptions {
   findingFrames?: boolean;
   inspect?: boolean;
   captionZone?: CaptionZoneOptions;
+  safeZones?: SafeZone[];
   frameCheck?: FrameCheckOptions;
   /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
   layout?: LayoutOptions;
@@ -135,6 +137,7 @@ export interface ContrastCapture {
 export interface GeometryCandidateRequest {
   text: boolean;
   media: boolean;
+  blocks: boolean;
   tolerance: number;
 }
 
@@ -172,7 +175,7 @@ export interface CheckFindingInspection {
 }
 
 export interface CheckGeometryCandidate extends CheckAnchor {
-  kind: "text" | "media";
+  kind: "text" | "media" | "block";
   tag: string;
   text: string;
   rect: LayoutRect;

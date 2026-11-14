@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -172,6 +173,22 @@ describe("freeze-frame route", () => {
     expect(still).not.toBe("");
     expect(freezeFiles(dir)).toEqual([]);
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "removes the still it extracted when the write throws, as for a read-only page",
+    async () => {
+      const { dir, post } = setup(pngWriter([]));
+      chmodSync(join(dir, "index.html"), 0o444);
+      const res = await post({
+        path: "index.html",
+        expectedVersion: fileContentVersion(html),
+        target: { id: "talk" },
+        playhead: 2.5,
+      });
+      expect(res.status).toBe(500);
+      expect(freezeFiles(dir)).toEqual([]);
+    },
+  );
 
   it("keeps a traversal clip id inside assets/freeze, for the ffmpeg output and the still's src", async () => {
     const evil = html.replace('id="talk"', 'id="../../../../outside/frame"');

@@ -36,6 +36,7 @@
   "src/services/htmlCompiler.mediaType.test.ts",
   "src/services/htmlCompiler.naturalDuration.test.ts",
   "src/services/htmlCompiler.probeCount.test.ts",
+  "src/services/htmlCompiler.remoteBoundMedia.test.ts",
   "src/services/htmlCompiler.variableMedia.test.ts",
   "src/services/render/audioDeliveryLimit.integration.test.ts",
   "src/services/render/audioPadTrim.integration.test.ts",
@@ -65,5 +66,6 @@
   "src/services/distributed/referenceBackground.integration.test.ts",
   "src/services/render/planReferenceBackground.polling.test.ts",
   "src/services/render/deferredVideoFrames.integration.test.ts",
-  "src/services/render/stages/extractVideosStage.integration.test.ts"
+  "src/services/render/stages/extractVideosStage.integration.test.ts",
+  "src/services/render/videoShownBoxes.integration.test.ts"
 ]

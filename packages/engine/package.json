@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/engine",
-  "version": "0.9.38",
+  "version": "0.9.47",
   "description": "Seekable web page to video rendering engine (Puppeteer + FFmpeg)",
   "repository": {
     "type": "git",
@@ -105,20 +105,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.5",
+    "@hono/node-server": "^2.1.6",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
-    "hono": "^4.6.0",
+    "hono": "^4.13.16",
     "linkedom": "^0.18.12",
-    "puppeteer": "~25.11.0",
-    "puppeteer-core": "^25.11.0",
-    "undici": "7.25.0"
+    "puppeteer": "~25.13.0",
+    "puppeteer-core": "^25.13.0",
+    "undici": "7.30.1"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "@webgpu/types": "^0.1.69",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "engines": {
     "node": ">=22"

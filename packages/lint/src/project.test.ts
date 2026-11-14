@@ -1307,6 +1307,23 @@ describe("audio-aware project rules", () => {
       expect(codes).toContain("duplicate_audio_track");
     });
 
+    it("says both clips still play, since the track index only picks the Studio lane", async () => {
+      const sfx = (id: string, start: string, duration: string) =>
+        `<audio id="${id}" src="${id}.wav" data-start="${start}" data-duration="${duration}" data-track-index="6"></audio>`;
+      const project = makeProject(
+        composition(sfx("whoosh", "5.13", "0.7") + sfx("land", "5.79", "0.34")),
+      );
+      const { results } = await lintProject(project);
+      const finding = results
+        .flatMap((result) => result.result.findings)
+        .find((f) => f.code === "duplicate_audio_track");
+      expect(finding?.message).toContain("whoosh.wav at 5.13-5.83s and land.wav at 5.79-6.13s");
+      expect(finding?.message).toContain("Both play at once whatever their track");
+      expect(finding?.fixHint).toContain(
+        "give one its own data-track-index; the mix does not change",
+      );
+    });
+
     it("stays quiet when one of the overlapping videos is muted", async () => {
       const codes = await codesFor(
         composition(video('data-has-audio="true"', 0) + video("muted", 2)),

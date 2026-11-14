@@ -38,6 +38,7 @@ import {
   type UnresolvedElement,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
+import { CAPTURE_CANVAS_SELECTOR } from "@hyperframes/core/html-in-canvas";
 import { readPlaybackRate } from "@hyperframes/parsers/media-duration";
 import { resolveRateSpec } from "@hyperframes/core/speed-ramp";
 import { gsapCdnDist, normalizeGsapBaseUrl } from "@hyperframes/core/gsap-cdn";
@@ -79,7 +80,14 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { escapesAssetRoot, isPathInside, toExternalAssetKey } from "../utils/paths.js";
+import {
+  escapesAssetRoot,
+  isPathInside,
+  leftOutOfRender,
+  outsideAssetRefusal,
+  refusesOutsideLink,
+  toExternalAssetKey,
+} from "../utils/paths.js";
 import { collectHiddenVideoIds, collectRenderMedia } from "./renderMediaCollector.js";
 import {
   type VideoElement,
@@ -276,6 +284,10 @@ function assertSubCompositionsUsable(
       problems.push({ srcPath, detail: "it is outside the project folder" });
       continue;
     }
+    if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
+      problems.push({ srcPath, detail: "it is outside the project in a private location" });
+      continue;
+    }
     if (isPrivateCompositionFile(projectDir, filePath)) {
       problems.push({ srcPath, detail: "it is git metadata or an env file" });
       continue;
@@ -379,7 +391,7 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
   const reasons: RenderModeHint[] = [];
   const { document } = parseHTML(html);
 
-  if (document.querySelector("canvas[layoutsubtree]")) {
+  if (document.querySelector(CAPTURE_CANVAS_SELECTOR)) {
     reasons.push({
       code: "htmlInCanvas",
       message:
@@ -393,7 +405,7 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
     reasons.push({
       code: "captureMotionBlur",
       message:
-        'Detected capture motion blur (data-motion-blur="on"), which draws each frame with html-in-canvas; routed through screenshot capture mode.',
+        'Detected motion blur (data-motion-blur="on"), drawn per frame with an SVG filter or, on the capture tier, html-in-canvas; routed through screenshot capture mode.',
     });
   }
 
@@ -1402,9 +1414,12 @@ export async function inlineExternalScripts(html: string): Promise<string> {
 export function collectExternalAssets(
   html: string,
   projectDir: string,
+  log: ProducerLogger = defaultLogger,
+  file = "index.html",
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
+  const leftOut = new Set<string>();
 
   function processPath(rawPath: string): string | null {
     const trimmed = rawPath.trim();
@@ -1414,6 +1429,12 @@ export function collectExternalAssets(
       return null; // inside projectDir, file server handles this
     }
     if (!existsSync(absPath)) return null;
+    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    if (refusal) {
+      if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
+      leftOut.add(trimmed);
+      return null;
+    }
     // resolve() already canonicalises the path (no .. components remain);
     // toExternalAssetKey() produces a cross-platform relative key that
     // `path.join(compileDir, key)` cannot escape on any OS.
@@ -1576,13 +1597,31 @@ export async function localizeRemoteMediaSources(
       if (m[1]) urlSet.add(m[1]);
     }
   }
-  return downloadAndRewriteUrls(
+  const localized = await downloadAndRewriteUrls(
     urlSet,
     html,
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote media download failed",
     "Localized remote media source(s)",
   );
+  return { ...localized, html: dropBindingOnLocalizedMedia(localized.html) };
+}
+
+/**
+ * A bound element now holds the downloaded copy. Its `data-var-src` would make the browser set the
+ * link back, giving the clip a second name and its sound a second lane.
+ */
+function dropBindingOnLocalizedMedia(html: string): string {
+  if (!html.includes("data-var-src")) return html;
+  const { document } = parseHTML(html);
+  let changed = false;
+  for (const el of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
+    if (el.closest("[data-variable-values]")) continue;
+    if (!el.getAttribute("src")?.startsWith(`${REMOTE_MEDIA_SUBDIR}/`)) continue;
+    el.removeAttribute("data-var-src");
+    changed = true;
+  }
+  return changed ? document.toString() : html;
 }
 
 /**
@@ -1938,6 +1977,7 @@ async function embedLocalFontFaces(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
+  log: ProducerLogger = defaultLogger,
 ): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
   const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
@@ -1961,6 +2001,11 @@ async function embedLocalFontFaces(
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
+        // A project font that is a link leading outside obeys the same policy as the file server.
+        if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+          embeddedPaths.add(localPath);
+          continue;
+        }
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2146,6 +2191,11 @@ function bindVariableMediaSources(html: string, variables: Record<string, unknow
   }
   return changed ? document.toString() : html;
 }
+
+const entryFileName = (projectDir: string, htmlPath: string) =>
+  isPathInside(htmlPath, projectDir)
+    ? relative(projectDir, htmlPath).split(sep).join("/")
+    : basename(htmlPath);
 
 /**
  * Compile an HTML composition project into a single self-contained HTML string
@@ -2337,13 +2387,23 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
-  const embeddedHtml = await embedLocalFontFaces(htmlWithPreparedGifs, projectDir, assetRoot);
+  const embeddedHtml = await embedLocalFontFaces(
+    htmlWithPreparedGifs,
+    projectDir,
+    assetRoot,
+    options.log,
+  );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
   // These can't be served by the file server, so we map them to paths the
   // orchestrator will copy into the compiled output directory.
   const { html, externalAssets } = options.allowOutsideProjectAssets
-    ? collectExternalAssets(embeddedHtml, projectDir)
+    ? collectExternalAssets(
+        embeddedHtml,
+        projectDir,
+        options.log,
+        entryFileName(projectDir, htmlPath),
+      )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 
   for (const [relPath, absPath] of remoteMediaAssets) {
