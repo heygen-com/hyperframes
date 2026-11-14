@@ -39,12 +39,15 @@ import {
 import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
+  fpsToFfmpegArg,
+  parseFps,
   type CanvasResolution,
 } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
 import { describeUnresolvedFontUse } from "../../cloud/fontFailure.js";
 import { resolveDefaultFpsArg } from "../../utils/renderArgs.js";
+import { formatFpsParseError } from "../render/plan.js";
 import { resolveProject, type ProjectDir } from "../../utils/project.js";
 import { readProjectConfig } from "../../utils/projectConfig.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
@@ -77,7 +80,7 @@ import {
 } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { describeSwappedFonts, embedSystemFonts } from "../../cloud/fontPreflight.js";
-import { parseEnumFlag, parseIntFlag, parseNumericFlag } from "../../cloud/parsing.js";
+import { parseEnumFlag, parseNumericFlag } from "../../cloud/parsing.js";
 import {
   uploadAssetViaDirectUpload,
   uploadZipViaDirectUpload,
@@ -139,7 +142,9 @@ export default defineCommand({
     dir: { type: "positional", required: false, description: "Project directory (default: .)" },
     fps: {
       type: "string",
-      description: "Frames per second (1-240). Default: the composition's root data-fps, else 30.",
+      description:
+        "Frames per second: 1-240, or 24000/1001, 30000/1001 or 60000/1001 for 23.976, 29.97 or 59.94. " +
+        "Default: the composition's root data-fps, else 30.",
     },
     quality: { type: "string", description: "draft | standard | high (default: standard)" },
     format: { type: "string", description: "mp4 | webm | mov (default: mp4)" },
@@ -257,11 +262,7 @@ export default defineCommand({
     });
     validateDryRunSource(project, args["dry-run"] ?? false);
 
-    const fps = parseIntFlag(resolveCloudFpsArg(project, args.fps, args.composition), {
-      flag: "--fps",
-      min: 1,
-      max: 240,
-    });
+    const fps = parseCloudFps(resolveCloudFpsArg(project, args.fps, args.composition));
 
     // Aspect ratio is derived from the composition's authored dimensions: for
     // a local dir we parse the entry HTML and auto-detect, so the user rarely
@@ -812,9 +813,19 @@ export function resolveCloudFpsArg(
 ): string | undefined {
   if (source.kind !== "dir") return fps;
   const { dir } = resolveProject(source.dir);
-  const resolved = resolveDefaultFpsArg(fps, dir, resolvePath(dir, "index.html"), composition);
-  // The cloud API takes whole frame rates; a fractional data-fps (29.97) leaves it to the server.
-  return resolved !== undefined && /^\d+$/.test(resolved) ? resolved : fps;
+  return resolveDefaultFpsArg(fps, dir, resolvePath(dir, "index.html"), composition);
+}
+
+/** The rate as the API takes it: a whole number, or an exact fraction ("30000/1001") the server checks. */
+export function parseCloudFps(raw: string | undefined): CreateHyperframesRenderRequest["fps"] {
+  if (raw === undefined) return undefined;
+  const parsed = parseFps(raw);
+  if (!parsed.ok) {
+    errorBox("Invalid --fps", formatFpsParseError(raw, parsed.reason));
+    failUsage();
+  }
+  if (parsed.value.den === 1) return parsed.value.num;
+  return fpsToFfmpegArg(parsed.value) as CreateHyperframesRenderRequest["fps"];
 }
 
 export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSummary[]): void {
@@ -973,7 +984,7 @@ async function maybeUploadProject(
 
 interface SubmitOptions {
   projectInput: CreateHyperframesRenderRequest["project"];
-  fps: number | undefined;
+  fps: CreateHyperframesRenderRequest["fps"];
   quality: "draft" | "standard" | "high" | undefined;
   format: "mp4" | "webm" | "mov" | undefined;
   resolution: CreateHyperframesRenderRequest["resolution"] | undefined;
