@@ -188,11 +188,8 @@ export function clearParamLane(targets: readonly FxParamTarget[]): void {
   for (const target of targets) target.param.cancelScheduledValues(0);
 }
 
-/**
- * Stop an envelope, leaving the parameter wherever it currently sits.
- *
- * Held by hand: `cancelAndHoldAtTime` crashes the page in Chromium before 160 when the hold lands in a value curve.
- */
+/** Stop an envelope, leaving the parameter wherever it currently sits. Held by hand: `cancelAndHoldAtTime`
+ * crashes the page in Chromium before 160 when the hold lands in a value curve. */
 export function cancelParamLane(targets: readonly FxParamTarget[]): void {
   for (const target of targets) {
     // The value the envelope had reached, not the last one set, which would click.
