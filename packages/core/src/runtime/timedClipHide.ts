@@ -32,9 +32,17 @@ const hideHiddenClipContents = (clip: string) => {
 };
 
 export function showHiddenClips(only: (el: HTMLElement) => boolean = () => true): () => void {
-  return showClips(
+  const restoreClips = showClips(
     Array.from(document.querySelectorAll<HTMLElement>(`[${CLIP_HIDDEN_ATTR}]`)).filter(only),
   );
+  const sheet = document.querySelector(`style[${HIDE_ATTR}]`);
+  const sheetParent = sheet?.parentNode ?? null;
+  sheet?.remove();
+  return () => {
+    restoreClips();
+    const win = window as FirstPassWindow;
+    if (sheet && sheetParent && win.__hfFirstPassHidden) sheetParent.appendChild(sheet);
+  };
 }
 
 export function showClips(hidden: Array<Element & ElementCSSInlineStyle>): () => void {
