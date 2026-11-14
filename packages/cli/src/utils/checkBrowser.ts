@@ -1143,8 +1143,8 @@ export function createPageDriver(
     collectMotionFrame: (time, selectors, scopes) =>
       collectMotionFrame(page, time, selectors, scopes),
     anchorMotionIssues: (issues) => anchorLayoutIssues(page, issues),
-    collectContrast: (time, annotations, skipInMotion) =>
-      collectContrast(page, time, annotations, skipInMotion),
+    collectContrast: (time, annotations, skipInMotion, occludedSelectors) =>
+      collectContrast(page, time, annotations, skipInMotion, occludedSelectors),
     collectCraftFrame: (time) => collectCraftFrame(page, time),
     collectCraftFilm: () => collectCraftFilm(page),
   });
@@ -1744,10 +1744,11 @@ async function collectContrast(
   time: number,
   snapshotAnnotations?: CheckAnnotationBox[],
   skipInMotion = false,
+  occludedSelectors?: string[],
 ): Promise<ContrastCapture> {
   let prepared: PreparedContrast[] = [];
   try {
-    const candidates = await prepareContrast(page, time);
+    const candidates = await prepareContrast(page, time, occludedSelectors);
     const motion = skipInMotion ? await page.evaluate(readContrastMotion).catch(() => []) : [];
     prepared = parsePreparedContrast(candidates, motion);
     if (prepared.length === 0 && !snapshotAnnotations) return { entries: [] };
@@ -1881,72 +1882,82 @@ async function removeAnnotationOverlay(page: Page): Promise<void> {
   }, ANNOTATION_OVERLAY_ID);
 }
 
-async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
+async function prepareContrast(
+  page: Page,
+  time: number,
+  occludedSelectors?: string[],
+): Promise<unknown[]> {
   // Candidate-to-element provenance must be captured while the prepare restore list is live.
   // fallow-ignore-next-line complexity
-  return page.evaluate((sampleTime: number) => {
-    const prepare = Reflect.get(window, "__contrastAuditPrepare");
-    const candidates = typeof prepare === "function" ? Reflect.apply(prepare, window, []) : [];
-    if (!Array.isArray(candidates)) return [];
-    const restores = Reflect.get(window, "__contrastAuditRestores");
-    const restoreList = Array.isArray(restores) ? restores : [];
-    const escape = (value: string) =>
-      typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(value)
-        : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
-    const selectorFor = (element: Element | null, fallback: string): string => {
-      if (!element) return fallback;
-      if (element.id) return `#${escape(element.id)}`;
-      const parts: string[] = [];
-      for (
-        let current: Element | null = element;
-        current && current !== document.body;
-        current = current.parentElement
-      ) {
-        const tag = current.tagName.toLowerCase();
-        const siblings = current.parentElement
-          ? Array.from(current.parentElement.children).filter(
-              (item) => item.tagName === current?.tagName,
-            )
-          : [];
-        parts.push(
-          siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag,
-        );
-      }
-      return parts.reverse().join(" > ") || fallback;
-    };
-    // Part of the serialized evaluate body above; cannot delegate to Node helpers.
-    // fallow-ignore-next-line complexity
-    return candidates.map((candidate, index) => {
-      const restore = restoreList[index];
-      const candidateObject = typeof candidate === "object" && candidate !== null ? candidate : {};
-      const elementValue =
-        typeof restore === "object" && restore !== null ? Reflect.get(restore, "el") : null;
-      const element = elementValue instanceof Element ? elementValue : null;
-      const fallback = Reflect.get(candidateObject, "selector");
-      const selector = selectorFor(
-        element,
-        typeof fallback === "string" ? fallback : "[data-composition-id]",
-      );
-      const dataAttributes: Record<string, string> = {};
-      for (const attribute of Array.from(element?.attributes ?? [])) {
-        if (attribute.name.startsWith("data-")) dataAttributes[attribute.name] = attribute.value;
-      }
-      const source = element
-        ?.closest("[data-composition-file]")
-        ?.getAttribute("data-composition-file");
-      return {
-        candidate: { ...candidateObject, selector },
-        anchor: {
-          selector,
-          dataAttributes,
-          sourceFile: source || "index.html",
-          bbox: Reflect.get(candidateObject, "bbox"),
-          time: sampleTime,
-        },
+  return page.evaluate(
+    (sampleTime: number, occluded: string[] | undefined) => {
+      const prepare = Reflect.get(window, "__contrastAuditPrepare");
+      const candidates =
+        typeof prepare === "function" ? Reflect.apply(prepare, window, [occluded]) : [];
+      if (!Array.isArray(candidates)) return [];
+      const restores = Reflect.get(window, "__contrastAuditRestores");
+      const restoreList = Array.isArray(restores) ? restores : [];
+      const escape = (value: string) =>
+        typeof CSS !== "undefined" && typeof CSS.escape === "function"
+          ? CSS.escape(value)
+          : value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+      const selectorFor = (element: Element | null, fallback: string): string => {
+        if (!element) return fallback;
+        if (element.id) return `#${escape(element.id)}`;
+        const parts: string[] = [];
+        for (
+          let current: Element | null = element;
+          current && current !== document.body;
+          current = current.parentElement
+        ) {
+          const tag = current.tagName.toLowerCase();
+          const siblings = current.parentElement
+            ? Array.from(current.parentElement.children).filter(
+                (item) => item.tagName === current?.tagName,
+              )
+            : [];
+          parts.push(
+            siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag,
+          );
+        }
+        return parts.reverse().join(" > ") || fallback;
       };
-    });
-  }, time);
+      // Part of the serialized evaluate body above; cannot delegate to Node helpers.
+      // fallow-ignore-next-line complexity
+      return candidates.map((candidate, index) => {
+        const restore = restoreList[index];
+        const candidateObject =
+          typeof candidate === "object" && candidate !== null ? candidate : {};
+        const elementValue =
+          typeof restore === "object" && restore !== null ? Reflect.get(restore, "el") : null;
+        const element = elementValue instanceof Element ? elementValue : null;
+        const fallback = Reflect.get(candidateObject, "selector");
+        const selector = selectorFor(
+          element,
+          typeof fallback === "string" ? fallback : "[data-composition-id]",
+        );
+        const dataAttributes: Record<string, string> = {};
+        for (const attribute of Array.from(element?.attributes ?? [])) {
+          if (attribute.name.startsWith("data-")) dataAttributes[attribute.name] = attribute.value;
+        }
+        const source = element
+          ?.closest("[data-composition-file]")
+          ?.getAttribute("data-composition-file");
+        return {
+          candidate: { ...candidateObject, selector },
+          anchor: {
+            selector,
+            dataAttributes,
+            sourceFile: source || "index.html",
+            bbox: Reflect.get(candidateObject, "bbox"),
+            time: sampleTime,
+          },
+        };
+      });
+    },
+    time,
+    occludedSelectors,
+  );
 }
 
 interface TextRegion {

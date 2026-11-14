@@ -304,10 +304,16 @@ export interface CheckAuditDriver {
     livenessScopes: string[],
   ): Promise<MotionFrame>;
   anchorMotionIssues(issues: LayoutIssue[]): Promise<AnchoredLayoutIssue[]>;
+  /**
+   * occludedSelectors are the layout audit's text_occluded selectors at this
+   * sample time; the contrast audit leaves those elements out so it never
+   * measures a ratio against the opaque cover hiding them.
+   */
   collectContrast(
     time: number,
     snapshotAnnotations?: CheckAnnotationBox[],
     skipInMotion?: boolean,
+    occludedSelectors?: string[],
   ): Promise<ContrastCapture>;
   /** Craft section: text, stillness and paint at the current seek. A driver without it skips the section. */
   collectCraftFrame?(time: number): Promise<CraftFrame>;

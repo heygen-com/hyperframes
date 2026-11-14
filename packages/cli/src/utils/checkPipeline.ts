@@ -670,6 +670,18 @@ function craftEnabled(driver: CheckAuditDriver, options: CheckOptions): boolean 
   );
 }
 
+// Selectors the layout audit flagged as hidden beneath an opaque element at
+// this sample time. The contrast audit leaves them out: the occluded finding
+// already covers the text, and a ratio sampled inside its box would measure
+// the cover, not anything a viewer sees.
+function occludedTextSelectors(issuesAtTime: AnchoredLayoutIssue[]): string[] {
+  const selectors = new Set<string>();
+  for (const issue of issuesAtTime) {
+    if (issue.code === "text_occluded") selectors.add(issue.selector);
+  }
+  return [...selectors];
+}
+
 async function collectContrastAt(
   driver: CheckAuditDriver,
   options: CheckOptions,
@@ -679,11 +691,12 @@ async function collectContrastAt(
 ): Promise<void> {
   const contrastStart = Date.now();
   const annotations = options.snapshots ? annotationBoxesFrom(issuesAtTime) : undefined;
+  const occludedSelectors = occludedTextSelectors(issuesAtTime);
   const capture = options.skipContrastInMotion
-    ? await driver.collectContrast(time, annotations, true)
+    ? await driver.collectContrast(time, annotations, true, occludedSelectors)
     : options.snapshots
-      ? await driver.collectContrast(time, annotations)
-      : await driver.collectContrast(time);
+      ? await driver.collectContrast(time, annotations, undefined, occludedSelectors)
+      : await driver.collectContrast(time, undefined, undefined, occludedSelectors);
   collected.contrastMs += Date.now() - contrastStart;
   collected.contrastEntries.push(...capture.entries);
   if (capture.pngBase64) collected.screenshots.push({ time, pngBase64: capture.pngBase64 });
