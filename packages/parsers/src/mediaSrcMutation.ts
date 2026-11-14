@@ -200,10 +200,48 @@ function selectorFromDomLookup(
     return undefined;
   }
   const method = memberName(node.callee);
-  if (method !== "getElementById" && method !== "querySelector") return undefined;
+  if (method !== "getElementById" && method !== "querySelector" && method !== "querySelectorAll")
+    return undefined;
   const value = literalString(node.arguments[0]);
   if (!value) return undefined;
   return method === "getElementById" ? `#${value}` : value;
+}
+
+// A write target that is a loop variable over a querySelectorAll result
+// (`querySelectorAll(...).forEach((el) => { el.src = ... })` or
+// `for (const el of querySelectorAll(...)) { el.src = ... }`) resolves to the
+// iterated selector, so the write is traced like a direct lookup. A name bound
+// to something else in an inner scope keeps its own binding: only a bare
+// parameter (null initializer) falls through to the loop selector.
+function selectorFromLoopTarget(
+  node: acorn.Expression | acorn.Super | null | undefined,
+  ancestors: readonly acorn.AnyNode[],
+  scope: Scope,
+): string | undefined {
+  if (node?.type !== "Identifier") return undefined;
+  const binding = lookupBinding(node.name, scope);
+  if (binding?.initializer) return undefined;
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const ancestor = ancestors[i];
+    if (!ancestor) continue;
+    if (ancestor.type === "CallExpression" && ancestor.callee.type === "MemberExpression") {
+      if (memberName(ancestor.callee) !== "forEach") continue;
+      const callback = ancestor.arguments[0];
+      if (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression")
+        continue;
+      const param = callback.params[0];
+      if (param?.type !== "Identifier" || param.name !== node.name) continue;
+      return lookupSelector(ancestor.callee.object, scope);
+    }
+    if (ancestor.type === "ForOfStatement") {
+      const declaration = ancestor.left;
+      if (declaration.type !== "VariableDeclaration") continue;
+      const declarator = declaration.declarations[0];
+      if (declarator?.id.type !== "Identifier" || declarator.id.name !== node.name) continue;
+      return lookupSelector(ancestor.right, scope);
+    }
+  }
+  return undefined;
 }
 
 /** Find literal source writes whose target is a statically resolvable DOM lookup. */
@@ -220,7 +258,10 @@ export function extractMediaSrcMutations(script: string): MediaSrcMutation[] {
           memberName(node.left) !== "src"
         )
           return;
-        const selector = lookupSelector(node.left.object, scopeAt(ancestors));
+        const scope = scopeAt(ancestors);
+        const selector =
+          lookupSelector(node.left.object, scope) ??
+          selectorFromLoopTarget(node.left.object, ancestors, scope);
         if (!selector) return;
         mutations.push({
           selector,
@@ -232,7 +273,10 @@ export function extractMediaSrcMutations(script: string): MediaSrcMutation[] {
         if (node.callee.type !== "MemberExpression" || memberName(node.callee) !== "setAttribute")
           return;
         if (literalString(node.arguments[0])?.toLowerCase() !== "src") return;
-        const selector = lookupSelector(node.callee.object, scopeAt(ancestors));
+        const scope = scopeAt(ancestors);
+        const selector =
+          lookupSelector(node.callee.object, scope) ??
+          selectorFromLoopTarget(node.callee.object, ancestors, scope);
         if (!selector) return;
         mutations.push({
           selector,
