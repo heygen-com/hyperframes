@@ -1,5 +1,4 @@
 import { memo, useState, useCallback, useRef, useEffect } from "react";
-import { toastSurface } from "../StudioToast";
 import {
   trackStudioFeedback,
   trackStudioFeedbackShown,
@@ -213,7 +212,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
       }}
     >
       <div
-        className={`flex w-[min(340px,calc(100vw-48px))] flex-col gap-2.5 overflow-hidden rounded-2xl px-3.5 py-3 ${toastSurface(failed)}`}
+        className={`flex w-[min(340px,calc(100vw-48px))] flex-col gap-2.5 overflow-hidden rounded-2xl px-3.5 py-3 ${cardSurface(failed)}`}
       >
         <div className="flex items-start gap-3">
           <p
@@ -359,3 +358,7 @@ export const StudioFeedbackCard = memo(function StudioFeedbackCard() {
     </div>
   );
 });
+
+function cardSurface(isError: boolean): string {
+  return `border shadow-popover bg-raised ${isError ? "border-danger/40" : "border-border"}`;
+}

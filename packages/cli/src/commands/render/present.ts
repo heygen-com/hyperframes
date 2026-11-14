@@ -37,7 +37,7 @@ function presentRenderSummary(plan: RenderPlan): void {
     c.accent("\u25C6") + "  Rendering " + c.accent(nameLabel) + c.dim(" \u2192 " + plan.outputPath),
   );
   console.log(
-    c.dim(`   ${fpsToFfmpegArg(plan.fps)}fps \u00B7 ${plan.quality} \u00B7 ${workerLabel}`),
+    c.dim(`   ${fpsToFfmpegArg(plan.fps)}fps \u00B7 ${qualityLabel(plan)} \u00B7 ${workerLabel}`),
   );
   if (plan.outputResolution) {
     console.log(c.dim("   Output resolution: " + plan.outputResolution));
@@ -48,6 +48,12 @@ function presentRenderSummary(plan: RenderPlan): void {
   const gpuModes = formatGpuModes(plan);
   if (gpuModes) console.log(c.dim("   GPU: " + gpuModes));
   console.log("");
+}
+
+function qualityLabel(plan: Pick<RenderPlan, "qualityPreset" | "crf" | "videoBitrate">): string {
+  if (plan.crf !== undefined) return `${plan.qualityPreset} (CRF ${plan.crf})`;
+  if (plan.videoBitrate) return `${plan.qualityPreset} (${plan.videoBitrate})`;
+  return plan.qualityPreset;
 }
 
 /** The GPU line's accelerated modes, or undefined when neither is. */
