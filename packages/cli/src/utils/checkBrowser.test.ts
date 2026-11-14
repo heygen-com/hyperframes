@@ -1078,8 +1078,8 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
   );
 });
 
-// fails without the fix: check's own canvas reads made Chrome log GPU stalls, reported as the film's warnings.
-it("does not report Chrome's GPU stall notes for check's own pixel reads as the film's warnings", async () => {
+// fails without the narrowing: every GL driver Performance note was hidden, not only the ReadPixels stall.
+it("hides only the ReadPixels stall check's own reads cause, not the film's other GL driver notes", async () => {
   vi.spyOn(Date, "now").mockReturnValue(100);
   mountCanvasFixture();
   const page = fakePage();
@@ -1088,10 +1088,15 @@ it("does not report Chrome's GPU stall notes for check's own pixel reads as the 
     "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
   );
   const ordinaryWarning = fakeConsoleMessage("warn", "Optional caption font was not loaded");
+  const otherDriverNote = fakeConsoleMessage(
+    "warn",
+    "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Program undefined behavior warning",
+  );
   page.on = vi.fn(
     (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
       if (event === "console") {
         handler(stall);
+        handler(otherDriverNote);
         handler(ordinaryWarning);
       }
     },
@@ -1107,7 +1112,7 @@ it("does not report Chrome's GPU stall notes for check's own pixel reads as the 
 
   expect(
     result.runtimeFindings.filter(({ code }) => code === "console_warning").map((f) => f.message),
-  ).toEqual([ordinaryWarning.text()]);
+  ).toEqual([otherDriverNote.text(), ordinaryWarning.text()]);
 });
 
 describe("collectSeekClock", () => {
