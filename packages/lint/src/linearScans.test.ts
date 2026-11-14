@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   blockComments,
@@ -90,34 +91,50 @@ function pages(count: number): string[] {
   );
 }
 
+function disagreements(page: string): string[] {
+  const tracked = htmlTagTracker(page);
+  const checks: [string, unknown, unknown][] = [
+    [
+      "blockComments",
+      [...blockComments(page)].map((c) => [c.index, c.text]),
+      [...page.matchAll(PATTERNS.blockComment)].map((m) => [m.index, m[0]]),
+    ],
+    [
+      "replaceBlockComments",
+      replaceBlockComments(page, " "),
+      page.replace(PATTERNS.blockComment, " "),
+    ],
+    ["hasInvalidScriptClose", hasInvalidScriptClose(page), PATTERNS.invalidScriptClose.test(page)],
+    ["hasScriptWithSrc", hasScriptWithSrc(page), PATTERNS.scriptWithSrc.test(page)],
+    [
+      "emptyStyleBlocks",
+      emptyStyleBlocks(page),
+      page.replace(PATTERNS.styleBlock, "<style></style>"),
+    ],
+    [
+      "styleTagTokens",
+      styleTagTokens(page),
+      [...page.matchAll(PATTERNS.styleTokens)].map((m) => m[0]).filter((t) => !/^<script/i.test(t)),
+    ],
+    [
+      "protectedBlockRanges",
+      protectedBlockRanges(page),
+      [...page.matchAll(PATTERNS.protectedBlock)].map((m) => ({
+        start: m.index,
+        end: m.index + m[0].length,
+      })),
+    ],
+  ];
+  for (let i = 0; i <= page.length; i += 3)
+    checks.push([`htmlTagTracker@${i}`, tracked(i), insideHtmlTag(page, i)]);
+  return checks
+    .filter(([, actual, expected]) => !isDeepStrictEqual(actual, expected))
+    .map(([name]) => `${name}: ${JSON.stringify(page)}`);
+}
+
 describe("linear scans", () => {
   it("answer every page exactly as the regexes they replace", () => {
-    for (const page of pages(20_000)) {
-      expect(
-        [...blockComments(page)].map((c) => [c.index, c.text]),
-        page,
-      ).toEqual([...page.matchAll(PATTERNS.blockComment)].map((m) => [m.index, m[0]]));
-      expect(replaceBlockComments(page, " "), page).toBe(page.replace(PATTERNS.blockComment, " "));
-      expect(hasInvalidScriptClose(page), page).toBe(PATTERNS.invalidScriptClose.test(page));
-      expect(hasScriptWithSrc(page), page).toBe(PATTERNS.scriptWithSrc.test(page));
-      expect(emptyStyleBlocks(page), page).toBe(
-        page.replace(PATTERNS.styleBlock, "<style></style>"),
-      );
-      expect(styleTagTokens(page), page).toEqual(
-        [...page.matchAll(PATTERNS.styleTokens)]
-          .map((m) => m[0])
-          .filter((t) => !/^<script/i.test(t)),
-      );
-      expect(protectedBlockRanges(page), page).toEqual(
-        [...page.matchAll(PATTERNS.protectedBlock)].map((m) => ({
-          start: m.index,
-          end: m.index + m[0].length,
-        })),
-      );
-      const tracked = htmlTagTracker(page);
-      for (let i = 0; i <= page.length; i += 3)
-        expect(tracked(i), page).toBe(insideHtmlTag(page, i));
-    }
+    expect(pages(20_000).flatMap(disagreements)).toEqual([]);
   });
 
   // At 4 MB each regex above runs for minutes or more on these pages; the scans take milliseconds.
