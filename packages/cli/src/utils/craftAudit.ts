@@ -392,14 +392,22 @@ async function refineWindow(
   return window;
 }
 
+/** A candidate that still warns after its window is re-measured. */
+interface FailingLine {
+  candidate: LineCandidate;
+  window: LineWindow;
+  held: number;
+  error: number;
+}
+
 export async function detectLineUnread(
   frames: CraftFrame[],
   duration: number,
   canvas: Canvas,
   probe?: CraftProbe,
 ): Promise<CraftFinding[]> {
-  const findings: CraftFinding[] = [];
   const candidates = lineCandidates(frames, duration, canvas);
+  const failing: FailingLine[] = [];
   for (const [index, candidate] of candidates.entries()) {
     const window =
       probe && index < T.maxRefinedLines
@@ -408,9 +416,79 @@ export async function detectLineUnread(
     const held = windowSeconds(window);
     if (held >= candidate.floor - T.measureToleranceSec) continue;
     const error = Math.max(window.startIn - window.startOut, window.endOut - window.endIn) / 2;
-    findings.push(lineUnreadFinding(candidate, window, held, error, frames));
+    failing.push({ candidate, window, held, error });
+  }
+  const cards = groupClosingCards(
+    failing.filter((entry) => entry.candidate.finalLine),
+    sampleStep(frames),
+  );
+  const cardOf = new Map<FailingLine, FailingLine[]>();
+  for (const group of cards) for (const entry of group) cardOf.set(entry, group);
+  const findings: CraftFinding[] = [];
+  for (const entry of failing) {
+    const group = cardOf.get(entry);
+    if (!group || group.length === 1) {
+      findings.push(
+        lineUnreadFinding(entry.candidate, entry.window, entry.held, entry.error, frames),
+      );
+      continue;
+    }
+    if (group[0] !== entry) continue;
+    findings.push(closingCardFinding(group, frames));
   }
   return findings;
+}
+
+/** Final lines that start together are one closing card; a line that starts later keeps its own finding. */
+function groupClosingCards(failing: FailingLine[], step: number): FailingLine[][] {
+  const sorted = [...failing].sort(
+    (a, b) =>
+      a.window.startIn - b.window.startIn ||
+      a.candidate.track.selector.localeCompare(b.candidate.track.selector),
+  );
+  const groups: FailingLine[][] = [];
+  for (const entry of sorted) {
+    const first = groups[groups.length - 1]?.[0];
+    if (first && entry.window.startIn - first.window.startIn <= step) {
+      groups[groups.length - 1]?.push(entry);
+    } else {
+      groups.push([entry]);
+    }
+  }
+  return groups;
+}
+
+function closingCardFinding(group: FailingLine[], frames: CraftFrame[]): CraftFinding {
+  const anchor = [...group].sort(
+    (a, b) =>
+      b.candidate.floor - a.candidate.floor ||
+      b.candidate.words - a.candidate.words ||
+      a.window.startIn - b.window.startIn ||
+      a.candidate.track.selector.localeCompare(b.candidate.track.selector),
+  )[0];
+  if (!anchor) throw new Error("closing card group is empty");
+  const { candidate, window, held, error } = anchor;
+  const measured = `${seconds(held)} (±${Math.max(0.01, error).toFixed(2)} s)`;
+  const elements = [...group]
+    .sort(
+      (a, b) =>
+        b.candidate.floor - a.candidate.floor ||
+        a.window.startIn - b.window.startIn ||
+        a.candidate.track.selector.localeCompare(b.candidate.track.selector),
+    )
+    .map((entry) => ({
+      selector: entry.candidate.track.selector,
+      text: entry.candidate.text,
+      words: entry.candidate.words,
+      time: round(entry.window.startIn),
+      seconds: round(entry.held),
+    }));
+  const finding = lineUnreadFinding(candidate, window, held, error, frames);
+  return {
+    ...finding,
+    message: `The film's closing card (${group.length} lines) is on screen ${measured}, under the ${seconds(candidate.floor)} its longest line ${quote(candidate.text, 60)} needs: hold it about 0.5 s + 0.3 s a word and at least 2 s before the film ends; see references/motion.md.`,
+    elements,
+  };
 }
 
 function lineUnreadFinding(
