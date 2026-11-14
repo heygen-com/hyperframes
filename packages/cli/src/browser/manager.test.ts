@@ -1620,6 +1620,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
       expect(caught.message).toContain(rawMsg);
       expect(caught.message).toContain("HYPERFRAMES_BROWSER_PATH");
       expect(caught.message).toContain("No Chrome or Chromium was found on this machine");
+      expect(caught.message).toContain("hyperframes doctor");
       expect(caught.message).not.toContain('export HYPERFRAMES_BROWSER_PATH="');
       expect(caught.message).not.toContain("set HYPERFRAMES_BROWSER_PATH=");
       expect(caught.cause).toBe(originalError);

@@ -703,7 +703,8 @@ function wrapDownloadFailureWithBrowserPathHint(
       `  export HYPERFRAMES_BROWSER_PATH="${installed}"\n\n` +
       `Run \`hyperframes doctor\` to see which Chrome was found. Then re-run your command. `
     : `No Chrome or Chromium was found on this machine. Install Google Chrome, then set ` +
-      `HYPERFRAMES_BROWSER_PATH to its executable and re-run your command. `;
+      `HYPERFRAMES_BROWSER_PATH to its executable. Run \`hyperframes doctor\` to see which ` +
+      `Chrome was found. Then re-run your command. `;
   const message =
     `Failed to install chrome-headless-shell ${managedChromeVersion()}: ${original}${unzipErrors}\n\n` +
     pointAt +
