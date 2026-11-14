@@ -120,7 +120,11 @@ declare global {
       owner?: string;
     };
     __HF_PARITY_MODE?: boolean;
-    /** Set by still-capture pages: seeks replay skipped frames at the composition fps, as a render does. */
+    /**
+     * Set by still-capture pages: seeks replay skipped frames at the composition fps, as a render does.
+     * Also gates the async media-metadata rebind: once such a page has started driving frames with
+     * renderSeek, the rebind must not race the capture loop (HF#7706).
+     */
     __HF_REPLAY_SKIPPED_FRAMES?: boolean;
 
     /** Legacy debug-only fps hint. Render-mode runtime fps uses __HF_EXPORT_RENDER_SEEK_CONFIG.fps. */

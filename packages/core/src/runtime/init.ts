@@ -1428,6 +1428,28 @@ export function initSandboxRuntimeModular(): void {
   const isExportRenderDrivingFrames = (): boolean =>
     renderCaptureSeekStarted && window.__HF_EXPORT_RENDER_SEEK_CONFIG != null;
 
+  /**
+   * A still-capture page (check / snapshot / validate / compare) is driving
+   * frames deterministically.
+   *
+   * `openSettledCompositionPage` sets `__HF_REPLAY_SKIPPED_FRAMES` before
+   * navigation, so the flag is present from page load and is never set on a
+   * Studio preview page. Paired with `renderCaptureSeekStarted` for the same
+   * reason as `isExportRenderDrivingFrames`: the flag alone must not disable
+   * the self-correction before any seek has claimed the timeline. The async
+   * metadata rebind races the capture loop exactly as in HF#2550, and on a
+   * capture page the rebind's `resolveRootTimelineFromDocument` also nests
+   * and un-pauses the scene timelines, so GSAP renders each at its parent's
+   * playhead — under `renderSeek` the scenes are driven standalone while the
+   * root stays at 0, and the frame the seek set is replaced by the t=0 frame
+   * before the read (HF#7706).
+   *
+   * Only the metadata rebind consults this: the transport loop keeps its
+   * single-owner decision in `isExportRenderDrivingFrames`.
+   */
+  const isStillCaptureDrivingFrames = (): boolean =>
+    renderCaptureSeekStarted && window.__HF_REPLAY_SKIPPED_FRAMES === true;
+
   // The media and authored-composition duration floors are derived from the
   // DOM and the timeline registry — never from the playhead — so they change
   // only when the composition changes. transportTick asks for them on EVERY
@@ -2667,8 +2689,12 @@ export function initSandboxRuntimeModular(): void {
       // Gated on the pair rather than renderCaptureSeekStarted alone, because
       // the flag alone would silently disable this self-correction for a live
       // Studio scrub too, where duration hasn't been pre-resolved by a probe
-      // stage and still needs it. See isExportRenderDrivingFrames.
-      if (isExportRenderDrivingFrames()) return;
+      // stage and still needs it. See isExportRenderDrivingFrames. A
+      // still-capture page is gated the same way: once it has started driving
+      // frames with renderSeek, a rebind racing the sweep rewinds the scene
+      // timelines to 0 between the seek and the read (HF#7706). See
+      // isStillCaptureDrivingFrames.
+      if (isExportRenderDrivingFrames() || isStillCaptureDrivingFrames()) return;
       const resolution = resolveRootTimelineFromDocument();
       if (!resolution.timeline) return;
       const hasResolvedMediaFloor = isUsableTimelineDuration(
