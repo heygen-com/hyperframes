@@ -877,6 +877,14 @@
     return Array.from(element.children).some(isNowrapTextChild);
   }
 
+  // #7712: an absolutely positioned nowrap child is sized by its own text,
+  // not by the container — the container's shrink-to-fit width (from
+  // unrelated in-flow content) is not an edge the child can overflow.
+  function isAbsoluteOrFixed(element) {
+    const position = getComputedStyle(element).position;
+    return position === "absolute" || position === "fixed";
+  }
+
   function containerOverflowIssues(root, time, tolerance) {
     const issues = [];
     const containers = Array.from(root.querySelectorAll("*")).filter((element) => {
@@ -897,6 +905,7 @@
       for (const child of Array.from(container.children)) {
         if (!isVisibleElement(child) || hasAllowOverflowFlag(child)) continue;
         if (!checksEveryChild && !isNowrapTextChild(child)) continue;
+        if (!checksEveryChild && isAbsoluteOrFixed(child)) continue;
         const childRect = toRect(child.getBoundingClientRect());
         const overflow = checksEveryChild
           ? overflowFor(childRect, containerRect, tolerance)
