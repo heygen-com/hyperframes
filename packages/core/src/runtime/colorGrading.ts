@@ -2213,27 +2213,29 @@ function adoptContext(
 
 const HIDE_STYLE_ATTR = "data-hf-color-grading-hide";
 
-// A hidden source keeps its own opacity, which the canvas copies; only its pixels are clipped away.
+// A hidden source keeps its own opacity, which the canvas copies, and its hit area, so a click still picks it.
 function hideFromView(element: HTMLElement): void {
   const doc = element.ownerDocument;
   if (!doc.querySelector(`style[${HIDE_STYLE_ATTR}]`)) {
     const style = doc.createElement("style");
     style.setAttribute(HIDE_STYLE_ATTR, "");
-    style.textContent = `[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}] { clip-path: inset(50%) !important; }`;
+    style.textContent = `[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}] { filter: opacity(0) !important; }`;
     (doc.head ?? doc.documentElement).appendChild(style);
   }
   element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
 }
 
-/** The clip-path the page gives `element`, read with grading's hide lifted for that one synchronous read. */
-function ownClipPath(element: HTMLElement): string {
-  const sheet = element.ownerDocument.querySelector<HTMLStyleElement>(`style[${HIDE_STYLE_ATTR}]`)?.sheet;
+/** The filter the page gives `element`, read with grading's hide lifted for that one synchronous read. */
+function ownFilter(element: HTMLElement): string {
+  const sheet = element.ownerDocument.querySelector<HTMLStyleElement>(
+    `style[${HIDE_STYLE_ATTR}]`,
+  )?.sheet;
   if (!sheet || !element.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) {
-    return window.getComputedStyle(element).clipPath;
+    return window.getComputedStyle(element).filter;
   }
   sheet.disabled = true;
   try {
-    return window.getComputedStyle(element).clipPath;
+    return window.getComputedStyle(element).filter;
   } finally {
     sheet.disabled = false;
   }
@@ -2945,7 +2947,7 @@ function updateCanvasLayout(
 
   const computed = window.getComputedStyle(styleSource);
   copyMediaVisualStyles(canvas.style, computed);
-  canvas.style.clipPath = ownClipPath(element);
+  canvas.style.filter = ownFilter(element);
   canvas.style.borderStyle = "none";
   canvas.style.pointerEvents = "none";
   canvas.style.position = "absolute";

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Color-graded videos keep their animation in the preview: a red-to-blue opacity dissolve (2-4 s) and a
 // green clip-path wipe from the left (4-6 s). Grading once froze the dissolve, and its hide once blacked it out.
+// A click on a graded clip still picks it.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { launchStudioChrome } from "./chrome-executable.mjs";
 
@@ -84,6 +85,16 @@ try {
     else if (Math.abs(share - red) > TOLERANCE)
       failures.push(`dissolve at ${time} s: red share ${share.toFixed(2)}, expected ${red}`);
   }
+
+  // A graded clip stays under the pointer, so a click in the preview still picks it.
+  await frame.evaluate(() => window.__player.seek(1, { settled: true }));
+  const picked = await frame.evaluate(() => {
+    const r = document.getElementById("film").getBoundingClientRect();
+    return document.elementsFromPoint(r.x + r.width / 2, r.y + r.height / 2).map((el) => el.id);
+  });
+  evidence.pickAt1 = picked;
+  if (!picked.includes("a"))
+    failures.push(`at 1 s the graded clip is not under the pointer: ${picked}`);
 
   const [left, right] = await sample("wipe-5", WIPE.time, [
     [0.25, 0.5],

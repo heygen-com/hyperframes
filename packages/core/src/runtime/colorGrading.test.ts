@@ -330,13 +330,13 @@ describe("createColorGradingRuntime", () => {
     expect(video.style.getPropertyValue("opacity")).toBe("0.75");
   });
 
-  it("hides its source by clipping it away, with one rule for the whole document", () => {
+  it("hides its source with a filter, keeping its hit area, with one rule for the whole document", () => {
     startRuntimeWithVideo();
     const rules = [...document.querySelectorAll("style")].filter((style) =>
       style.textContent?.includes(`[${COLOR_GRADING_SOURCE_HIDDEN_ATTR}]`),
     );
     expect(rules).toHaveLength(1);
-    expect(rules[0]?.textContent).toContain("clip-path: inset(50%) !important");
+    expect(rules[0]?.textContent).toContain("filter: opacity(0) !important");
   });
 
   it("re-syncs the graded canvas when the source's inline transform changes", async () => {
