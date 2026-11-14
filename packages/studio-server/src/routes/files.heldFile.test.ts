@@ -54,7 +54,16 @@ function fixture(name: string, onError?: (error: Error) => void) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ targets: [{ id }] }),
     });
-  return { file, get, put, remove };
+  const patch = (color: string) =>
+    app.request(`http://localhost/projects/demo/file-mutations/patch-element/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        target: { id: "title" },
+        operations: [{ type: "inline-style", property: "color", value: color }],
+      }),
+    });
+  return { file, get, put, remove, patch };
 }
 
 const answered = async (response: Response) => ({
@@ -183,6 +192,24 @@ describe("an element edit while Windows briefly holds the file", () => {
     },
     10_000,
   );
+
+  it("keeps a later edit to the project behind the held one, so the later edit stands", async () => {
+    const { file, patch } = fixture("held.html");
+    writeFileSync(file, '<h1 id="title">A</h1>');
+    holdFor(file, 1_000);
+    const order: string[] = [];
+    const send = (color: string) =>
+      patch(color).then((response) => {
+        order.push(color);
+        return response.status;
+      });
+    const first = send("red");
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    const second = send("blue");
+    expect([await first, await second]).toEqual([200, 200]);
+    expect(order).toEqual(["red", "blue"]);
+    expect(readFileSync(file, "utf8")).toContain("color: blue");
+  }, 10_000);
 
   // fails without the fix: each retry slept the whole process, up to 640 ms in one go.
   it("keeps the app answering while it waits", async () => {
