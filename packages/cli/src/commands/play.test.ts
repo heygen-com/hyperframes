@@ -312,7 +312,7 @@ describe("registerCompositionRoute", () => {
     mediaMocks.probeAssetCodec.mockResolvedValueOnce({
       codecName: "h264",
       browserHostile: false,
-      representativeMime: null,
+      representativeMime: "video/mp4",
       hasAlpha: false,
     });
     const proxyPath = join(project.dir, "proxy.mp4");
@@ -338,7 +338,7 @@ describe("registerCompositionRoute", () => {
     mediaMocks.probeAssetCodec.mockResolvedValueOnce({
       codecName: "h264",
       browserHostile: false,
-      representativeMime: null,
+      representativeMime: "video/mp4",
       hasAlpha: false,
     });
     const proxyPath = join(project.dir, "proxy.mp4");
