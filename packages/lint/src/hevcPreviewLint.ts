@@ -5,6 +5,10 @@ import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { parseNumeric } from "@hyperframes/parsers/composition-contract";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import {
+  readPlaybackRate,
+  resolveNaturalDurationSeconds,
+} from "@hyperframes/parsers/media-duration";
+import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
   isUnresolvedAssetPlaceholder,
@@ -141,6 +145,8 @@ interface LocalFiniteVideoSlot {
   file: string;
   elementId?: string;
   mediaStart: number;
+  duration: number;
+  playbackRate: number;
 }
 
 interface UnresolvedFiniteVideoSlot extends Omit<LocalFiniteVideoSlot, "src"> {
@@ -172,18 +178,30 @@ function readNonNegativeNumber(raw: string | null): number | null {
   return value !== null && value >= 0 ? value : null;
 }
 
+/** Slots whose source position the static probe cannot follow: looping, late-bound, or rate-ramped. */
+function hasUnknownSourcePosition(video: Element): boolean {
+  return (
+    video.hasAttribute("loop") ||
+    video.hasAttribute("data-var-src") ||
+    video.hasAttribute("data-playback-start") ||
+    video.getAttribute("data-automation")?.includes('"rate"') === true
+  );
+}
+
 function readFiniteVideoSlot(video: Element, file: string): UnresolvedFiniteVideoSlot | null {
-  if (video.hasAttribute("loop")) return null;
-  if (video.hasAttribute("data-var-src")) return null;
-  if (video.hasAttribute("data-playback-start")) return null;
-  if (readPositiveNumber(video.getAttribute("data-duration")) === null) return null;
-  const mediaStart = readNonNegativeNumber(video.getAttribute("data-media-start"));
+  if (hasUnknownSourcePosition(video)) return null;
+  const duration = readPositiveNumber(video.getAttribute("data-duration"));
+  if (duration === null) return null;
+  const mediaStartRaw = video.getAttribute("data-media-start");
+  const mediaStart = mediaStartRaw === null ? 0 : readNonNegativeNumber(mediaStartRaw);
   if (mediaStart === null) return null;
   return {
     rawSrc: video.getAttribute("src") ?? "",
     file,
     ...(video.id ? { elementId: video.id } : {}),
     mediaStart,
+    duration,
+    playbackRate: readPlaybackRate((name) => video.getAttribute(name)),
   };
 }
 
@@ -204,6 +222,8 @@ function collectLocalFiniteVideoSlots(
         file: slot.file,
         ...(slot.elementId ? { elementId: slot.elementId } : {}),
         mediaStart: slot.mediaStart,
+        duration: slot.duration,
+        playbackRate: slot.playbackRate,
       });
       slotsByPath.set(reference.resolved, slots);
     }
@@ -277,18 +297,48 @@ export async function lintVideoMediaStartPastEof(
     const sourceDuration = durations[index];
     if (sourceDuration == null) continue;
     for (const slot of slots) {
-      if (slot.mediaStart < sourceDuration) continue;
-      findings.push({
-        code: "video_media_start_at_or_past_eof",
-        severity: "warning",
-        message: `Video "${slot.src}" starts at ${slot.mediaStart}s, at or past its ${sourceDuration}s playable source duration. The video will hold its final frame for the explicit slot.`,
-        file: slot.file,
-        ...(slot.elementId ? { elementId: slot.elementId } : {}),
-        fixHint: `Trim data-media-start below ${sourceDuration}s if this final-frame hold is unintended.`,
-      });
+      const finding =
+        slot.mediaStart >= sourceDuration
+          ? mediaStartPastEofFinding(slot, sourceDuration)
+          : slotOutlastsSourceFinding(slot, sourceDuration);
+      if (finding) findings.push(finding);
     }
   }
   return findings;
+}
+
+function mediaStartPastEofFinding(
+  slot: LocalFiniteVideoSlot,
+  sourceDuration: number,
+): HyperframeLintFinding {
+  return {
+    code: "video_media_start_at_or_past_eof",
+    severity: "warning",
+    message: `Video "${slot.src}" starts at ${slot.mediaStart}s, at or past its ${sourceDuration}s playable source duration. The video will hold its final frame for the explicit slot.`,
+    file: slot.file,
+    ...(slot.elementId ? { elementId: slot.elementId } : {}),
+    fixHint: `Trim data-media-start below ${sourceDuration}s if this final-frame hold is unintended.`,
+  };
+}
+
+/** A hold this short is rounding in data-duration, not a visible freeze. */
+const SLOT_HOLD_TOLERANCE_SECONDS = 0.1;
+
+function slotOutlastsSourceFinding(
+  slot: LocalFiniteVideoSlot,
+  sourceDuration: number,
+): HyperframeLintFinding | null {
+  const plays = resolveNaturalDurationSeconds(sourceDuration, slot.mediaStart, slot.playbackRate);
+  if (plays === null || slot.duration - plays <= SLOT_HOLD_TOLERANCE_SECONDS) return null;
+  const seconds = (value: number) => Math.round(value * 100) / 100;
+  return {
+    code: "video_slot_outlasts_source",
+    severity: "warning",
+    message: `Video "${slot.src}" runs out after ${seconds(plays)}s of its ${seconds(slot.duration)}s slot (source ${seconds(sourceDuration)}s, starting ${seconds(slot.mediaStart)}s in). It holds its final frame for the last ${seconds(slot.duration - plays)}s.`,
+    file: slot.file,
+    ...(slot.elementId ? { elementId: slot.elementId } : {}),
+    fixHint: `Shorten data-duration to ${seconds(plays)}s, add loop, or use a longer source if this final-frame hold is unintended.`,
+  };
 }
 
 /**
