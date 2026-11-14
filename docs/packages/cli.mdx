@@ -2169,6 +2169,8 @@ It looks in the current project (not its subfolders) and every project the Studi
 - the history of projects that no longer exist;
 - extracted video frames and video proxies nobody has used for an hour (they rebuild on demand).
 
+When `render` stops on a volume with less than 1 GB free and the extracted-frame cache sits on that volume, the message gives the cache's size and path and points at `clean`.
+
 `snapshots/` folders and the saved snapshots and check reports under `.hyperframes/artifacts/` are listed as also reclaimable and removed only with `--snapshots`. Rendered outputs, source
 files, the browser download and models are never touched.
 
