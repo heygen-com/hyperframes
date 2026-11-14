@@ -402,9 +402,7 @@ function safeZoneFinding(
   const crossed = zones.flatMap((zone) => {
     const edges = safeZoneEdgesCrossed(candidate.rect, canvas, zone);
     if (edges.length === 0) return [];
-    return [
-      `${safeZoneLabel(zone)} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`,
-    ];
+    return [`${safeZoneLabel(zone)} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`];
   });
   if (crossed.length === 0) return null;
   const text = candidate.text.slice(0, 48);

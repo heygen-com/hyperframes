@@ -635,7 +635,8 @@ export function parseSafeZone(value: unknown): SafeZone[] {
   if (value === undefined) return [...SOCIAL_SAFE_AREA_NAMES];
   if (value === "off") return [];
   const zone = [...SOCIAL_SAFE_AREA_NAMES, "standard" as const].find((name) => name === value);
-  if (!zone) throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts, standard or off.");
+  if (!zone)
+    throw new CliUsageError("Invalid --safe-zone; use tiktok, reels, shorts, standard or off.");
   return [zone];
 }
 
