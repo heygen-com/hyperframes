@@ -34,8 +34,11 @@ describe("shellArg", () => {
     ]);
   });
 
-  it("uses double quotes on Windows, where a backslash path needs none", () => {
-    expect(shellArg("films\\a", "win32")).toBe("films\\a");
+  it("uses double quotes on Windows, for a backslash path too", () => {
+    expect(shellArg("films/a", "win32")).toBe("films/a");
+    expect(shellArg("films\\a", "win32")).toBe('"films\\a"');
+    expect(shellArg("C:\\Users\\Bob\\film", "win32")).toBe('"C:\\Users\\Bob\\film"');
+    expect(shellArg("C:\\", "win32")).toBe('"C:\\\\"');
     expect(shellArg("my first video", "win32")).toBe('"my first video"');
     expect(shellArg("it's mine", "win32")).toBe(`"it's mine"`);
     expect(shellArg("Q&A (draft); 100%", "win32")).toBe('"Q&A (draft); 100%"');
@@ -45,7 +48,7 @@ describe("shellArg", () => {
   it("quotes a Windows name that PowerShell would read as an array or a splat", () => {
     expect(shellArg("a,b", "win32")).toBe('"a,b"');
     expect(shellArg("@scope", "win32")).toBe('"@scope"');
-    expect(shellArg("films\\@scope", "win32")).toBe("films\\@scope");
+    expect(shellArg("films/@scope", "win32")).toBe("films/@scope");
   });
 
   it("single-quotes a Windows name that PowerShell or Git Bash would expand in double quotes", () => {
@@ -77,6 +80,18 @@ describe("shellArg", () => {
       expect(pwd.trim()).toBe(realpathSync(join(root, name)));
     }
   });
+
+  it.skipIf(process.platform === "win32")(
+    "prints a Windows backslash path that Git Bash reads as written",
+    () => {
+      for (const path of ["C:\\Users\\Bob\\film", "films\\my film", "C:\\", "C:\\work\\it's\\"]) {
+        const shown = execFileSync("/bin/bash", ["-c", `printf %s ${shellArg(path, "win32")}`], {
+          encoding: "utf8",
+        });
+        expect(shown).toBe(path);
+      }
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "prints a Windows word that Git Bash expands no part of",

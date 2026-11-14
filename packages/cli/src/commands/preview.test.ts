@@ -864,6 +864,9 @@ describe("stopBackgroundCommand", () => {
     expect(stopBackgroundCommand("/work/$(touch x)", "darwin")).toBe(
       "hyperframes preview '/work/$(touch x)' --stop",
     );
+    expect(stopBackgroundCommand("C:\\Users\\Bob\\film", "win32")).toBe(
+      'hyperframes preview "C:\\Users\\Bob\\film" --stop',
+    );
     expect(stopBackgroundCommand("C:\\work\\$(calc)", "win32")).toBe(
       "hyperframes preview 'C:\\work\\$(calc)' --stop",
     );
