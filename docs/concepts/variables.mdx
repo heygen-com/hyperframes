@@ -245,6 +245,10 @@ npx hyperframes render \
   --output "renders/{name}.mp4"
 ```
 
+Every output stays inside the folder written before the first placeholder
+(`renders/` here). A row value may name a subfolder of it, but a value that
+leads outside it, such as `../other`, stops the batch before anything renders.
+
 Start with the default single-row concurrency. Increase `--batch-concurrency`
 only after one real render is stable and the machine has enough memory for
 several renders at once.
