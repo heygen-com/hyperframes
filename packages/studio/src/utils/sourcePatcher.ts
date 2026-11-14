@@ -3,6 +3,7 @@ import {
   decodeAuthoredAttribute,
   HTML_ATTRIBUTE_ENTITIES,
 } from "@hyperframes/parsers";
+import { stampHfIdsInPlace } from "@hyperframes/parsers/hf-ids";
 
 /**
  * Source Patcher — Maps visual property edits back to source HTML files.
@@ -275,6 +276,10 @@ function findTagByClass(html: string, target: PatchTarget): TagMatch | null {
   return found
     ? { tag: html.slice(found.start, found.bodyEnd), start: found.start, end: found.bodyEnd }
     : null;
+}
+
+export function servedSource(html: string, target: PatchTarget): string {
+  return !target.hfId || findTagByTarget(html, target) ? html : stampHfIdsInPlace(html);
 }
 
 export function findTagByTarget(html: string, target: PatchTarget): TagMatch | null {

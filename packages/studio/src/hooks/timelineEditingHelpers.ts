@@ -7,6 +7,7 @@ import {
   findTagByTarget,
   readAttributeByTarget,
   readTagSnippetByTarget,
+  servedSource,
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import {
@@ -420,6 +421,7 @@ export function patchTimelineChangesInSource(
   for (const { element, buildPatches } of changes) {
     const target = buildPatchTarget(element);
     if (!target) throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+    current = servedSource(current, target);
     // Resolve first: a member already at its target values patches to the same string, a missing one must throw.
     if (!findTagByTarget(current, target)) {
       throw new Error(
@@ -500,8 +502,9 @@ export function readTargetAttribute(
   patchTarget: PatchTarget,
   attr: string,
 ): string | null | undefined {
-  if (readTagSnippetByTarget(html, patchTarget) === undefined) return undefined;
-  return readAttributeByTarget(html, patchTarget, attr) ?? null;
+  const source = servedSource(html, patchTarget);
+  if (readTagSnippetByTarget(source, patchTarget) === undefined) return undefined;
+  return readAttributeByTarget(source, patchTarget, attr) ?? null;
 }
 
 export { formatTimelineAttributeNumber, formatTimelineMediaOffset };
@@ -550,17 +553,18 @@ export async function persistElementAttribute({
   // the live DOM, so an unresolvable target never leaves an unsaved preview.
   return serializeStudioFileMutations(writeProjectFile, [targetPath], async () => {
     const before = await readFileContent(projectId, targetPath);
-    if (readTagSnippetByTarget(before, patchTarget) === undefined) {
+    const source = servedSource(before, patchTarget);
+    if (readTagSnippetByTarget(source, patchTarget) === undefined) {
       throw new Error(`Unable to patch element in ${targetPath}`);
     }
     // Unwind to the file's value: live writers already patched the DOM, so `readLive()`
     // would equal `value` and a failed save would keep a never-saved preview.
-    const previousValue = readAttributeByTarget(before, patchTarget, attr) ?? null;
+    const previousValue = readAttributeByTarget(source, patchTarget, attr) ?? null;
     onFileRead(previousValue);
     patchLive(value);
 
     const operation: PatchOperation = { type: "attribute", property: attr, value };
-    const patched = applyPatchByTarget(before, patchTarget, operation);
+    const patched = applyPatchByTarget(source, patchTarget, operation);
 
     pendingTimelineEditPathRef.current.add(targetPath);
     try {
