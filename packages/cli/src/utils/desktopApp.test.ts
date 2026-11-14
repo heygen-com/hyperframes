@@ -408,6 +408,11 @@ describe("openCommandFor", () => {
     );
   });
 
+  it("has no Windows stop command for a folder with no safe spelling", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(join(work, "$(calc)&calc"), 3002, work, "win32")).toBeNull();
+  });
+
   it("names the matching `preview --stop` the same way", () => {
     const work = resolve("work");
     expect(previewStopCommandFor(work, 3002, work)).toBe(

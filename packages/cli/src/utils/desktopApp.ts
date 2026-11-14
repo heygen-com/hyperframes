@@ -247,15 +247,8 @@ function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void 
   };
 }
 
-function shownDir(
-  dir: string,
-  cwd: string,
-  platform: NodeJS.Platform,
-): { word: string; from: string } {
-  const word = shellArg(relative(cwd, dir) || ".", platform);
-  return word === null
-    ? { word: "", from: " from the project folder" }
-    : { word: ` ${word}`, from: "" };
+function shownDir(dir: string, cwd: string, platform: NodeJS.Platform): string | null {
+  return shellArg(relative(cwd, dir) || ".", platform);
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */
@@ -264,13 +257,19 @@ export function openCommandFor(
   cwd = process.cwd(),
   platform: NodeJS.Platform = process.platform,
 ): string {
-  const { word, from } = shownDir(dir, cwd, platform);
-  return `hyperframes open${word}${from}`;
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? "hyperframes open from the project folder" : `hyperframes open ${shown}`;
 }
 
-export function previewStopCommandFor(dir: string, port: number, cwd = process.cwd()): string {
-  const { word, from } = shownDir(dir, cwd, process.platform);
-  return `hyperframes preview${word} --stop --port ${port}${from}`;
+/** Null when the folder has no spelling that is safe to paste; run `preview --stop` from inside it then. */
+export function previewStopCommandFor(
+  dir: string,
+  port: number,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? null : `hyperframes preview ${shown} --stop --port ${port}`;
 }
 
 /** Spotlight's copies of an app with this bundle id; an updater's hidden leftover (`.X.app.installing-…`) is none. */

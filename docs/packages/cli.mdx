@@ -1172,7 +1172,10 @@ preview holds the project's edit history. So `open` first stops the project's
 `preview --background` server and says so. It leaves any other preview running,
 such as one started in a terminal, and prints the `preview --stop` command
 instead. With `--json`, the `preview` field reports `none`, `stopped` or
-`left-running`.
+`left-running`. A `left-running` preview carries its `stopCommand`. That is
+`null` when the folder's name can't be printed safely for every Windows shell,
+and `stopCommandFromProject` then holds the command to run from inside the
+project folder.
 
 `catch-up` is the other half of that hand-off. Run it when the person is back
 from the desktop app, before you change anything: it lists what they asked and
