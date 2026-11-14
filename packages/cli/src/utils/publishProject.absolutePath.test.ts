@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -434,6 +434,16 @@ describe("outside references in files that came in with an imported project", ()
     expect(warnings).toEqual([
       "index.html references ../../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
     ]);
+  });
+
+  it("matches a listed file under another spelling of the same file on disk", () => {
+    const { root, ext, warnings } = stageReceived(
+      { "index.html": "<html></html>", "assets/a.html": `<img src="../../shared/logo.png">` },
+      { files: ["index.html", "Assets/a.html"] },
+    );
+    const caseInsensitive = existsSync(join(root, "p", "ASSETS", "a.html"));
+    expect(ext).toEqual(caseInsensitive ? [] : ["_ext/shared/logo.png"]);
+    expect(warnings).toHaveLength(caseInsensitive ? 1 : 0);
   });
 
   it("treats every file as received when the record cannot be read", () => {

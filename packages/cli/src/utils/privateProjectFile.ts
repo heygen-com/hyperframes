@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
@@ -44,14 +44,32 @@ function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | nu
   }
 }
 
+function fileIdentity(path: string): string | null {
+  try {
+    const stat = lstatSync(path, { bigint: true });
+    return `${stat.dev}:${stat.ino}`;
+  } catch {
+    return null;
+  }
+}
+
 export function receivedFiles(projectDir: string): (path: string) => boolean {
   const record = nearestReceivedRecordAtOrAbove(projectDir);
   if (!record) return () => false;
   if (!Array.isArray(record.listed)) return () => true;
-  const files = new Set(record.listed.map((path) => String(path).normalize("NFC")));
+  const listed = record.listed.map((path) => String(path).normalize("NFC"));
+  const files = new Set(listed);
   const keyOf = (path: string) =>
     (record.projectDirFromRoot ? `${record.projectDirFromRoot}/${path}` : path).normalize("NFC");
-  return (path) => files.has(keyOf(path));
+  let listedOnDisk: Set<string> | undefined;
+  const sameFileAsListed = (path: string) => {
+    listedOnDisk ??= new Set(
+      listed.flatMap((entry) => fileIdentity(join(record.root, entry)) ?? []),
+    );
+    const identity = fileIdentity(join(projectDir, path));
+    return identity !== null && listedOnDisk.has(identity);
+  };
+  return (path) => files.has(keyOf(path)) || sameFileAsListed(path);
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
