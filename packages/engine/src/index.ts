@@ -409,6 +409,7 @@ export {
   NOT_MEDIA_PAYLOAD,
   NotMediaPayloadError,
   assertMediaPayload,
+  playlistLeavesItsFolder,
   fingerprintElementId,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";

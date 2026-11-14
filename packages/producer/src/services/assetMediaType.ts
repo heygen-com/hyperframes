@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   fingerprintElementId,
   isNotMediaPayload,
+  playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
   resolveProjectRelativeSrc,
@@ -178,9 +179,12 @@ export async function preflightCompositionAssetMediaTypes(input: {
         // without the track and reports `audioError`), so it is classified
         // per-element in audioMixer instead of aborted here.
         const sniffableReferences = pathReferences.filter((ref) => ref.expected === "video");
-        if (sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath))) {
+        const sniffed = sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath));
+        if (sniffed || (await playlistLeavesItsFolder(resolvedPath))) {
           notMediaFingerprints.push(
-            ...sniffableReferences.map((ref) => fingerprintElementId(ref.id)),
+            ...(sniffed ? sniffableReferences : pathReferences).map((ref) =>
+              fingerprintElementId(ref.id),
+            ),
           );
           return;
         }

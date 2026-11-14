@@ -243,6 +243,17 @@ describe("preflightCompositionAssetMediaTypes", () => {
       await expect(run({ audioSrc: "streamed-preview.html" })).resolves.toBeUndefined();
     });
 
+    it.each([{ audioSrc: "outside.m3u8" }, { imageSrc: "outside.m3u8" }])(
+      "refuses a playlist naming a file outside its folder under any element: %o",
+      async (input) => {
+        writeFileSync(
+          join(projectDir, "outside.m3u8"),
+          "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n../../outside.mp4\n#EXT-X-ENDLIST\n",
+        );
+        await expect(run(input)).rejects.toBeInstanceOf(NotMediaPayloadError);
+      },
+    );
+
     it("leaves an SVG image source alone", async () => {
       // ffprobe reads SVG through its svg_pipe demuxer, so an XML body is a
       // legitimate <img> payload and must not be swept up by the sniff.
