@@ -125,6 +125,33 @@ function isRealDirectory(path: string): boolean {
   }
 }
 
+/**
+ * The artifact kind of a job the server has no record of (after a restart, or
+ * for a client that deletes before it lists), read from disk the way the
+ * listing decides it: a real directory at `renders/<jobId>` that holds frames
+ * or is paired with a sidecar is a directory render. A file render of the
+ * same stem wins, so a bare name never becomes a recursive removal while a
+ * file artifact exists, and a folder that is not render-shaped is left alone.
+ */
+function renderKindOnDisk(directories: readonly string[], jobId: string): RenderArtifactKind {
+  const candidates = [...new Set(directories)];
+  const hasFileRender = candidates.some((directory) =>
+    RENDER_FILE_EXTENSIONS.some((extension) => existsSync(join(directory, `${jobId}${extension}`))),
+  );
+  if (jobId.startsWith(".") || hasFileRender) return "file";
+  for (const directory of candidates) {
+    const candidate = join(directory, jobId);
+    if (!isRealDirectory(candidate)) continue;
+    if (existsSync(join(directory, `${jobId}.meta.json`))) return "directory";
+    try {
+      if (readRenderDirectoryStats(candidate).frameCount > 0) return "directory";
+    } catch {
+      // Unreadable while scanning: not a render we can vouch for.
+    }
+  }
+  return "file";
+}
+
 function deleteRenderArtifact(artifact: RenderArtifact): void {
   if (artifact.kind === "file") {
     if (existsSync(artifact.path)) unlinkSync(artifact.path);
@@ -205,12 +232,20 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   const renderJobs = new Map<string, RenderJobState>();
   const CANCEL_SETTLE_MS = 45_000;
   // Artifact identity outlives transient progress. Only validated render
-  // requests and disk listings populate this store; DELETE removes entries.
+  // requests and disk listings populate this store and only DELETE removes
+  // entries: each is a few bytes, bounded by the renders on disk plus this
+  // session's jobs, so no eviction is needed.
   const renderArtifacts = new Map<string, { kind: RenderArtifactKind; outputPath: string }>();
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
-    for (let n = 2; renderJobs.has(jobId) || existsSync(join(rendersDir, `${jobId}${ext}`)); n++) {
+    for (
+      let n = 2;
+      renderJobs.has(jobId) ||
+      renderArtifacts.has(jobId) ||
+      existsSync(join(rendersDir, `${jobId}${ext}`));
+      n++
+    ) {
       jobId = `${baseId}-${n}`;
     }
     return jobId;
@@ -479,11 +514,12 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
       return c.json({ error: "render in progress; cancel it first" }, 409);
     }
     // Only a directory render owns the bare job-id directory; every other
-    // job — including one the server has never seen — resolves file
-    // candidates only, so an unknown id can never trigger a recursive
-    // removal.
-    const kind: RenderArtifactKind = renderArtifacts.get(jobId)?.kind ?? "file";
+    // job resolves file candidates only. A job this process never saw is
+    // judged by what is on disk, which still never turns an id without a
+    // render-shaped directory into a recursive removal.
     const directories = await renderDirectories(jobId);
+    const kind: RenderArtifactKind =
+      renderArtifacts.get(jobId)?.kind ?? renderKindOnDisk(directories, jobId);
     const artifacts = resolveRenderArtifacts(directories, jobId, kind);
     if (!artifacts) return c.json({ error: "forbidden" }, 403);
 

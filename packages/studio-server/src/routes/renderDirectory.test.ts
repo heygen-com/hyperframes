@@ -270,6 +270,62 @@ describe("directory (PNG-sequence) renders", () => {
       },
     );
 
+    it("deletes a directory render this server never saw, as after a restart", async () => {
+      const { app, rendersDir } = fixture();
+      writeSequence(join(rendersDir, "seq"));
+      writeFileSync(join(rendersDir, "seq.meta.json"), '{"status":"complete"}');
+
+      const response = await app.request("/render/seq", { method: "DELETE" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ deleted: true });
+      expect(existsSync(join(rendersDir, "seq"))).toBe(false);
+      expect(existsSync(join(rendersDir, "seq.meta.json"))).toBe(false);
+      expect(await listRenders(app)).toEqual([]);
+    });
+
+    it("recognises an unrecorded directory render by its frames alone", async () => {
+      const { app, rendersDir } = fixture();
+      writeSequence(join(rendersDir, "cli-output"), 3, false);
+
+      expect((await app.request("/render/cli-output", { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(rendersDir, "cli-output"))).toBe(false);
+    });
+
+    it("leaves an unrecorded folder alone when it is not render-shaped", async () => {
+      const { app, rendersDir } = fixture();
+      mkdirSync(join(rendersDir, "notes"));
+      writeFileSync(join(rendersDir, "notes", "todo.txt"), "keep");
+
+      expect((await app.request("/render/notes", { method: "DELETE" })).status).toBe(200);
+      expect(readFileSync(join(rendersDir, "notes", "todo.txt"), "utf-8")).toBe("keep");
+    });
+
+    it("treats an unrecorded same-stem pair as the file render", async () => {
+      const { app, rendersDir } = fixture();
+      writeFileSync(join(rendersDir, "intro.mp4"), "mp4");
+      writeSequence(join(rendersDir, "intro"));
+
+      expect((await app.request("/render/intro", { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(rendersDir, "intro.mp4"))).toBe(false);
+      expect(existsSync(join(rendersDir, "intro", "frame_000000.png"))).toBe(true);
+    });
+
+    it("never follows an unrecorded symlink at the job id into a recursive delete", async (context) => {
+      const { app, rendersDir } = fixture();
+      const target = join(rendersDir, "real");
+      writeSequence(target);
+      try {
+        symlinkSync(target, join(rendersDir, "ghost"), "dir");
+      } catch {
+        context.skip();
+        return;
+      }
+      writeFileSync(join(rendersDir, "ghost.meta.json"), "{}");
+
+      expect((await app.request("/render/ghost", { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(target, "frame_000000.png"))).toBe(true);
+    });
+
     it("removes the directory, its sidecar, and the job entry", async () => {
       const { app, rendersDir } = fixture();
       const { jobId } = await (await post(app, { format: "png-sequence" })).json();
