@@ -7,8 +7,10 @@ import {
   envDigest,
   frameForwarder,
   frameReader,
+  parseWarmServerArgs,
   warmCheckDirectory,
   warmCheckEndpoint,
+  warmServerArgs,
 } from "./warmCheckProtocol.js";
 
 const TOKEN = "a".repeat(64);
@@ -110,5 +112,19 @@ describe("frameForwarder", () => {
     const seen: string[] = [];
     frameReader((_type, body) => seen.push(body.toString()))(Buffer.concat(sent));
     expect(seen).toEqual(["one ", "two ", "thrée"]);
+  });
+});
+
+// fails without the fix: a caller running several renders at once could not tell whose warm check server was whose.
+describe("the warm server's command line", () => {
+  it("names the caller's owner and hands the check its own args back", () => {
+    const argv = warmServerArgs(["--json", "./film"], { HYPERFRAMES_OWNER: "run-7" });
+    expect(argv).toContain("--hyperframes-owner=run-7");
+    expect(parseWarmServerArgs(argv)).toEqual({ idleMs: 300_000, checkArgs: ["--json", "./film"] });
+  });
+
+  it("names no owner when the caller sets none or one that is not a plain id", () => {
+    for (const owner of [undefined, "", "a b", "x".repeat(65)])
+      expect(warmServerArgs(["."], { HYPERFRAMES_OWNER: owner })).toEqual(["300000", "."]);
   });
 });
