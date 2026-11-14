@@ -15,7 +15,11 @@ const answers: Record<string, string[]> = {
   "meta.hf-test": ["169.254.169.254"],
   "public.hf-test": ["8.8.8.8"],
 };
+let flakyLookups = 0;
 const resolveHost = async (host: string) => {
+  // Fails its first lookup only, like a passing DNS blip.
+  if (host === "flaky.hf-test" && flakyLookups++ === 0) throw new Error(`EAI_AGAIN ${host}`);
+  if (host === "flaky.hf-test") return ["8.8.4.4"];
   const found = answers[host];
   if (!found) throw new Error(`ENOTFOUND ${host}`);
   return found;
@@ -64,7 +68,7 @@ describe.skipIf(!hasBrowser)("restrictPageNetwork in Chrome", () => {
     // The render browser runs frames in-process (no site isolation); mirror that.
     browser = await launchTestChrome(chromePath, [
       "--disable-features=IsolateOrigins,site-per-process",
-      "--host-resolver-rules=MAP private.hf-test 127.0.0.1, MAP public.hf-test 127.0.0.1, MAP meta.hf-test 169.254.169.254",
+      "--host-resolver-rules=MAP private.hf-test 127.0.0.1, MAP public.hf-test 127.0.0.1, MAP flaky.hf-test 127.0.0.1, MAP meta.hf-test 169.254.169.254",
     ]);
   });
   afterEach(async () => {
@@ -172,6 +176,13 @@ describe.skipIf(!hasBrowser)("restrictPageNetwork in Chrome", () => {
     const restricted = await openRestricted([]);
     expect(await fetchText(restricted, `http://public.hf-test:${otherPort}/public`)).toBe("secret");
     expect(otherHits).toEqual(["/public"]);
+  });
+
+  it("asks again after a lookup fails, rather than refusing the host for the rest of the page", async () => {
+    const restricted = await openRestricted([]);
+    expect(await fetchText(restricted, `http://flaky.hf-test:${otherPort}/first`)).toBe("refused");
+    expect(await fetchText(restricted, `http://flaky.hf-test:${otherPort}/second`)).toBe("secret");
+    expect(otherHits).toEqual(["/second"]);
   });
 
   it("refuses a name it cannot resolve", async () => {

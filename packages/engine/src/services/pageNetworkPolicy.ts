@@ -8,16 +8,20 @@ type ResolveHost = (hostname: string) => Promise<string[]>;
 const systemResolveHost: ResolveHost = async (hostname) =>
   (await lookup(hostname, { all: true, verbatim: true })).map(({ address }) => address);
 
-async function isPublicHost(hostname: string, resolveHost: ResolveHost): Promise<boolean> {
+type HostVerdict = "public" | "non-public" | "unresolved";
+
+async function hostVerdict(hostname: string, resolveHost: ResolveHost): Promise<HostVerdict> {
   const host = hostname.replace(/^\[|\]$/g, "");
-  if (isBlockedNetworkHost(host)) return false;
-  if (isIP(host)) return true;
+  if (isBlockedNetworkHost(host)) return "non-public";
+  if (isIP(host)) return "public";
+  let addresses: string[];
   try {
-    const addresses = await resolveHost(host);
-    return addresses.length > 0 && !addresses.some((a) => isBlockedNetworkHost(a.split("%")[0]!));
+    addresses = await resolveHost(host);
   } catch {
-    return false;
+    return "unresolved";
   }
+  if (addresses.length === 0) return "unresolved";
+  return addresses.some((a) => isBlockedNetworkHost(a.split("%")[0]!)) ? "non-public" : "public";
 }
 
 /**
@@ -30,7 +34,7 @@ export async function restrictPageNetwork(
   resolveHost: ResolveHost = systemResolveHost,
 ): Promise<void> {
   const own = new URL(allowedOrigin).origin;
-  const verdicts = new Map<string, Promise<boolean>>();
+  const verdicts = new Map<string, Promise<HostVerdict>>();
   const allows = (url: string): Promise<boolean> => {
     let target: URL;
     try {
@@ -41,12 +45,18 @@ export async function restrictPageNetwork(
     if (target.origin === own || !/^(https?|wss?):$/.test(target.protocol)) {
       return Promise.resolve(true);
     }
-    let verdict = verdicts.get(target.hostname);
+    const host = target.hostname;
+    let verdict = verdicts.get(host);
     if (!verdict) {
-      verdict = isPublicHost(target.hostname, resolveHost);
-      verdicts.set(target.hostname, verdict);
+      const asked = hostVerdict(host, resolveHost);
+      verdicts.set(host, asked);
+      // A failed lookup can be a passing blip, so only answers about resolved addresses are kept.
+      void asked.then((answer) => {
+        if (answer === "unresolved" && verdicts.get(host) === asked) verdicts.delete(host);
+      });
+      verdict = asked;
     }
-    return verdict;
+    return verdict.then((answer) => answer === "public");
   };
   const client: CDPSession = await page.createCDPSession();
   client.on("Fetch.requestPaused", (event: Protocol.Fetch.RequestPausedEvent) => {
