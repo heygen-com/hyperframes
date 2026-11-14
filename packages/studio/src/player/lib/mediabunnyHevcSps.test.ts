@@ -154,10 +154,15 @@ describe("the HEVC SPS reader studio ships", () => {
 
   it("keeps the pixel aspect ratio of HEVC that lists long-term reference pictures", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    const input = new Input({ source: new BufferSource(await anamorphicHevcMp4()), formats: [MP4] });
+    const input = new Input({
+      source: new BufferSource(await anamorphicHevcMp4()),
+      formats: [MP4],
+    });
     const track = await input.getPrimaryVideoTrack();
 
-    expect([await track!.getSquarePixelWidth(), await track!.getSquarePixelHeight()]).toEqual([85, 64]);
+    expect([await track!.getSquarePixelWidth(), await track!.getSquarePixelHeight()]).toEqual([
+      85, 64,
+    ]);
     expect(errors).not.toHaveBeenCalled();
     input.dispose();
   });
