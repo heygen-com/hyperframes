@@ -15,7 +15,7 @@ const page = (src: string, extra = "") =>
 const failingFetch = () =>
   mock(async () => {
     throw new TypeError("net::ERR_INTERNET_DISCONNECTED");
-  });
+  }) as unknown as typeof fetch;
 
 let dir: string;
 const realEnv = process.env[GSAP_VENDOR_DIR_ENV];
@@ -34,10 +34,10 @@ afterEach(() => {
 describe("the host's own GSAP needs no network", () => {
   // fails without the fix: with the network gone the script stayed an external tag and the render failed.
   it("inlines the default CDN's gsap.min.js from the host's copy when fetch fails", async () => {
-    const fetchMock = failingFetch();
-    _setDownloadFetchForTests(fetchMock);
+    const fetch = failingFetch();
+    _setDownloadFetchForTests(fetch);
     expect(await inlineExternalScripts(page(URL_))).toContain(BYTES);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("downloads as before when the host ships no copy", async () => {

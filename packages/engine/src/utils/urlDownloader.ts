@@ -539,14 +539,7 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch a bounded body, as UTF-8 text or as raw bytes, applying the downloader's redirect and SSRF policy to every hop. */
-export async function fetchPublicHttpsText(
-  url: string,
-  options: PublicHttpsTextOptions,
-): Promise<string> {
-  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
-}
-
+/** Fetch bounded bytes while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
 export async function fetchPublicHttpsBytes(
   url: string,
@@ -573,7 +566,7 @@ export async function fetchPublicHttpsBytes(
 
   try {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
     }
     const { response } = await fetchWithValidatedRedirects(url, controller);
     if (!response.ok) {
@@ -597,7 +590,7 @@ export async function fetchPublicHttpsBytes(
       throw new UrlDownloadError(
         "length_mismatch",
         false,
-        "Response exceeded the configured byte limit",
+        "Text response exceeded the configured byte limit",
         response.status,
       );
     }
@@ -614,7 +607,7 @@ export async function fetchPublicHttpsBytes(
         throw new UrlDownloadError(
           "length_mismatch",
           false,
-          "Response exceeded the configured byte limit",
+          "Text response exceeded the configured byte limit",
           response.status,
           { receivedBytes },
         );
@@ -625,7 +618,7 @@ export async function fetchPublicHttpsBytes(
       throw new UrlDownloadError(
         "length_mismatch",
         true,
-        "Response byte count did not match its declared length",
+        "Text response byte count did not match its declared length",
         response.status,
         { expectedBytes, receivedBytes },
       );
@@ -633,10 +626,10 @@ export async function fetchPublicHttpsBytes(
     return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
-      throw new UrlDownloadError("cancelled", false, "Fetch cancelled");
+      throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
     }
     if (timedOut) {
-      throw new UrlDownloadError("timeout", true, `Fetch timeout after ${timeoutMs / 1000}s`);
+      throw new UrlDownloadError("timeout", true, `Text fetch timeout after ${timeoutMs / 1000}s`);
     }
     throw classifyDownloadFailure(error);
   } finally {
@@ -644,6 +637,13 @@ export async function fetchPublicHttpsBytes(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {
