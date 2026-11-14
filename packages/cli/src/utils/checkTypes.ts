@@ -364,7 +364,14 @@ export interface CraftFinding extends CheckFinding {
   floorPx?: number;
   until?: number;
   measured?: { time: number; opacity: number | null; heightPx: number | null }[];
-  elements?: { selector: string; text: string; fontPx: number; time: number; seconds: number }[];
+  elements?: {
+    selector: string;
+    text: string;
+    fontPx: number;
+    time: number;
+    seconds: number;
+    sourceFile: string;
+  }[];
 }
 
 export interface CraftResult {
