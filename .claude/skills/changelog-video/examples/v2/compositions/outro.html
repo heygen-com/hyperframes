@@ -1,0 +1,91 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #f6f5f1; }
+
+    /* 0-1.1 the week, typed as the site film's use-case prompts */
+    #outro-list { display: none; position: absolute; left: 90px; top: 330px; width: 900px; }
+    .outro-it { position: relative; height: 84px; display: flex; align-items: center; justify-content: center;
+      font-size: 46px; font-weight: 400; letter-spacing: -0.025em; color: #131109; white-space: nowrap; }
+    .outro-it code { font-family: "TT Mono", ui-monospace, monospace; font-size: 42px; letter-spacing: -0.03em; }
+    .outro-it .outro-ch { display: none; }
+    .outro-caret { display: inline-block; width: 3px; height: 48px; margin-left: 3px; background: #131109; }
+
+    /* 1.2-6.65 the end card */
+    #outro-warm { position: absolute; inset: 0; background: #ece4d6; }
+    #outro-spot { position: absolute; left: 540px; top: 520px; width: 2400px; height: 2400px; margin: -1200px 0 0 -1200px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,251,242,1) 0%, rgba(250,244,232,.96) 14%, rgba(236,226,208,.6) 26%, rgba(190,168,136,.6) 37%, rgba(140,116,86,.78) 50%); }
+    #outro-logo { position: absolute; left: 260px; top: 330px; width: 560px; height: 168px; display: block;
+      filter: drop-shadow(0 40px 30px rgba(70,52,30,.13)); }
+    #outro-pill { position: absolute; left: 540px; top: 586px; height: 76px; padding: 0 36px; border-radius: 38px; background: #ffffff;
+      display: flex; align-items: center; font-size: 32px; font-weight: 400; letter-spacing: -0.02em; color: #131109; white-space: nowrap;
+      box-shadow: 0 12px 34px rgba(70,52,30,.16); }
+    #outro-pill b { font-weight: 700; }
+    #outro-week { position: absolute; left: 0; width: 1080px; top: 706px; text-align: center; font-size: 28px; font-weight: 300;
+      letter-spacing: -0.01em; color: rgba(19,17,9,.72); white-space: nowrap; }
+  </style>
+
+  <div id="root" data-composition-id="outro" data-width="1080" data-height="1080">
+    <div class="k-paper" data-layout-ignore></div>
+
+    <div id="outro-list"></div>
+    <h1 id="outro-tw" class="k-hl" style="top:430px; text-align:center; left:72px; width:936px;"><b>That's the week.</b></h1>
+
+    <div id="outro-card">
+      <div id="outro-warm" data-layout-ignore></div>
+      <div id="outro-spot" data-layout-ignore></div>
+      <img id="outro-logo" src="assets/img/hf-logo-light.svg" alt="HeyGen HyperFrames" />
+      <div id="outro-pill">hyperframes.heygen.com<span style="color:rgba(19,17,9,.55)">/weekly-updates</span></div>
+      <div id="outro-week">Week of Nov 2-9 · v0.9.6 to v0.9.26</div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const $ = (s) => document.querySelector("#root[data-composition-id='outro'] " + s) || document.querySelector(s);
+
+      // ---- 0.00-1.10 the week's list types, one line every ~0.2 s, then blurs out
+      const items = ["1440p render presets", "Catalog search", "<code>hyperframes update --check</code>", "Storyboard arrow keys", "Fonts in cloud renders"];
+      const list = $("#outro-list");
+      const rows = items.map((html, i) => {
+        const row = document.createElement("div"); row.className = "outro-it"; row.id = "outro-i" + i;
+        const isCode = html.indexOf("<code>") === 0;
+        const text = html.replace(/<\/?code>/g, "");
+        const host = document.createElement(isCode ? "code" : "span");
+        row.appendChild(host);
+        const chars = [];
+        for (const ch of text) { const s = document.createElement("span"); s.className = "outro-ch"; s.textContent = ch; host.appendChild(s); chars.push(s); }
+        const caret = document.createElement("i"); caret.className = "outro-caret"; row.appendChild(caret);
+        list.appendChild(row);
+        const at = 0.04 + i * 0.2;
+        gsap.set(caret, { opacity: 0 });
+        tl.set(caret, { opacity: 1 }, at);
+        const step = Math.min(0.009, 0.17 / chars.length);
+        chars.forEach((s, k) => tl.set(s, { display: "inline" }, at + k * step));
+        tl.set(caret, { opacity: 0 }, at + 0.2);
+        return row;
+      });
+      rows.forEach((r, i) => tl.to(r, { opacity: 0, filter: "blur(14px)", y: -10, duration: 0.22, ease: "power2.in" }, 0.98 + i * 0.02));
+
+      // ---- 1.20 the end card: warm spotlight, logo wiped in left to right at 1.25
+      gsap.set(["#outro-warm", "#outro-spot"], { opacity: 0 });
+      tl.to(["#outro-warm", "#outro-spot"], { opacity: 1, duration: 0.25, ease: "power1.out" }, 1.18);
+      tl.fromTo("#outro-spot", { scale: 1.12 }, { scale: 0.94, duration: 2.4, ease: "power2.out" }, 1.18);
+      tl.fromTo("#outro-logo", { clipPath: "inset(-30% 110% -90% -10%)" }, { clipPath: "inset(-30% -10% -90% -10%)", duration: 0.3, ease: "power2.inOut" }, 1.25);
+      tl.set("#outro-logo", { clipPath: "none" }, 1.56);
+      tl.fromTo("#outro-logo", { x: -14 }, { x: 0, duration: 0.5, ease: "power3.out" }, 1.25);
+
+      // 1.90 the address pill, then the week line; everything still from ~2.5 s
+      gsap.set("#outro-pill", { xPercent: -50, opacity: 0 });
+      gsap.set("#outro-week", { opacity: 0 });
+      tl.fromTo("#outro-pill", { opacity: 0, y: 16, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: "power3.out" }, 1.9);
+      tl.fromTo("#outro-week", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 2.12);
+
+      // "That's the week." lands with the voice and clears just before the logo wipes in
+      tl.fromTo("#outro-tw", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.06);
+      tl.to("#outro-tw", { opacity: 0, filter: "blur(8px)", duration: 0.2, ease: "power2.in" }, 0.95);
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["outro"] || []);
+      window.__timelines["outro"] = tl;
+    })();
+  </script>
+</template>

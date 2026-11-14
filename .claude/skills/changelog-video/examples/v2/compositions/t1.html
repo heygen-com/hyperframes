@@ -1,0 +1,117 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #t1-win { left: 70px; top: 318px; width: 940px; height: 640px; }
+    #t1-body { position: absolute; left: 0; top: 60px; width: 940px; height: 580px; }
+    .t1-lab { position: absolute; top: 46px; font-size: 24px; font-weight: 700; color: #131109; letter-spacing: -0.02em; }
+    .t1-tile { position: absolute; border-radius: 14px; overflow: hidden; background: #0f0f11; }
+    /* one tiny film frame, drawn the same in every tile */
+    .t1-frame { position: absolute; inset: 0; background: #111014; }
+    .t1-dots { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(60,230,172,.55) 22%, rgba(0,0,0,0) 26%);
+      background-size: 7% 12.4%; -webkit-mask-image: linear-gradient(115deg, rgba(0,0,0,0) 38%, #000 100%); mask-image: linear-gradient(115deg, rgba(0,0,0,0) 38%, #000 100%); }
+    .t1-ft { position: absolute; left: 8%; bottom: 14%; color: #fff; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+    .t1-ft span { font-weight: 300; display: block; opacity: .7; }
+    .t1-ball { position: absolute; left: 66%; top: 22%; width: 13%; height: 23%; border-radius: 50%; background: #3ce6ac; }
+    .t1-bar { position: absolute; height: 6px; border-radius: 3px; background: rgba(19,17,9,.08); overflow: hidden; }
+    .t1-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #131109; transform-origin: 0 50%; display: block; }
+    #t1-ok, #t1-same { position: absolute; left: 50%; }
+    #t1-count { position: absolute; left: 0; width: 940px; top: 470px; text-align: center; font-family: "TT Mono", monospace;
+      font-size: 26px; color: rgba(19,17,9,.6); opacity: 0; }
+  </style>
+
+  <div id="root" data-composition-id="t1" data-width="1080" data-height="1080">
+    <div class="k-stage" data-layout-ignore></div>
+
+    <h1 id="t1-hl" class="k-hl">
+      <span class="k-line" id="t1-l1"><b>Preview = render.</b></span>
+      <span class="k-line" id="t1-l2">Same film, every time.</span>
+    </h1>
+
+    <div id="t1-win" class="k-win">
+      <div class="k-bar"><i class="k-dot"></i><i class="k-dot"></i><i class="k-dot"></i><span style="margin-left:14px">weekly.html</span></div>
+      <div id="t1-body">
+        <div class="t1-lab" id="t1-lp" style="left:40px">Preview</div>
+        <div class="t1-lab" id="t1-lr" style="left:490px">Render</div>
+        <div class="t1-tile" id="t1-tp" style="left:40px; top:92px; width:410px; height:231px"></div>
+        <div class="t1-tile" id="t1-tr" style="left:490px; top:92px; width:410px; height:231px"></div>
+        <div class="t1-bar" id="t1-br" style="left:490px; top:344px; width:410px"><i></i></div>
+        <div id="t1-ok" class="k-chip mint" style="top:400px">✓ The render matches the preview</div>
+
+        <div class="t1-tile" id="t1-w1" style="left:40px; top:110px; width:270px; height:152px"></div>
+        <div class="t1-tile" id="t1-w4" style="left:335px; top:110px; width:270px; height:152px"></div>
+        <div class="t1-tile" id="t1-w8" style="left:630px; top:110px; width:270px; height:152px"></div>
+        <div class="k-chip" id="t1-c1" style="position:absolute; left:40px; top:290px">1 worker</div>
+        <div class="k-chip" id="t1-c4" style="position:absolute; left:335px; top:290px">4 workers</div>
+        <div class="k-chip" id="t1-c8" style="position:absolute; left:630px; top:290px">8 workers</div>
+        <div id="t1-same" class="k-chip mint" style="top:372px">✓ 0 pixels differ</div>
+        <div id="t1-count">frame 0000 · identical in all three</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const q = (s) => document.querySelector(s);
+
+      // the same tiny film frame in every tile
+      ["#t1-tp", "#t1-tr", "#t1-w1", "#t1-w4", "#t1-w8"].forEach((id) => {
+        const t = q(id); const w = parseFloat(t.style.width);
+        t.innerHTML = '<div class="t1-frame"><div class="t1-dots"></div><div class="t1-ball"></div>' +
+          '<div class="t1-ft" style="font-size:' + (w * 0.105) + 'px">Nov 2-9<span>this week</span></div></div>';
+      });
+      const frames = ["#t1-tr", "#t1-w1", "#t1-w4", "#t1-w8"].map((id) => q(id + " .t1-frame"));
+
+      // headline lands and stays
+      tl.fromTo("#t1-l1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 0.12);
+      tl.fromTo("#t1-l2", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.34, ease: "power3.out" }, 0.62);
+
+      // the window rises out of the stage
+      tl.fromTo("#t1-win", { y: 120, opacity: 0, scale: 0.96 }, { y: 0, opacity: 1, scale: 1, duration: 0.6, ease: "power3.out" }, 0.08);
+
+      // ---- A: render draws in beside the preview (0.7-2.3 "what you preview is what you render")
+      gsap.set(["#t1-w1", "#t1-w4", "#t1-w8", "#t1-c1", "#t1-c4", "#t1-c8", "#t1-same"], { opacity: 0 });
+      gsap.set(["#t1-ok"], { opacity: 0, xPercent: -50 });
+      gsap.set("#t1-same", { xPercent: -50 });
+      tl.fromTo(frames[0], { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 1.3, ease: "none" }, 0.8);
+      tl.fromTo("#t1-br i", { scaleX: 0 }, { scaleX: 1, duration: 1.3, ease: "none" }, 0.8);
+      tl.fromTo("#t1-ok", { opacity: 0, y: 12, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: "back.out(2)" }, 2.15);
+
+      // ---- B: re-render on 1, 4 and 8 workers (2.96-4.9)
+      tl.to(["#t1-lp", "#t1-lr", "#t1-tp", "#t1-tr", "#t1-br", "#t1-ok"], { opacity: 0, y: -14, duration: 0.24, ease: "power2.in" }, 2.9);
+      [["#t1-w1", "#t1-c1"], ["#t1-w4", "#t1-c4"], ["#t1-w8", "#t1-c8"]].forEach(([w, c], i) => {
+        tl.fromTo(w, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 3.1 + i * 0.08);
+        tl.fromTo(c, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 3.18 + i * 0.08);
+      });
+      // more workers, faster render: each frame wipes in at its own speed
+      [[1, 1.45], [2, 0.95], [3, 0.55]].forEach(([k, d]) =>
+        tl.fromTo(frames[k], { clipPath: "inset(0% 100% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: d, ease: "none" }, 3.4));
+      // the "8 workers" chip says done first
+      tl.to("#t1-c8", { backgroundColor: "#131109", color: "#ffffff", duration: 0.12 }, 3.95);
+      tl.to("#t1-c4", { backgroundColor: "#131109", color: "#ffffff", duration: 0.12 }, 4.35);
+      tl.to("#t1-c1", { backgroundColor: "#131109", color: "#ffffff", duration: 0.12 }, 4.85);
+
+      // ---- C: stack all three on top of each other: nothing moves (5.0-5.6 "the same film")
+      tl.to("#t1-w1", { x: 295, duration: 0.5, ease: "power3.inOut" }, 4.98);
+      tl.to("#t1-w8", { x: -295, duration: 0.5, ease: "power3.inOut" }, 4.98);
+      tl.to("#t1-c1", { x: 295, opacity: 0, duration: 0.4, ease: "power3.inOut" }, 4.98);
+      tl.to("#t1-c8", { x: -295, opacity: 0, duration: 0.4, ease: "power3.inOut" }, 4.98);
+      tl.to("#t1-c4", { opacity: 0, duration: 0.3 }, 4.98);
+      tl.to(["#t1-w1", "#t1-w4", "#t1-w8"], { scale: 1.45, y: 50, duration: 0.5, ease: "power3.inOut" }, 5.2);
+      tl.to("#t1-win", { scale: 1.035, duration: 1.6, ease: "power1.inOut" }, 5.2);
+      tl.fromTo("#t1-same", { opacity: 0, y: 30, scale: 0.9 }, { opacity: 1, y: 40, scale: 1, duration: 0.3, ease: "back.out(2)" }, 5.42);
+
+      // ---- D: "frame for frame": the counter runs (6.1-6.9)
+      const cnt = { f: 0 };
+      tl.set("#t1-count", { opacity: 1, y: 30 }, 6.08);
+      tl.to(cnt, { f: 412, duration: 0.8, ease: "power1.inOut",
+        onUpdate: () => { q("#t1-count").textContent = "frame " + String(Math.round(cnt.f)).padStart(4, "0") + " · identical in all three"; } }, 6.1);
+
+      // ---- exit: whip up into the next scene
+      tl.to(["#t1-win", "#t1-hl"], { y: -420, filter: "blur(10px)", opacity: 0, duration: 0.24, ease: "power3.in" }, 6.96);
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["t1"] || []);
+      window.__timelines["t1"] = tl;
+    })();
+  </script>
+</template>

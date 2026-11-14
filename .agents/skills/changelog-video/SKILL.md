@@ -1,197 +1,143 @@
 ---
 name: changelog-video
-description: Turn a weekly changelog .md into a finished branded changelog video (square 1080, ~45-60s, Annie VO, animated brand background, mock-UI visualizations, lowkey captions). Use when the user provides a changelog/digest markdown and wants the weekly video, or says "changelog video". Self-contained — fonts, background, lexicon, and scripts ship in this skill.
+description: Turn a weekly changelog .md into the finished weekly HyperFrames video (square 1080, ~45-50 s, the Studio-light look from the hyperframes.studio launch film, real product UI acting out each change, Annie voiceover, music and a sound on every action). Use when the user provides a changelog/digest markdown and wants the weekly video, or says "changelog video". Self-contained: fonts, lexicon, the reference build and its audio script ship in this skill.
 metadata:
   internal: true
 ---
 
-# Changelog → Branded Video
+# Changelog → weekly video (v2, Studio light)
 
 Input: a changelog .md (themes + items, like the weekly HyperFrames digest).
-Output: a lint-clean, seam-gate-green HyperFrames project in
-`projects/active/weekly-changelog-<range>/`. Render only when asked.
+Output: a check-clean HyperFrames project in `projects/active/weekly-changelog-<range>/`.
+Render only when asked.
 
-**Load first, non-negotiable:** `motion-doctrine` (+ `cut-the-curve`,
-`oversized-cursor` if a cursor appears, `seam-craft`) and `captions-overlay`.
-This skill supplies the changelog-specific pipeline; the doctrine supplies the
-motion law.
+The reference build is `examples/v2/`: the Nov 2-9, 2026 week, built as seven scenes
+(hook, t1-t5, outro). Every new week starts from a copy of it and replaces the scene
+content; the kit (ground, type, window, chips, cursor, pacing, audio script) stays.
+`references/look-v2.md` is the look and motion grammar, measured from the site's launch
+film. Read both before writing any scene.
 
-## The prime directive: visualize, don't list
+The previous dark look (`examples/master-skeleton.html`, `references/build-spec.md`) is
+kept for reference only. Do not mix the two.
 
-Every theme is illustrated by an **animated mock of the actual UI or a
-faithful analog** acting out the change in experience — never text bullets.
-Route every theme/item through `references/visualization-registry.md` BEFORE
-writing the script; the registry decides ui-recreate / ui-analog / terminal /
-checklist. Text checklist is the LAST resort, reserved for genuinely
-non-visual items (reliability fix lists).
+## The prime directive: show the product doing it
+
+Every highlight is the real HyperFrames UI (rebuilt and decluttered, never a screen
+recording) acting out the change: a render matching its preview, an inspector setting, a
+Studio tab, a terminal line. Route each item through `references/visualization-registry.md`
+first. A text list is the last resort, for items with nothing to show.
 
 ## Pipeline
 
-### 0 · Bootstrap the project from THIS skill's assets — non-negotiable
-
-**Do this before writing any composition HTML. Skipping it always produces a video that looks like a similar project you built before, NOT this skill's brand — that's the single most common way this skill goes off-brand.** The skill's assets, fonts, and scaffold are the skill; the SKILL.md prompt is a router.
+### 0 · Bootstrap from this skill (always)
 
 ```bash
-mkdir -p project/assets/fonts
-cp <SKILL_DIR>/assets/fonts/*.woff2 project/assets/fonts/
-cp <SKILL_DIR>/assets/bgm.mp3 project/bgm.mp3
-ffmpeg -y -stream_loop 15 -i <SKILL_DIR>/assets/bg-pattern.mp4 -t <TOTAL> \
-  -vf "scale=1080:1080,fps=30,eq=saturation=0.72,drawbox=c=black@0.5:t=fill" \
-  -an -c:v libx264 -crf 20 -pix_fmt yuv420p project/assets/bg-pattern-<TOTAL>s.mp4
-cp <SKILL_DIR>/examples/master-skeleton.html project/index.html
+P=projects/active/weekly-changelog-<range>
+mkdir -p $P/assets/fonts $P/assets/audio $P/assets/sfx
+cp -R <SKILL_DIR>/examples/v2/. $P/
+cp <SKILL_DIR>/assets/fonts/TT_Norms_Pro_{Light,Normal,Bold}.woff2 \
+   <SKILL_DIR>/assets/fonts/tt_norms_pro_mono_regular-webfont.woff2 $P/assets/fonts/
+cp <SKILL_DIR>/assets/bgm.mp3 $P/assets/audio/bgm.mp3
+cp skills/media-use/audio/assets/sfx/*.mp3 $P/assets/sfx/
 ```
 
-Then **read `references/build-spec.md` end-to-end** (not skimmed) — it defines the brand tokens (TT Norms Pro + ABC Solar Display + TT Norms Mono, cream `#f5f6f4`, rationed green `#5ef17c`, glass cards with green-tinted borders, kicker/sec-chip pill shape, 32px caption rail at `top: 990`) that every scene inherits from the scaffold.
+Never start from a prior week's project or write your own `@font-face`: the copied
+`index.html` holds the shared kit CSS (`.k-paper`, `.k-stage`, `.k-hl`, `.k-win`, `.k-bar`,
+`.k-dark`, `.k-chip`, `.k-cursor`) every scene uses.
 
-Only THEN begin steps 1-6 below. Steps 1-4 (parse, route, script, VO) plan what goes into the scaffold; step 5 fills placeholders (`<RANGE>`, `<TOTAL>`, `<CUT_N>`, `<DUR_N>`, scene bodies) inside the already-copied `project/index.html` — you do NOT rewrite the scaffold's chrome, fonts, palette, or layout shell.
+### 1 · Pick the five
 
-If you catch yourself reaching for `cp` on a prior video's `index.html`, or writing your own `@font-face` declarations, or designing a WebGL shader background instead of using the encoded bg-pattern MP4 above: STOP. Delete the current `index.html` and restart at the `cp` of the master-skeleton scaffold. Rebuilding scene content on the right scaffold is cheaper than retrofitting brand into the wrong scaffold.
+- Extract: week range, release count and versions, themes, items.
+- Keep **five highlights**, each a change a user will feel. Lead with the one that helps the
+  most people. Everything else lives in the digest the outro points to.
+- **Budget: 45-50 s.** Hook ~6 s, five scenes of 4-9 s, outro ~6.5 s.
 
-### 1 · Parse + editorial cut
+### 2 · Plan the scenes (`BRIEF.md`)
 
-- Extract: week range, headline stats (releases, commits), themes, items.
-- **Budget: 45-60s total.** Title ≤2s, outro ≤3.5s, 4 themes ≈ 9-12s each.
-- Per theme keep ONE hero visualization + at most 3 spoken items. Everything
-  else exists only as the outro's "full digest" pointer. Cutting is the job:
-  a changelog with 30 items still yields ≤14 spoken beats.
-- Order themes by story: marquee feature → product surface → performance →
-  reliability (the digest usually already reads this way).
+Rewrite the copied `BRIEF.md` (it is the Nov 2-9 plan) for this week, one section per
+scene in the same shape: ground (`.k-paper` or `.k-stage`), the headline (one bold run + one light run, 7
+words max), the VO line, and the 2-4 timed actions the UI performs, each on a VO phrase.
 
-### 2 · Visualization routing
+- **Hook:** the prompt "What shipped in HyperFrames this week?" is typed and sent; the
+  release chips land; five flip to the week's themes; one opens into the first scene.
+- **Highlight scenes:** a different framing each time (app as a floating card, one pane
+  filling the frame, a punch-in on one control, a terminal). The thing that is clicked
+  becomes the next shot.
+- **Outro:** "That's the week." then the official logo wiped in on the end card with the
+  notes URL. The logo appears nowhere else.
 
-For each theme, pick the surface from `references/visualization-registry.md`
-and write one line: `theme → surface → the 2-4 sequenced actions the mock
-performs, each tied to a script phrase`. If no registry surface fits and no
-faithful analog exists, it's a checklist scene — don't invent fake UI for
-something we can't represent honestly.
+### 3 · Two-layer script
 
-### 3 · Two-layer script (spoken vs display)
+Write the VO as token lines per `references/script-voice.md`: conversational, every
+technical term with a `spoken` form from `references/lexicon.json`. A term not in the
+lexicon: ask how it's said, then add it. Target **~160 words a minute** (about 120 words
+for 46 s); faster than ~175 reads as rushed.
 
-Write the script as **token lines** per `references/script-voice.md`:
-conversational register, every technical term carrying a `spoken` phonetic
-form from `references/lexicon.json` while `display` keeps standard spelling.
-Captions show `display`; the VO reads `spoken`. Any term not in the lexicon:
-STOP and ask the user how it's pronounced, then add it to the lexicon.
-Save as `script-tokens.json` in the project.
-
-### 4 · VO — Annie (HeyGen, pinned)
+### 4 · VO: Annie (HeyGen, pinned)
 
 ```bash
-# spoken-layer text only; words JSON = ground-truth timestamps of the SPOKEN text
-# Repo-native path: the changelog-video skill runs from the hyperframes repo root,
-# so it uses the tracked hyperframes-media TTS helper directly (no `npx hyperframes
-# skills` install step). If you've copied the skill into another repo, swap in
-# your own path to the media-use / hyperframes-media heygen-tts.mjs.
-node skills/hyperframes-media/scripts/heygen-tts.mjs ./vo-spoken.txt \
-  -o voiceover.mp3 --words vo-words.json \
-  --voice 330290724a1b470fb63153f34d4c0183   # Annie — lifelike (do not substitute)
+node skills/media-use/audio/scripts/heygen-tts.mjs ./vo-spoken.txt \
+  -o assets/audio/vo.wav --words vo-words.json \
+  --voice 330290724a1b470fb63153f34d4c0183   # Annie (do not substitute)
 ```
 
-Requires `heygen` CLI ≥0.3.0 authenticated (`heygen auth login --oauth`).
-Then align spoken timestamps back to display tokens:
-
-```bash
-node <SKILL_DIR>/scripts/align-captions.mjs \
-  --tokens script-tokens.json --words vo-words.json --out captions.json
-```
-
-`captions.json` is the caption-rail input (display spelling, spoken timing).
-The aligner prints `MISMATCH` warnings — resolve every one before building
-(usually a lexicon spelling the TTS renders as multiple words). **The audio
-is the clock**: all beat times come from `vo-words.json`; a VO regen re-opens
-every seam.
-
-**Word-timings are a hard gate.** Before moving on to step 5, verify
-`vo-words.json` is non-empty and has a `words: [...]` array with `start`/`end`
-per word. If it's empty (0 bytes) or missing the array — a known failure mode
-when the TTS provider returns audio but no timestamp payload — DO NOT proceed
-without them. Fallback: forced-align the produced audio against the display
-script using local whisper:
-
-```bash
-uvx --from openai-whisper whisper voiceover.mp3 \
-  --model base.en --language en --word_timestamps True \
-  --output_format json --output_dir .
-# then run align-captions.mjs with --words voiceover.json (same shape)
-```
-
-Whisper mishears TTS renderings ("gee-sap" → "gsap", "heyjen" → "hey Jen",
-etc.) — captions still use the DISPLAY spelling from `script-tokens.json`;
-whisper only supplies the timestamps. `align-captions.mjs` handles the join.
-This fallback is the difference between a captioned build and a silently
-uncaptioned one.
+Requires the `heygen` CLI ≥0.3.0, authenticated. `vo-words.json` must hold per-word
+`start`/`end`; if it is empty, forced-align with whisper (`uvx --from openai-whisper whisper
+assets/audio/vo.wav --model base.en --word_timestamps True --output_format json`).
 
 ### 5 · Build
 
-Follow `references/build-spec.md` exactly: brand tokens + fonts (bundled in
-`<SKILL_DIR>/assets/`), the animated background encode, scene scaffold,
-chrome, caption rail, one rationed green moment per scene. Then the doctrine
-order: `ledger.json` (all ordinary seams cut-the-curve LEFT) → seam-stamp →
-internal beats on VO words → seam-gate verify.
-
-**Captions are non-optional.** The master-skeleton ships a caption-rail IIFE
-that reads a `LINES` array — leaving that array empty is a shipped bug, not a
-style choice. Populate it from `captions.json` before proceeding to step 6:
-
-```javascript
-// paste in place of "const LINES = /* … */ []" in the caption-rail IIFE:
-const LINES = /* contents of captions.json */ [
-  { id: 0, end: 2.74, w: [["This", 0.0], ["week,", 0.30], …] },
-  …
-];
-```
-
-If `align-captions.mjs` was skipped or `LINES` is `[]`, the frame check in
-step 6 will fail — do not paper over it by removing `#cap-line` from the
-scaffold.
+1. Write each scene in `compositions/<id>.html` from the example's patterns: `<template>`,
+   `#root`, ids prefixed with the scene id, one paused `tl` registered as
+   `window.__timelines["<id>"]`, `gsap.set` for initial states, no timers or randomness.
+   Globals: `gsap`, `FrameyV4` (`assets/framey-v4.js`), `Prism` (`assets/prism.js`).
+2. Each scene ends with `insertHolds(tl, HOLDS["<id>"])`. Holds are extra seconds inserted
+   at a scene-local time so a beat can land before the next line starts.
+3. In `tools/build_audio.py`, rewrite the three week-specific blocks: `HOLDS`, `VO_SEGS`
+   (the VO file cut at its phrase pauses, from `vo-words.json`) and the `cue(...)` list (a
+   sound on each visible action: type, press, land, whip, done; files from `assets/sfx/`).
+   Then run `python3 tools/build_audio.py`: it writes every voice phrase, music and sound
+   clip into `index.html` and sets each scene's start and length.
+4. Headlines carry the meaning, so the video reads muted in Slack, Discord and X autoplay.
+   There is no caption rail.
 
 ### 6 · Gates (all green before presenting)
 
-1. `node packages/cli/bin/hyperframes.mjs check --caption-zone "x0=0;y0=.90;x1=1;y1=1;severity=error;seek=.02,.06,.10,.14,.18,.22,.26,.30,.34,.38,.42,.46,.50,.54,.58,.62,.66,.70,.74,.78,.82,.86,.90,.94,.98"` (or the installed
-   `hyperframes` CLI from the repo-local `skills/hyperframes-cli/` skill) —
-   0 errors (contrast: dim text ≥ .66 alpha; scene content stays above the
-   caption rail). Do NOT reach for
-   `npx hyperframes@latest`; the tracked repo-local CLI is the source of
-   truth for the composition contract this skill produces against.
-2. `seam-gate.mjs verify` — 0 fail.
-3. Restart the preview server (it caches the bundle), spot-check 3-4 beats
-   via `await __player.seek(t)` on the raw comp page (it resolves async).
-4. Do NOT render unless the user asks. After a requested render, verify
-   frames from the MP4 (`ffmpeg -ss <t> … -frames:v 1`): captions present,
-   background video not black, no tiny/frozen frames.
-5. **Caption presence gate — hard fail.** Sample 3-4 frames spread across
-   the VO's spoken window (e.g. `t=3`, `t=15`, `t=30`, `t=42` for a 48s VO)
-   and confirm the caption rail at `top: 990` renders visible text on each.
-   If any frame in a spoken interval is missing captions, the build ships
-   uncaptioned — treat it as a red gate and re-check step 5's `LINES`
-   population. This is exactly what went wrong on the Jul 13-20 v4 build.
+1. `npx hyperframes check --json`: 0 errors.
+2. `npx hyperframes snapshot --at <one time per scene>` and look at every frame: headline
+   readable on a phone (UI text ≥ 22 px), one mint accent per frame, nothing cut off.
+3. Render only when asked. Then: loudness about -14 LUFS with peaks under -1 dBFS
+   (`ffmpeg -i out.mp4 -af ebur128=peak=true -f null -`), and the voice sits on top of the
+   music.
+4. Upload to the CDN and embed it at the top of the week's `<Update>` in
+   `docs/weekly-updates.mdx`. After any S3 replace, invalidate CloudFront distribution
+   `E2BSLVSZ7FG3U0` for that path.
+
+When the digest merges, `.github/workflows/changelog-announce.yml` posts it with the video
+to Slack and Discord.
 
 ## Project layout
 
 ```
 projects/active/weekly-changelog-<range>/
-├── index.html            # single-doc master (scenes as slides, stamped seams)
-├── ledger.json           # vector ledger (seam-stamp input)
-├── script-tokens.json    # two-layer script (source of truth for VO + captions)
-├── vo-spoken.txt         # generated: spoken layer, one line
-├── voiceover.mp3 + vo-words.json + captions.json
-├── bgm.mp3               # copy from <SKILL_DIR>/assets/bgm.mp3 (the house track) unless the user supplies one
-└── assets/fonts/ + assets/bg-pattern-<dur>s.mp4
+├── index.html            # kit CSS, scene hosts, generated audio block, HOLDS
+├── compositions/         # hook, t1-t5, outro
+├── tools/build_audio.py  # HOLDS, VO_SEGS, cues -> audio clips + scene lengths
+├── BRIEF.md              # this week's scene plan
+├── script-tokens.json + vo-spoken.txt + vo-words.json
+└── assets/ fonts/ audio/{vo.wav,bgm.mp3} sfx/ img/hf-logo-light.svg framey-v4.js prism.js
 ```
 
 ## Anti-patterns
 
-| Don't                                                 | Instead                                                                                                                                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Bullet-point slides for UI changes                    | Mock the surface acting out the change                                                                                                                                                           |
-| Fake UI for un-representable items                    | Honest checklist scene                                                                                                                                                                           |
-| Plain "JSON"/"CLI" in the TTS text                    | Lexicon spoken forms; display stays standard                                                                                                                                                     |
-| Phonetic spellings in captions                        | Captions always render the display layer                                                                                                                                                         |
-| Guessing an unknown term's pronunciation              | Ask, then grow the lexicon                                                                                                                                                                       |
-| Speaking every changelog item                         | ≤3 per theme; the digest link carries the rest                                                                                                                                                   |
-| Green accents everywhere                              | One green moment per scene (#5ef17c)                                                                                                                                                             |
-| Starting from a prior video's index.html              | Step 0 — copy `examples/master-skeleton.html` from this skill into `project/index.html`, always                                                                                                  |
-| Hand-crafted `@font-face` / WebGL shader / custom BGM | Step 0 — copy this skill's `assets/` verbatim; the skill's assets ARE the brand                                                                                                                  |
-| Delivered without CloudFront invalidation             | Run `aws cloudfront create-invalidation` on distribution `E2BSLVSZ7FG3U0` for the exact path after any S3 replace — CDN caches the old file otherwise                                            |
-| Shipping with the `LINES` array empty in the scaffold | Step 4 must produce a populated `captions.json`; step 5 must paste it into the IIFE; step 6 gate 5 must confirm captions on rendered frames. An empty `LINES` = uncaptioned ship = re-do the run |
-| No `vo-words.json` → skip captions and ship anyway    | Fall back to whisper forced alignment on the produced audio; captions are non-optional                                                                                                           |
+| Don't                                       | Instead                                     |
+| ------------------------------------------- | ------------------------------------------- |
+| Bullet slides for UI changes                | The real UI acting out the change           |
+| The same headline + card layout every scene | A new framing per scene                     |
+| UI text under 22 px                         | Headlines 64-72 px, UI labels ≥ 22 px       |
+| Cross-fades between scenes                  | The clicked thing becomes the next shot     |
+| Logo in a corner on every frame             | Logo only on the end card                   |
+| Mint everywhere                             | One mint accent per frame                   |
+| A VO over ~175 words a minute               | Cut words or add holds in `build_audio.py`  |
+| Hand-placing `<audio>` tags                 | `cue(...)` in `build_audio.py`, then run it |
+| Starting from a prior week's project        | Step 0, always                              |

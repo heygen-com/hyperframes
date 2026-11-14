@@ -1,0 +1,253 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; }
+    #t3-cam { position: absolute; inset: 0; transform-origin: 0 0; }
+    #t3-win { left: 60px; top: 236px; width: 960px; height: 772px; }
+
+    /* tabs in the top bar */
+    #t3-tabs { position: absolute; left: 318px; top: 8px; width: 324px; height: 44px; border-radius: 22px; background: rgba(19,17,9,.06); }
+    .t3-tab { position: absolute; top: 4px; height: 36px; border-radius: 18px; display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 400; color: rgba(19,17,9,.62); letter-spacing: -0.01em; }
+    #t3-tab-p { left: 4px; width: 136px; background: #131109; color: #fff; }
+    #t3-tab-s { left: 144px; width: 176px; }
+    #t3-file { margin-left: 14px; }
+
+    /* preview */
+    #t3-prev { left: 140px; top: 80px; width: 680px; height: 383px; }
+    #t3-frame { position: absolute; inset: 0; background: #0c1016; overflow: hidden; }
+    #t3-glow { position: absolute; left: -10%; top: 30%; width: 120%; height: 120%;
+      background: radial-gradient(ellipse at 50% 70%, rgba(42,159,216,.55) 0%, rgba(39,205,184,.25) 35%, rgba(0,0,0,0) 65%); }
+    #t3-ht { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,.22) 22%, rgba(0,0,0,0) 27%);
+      background-size: 14px 14px; -webkit-mask-image: linear-gradient(200deg, #000 0%, rgba(0,0,0,0) 55%); mask-image: linear-gradient(200deg, #000 0%, rgba(0,0,0,0) 55%); }
+    #t3-horizon { position: absolute; left: 0; right: 0; top: 268px; height: 2px; background: rgba(255,255,255,.18); }
+    #t3-disc { position: absolute; left: 0; top: 168px; width: 96px; height: 96px; border-radius: 50%; background: #f6f5f1; }
+    .t3-ttl { position: absolute; left: 40px; top: 44px; color: #fff; font-size: 54px; font-weight: 700; letter-spacing: -0.05em; line-height: 1; white-space: nowrap; }
+    .t3-ttl span { display: block; font-weight: 300; font-size: 30px; letter-spacing: -0.02em; opacity: .7; margin-top: 8px; }
+    #t3-tc { position: absolute; left: 40px; bottom: 26px; font-family: "TT Mono", monospace; font-size: 24px; color: rgba(255,255,255,.8); }
+    #t3-fq { position: absolute; right: 20px; bottom: 18px; font-size: 24px; }
+
+    /* timeline */
+    #t3-tlx { position: absolute; left: 0; top: 480px; width: 960px; height: 292px; border-top: 1px solid rgba(19,17,9,.07); }
+    .t3-rl { position: absolute; top: 14px; font-family: "TT Mono", monospace; font-size: 22px; color: rgba(19,17,9,.68); transform: translateX(-50%); }
+    .t3-trk { position: absolute; left: 28px; width: 124px; height: 60px; border-radius: 10px; background: #f1f1ee;
+      display: flex; align-items: center; padding-left: 16px; font-size: 22px; color: rgba(19,17,9,.7); }
+    .t3-clip { position: absolute; height: 60px; border-radius: 10px; overflow: hidden; }
+    .t3-clip b { position: absolute; left: 12px; top: 6px; font-size: 22px; font-weight: 400; letter-spacing: -0.01em; white-space: nowrap; }
+    .t3-vid { background: #1a1d24; }
+    .t3-vid b { color: #fff; }
+    .t3-thumbs { position: absolute; inset: 0; background-image: linear-gradient(90deg, rgba(255,255,255,.12) 0 2px, rgba(0,0,0,0) 2px),
+      radial-gradient(ellipse at 50% 120%, rgba(42,159,216,.6), rgba(0,0,0,0) 70%); background-size: 60px 100%, 60px 100%; }
+    .t3-gfx { background: #dcdcd6; }
+    .t3-gfx b { color: #131109; }
+    .t3-cap { background: #fff; border: 1px solid rgba(19,17,9,.12); }
+    .t3-cap b { color: rgba(19,17,9,.7); }
+    #t3-ph { position: absolute; left: 0; top: 44px; width: 0; height: 236px; }
+    #t3-ph-line { position: absolute; left: -1px; top: 10px; width: 3px; height: 226px; background: #131109; }
+    #t3-ph-head { position: absolute; left: -12px; top: -2px; width: 24px; height: 26px; background: #131109;
+      clip-path: polygon(0 0, 100% 0, 100% 62%, 50% 100%, 0 62%); border-radius: 4px; }
+
+    /* storyboard tab */
+    #t3-sb { position: absolute; left: 0; top: 60px; width: 960px; height: 712px; background: #fbfbfa; }
+    #t3-sb-t { position: absolute; left: 40px; top: 26px; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+    #t3-sb-t span { font-weight: 300; color: rgba(19,17,9,.55); margin-left: 10px; }
+    .t3-sbt { position: absolute; width: 280px; height: 158px; border-radius: 14px; overflow: hidden; background: #0c1016; }
+    .t3-sbl { position: absolute; width: 280px; font-size: 24px; color: rgba(19,17,9,.62); white-space: nowrap; }
+    .t3-sbl b { font-family: "TT Mono", monospace; font-weight: 400; color: #131109; margin-right: 8px; }
+    #t3-sel { position: absolute; left: 0; top: 0; width: 296px; height: 174px; border: 5px solid #3ce6ac; border-radius: 20px; }
+    #t3-keys { position: absolute; left: 40px; top: 590px; display: flex; align-items: center; gap: 12px; font-size: 24px; color: rgba(19,17,9,.6); }
+    .t3-key { width: 56px; height: 50px; border-radius: 10px; border: 1px solid rgba(19,17,9,.16); background: #fff;
+      box-shadow: 0 3px 0 rgba(19,17,9,.12); display: flex; align-items: center; justify-content: center; font-size: 26px; color: #131109; }
+    #t3-keys span { margin-left: 8px; }
+
+    #t3-fy { position: absolute; left: 0; top: 0; }
+  </style>
+
+  <div id="root" data-composition-id="t3" data-width="1080" data-height="1080">
+    <div class="k-stage" data-layout-ignore></div>
+    <svg width="0" height="0" style="position:absolute" data-layout-ignore>
+      <filter id="t3-pix" x="0" y="0" width="100%" height="100%">
+        <feFlood x="8" y="8" width="4" height="4" />
+        <feComposite width="20" height="20" />
+        <feTile result="a" />
+        <feComposite in="SourceGraphic" in2="a" operator="in" />
+        <feMorphology operator="dilate" radius="10" />
+      </filter>
+    </svg>
+
+    <h1 id="t3-hl" class="k-hl">
+      <span class="k-line" id="t3-l1"><b>Studio scrubs sharp.</b></span>
+      <span class="k-line" id="t3-l2">Storyboards get a tab.</span>
+    </h1>
+
+    <div id="t3-cam">
+      <div id="t3-win" class="k-win">
+        <div class="k-bar"><i class="k-dot"></i><i class="k-dot"></i><i class="k-dot"></i><span id="t3-file">weekly.html</span>
+          <div id="t3-tabs"><div class="t3-tab" id="t3-tab-p">Preview</div><div class="t3-tab" id="t3-tab-s">Storyboard</div></div>
+        </div>
+
+        <div id="t3-prev" class="k-dark">
+          <div id="t3-frame">
+            <div id="t3-glow" data-layout-ignore></div>
+            <div id="t3-ht" data-layout-ignore></div>
+            <div id="t3-horizon" data-layout-ignore></div>
+            <div id="t3-disc" data-layout-ignore></div>
+            <div class="t3-ttl" id="t3-ttl-a">Launch day<span>scene 1 · intro</span></div>
+            <div class="t3-ttl" id="t3-ttl-b">The demo<span>scene 2 · demo</span></div>
+            <div id="t3-tc">00:00.40</div>
+          </div>
+          <div id="t3-fq" class="k-chip">✓ Full quality</div>
+        </div>
+
+        <div id="t3-tlx">
+          <div id="t3-ruler"></div>
+          <div class="t3-trk" style="top:56px">Video</div>
+          <div class="t3-trk" style="top:128px">Graphics</div>
+          <div class="t3-trk" style="top:200px">Captions</div>
+          <div id="t3-clips"></div>
+          <div id="t3-ph" data-layout-ignore><div id="t3-ph-line"></div><div id="t3-ph-head"></div></div>
+        </div>
+
+        <div id="t3-sb">
+          <div id="t3-sb-t">storyboard.md<span>written by your agent</span></div>
+          <div id="t3-grid"></div>
+          <div id="t3-sel" data-layout-ignore></div>
+          <div id="t3-keys"><div class="t3-key" id="t3-kl">←</div><div class="t3-key" id="t3-kr">→</div><span>step through frames</span></div>
+        </div>
+
+        <svg id="t3-cur" class="k-cursor" viewBox="0 0 32 32"><path d="M6 3 L6 25 L11.5 19.8 L15.2 28 L19 26.3 L15.4 18.4 L23 18.4 Z" fill="#131109" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+      </div>
+      <div id="t3-fy" data-layout-ignore></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const q = (s) => document.querySelector(s);
+      const DUR = 5.7;
+      const WX = 60, WY = 236;                       // window origin in frame space
+
+      // ---------- timeline: ruler, clips (0-6 s over x 170-930)
+      const X0 = 170, PPS = 126.67, TOP = 480;       // TOP: timeline y inside the window
+      const tx = (s) => X0 + s * PPS;
+      const ruler = q("#t3-ruler");
+      for (let s = 0; s <= 5; s++) { const r = document.createElement("div"); r.className = "t3-rl"; r.style.left = tx(s) + "px"; r.textContent = "00:0" + s; ruler.appendChild(r); }
+      const clips = [
+        ["t3-vid", 0, 2.4, 56, "intro.mp4", true], ["t3-vid", 2.42, 6.0, 56, "demo.mp4", true],
+        ["t3-gfx", 0.3, 1.9, 128, "title card"], ["t3-gfx", 3.2, 4.8, 128, "lower third"],
+        ["t3-cap", 0.2, 1.7, 200, "launch day"], ["t3-cap", 2.6, 4.1, 200, "the demo"],
+      ];
+      const ch = q("#t3-clips");
+      clips.forEach(([k, a, b, top, lab, th], i) => {
+        const c = document.createElement("div"); c.className = "t3-clip " + k; c.id = "t3-clip" + i;
+        c.style.left = tx(a) + "px"; c.style.width = (b - a) * PPS - 4 + "px"; c.style.top = top + "px";
+        c.innerHTML = (th ? '<div class="t3-thumbs" data-layout-ignore></div>' : "") + "<b>" + lab + "</b>";
+        ch.appendChild(c);
+      });
+
+      // ---------- storyboard grid: 6 frames, 3 x 2
+      const boards = [["01", "Hook"], ["02", "Problem"], ["03", "Demo"], ["04", "Detail"], ["05", "Payoff"], ["06", "End card"]];
+      const grid = q("#t3-grid");
+      const tilePos = (i) => ({ x: 40 + (i % 3) * 300, y: 84 + Math.floor(i / 3) * 236 });
+      const tiles = boards.map(([n, name], i) => {
+        const p = tilePos(i);
+        const t = document.createElement("div"); t.className = "t3-sbt"; t.id = "t3-sbt" + i;
+        t.style.left = p.x + "px"; t.style.top = p.y + "px";
+        // a tiny frame per board: glow, disc and a title bar, each in its own place
+        const dx = [62, 30, 70, 18, 50, 40][i], dy = [40, 58, 30, 50, 36, 46][i];
+        t.innerHTML = '<div data-layout-ignore style="position:absolute;inset:0;background:radial-gradient(ellipse at ' + (20 + i * 13) + '% 110%, rgba(42,159,216,.55), rgba(0,0,0,0) 65%)"></div>' +
+          '<div data-layout-ignore style="position:absolute;left:' + dx + '%;top:' + dy + '%;width:38px;height:38px;border-radius:50%;background:#f6f5f1"></div>' +
+          '<div data-layout-ignore style="position:absolute;left:18px;top:20px;width:' + (90 + (i * 23) % 60) + 'px;height:12px;border-radius:6px;background:rgba(255,255,255,.85)"></div>' +
+          '<div data-layout-ignore style="position:absolute;left:18px;top:40px;width:' + (60 + (i * 17) % 40) + 'px;height:8px;border-radius:4px;background:rgba(255,255,255,.4)"></div>';
+        grid.appendChild(t);
+        const l = document.createElement("div"); l.className = "t3-sbl"; l.id = "t3-sbl" + i;
+        l.style.left = p.x + "px"; l.style.top = p.y + 170 + "px"; l.innerHTML = "<b>" + n + "</b>" + name;
+        grid.appendChild(l);
+        return t;
+      });
+
+      // ---------- scrub state: playhead time T, a pure function of scene time (seek-safe)
+      const T0 = 0.4, T1 = 4.6, D0 = 1.0, D1 = 2.6;
+      const dragEase = gsap.parseEase("power1.inOut");
+      const Tat = (t) => T0 + (T1 - T0) * dragEase(Math.min(1, Math.max(0, (t - D0) / (D1 - D0))));
+      const ph = q("#t3-ph"), disc = q("#t3-disc"), tc = q("#t3-tc"), ta = q("#t3-ttl-a"), tb = q("#t3-ttl-b"), glow = q("#t3-glow");
+      function render(t) {
+        const T = Tat(t);
+        gsap.set(ph, { x: tx(T) });
+        gsap.set(disc, { x: 380 + T * 34, y: -Math.sin((T / 6) * Math.PI) * 30 });
+        gsap.set(glow, { x: -T * 18 });
+        const b = T >= 2.42;
+        gsap.set(ta, { opacity: b ? 0 : 1 }); gsap.set(tb, { opacity: b ? 1 : 0 });
+        tc.textContent = "00:0" + T.toFixed(2);
+      }
+      render(0);
+      const clock = { t: 0 };
+      tl.to(clock, { t: DUR, duration: DUR, ease: "none", onUpdate: () => render(clock.t) }, 0);
+
+      // ---------- open: the window arrives from the right, carrying t2's whip
+      gsap.set("#t3-sb", { opacity: 0 });
+      gsap.set("#t3-fq", { opacity: 0 });
+      tl.fromTo("#t3-win", { x: 520, filter: "blur(12px)" }, { x: 0, filter: "blur(0px)", duration: 0.34, ease: "power3.out" }, 0);
+      tl.fromTo("#t3-l1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.24);
+      gsap.set("#t3-l2", { opacity: 0 });
+
+      // ---------- Framey (the agent) grabs the playhead and scrubs (1.0-2.6)
+      const HX = WX + tx(T0), HY = WY + TOP + 44 + 10;      // playhead head, frame space
+      const F = FrameyV4.framey(q("#t3-fy"), { tl, x: 1180, y: 1000, scale: 0.62 });
+      FrameyV4.point(F, HX, HY, 0.5, { dur: 0.42, tap: false });
+      FrameyV4.push(F, tx(T1) - tx(T0), 0, D0, D1 - D0, "power1.inOut");
+      // the old way, for two frames: a blocky preview, then it resolves sharp and stays sharp
+      tl.set("#t3-frame", { filter: "url(#t3-pix)" }, 1.0);
+      tl.set("#t3-frame", { filter: "none" }, 1.067);
+      // "full quality" (2.20)
+      tl.fromTo("#t3-fq", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.28, ease: "back.out(2)" }, 2.2);
+      FrameyV4.mood(F, "found", 2.66);
+      FrameyV4.exit(F, 2.9, 420, 260, 0.4);
+
+      // ---------- human cursor to the Storyboard tab; punch-in on the tab (3.40), press, cut back (3.88)
+      const TABX = 318 + 144 + 88, TABY = 30;               // tab centre, window space
+      gsap.set("#t3-cur", { x: TABX + 260, y: TABY + 420, opacity: 0, transformOrigin: "8px 4px" });
+      tl.to("#t3-cur", { opacity: 1, duration: 0.06 }, 2.98);
+      tl.to("#t3-cur", { x: TABX + 18, y: TABY + 6, duration: 0.42, ease: "power3.inOut" }, 2.98);
+      const S = 2.8, FX = WX + TABX, FY = WY + TABY;          // tab lands at (380, 540) in the punch-in
+      tl.set("#t3-cam", { x: 380 - FX * S, y: 540 - FY * S, scale: S }, 3.4);
+      tl.set("#t3-hl", { opacity: 0 }, 3.4);
+      tl.to("#t3-cur", { x: TABX - 4, y: TABY - 6, duration: 0.14, ease: "power2.out" }, 3.42);
+      tl.to("#t3-cur", { scale: 0.86, duration: 0.06, ease: "power2.out" }, 3.6);
+      tl.to("#t3-cur", { scale: 1, duration: 0.1, ease: "power2.out" }, 3.66);
+      tl.set("#t3-tab-p", { backgroundColor: "rgba(19,17,9,0)", color: "rgba(19,17,9,.62)" }, 3.63);
+      tl.set("#t3-tab-s", { backgroundColor: "#131109", color: "#ffffff" }, 3.63);
+      tl.set("#t3-cam", { x: 0, y: 0, scale: 1 }, 3.88);
+      tl.set("#t3-hl", { opacity: 1 }, 3.88);
+      tl.to("#t3-cur", { opacity: 0, duration: 0.1 }, 3.9);
+
+      // ---------- the storyboard replaces the preview (3.88-4.1)
+      tl.set("#t3-sb", { opacity: 1 }, 3.88);
+      tl.set(["#t3-prev", "#t3-tlx"], { opacity: 0 }, 3.88);
+      tiles.forEach((t, i) => {
+        tl.fromTo(t, { opacity: 0, y: 18, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 0.26, ease: "power3.out" }, 3.9 + i * 0.035);
+        tl.fromTo("#t3-sbl" + i, { opacity: 0 }, { opacity: 1, duration: 0.2 }, 3.95 + i * 0.035);
+      });
+      tl.fromTo("#t3-l2", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 3.9);
+
+      // mint selection steps frame to frame on the arrow key (4.42 gets, 4.72 own, 4.89 tab, 5.08)
+      const selAt = (i) => { const p = tilePos(i); return { x: p.x - 8, y: p.y - 8 }; };
+      gsap.set("#t3-sel", { ...selAt(0), opacity: 0 });
+      tl.fromTo("#t3-sel", { opacity: 0, scale: 1.08 }, { opacity: 1, scale: 1, duration: 0.18, ease: "power3.out" }, 4.06);
+      [[4.42, 1], [4.72, 2], [4.89, 3], [5.08, 4]].forEach(([at, i]) => {
+        tl.to("#t3-sel", { ...selAt(i), duration: 0.1, ease: "power3.out" }, at);
+        tl.set("#t3-kr", { backgroundColor: "#131109", color: "#ffffff", y: 3, boxShadow: "0 0px 0 rgba(19,17,9,.12)" }, at - 0.02);
+        tl.set("#t3-kr", { backgroundColor: "#ffffff", color: "#131109", y: 0, boxShadow: "0 3px 0 rgba(19,17,9,.12)" }, at + 0.1);
+      });
+
+      // ---------- halftone burst out of the selected frame (5.35) into t4
+      const p5 = tilePos(4);
+      const ht = Prism.halftone(q("#root[data-composition-id='t3']") || q("#t3-cam").parentNode, tl,
+        { mode: "out", at: 5.35, dur: 0.3, cx: WX + p5.x + 140, cy: WY + 60 + p5.y + 79, color: "#3ce6ac", pitch: 28 });
+      ht.style.width = "1080px"; ht.style.height = "1080px";
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["t3"] || []);
+      window.__timelines["t3"] = tl;
+    })();
+  </script>
+</template>

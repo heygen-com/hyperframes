@@ -1,0 +1,201 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #f6f5f1; }
+    #t4-cam { position: absolute; inset: 0; transform-origin: 540px 540px; }
+    #t4-dots { position: absolute; left: 0; top: 0; width: 1080px; height: 1080px; overflow: hidden; z-index: 40; }
+    #t4-dots > div { width: 1080px !important; height: 1080px !important; }
+
+    /* terminal card */
+    #t4-term { left: 72px; top: 268px; width: 936px; height: 720px; box-shadow: 0 40px 100px rgba(19,17,9,.26); }
+    .t4-tbar { position: absolute; left: 0; right: 0; top: 0; height: 58px; border-bottom: 1px solid rgba(255,255,255,.08);
+      display: flex; align-items: center; gap: 10px; padding: 0 24px; }
+    .t4-tbar i { width: 14px; height: 14px; border-radius: 50%; background: rgba(255,255,255,.18); display: block; }
+    .t4-tbar span { margin-left: 14px; font-size: 22px; color: rgba(255,255,255,.5); }
+    .t4-mono { font-family: "TT Mono", ui-monospace, monospace; letter-spacing: -0.02em; }
+    #t4-cmd { position: absolute; left: 44px; top: 96px; font-size: 32px; color: #fff; white-space: nowrap; }
+    #t4-cmd .t4-ps { color: rgba(255,255,255,.45); }
+    #t4-cmd .t4-ch { display: none; }
+    #t4-caret { display: inline-block; width: 16px; height: 34px; margin-left: 4px; vertical-align: -6px; background: rgba(255,255,255,.85); }
+
+    .t4-sec { position: absolute; left: 44px; font-size: 22px; color: rgba(255,255,255,.45); letter-spacing: 0.02em; }
+    .t4-font { position: absolute; top: 206px; height: 58px; padding: 0 24px; border-radius: 29px; display: flex; align-items: center;
+      background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14); color: #fff; font-size: 28px; white-space: nowrap; }
+    #t4-zip { position: absolute; left: 600px; top: 200px; height: 70px; padding: 0 28px; border-radius: 16px; display: flex; align-items: center; gap: 14px;
+      background: #f6f5f1; color: #131109; font-size: 28px; white-space: nowrap; }
+    #t4-zip svg { width: 30px; height: 30px; }
+    #t4-arrow { position: absolute; left: 540px; top: 218px; font-size: 32px; color: rgba(255,255,255,.35); }
+    #t4-packed { position: absolute; left: 300px; top: 218px; font-size: 28px; color: #fff; white-space: nowrap; }
+    #t4-packed b { font-weight: 400; color: rgba(255,255,255,.5); }
+    #t4-rule { position: absolute; left: 44px; right: 44px; top: 318px; height: 1px; background: rgba(255,255,255,.1); }
+
+    #t4-file { position: absolute; left: 44px; top: 366px; display: flex; align-items: center; gap: 16px; color: #fff; font-size: 30px; white-space: nowrap; }
+    #t4-file svg { width: 34px; height: 34px; }
+    #t4-file span { color: rgba(255,255,255,.5); }
+    #t4-bar { position: absolute; left: 44px; top: 460px; width: 848px; height: 96px; }
+    .t4-seg { position: absolute; top: 0; height: 96px; border-radius: 10px; background: rgba(255,255,255,.07);
+      border: 2px solid rgba(255,255,255,.22); overflow: hidden; }
+    .t4-seg i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #f6f5f1; transform-origin: 0 50%; display: block; }
+    .t4-seg em { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;
+      font-style: normal; font-size: 30px; color: rgba(255,255,255,.6); }
+    #t4-drop { position: absolute; top: 392px; height: 48px; padding: 0 20px; border-radius: 24px; background: #e5533d; color: #fff;
+      font-size: 24px; display: flex; align-items: center; white-space: nowrap; }
+    #t4-status { position: absolute; left: 44px; top: 606px; font-size: 32px; color: rgba(255,255,255,.6); white-space: nowrap; }
+    #t4-status span { position: absolute; left: 0; top: 0; }
+    #t4-s4 { color: #fff; }
+  </style>
+
+  <div id="root" data-composition-id="t4" data-width="1080" data-height="1080">
+    <div class="k-paper" data-layout-ignore></div>
+    <div id="t4-cam">
+      <h1 id="t4-hl" class="k-hl">
+        <span class="k-line" id="t4-l1"><b>Cloud renders</b></span>
+        <span class="k-line" id="t4-l2">survive a dropped connection.</span>
+      </h1>
+
+      <div id="t4-term" class="k-dark">
+        <div class="t4-tbar"><i></i><i></i><i></i><span>~/weekly · zsh</span></div>
+        <div id="t4-cmd" class="t4-mono"></div>
+
+        <div class="t4-font" id="t4-f1" style="left:44px; font-family: Inter, sans-serif">Inter</div>
+        <div class="t4-font" id="t4-f2" style="left:194px; font-family: Georgia, serif">Georgia</div>
+        <div class="t4-font" id="t4-f3" style="left:376px; font-family: Menlo, monospace">Menlo</div>
+        <div id="t4-arrow" data-layout-ignore>→</div>
+        <div id="t4-zip"><svg viewBox="0 0 24 24" fill="none" stroke="#131109" stroke-width="2" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M11 3v2h2v2h-2v2h2v2h-2v3h2v3h-2z" stroke-width="1.6"/></svg><span>project.zip</span></div>
+        <div id="t4-packed" class="t4-mono">✓ 3 fonts packed</div>
+        <div id="t4-rule"></div>
+
+        <div id="t4-file"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4.5-2.5z" fill="#fff"/></svg>intro.mov <span>· 1.2 GB</span></div>
+        <div id="t4-bar"></div>
+        <div id="t4-drop" data-layout-allow-overlap>connection dropped</div>
+        <div id="t4-status" class="t4-mono">
+          <span id="t4-s1">uploading in 6 parts…</span>
+          <span id="t4-s2" style="color:#e5533d">part 4 failed</span>
+          <span id="t4-s3">resending part 4 only…</span>
+          <span id="t4-s4">✓ uploaded · resent 1 of 6 parts</span>
+        </div>
+      </div>
+    </div>
+    <div id="t4-dots" data-layout-ignore></div>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const $ = (s) => document.querySelector("#root[data-composition-id='t4'] " + s) || document.querySelector(s);
+
+      // ---- 0.00-0.35 the halftone burst from t3 resolves: mint dots shrink away from the centre
+      const dots = $("#t4-dots");
+      const ht1 = Prism.halftone(dots, tl, { mode: "in", at: 0, dur: 0.36, cx: 540, cy: 540, color: "#3ce6ac", pitch: 36 });
+      ht1.style.width = "1080px"; ht1.style.height = "1080px";
+      tl.set(dots, { opacity: 0 }, 0.37);
+
+      // headline lands and stays
+      tl.fromTo("#t4-l1", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.12);
+      tl.fromTo("#t4-l2", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 0.42);
+      tl.fromTo("#t4-term", { y: 60, scale: 0.97 }, { y: 0, scale: 1, duration: 0.5, ease: "power3.out" }, 0);
+
+      // ---- command types (0.14-0.55)
+      const cmd = $("#t4-cmd");
+      cmd.innerHTML = '<span class="t4-ps">$ </span>';
+      const chars = [];
+      for (const ch of "npx hyperframes cloud render") {
+        const s = document.createElement("span"); s.className = "t4-ch"; s.textContent = ch; cmd.appendChild(s); chars.push(s);
+      }
+      const caret = document.createElement("i"); caret.id = "t4-caret"; cmd.appendChild(caret);
+      chars.forEach((s, i) => tl.set(s, { display: "inline" }, 0.14 + i * 0.014));
+      tl.set(caret, { opacity: 0 }, 0.62);
+
+      // ---- "pack your fonts" (0.71-1.3): three font chips fly into project.zip
+      gsap.set(["#t4-f1", "#t4-f2", "#t4-f3", "#t4-zip", "#t4-arrow", "#t4-packed"], { opacity: 0 });
+      ["#t4-f1", "#t4-f2", "#t4-f3"].forEach((f, i) =>
+        tl.fromTo(f, { opacity: 0, y: 16, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.24, ease: "back.out(2)" }, 0.5 + i * 0.05));
+      tl.fromTo("#t4-zip", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.24, ease: "power3.out" }, 0.6);
+      tl.to("#t4-arrow", { opacity: 1, duration: 0.15 }, 0.62);
+      // chip centres (card space): f1 ~110, f2 ~275, f3 ~455; zip centre ~ 770
+      [["#t4-f1", 625], ["#t4-f2", 461], ["#t4-f3", 289]].forEach(([f, dx], i) => {
+        const at = 0.74 + i * 0.09;
+        tl.to(f, { x: dx, scale: 0.35, duration: 0.3, ease: "power3.in" }, at);
+        tl.set(f, { opacity: 0 }, at + 0.3);
+        tl.fromTo("#t4-zip", { scale: 1.08 }, { scale: 1, duration: 0.09, ease: "power2.out", immediateRender: false }, at + 0.3);
+      });
+      tl.to("#t4-arrow", { opacity: 0, duration: 0.12 }, 1.2);
+            // the zip takes the chips' place, and the line lands beside it
+      tl.to("#t4-zip", { x: -556, duration: 0.3, ease: "power3.inOut" }, 1.22);
+      tl.fromTo("#t4-packed", { opacity: 0, x: -12 }, { opacity: 1, x: 0, duration: 0.24, ease: "power3.out" }, 1.36);
+
+      // ---- "big uploads go up in parts" (1.99-3.2)
+      gsap.set(["#t4-file", "#t4-drop", "#t4-s1", "#t4-s2", "#t4-s3", "#t4-s4"], { opacity: 0 });
+      tl.fromTo("#t4-file", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.26, ease: "power3.out" }, 1.99);
+      const bar = $("#t4-bar");
+      const W = 848, GAP = 12, SW = (W - GAP * 5) / 6;
+      const segs = [];
+      for (let i = 0; i < 6; i++) {
+        const s = document.createElement("div"); s.className = "t4-seg"; s.id = "t4-g" + (i + 1);
+        s.innerHTML = '<i></i><em class="t4-mono">' + (i + 1) + "</em>";
+        bar.appendChild(s); segs.push(s);
+        // one solid bar first: each segment starts packed edge to edge, then gaps open
+        // (moved and stretched with transforms only, so nothing snaps to whole pixels)
+        gsap.set(s, { left: i * (SW + GAP), width: SW, x: i * (W / 6) - i * (SW + GAP), scaleX: (W / 6 + 1) / SW,
+          transformOrigin: "0% 50%", opacity: 0, borderRadius: 0 });
+        gsap.set(s.querySelector("i"), { scaleX: 0 });
+        gsap.set(s.querySelector("em"), { opacity: 0 });
+      }
+      tl.to(segs, { opacity: 1, duration: 0.2 }, 2.24);
+      segs.forEach((s, i) => {
+        tl.to(s, { x: 0, scaleX: 1, borderRadius: 10, duration: 0.3, ease: "power3.inOut" }, 2.67);
+        tl.to(s.querySelector("em"), { opacity: 1, duration: 0.2 }, 2.8);
+      });
+      tl.fromTo("#t4-s1", { opacity: 0 }, { opacity: 1, duration: 0.2 }, 2.84);
+      // parts upload side by side, left to right
+      const fills = segs.map((s) => s.querySelector("i"));
+      const ems = segs.map((s) => s.querySelector("em"));
+      const fillAt = [2.98, 3.1, 3.22, 3.34, 3.46, 3.58];
+      [0, 1, 2, 4, 5].forEach((i) => {
+        tl.to(fills[i], { scaleX: 1, duration: 0.72, ease: "power1.inOut" }, fillAt[i]);
+        tl.to(ems[i], { color: "#131109", duration: 0.1 }, fillAt[i] + 0.4);
+      });
+      tl.to(fills[3], { scaleX: 0.62, duration: 0.7, ease: "none" }, fillAt[3]);
+
+      // ---- "dropped connection" (4.04): part 4 turns coral
+      tl.set(segs[3], { borderColor: "#e5533d", backgroundColor: "rgba(229,83,61,.22)" }, 4.05);
+      tl.set(fills[3], { backgroundColor: "#e5533d" }, 4.05);
+      tl.set(ems[3], { color: "#fff" }, 4.05);
+      tl.to(segs[3], { x: -7, duration: 0.04 }, 4.05);
+      tl.to(segs[3], { x: 6, duration: 0.05 }, 4.09);
+      tl.to(segs[3], { x: -3, duration: 0.05 }, 4.14);
+      tl.to(segs[3], { x: 0, duration: 0.05 }, 4.19);
+      const dropX = 3 * (SW + GAP) + SW / 2 + 44;
+      gsap.set("#t4-drop", { left: dropX, xPercent: -50 });
+      tl.fromTo("#t4-drop", { opacity: 0, y: 12, scale: 0.9 }, { opacity: 1, y: 0, scale: 1, duration: 0.24, ease: "back.out(2)" }, 4.05);
+      tl.set("#t4-s1", { opacity: 0 }, 4.05);
+      tl.set("#t4-s2", { opacity: 1 }, 4.05);
+      tl.to(fills[3], { scaleX: 0, duration: 0.3, ease: "power2.in" }, 4.4);
+
+      // ---- "resends one part" (4.85-5.8): only part 4 refills
+      tl.to("#t4-drop", { opacity: 0, y: -8, duration: 0.16 }, 4.82);
+      tl.set(segs[3], { borderColor: "rgba(255,255,255,.22)", backgroundColor: "rgba(255,255,255,.07)" }, 4.86);
+      tl.set(fills[3], { backgroundColor: "#f6f5f1" }, 4.86);
+      tl.set("#t4-s2", { opacity: 0 }, 4.86);
+      tl.set("#t4-s3", { opacity: 1 }, 4.86);
+      tl.to(fills[3], { scaleX: 1, duration: 0.9, ease: "power1.inOut" }, 4.88);
+      tl.to(ems[3], { color: "#131109", duration: 0.1 }, 5.35);
+      // the other five dim a little so the one resend reads
+      tl.to([segs[0], segs[1], segs[2], segs[4], segs[5]], { opacity: 0.45, duration: 0.2 }, 4.86);
+
+      // ---- "not the whole file" (6.08): all six go mint, done
+      tl.to(segs, { opacity: 1, duration: 0.12 }, 6.08);
+      tl.set(fills, { backgroundColor: "#3ce6ac" }, 6.09);
+      tl.set(ems, { color: "#06281c" }, 6.09);
+      tl.fromTo(bar, { scale: 1 }, { scale: 1.02, duration: 0.08, ease: "power2.out" }, 6.09);
+      tl.to(bar, { scale: 1, duration: 0.2, ease: "power2.out" }, 6.17);
+      tl.set("#t4-s3", { opacity: 0 }, 6.09);
+      tl.fromTo("#t4-s4", { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.24, ease: "power3.out" }, 6.09);
+
+      // a slow push in toward the upload while it plays
+      tl.fromTo("#t4-cam", { scale: 1 }, { scale: 1.035, duration: 4.6, ease: "power1.inOut" }, 2.0);
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["t4"] || []);
+      window.__timelines["t4"] = tl;
+    })();
+  </script>
+</template>

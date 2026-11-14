@@ -1,0 +1,131 @@
+<template>
+  <style>
+    #root { position: absolute; inset: 0; overflow: hidden; background: #f6f5f1; }
+    #hook-prism { position: absolute; left: 0; top: 0; width: 1080px; height: 1080px; }
+
+    /* the site film's "Start something new" box, at a size a phone can read */
+    #hook-box { position: absolute; left: 80px; top: 318px; width: 920px; height: 404px; border-radius: 30px;
+      background: #0f0f11; border: 1px solid rgba(255,255,255,.08); box-shadow: 0 40px 100px rgba(19,17,9,.28); }
+    #hook-box-t { position: absolute; left: 48px; top: 44px; font-size: 30px; font-weight: 700; color: #fff; letter-spacing: -0.02em; }
+    #hook-box-s { position: absolute; left: 48px; top: 90px; font-size: 22px; font-weight: 400; color: rgba(255,255,255,.5); }
+    #hook-type { position: absolute; left: 48px; top: 150px; width: 820px; font-size: 50px; line-height: 1.2; font-weight: 300;
+      color: #fff; letter-spacing: -0.03em; }
+    #hook-type span { display: none; }
+    #hook-caret { display: inline-block; width: 3px; height: 52px; margin-left: 3px; vertical-align: -8px; background: #3ce6ac; }
+    #hook-send { position: absolute; left: 812px; top: 296px; width: 72px; height: 72px; border-radius: 50%; background: #fff;
+      display: flex; align-items: center; justify-content: center; z-index: 5; }
+    #hook-send svg { width: 30px; height: 30px; }
+    #hook-attach { position: absolute; left: 48px; top: 306px; display: flex; gap: 10px; }
+    #hook-attach i { width: 52px; height: 52px; border-radius: 12px; border: 2px dashed rgba(255,255,255,.28); display: block; }
+
+    /* after the zoom-through: 20 releases */
+    #hook-hl1, #hook-hl2 { opacity: 0; }
+    #hook-grid { position: absolute; left: 93px; top: 330px; width: 894px; height: 392px; }
+    .hook-chip { position: absolute; width: 210px; height: 64px; border-radius: 32px; background: #fff;
+      border: 1px solid rgba(19,17,9,.09); box-shadow: 0 6px 18px rgba(19,17,9,.06);
+      display: flex; align-items: center; justify-content: center; opacity: 0; }
+    .hook-v { font-family: "TT Mono", monospace; font-size: 25px; color: rgba(19,17,9,.72); letter-spacing: -0.02em; }
+    .hook-th { position: absolute; inset: 0; border-radius: 32px; background: #3ce6ac; color: #06281c; font-size: 25px;
+      font-weight: 700; letter-spacing: -0.03em; display: flex; align-items: center; justify-content: center; opacity: 0; }
+    #hook-note { position: absolute; left: 72px; top: 780px; font-size: 30px; font-weight: 400; color: rgba(19,17,9,.55);
+      letter-spacing: -0.02em; opacity: 0; }
+    #hook-note b { color: #131109; font-weight: 700; }
+
+    /* the chip that becomes the next scene's stage */
+    #hook-grow { position: absolute; inset: 0; opacity: 0; clip-path: inset(330px 549px 686px 321px round 32px); }
+  </style>
+
+  <div id="root" data-composition-id="hook" data-width="1080" data-height="1080">
+    <div id="hook-prism" data-layout-ignore></div>
+
+    <div id="hook-box">
+      <div id="hook-box-t">Start something new</div>
+      <div id="hook-box-s">Say what the video is about. Type @ to use a project or media.</div>
+      <div id="hook-type"></div>
+      <div id="hook-attach"><i></i><i></i></div>
+      <div id="hook-send"><svg viewBox="0 0 24 24" fill="none" stroke="#131109" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></div>
+    </div>
+
+    <h1 id="hook-hl1" class="k-hl"><span class="k-line"><b>20 releases.</b> One week.</span></h1>
+    <h1 id="hook-hl2" class="k-hl"><span class="k-line"><b>The 5 you'll feel.</b></span></h1>
+    <div id="hook-grid"></div>
+    <div id="hook-note"><b>v0.9.6 to v0.9.26</b> · Nov 2-9, 2026</div>
+
+    <div id="hook-grow" class="k-stage" data-layout-ignore></div>
+
+    <svg id="hook-cur" class="k-cursor" viewBox="0 0 32 32"><path d="M6 3 L6 25 L11.5 19.8 L15.2 28 L19 26.3 L15.4 18.4 L23 18.4 Z" fill="#131109" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+  </div>
+
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const $ = (s) => document.querySelector("#root[data-composition-id='hook'] " + s) || document.querySelector(s);
+
+      // soft prism light at two corners, as on the site (never behind text)
+      const rib = Prism.streaks($("#hook-prism"), [
+        { d: "M-120 260 C 120 160, 260 60, 420 -120", n: [0.6, 0.8], op: 0.55, sw: 18, gap: 14, blur: 18 },
+        { d: "M700 1220 C 860 1040, 1020 930, 1220 880", n: [-0.5, -0.85], op: 0.5, sw: 18, gap: 14, blur: 18 },
+      ], 1080, 1080);
+      tl.fromTo(rib, { opacity: 0 }, { opacity: 1, duration: 0.6, ease: "power1.out" }, 0);
+
+      // ---- 0.00-1.15 prompt types
+      const text = "What shipped in HyperFrames this week?";
+      const box = $("#hook-type");
+      const spans = [];
+      for (const ch of text) { const s = document.createElement("span"); s.textContent = ch; box.appendChild(s); spans.push(s); }
+      const caret = document.createElement("i"); caret.id = "hook-caret"; box.appendChild(caret);
+      tl.fromTo("#hook-box", { y: 40, opacity: 0, scale: 0.97 }, { y: 0, opacity: 1, scale: 1, duration: 0.4, ease: "power3.out" }, 0);
+      spans.forEach((s, i) => tl.set(s, { display: "inline" }, 0.22 + i * 0.024));
+      [0.05, 0.2].forEach((t) => { tl.set(caret, { opacity: 0 }, t); tl.set(caret, { opacity: 1 }, t + 0.08); });
+
+      // ---- cursor to Send, press (1.22), zoom through the button (1.30-1.66)
+      tl.fromTo("#hook-cur", { x: 1120, y: 900 }, { x: 878, y: 650, duration: 0.55, ease: "power3.inOut" }, 0.62);
+      tl.to("#hook-cur", { scale: 0.86, duration: 0.06, ease: "power2.out" }, 1.2);
+      tl.to("#hook-cur", { scale: 1, duration: 0.1, ease: "power2.out" }, 1.26);
+      tl.to("#hook-send", { scale: 0.9, duration: 0.06 }, 1.2);
+      tl.set(caret, { opacity: 0 }, 1.22);
+      tl.to("#hook-cur", { opacity: 0, duration: 0.08 }, 1.32);
+      tl.to("#hook-box", { x: -160, y: -110, duration: 0.36, ease: "power3.in" }, 1.3);
+      tl.to("#hook-send", { scale: 34, duration: 0.36, ease: "power3.in" }, 1.3);
+      tl.set("#hook-box", { opacity: 0 }, 1.67);
+      tl.set(rib, { opacity: 0 }, 1.67);
+
+      // ---- 1.70 "Twenty releases": 20 version chips pop in
+      const vers = []; for (let n = 6; n <= 26; n++) if (n !== 24) vers.push("v0.9." + n);
+      const grid = $("#hook-grid");
+      const chips = vers.map((v, i) => {
+        const c = document.createElement("div"); c.className = "hook-chip"; c.id = "hook-c" + i;
+        c.style.left = (i % 4) * 228 + "px"; c.style.top = Math.floor(i / 4) * 82 + "px";
+        c.innerHTML = '<span class="hook-v">' + v + "</span>"; grid.appendChild(c); return c;
+      });
+      tl.fromTo("#hook-hl1", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 1.7);
+      chips.forEach((c, i) => tl.fromTo(c, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.32, ease: "back.out(2)" }, 1.74 + i * 0.038));
+      tl.fromTo("#hook-note", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 2.5);
+
+      // ---- 3.53 "Here are the five you'll feel": five chips flip to the themes, the rest dim
+      const pick = { 1: "Same render", 6: "Motion blur", 8: "Studio", 13: "Cloud uploads", 18: "check in 1 s" };
+      tl.to("#hook-hl1", { opacity: 0, filter: "blur(6px)", duration: 0.14 }, 3.5);
+      tl.fromTo("#hook-hl2", { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" }, 3.62);
+      chips.forEach((c, i) => {
+        if (pick[i]) {
+          const th = document.createElement("div"); th.className = "hook-th"; th.textContent = pick[i]; c.appendChild(th);
+          const at = 3.86 + Object.keys(pick).indexOf(String(i)) * 0.07;
+          tl.to(c, { scaleY: 0, duration: 0.08, ease: "power2.in" }, at);
+          tl.set(th, { opacity: 1 }, at + 0.08);
+          tl.set(c.querySelector(".hook-v"), { opacity: 0 }, at + 0.08);
+          tl.to(c, { scaleY: 1, scale: 1.06, duration: 0.18, ease: "back.out(2.4)" }, at + 0.08);
+        } else {
+          tl.to(c, { opacity: 0.16, duration: 0.25 }, 3.86);
+        }
+      });
+      tl.to("#hook-note", { opacity: 0, duration: 0.2 }, 3.86);
+
+      // ---- 4.45-5.05 the "Same render" chip opens into the next scene's stage
+      tl.set("#hook-grow", { opacity: 1 }, 4.45);
+      tl.to("#hook-grow", { clipPath: "inset(0px 0px 0px 0px round 0px)", duration: 0.5, ease: "power3.inOut" }, 4.45);
+
+      if (window.insertHolds) window.insertHolds(tl, (window.HOLDS || {})["hook"] || []);
+      window.__timelines["hook"] = tl;
+    })();
+  </script>
+</template>
