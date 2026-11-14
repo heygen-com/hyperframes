@@ -189,6 +189,7 @@ export function buildShortcutSections(keys: StudioKeys): readonly ShortcutSectio
       hints: [
         { key: k("tabCompositions"), label: "Compositions tab" },
         { key: k("tabAssets"), label: "Assets tab" },
+        { key: k("shortcuts"), label: "Show / hide this panel" },
       ],
     },
     {

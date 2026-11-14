@@ -58,6 +58,20 @@ function panelOf(trigger: HTMLButtonElement): HTMLElement {
   return document.getElementById(trigger.getAttribute("aria-controls")!)!;
 }
 
+function pressQuestionMark(target: Element): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key: "?",
+    code: "Slash",
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event;
+}
+
 describe("ShortcutsPanel", () => {
   it.each(["page", "button", "panel"] as const)(
     "closes with Escape from the %s-focused position",
@@ -92,6 +106,67 @@ describe("ShortcutsPanel", () => {
       expect(document.querySelector('[aria-label="Jump to frame"]')).toBeNull();
     },
   );
+
+  it("opens with ? and closes with ? again or Escape", () => {
+    const { trigger } = renderPanel();
+
+    pressQuestionMark(document.body);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(panelOf(trigger).textContent).toContain("Show / hide this panel");
+
+    pressQuestionMark(document.activeElement ?? document.body);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    pressQuestionMark(document.body);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("does not show the button's tooltip when ? opens the panel", async () => {
+    const { trigger } = renderPanel();
+
+    pressQuestionMark(document.body);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(trigger.getAttribute("aria-describedby")).toBeNull();
+  });
+
+  it.each([
+    ["an input", () => document.createElement("input")],
+    ["a textarea", () => document.createElement("textarea")],
+    [
+      "a contenteditable",
+      () => {
+        const editable = document.createElement("div");
+        editable.contentEditable = "true";
+        return editable;
+      },
+    ],
+  ])("leaves ? to %s", (_, createField) => {
+    const field = createField();
+    document.body.append(field);
+    const { trigger } = renderPanel();
+
+    const event = pressQuestionMark(field);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("leaves ? to the panel's own frame input while open", () => {
+    const { trigger } = renderPanel();
+    openPanel(trigger);
+
+    pressQuestionMark(document.querySelector<HTMLInputElement>('[aria-label="Jump to frame"]')!);
+
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  });
 
   it("closes on an outside press whose pointerdown a canvas gesture prevented", () => {
     const preventDefault = (event: Event) => event.preventDefault();

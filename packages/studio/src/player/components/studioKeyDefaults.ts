@@ -22,6 +22,7 @@ export const DEFAULT_STUDIO_KEYS = {
   snap: "s",
   grid: "g",
   timelineSnap: "n",
+  shortcuts: "?",
   playPause: "Space",
   frameBack: "ArrowLeft",
   frameForward: "ArrowRight",
