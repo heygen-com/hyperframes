@@ -42,8 +42,7 @@ function inferColorRole(hex: string): string {
   return "neutral";
 }
 
-// Agents load these files as instructions, so nothing the page wrote goes in as free text.
-// A font family is kept only when it reads as a plain name; anything else is dropped.
+// Agents load these files as instructions, so a page font goes in only as a plain name.
 const FONT_NAME = /^[\p{L}\p{N}_][\p{L}\p{N} _-]{0,39}$/u;
 
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
