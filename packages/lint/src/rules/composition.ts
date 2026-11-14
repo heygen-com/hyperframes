@@ -1,3 +1,4 @@
+import { emptyStyleBlocks, hasScriptWithSrc, replaceBlockComments } from "../linearScans";
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
 import { parseHTML } from "linkedom";
@@ -96,7 +97,7 @@ function countPhysicalLines(source: string): number {
 }
 
 function countStructuralLines(source: string): number {
-  return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
+  return countPhysicalLines(emptyStyleBlocks(source));
 }
 
 function isCaptionCue(tag: OpenTag): boolean {
@@ -131,7 +132,7 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 // rules that consume this — the helper just yields raw URL values.
 function extractCssUrlReferences(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const noComments = replaceBlockComments(css, "");
   const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
   let m: RegExpExecArray | null;
   while ((m = urlPattern.exec(noComments)) !== null) {
@@ -166,7 +167,7 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const noComments = replaceBlockComments(css, "");
   const ruleHeader = /(?<![^{}])([^{}]+)\{/g;
   let m: RegExpExecArray | null;
   while ((m = ruleHeader.exec(noComments)) !== null) {
@@ -208,7 +209,7 @@ function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   const classes = new Set<string>();
   const ids = new Set<string>();
   for (const style of styles) {
-    const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
+    const noComments = replaceBlockComments(style.content, "");
     const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
     while ((m = ruleWithBody.exec(noComments)) !== null) {
@@ -1259,7 +1260,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (!rootCompositionId || !rootTag) return [];
     // Can't scan external script files for timeline registration; skip to avoid
     // false positives on compositions that register via a bundled JS file.
-    if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
+    if (hasScriptWithSrc(rawSource)) return [];
     // A computed key may map to any authored id. When static analysis cannot
     // resolve that key, stay silent rather than claim a registration is absent.
     if (hasComputedTimelineRegistration(scripts)) return [];
@@ -1625,7 +1626,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     const allCss = styles.map((s) => s.content).join("\n");
     const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
-    const combinedCss = `${allCss}\n${allInlineStyles}`.replace(/\/\*[\s\S]*?\*\//g, "");
+    const combinedCss = replaceBlockComments(`${allCss}\n${allInlineStyles}`, "");
 
     const usesLottie =
       tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null) ||
