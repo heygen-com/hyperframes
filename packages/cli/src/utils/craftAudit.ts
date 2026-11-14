@@ -211,7 +211,8 @@ interface CraftRect {
 }
 
 interface BlockTrack {
-  key: number;
+  /** Block elements that showed this line; a split clip hands it to a second one. */
+  keys: Set<number>;
   selector: string;
   sourceFile: string;
   /** Frame index → what the block showed there. */
@@ -258,20 +259,48 @@ interface Anchor {
 }
 
 function trackBlocks(frames: CraftFrame[], readHeight: number): BlockTrack[] {
-  const tracks = new Map<number, BlockTrack>();
+  const tracks: BlockTrack[] = [];
+  const byKey = new Map<number, BlockTrack>();
   frames.forEach((frame, index) => {
     for (const [key, block] of readableBlocks(frame, readHeight)) {
-      const track = tracks.get(key) ?? {
-        key,
-        selector: block.selector,
-        sourceFile: block.sourceFile,
-        seen: new Map<number, BlockFrame>(),
-      };
+      let track = byKey.get(key) ?? handedOver(tracks, index, block);
+      if (!track) {
+        track = {
+          keys: new Set(),
+          selector: block.selector,
+          sourceFile: block.sourceFile,
+          seen: new Map(),
+        };
+        tracks.push(track);
+      }
+      track.keys.add(key);
+      byKey.set(key, track);
       track.seen.set(index, { text: block.text, rect: block.rect });
-      tracks.set(key, track);
     }
   });
-  return [...tracks.values()];
+  return tracks;
+}
+
+/** The track a new element continues: the same text in the same place on this frame or the one before. */
+function handedOver(
+  tracks: BlockTrack[],
+  index: number,
+  block: BlockFrame,
+): BlockTrack | undefined {
+  return tracks.find((track) => {
+    const last = track.seen.get(index) ?? track.seen.get(index - 1);
+    return !!last && last.text === block.text && sameBox(last.rect, block.rect);
+  });
+}
+
+const SAME_BOX_OVERLAP = 0.9;
+
+function sameBox(a: CraftRect, b: CraftRect): boolean {
+  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (width <= 0 || height <= 0) return false;
+  const area = (rect: CraftRect) => (rect.right - rect.left) * (rect.bottom - rect.top);
+  return (width * height) / Math.max(area(a), area(b)) >= SAME_BOX_OVERLAP;
 }
 
 /** Maximal runs of consecutive frame indices. */
@@ -374,8 +403,10 @@ async function refineWindow(
   canvas: Canvas,
 ): Promise<LineWindow> {
   const readHeight = T.readHeightAt1080 * (Math.min(canvas.width, canvas.height) / 1080);
-  const visibleAt = async (time: number) =>
-    readableBlocks(await probe(time), readHeight).has(candidate.track.key);
+  const visibleAt = async (time: number) => {
+    const blocks = readableBlocks(await probe(time), readHeight);
+    return [...candidate.track.keys].some((key) => blocks.has(key));
+  };
   const window = { ...candidate.window };
   for (let step = 0; step < T.refineSteps; step += 1) {
     if (window.startIn > window.startOut) {
@@ -445,7 +476,7 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
-    measured: measuredAround(frames, track.key, candidate.firstIndex, candidate.lastIndex),
+    measured: measuredAround(frames, track.keys, candidate.firstIndex, candidate.lastIndex),
   };
 }
 
@@ -454,7 +485,7 @@ const MEASURED_SPAN = 3;
 /** The samples at both ends of the line's run, as the sampler measured them. */
 function measuredAround(
   frames: CraftFrame[],
-  key: number,
+  keys: Set<number>,
   first: number,
   last: number,
 ): NonNullable<CraftFinding["measured"]> {
@@ -466,7 +497,7 @@ function measuredAround(
   for (const index of [...indices].sort((a, b) => a - b)) {
     const frame = frames[index];
     if (!frame) continue;
-    const parts = frame.parts.filter((part) => part.block === key && !part.captions);
+    const parts = frame.parts.filter((part) => keys.has(part.block) && !part.captions);
     if (parts.length === 0) {
       out.push({ time: round(frame.time), opacity: null, heightPx: null });
       continue;
