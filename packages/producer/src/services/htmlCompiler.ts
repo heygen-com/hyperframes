@@ -1349,9 +1349,11 @@ function operatorGsapMirror(): string | undefined {
 
 async function downloadScript(src: string, mirror: string | undefined): Promise<Uint8Array> {
   if (mirror && new URL(src).href.startsWith(mirror)) {
-    const response = await fetch(src, { signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(src, { redirect: "error", signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
-    return new Uint8Array(await response.arrayBuffer());
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength > MAX_SCRIPT_BYTES) throw new Error(`Script over 16 MiB: ${src}`);
+    return bytes;
   }
   return fetchPublicHttpsBytes(src, { maxBytes: MAX_SCRIPT_BYTES, timeoutMs: 15_000 });
 }

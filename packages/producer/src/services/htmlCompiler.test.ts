@@ -408,6 +408,7 @@ describe("inlineExternalScripts", () => {
     const hits: string[] = [];
     const server = createServer((req, res) => {
       hits.push(req.url ?? "");
+      if (req.url?.endsWith("/moved.js")) res.writeHead(302, { location: "/admin.js" });
       res.end("window.fromMirrorHost = 1;");
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -417,10 +418,14 @@ describe("inlineExternalScripts", () => {
     try {
       const mirror = `http://127.0.0.1:${port}/vendor/npm/gsap@3.15.0/dist/gsap.min.js`;
       const escape = `http://127.0.0.1:${port}/vendor/npm/../../admin.js`;
+      const moved = `http://127.0.0.1:${port}/vendor/npm/moved.js`;
       await inlineExternalScripts(
-        `<script src="${mirror}"></script><script src="${escape}"></script>`,
+        `<script src="${mirror}"></script><script src="${escape}"></script><script src="${moved}"></script>`,
       );
-      expect(hits).toEqual(["/vendor/npm/gsap@3.15.0/dist/gsap.min.js"]);
+      expect(hits.sort()).toEqual([
+        "/vendor/npm/gsap@3.15.0/dist/gsap.min.js",
+        "/vendor/npm/moved.js",
+      ]);
     } finally {
       if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
       else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
