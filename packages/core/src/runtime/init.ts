@@ -2735,10 +2735,14 @@ export function initSandboxRuntimeModular(): void {
     state.mediaForceSyncNextTick = true;
     syncMediaForCurrentState();
   };
+  // Chromium's software decoders cost threads per loaded video; WebKit's reload of a shared file stalls audio.
+  const freesBufferedVideo = (el: unknown): el is HTMLVideoElement =>
+    isVideoElement(el) && !isWebKit();
   // A far clip can finish a load the parser started before its window was decided.
   const onMediaLoadedWhileFar = (event: Event) => {
     const el = event.currentTarget;
-    if (!isVideoElement(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0) return;
+    if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
+      return;
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -3285,8 +3289,7 @@ export function initSandboxRuntimeModular(): void {
     if (!near) {
       const wasPreloading = el.preload !== "none";
       el.preload = "none";
-      // Only a video holds the decoder threads that crash a big project; audio keeps its buffer (Safari stops it).
-      const video = isVideoElement(el);
+      const video = freesBufferedVideo(el);
       const holdsPipeline = video
         ? decided || el.readyState > 0 || el.networkState === 2
         : wasPreloading && decided;
