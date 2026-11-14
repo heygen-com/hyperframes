@@ -358,7 +358,7 @@ export function buildFadeFilters(
   return stages.length ? `,${stages.join(",")}` : "";
 }
 
-/** One track: trim, volume, afade, delay. Legacy and group mixes also pad each branch. */
+/** apad needs asetpts before atrim or FFmpeg 5-8.0 moves delayed audio to t=0. */
 export function buildTrackInputFilter(
   track: Pick<AudioTrack, "start" | "end" | "fadeIn" | "fadeOut" | "tailSeconds">,
   index: number,

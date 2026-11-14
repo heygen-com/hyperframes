@@ -1053,62 +1053,93 @@ describe("processCompositionAudio", () => {
     expect((filter.match(/apad,/g) ?? []).length).toBe(1);
   });
 
-  it("retries the padded graph when ffmpeg does not support amix normalize", async () => {
-    const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
-    const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
-    tempDirs.push(baseDir, workDir);
-    writeFileSync(join(baseDir, "voice.wav"), "stub");
+  it.each([false, true])(
+    "preserves padded mix gain across normalize fallback (automation: %s)",
+    async (automated) => {
+      const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
+      const workDir = mkdtempSync(join(tmpdir(), "hf-audio-work-"));
+      tempDirs.push(baseDir, workDir);
+      writeFileSync(join(baseDir, "voice.wav"), "stub");
+      writeFileSync(join(baseDir, "music.wav"), "stub");
 
-    runFfmpegMock
-      .mockImplementationOnce(async () => ({
-        success: true,
-        durationMs: 1,
-        stderr: "",
-        exitCode: 0,
-      }))
-      .mockImplementationOnce(async (args: string[]) => {
-        capturedFilterScripts.push(
-          readFileSync(args[args.indexOf("-filter_complex_script") + 1]!, "utf8"),
-        );
-        return {
-          success: false,
-          durationMs: 1,
-          stderr: "Error applying option 'normalize' to filter 'amix': Option not found",
-          exitCode: 1,
-        };
-      })
-      .mockImplementationOnce(async (args: string[]) => {
-        capturedFilterScripts.push(
-          readFileSync(args[args.indexOf("-filter_complex_script") + 1]!, "utf8"),
-        );
+      runFfmpegMock.mockImplementation(async (args: string[]) => {
+        const scriptIndex = args.indexOf("-filter_complex_script");
+        if (scriptIndex === -1) return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
+        capturedFilterScripts.push(readFileSync(args[scriptIndex + 1]!, "utf8"));
+        if (capturedFilterScripts.length === 1)
+          return {
+            success: false,
+            durationMs: 1,
+            stderr: "Error applying option 'normalize' to filter 'amix': Option not found",
+            exitCode: 1,
+          };
+        if (automated && capturedFilterScripts.length === 2)
+          return {
+            success: false,
+            durationMs: 1,
+            stderr: "Error initializing filters",
+            exitCode: 234,
+          };
         return { success: true, durationMs: 1, stderr: "", exitCode: 0 };
       });
 
-    const result = await processCompositionAudio(
-      [
-        {
-          id: "voice",
-          src: "voice.wav",
-          start: 0,
-          end: 2,
-          mediaStart: 0,
-          layer: 0,
-          volume: 1,
-          type: "audio",
-        },
-      ],
-      baseDir,
-      workDir,
-      join(baseDir, "out.m4a"),
-      2,
-    );
+      const result = await processCompositionAudio(
+        [
+          {
+            id: "voice",
+            src: "voice.wav",
+            start: 0,
+            end: 2,
+            mediaStart: 0,
+            layer: 0,
+            volume: 1,
+            ...(automated
+              ? {
+                  volumeKeyframes: [
+                    { time: 0, volume: 1 },
+                    { time: 2, volume: 0 },
+                  ],
+                }
+              : {}),
+            type: "audio",
+          },
+          {
+            id: "music",
+            src: "music.wav",
+            start: 1,
+            end: 2,
+            mediaStart: 0,
+            layer: 1,
+            volume: 0.5,
+            type: "audio",
+          },
+        ],
+        baseDir,
+        workDir,
+        join(baseDir, "out.m4a"),
+        2,
+      );
 
-    expect(result.success).toBe(true);
-    expect(runFfmpegMock).toHaveBeenCalledTimes(3);
-    expect(capturedFilterScripts[0]).toContain("normalize=0");
-    expect(capturedFilterScripts[1]).toContain("apad,asetpts=N/SR/TB,atrim=0:2[a0]");
-    expect(capturedFilterScripts[1]).not.toContain("normalize=");
-  });
+      expect(result.success).toBe(true);
+      expect(result.tracksProcessed).toBe(2);
+      expect(runFfmpegMock).toHaveBeenCalledTimes(automated ? 5 : 4);
+      expect(capturedFilterScripts).toHaveLength(automated ? 3 : 2);
+      expect(capturedFilterScripts[0]).toContain("normalize=0");
+      for (const filter of capturedFilterScripts.slice(1)) {
+        expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:2[a0]");
+        expect(filter).toContain("apad,asetpts=N/SR/TB,atrim=0:2[a1]");
+        expect(filter).toContain("amix=inputs=2:duration=longest:dropout_transition=0[mixed]");
+        expect(filter).toContain("[mixed]volume=2[out]");
+        expect(filter).not.toContain("normalize=");
+      }
+      if (automated) {
+        expect(capturedFilterScripts[1]).toContain(":eval=frame");
+        expect(capturedFilterScripts[2]).not.toContain(":eval=frame");
+        expect(capturedFilterScripts[2]).toContain("volume=0.5");
+        expect(result.error).toMatch(/base volume/i);
+      }
+    },
+  );
 
   it("fails the audio result instead of silently mixing after one track preparation fails", async () => {
     const baseDir = mkdtempSync(join(tmpdir(), "hf-audio-base-"));
