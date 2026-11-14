@@ -1,8 +1,6 @@
 // fallow-ignore-file code-duplication
 import { describe, expect, it, mock, beforeAll } from "bun:test";
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -385,51 +383,48 @@ describe("collectExternalAssets", () => {
 
 describe("inlineExternalScripts", () => {
   it("fetches composition scripts only from public HTTPS addresses", async () => {
-    const hits: string[] = [];
-    const server = createServer((req, res) => {
-      hits.push(req.url ?? "");
-      res.end("window.fromLocalHost = 1;");
+    const fetched: string[] = [];
+    const record = mock(async (url: string | URL | Request) => {
+      fetched.push(String(url));
+      return new Response("window.fromLocalHost = 1;");
     });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const { port } = server.address() as AddressInfo;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = record as unknown as typeof fetch;
+    _setDownloadFetchForTests(record);
     try {
-      const html = `<html><body><script src="http://127.0.0.1:${port}/a.js"></script><script src="https://127.0.0.1:${port}/b.js"></script></body></html>`;
+      const html = `<html><body><script src="http://127.0.0.1:8080/a.js"></script><script src="https://127.0.0.1:8443/b.js"></script><script src="https://10.0.0.5/c.js"></script></body></html>`;
       const result = await inlineExternalScripts(html);
-      expect({ hits, inlined: result.includes("window.fromLocalHost") }).toEqual({
-        hits: [],
+      expect({ fetched, inlined: result.includes("window.fromLocalHost") }).toEqual({
+        fetched: [],
         inlined: false,
       });
     } finally {
-      server.close();
+      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
-  it("trusts only the operator's GSAP mirror, not other paths on its host", async () => {
-    const hits: string[] = [];
-    const server = createServer((req, res) => {
-      hits.push(req.url ?? "");
-      if (req.url?.endsWith("/moved.js")) res.writeHead(302, { location: "/admin.js" });
-      res.end("window.fromMirrorHost = 1;");
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const { port } = server.address() as AddressInfo;
+  it("trusts only the operator's GSAP mirror, without following its redirects", async () => {
+    const asked: { url: string; redirect?: RequestRedirect }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      asked.push({ url: String(url), redirect: init?.redirect });
+      return new Response("window.fromMirror = 1;");
+    }) as unknown as typeof fetch;
     const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
-    process.env.HYPERFRAMES_GSAP_BASE_URL = `http://127.0.0.1:${port}/vendor/npm`;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = "http://127.0.0.1:8080/vendor/npm";
     try {
-      const mirror = `http://127.0.0.1:${port}/vendor/npm/gsap@3.15.0/dist/gsap.min.js`;
-      const escape = `http://127.0.0.1:${port}/vendor/npm/../../admin.js`;
-      const moved = `http://127.0.0.1:${port}/vendor/npm/moved.js`;
-      await inlineExternalScripts(
-        `<script src="${mirror}"></script><script src="${escape}"></script><script src="${moved}"></script>`,
+      const mirror = "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js";
+      const escape = "http://127.0.0.1:8080/vendor/npm/../../admin.js";
+      const result = await inlineExternalScripts(
+        `<script src="${mirror}"></script><script src="${escape}"></script>`,
       );
-      expect(hits.sort()).toEqual([
-        "/vendor/npm/gsap@3.15.0/dist/gsap.min.js",
-        "/vendor/npm/moved.js",
-      ]);
+      expect(asked).toEqual([{ url: mirror, redirect: "error" }]);
+      expect(result).toContain("window.fromMirror = 1;");
     } finally {
+      globalThis.fetch = originalFetch;
       if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
       else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
-      server.close();
     }
   });
 
