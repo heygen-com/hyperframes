@@ -165,3 +165,85 @@ describe("createControls idle hide", () => {
     vi.useRealTimers();
   });
 });
+
+describe("createControls scrubbing", () => {
+  function setup() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const calls: string[] = [];
+    const api = createControls(host, {
+      ...noopCallbacks(),
+      onPlay: () => {
+        calls.push("play");
+        api.updatePlaying(true);
+      },
+      onPause: () => {
+        calls.push("pause");
+        api.updatePlaying(false);
+      },
+      onSeek: (fraction) => calls.push(`seek ${fraction}`),
+      onScrubStart: () => calls.push("scrub start"),
+      onScrubEnd: () => calls.push("scrub end"),
+    });
+    const scrubber = host.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+    const playButton = host.querySelector<HTMLElement>(".hfp-play-btn")!;
+    const teardown = () => {
+      api.destroy();
+      host.remove();
+    };
+    return { api, calls, scrubber, playButton, teardown };
+  }
+
+  it("holds a playing film while the scrubber is pressed and plays on at release", () => {
+    const { api, calls, scrubber, playButton, teardown } = setup();
+    api.updatePlaying(true);
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 20 }));
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 70 }));
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.2", "seek 0.7"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(true);
+
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.2", "seek 0.7", "scrub end", "play"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(true);
+    teardown();
+  });
+
+  it("leaves a paused film paused", () => {
+    const { calls, scrubber, playButton, teardown } = setup();
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 30 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(calls).toEqual(["scrub start", "seek 0.3", "scrub end"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(false);
+    teardown();
+  });
+
+  it("plays on once after a touch scrub, without the tap replaying as mouse events", () => {
+    const { api, calls, scrubber, teardown } = setup();
+    api.updatePlaying(true);
+
+    const touch = new Touch({ identifier: 0, target: scrubber, clientX: 40 });
+    scrubber.dispatchEvent(new TouchEvent("touchstart", { touches: [touch] }));
+    const touchEnd = new TouchEvent("touchend", { cancelable: true });
+    document.dispatchEvent(touchEnd);
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.4", "scrub end", "play"]);
+    expect(touchEnd.defaultPrevented).toBe(true);
+    teardown();
+  });
+
+  it("leaves taps elsewhere on the page alone", () => {
+    const { teardown } = setup();
+
+    const touchEnd = new TouchEvent("touchend", { cancelable: true });
+    document.dispatchEvent(touchEnd);
+
+    expect(touchEnd.defaultPrevented).toBe(false);
+    teardown();
+  });
+});
