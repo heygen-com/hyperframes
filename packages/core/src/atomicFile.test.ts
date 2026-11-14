@@ -262,7 +262,7 @@ describe("createFileAtomically", () => {
     };
   }
 
-  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR", "EACCES"])(
+  it.each(["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV", "EISDIR", "EACCES"])(
     "writes directly on a volume without hard links (%s)",
     (code) => {
       const dir = tempDir();
