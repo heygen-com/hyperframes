@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
@@ -537,9 +538,10 @@ describe("resolveProxy", () => {
     const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
     await flush();
     const vp8Args = calls[0]!.args;
-    expect(vp8Args.slice(vp8Args.indexOf("-i") - 2, vp8Args.indexOf("-i"))).toEqual([
+    expect(vp8Args.slice(vp8Args.indexOf("-i") - 4, vp8Args.indexOf("-i"))).toEqual([
       "-c:v",
       "libvpx-vp9",
+      ...MEDIA_INPUT_ARGS,
     ]);
     succeed(calls[0]!, "fake-vp8-bytes");
     await vp8;

@@ -11,7 +11,7 @@ import {
   type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
@@ -202,16 +202,24 @@ export async function probeFirstFrameColour(
     findFfBinary("ffmpeg", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffmpeg");
   if (!ffmpegPath) return {};
-  const result = await runner(ffmpegPath, firstFrameColourArgs(filePath), {
-    timeout: 15_000,
-    maxBuffer: 1024 * 1024,
-  });
+  const result = await runner(
+    ffmpegPath,
+    [...MEDIA_INPUT_ARGS, ...firstFrameColourArgs(filePath)],
+    {
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
+    },
+  );
   const first = result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
   if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
-  const keyframes = await runner(ffmpegPath, keyframeTransferArgs(filePath, codec), {
-    timeout: 30_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  const keyframes = await runner(
+    ffmpegPath,
+    [...MEDIA_INPUT_ARGS, ...keyframeTransferArgs(filePath, codec)],
+    {
+      timeout: 30_000,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
   const keyframeTransfers =
     keyframes.status === 0 ? parseKeyframeTransfers(String(keyframes.stderr)) : [];
   return { ...first, keyframeTransfers };
@@ -317,7 +325,15 @@ export async function probeAudioTrack(
     ffprobePath,
     [
       ...["-v", "error", "-select_streams", "a"],
-      ...["-show_entries", "stream=codec_type,codec_name,channels", "-of", "json", "--", filePath],
+      ...[
+        "-show_entries",
+        "stream=codec_type,codec_name,channels",
+        "-of",
+        "json",
+        ...MEDIA_INPUT_ARGS,
+        "--",
+        filePath,
+      ],
     ],
     { timeout: 30_000 },
   );
@@ -358,6 +374,7 @@ export async function probeMediaMetadata(
       "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
+      ...MEDIA_INPUT_ARGS,
       "--",
       filePath,
     ],

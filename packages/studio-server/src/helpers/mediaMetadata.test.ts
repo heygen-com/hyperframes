@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { classifyMediaColor, probeAudioTrack, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
@@ -307,6 +307,24 @@ describe("probeAudioTrack", () => {
       expect(runner).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the media probes", () => {
+  it("hand ffprobe only the self-contained media demuxers", async () => {
+    vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");
+    const seen: string[][] = [];
+    const runner = async (_command: string, args: string[]) => {
+      seen.push(args);
+      return { status: 0, stdout: "{}", stderr: "" };
+    };
+    await probeMediaMetadata("/tmp/missing-clip.mp4", runner);
+    await probeAudioTrack("/tmp/missing-song.mp3", runner);
+    expect(seen).toHaveLength(2);
+    for (const args of seen) {
+      const at = args.indexOf("--");
+      expect(args.slice(at - MEDIA_INPUT_ARGS.length, at)).toEqual(MEDIA_INPUT_ARGS);
     }
   });
 });

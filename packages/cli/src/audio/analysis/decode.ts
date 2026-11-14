@@ -25,7 +25,10 @@ function requiredBinary(name: "ffmpeg" | "ffprobe"): string {
 }
 
 /** The format of the audio track ffmpeg can decode, or `null` when the file has none. */
-export async function probeAudio(file: string): Promise<AudioStreamInfo | null> {
+export async function probeAudio(
+  file: string,
+  inputArgs: readonly string[] = [],
+): Promise<AudioStreamInfo | null> {
   const { stdout } = await run(
     requiredBinary("ffprobe"),
     [
@@ -37,6 +40,7 @@ export async function probeAudio(file: string): Promise<AudioStreamInfo | null> 
       "-show_format",
       "-of",
       "json",
+      ...inputArgs,
       "--",
       file,
     ],

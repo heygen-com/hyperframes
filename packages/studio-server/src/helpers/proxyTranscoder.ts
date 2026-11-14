@@ -15,7 +15,7 @@ import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
-import { NOT_MEDIA } from "./mediaExtensions.js";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
@@ -762,6 +762,7 @@ async function runFfmpeg(
         "-nostats",
         ...(range ? ["-ss", String(range.startSeconds)] : []),
         ...decoderArgs,
+        ...MEDIA_INPUT_ARGS,
         "-i",
         sourcePath,
         ...streamArgs,
@@ -1181,7 +1182,16 @@ async function makeStill(
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {
-    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    const args = [
+      "-y",
+      "-ss",
+      String(at),
+      ...MEDIA_INPUT_ARGS,
+      "-i",
+      source.sourcePath,
+      "-map",
+      "0:V:0",
+    ];
     args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
     await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
     renameSync(tempPath, cachePath);

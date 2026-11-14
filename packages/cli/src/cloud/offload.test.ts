@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chmodSync,
   createReadStream,
   existsSync,
   mkdirSync,
@@ -21,6 +22,7 @@ import {
   type UploadableFile,
 } from "./offload.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
+import { MEDIA_INPUT_ARGS } from "@hyperframes/studio-server/outside-file";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -397,6 +399,44 @@ describe("offloadHeavyMedia", () => {
     expect(reencoder.choose).not.toHaveBeenCalled();
     expect(fileMap.has("clip.mp4")).toBe(true);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "opens media in ffprobe and ffmpeg only through the self-contained media demuxers",
+    async () => {
+      const bin = mkdtempSync(join(tmpdir(), "hf-offload-bin-"));
+      dirs.push(bin);
+      const log = join(bin, "calls.log");
+      const fake = join(bin, "ff");
+      writeFileSync(
+        fake,
+        [
+          "#!/bin/sh",
+          `printf '%s\\n' "$*" >> '${log}'`,
+          "for last; do :; done",
+          'case " $* " in *" -y "*) printf data > "$last" ;; *) printf "{}" ;; esac',
+        ].join("\n"),
+      );
+      chmodSync(fake, 0o755);
+      vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", fake);
+      vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", fake);
+      try {
+        const dir = project({
+          "index.html": html(`<video src="clip.mkv"></video>`),
+          "clip.mkv": HEAVY,
+        });
+        await offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+          apiBaseUrl: "https://api.example",
+          upload: fakeUpload(),
+          cachePath: cachePath(),
+        }).catch(() => undefined);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      const calls = readFileSync(log, "utf8").trim().split("\n");
+      expect(calls.some((call) => call.includes(" -y "))).toBe(true);
+      for (const call of calls) expect(call).toContain(MEDIA_INPUT_ARGS.join(" "));
+    },
+  );
 
   it("treats an audio-only MP4 named .mp4 as audio, whatever brand its ftyp box has", async () => {
     const audioOnly = Buffer.concat([
