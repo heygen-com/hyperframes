@@ -27,6 +27,13 @@ describe("hyperframes contract docs", () => {
     expect(skill).not.toContain("`lint` / `validate` / `inspect`");
   });
 
+  it("tells agents to declare a variable before binding it", () => {
+    expect(read("skills", "hyperframes", "SKILL.md")).toContain("`data-composition-variables`");
+    expect(read("skills", "hyperframes", "references", "format.md")).toContain(
+      "`unknown_variable_binding`",
+    );
+  });
+
   it("requires actionable reproduction packets in CLI defect feedback", () => {
     const skill = read("skills", "hyperframes-cli", "references", "feedback.md");
     const renderReference = read("skills", "hyperframes-cli", "references", "preview-render.md");
