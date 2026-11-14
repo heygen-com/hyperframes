@@ -234,6 +234,7 @@ describe("agent-mode contract", () => {
       ["compare a.html b.html --timeout abc", "--timeout must be a positive integer"],
       ["compare a.html b.html --timeout -1", "--timeout must be a positive integer"],
       ["grade-compare --for frame.png", "Exactly one of --grades or --luts"],
+      ["catalog --type widget", 'Invalid --type: "widget". Use "block" or "component".'],
       ["check --range 5,1", "Invalid --range"],
       ["check --samples ten", "Invalid --samples"],
       ["check --tolerance=-1", "Invalid --tolerance"],
