@@ -3576,11 +3576,9 @@ async function seekPageTimeline(
 }
 
 /**
- * Shared wall-clock budget for {@link settlePostSeekDomUpdates}: fonts,
- * image decode, and native paint waits all race a single real-time deadline
- * (`Date`/`performance.now` are virtualized in-page, so the budget is armed
- * through the shim's stored `originalSetTimeout`). Tune with
- * `HF_POST_SEEK_SETTLE_MS`; 0 disables the settle entirely.
+ * Wall-clock budget for {@link settlePostSeekDomUpdates}: in-page clocks are
+ * virtualized, so it is armed via the shim's `originalSetTimeout`. Tune with
+ * `HF_POST_SEEK_SETTLE_MS`; 0 disables the settle.
  */
 const POST_SEEK_SETTLE_BUDGET_MS = Number(process.env.HF_POST_SEEK_SETTLE_MS ?? "1500");
 
@@ -3589,11 +3587,8 @@ interface PostSeekSettleStats {
   drainedRan: number;
   /** Deferred callbacks still queued when the drain caps stopped it. */
   drainPending: number;
-  /** True when `document.fonts` reported a load pending at settle time. */
   fontsPending: boolean;
-  /** Images whose decode completed inside this settle. */
   imagesDecoded: number;
-  /** Native compositor paints committed before returning. */
   paintsCommitted: number;
 }
 
@@ -3605,8 +3600,7 @@ interface PostSeekSettleStats {
  * layout — and, when the compositor free-runs, commits two native paints so
  * the screenshot cannot race the commit. BeginFrame sessions skip that wait:
  * the capture's own BeginFrame is the commit and a native rAF would stall on
- * the locked compositor. All waits race one shared wall-clock budget; the
- * paint wait only runs when the settle observed pending work.
+ * the locked compositor.
  */
 export async function settlePostSeekDomUpdates(
   page: Pick<Page, "evaluate">,
@@ -3656,9 +3650,9 @@ export async function settlePostSeekDomUpdates(
       const bounded = <T>(work: Promise<T>): Promise<T | void> => Promise.race([work, deadline]);
       const stats: PostSeekSettleStats = { ...empty };
 
-      // Deferred work could have been queued after `__hf.seek` returned — by
-      // seek-completion handlers, video-frame injection, or LUT application.
-      // Drain it at the same virtual time so capture observes the settled DOM.
+      // Deferred work can be queued after `__hf.seek` returns (seek-completion
+      // handlers, video-frame injection, LUT application); drain it at the same
+      // virtual time so capture observes the settled DOM.
       const seekDrainRan = vt.lastDrain?.ran ?? 0;
       const drain = vt.drainAnimationFrames();
       stats.drainedRan = drain.ran;
