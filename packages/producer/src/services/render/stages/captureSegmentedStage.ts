@@ -39,7 +39,7 @@ import type { ProducerLogger } from "../../../logger.js";
 import type { ProgressCallback, RenderJob } from "../../renderOrchestrator.js";
 import { wrapCaptureStageError } from "../captureStageError.js";
 import { ensureFrameWritten } from "./captureHdrFrameShared.js";
-import { reportFrameProgress } from "../shared.js";
+import { reportFrameProgress, streamingCaptureProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
 import { planSegments, type SegmentSlice } from "../segmentPlan.js";
@@ -234,7 +234,7 @@ async function captureSegmentFrames(
       `Streaming frame ${i + 1}/${ctx.totalFrames} (segment ${segment.index + 1}/${ctx.segmentCount}` +
         (ctx.skipped > 0 ? `, skipped ${ctx.skipped}` : "") +
         ")",
-      Math.round(25 + ((i + 1) / ctx.totalFrames) * 55),
+      streamingCaptureProgress(i + 1, ctx.totalFrames),
       ctx.onProgress,
       i + 1,
       ctx.totalFrames,
@@ -253,7 +253,7 @@ async function captureSegment(
     reportFrameProgress(
       ctx.job,
       `Reading video for segment ${segment.index + 1}/${ctx.segmentCount}`,
-      Math.round(25 + (segment.startFrame / ctx.totalFrames) * 55),
+      streamingCaptureProgress(segment.startFrame, ctx.totalFrames),
       ctx.onProgress,
       segment.startFrame,
       ctx.totalFrames,

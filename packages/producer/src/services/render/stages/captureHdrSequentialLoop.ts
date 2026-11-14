@@ -40,7 +40,7 @@ import {
   type LayeredTransitionBuffers,
   seekInjectAndQueryStacking,
 } from "./captureHdrFrameShared.js";
-import { reportFrameProgress } from "../shared.js";
+import { reportFrameProgress, streamingCaptureProgress } from "../shared.js";
 
 export interface SequentialLoopInput {
   job: RenderJob;
@@ -222,7 +222,7 @@ export async function runSequentialLayeredFrameLoop(input: SequentialLoopInput):
     reportFrameProgress(
       job,
       `Layered composite frame ${i + 1}/${job.totalFrames}`,
-      Math.round(25 + ((i + 1) / totalFrames) * 55),
+      streamingCaptureProgress(i + 1, totalFrames),
       onProgress,
       i + 1,
       totalFrames,

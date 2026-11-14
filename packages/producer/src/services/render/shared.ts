@@ -309,6 +309,20 @@ function reportThrottled(
   updateJobStatus(job, status, stage, progress, due ? onProgress : undefined, stageProgress);
 }
 
+/**
+ * Streaming capture spans 25% to 90%: frames are encoded into the streaming
+ * encoder as they are written, so encoding is already inside capture — the
+ * 80-90 encode band from the disk path is empty here, and assemble takes
+ * 90-99. The disk path keeps its own 25-70 band plus a separate encode phase
+ * (see captureStage.ts), so this helper must only be used by the streaming
+ * capture paths (streaming, segmented, HDR loops).
+ */
+export function streamingCaptureProgress(done: number, total: number): number {
+  if (total <= 0) return 25;
+  const frames = Math.min(Math.max(done, 0), total);
+  return Math.round(25 + (frames / total) * 65);
+}
+
 /** Capture-loop progress: the first frame, the last frame, and at most four reports a second between. */
 export function reportFrameProgress(
   job: RenderJob,
