@@ -6,7 +6,6 @@ export type CaptureFailureKind =
   | "verification"
   | "authoring"
   | "io"
-  // No rule names it: never blamed on the composition.
   | "unknown";
 
 export interface CaptureWorkerDiagnostic {
@@ -141,8 +140,7 @@ function hasIoOperationFailure(message: string): boolean {
  */
 const BROKEN_PIPE_MESSAGE = /\bwrite (?:EPIPE|EOF|ECONNRESET)\b/;
 
-/** The video frame extractor's own words for a full disk, which carry no errno code. */
-const DISK_FULL_MESSAGE = /The disk filled up/i;
+const EXTRACTOR_DISK_FULL_WORDS = /The disk filled up/i;
 
 function ioError(error: unknown, message: string): boolean {
   const code = error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined;
@@ -154,7 +152,7 @@ function ioError(error: unknown, message: string): boolean {
       ),
     ) ||
     BROKEN_PIPE_MESSAGE.test(message) ||
-    DISK_FULL_MESSAGE.test(message) ||
+    EXTRACTOR_DISK_FULL_WORDS.test(message) ||
     hasIoOperationFailure(message)
   );
 }
