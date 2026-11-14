@@ -1535,7 +1535,7 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
   });
 
   // fails without the fix: on a drive without hard links (EISDIR on a Google Drive folder) every download failed.
-  it("publishes by copy on a drive without hard links", async () => {
+  it("publishes on a drive without hard links", async () => {
     const url = "https://cdn.example/no-hard-links.mp4";
     const dir = makeTempDir();
     fsRaceControls.failLinkWith = "EISDIR";
