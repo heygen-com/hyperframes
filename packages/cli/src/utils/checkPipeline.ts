@@ -475,11 +475,13 @@ async function collectGeometryAt(
   const request = geometryRequest(time, grid, options, sets);
   if (!request) return [];
   const candidates = await driver.collectGeometryCandidates(time, request);
-  return candidates.flatMap((candidate) => [
-    request.blocks ? safeZoneFinding(candidate, sets.safeZones, canvas, time) : null,
-    request.text ? captionFinding(candidate, options, canvas, time) : null,
-    request.media ? frameFinding(candidate, options, canvas, time) : null,
-  ]).filter((finding): finding is AnchoredLayoutIssue => finding !== null);
+  return candidates
+    .flatMap((candidate) => [
+      request.blocks ? safeZoneFinding(candidate, sets.safeZones, canvas, time) : null,
+      request.text ? captionFinding(candidate, options, canvas, time) : null,
+      request.media ? frameFinding(candidate, options, canvas, time) : null,
+    ])
+    .filter((finding): finding is AnchoredLayoutIssue => finding !== null);
 }
 
 function emptyGridSamples(): GridSamples {
