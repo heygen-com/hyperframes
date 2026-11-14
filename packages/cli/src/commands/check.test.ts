@@ -502,13 +502,13 @@ describe("skip contrast in motion", () => {
   it("asks the driver to skip in-motion contrast only when enabled", async () => {
     const off = fakeDriver();
     await runScenario(off);
-    for (const call of vi.mocked(off.collectContrast).mock.calls) expect(call).toHaveLength(1);
+    for (const call of vi.mocked(off.collectContrast).mock.calls) expect(call).toHaveLength(4);
 
     const on = fakeDriver();
     await runScenario(on, { skipContrastInMotion: true });
     expect(vi.mocked(on.collectContrast).mock.calls.length).toBeGreaterThan(0);
     for (const call of vi.mocked(on.collectContrast).mock.calls) {
-      expect(call).toEqual([expect.any(Number), undefined, true]);
+      expect(call).toEqual([expect.any(Number), undefined, true, []]);
     }
   });
 });
@@ -1565,7 +1565,34 @@ it("keeps contrast and snapshot sampling on the pre-gate layout grid", async () 
   expect(report.layout.samples).toEqual([5, 10]);
   expect(report.contrast.samples).toEqual([5]);
   expect(collectContrast).toHaveBeenCalledTimes(1);
-  expect(collectContrast).toHaveBeenCalledWith(5);
+  expect(collectContrast).toHaveBeenCalledWith(5, undefined, undefined, []);
+});
+
+it("hands text the layout audit flagged as occluded to the contrast audit", async () => {
+  const collectContrast = vi.fn(async () => ({ entries: [], pngBase64: PNG_BASE64 }));
+  const { report } = await runScenario(
+    fakeDriver({
+      getDuration: vi.fn(async () => 10),
+      collectLayout: vi.fn(async (time: number) => [
+        {
+          ...layoutIssue("error", { time, code: "text_occluded" }),
+          selector: "#label",
+          message: "Text is hidden beneath an opaque element.",
+        },
+        layoutIssue("error", { time, code: "container_overflow" }),
+      ]),
+      collectContrast,
+    }),
+    {
+      samples: 1,
+      captionZone: { x0: 0, y0: 0.8, x1: 1, y1: 1 },
+    },
+  );
+
+  expect(collectContrast).toHaveBeenCalledTimes(1);
+  expect(collectContrast).toHaveBeenCalledWith(5, undefined, undefined, ["#label"]);
+  // The occlusion finding itself stays: only the duplicate contrast finding goes away.
+  expect(report.layout.findings.some((issue) => issue.code === "text_occluded")).toBe(true);
 });
 
 it("waits for paint only on the grid seeks a contrast screenshot follows", async () => {

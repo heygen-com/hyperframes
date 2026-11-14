@@ -4,7 +4,7 @@ import puppeteer, { type Browser } from "puppeteer-core";
 
 declare global {
   interface Window {
-    __contrastAuditPrepare(): { selector: string }[];
+    __contrastAuditPrepare(occludedSelectors?: string[]): { selector: string }[];
   }
 }
 
@@ -24,7 +24,7 @@ describe.runIf(executablePath)("clipped-text contrast candidates in Chromium", (
 
   async function audit(
     clipPath: string,
-    options: { ancestor?: boolean; nested?: boolean; painted?: boolean } = {},
+    options: { ancestor?: boolean; nested?: boolean; painted?: boolean; occluded?: string[] } = {},
   ) {
     const page = await browser.newPage();
     try {
@@ -43,8 +43,10 @@ describe.runIf(executablePath)("clipped-text contrast candidates in Chromium", (
       </body>`);
       const image = await page.screenshot();
       await page.addScriptTag({ content: script });
-      const selectors = await page.evaluate(() =>
-        window.__contrastAuditPrepare().map((entry) => entry.selector),
+      const selectors = await page.evaluate(
+        (occluded: string[]) =>
+          window.__contrastAuditPrepare(occluded).map((entry) => entry.selector),
+        options.occluded ?? [],
       );
       return { image, selectors };
     } finally {
@@ -84,5 +86,12 @@ describe.runIf(executablePath)("clipped-text contrast candidates in Chromium", (
   it("keeps text behind a painted composition host out of contrast candidates", async () => {
     const covered = await audit("inset(0)", { painted: true });
     expect(covered.selectors).not.toContain("#headline");
+  });
+
+  it("leaves layout-flagged occluded text out of contrast candidates", async () => {
+    const visible = await audit("none");
+    expect(visible.selectors).toContain("#headline");
+    const occluded = await audit("none", { occluded: ["#headline"] });
+    expect(occluded.selectors).not.toContain("#headline");
   });
 });
