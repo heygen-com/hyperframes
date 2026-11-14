@@ -47,7 +47,7 @@ const VIEWPORT_MARGIN = 8;
 export function floatingMotion(openDuration: "duration-open" | "duration-tooltip") {
   return cn(
     "origin-[var(--transform-origin)] outline-hidden",
-    "transition-[opacity,transform] ease-out-quint",
+    "transition-[opacity,scale] ease-out-quint",
     openDuration,
     "data-[ending-style]:duration-close data-[ending-style]:ease-in",
     "data-[starting-style]:[opacity:var(--popup-enter-opacity)]",
