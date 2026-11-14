@@ -402,7 +402,9 @@ describe("openCommandFor", () => {
 
   it("spells a Windows folder so PowerShell and Git Bash run no part of its name", () => {
     const work = resolve("work");
-    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe("hyperframes open '$(calc)'");
+    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
     expect(openCommandFor(join(work, "$(calc)&calc"), work, "win32")).toBe(
       "hyperframes open from the project folder",
     );

@@ -1,9 +1,36 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { shellArg } from "./shellArg.js";
+
+const WINDOWS_ROUND_TRIP = [
+  "my-video",
+  "my first video",
+  "it's mine",
+  "o\u2019neil \u2018draft\u2019 it's",
+  "\u201Alow\u201B 'n\u2019 \u2018mixed'",
+  "Q&A (draft); 100% | a<b>c ^",
+  "서울 여행",
+  "a,b",
+  "@scope",
+  "films\\my film",
+  "C:\\Users\\Bob\\film",
+  "C:\\work\\it's\\",
+];
+
+// `“ ” „` end a PowerShell double-quoted string; `$` and a backtick expand in PowerShell and Git Bash.
+const WINDOWS_UNPRINTABLE = [
+  "$(calc)",
+  "a`b",
+  "o'neil $x",
+  "x\u201D;calc;\u201Dy",
+  "x\u2019;calc;\u2018 $y",
+  "$(calc)&calc",
+  "\u201Cquoted\u201D",
+  "a\nb",
+];
 
 const NAMES = [
   "my-video",
@@ -51,20 +78,8 @@ describe("shellArg", () => {
     expect(shellArg("films/@scope", "win32")).toBe("films/@scope");
   });
 
-  it("single-quotes a Windows name that PowerShell or Git Bash would expand in double quotes", () => {
-    expect(shellArg("$(calc)", "win32")).toBe("'$(calc)'");
-    expect(shellArg("a`b", "win32")).toBe("'a`b'");
-    expect(shellArg("o'neil $x", "win32")).toBe("'o''neil $x'");
-    expect(shellArg("x\u201D;calc;\u201Dy", "win32")).toBe("'x\u201D;calc;\u201Dy'");
-    expect(shellArg("x\u2019;calc;\u2018 $y", "win32")).toBe(
-      "'x\u2019\u2019;calc;\u2018\u2018 $y'",
-    );
-  });
-
   it("prints nothing on Windows for a name no shell there reads literally", () => {
-    expect(shellArg("$(calc)&calc", "win32")).toBeNull();
-    expect(shellArg("a`b|c", "win32")).toBeNull();
-    expect(shellArg("a\nb", "win32")).toBeNull();
+    for (const name of WINDOWS_UNPRINTABLE) expect(shellArg(name, "win32"), name).toBeNull();
   });
 
   const root = mkdtempSync(join(tmpdir(), "hf-shell-arg-"));
@@ -82,26 +97,50 @@ describe("shellArg", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "prints a Windows backslash path that Git Bash reads as written",
+    "prints a Windows word that Git Bash reads as written",
     () => {
-      for (const path of ["C:\\Users\\Bob\\film", "films\\my film", "C:\\", "C:\\work\\it's\\"]) {
-        const shown = execFileSync("/bin/bash", ["-c", `printf %s ${shellArg(path, "win32")}`], {
+      for (const name of WINDOWS_ROUND_TRIP) {
+        const shown = execFileSync("/bin/bash", ["-c", `printf %s ${shellArg(name, "win32")}`], {
           encoding: "utf8",
         });
-        expect(shown).toBe(path);
+        expect(shown, name).toBe(name);
       }
     },
   );
 
-  it.skipIf(process.platform === "win32")(
-    "prints a Windows word that Git Bash expands no part of",
+  const argvScript = join(root, "argv.cjs");
+  writeFileSync(argvScript, "process.stdout.write(JSON.stringify(process.argv.slice(2)));");
+  const readArgv = (output: string): string[] => JSON.parse(output) as string[];
+
+  it.runIf(process.platform === "win32")(
+    "prints a Windows word that cmd.exe reads as written",
     () => {
-      const hostile = ["$(touch ran)", "`touch ran`", "a $(touch ran) b", "o'neil $(touch ran)"];
-      for (const name of hostile) {
-        const word = shellArg(name, "win32");
-        expect(word).not.toBeNull();
-        execFileSync("/bin/bash", ["-c", `printf %s ${word} > /dev/null`], { cwd: root });
-        expect(existsSync(join(root, "ran"))).toBe(false);
+      for (const name of WINDOWS_ROUND_TRIP) {
+        const line = `"${process.execPath}" "${argvScript}" ${shellArg(name, "win32")}`;
+        const output = execFileSync("cmd.exe", ["/d", "/s", "/c", `"${line}"`], {
+          encoding: "utf8",
+          windowsVerbatimArguments: true,
+        });
+        expect(readArgv(output), name).toEqual([name]);
+      }
+    },
+  );
+
+  it.runIf(process.platform === "win32")(
+    "prints a Windows word that PowerShell reads as written",
+    () => {
+      for (const name of WINDOWS_ROUND_TRIP) {
+        const line = `& '${process.execPath}' '${argvScript}' ${shellArg(name, "win32")}`;
+        const output = execFileSync(
+          "powershell.exe",
+          ["-NoProfile", "-EncodedCommand", Buffer.from(line, "utf16le").toString("base64")],
+          { encoding: "utf8" },
+        );
+        // Windows PowerShell hands a space-free word to a program unquoted, so a doubled trailing backslash stays doubled.
+        expect(
+          readArgv(output).map((arg) => win32.normalize(arg)),
+          name,
+        ).toEqual([win32.normalize(name)]);
       }
     },
   );

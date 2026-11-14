@@ -868,7 +868,7 @@ describe("stopBackgroundCommand", () => {
       'hyperframes preview "C:\\Users\\Bob\\film" --stop',
     );
     expect(stopBackgroundCommand("C:\\work\\$(calc)", "win32")).toBe(
-      "hyperframes preview 'C:\\work\\$(calc)' --stop",
+      "hyperframes preview --stop from the project folder",
     );
     expect(stopBackgroundCommand("C:\\work\\$(calc)&calc", "win32")).toBe(
       "hyperframes preview --stop from the project folder",
