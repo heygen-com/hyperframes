@@ -3,7 +3,7 @@ import {
   cancelAndVerifyArtifacts,
 } from "../../test-utils/renderCancellation";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,9 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
   setup?.(dir);
   server = await createServer({
     configFile: false,
+    // Without this, Vite scans the cwd for entry points in the background, and
+    // that scan races the close() in afterEach and logs "Failed to scan for
+    // dependencies" errors.
     optimizeDeps: { noDiscovery: true, include: [] },
     server: { middlewareMode: true, watch: null, ws: false },
   });
@@ -51,7 +54,10 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
     server,
     createProjectSignatureCache({ compute: () => "test" }),
   );
-  const outputPath = join(dir, `out.${extra.format ?? "gif"}`);
+  const format = extra.format ?? "gif";
+  const jobId = extra.jobId ?? "gif-job";
+  // A directory format renders to an extensionless path, like the route builds it.
+  const outputPath = join(dir, format === "png-sequence" ? jobId : `out.${format}`);
   const state = adapter.startRender({
     project: { id: "demo", dir },
     outputPath,
@@ -59,10 +65,18 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
     gifLoop: 3,
     fps: { num: 30, den: 1 },
     quality: "draft",
-    jobId: "gif-job",
+    jobId,
     ...extra,
   });
-  return { dir, state, outputPath, metaPath: join(dir, "gif-job.meta.json") };
+  return { dir, state, outputPath, metaPath: join(dir, `${jobId}.meta.json`) };
+}
+
+function writeSequence(directory: string, frames: number): void {
+  mkdirSync(directory, { recursive: true });
+  for (let index = 1; index <= frames; index += 1) {
+    writeFileSync(join(directory, `frame_${String(index).padStart(6, "0")}.png`), "png-bytes");
+  }
+  writeFileSync(join(directory, "audio.m4a"), "aac");
 }
 
 describe("Vite GIF rendering", { timeout: 30_000 }, () => {
@@ -97,6 +111,49 @@ describe("Vite GIF rendering", { timeout: 30_000 }, () => {
 
 // vi.waitFor gives up after 1 s by default; a loaded Windows runner took longer to finish a mocked render.
 const RENDER_DONE = { timeout: 20_000 };
+
+describe("Vite PNG-sequence rendering", () => {
+  it("marks the job a directory render and caches the frame facts in a sidecar beside it", async () => {
+    producer.executeRenderJob.mockImplementation(async (_job, _dir, outputPath: string) => {
+      writeSequence(outputPath, 3);
+    });
+    const { dir, state, outputPath, metaPath } = await fixture({
+      format: "png-sequence",
+      jobId: "seq-job",
+    });
+    expect(state.kind).toBe("directory");
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
+    expect(producer.createRenderJob).toHaveBeenCalledWith(
+      expect.objectContaining({ format: "png-sequence" }),
+    );
+    expect(metaPath).toBe(join(dir, "seq-job.meta.json"));
+    expect(existsSync(join(outputPath, "seq-job.meta.json"))).toBe(false);
+    expect(JSON.parse(readFileSync(metaPath, "utf8"))).toMatchObject({
+      status: "complete",
+      frameCount: 3,
+      size: 3 * "png-bytes".length + "aac".length,
+      audioSidecar: true,
+    });
+  });
+
+  it.each([false, true])(
+    "removes a cancelled frames directory and its sidecar (late completion: %s)",
+    async (lateCompletion) => {
+      producer.executeRenderJob.mockImplementation(
+        async (_job, dir: string, outputPath: string, _progress, signal: AbortSignal) => {
+          writeSequence(outputPath, 2);
+          writeFileSync(join(dir, "seq-job.meta.json"), "{}");
+          await waitForRenderCancellation(signal, lateCompletion);
+        },
+      );
+      const { state, outputPath, metaPath } = await fixture({
+        format: "png-sequence",
+        jobId: "seq-job",
+      });
+      await cancelAndVerifyArtifacts(state, outputPath, metaPath);
+    },
+  );
+});
 
 describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
   it("hands the route's pageMotionBlur to the job, so a preview that could not blur renders unblurred", async () => {

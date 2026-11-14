@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   calculateZip64ContentLength,
   directoryZipResponse,
+  dosDateTime,
   tableCrc32,
   updateCrc32,
 } from "./renderZipStream";
@@ -14,6 +15,8 @@ interface ParsedEntry {
   crc: number;
   size: bigint;
   data: Buffer;
+  /** Central-directory DOS time and date, which must repeat the local header's. */
+  modified: { time: number; date: number };
 }
 
 // An independent reader: walks the end records back to the central directory
@@ -35,6 +38,10 @@ function parseZip64(archive: Buffer): ParsedEntry[] {
   for (let index = 0; index < count; index += 1) {
     expect(archive.readUInt32LE(cursor)).toBe(0x02014b50);
     expect(archive.readUInt16LE(cursor + 10)).toBe(0); // STORE
+    const modified = {
+      time: archive.readUInt16LE(cursor + 12),
+      date: archive.readUInt16LE(cursor + 14),
+    };
     const crc = archive.readUInt32LE(cursor + 16);
     expect(archive.readUInt32LE(cursor + 20)).toBe(0xffffffff);
     const nameLength = archive.readUInt16LE(cursor + 28);
@@ -47,6 +54,8 @@ function parseZip64(archive: Buffer): ParsedEntry[] {
     const localOffset = Number(archive.readBigUInt64LE(extra + 20));
 
     expect(archive.readUInt32LE(localOffset)).toBe(0x04034b50);
+    expect(archive.readUInt16LE(localOffset + 10)).toBe(modified.time);
+    expect(archive.readUInt16LE(localOffset + 12)).toBe(modified.date);
     const localName = archive.readUInt16LE(localOffset + 26);
     const localExtra = archive.readUInt16LE(localOffset + 28);
     const dataStart = localOffset + 30 + localName + localExtra;
@@ -56,7 +65,7 @@ function parseZip64(archive: Buffer): ParsedEntry[] {
     expect(archive.readUInt32LE(descriptor + 4)).toBe(crc);
     expect(archive.readBigUInt64LE(descriptor + 8)).toBe(size);
 
-    entries.push({ name, crc, size, data });
+    entries.push({ name, crc, size, data, modified });
     cursor = extra + extraLength;
   }
   return entries;
@@ -98,6 +107,8 @@ describe("directoryZipResponse", () => {
     });
     mkdirSync(join(dir, "nested"));
     writeFileSync(join(dir, "nested", "frame_000002.png"), "excluded");
+    const rendered = new Date(2025, 5, 7, 9, 30, 4);
+    utimesSync(join(dir, "frame_000001.png"), rendered, rendered);
 
     const response = directoryZipResponse(dir, "job");
     expect(response.headers.get("content-type")).toBe("application/zip");
@@ -113,6 +124,8 @@ describe("directoryZipResponse", () => {
     ]);
     expect(entries[0]?.data.equals(large)).toBe(true);
     expect(entries[1]?.data.toString()).toBe("second");
+    // Extracted frames keep the time they were rendered, not a 1980 placeholder.
+    expect(entries[1]?.modified).toEqual(dosDateTime(rendered));
     for (const entry of entries) expect(entry.crc).toBe(referenceCrc32(entry.data));
   });
 
@@ -149,6 +162,18 @@ describe("directoryZipResponse", () => {
     const dir = sequence({ "frame_000000.png": "a" });
     expect(() => directoryZipResponse(join(dir, "frame_000000.png"), "job")).toThrow();
     expect(() => directoryZipResponse(join(dir, "missing"), "job")).toThrow();
+  });
+});
+
+describe("dosDateTime", () => {
+  it("encodes a local time at 2-second resolution", () => {
+    const stamped = dosDateTime(new Date(2026, 10, 13, 14, 35, 59));
+    expect(stamped.date).toBe(((2026 - 1980) << 9) | (11 << 5) | 13);
+    expect(stamped.time).toBe((14 << 11) | (35 << 5) | 29);
+  });
+
+  it("clamps a date before the DOS epoch to 1980-01-01", () => {
+    expect(dosDateTime(new Date(1970, 0, 1))).toEqual({ time: 0, date: 0x21 });
   });
 });
 
