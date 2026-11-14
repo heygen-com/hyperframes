@@ -25,6 +25,60 @@ function expectTempSiblingOf(tempPath: string, file: string): void {
   expect(tempPath.slice(file.length)).toMatch(/^\.hf[0-9a-f]{6}\.tmp$/);
 }
 
+/** A directory cannot be opened on Windows, so its descriptor is synthetic and never reaches the disk. */
+const DIRECTORY_FD = -1;
+
+function withPlatform(platform: NodeJS.Platform, run: () => void): void {
+  const actual = process.platform;
+  Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  try {
+    run();
+  } finally {
+    Object.defineProperty(process, "platform", { value: actual, configurable: true });
+  }
+}
+
+/**
+ * Filesystem operations that record what an atomic write asks for, in order. The directory open is
+ * recorded without touching the disk, so the same test can prove the POSIX order while running on Windows.
+ */
+function recordingOperations(dir: string) {
+  const events: string[] = [];
+  const openedFiles: string[] = [];
+  let fileFd = -1;
+  const operations = {
+    openSync: (path: fs.PathLike, flags: string | number, mode?: number) => {
+      if (String(path) === dir) {
+        events.push(`open-directory:${String(path)}`);
+        return DIRECTORY_FD;
+      }
+      openedFiles.push(String(path));
+      fileFd = fs.openSync(path, flags, mode);
+      events.push(`open:${String(path)}`);
+      return fileFd;
+    },
+    writeFileSync: (fd: fs.PathOrFileDescriptor, ...args: any[]) => {
+      events.push(`write:${String(fd)}`);
+      return fs.writeFileSync(fd, ...args);
+    },
+    fsyncSync: (fd: number) => {
+      events.push(`fsync:${fd}`);
+      if (fd !== DIRECTORY_FD) fs.fsyncSync(fd);
+    },
+    closeSync: (fd: number) => {
+      events.push(`close:${fd}`);
+      if (fd !== DIRECTORY_FD) fs.closeSync(fd);
+    },
+    chmodSync: fs.chmodSync,
+    renameSync: (from: fs.PathLike, to: fs.PathLike) => {
+      events.push(`rename:${String(from)}:${String(to)}`);
+      return fs.renameSync(from, to);
+    },
+    unlinkSync: fs.unlinkSync,
+  };
+  return { operations, events, opened: () => openedFiles, tempFd: () => fileFd };
+}
+
 describe("isAtomicTempPath", () => {
   it("knows the temp files it names, and no one else's", () => {
     expect(isAtomicTempPath(atomicTempPath("/p/index.html"))).toBe(true);
@@ -60,36 +114,60 @@ describe("replaceFileAtomically", () => {
     },
   );
 
-  it("writes the sibling completely before replacing the project file", () => {
+  it("writes and syncs the sibling, renames it, then syncs the folder", () => {
     const dir = mkdtempSync(join(tmpdir(), "atomic-file-test-"));
     dirs.push(dir);
     const file = join(dir, "index.html");
     writeFileSync(file, "old", { mode: 0o640 });
-    const events: string[] = [];
-    const operations = {
-      writeFileSync: (path: fs.PathLike, ...args: any[]) => {
-        events.push(`write:${String(path)}`);
-        return fs.writeFileSync(path, ...args);
-      },
-      chmodSync: fs.chmodSync,
-      renameSync: (from: fs.PathLike, to: fs.PathLike) => {
-        events.push(`rename:${String(from)}:${String(to)}`);
-        expect(readFileSync(from, "utf-8")).toBe("new complete html");
-        return fs.renameSync(from, to);
-      },
-      unlinkSync: fs.unlinkSync,
-    };
+    const { operations, events, tempFd } = recordingOperations(dir);
 
-    replaceFileAtomically(file, "new complete html", 0o640, operations);
+    withPlatform("linux", () =>
+      replaceFileAtomically(file, "new complete html", 0o640, operations),
+    );
 
-    expect(events).toHaveLength(2);
-    expect(events[0]!.startsWith("write:")).toBe(true);
-    const tempPath = events[0]!.slice("write:".length);
+    const tempPath = events[0]!.slice("open:".length);
     expectTempSiblingOf(tempPath, file);
-    expect(events[1]).toBe(`rename:${tempPath}:${file}`);
+    expect(events).toEqual([
+      `open:${tempPath}`,
+      `write:${tempFd()}`,
+      `fsync:${tempFd()}`,
+      `close:${tempFd()}`,
+      `rename:${tempPath}:${file}`,
+      `open-directory:${dir}`,
+      `fsync:${DIRECTORY_FD}`,
+      `close:${DIRECTORY_FD}`,
+    ]);
     expect(readFileSync(file, "utf-8")).toBe("new complete html");
     // Windows keeps only a read-only bit, no group or other permissions.
     if (process.platform !== "win32") expect(fs.statSync(file).mode & 0o777).toBe(0o640);
+  });
+
+  it("does not open the folder on Windows, where a directory cannot be fsynced", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-file-win32-test-"));
+    dirs.push(dir);
+    const file = join(dir, "index.html");
+    const { operations, opened } = recordingOperations(dir);
+
+    withPlatform("win32", () => replaceFileAtomically(file, "new", 0o644, operations));
+
+    expect(opened()).toHaveLength(1);
+    expectTempSiblingOf(opened()[0]!, file);
+    expect(readFileSync(file, "utf-8")).toBe("new");
+  });
+
+  it("removes the temp file when the disk will not confirm its bytes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "atomic-file-fsync-failure-test-"));
+    dirs.push(dir);
+    const file = join(dir, "index.html");
+    writeFileSync(file, "old");
+    const { operations } = recordingOperations(dir);
+    operations.fsyncSync = () => {
+      throw Object.assign(new Error("EIO"), { code: "EIO" });
+    };
+
+    expect(() => replaceFileAtomically(file, "new", 0o644, operations)).toThrow("EIO");
+    expect(readFileSync(file, "utf-8")).toBe("old");
+    expect(fs.readdirSync(dir)).toEqual(["index.html"]);
   });
 
   it("replaces an existing destination", () => {
@@ -110,10 +188,13 @@ describe("replaceFileAtomically", () => {
     writeFileSync(file, "old");
     const tempPaths: string[] = [];
     const operations = {
-      writeFileSync: (path: fs.PathLike, ...args: any[]) => {
+      openSync: (path: fs.PathLike, flags: string | number, mode?: number) => {
         tempPaths.push(String(path));
-        return fs.writeFileSync(path, ...args);
+        return fs.openSync(path, flags, mode);
       },
+      writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
+      closeSync: fs.closeSync,
       chmodSync: fs.chmodSync,
       renameSync: fs.renameSync,
       unlinkSync: fs.unlinkSync,
@@ -134,10 +215,13 @@ describe("replaceFileAtomically", () => {
     const tempPaths: string[] = [];
     const removed: string[] = [];
     const operations = {
-      writeFileSync: (path: fs.PathLike, ...args: any[]) => {
+      openSync: (path: fs.PathLike, flags: string | number, mode?: number) => {
         tempPaths.push(String(path));
-        return fs.writeFileSync(path, ...args);
+        return fs.openSync(path, flags, mode);
       },
+      writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
+      closeSync: fs.closeSync,
       chmodSync: fs.chmodSync,
       renameSync: () => {
         throw new Error("publish failed");
@@ -183,12 +267,13 @@ describe("createFileAtomically", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
     const operations = {
-      writeFileSync: (path: fs.PathLike, ...args: any[]) => {
-        expect(String(path)).not.toBe(file);
-        return fs.writeFileSync(path, ...args);
-      },
+      writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
       chmodSync: fs.chmodSync,
-      openSync: fs.openSync,
+      openSync: (path: fs.PathLike, flags: string | number, mode?: number) => {
+        expect(String(path)).not.toBe(file);
+        return fs.openSync(path, flags, mode);
+      },
       closeSync: fs.closeSync,
       linkSync: (from: fs.PathLike, to: fs.PathLike) => {
         expect(readFileSync(from, "utf-8")).toBe("complete html");
@@ -232,6 +317,7 @@ describe("createFileAtomically", () => {
   function failingLink(code: string) {
     return {
       writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
       chmodSync: fs.chmodSync,
       openSync: fs.openSync,
       closeSync: fs.closeSync,
@@ -255,47 +341,64 @@ describe("createFileAtomically", () => {
     },
   );
 
+  /** The descriptor of the file the direct fallback writes, which is the one only it opens by name. */
+  function directDescriptor(file: string) {
+    let direct = -1;
+    return {
+      openSync: (path: fs.PathLike, flags: string | number, mode?: number) => {
+        const fd = fs.openSync(path, flags, mode);
+        if (String(path) === file) direct = fd;
+        return fd;
+      },
+      isDirect: (fd: number) => fd === direct,
+    };
+  }
+
   it("removes the partial file a direct write leaves on a full disk, keeping the error", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
     const closed: number[] = [];
+    const direct = directDescriptor(file);
     const operations = {
       ...failingLink("EXDEV"),
+      openSync: direct.openSync,
       writeFileSync: (target: fs.PathOrFileDescriptor, ...args: any[]) => {
-        if (typeof target !== "number") return fs.writeFileSync(target, ...args);
-        fs.writeFileSync(target, "ht");
-        throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
+        fs.writeFileSync(target, ...args);
+        if (typeof target === "number" && direct.isDirect(target))
+          throw Object.assign(new Error("ENOSPC"), { code: "ENOSPC" });
       },
       closeSync: (fd: number) => {
         closed.push(fd);
         fs.closeSync(fd);
-        throw Object.assign(new Error("EIO"), { code: "EIO" });
+        if (direct.isDirect(fd)) throw Object.assign(new Error("EIO"), { code: "EIO" });
       },
     };
 
     expect(() => createFileAtomically(file, "html", operations)).toThrow("ENOSPC");
     expect(fs.readdirSync(dir)).toEqual([]);
-    // Unlinking an open file succeeds, so only the count shows the descriptor was not leaked.
-    expect(closed).toHaveLength(1);
+    // Unlinking an open file succeeds, so only the count shows both the temp and direct descriptors closed.
+    expect(closed).toHaveLength(2);
   });
 
   it("removes the file when a network share reports its quota only at close", () => {
     const dir = tempDir();
     const file = join(dir, "index.html");
     const closed: number[] = [];
+    const direct = directDescriptor(file);
     const operations = {
       ...failingLink("EXDEV"),
+      openSync: direct.openSync,
       closeSync: (fd: number) => {
         closed.push(fd);
         fs.closeSync(fd);
-        throw Object.assign(new Error("EDQUOT"), { code: "EDQUOT" });
+        if (direct.isDirect(fd)) throw Object.assign(new Error("EDQUOT"), { code: "EDQUOT" });
       },
     };
 
     expect(() => createFileAtomically(file, "html", operations)).toThrow("EDQUOT");
     expect(fs.readdirSync(dir)).toEqual([]);
     // A second close could hit a descriptor another request has reused since.
-    expect(closed).toHaveLength(1);
+    expect(closed).toHaveLength(2);
   });
 
   it("keeps another writer's file when the direct write finds the name taken", () => {
@@ -324,6 +427,7 @@ describe("createFileAtomically", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const operations = {
       writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
       chmodSync: fs.chmodSync,
       openSync: fs.openSync,
       closeSync: fs.closeSync,
@@ -401,7 +505,10 @@ describe("replaceFileAtomically on a busy target", () => {
     writeFileSync(file, "old");
     let attempts = 0;
     const operations = {
+      openSync: fs.openSync,
       writeFileSync: fs.writeFileSync,
+      fsyncSync: fs.fsyncSync,
+      closeSync: fs.closeSync,
       chmodSync: fs.chmodSync,
       unlinkSync: fs.unlinkSync,
       renameSync: (from: fs.PathLike, to: fs.PathLike) => {

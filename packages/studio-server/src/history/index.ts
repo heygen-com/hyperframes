@@ -47,6 +47,7 @@ export {
   type ArtifactInput,
   type ArtifactRecord,
   type VideoState,
+  VideoStateCorruptError,
   recordRenderSuccess,
   type RenderRecord,
 } from "./videoState.js";

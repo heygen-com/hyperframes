@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, existsSync, readFileSync, renameSync, statSync } from "node:fs";
+import { copyFileSync, createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { pinProjectRecord } from "../helpers/safePath.js";
@@ -85,9 +85,39 @@ export interface VideoState {
 }
 
 function statePath(dir: string): string {
-  const path = pinProjectRecord(dir, ".hyperframes/video-state.json");
-  if (!path) throw new Error("Video state must stay inside the project.");
+  return projectRecordPath(dir, ".hyperframes/video-state.json", "Video state");
+}
+
+function backupPath(dir: string): string {
+  return projectRecordPath(dir, ".hyperframes/video-state.json.bak", "Video state backup");
+}
+
+function projectRecordPath(dir: string, record: string, label: string): string {
+  const path = pinProjectRecord(dir, record);
+  if (!path) throw new Error(`${label} must stay inside the project.`);
   return path;
+}
+
+/**
+ * The state file exists but cannot be understood. It is never replaced with an empty state: doing that
+ * loses every check, snapshot, revision and file record the production has.
+ */
+export class VideoStateCorruptError extends Error {
+  constructor(
+    readonly statePath: string,
+    readonly backupPath: string,
+    readonly detail: string,
+    options?: ErrorOptions,
+  ) {
+    super(
+      `The project's video state is unreadable (${detail}).\n` +
+        `It was not reset, because starting over would lose its checks, snapshots, revisions and file records.\n` +
+        `Restore ${statePath} from a backup or version control, or delete it to start a fresh history.\n` +
+        `The last state this version published is copied to ${backupPath}.`,
+      options,
+    );
+    this.name = "VideoStateCorruptError";
+  }
 }
 const collection = (): ArtifactCollection => ({ latest: null, revisions: {}, unversioned: [] });
 const emptyState = (): VideoState => ({
@@ -102,11 +132,37 @@ const emptyState = (): VideoState => ({
 });
 
 function readState(dir: string): VideoState {
-  if (!existsSync(statePath(dir))) return emptyState();
-  const state: VideoState = JSON.parse(readFileSync(statePath(dir), "utf8"));
-  if (state.version !== 1 || !state.checks || !state.snapshots || !state.revisions || !state.files)
-    throw new Error("Unsupported video-state schema.");
-  return state;
+  const path = statePath(dir);
+  if (!existsSync(path)) return emptyState();
+  return parseState(dir, path, readFileSync(path, "utf8"));
+}
+
+function parseState(dir: string, path: string, text: string): VideoState {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw corruptState(dir, path, "not valid JSON", error);
+  }
+  if (!isVideoState(value)) throw corruptState(dir, path, "unexpected schema or version");
+  return value;
+}
+
+function corruptState(
+  dir: string,
+  path: string,
+  detail: string,
+  cause?: unknown,
+): VideoStateCorruptError {
+  return new VideoStateCorruptError(path, backupPath(dir), detail, { cause });
+}
+
+function isVideoState(value: unknown): value is VideoState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<VideoState>;
+  return Boolean(
+    state.version === 1 && state.checks && state.snapshots && state.revisions && state.files,
+  );
 }
 
 async function updateState(dir: string, update: (state: VideoState) => void): Promise<void> {
@@ -118,14 +174,53 @@ async function updateState(dir: string, update: (state: VideoState) => void): Pr
     try {
       state = readState(dir);
     } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      renameSync(statePath(dir), `${statePath(dir)}.invalid-${randomUUID()}`);
-      state = emptyState();
+      if (!(error instanceof VideoStateCorruptError)) throw error;
+      state = recoverState(dir, error);
     }
     update(state);
-    replaceFileAtomically(statePath(dir), JSON.stringify(state, null, 2) + "\n", 0o644);
+    publishState(dir, state);
   } finally {
     release();
+  }
+}
+
+/**
+ * Puts the last published state back over a damaged one, keeping the damaged bytes beside it. Without a
+ * readable backup the update fails and nothing is rewritten, so the records are still there to recover.
+ */
+function recoverState(dir: string, error: VideoStateCorruptError): VideoState {
+  let recovered: VideoState;
+  try {
+    recovered = parseState(dir, error.backupPath, readFileSync(error.backupPath, "utf8"));
+  } catch (backupError) {
+    throw corruptState(
+      dir,
+      error.statePath,
+      `${error.detail}, and no readable backup could be restored`,
+      backupError,
+    );
+  }
+  const aside = `${error.statePath}.invalid-${randomUUID()}`;
+  copyFileSync(error.statePath, aside);
+  replaceFileAtomically(error.statePath, readFileSync(error.backupPath), 0o644);
+  console.warn(
+    `[hyperframes] video-state.json was unreadable (${error.detail}); restored the last published state. ` +
+      `The damaged file is kept at ${aside}.`,
+  );
+  return recovered;
+}
+
+/**
+ * The backup is new: it is written after the state it copies, so a power cut during the state write leaves
+ * the previous file as the backup. A failed backup write never fails the update that already succeeded.
+ */
+function publishState(dir: string, state: VideoState): void {
+  const path = statePath(dir);
+  replaceFileAtomically(path, JSON.stringify(state, null, 2) + "\n", 0o644);
+  try {
+    copyFileSync(path, backupPath(dir));
+  } catch {
+    // Best effort: the state itself is already durable; only the ability to recover it is lost.
   }
 }
 

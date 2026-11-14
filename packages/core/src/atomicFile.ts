@@ -4,8 +4,10 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 import { renameWithRetry } from "./renameWithRetry.js";
 
-type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
-type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
+type SiblingFileSystem = Pick<
+  typeof fs,
+  "openSync" | "writeFileSync" | "fsyncSync" | "closeSync" | "chmodSync" | "unlinkSync"
+>;
 
 // Codes a volume without hard links (FAT, exFAT, some network shares, Android app data) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
@@ -58,7 +60,7 @@ export function replaceFileAtomically(
 export function createFileAtomically(
   filePath: string,
   content: string | Uint8Array,
-  operations: DirectFileSystem & Pick<typeof fs, "linkSync"> = fs,
+  operations: SiblingFileSystem & Pick<typeof fs, "linkSync"> = fs,
 ): void {
   publishSibling(filePath, content, undefined, operations, (tempPath) => {
     try {
@@ -79,12 +81,14 @@ export function createFileAtomically(
 function createDirectly(
   filePath: string,
   content: string | Uint8Array,
-  operations: DirectFileSystem,
+  operations: SiblingFileSystem,
 ): void {
   const fd = operations.openSync(filePath, "wx");
   let open = true;
   try {
     operations.writeFileSync(fd, content);
+    // The name is the file here, so its bytes must reach the disk before another run trusts it.
+    operations.fsyncSync(fd);
     open = false;
     operations.closeSync(fd);
   } catch (error) {
@@ -135,6 +139,7 @@ function publishSibling(
   try {
     if (mode !== undefined) operations.chmodSync(tempPath, mode);
     publish(tempPath);
+    syncParentDirectory(filePath, operations);
   } catch (error) {
     try {
       operations.unlinkSync(tempPath);
@@ -155,7 +160,7 @@ function writeTempSibling(
   for (let attempt = 1; ; attempt++) {
     const tempPath = atomicTempPath(filePath);
     try {
-      operations.writeFileSync(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
+      writeAndSyncTempFile(tempPath, content, mode, operations);
       return tempPath;
     } catch (error) {
       if (errorCode(error) === "EEXIST") {
@@ -168,6 +173,57 @@ function writeTempSibling(
         // Preserve the write error; cleanup is best effort.
       }
       throw error;
+    }
+  }
+}
+
+/**
+ * Writes the temp file and forces its bytes to the disk, so the rename that publishes the name can never
+ * outrun the data: a power cut before the rename leaves only an unreferenced temp, never a NUL-filled target.
+ */
+function writeAndSyncTempFile(
+  tempPath: string,
+  content: string | Uint8Array,
+  mode: number | undefined,
+  operations: SiblingFileSystem,
+): void {
+  const fd = operations.openSync(tempPath, "wx", mode);
+  let failure: unknown;
+  try {
+    operations.writeFileSync(fd, content, { encoding: "utf-8" });
+    operations.fsyncSync(fd);
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    operations.closeSync(fd);
+  } catch (error) {
+    // A close that reports the disk's quota (EDQUOT) is a failed write; a write error already found is the clearer one.
+    failure ??= error;
+  }
+  if (failure) throw failure;
+}
+
+/**
+ * Forces the rename itself to the disk. Windows refuses to open a directory for fsync, and some network
+ * filesystems do too; there the rename stays atomic, it just may not survive a power cut. Best effort
+ * because the bytes are already published: a failed directory sync must not report the write as failed.
+ */
+function syncParentDirectory(filePath: string, operations: SiblingFileSystem): void {
+  if (process.platform === "win32") return;
+  let fd: number | undefined;
+  try {
+    fd = operations.openSync(dirname(filePath), "r");
+    operations.fsyncSync(fd);
+  } catch {
+    // Not every filesystem supports fsync on a directory.
+  } finally {
+    if (fd !== undefined) {
+      try {
+        operations.closeSync(fd);
+      } catch {
+        // The bytes and the name are on disk; a close error here cannot undo that.
+      }
     }
   }
 }
