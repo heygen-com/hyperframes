@@ -56,6 +56,11 @@ import {
   resolveProxyVariantRequest,
   PROXY_VARIANT_CONFIG,
 } from "@hyperframes/studio-server/media-codec-map";
+import {
+  PREVIEW_PROXY_BOX_PARAM,
+  PREVIEW_PROXY_LIGHT_PARAM,
+  parsePreviewProxyBox,
+} from "@hyperframes/core";
 
 export default defineCommand({
   meta: { name: "play", description: "Play a composition in a lightweight browser player" },
@@ -263,9 +268,14 @@ export async function registerCompositionRoute(
       // Opt-out (or a non-video asset) 404s the param without attempting a
       // transcode; a missing asset already 404'd above.
       if (!autoProxy || !contentType.startsWith("video/")) return ctx.text("Not found", 404);
+      const boxParam = ctx.req.query(PREVIEW_PROXY_BOX_PARAM);
+      const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
+      const proxyLight = ctx.req.query(PREVIEW_PROXY_LIGHT_PARAM) === "1";
+      // A light copy needs a box to be light for, as in the Studio preview.
+      if (proxyBox === null || (proxyLight && !proxyBox)) return ctx.text("Not found", 404);
       try {
         const facts = await probeAssetCodec(filePath);
-        const eligibility = decideMediaProxyEligibility(facts);
+        const eligibility = decideMediaProxyEligibility(facts, proxyLight ? proxyBox : undefined);
         if (!eligibility.eligible) {
           return ctx.text(`Media proxy unavailable: ${eligibility.reason}`, 422);
         }
