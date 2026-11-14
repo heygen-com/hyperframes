@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.9.47",
+  "version": "0.9.48",
   "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
   "keywords": [
     "ai-agents",
