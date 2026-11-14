@@ -19,6 +19,16 @@ interface ArchiveEntry {
   name: string;
   path: string;
   size: bigint;
+  mtime: Date;
+}
+
+/** MS-DOS time and date fields, local time with 2-second resolution; dates before 1980 clamp to 1980-01-01. */
+export function dosDateTime(date: Date): { time: number; date: number } {
+  if (date.getFullYear() < 1980) return { time: 0, date: 0x21 };
+  return {
+    time: (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1),
+    date: ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate(),
+  };
 }
 
 export interface ZipEntrySize {
@@ -69,7 +79,8 @@ function readArchiveEntries(directory: string): ArchiveEntry[] {
     .sort((left, right) => {
       if (left === AUDIO_FILENAME) return right === AUDIO_FILENAME ? 0 : 1;
       if (right === AUDIO_FILENAME) return -1;
-      return left.localeCompare(right);
+      // Frame names are fixed-width, so a code-point comparison is frame order.
+      return left < right ? -1 : left > right ? 1 : 0;
     });
 
   const entries: ArchiveEntry[] = [];
@@ -77,7 +88,7 @@ function readArchiveEntries(directory: string): ArchiveEntry[] {
     const path = join(directory, name);
     try {
       const stat = lstatSync(path);
-      if (stat.isFile()) entries.push({ name, path, size: BigInt(stat.size) });
+      if (stat.isFile()) entries.push({ name, path, size: BigInt(stat.size), mtime: stat.mtime });
     } catch {
       // Ignore a file that disappeared while the archive manifest was read.
     }
@@ -103,8 +114,9 @@ function localFileHeader(entry: ArchiveEntry): Buffer {
   header.writeUInt16LE(45, 4);
   header.writeUInt16LE(ZIP_FLAGS, 6);
   header.writeUInt16LE(0, 8); // STORE
-  header.writeUInt16LE(0, 10); // DOS time
-  header.writeUInt16LE(0x21, 12); // DOS date: 1980-01-01
+  const modified = dosDateTime(entry.mtime);
+  header.writeUInt16LE(modified.time, 10);
+  header.writeUInt16LE(modified.date, 12);
   header.writeUInt32LE(0, 14); // CRC is written in the data descriptor.
   header.writeUInt32LE(UINT32_MAX, 18);
   header.writeUInt32LE(UINT32_MAX, 22);
@@ -137,8 +149,9 @@ function centralDirectoryHeader(entry: ArchiveEntry, crc: number, localOffset: b
   header.writeUInt16LE(45, 6);
   header.writeUInt16LE(ZIP_FLAGS, 8);
   header.writeUInt16LE(0, 10); // STORE
-  header.writeUInt16LE(0, 12);
-  header.writeUInt16LE(0x21, 14);
+  const modified = dosDateTime(entry.mtime);
+  header.writeUInt16LE(modified.time, 12);
+  header.writeUInt16LE(modified.date, 14);
   header.writeUInt32LE(crc, 16);
   header.writeUInt32LE(UINT32_MAX, 20);
   header.writeUInt32LE(UINT32_MAX, 24);
@@ -236,7 +249,10 @@ async function* zipChunks(entries: readonly ArchiveEntry[]): AsyncGenerator<Uint
   yield endRecords(centralHeaders.length, directorySize, directoryOffset);
 }
 
-function readableZipStream(entries: readonly ArchiveEntry[]): ReadableStream<Uint8Array> {
+function readableZipStream(
+  entries: readonly ArchiveEntry[],
+  filename: string,
+): ReadableStream<Uint8Array> {
   const iterator = zipChunks(entries);
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -245,6 +261,11 @@ function readableZipStream(entries: readonly ArchiveEntry[]): ReadableStream<Uin
         if (next.done) controller.close();
         else controller.enqueue(next.value);
       } catch (error) {
+        // The status line has already gone out, so the client only sees a
+        // short body; this is the one place the cause is visible.
+        console.warn(
+          `[studio-server] render archive ${filename} failed mid-stream: ${error instanceof Error ? error.message : String(error)}`,
+        );
         controller.error(error);
       }
     },
@@ -259,7 +280,7 @@ export function directoryZipResponse(directory: string, jobId: string): Response
   const entries = readArchiveEntries(directory);
   const filename = `${jobId}.zip`;
   const length = calculateZip64ContentLength(entries);
-  return new Response(readableZipStream(entries), {
+  return new Response(readableZipStream(entries, filename), {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": contentDispositionHeader("attachment", filename),
