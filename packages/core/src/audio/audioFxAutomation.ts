@@ -198,7 +198,6 @@ export function cancelParamLane(targets: readonly FxParamTarget[]): void {
     // The value the envelope had reached, not the last one set, which would click.
     const reached = target.param.value;
     clearParamLane([target]);
-    // A `.value` write books it at the context's own current time, which no surviving curve can cover.
     target.param.value = reached;
   }
 }
