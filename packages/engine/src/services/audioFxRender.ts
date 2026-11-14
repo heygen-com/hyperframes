@@ -213,21 +213,9 @@ function encodeSamples(samples: Float32Array, float: boolean): Buffer {
 }
 
 /**
- * Write interleaved samples, preserving the channel count.
- *
- * 16-bit by default rather than the float32 this used to emit: the very next
- * step in the mixer bakes the volume envelope into the samples, and that baker
- * accepted only 16-bit PCM. Emitting float meant enabling any effect silently
- * downgraded a track's volume automation to the ffmpeg expression path, which is
- * capped at 32 straight segments — so a curved envelope was quantised and a
- * dense one could fall back to rendering at base volume.
- *
- * `float` opts back out, for the ONE input that needs it: a group sub-mix. Its
- * members sum at unity, so the sum can legitimately exceed full scale, and the
- * group's fader is applied downstream — clamping here handed that headroom back
- * one step before the thing that was going to reduce it, which is the same bug
- * the float intermediate exists to avoid. Safe now only because the envelope
- * baker reads float too; before that it was not.
+ * Write interleaved samples, preserving the channel count. Prepared clips and
+ * group sub-mixes pass their float format through so downstream gains can reduce
+ * peaks above full scale without inheriting clipping distortion.
  */
 export function writeWav(
   path: string,
