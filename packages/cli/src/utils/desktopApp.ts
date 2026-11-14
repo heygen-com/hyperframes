@@ -261,7 +261,6 @@ export function openCommandFor(
   return shown === null ? "hyperframes open from the project folder" : `hyperframes open ${shown}`;
 }
 
-/** Null when the folder has no spelling that is safe to paste; run `preview --stop` from inside it then. */
 export function previewStopCommandFor(
   dir: string,
   port: number,
