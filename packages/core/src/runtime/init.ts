@@ -2735,6 +2735,12 @@ export function initSandboxRuntimeModular(): void {
     state.mediaForceSyncNextTick = true;
     syncMediaForCurrentState();
   };
+  // A far clip can finish a load the parser started before its window was decided.
+  const onMediaLoadedWhileFar = (event: Event) => {
+    const el = event.currentTarget;
+    if (!isMediaElement(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0) return;
+    withoutOwnTimingRecords(el, () => releaseMedia(el, true));
+  };
   const onMediaErrorForProxy = (event: Event) => {
     if (isMediaElement(event.currentTarget)) {
       handleErrorForProxy(event.currentTarget);
@@ -2765,6 +2771,7 @@ export function initSandboxRuntimeModular(): void {
     mediaEl.removeEventListener("durationchange", scheduleMetadataDurationHydration);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForPlayhead);
+    mediaEl.removeEventListener("loadedmetadata", onMediaLoadedWhileFar);
     mediaEl.removeEventListener("loadedmetadata", onMediaLoadedMetadataForRoute);
     mediaEl.removeEventListener("error", onMediaErrorForProxy);
     metadataBoundMedia.delete(mediaEl);
@@ -2822,6 +2829,7 @@ export function initSandboxRuntimeModular(): void {
       // for <audio> — all guarded inside mediaProxy.ts itself.
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForProxy);
       mediaEl.addEventListener("loadedmetadata", onMediaLoadedMetadataForPlayhead);
+      mediaEl.addEventListener("loadedmetadata", onMediaLoadedWhileFar);
       mediaEl.addEventListener("error", onMediaErrorForProxy);
 
       // Proactive proxy-fallback trigger: consult the codec map and swap
@@ -3275,14 +3283,9 @@ export function initSandboxRuntimeModular(): void {
     }
     mediaNearPlayhead.set(el, near);
     if (!near) {
-      if (el.preload !== "none") {
-        el.preload = "none";
-        // Frees a clip the window armed; on one the parser started, it would only restart the fetch.
-        if (decided)
-          withoutOwnTimingRecords(el, () =>
-            releaseMedia(el, !loadsAhead || window.__HF_RELEASE_PASSED_MEDIA === true),
-          );
-      }
+      el.preload = "none";
+      const holdsPipeline = decided || el.readyState > 0 || el.networkState === 2;
+      if (holdsPipeline) withoutOwnTimingRecords(el, () => releaseMedia(el, true));
     } else if (!visible || decided === undefined) {
       // Not a clip a jump lands on: the media sync arms that one, and load() would undo its seek.
       if (visible) preloadMedia(el);
