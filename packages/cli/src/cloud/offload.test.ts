@@ -503,6 +503,63 @@ describe("offloadHeavyMedia", () => {
     expect(fileMap.get("index.html")!.toString()).toContain(`<img src="moving.avif">`);
   });
 
+  it("prepares only staged GIFs, never one staging left out", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-offload-test-"));
+    dirs.push(root);
+    const frame = [0x21, 0xf9, 4, 0, 5, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x4c, 1, 0];
+    const animated = Buffer.from([
+      ...Buffer.from("GIF89a"),
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      ...frame,
+      ...frame,
+      0x3b,
+    ]);
+    mkdirSync(join(root, "outside"));
+    writeFileSync(join(root, "outside", "clip.gif"), animated);
+    const dir = join(root, "p");
+    mkdirSync(join(dir, "media"), { recursive: true });
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, "media", "loop.gif"), Buffer.concat([animated, HEAVY]));
+    writeFileSync(
+      join(dir, "index.html"),
+      html(`<img src="media/loop.gif" /><img src="../outside/clip.gif" />`),
+    );
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const { prepareAnimatedGifInputs } = await import("@hyperframes/producer");
+    const transcoded: string[] = [];
+    const gifPrep: GifPrep = (input, options) =>
+      prepareAnimatedGifInputs(input, {
+        ...options,
+        cacheDir: options.outputDir,
+        transcode: async (request) => {
+          transcoded.push(
+            readFileSync(request.inputPath).length === animated.length ? "outside" : "staged",
+          );
+          writeFileSync(request.outputPath, honest(".webm"));
+        },
+      });
+    const fileMap = stagePublishFiles(dir, Infinity);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      gifPrep,
+      reencoder: { choose: async () => null, run: vi.fn() },
+      cachePath: cachePath(),
+    });
+
+    expect(transcoded).toEqual(["staged"]);
+    expect(fileMap.get("index.html")!.toString()).toContain(`src="../outside/clip.gif"`);
+  });
+
   it("offloads the video the renderer's GIF prep makes from an entry GIF, and drops the GIF", async () => {
     const dir = project({
       "index.html": html(`<img src="media/loop.gif" data-loop="true" data-duration="4" />`),

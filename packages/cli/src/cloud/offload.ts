@@ -172,6 +172,7 @@ export type GifPrep = (
     outputSrcPrefix: string;
     cacheDir: string;
     sourceAssets: Map<string, string>;
+    assetRoot: string;
   },
 ) => Promise<{ html: string; preparedGifs: Array<{ sourceSrc: string; outputPath: string }> }>;
 
@@ -740,6 +741,7 @@ async function prepareEntryGifs(
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
     cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
+    assetRoot: outputDir,
   });
   if (result.preparedGifs.length === 0) return;
   fileMap.set(entryPath, Buffer.from(result.html, "utf-8"));
