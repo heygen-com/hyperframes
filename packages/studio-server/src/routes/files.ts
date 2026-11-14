@@ -2853,7 +2853,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     while (!replayed && heldEdits.has(project)) await heldEdits.get(project);
     const replay = replayed ? null : keptForReplay(c.req.raw);
     const held = await catchHeldRename(next);
-    if (held === null) return;
+    if (held === null || (c.finalized && c.res.ok)) return;
     if (!replay) {
       c.res = new Response(null, { status: 423, headers: { [HELD]: "1" } });
       return;

@@ -19,23 +19,30 @@ export function isWindowsHold(error: unknown, platform = process.platform): bool
   return RETRYABLE.has((error as NodeJS.ErrnoException | undefined)?.code ?? "");
 }
 
-const holdScope = new AsyncLocalStorage<{ open: boolean }>();
+const holdScope = new AsyncLocalStorage<{ open: boolean; held: unknown }>();
 
 class HeldRename {
   constructor(readonly error: unknown) {}
 }
 
 export async function catchHeldRename(work: () => Promise<void>): Promise<unknown> {
-  const scope = { open: true };
+  const scope: { open: boolean; held: unknown } = { open: true, held: null };
   try {
     await holdScope.run(scope, work);
-    return null;
   } catch (thrown) {
-    if (thrown instanceof HeldRename) return thrown.error;
-    throw thrown;
+    if (!(thrown instanceof HeldRename)) throw thrown;
   } finally {
     scope.open = false;
   }
+  return scope.held;
+}
+
+function handOverHold(error: unknown): void {
+  const scope = holdScope.getStore();
+  if (!scope?.open) return;
+  scope.open = false;
+  scope.held = error;
+  throw new HeldRename(error);
 }
 
 /** What a refused rename does next: wait and try again, fall back to a copy, or give up with the error. */
@@ -68,7 +75,7 @@ export function renameWithRetry(
     } catch (error) {
       const step = nextStep(error, attempt, options, platform);
       if (step === "throw") throw error;
-      if (holdScope.getStore()?.open) throw new HeldRename(error);
+      handOverHold(error);
       if (step === "wait") {
         sleepSync(BACKOFF_MS[attempt]!);
         continue;

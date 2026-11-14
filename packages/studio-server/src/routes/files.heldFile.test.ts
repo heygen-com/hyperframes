@@ -12,6 +12,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerFileRoutes } from "./files";
+import { fileContentVersion } from "../helpers/fileVersion";
 import type { StudioApiAdapter } from "../types";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -63,7 +64,22 @@ function fixture(name: string, onError?: (error: Error) => void) {
         operations: [{ type: "inline-style", property: "color", value: color }],
       }),
     });
-  return { file, get, put, remove, patch };
+  const cut = (version: string) =>
+    app.request("http://localhost/projects/demo/file-mutations/split-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transactionToken: "cut",
+        files: [
+          {
+            path: name,
+            expectedVersion: version,
+            targets: [{ target: { id: "a" }, splitTime: 2, elementStart: 0, elementDuration: 4 }],
+          },
+        ],
+      }),
+    });
+  return { file, get, put, remove, patch, cut };
 }
 
 const answered = async (response: Response) => ({
@@ -192,6 +208,15 @@ describe("an element edit while Windows briefly holds the file", () => {
     },
     10_000,
   );
+
+  it("still saves a cut, whose route answers a failed write itself, when the hold clears", async () => {
+    const { file, cut } = fixture("held.html");
+    const before = '<div id="a" data-start="0" data-duration="4">A</div>';
+    writeFileSync(file, before);
+    holdFor(file, 200);
+    expect((await cut(fileContentVersion(before))).status).toBe(200);
+    expect(readFileSync(file, "utf8").match(/data-duration/g)).toHaveLength(2);
+  }, 10_000);
 
   it("keeps a later edit to the project behind the held one, so the later edit stands", async () => {
     const { file, patch } = fixture("held.html");
