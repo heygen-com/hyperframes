@@ -11,7 +11,7 @@ import { renameWithRetry } from "@hyperframes/engine";
 import { dirname, join } from "node:path";
 import { PlanV2IntegrityError } from "./planV2Errors.js";
 import { assertPlanV2Sha256, planV2BlobPath } from "./planV2Layout.js";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 
 export interface PlanV2PublishBlob {
   readonly sourcePath: string;
@@ -31,12 +31,6 @@ export interface PlanV2ArtifactPublisher {
   commitManifest(manifestBytes: string): Promise<void>;
   /** Idempotent best-effort cleanup for an unpublished or partial plan. */
   abort(): Promise<void>;
-}
-
-function canFallbackToCopy(error: unknown): boolean {
-  if (!(error instanceof Error) || !("code" in error)) return false;
-  const code = error.code;
-  return code === "EXDEV" || code === "EPERM" || code === "EACCES" || code === "ENOTSUP";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,7 +102,7 @@ export class LocalPlanV2ArtifactPublisher implements PlanV2ArtifactPublisher {
       try {
         this.#linkFile(blob.sourcePath, temporaryPath);
       } catch (error) {
-        if (!canFallbackToCopy(error)) throw error;
+        if (!cannotHardLink(error)) throw error;
         copyFileSync(blob.sourcePath, temporaryPath);
       }
       renameWithRetry(temporaryPath, destinationPath);

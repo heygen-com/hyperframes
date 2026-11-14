@@ -1,5 +1,6 @@
 import {
   closeSync,
+  copyFileSync,
   createReadStream,
   createWriteStream,
   existsSync,
@@ -23,7 +24,7 @@ import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -967,6 +968,21 @@ async function fetchToPartial(
   };
 }
 
+function publishWithoutClobber(partialPath: string, localPath: string): void {
+  try {
+    linkSync(partialPath, localPath);
+  } catch (error) {
+    if (!cannotHardLink(error)) throw error;
+    closeSync(openSync(localPath, "wx"));
+    try {
+      copyFileSync(partialPath, localPath);
+    } catch (copyError) {
+      rmSync(localPath, { force: true });
+      throw copyError;
+    }
+  }
+}
+
 function syncAndPublishPartial(
   partialPath: string,
   localPath: string,
@@ -983,7 +999,7 @@ function syncAndPublishPartial(
   // A hard-link publish is atomic and no-clobber: unlike rename(), it cannot
   // replace a path that another successful caller has already returned.
   try {
-    linkSync(partialPath, localPath);
+    publishWithoutClobber(partialPath, localPath);
     unlinkSync(partialPath);
     return "published";
   } catch (error) {
