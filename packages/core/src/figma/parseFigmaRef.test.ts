@@ -17,6 +17,21 @@ describe("parseFigmaRef", () => {
     expect(ref.nodeId).toBeUndefined();
   });
 
+  it("uses the branch key of a branch URL, which is the key the REST API serves the branch under", () => {
+    expect(
+      parseFigmaRef("https://www.figma.com/design/MainKey123/branch/BranchKey456/Name?node-id=1-2"),
+    ).toEqual({ fileKey: "BranchKey456", nodeId: "1:2" });
+    expect(parseFigmaRef("https://www.figma.com/file/MainKey123/branch/BranchKey456")).toEqual({
+      fileKey: "BranchKey456",
+    });
+  });
+
+  it("does not read a file named branch as a branch key", () => {
+    expect(parseFigmaRef("https://www.figma.com/design/MainKey123/branch")).toEqual({
+      fileKey: "MainKey123",
+    });
+  });
+
   it("accepts fileKey:nodeId shorthand", () => {
     expect(parseFigmaRef("ABC123:1-2")).toEqual({ fileKey: "ABC123", nodeId: "1:2" });
   });
