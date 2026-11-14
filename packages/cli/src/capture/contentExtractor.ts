@@ -363,7 +363,7 @@ export async function captionImagesWithGemini(
   // the API's flash-lite preview id is not resolvable there — so it carries its own default.
   const model = {
     openrouter: process.env.HYPERFRAMES_OPENROUTER_MODEL || "google/gemini-3.1-flash-lite",
-    vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-2.5-flash",
+    vertex: process.env.HYPERFRAMES_VERTEX_MODEL || "gemini-3.1-flash-lite",
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
   }[provider];
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
@@ -419,7 +419,7 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
-      const vertexLocation = process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1";
+      const vertexLocation = process.env.HYPERFRAMES_VERTEX_LOCATION || "global";
       const settingsProblem = googleClientSettingsProblem(provider, model, vertexLocation);
       if (settingsProblem) {
         warnings.push(settingsProblem);
