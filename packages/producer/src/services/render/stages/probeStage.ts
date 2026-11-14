@@ -73,6 +73,7 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
@@ -659,7 +660,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
           // Convert absolute localhost URLs back to relative paths
           let src = el.src;
           if (fileServer && src.startsWith(fileServer.url)) {
-            src = src.slice(fileServer.url.length).replace(/^\//, "");
+            src = servedPath(src.slice(fileServer.url.length));
           }
 
           if (el.tagName === "video") {
