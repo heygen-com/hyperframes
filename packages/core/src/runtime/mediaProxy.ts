@@ -17,10 +17,10 @@ import {
   sourceFactsOf,
 } from "./mediaSourceLookup";
 import {
-  endCopyHold,
+  heldForCopy,
   heldPosters,
-  isWaitingForCopy,
-  startCopyHold,
+  inPointOf,
+  recordOpenedAtInPoint,
   swappedElements,
   unproxiedSrc,
 } from "./proxySrc";
@@ -393,33 +393,38 @@ function emitUnavailableDiagnostic(
   console.info(`[hyperframes] ${DIAGNOSTIC_UNAVAILABLE_CODE}: "${asset}" (${reason}): ${note}`);
 }
 
-/** Stops `el` loading its file until its copy is served; readers of its src still see the file it plays. False when
- * there is no src to hold. A frame capture waits for the copy, up to the same cap as for any loading video. */
+/** Holds `el` with no src while its copy is made (readers still see its file); false with no src to hold. */
 function holdForCopy(el: HTMLMediaElement): boolean {
   const authored = unproxiedSrc(el);
   if (authored === null) return false;
-  startCopyHold(el, authored);
+  heldForCopy.set(el, inPointOf(el));
+  recordOpenedAtInPoint(el, authored, null);
   stopMediaDownload(el);
-  const copyLanded = new Promise<void>((landed) => copyLandings.set(el, landed));
-  registerSeekCompletion(
-    Promise.race([copyLanded, new Promise((cap) => wallSetTimeout(cap, HOLD_CAP_MS))]),
-    "video-frame",
+  holdFrameCaptures(
+    new Promise((landed) => {
+      el.addEventListener("loadeddata", landed, { once: true });
+      el.addEventListener("error", landed, { once: true });
+    }),
   );
   return true;
 }
 
-const copyLandings = new WeakMap<HTMLMediaElement, () => void>();
-
-/** Without a served copy, the hold ends as it found the clip; a served copy's swap writes the src instead. */
-function letGoOfHold(el: HTMLMediaElement, giveBack: string | null): void {
-  if (!isWaitingForCopy(el)) return;
-  if (giveBack !== null) landCopy(el);
-  endCopyHold(el, giveBack);
+/** Without a copy (`giveBack` set), a clip held until due stays held; any other gets its src back as the runtime's. */
+function endCopyHold(el: HTMLMediaElement, giveBack: string | null): void {
+  if (!heldForCopy.has(el)) return;
+  const before = heldForCopy.get(el);
+  heldForCopy.delete(el);
+  if (giveBack === null || el.getAttribute("src") !== null) return;
+  const src = before ? before.written : giveBack;
+  recordOpenedAtInPoint(el, before?.authored ?? giveBack, src, before?.holdsWhenIdle);
+  if (src !== null) el.setAttribute("src", src);
 }
 
-function landCopy(el: HTMLMediaElement): void {
-  copyLandings.get(el)?.();
-  copyLandings.delete(el);
+function holdFrameCaptures(until: Promise<unknown>): void {
+  registerSeekCompletion(
+    Promise.race([until, new Promise((cap) => wallSetTimeout(cap, HOLD_CAP_MS))]),
+    "video-frame",
+  );
 }
 
 type CopyJob = {
@@ -460,7 +465,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
   );
   const wanted = live();
-  if (held) letGoOfHold(el, served && wanted ? null : originalAttr);
+  if (held) endCopyHold(el, served && wanted ? null : originalAttr);
   if (!wanted) {
     dropStill(el);
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
@@ -483,10 +488,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
   return new Promise((landed) => {
     el.addEventListener("loadeddata", landed, { once: true });
     el.addEventListener("error", landed, { once: true });
-  }).then(() => {
-    landCopy(el);
-    dropStill(el);
-  });
+  }).then(() => dropStill(el));
 }
 
 /**
@@ -524,16 +526,13 @@ export function swapToProxy(
   const live = () =>
     el.isConnected &&
     (el.getAttribute("src") === originalAttr ||
-      (isWaitingForCopy(el) && el.getAttribute("src") === null)) &&
+      (heldForCopy.has(el) && el.getAttribute("src") === null)) &&
     (!lightFacts || previewQuality === level);
   const job: CopyJob = { originalSrc, originalAttr, variant, lightFacts, level, live };
   const swap = shownScale().then((scale) => makeCopy(el, job, scale));
   if (lightFacts) return;
   // A frame capture holds for the copy as it held for a loading video before, up to the same cap.
-  registerSeekCompletion(
-    Promise.race([swap, new Promise((cap) => wallSetTimeout(cap, HOLD_CAP_MS))]),
-    "video-frame",
-  );
+  holdFrameCaptures(swap);
   const codecName = entry?.codecName ?? null;
   const details: Record<string, RuntimeJson> = {
     asset: originalSrc,

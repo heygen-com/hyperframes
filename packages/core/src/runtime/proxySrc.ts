@@ -5,26 +5,8 @@ export const swappedElements = new WeakMap<Element, string | null>();
  * place (null while the clip is held with no src until it is due), and whether it is held again when idle. */
 type InPointRecord = { authored: string; written: string | null; holdsWhenIdle: boolean };
 const openedAtInPoint = new WeakMap<Element, InPointRecord>();
-const beforeCopyHold = new WeakMap<Element, InPointRecord | undefined>();
-
-export const isWaitingForCopy = (el: Element) => beforeCopyHold.has(el);
-
-export function startCopyHold(el: Element, authored: string): void {
-  beforeCopyHold.set(el, openedAtInPoint.get(el));
-  recordOpenedAtInPoint(el, authored, null);
-}
-
-/** Without a copy (`giveBack` set), a clip held until due stays held; any other gets its src back as the runtime's. */
-export function endCopyHold(el: Element, giveBack: string | null): void {
-  if (!beforeCopyHold.has(el)) return;
-  const before = beforeCopyHold.get(el);
-  beforeCopyHold.delete(el);
-  if (giveBack === null || el.getAttribute("src") !== null) return;
-  if (before?.written === null) return void openedAtInPoint.set(el, before);
-  const src = before?.written ?? giveBack;
-  recordOpenedAtInPoint(el, before?.authored ?? giveBack, src, before?.holdsWhenIdle ?? false);
-  el.setAttribute("src", src);
-}
+export const inPointOf = (el: Element) => openedAtInPoint.get(el);
+export const heldForCopy = new WeakMap<Element, InPointRecord | undefined>();
 
 export function recordOpenedAtInPoint(
   el: Element,
