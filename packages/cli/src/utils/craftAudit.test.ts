@@ -26,6 +26,8 @@ interface Shown {
   block?: number;
   /** The block's rendered text; defaults to `text`. */
   blockText?: string;
+  /** Source file the element comes from; defaults to the single-scene file. */
+  sourceFile?: string;
 }
 
 function part(shown: Shown): CraftTextPart {
@@ -35,7 +37,7 @@ function part(shown: Shown): CraftTextPart {
     block: shown.block ?? shown.key,
     selector: `#t${shown.key}`,
     blockSelector: `#t${shown.block ?? shown.key}`,
-    sourceFile: "compositions/scene.html",
+    sourceFile: shown.sourceFile ?? "compositions/scene.html",
     text: shown.text,
     blockText: shown.blockText ?? shown.text,
     opacity: 1,
@@ -285,16 +287,77 @@ describe("text_below_floor", () => {
     expect(typeFloorPx({ width: 3840, height: 2160 })).toBe(56);
   });
 
-  it("warns once per file on small text held 0.5 s or more", () => {
+  it("warns once per size on small text held 0.5 s or more", () => {
     const shown: Shown[] = [
       { key: 1, text: "v2.4 release notes", from: 0.5, to: 6, fontPx: 18 },
       { key: 2, text: "Q1", from: 1, to: 6, fontPx: 14 },
     ];
     const findings = detectTextBelowFloor(film(10, shown), 10, CANVAS);
-    expect(findings).toHaveLength(1);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.fontPx)).toEqual([14, 18]);
     expect(findings[0]).toMatchObject({ code: "text_below_floor", fontPx: 14, floorPx: 28 });
-    expect(findings[0]?.elements).toHaveLength(2);
+    expect(findings[0]?.elements).toHaveLength(1);
     expect(findings[0]?.message).toContain("references/look.md");
+  });
+
+  it("reports one finding for the same size across scene files, listing each file", () => {
+    const shown: Shown[] = [
+      {
+        key: 1,
+        text: "인천 앞바다 · 1950.9",
+        from: 0.5,
+        to: 6,
+        fontPx: 27,
+        sourceFile: "compositions/V01.html",
+      },
+      {
+        key: 2,
+        text: "상륙 직전, 인천 앞바다 · 1950.9",
+        from: 0.5,
+        to: 6,
+        fontPx: 27,
+        sourceFile: "compositions/V02.html",
+      },
+    ];
+    const findings = detectTextBelowFloor(film(10, shown), 10, CANVAS);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ code: "text_below_floor", fontPx: 27, floorPx: 28 });
+    expect(findings[0]?.message).toContain("2 text elements in 2 files");
+    expect(findings[0]?.message).toContain("all at 27 px");
+    expect(findings[0]?.elements).toEqual([
+      expect.objectContaining({
+        text: "인천 앞바다 · 1950.9",
+        sourceFile: "compositions/V01.html",
+      }),
+      expect.objectContaining({
+        text: "상륙 직전, 인천 앞바다 · 1950.9",
+        sourceFile: "compositions/V02.html",
+      }),
+    ]);
+  });
+
+  it("keeps different sizes in different files as separate findings", () => {
+    const shown: Shown[] = [
+      {
+        key: 1,
+        text: "location label",
+        from: 0.5,
+        to: 6,
+        fontPx: 27,
+        sourceFile: "compositions/V01.html",
+      },
+      {
+        key: 2,
+        text: "source credit",
+        from: 0.5,
+        to: 6,
+        fontPx: 17,
+        sourceFile: "compositions/V02.html",
+      },
+    ];
+    const findings = detectTextBelowFloor(film(10, shown), 10, CANVAS);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((finding) => finding.fontPx)).toEqual([17, 27]);
   });
 
   it("does not warn on 28 px text, a brief small flash, captions or symbols", () => {
