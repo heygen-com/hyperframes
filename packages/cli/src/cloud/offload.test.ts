@@ -545,7 +545,7 @@ describe("offloadHeavyMedia", () => {
       staged("take.mkv"),
       "video",
       undefined,
-      expect.any(Function),
+      undefined,
     );
     expect(upload.mock.calls[0]![0]).toMatchObject({
       filename: "take.mp4",
@@ -943,7 +943,7 @@ describe("offloadHeavyMedia", () => {
       join(dir, "take.mov"),
       "video",
       undefined,
-      expect.any(Function),
+      undefined,
     );
     expect(item).toMatchObject({ path: "take.mov", action: "reencode", size_bytes: 2 ** 32 + 1 });
     expect(fileMap.has("take.mov")).toBe(false);
@@ -1045,7 +1045,7 @@ describe("offloadHeavyMedia", () => {
         { start: 9.5, end: 12.5 },
         { start: 100, end: 105 },
       ],
-      expect.any(Function),
+      undefined,
     );
     expect(report[0]).toMatchObject({ path: "long.mkv", trimmed_to_seconds: 8 });
     const index = fileMap.get("index.html")!.toString();
@@ -1176,7 +1176,7 @@ describe("offloadHeavyMedia", () => {
         staged("long.mkv"),
         "video",
         undefined,
-        expect.any(Function),
+        undefined,
       );
       expect(fileMap.get("index.html")!.toString()).toContain(`data-media-start="10"`);
     }

@@ -12,9 +12,8 @@ import {
 import os, { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
-import { followFfmpegProgress } from "./ffmpegProgress.js";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";

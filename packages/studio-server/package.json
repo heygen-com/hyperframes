@@ -123,12 +123,6 @@
       "import": "./src/helpers/outsideFile.ts",
       "types": "./src/helpers/outsideFile.ts"
     },
-    "./ffmpeg-progress": {
-      "bun": "./src/helpers/ffmpegProgress.ts",
-      "node": "./dist/helpers/ffmpegProgress.js",
-      "import": "./src/helpers/ffmpegProgress.ts",
-      "types": "./src/helpers/ffmpegProgress.ts"
-    },
     "./media-range": {
       "bun": "./src/helpers/mediaRange.ts",
       "node": "./dist/helpers/mediaRange.js",
@@ -211,10 +205,6 @@
       "./outside-file": {
         "import": "./dist/helpers/outsideFile.js",
         "types": "./dist/helpers/outsideFile.d.ts"
-      },
-      "./ffmpeg-progress": {
-        "import": "./dist/helpers/ffmpegProgress.js",
-        "types": "./dist/helpers/ffmpegProgress.d.ts"
       },
       "./media-range": {
         "import": "./dist/helpers/mediaRange.js",

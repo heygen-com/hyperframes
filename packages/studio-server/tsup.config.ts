@@ -22,7 +22,6 @@ export default defineConfig({
     "helpers/mediaRange": "src/helpers/mediaRange.ts",
     "helpers/mime": "src/helpers/mime.ts",
     "helpers/outsideFile": "src/helpers/outsideFile.ts",
-    "helpers/ffmpegProgress": "src/helpers/ffmpegProgress.ts",
     "history/index": "src/history/index.ts",
   },
   format: ["esm"],
