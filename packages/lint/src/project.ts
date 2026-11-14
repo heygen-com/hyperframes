@@ -929,8 +929,9 @@ function lintDuplicateAudioTracks(projectDir: string, rootHtml: string): Hyperfr
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
-          message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s, ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s). This causes layered audio playback.`,
-          fixHint: "Use non-overlapping time windows or different track indices.",
+          message: `Audible clips overlap on Studio track ${a.trackIndex}: ${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s and ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s. Both play at once whatever their track (the render mixes every audible clip; data-track-index only picks the Studio lane), and Studio draws them over each other in that lane.`,
+          fixHint:
+            "If both should sound (a whoosh into a hit), give one its own data-track-index; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.",
         });
       }
     }
