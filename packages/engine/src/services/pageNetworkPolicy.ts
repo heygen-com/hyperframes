@@ -21,9 +21,8 @@ async function isPublicHost(hostname: string, resolveHost: ResolveHost): Promise
 }
 
 /**
- * The page may reach its own server and public addresses only: the asset downloader's rule, applied to
- * the literal host and to every address a name resolves to. Install before the page navigates; a refused
- * request fails with net::ERR_BLOCKED_BY_CLIENT.
+ * The page reaches only its own server and public addresses (the asset downloader's rule, by host and by
+ * resolved address). Install before navigation; a refused request fails with net::ERR_BLOCKED_BY_CLIENT.
  */
 export async function restrictPageNetwork(
   page: Page,
