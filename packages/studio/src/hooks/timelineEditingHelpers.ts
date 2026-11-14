@@ -7,6 +7,7 @@ import {
   findTagByTarget,
   readAttributeByTarget,
   readTagSnippetByTarget,
+  servedSource,
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import {
@@ -420,6 +421,7 @@ export function patchTimelineChangesInSource(
   for (const { element, buildPatches } of changes) {
     const target = buildPatchTarget(element);
     if (!target) throw new Error(`Timeline element ${element.id} is missing a patchable target`);
+    current = servedSource(current, target);
     // Resolve first: a member already at its target values patches to the same string, a missing one must throw.
     if (!findTagByTarget(current, target)) {
       throw new Error(
