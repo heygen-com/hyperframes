@@ -3,7 +3,7 @@
  * staged copy's references at the asset URLs. The project on disk is never touched.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   closeSync,
@@ -40,6 +40,7 @@ import {
   startsAsMediaPlaylist,
   VIDEO_EXTS,
 } from "@hyperframes/studio-server/outside-file";
+import { followFfmpegProgress } from "@hyperframes/studio-server/ffmpeg-progress";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   archiveKey,
@@ -65,6 +66,7 @@ const OFFLOAD_CONCURRENCY = 8;
 
 const MiB = 1024 * 1024;
 const AUDIO_MAX_BYTES = 1_500_000_000;
+export const CACHE_CHECK_TIMEOUT_MS = 10_000;
 
 // What POST /v3/assets/direct-uploads takes as-is, and its per-type cap.
 const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
@@ -149,9 +151,17 @@ export interface OffloadOptions {
   /** Overrides the renderer's GIF preparation for tests. */
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
+  /** Hears a re-encode's output seconds made so far; `totalSeconds` is null when the length is unknown. */
+  onReencodeProgress?: (event: ReencodeProgress) => void;
   variablesText?: string;
   /** Media leaves the zip, largest first, only while the zip is over this; absent, all used media leaves. */
   zipBudgetBytes?: number;
+}
+
+export interface ReencodeProgress {
+  path: string;
+  doneSeconds: number;
+  totalSeconds: number | null;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -167,6 +177,7 @@ export interface Reencoder {
     sourcePath: string,
     preset: PresetName,
     segments?: PlayedSegment[],
+    onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
   ) => Promise<UploadableFile>;
 }
 
@@ -210,11 +221,15 @@ function writeCache(path: string, cache: Record<string, CacheEntry>): void {
 
 // Asset URLs are public and unsigned, so HEAD needs no auth; a deleted or replaced asset fails it.
 async function stillServed(entry: CacheEntry, fetchImpl: typeof fetch): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CACHE_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(entry.url, { method: "HEAD" });
+    const res = await fetchImpl(entry.url, { method: "HEAD", signal: controller.signal });
     return res.ok && Number(res.headers.get("content-length")) === entry.size_bytes;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -387,6 +402,9 @@ const capOf = (presetName: PresetName) => ACCEPTED[REENCODE_PRESETS[presetName].
 const playedSeconds = (segments: PlayedSegment[]) =>
   segments.reduce((sum, s) => sum + s.end - s.start, 0);
 
+const outputSeconds = (sourcePath: string, segments: PlayedSegment[] | undefined) =>
+  segments?.length ? Promise.resolve(playedSeconds(segments)) : durationSeconds(sourcePath);
+
 export async function limitFor(
   sourcePath: string,
   presetName: PresetName,
@@ -394,7 +412,7 @@ export async function limitFor(
   maxBytes = capOf(presetName),
 ): Promise<string[]> {
   if (mediaOf(presetName) !== "video") return [];
-  const seconds = segments?.length ? playedSeconds(segments) : await durationSeconds(sourcePath);
+  const seconds = await outputSeconds(sourcePath, segments);
   const limit = sizeLimitArgs({
     maxBytes,
     seconds: seconds ?? 0,
@@ -404,10 +422,36 @@ export async function limitFor(
   return presetName === "alphaVideo" && limit.length ? [...limit, "-b:v", limit[1]!] : limit;
 }
 
+/** ffmpeg with `-progress` on stdout, so `onSeconds` hears the output time made; fails with ffmpeg's own stderr. */
+function runFfmpeg(
+  ffmpeg: string,
+  args: string[],
+  onSeconds: (seconds: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpeg, ["-progress", "pipe:1", "-nostats", ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    followFfmpegProgress(proc.stdout, onSeconds);
+    let stderr = "";
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(-16_384);
+    });
+    proc.on("error", reject);
+    proc.on("close", (code, signal) => {
+      if (code === 0) return resolve();
+      const ended = signal ? `was ended by ${signal}` : `exited with code ${code}`;
+      reject(new Error(`ffmpeg ${ended}: ${stderr.trim()}`));
+    });
+  });
+}
+
 async function ffmpegReencode(
   sourcePath: string,
   presetName: PresetName,
   segments?: PlayedSegment[],
+  onProgress?: (doneSeconds: number, totalSeconds: number | null) => void,
 ): Promise<UploadableFile> {
   const ffmpeg = findFFmpeg();
   if (!ffmpeg) throw new Error(`Re-encoding needs ffmpeg. Install it: ${getFFmpegInstallHint()}`);
@@ -415,10 +459,11 @@ async function ffmpegReencode(
   const probe = preset.contentType.startsWith("video/") ? await probeVideo(sourcePath) : undefined;
   const decoder = probe ? alphaDecoderArgs(probe) : [];
   const color = presetName === "hdrVideo" && probe ? hdrColorArgs(probe) : [];
+  const totalSeconds = onProgress ? await outputSeconds(sourcePath, segments) : null;
   const workDir = mkdtempSync(join(tmpdir(), "hf-offload-"));
   const outPath = join(workDir, `${basename(sourcePath, extname(sourcePath))}${preset.ext}`);
   try {
-    await execFileAsync(
+    await runFfmpeg(
       ffmpeg,
       [
         "-v",
@@ -431,7 +476,7 @@ async function ffmpegReencode(
         ...preset.audio,
         outPath,
       ],
-      { maxBuffer: 16 * MiB },
+      (doneSeconds) => onProgress?.(doneSeconds, totalSeconds),
     );
     // Never read an output the asset API would refuse: it can exceed what one read can hold.
     return {
@@ -749,7 +794,13 @@ async function uploadOnce(
 ): Promise<{ url: string; asset_id: string }> {
   const filename = basename(path);
   const file: UploadableFile = plan.preset
-    ? await ctx.reencoder.run(plan.sourcePath, plan.preset, plan.segments)
+    ? await ctx.reencoder.run(
+        plan.sourcePath,
+        plan.preset,
+        plan.segments,
+        (doneSeconds, totalSeconds) =>
+          ctx.opts.onReencodeProgress?.({ path, doneSeconds, totalSeconds }),
+      )
     : Buffer.isBuffer(staged)
       ? { bytes: staged, filename, contentType: plan.contentType! }
       : { path: staged.absPath, size: staged.size, filename, contentType: plan.contentType! };
