@@ -2225,6 +2225,20 @@ function hideFromView(element: HTMLElement): void {
   element.setAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR, "true");
 }
 
+/** The clip-path the page gives `element`, read with grading's hide lifted for that one synchronous read. */
+function ownClipPath(element: HTMLElement): string {
+  const sheet = element.ownerDocument.querySelector<HTMLStyleElement>(`style[${HIDE_STYLE_ATTR}]`)?.sheet;
+  if (!sheet || !element.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR)) {
+    return window.getComputedStyle(element).clipPath;
+  }
+  sheet.disabled = true;
+  try {
+    return window.getComputedStyle(element).clipPath;
+  } finally {
+    sheet.disabled = false;
+  }
+}
+
 function hideFrame(entry: ColorGradingEntry, frame: HTMLElement): void {
   if (entry.hiddenFrame !== frame) restoreFrame(entry);
   entry.hiddenFrame = frame;
@@ -2931,6 +2945,7 @@ function updateCanvasLayout(
 
   const computed = window.getComputedStyle(styleSource);
   copyMediaVisualStyles(canvas.style, computed);
+  canvas.style.clipPath = ownClipPath(element);
   canvas.style.borderStyle = "none";
   canvas.style.pointerEvents = "none";
   canvas.style.position = "absolute";
