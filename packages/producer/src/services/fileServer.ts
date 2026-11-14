@@ -29,6 +29,7 @@ import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -830,6 +831,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
       if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
+      if (isPrivateFileUnder(root, candidate, isVcsOrSecretPath)) continue;
       const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
       if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
       file = openRegularFile(candidate);
