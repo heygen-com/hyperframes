@@ -123,7 +123,7 @@
     "cn": "0.2.4",
     "dockview-react": "8.3.1",
     "gsap": "^3.13.0",
-    "mediabunny": "^1.65.2"
+    "mediabunny": "^1.66.0"
   },
   "devDependencies": {
     "@hyperframes/producer": "workspace:*",
