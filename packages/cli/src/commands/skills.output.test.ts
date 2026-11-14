@@ -44,9 +44,13 @@ vi.mock("../utils/skillsManifest.js", async (importOriginal) => ({
   foreignSkillNames: fake.foreignSkillNames,
   hyperframesSkillNames: () => [],
 }));
-vi.mock("../utils/skillsMirror.js", () => ({
-  mirrorGlobalSkills: () => ({ source: null, mirrored: [], skipped: [] }),
-}));
+vi.mock("../utils/skillsMirror.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/skillsMirror.js")>();
+  return {
+    ...actual,
+    mirrorGlobalSkills: () => ({ source: null, mirrored: [], skipped: [] }),
+  };
+});
 vi.mock("../utils/skillsUpdateCheck.js", () => ({ invalidateSkillsCache: vi.fn() }));
 
 const { default: skillsCommand, updateSkills } = await import("./skills.js");

@@ -26,6 +26,7 @@ import {
   type SkillsManifest,
   type SkillEntry,
 } from "./skillsManifest.js";
+import { EXTRA_GLOBAL_SKILL_DIRS } from "./skillsMirror.js";
 
 // The retired-skill regression tests below drive `checkSkills`'s real
 // `canonical: true` network path (see resolveLatestManifest) instead of an
@@ -382,6 +383,43 @@ describe("checkSkills install detection", () => {
     const res = await checkSkills({ source, cwd: project, home });
     expect(res.location).toBe(join(home, rel));
     expect(res.agent).toBe(agent);
+  });
+
+  it.each([
+    [".gemini/config/skills", "antigravity"],
+    [".gemini/antigravity/skills", "antigravity"],
+    [".gemini/antigravity-cli/skills", "antigravity-cli"],
+    [".codeium/windsurf/skills", "windsurf"],
+  ] as const)("locates skills under multi-segment global directory %s (%s)", async (rel, agent) => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    mkdirSync(project, { recursive: true });
+    mkdirSync(home, { recursive: true });
+    const source = writeManifest(root);
+    installSkill(join(home, rel), "alpha");
+
+    const res = await checkSkills({
+      source,
+      cwd: project,
+      home,
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    });
+    expect(res.location).toBe(join(home, rel));
+    expect(res.agent).toBe(agent);
+  });
+
+  it("infers antigravity and global scope when --dir points to ~/.gemini/config/skills", async () => {
+    const project = join(root, "project");
+    const home = join(root, "home");
+    const dir = join(home, ".gemini", "config", "skills");
+    mkdirSync(project, { recursive: true });
+    installSkill(dir, "alpha");
+    const source = writeManifest(root);
+
+    const res = await checkSkills({ source, dir, cwd: project, home });
+    expect(res.location).toBe(dir);
+    expect(res.agent).toBe("antigravity");
+    expect(res.scope).toBe("global");
   });
 
   it("prefers global scope over project (matches how agents load skills)", async () => {

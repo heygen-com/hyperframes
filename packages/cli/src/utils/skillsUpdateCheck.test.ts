@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EXTRA_GLOBAL_SKILL_DIRS } from "./skillsMirror.js";
 
 type FakeConfig = Record<string, unknown>;
 
@@ -163,7 +164,30 @@ describe("skillsUpdateCheck", () => {
     // Must resolve against the canonical upstream manifest, not a possibly
     // stale in-repo skills-manifest.json, so this nudge agrees with what
     // `updateSkills` would actually reconcile.
-    expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
+    expect(mockCheckSkills).toHaveBeenCalledWith({
+      canonical: true,
+      cliVersion: "0.0.0-dev",
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    });
+  });
+
+  it("forwards the worker's project directory to checkSkills", async () => {
+    mockCheckSkills.mockResolvedValue({
+      location: "/work/original-film/.claude/skills",
+      updateAvailable: false,
+      summary: { current: 1, outdated: 0, missing: 0, coreMissing: 0 },
+      skills: [{ name: "hyperframes", status: "current" }],
+    });
+
+    const { refreshSkillsCache } = await import("./skillsUpdateCheck.js");
+    await refreshSkillsCache("/work/original-film");
+
+    expect(mockCheckSkills).toHaveBeenCalledWith({
+      canonical: true,
+      cliVersion: "0.0.0-dev",
+      cwd: "/work/original-film",
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    });
   });
 
   it("does not persist anything when no install was located (nothing meaningful to cache)", async () => {
@@ -330,7 +354,11 @@ describe("skillsUpdateCheck", () => {
 
       expect(skillsCheckDue()).toBe(true);
       await refreshSkillsCache();
-      expect(mockCheckSkills).toHaveBeenCalledWith({ canonical: true, cliVersion: "0.0.0-dev" });
+      expect(mockCheckSkills).toHaveBeenCalledWith({
+        canonical: true,
+        cliVersion: "0.0.0-dev",
+        extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+      });
       expect(config).toMatchObject({ skillsUpdateAvailable: false, skillsOutdatedCount: 0 });
     });
 

@@ -14,6 +14,7 @@ import {
   type InstallChannel,
 } from "../utils/installerDetection.js";
 import { checkSkills } from "../utils/skillsManifest.js";
+import { EXTRA_GLOBAL_SKILL_DIRS } from "../utils/skillsMirror.js";
 import { recordSkillsCheck } from "../utils/skillsUpdateCheck.js";
 import {
   checkForUpdate,
@@ -98,7 +99,11 @@ async function checkInstalledSkills(cli: CliReport): Promise<SkillsReport> {
   const skip = skillsSkipReason(cli.install.channel);
   if (skip) return { status: "skipped", reason: skip };
   try {
-    const result = await checkSkills({ canonical: true, cliVersion: VERSION });
+    const result = await checkSkills({
+      canonical: true,
+      cliVersion: VERSION,
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    });
     recordSkillsCheck(result);
     return {
       status: "checked",
