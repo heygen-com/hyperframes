@@ -179,6 +179,14 @@ export interface CaptureSession {
    * instead of re-seeking + re-screenshotting. Undefined when disabled or ineligible.
    */
   staticFrames?: Set<number>;
+  /**
+   * Absolute frames `[start, end)` this session captures, when it captures only part of
+   * the timeline (a parallel worker's task, a distributed chunk). Set before
+   * `initializeSession`. Static-frame dedup then predicts and verifies only the frames
+   * inside it: this session never captures the others, so verifying them costs seeks and
+   * screenshots for nothing. Unset: the whole timeline.
+   */
+  staticDedupFrameRange?: { start: number; end: number };
   /** Last non-deduped frame buffer, reused for every `staticFrames` index in its run. */
   lastFrameBuffer?: Buffer;
   /** Absolute index represented by lastFrameBuffer; reuse requires direct adjacency. */
@@ -4010,6 +4018,23 @@ function mandatoryRunComparisons(anchor: number, end: number): number[] {
   return [...points].sort((left, right) => left - right);
 }
 
+/**
+ * The predicted-static frames a session capturing `range` could reuse; all of them when
+ * there is no range. A frame outside the range is never captured by that session, so it
+ * is never reused there and needs no verification.
+ */
+export function staticFramesInCaptureRange(
+  staticFrames: Set<number>,
+  range: { start: number; end: number } | undefined,
+): Set<number> {
+  if (!range) return staticFrames;
+  const inRange = new Set<number>();
+  for (const frame of staticFrames) {
+    if (frame >= range.start && frame < range.end) inRange.add(frame);
+  }
+  return inRange;
+}
+
 /** Pure composition-wide planner. Every retained run is profitable and has gaps <=24 frames. */
 export function planStaticVerification(
   staticFrames: Set<number>,
@@ -4583,11 +4608,14 @@ async function verifyOrShareStaticFrames(
   const fps = fpsToNumber(session.options.fps);
   const rawSamples = Number(process.env.HF_STATIC_DEDUP_SAMPLES ?? "24");
   const samples = Number.isFinite(rawSamples) && rawSamples >= 1 ? rawSamples : 24;
-  session.staticDedupPredictedCount = stats.staticFrameSet.size;
+  const range = session.staticDedupFrameRange;
+  const predicted = staticFramesInCaptureRange(stats.staticFrameSet, range);
+  const rangeNote = range ? ` in frames ${range.start}-${range.end - 1}` : "";
+  session.staticDedupPredictedCount = predicted.size;
   if (process.env.HF_STATIC_DEDUP_VERIFY === "false") {
-    session.staticFrames = stats.staticFrameSet;
+    session.staticFrames = predicted;
     logInitPhase(
-      `static-frame dedup: ${stats.staticFrameSet.size}/${stats.totalFrames} frame(s) reusable ` +
+      `static-frame dedup: ${predicted.size}/${stats.totalFrames} frame(s) reusable${rangeNote} ` +
         `(verification explicitly disabled)`,
     );
     return;
@@ -4626,13 +4654,7 @@ async function verifyAndArmStaticDedup(
   let verdict: StaticVerificationResult;
   try {
     verificationPage = await createStaticVerificationPage(session);
-    verdict = await verifyStaticFramesSafe(
-      session,
-      verificationPage,
-      stats.staticFrameSet,
-      fps,
-      samples,
-    );
+    verdict = await verifyStaticFramesSafe(session, verificationPage, predicted, fps, samples);
   } catch {
     session.staticDedupSkipReason = "verification_failed";
     logInitPhase("static-frame dedup: disabled (verification infrastructure failure)");
@@ -4665,7 +4687,7 @@ async function verifyAndArmStaticDedup(
   }
   session.staticFrames = verdict.verifiedFrames;
   logInitPhase(
-    `static-frame dedup: ${verdict.verifiedFrames.size}/${stats.staticFrameSet.size} predicted frame(s) reusable ` +
+    `static-frame dedup: ${verdict.verifiedFrames.size}/${predicted.size} predicted frame(s) reusable${rangeNote} ` +
       `(outcome=${verdict.outcome}, runs=${verdict.stats.completedRuns}/${verdict.stats.plannedRuns}, ` +
       `screenshots=${verdict.stats.screenshots}, seeks=${verdict.stats.seeks}, elapsedMs=${verdict.stats.elapsedMs})`,
   );
