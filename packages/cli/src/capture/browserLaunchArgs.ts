@@ -10,11 +10,6 @@ export function _resetCaptureSandboxWarningForTests(): void {
   warnedSandboxOff = false;
 }
 
-/**
- * Capture loads arbitrary websites, so Chrome keeps its sandbox unless the host can't give it one
- * (root, serverless, a container, or blocked user namespaces). Say so once when the host check
- * turns it off; HYPERFRAMES_CHROME_SANDBOX=0 is an explicit choice and stays quiet.
- */
 export function captureSandboxEnabled(host?: ChromeSandboxHost): boolean {
   const enabled = chromeSandboxEnabled(host);
   const env = host?.env ?? process.env;
