@@ -18,6 +18,7 @@ import {
   type EditingElementMatch,
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
+import type { EditingGestureStart } from "./editingGestureStart";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -47,7 +48,9 @@ export {
   isElementVisibleThroughAncestors,
   readElementTransformSnapshot,
   rotationDegreesFromMatrix,
+  snapCandidates,
   MAX_GEOMETRY_CHILDREN,
+  MAX_SNAP_TARGETS,
   ROTATION_GATE_EPSILON_DEG,
   type EditingCorner,
   type EditingCorners,
@@ -55,6 +58,7 @@ export {
   type EditingElementGeometry,
   type ElementTransformSnapshot,
 } from "./editingGeometry";
+export type { EditingGestureStart } from "./editingGestureStart";
 export {
   compositionPoint,
   coversComposition,
@@ -101,6 +105,7 @@ export const EDITING_REQUEST_KINDS = [
   "geometry",
   "layers",
   "draft",
+  "gesture-start",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -183,6 +188,10 @@ export interface EditingRequests {
   };
   /** Gesture drafts in order, up to MAX_DESCRIBE_HANDLES; `drawn` counts the elements still here. */
   draft: { params: { drafts: EditingDraft[] }; result: { drawn: number } };
+  "gesture-start": {
+    params: { handles: EditingElementHandle[] };
+    result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
+  };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -339,6 +348,7 @@ const PARAM_PARSERS: {
   },
   layers: (params) => noParams(params) ?? layerParams(params),
   draft: draftList,
+  "gesture-start": handleList,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

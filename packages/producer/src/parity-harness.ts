@@ -3,8 +3,10 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeArgs } from "@hyperframes/engine";
 import { MEDIA_VISUAL_STYLE_PROPERTIES, quantizeTimeToFrame } from "./utils/parityContract.js";
 
 type ParityHarnessOptions = {
@@ -304,6 +306,10 @@ function sha256(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+export function parityChromeArgs(width: number, height: number): string[] {
+  return buildChromeArgs({ width, height, captureMode: "screenshot", sandbox: false });
+}
+
 async function run(): Promise<void> {
   const options = parseArgs(process.argv);
   console.log(`[ParityHarness] options=${JSON.stringify(options)}`);
@@ -320,19 +326,7 @@ async function run(): Promise<void> {
       height: options.height,
       deviceScaleFactor: 1,
     },
-    args: withHyperframesBrowserMarker([
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--enable-webgl",
-      "--ignore-gpu-blocklist",
-      "--use-gl=angle",
-      "--use-angle=swiftshader",
-      "--font-render-hinting=none",
-      "--force-color-profile=srgb",
-      `--window-size=${options.width},${options.height}`,
-    ]),
+    args: withHyperframesBrowserMarker(parityChromeArgs(options.width, options.height)),
   });
 
   try {
@@ -423,8 +417,10 @@ async function run(): Promise<void> {
   }
 }
 
-void run().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[ParityHarness] fatal=${JSON.stringify({ message })}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  void run().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[ParityHarness] fatal=${JSON.stringify({ message })}`);
+    process.exitCode = 1;
+  });
+}

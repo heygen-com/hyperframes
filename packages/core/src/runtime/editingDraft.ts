@@ -61,23 +61,25 @@ function percentAsPx(axis: string, side: number): string {
   );
 }
 
+export function computedTranslateAxes(element: Styled): string[] {
+  const computed = getComputedStyle(element);
+  const translate = computed.getPropertyValue("translate");
+  if (!translate || translate === "none") return [];
+  const sides = [percentSide(computed, "width"), percentSide(computed, "height")];
+  return axes(translate).map((axis, i) => (i < 2 ? percentAsPx(axis, sides[i]!) : axis));
+}
+
 function beforeOf(element: Styled): Before {
   let saved = before.get(element);
   if (!saved) {
     const { style } = element;
-    const computed = getComputedStyle(element);
-    const translate = computed.getPropertyValue("translate");
-    const sides = [percentSide(computed, "width"), percentSide(computed, "height")];
     saved = {
       inline: DRAWN.map((name) => [
         name,
         style.getPropertyValue(name),
         style.getPropertyPriority(name),
       ]),
-      translate:
-        translate && translate !== "none"
-          ? axes(translate).map((axis, i) => (i < 2 ? percentAsPx(axis, sides[i]!) : axis))
-          : [],
+      translate: computedTranslateAxes(element),
     };
     before.set(element, saved);
   }
@@ -92,10 +94,15 @@ function restore(element: Styled, names: readonly string[]): void {
   }
 }
 
+export function movedTranslate(
+  [x = "0px", y = "0px", z]: string[],
+  offset: { x: number; y: number },
+) {
+  return `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
+}
+
 function drawTranslate(element: Styled, offset: { x: number; y: number }): void {
-  const [x = "0px", y = "0px", z] = beforeOf(element).translate;
-  const value = `calc(${x} + ${offset.x}px) calc(${y} + ${offset.y}px)${z ? ` ${z}` : ""}`;
-  element.style.setProperty("translate", value);
+  element.style.setProperty("translate", movedTranslate(beforeOf(element).translate, offset));
 }
 
 function drawSize(element: Styled, size: { width: number; height: number }): void {

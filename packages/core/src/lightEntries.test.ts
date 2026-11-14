@@ -22,7 +22,7 @@ function loadedModules(entry: string): string[] {
 }
 
 describe("entries a host imports for one helper", () => {
-  it.each(["./safe-path", "./asset-paths", "./preview-quality"])(
+  it.each(["./safe-path", "./safe-areas", "./asset-paths", "./preview-quality"])(
     "%s loads none of the parsers",
     (entry) => {
       expect(loadedModules(entry).filter((path) => HEAVY.test(path))).toEqual([]);

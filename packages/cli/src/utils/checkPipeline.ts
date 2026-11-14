@@ -16,6 +16,7 @@ import {
   finishCheckSnapshots,
 } from "./checkSnapshotDirectory.js";
 import { findingAtRoot, findingElementKey, groupSampledFindings } from "./checkFindings.js";
+import { safeZoneEdgesCrossed, safeZoneLabel, safeZonesFor, type SafeZone } from "./safeZones.js";
 import {
   MAX_FINDING_FRAME_TIMES,
   selectFindingFrames,
@@ -40,6 +41,7 @@ import {
   CONTENT_OVERLAP_HELD_ERROR_MS,
   longestContiguousRunMs,
   dedupeLayoutIssues,
+  isGuidanceIssue,
   limitLayoutIssues,
   mergeSampleTimes,
   type LayoutIssue,
@@ -317,13 +319,15 @@ function geometryRequest(
   time: number,
   grid: SampleGrid,
   options: CheckOptions,
+  sets: SampleSets,
 ): GeometryCandidateRequest | null {
   const text = grid.captionSamples.includes(time);
   const media = grid.frameSamples.includes(time);
-  if (!text && !media) return null;
+  const blocks = sets.safeZones.length > 0 && sets.layout.has(time);
+  if (!text && !media && !blocks) return null;
   const configuredTolerance = options.frameCheck?.tol;
   const tolerance = typeof configuredTolerance === "number" ? configuredTolerance : 2;
-  return { text, media, tolerance };
+  return { text, media, blocks, tolerance };
 }
 
 function candidateIsSized(candidate: CheckGeometryCandidate, canvas: Canvas): boolean {
@@ -385,6 +389,35 @@ function captionFinding(
   };
 }
 
+function safeZoneFinding(
+  candidate: CheckGeometryCandidate,
+  zones: SafeZone[],
+  canvas: Canvas,
+  time: number,
+): AnchoredLayoutIssue | null {
+  if (candidate.kind !== "block" || candidate.rect.width < 4 || candidate.rect.height < 4) {
+    return null;
+  }
+  // Backstop for mocks/non-browser sources; the browser already drops opted-out text.
+  if ("data-layout-allow-safe-zone" in candidate.dataAttributes) return null;
+  const crossed = zones.flatMap((zone) => {
+    const edges = safeZoneEdgesCrossed(candidate.rect, canvas, zone);
+    if (edges.length === 0) return [];
+    return [`${safeZoneLabel(zone)} (${edges.join(" and ")} edge${edges.length > 1 ? "s" : ""})`];
+  });
+  if (crossed.length === 0) return null;
+  const text = candidate.text.slice(0, 48);
+  return {
+    ...geometryIssueAnchor(candidate, time),
+    code: "outside_safe_zone",
+    severity: "warning",
+    text,
+    message: `<${candidate.tag}> "${text}" is outside the safe area: ${crossed.join(", ")}.`,
+    fixHint:
+      "Move the text inside the safe area, or mark text meant to sit there with data-layout-allow-safe-zone.",
+  };
+}
+
 function maxOverflow(candidate: CheckGeometryCandidate): number {
   if (!candidate.overflow) return 0;
   return Math.max(
@@ -435,24 +468,20 @@ async function collectGeometryAt(
   driver: CheckAuditDriver,
   options: CheckOptions,
   grid: SampleGrid,
+  sets: SampleSets,
   canvas: Canvas,
   time: number,
 ): Promise<AnchoredLayoutIssue[]> {
-  const request = geometryRequest(time, grid, options);
+  const request = geometryRequest(time, grid, options, sets);
   if (!request) return [];
   const candidates = await driver.collectGeometryCandidates(time, request);
-  const issues: AnchoredLayoutIssue[] = [];
-  for (const candidate of candidates) {
-    if (request.text) {
-      const finding = captionFinding(candidate, options, canvas, time);
-      if (finding) issues.push(finding);
-    }
-    if (request.media) {
-      const finding = frameFinding(candidate, options, canvas, time);
-      if (finding) issues.push(finding);
-    }
-  }
-  return issues;
+  return candidates
+    .flatMap((candidate) => [
+      request.blocks ? safeZoneFinding(candidate, sets.safeZones, canvas, time) : null,
+      request.text ? captionFinding(candidate, options, canvas, time) : null,
+      request.media ? frameFinding(candidate, options, canvas, time) : null,
+    ])
+    .filter((finding): finding is AnchoredLayoutIssue => finding !== null);
 }
 
 function emptyGridSamples(): GridSamples {
@@ -490,6 +519,8 @@ interface SampleSets {
   motion: Set<number>;
   contrast: Set<number>;
   canvas: Canvas | null;
+  /** Platforms to judge text against; empty unless the frame is 9:16. */
+  safeZones: SafeZone[];
 }
 
 async function collectSampleAt(
@@ -519,7 +550,7 @@ async function collectSampleAt(
     collected.indicatorFrames.push(await driver.collectOffPivotRotationSample(time));
   }
   if (sets.canvas) {
-    const geometryIssues = await collectGeometryAt(driver, options, grid, sets.canvas, time);
+    const geometryIssues = await collectGeometryAt(driver, options, grid, sets, sets.canvas, time);
     collected.layoutIssues.push(...geometryIssues);
     issuesAtTime.push(...geometryIssues);
   }
@@ -531,6 +562,25 @@ async function collectSampleAt(
   if (sets.contrast.has(time))
     await collectContrastAt(driver, options, time, issuesAtTime, collected);
   return collected;
+}
+
+async function buildSampleSets(
+  driver: CheckAuditDriver,
+  options: CheckOptions,
+  grid: SampleGrid,
+  motion: MotionPlan,
+): Promise<SampleSets> {
+  const safeZones = options.safeZones ?? [];
+  const geometryEnabled =
+    grid.captionSamples.length > 0 || grid.frameSamples.length > 0 || safeZones.length > 0;
+  const canvas = geometryEnabled ? await driver.getCanvas() : null;
+  return {
+    layout: new Set(grid.layoutSamples),
+    motion: new Set(motion.times),
+    contrast: new Set(grid.contrastSamples),
+    canvas,
+    safeZones: canvas ? safeZonesFor(safeZones, canvas) : [],
+  };
 }
 
 // Frames are a function of time, so a helper page that is ready takes the next unclaimed sample
@@ -545,13 +595,7 @@ async function collectGridSamples(
   report: CheckProgress,
   keep: (read: () => Partial<CheckBrowserResult>) => void,
 ): Promise<GridSamples> {
-  const geometryEnabled = grid.captionSamples.length > 0 || grid.frameSamples.length > 0;
-  const sets: SampleSets = {
-    layout: new Set(grid.layoutSamples),
-    motion: new Set(motion.times),
-    contrast: new Set(grid.contrastSamples),
-    canvas: geometryEnabled ? await driver.getCanvas() : null,
-  };
+  const sets = await buildSampleSets(driver, options, grid, motion);
   const gridStart = performance.now();
   const times = mergeSampleTimes(grid.layoutSamples, motion.times);
   const pending = times.map((_, index) => index);
@@ -2073,7 +2117,10 @@ function buildReport(
     contrastSection.errorCount +
     craftSection.errorCount;
   // Craft findings are judgment calls a film may break on purpose, so --strict gates defects only.
-  const strictWarningCount = warningCount - craftSection.warningCount;
+  const guidanceWarnings = layout.findings.filter(
+    (finding) => finding.severity === "warning" && isGuidanceIssue(finding),
+  ).length;
+  const strictWarningCount = warningCount - craftSection.warningCount - guidanceWarnings;
   const report: CheckReport = {
     ok: errorCount === 0 && (!options.strict || strictWarningCount === 0),
     strict: options.strict,
