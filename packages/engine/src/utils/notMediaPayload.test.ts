@@ -194,6 +194,7 @@ describe("playlistLeavesItsFolder", () => {
     ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
     ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
     ["a concat entry above its folder", concat("../other/out.mp4")],
+    ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
   ])("refuses %s", async (_name, contents) => {
     const file = writeFixture("clip.m3u8", contents);
     expect(await playlistLeavesItsFolder(file)).toBe(true);

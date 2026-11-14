@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { open as openFile, readFile, stat } from "node:fs/promises";
+import { open as openFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 export const NOT_MEDIA_PAYLOAD = "NOT_MEDIA_PAYLOAD" as const;
@@ -84,11 +84,11 @@ function byteOrderMarkLength(head: Buffer): number {
   return 0;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file. */
-async function readHead(filePath: string): Promise<Buffer> {
+/** Read up to `bytes` (default {@link SNIFF_BYTES}) from the front of the file. */
+async function readHead(filePath: string, bytes = SNIFF_BYTES): Promise<Buffer> {
   const fh = await openFile(filePath, "r");
   try {
-    const buf = Buffer.alloc(SNIFF_BYTES);
+    const buf = Buffer.alloc(bytes);
     let filled = 0;
     // Looped because a single read can come back short on NFS/FUSE and on
     // FIFOs, which would truncate the window mid-prefix.
@@ -207,8 +207,9 @@ export async function playlistLeavesItsFolder(filePath: string): Promise<boolean
       .replace(/^\uFEFF/, "")
       .trimStart();
     if (!head.startsWith("#EXTM3U") && !/^ffconcat\s+version/i.test(head)) return false;
-    if ((await stat(filePath)).size > MAX_PLAYLIST_BYTES) return true;
-    const entries = playlistEntries(await readFile(filePath, "utf8")) ?? [];
+    const body = await readHead(filePath, MAX_PLAYLIST_BYTES + 1);
+    if (body.length > MAX_PLAYLIST_BYTES) return true;
+    const entries = playlistEntries(body.toString("utf8")) ?? [];
     const folder = dirname(resolve(filePath));
     return entries.some((entry) => entryLeavesFolder(entry, folder));
   } catch {
