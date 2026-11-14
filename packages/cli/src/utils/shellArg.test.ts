@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
@@ -117,11 +117,12 @@ describe("shellArg", () => {
     () => {
       for (const name of WINDOWS_ROUND_TRIP) {
         const line = `"${process.execPath}" "${argvScript}" ${shellArg(name, "win32")}`;
-        const output = execFileSync("cmd.exe", ["/d", "/s", "/c", `"${line}"`], {
+        const run = spawnSync("cmd.exe", ["/d", "/s", "/c", `"${line}"`], {
           encoding: "utf8",
           windowsVerbatimArguments: true,
         });
-        expect(readArgv(output), name).toEqual([name]);
+        expect(run.status, run.stderr).toBe(0);
+        expect(readArgv(run.stdout), name).toEqual([name]);
       }
     },
   );
