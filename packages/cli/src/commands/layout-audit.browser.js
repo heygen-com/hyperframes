@@ -3003,6 +3003,24 @@
     return current;
   }
 
+  // Nested elements readingBlock reads as lines of their own keep their words out of this line's.
+  function readingBlockText(block, root) {
+    const nodes = Array.from(block.childNodes);
+    const ownLine = (node) =>
+      node.nodeType === 1 && node.tagName !== "BR" && readingBlock(node, root) === node;
+    if (!nodes.some(ownLine)) return textContentFor(block, false);
+    return nodes
+      .map((node) => {
+        if (node.nodeType === 3) return node.textContent || "";
+        return node.nodeType !== 1 || node.tagName === "BR" || ownLine(node)
+          ? " "
+          : textContentFor(node, false);
+      })
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
   function scaleProperty(style) {
     const parts = (style.scale || "none")
       .split(/\s+/)
@@ -3065,17 +3083,19 @@
         restoreHits();
       }
     }
+    const blockTexts = new Map();
     return candidates
       .filter((candidate) => !clippedAway.has(candidate.element))
       .map(({ element, rect }) => {
         const block = readingBlock(element, root);
+        if (!blockTexts.has(block)) blockTexts.set(block, readingBlockText(block, root));
         return {
           key: craftKey(element),
           block: craftKey(block),
           ...craftAnchor(element),
           blockSelector: craftAnchor(block).selector,
           text: textContentFor(element, true),
-          blockText: textContentFor(block, false),
+          blockText: blockTexts.get(block),
           opacity: round(opacityChain(element)),
           fontPx: round(renderedFontPx(element, getComputedStyle(element))),
           rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
