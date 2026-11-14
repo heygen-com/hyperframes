@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { type ControlsCallbacks, createControls } from "./controls";
+import {
+  PAUSE_ICON,
+  PLAY_ICON,
+  VOLUME_HIGH_ICON,
+  VOLUME_LOW_ICON,
+  VOLUME_MUTED_ICON,
+} from "./styles";
 
 function noopCallbacks(): ControlsCallbacks {
   return {
@@ -163,5 +170,116 @@ describe("createControls idle hide", () => {
     api.destroy();
     host.remove();
     vi.useRealTimers();
+  });
+});
+
+describe("createControls page glyph slots", () => {
+  function setup(...glyphSlots: string[]) {
+    const host = document.createElement("div");
+    const glyphs = glyphSlots.map((name) => {
+      const glyph = document.createElement("span");
+      glyph.slot = name;
+      host.appendChild(glyph);
+      return glyph;
+    });
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: "open" });
+    const api = createControls(shadow, noopCallbacks());
+    const cleanup = () => {
+      api.destroy();
+      host.remove();
+    };
+    return { shadow, api, glyphs, cleanup };
+  }
+
+  function slotAt(root: ParentNode, selector: string): HTMLSlotElement {
+    const slot = root.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  function markup(html: string): string {
+    const parsed = document.createElement("div");
+    parsed.innerHTML = html;
+    return parsed.innerHTML;
+  }
+
+  it("shows today's glyphs in every named control slot when the page supplies none", () => {
+    const { shadow, api, cleanup } = setup();
+    const seen = new Map<string, HTMLSlotElement>();
+    const record = (selector: string) => {
+      const slot = slotAt(shadow, selector);
+      seen.set(slot.name, slot);
+    };
+    record(".hfp-ico-play slot");
+    record(".hfp-ico-pause slot");
+    record(".hfp-mute-btn slot");
+    api.updateVolume(0.2);
+    record(".hfp-mute-btn slot");
+    api.updateMuted(true);
+    record(".hfp-mute-btn slot");
+
+    const expected: Record<string, string> = {
+      "play-icon": PLAY_ICON,
+      "pause-icon": PAUSE_ICON,
+      "volume-high-icon": VOLUME_HIGH_ICON,
+      "volume-low-icon": VOLUME_LOW_ICON,
+      "volume-muted-icon": VOLUME_MUTED_ICON,
+    };
+    expect([...seen.keys()].sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, icon] of Object.entries(expected)) {
+      const slot = seen.get(name);
+      expect(slot?.assignedElements()).toEqual([]);
+      expect(slot?.innerHTML).toBe(markup(icon));
+    }
+    cleanup();
+  });
+
+  it("puts the page's play and pause glyphs in the play button and still marks it playing", () => {
+    const {
+      shadow,
+      api,
+      glyphs: [play, pause],
+      cleanup,
+    } = setup("play-icon", "pause-icon");
+    const playSlot = slotAt(shadow, ".hfp-ico-play slot");
+
+    expect(onlyAssigned(playSlot)).toBe(play);
+    expect(onlyAssigned(slotAt(shadow, ".hfp-ico-pause slot"))).toBe(pause);
+
+    api.updatePlaying(true);
+    expect(playSlot.closest(".hfp-play-btn")?.classList.contains("hfp-playing")).toBe(true);
+    cleanup();
+  });
+
+  it("keeps the default volume glyphs the page left out and shows its own muted glyph", () => {
+    const {
+      shadow,
+      api,
+      glyphs: [muted],
+      cleanup,
+    } = setup("volume-muted-icon");
+    const muteSlot = () => slotAt(shadow, ".hfp-mute-btn slot");
+
+    expect(muteSlot().name).toBe("volume-high-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateVolume(0.2);
+    expect(muteSlot().name).toBe("volume-low-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateVolume(0);
+    expect(muteSlot().name).toBe("volume-low-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateMuted(true);
+    expect(muteSlot().name).toBe("volume-muted-icon");
+    expect(onlyAssigned(muteSlot())).toBe(muted);
+    cleanup();
   });
 });

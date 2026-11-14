@@ -276,6 +276,55 @@ player.addEventListener("ended", () => {
 });
 ```
 
+## Custom icons and loading mark
+
+Put an element with a `slot` attribute inside the player to replace a control glyph or the loading mark. Anything you leave out keeps the default.
+
+| Slot                | Shown when                                                  | Default size |
+| ------------------- | ----------------------------------------------------------- | ------------ |
+| `play-icon`         | Paused                                                      | 24 px        |
+| `pause-icon`        | Playing                                                     | 24 px        |
+| `volume-high-icon`  | Unmuted, volume 0.5 or higher                               | 20 px        |
+| `volume-low-icon`   | Unmuted, volume below 0.5                                   | 20 px        |
+| `volume-muted-icon` | Muted                                                       | 20 px        |
+| `loading-mark`      | Preparing shader transitions, loading assets, and buffering | 78 px        |
+
+```html
+<hyperframes-player src="./my-composition/index.html" controls>
+  <svg
+    slot="play-icon"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M8 5v14l11-7z" />
+  </svg>
+  <svg
+    slot="pause-icon"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    aria-hidden="true"
+  >
+    <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+  </svg>
+  <img slot="loading-mark" src="./brand-mark.svg" width="78" height="78" alt="" />
+</hyperframes-player>
+```
+
+Glyphs take the control bar's color through `currentColor`, and you set their size. Put `slot` on the `<svg>` or `<img>` itself, as a direct child of the player; a wrapper element needs `display: contents` to keep the glyph centered. A custom mark replaces the HyperFrames light sweep and glow, so add your own CSS animation if you want motion.
+
+Until the element is defined, its children show as plain content. Hide them:
+
+```css
+hyperframes-player:not(:defined) > [slot] {
+  display: none;
+}
+```
+
 ## Sizing
 
 The player fills its container and scales the composition to fit while preserving aspect ratio. Set a size on the element or its parent:

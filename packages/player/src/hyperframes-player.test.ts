@@ -696,6 +696,60 @@ describe("HyperframesPlayer adoptedStyleSheets", () => {
   });
 });
 
+describe("HyperframesPlayer page glyph slots", () => {
+  function slotAt(root: ParentNode | null, selector: string): HTMLSlotElement {
+    const slot = root?.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("keeps the page's play glyph in the controls after they are rebuilt or the player moves", () => {
+    const player = document.createElement("hyperframes-player");
+    player.setAttribute("controls", "");
+    const glyph = document.createElement("span");
+    glyph.slot = "play-icon";
+    player.appendChild(glyph);
+    document.body.appendChild(player);
+    const expectGlyphShown = () => {
+      expect(glyph.parentElement).toBe(player);
+      expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-ico-play slot"))).toBe(glyph);
+    };
+
+    expectGlyphShown();
+
+    player.removeAttribute("controls");
+    player.setAttribute("controls", "");
+    expectGlyphShown();
+
+    player.remove();
+    document.body.appendChild(player);
+    expectGlyphShown();
+  });
+
+  it("shows the page's loading mark in the loader card", () => {
+    const player = document.createElement("hyperframes-player");
+    const mark = document.createElement("img");
+    mark.slot = "loading-mark";
+    player.appendChild(mark);
+    document.body.appendChild(player);
+
+    expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-shader-loader-mark slot"))).toBe(mark);
+  });
+});
+
 // ── Media MutationObserver scoping ──
 //
 // The observer that catches late-attached `<audio data-start>` from
