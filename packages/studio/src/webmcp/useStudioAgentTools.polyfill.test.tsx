@@ -50,7 +50,11 @@ beforeAll(async () => {
   expect(typeof bridge().listTools).toBe("function");
 });
 
-afterAll(() => {
+afterAll(async () => {
+  // Close the server so its deferred tools-changed event doesn't fire after jsdom is torn down.
+  const { cleanupWebModelContext } = await import("@mcp-b/global");
+  cleanupWebModelContext();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   Reflect.deleteProperty(window, "isSecureContext");
 });
 

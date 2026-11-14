@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * Loads the REAL `@mcp-b/global` through Studio's loader, inside a page that is
- * framed by another site, and checks that neither of the package's message
- * transports answers anyone but Studio's own page.
+ * framed by another site, and checks that neither of the package's MCP
+ * message transports answers anyone but Studio's own page. The W3C polyfill's
+ * frame protocol is not exercised here: the fake framer is not `window.top`.
  */
 import { afterAll, expect, it, vi } from "vitest";
 
