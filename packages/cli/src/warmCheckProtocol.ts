@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { hyperframesOwnerArgs, withoutHyperframesOwner } from "@hyperframes/core/browser-marker";
 
-export const WARM_IDLE_MS = 5 * 60_000;
+const WARM_IDLE_MS = 5 * 60_000;
 export const HANDSHAKE_TIMEOUT_MS = 2_000;
 
 export const warmServerArgs = (
