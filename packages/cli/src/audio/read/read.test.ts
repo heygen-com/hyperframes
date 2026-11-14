@@ -489,8 +489,8 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     const callsBefore = stemCalls;
     const { analysis } = await readAudio(path, "local.wav", { cacheDir: join(dir, "cache-local") });
     expect(analysis).toMatchObject({ separation: "mix", voice: null, effects: null });
-    expect(analysis.warnings[0]).toContain("quality local keeps audio on this machine");
-    expect(analysis.warnings[0]).toContain("--quality best");
+    expect(analysis.warnings[0]).toContain("not separated into stems");
+    expect(analysis.warnings[0]).toContain("music, and effects under speech, are not read");
     expect(stemCalls).toBe(callsBefore);
     expect(analysis.warnings[1]).toContain("no transcript and no stems");
   });
