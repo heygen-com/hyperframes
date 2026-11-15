@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 
 export const PEAK_BIN_SECONDS = 0.05;
 const PEAK_SAMPLE_RATE = 48_000;
@@ -71,6 +72,7 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
       [
         "-v",
         "error",
+        ...MEDIA_INPUT_ARGS,
         "-i",
         mediaPath,
         "-map",
