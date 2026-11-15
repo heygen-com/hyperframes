@@ -5,6 +5,7 @@ import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
 import { killOrphanedProcesses } from "./utils/orphanCleanup.js";
+import { compilerReadsInProcess } from "./utils/receivedRender.js";
 import {
   installRenderSetupSignalHandlers,
   renderSetupErrorLine,
@@ -48,6 +49,7 @@ async function runMode(): Promise<unknown> {
       input.host ? { host: input.host } : undefined,
     );
   }
+  if (mode === "render-reads") return compilerReadsInProcess(input.projectDir, input.entryFile);
   if (mode === "orphan-cleanup") {
     const killed = killOrphanedProcesses();
     if (killed > 0) await new Promise((resolve) => setTimeout(resolve, 600));

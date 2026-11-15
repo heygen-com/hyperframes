@@ -88,9 +88,13 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
   return (path) => files.has(keyOf(path)) || sameFileAsListed(path);
 }
 
-export function unreadableReceivedRecord(projectDir: string): string | null {
+export function receivedRecordStatus(
+  projectDir: string,
+): { path: string; listedCount: number | null } | null {
   const record = nearestReceivedRecordAtOrAbove(projectDir);
-  return record && !Array.isArray(record.listed) ? join(record.root, RECEIVED_RECORD) : null;
+  if (!record) return null;
+  const listedCount = Array.isArray(record.listed) ? record.listed.length : null;
+  return { path: join(record.root, RECEIVED_RECORD), listedCount };
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
