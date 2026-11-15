@@ -29,6 +29,7 @@ vi.mock("../../player", async () => {
         onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
+        sandboxOrigin?: "opaque";
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
@@ -41,6 +42,7 @@ vi.mock("../../player", async () => {
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
         "data-testid": "mock-player",
+        "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
       });
     }),
@@ -89,10 +91,12 @@ function renderPreview(
     box = { width: 800, height: 600 },
     fillBox,
     compositionSizeHint,
+    sandboxOrigin,
   }: {
     box?: { width: number; height: number };
     fillBox?: boolean;
     compositionSizeHint?: { width: number; height: number };
+    sandboxOrigin?: "opaque";
   } = {},
 ) {
   resizeCallbacks = [];
@@ -116,6 +120,7 @@ function renderPreview(
           resetPreviewSlots: () => {},
           fillBox,
           compositionSizeHint,
+          sandboxOrigin,
         }),
       );
     });
@@ -532,6 +537,26 @@ describe("NLEPreview", () => {
     expect(players[1].style.pointerEvents).toBe("none");
     view.cleanup();
   });
+
+  it.each([["opaque" as const], [undefined]])(
+    "gives every player it draws the host's sandbox origin (%s)",
+    (sandboxOrigin) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      view.render("/api/projects/p/preview/components/card.html", "p");
+      const players = [...view.stage.querySelectorAll('[data-testid="mock-player"]')];
+      expect(players).toHaveLength(3);
+      for (const player of players) {
+        expect(player.getAttribute("data-sandbox-origin")).toBe(sandboxOrigin ?? null);
+      }
+      view.cleanup();
+    },
+  );
 
   it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
     const view = renderPreview();

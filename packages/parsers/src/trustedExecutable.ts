@@ -4,8 +4,8 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "no
 
 /**
  * The one rule for finding a helper program by name. A project folder can come from anyone, so a
- * program is taken only from an absolute PATH entry outside the working directory, or a fixed
- * install dir. Only an override the person sets in their own environment may point into it.
+ * program comes only from an absolute PATH entry outside the working directory's project, or a
+ * fixed install dir. Only an override the person sets in their own environment may point into it.
  */
 
 function comparable(path: string): string {
@@ -23,14 +23,27 @@ function contains(parent: string, child: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
+const PROJECT_MARKERS = [".git", "package.json", "node_modules", "hyperframes.json"];
+
+function projectRoot(cwd: string, home: string): string {
+  let root = cwd;
+  for (let dir = cwd; dirname(dir) !== dir && !contains(dir, home); dir = dirname(dir)) {
+    if (PROJECT_MARKERS.some((marker) => existsSync(join(dir, marker)))) root = dir;
+  }
+  return root;
+}
+
 /** Whether a program in `dir` may be run without the person naming it. */
 export function isTrustedDirectory(dir: string): boolean {
   if (!dir || !isAbsolute(dir)) return false;
   const target = comparable(dir);
   const cwd = comparable(process.cwd());
   if (target === cwd) return false;
+  const home = comparable(homedir());
   // From the home folder (or above it) every per-user install dir is inside; skip only the folder.
-  return contains(cwd, comparable(homedir())) || !contains(cwd, target);
+  if (contains(cwd, home)) return true;
+  // `npm run` puts every ancestor's node_modules/.bin on PATH, so from a subfolder the whole project is untrusted.
+  return !contains(projectRoot(cwd, home), target);
 }
 
 /** Whether `file` is an absolute path in a folder {@link isTrustedDirectory} accepts. */

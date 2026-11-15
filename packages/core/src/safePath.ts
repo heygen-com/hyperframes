@@ -126,18 +126,18 @@ export function isVcsOrSecretPath(relPath: string): boolean {
   );
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): Studio
-// reaches none of it, the folder itself included, but its own files and the app's request pictures.
+// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
+// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load.
 const STUDIO_FILES = new Set([
   ".hyperframes/studio-motion.json",
   ".hyperframes/studio-manual-edits.json",
 ]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
-/** Studio's private files, for a project-relative path with `/` separators: git, env, and the app's records. */
+/** Files no composition loads, for a project-relative path in any spelling Windows opens: git, env, app records. */
 export function isStudioPrivatePath(relPath: string): boolean {
-  const path = relPath.toLowerCase();
-  if (isVcsOrSecretPath(path)) return true;
+  if (isVcsOrSecretPath(relPath)) return true;
+  const path = projectPathSegments(relPath).join("/");
   return (
     (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
     !STUDIO_FILES.has(path) &&

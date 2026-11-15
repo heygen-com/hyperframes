@@ -13,7 +13,7 @@
  * existing destination is replaced only after the download succeeds.
  */
 
-import { chmodSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, renameSync, rmSync, statSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { open } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -34,6 +34,8 @@ export interface DownloadOptions {
   /** Called with (bytes downloaded, total or undefined). */
   onProgress?: (bytes: number, total: number | undefined) => void;
   partBytes?: number;
+  /** Replace a link at `destPath` with the download instead of writing to the file it points at. */
+  replaceLink?: boolean;
 }
 
 export interface DownloadResult {
@@ -76,9 +78,10 @@ export async function downloadToFile(
 
   makeOutputFolder(dirname(destPath));
 
-  // Writes through a caller-selected symlink, as before.
-  const destination = resolveWritePath(destPath);
-  const previous = statSync(destination, { throwIfNoEntry: false });
+  const destination = options.replaceLink ? destPath : resolveWritePath(destPath);
+  const previous = options.replaceLink
+    ? lstatSync(destination, { throwIfNoEntry: false })
+    : statSync(destination, { throwIfNoEntry: false });
   const stage = createStagingDir(dirname(destination), ".hf-download-");
   const stagedFile = join(stage, "download");
   let bytes = 0;

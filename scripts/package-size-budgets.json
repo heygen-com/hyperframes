@@ -8,7 +8,7 @@
     "unpacked": 25159107
   },
   "@hyperframes/core": {
-    "packed": 1762752,
+    "packed": 1800000,
     "unpacked": 4374000
   },
   "@hyperframes/engine": {
@@ -56,7 +56,7 @@
     "unpacked": 26703858
   },
   "@hyperframes/studio-server": {
-    "packed": 172000,
-    "unpacked": 672000
+    "packed": 173500,
+    "unpacked": 676000
   }
 }

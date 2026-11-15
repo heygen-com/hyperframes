@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { settleOnBrowserSafePort } from "@hyperframes/engine";
+import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -29,7 +29,7 @@ import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -817,11 +817,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+  let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
     await next();
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
+  answerOwnLoopbackHostOnly(app, () => listeningPort);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
@@ -837,7 +839,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
       if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
-      if (isPrivateFileUnder(root, candidate, isVcsOrSecretPath)) continue;
+      if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) continue;
       const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
       if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
       file = openRegularFile(candidate);
@@ -971,6 +973,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const bound =
         port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
       bound.then((boundPort) => {
+        listeningPort = boundPort;
         resolve({
           url: `http://localhost:${boundPort}`,
           port: boundPort,

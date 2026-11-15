@@ -349,9 +349,11 @@ function forget(job: ProxyJob): void {
   if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
 }
 
-function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
+function maintainProxyCache(cacheDir: string, staleTempMs?: number, justServed?: string): void {
+  const protectedPaths = new Set([...inFlight.keys(), ...stillsInFlight.keys()]);
+  if (justServed) protectedPaths.add(justServed);
   try {
-    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
+    cleanupProxyCache(cacheDir, { protectedPaths, staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
     console.warn(
@@ -1169,7 +1171,11 @@ export function resolveStill(
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
-  if (existsSync(cachePath)) return Promise.resolve(cachePath);
+  if (existsSync(cachePath)) {
+    markCacheEntryUsed(cachePath);
+    maintainProxyCache(dirname(cachePath), undefined, cachePath);
+    return Promise.resolve(cachePath);
+  }
   let job = stillsInFlight.get(cachePath);
   if (!job) {
     const abandoned = new AbortController();
@@ -1235,6 +1241,7 @@ async function makeStill(
   } finally {
     rmSync(tempPath, { force: true });
   }
+  maintainProxyCache(dirname(cachePath), undefined, cachePath);
   return cachePath;
 }
 

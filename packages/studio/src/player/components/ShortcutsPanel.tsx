@@ -5,7 +5,7 @@ import { flatActive, flatIdle } from "../../components/timelineToolbarStyles";
 import { usePlayerStore } from "../store/playerStore";
 import { useCompositionFps } from "../../utils/linkedClipPreferences";
 import { matchesKey, useShortcutSections, type ShortcutSection } from "./studioShortcuts";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 interface ShortcutsPanelProps {
   disabled: boolean;

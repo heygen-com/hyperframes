@@ -11,8 +11,9 @@ import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
+import { answerOwnLoopbackHostOnly } from "../utils/loopbackOnly.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -99,11 +100,11 @@ function resolveContainedPaths(
 ): { projectPath: string; compiledPath: string | null } | null {
   const projectPath = join(projectDir, relativePath);
   if (!isWithinProjectRoot(projectDir, projectPath)) return null;
-  if (isPrivateFileUnder(projectDir, projectPath, isVcsOrSecretPath)) return null;
+  if (isPrivateFileUnder(projectDir, projectPath, isStudioPrivatePath)) return null;
   if (!compiledDir) return { projectPath, compiledPath: null };
   const compiledPath = join(compiledDir, relativePath);
   if (!isWithinProjectRoot(compiledDir, compiledPath)) return null;
-  if (isPrivateFileUnder(compiledDir, compiledPath, isVcsOrSecretPath)) return null;
+  if (isPrivateFileUnder(compiledDir, compiledPath, isStudioPrivatePath)) return null;
   return { projectPath, compiledPath };
 }
 
@@ -120,6 +121,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [];
 
   const app = new Hono();
+  let listeningPort = -1;
+  const boundToLoopbackOnly = ["127.0.0.1", "localhost", "::1"].includes(hostname);
+  if (boundToLoopbackOnly) answerOwnLoopbackHostOnly(app, () => listeningPort);
 
   app.get("/*", (c) => {
     let requestPath = c.req.path;
@@ -158,6 +162,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   return new Promise((resolve) => {
     const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
       const actualPort = info.port;
+      listeningPort = actualPort;
       const url = `http://localhost:${actualPort}`;
       resolve({
         url,

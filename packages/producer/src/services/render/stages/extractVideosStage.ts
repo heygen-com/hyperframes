@@ -51,6 +51,7 @@ import {
   resolveFinalFrameExtractionWindow,
   resolveVideoExtractionWindow,
   isHttpUrl,
+  isInsideAssetRoots,
   assertPublicHttpsUrl,
   downloadToTemp,
   resolveRestrictPageNetwork,
@@ -78,6 +79,7 @@ import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { rendersSdrOnly } from "../hdrMode.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import {
   compareExtractionFailureGroups,
   extractionFailureGroupIdentityKey,
@@ -438,6 +440,9 @@ export async function runExtractVideosStage(
   } = input;
 
   const stage2Start = Date.now();
+  const assetRoots = job.config.allowOutsideProjectAssets
+    ? undefined
+    : mediaAssetRoots(projectDir, compiledDir);
   const extractionPolicy = resolveVideoExtractionPolicy();
   composition.videos = composition.videos.filter(
     (video) => !isVideoPastTimelineEnd(video, composition.duration),
@@ -470,7 +475,7 @@ export async function runExtractVideosStage(
         // origin-root URL — pre-checking would hand back `/assets/%E5%9B%BE1.png`
         // undecoded and re-open PRINFRA-349 for root-relative srcs.
         const videoPath = resolveProjectRelativeSrc(v.src, projectDir, compiledDir);
-        if (!existsSync(videoPath)) return null;
+        if (!opensLocally(videoPath, assetRoots)) return null;
         try {
           // Retries are separately opt-in from the failure gate. With the
           // default zero budget this remains the exact legacy single probe.
@@ -522,7 +527,7 @@ export async function runExtractVideosStage(
         // never enters nativeHdrImageIds and the composition silently renders
         // through the SDR fallback with wrong color (PRINFRA-349 symptom c).
         const imgPath = resolveProjectRelativeSrc(img.src, projectDir, compiledDir);
-        if (!existsSync(imgPath)) return null;
+        if (!opensLocally(imgPath, assetRoots)) return null;
         const colorSpace = await probeColorSpaceSafely(imgPath, log);
         if (isHdrColorSpace(colorSpace)) {
           nativeHdrImageIds.add(img.id);
@@ -542,6 +547,7 @@ export async function runExtractVideosStage(
       composition,
       urlByAbsentLocalPath,
       downloadDir: audioDownloadDir,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
       signal: abortSignal,
       log,
     });
@@ -575,6 +581,7 @@ export async function runExtractVideosStage(
         shownBoxes,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
+        assetRoots,
         onProgress: ({ planned = 0, done = 0 }) => {
           framesPlanned += planned;
           framesDone += done;
@@ -674,14 +681,22 @@ interface VideoAudioProbeInput {
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   /** Where a composition URL is downloaded before probing on a render service: the mixer's work folder, so the mix reuses it. */
   downloadDir?: string;
+  allowOutsideProjectAssets?: boolean;
   signal?: AbortSignal;
   log?: ProducerLogger;
+}
+
+function opensLocally(path: string, assetRoots: readonly string[] | undefined): boolean {
+  return existsSync(path) && (!assetRoots || isInsideAssetRoots(path, assetRoots));
 }
 
 function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {
   const path = resolveProjectRelativeSrc(src, input.projectDir, input.compiledDir);
   const readFrom = input.urlByAbsentLocalPath?.get(path) ?? path;
-  return isHttpUrl(readFrom) || existsSync(readFrom) ? readFrom : null;
+  const roots = input.allowOutsideProjectAssets
+    ? undefined
+    : mediaAssetRoots(input.projectDir, input.compiledDir);
+  return isHttpUrl(readFrom) || opensLocally(readFrom, roots) ? readFrom : null;
 }
 
 /** On a render service a composition URL is fetched under the download address rules and probed from that copy. */

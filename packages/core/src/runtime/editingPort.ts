@@ -106,6 +106,7 @@ export const EDITING_REQUEST_KINDS = [
   "layers",
   "draft",
   "gesture-start",
+  "console-errors",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -192,6 +193,7 @@ export interface EditingRequests {
     params: { handles: EditingElementHandle[] };
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
   };
+  "console-errors": { params: { from: number }; result: { errors: string[]; truncated: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -349,6 +351,8 @@ const PARAM_PARSERS: {
   layers: (params) => noParams(params) ?? layerParams(params),
   draft: draftList,
   "gesture-start": handleList,
+  "console-errors": (params) =>
+    hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

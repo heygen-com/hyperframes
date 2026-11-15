@@ -387,6 +387,12 @@ export {
   settleOnBrowserSafePort,
 } from "./utils/browserSafePort.js";
 
+export {
+  answerOwnLoopbackHostOnly,
+  isOwnLoopbackHost,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "./utils/loopbackOnly.js";
+
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
 
 export {
@@ -435,6 +441,7 @@ export {
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
+export { isInsideAssetRoots } from "./utils/assetRoots.js";
 export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
 export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {

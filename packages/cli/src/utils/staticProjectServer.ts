@@ -2,7 +2,7 @@ import { createServer, request as httpRequest, type Server, type ServerResponse 
 import { Duplex } from "node:stream";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
@@ -28,7 +28,11 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
-import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import {
+  isOwnLoopbackHost,
+  listenOnBrowserSafePort,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
@@ -78,7 +82,11 @@ function socketPair(): [Duplex, Duplex] {
 }
 
 /** Hands one request to `server` over an in-memory socket, so its handler (Range, proxies) answers unchanged. */
-function answerInProcess(server: Server, request: InProcessRequest): Promise<InProcessResponse> {
+function answerInProcess(
+  server: Server,
+  host: string,
+  request: InProcessRequest,
+): Promise<InProcessResponse> {
   const [client, served] = socketPair();
   server.emit("connection", served);
   return new Promise((resolveAnswer, rejectAnswer) => {
@@ -86,7 +94,7 @@ function answerInProcess(server: Server, request: InProcessRequest): Promise<InP
       {
         method: request.method,
         path: request.path,
-        headers: { ...request.headers, connection: "close" },
+        headers: { ...request.headers, host, connection: "close" },
         // No `agent`: Node uses createConnection only when no agent is given.
         createConnection: () => client as never,
       },
@@ -303,9 +311,23 @@ export async function serveStaticProjectHtml(
       )
     : html;
 
+  let listeningPort = -1;
+  let inProcessHost: string | undefined;
+  const answersHost = (host: string | undefined) =>
+    isOwnLoopbackHost(host, listeningPort) ||
+    (inProcessHost !== undefined && host === inProcessHost);
+
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
+    if (!answersHost(req.headers.host)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      res.setHeader(name, value);
+    }
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
       res.writeHead(200, { "Content-Type": getMimeType("index.html") });
@@ -332,7 +354,7 @@ export async function serveStaticProjectHtml(
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
-      if (isPrivateFileUnder(root, filePath, isVcsOrSecretPath)) continue;
+      if (isPrivateFileUnder(root, filePath, isStudioPrivatePath)) continue;
       if (existsSync(filePath)) {
         if (proxyRequest) {
           void serveProxyRequest(
@@ -371,7 +393,9 @@ export async function serveStaticProjectHtml(
     server.removeAllListeners("error");
     // A sandbox (e.g. an agent's) may refuse listen(); the browser asks this origin and the process answers.
     const url = `http://hyperframes-${++inProcessServers}.localhost/`;
-    const answer = (request: InProcessRequest) => answerInProcess(server, request);
+    const host = new URL(url).host;
+    inProcessHost = host;
+    const answer = (request: InProcessRequest) => answerInProcess(server, host, request);
     inProcessAnswers.set(new URL(url).origin, answer);
     return {
       url,
@@ -384,6 +408,7 @@ export async function serveStaticProjectHtml(
     };
   }
 
+  listeningPort = port;
   return {
     url: `http://127.0.0.1:${port}/`,
     port,
