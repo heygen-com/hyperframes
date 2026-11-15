@@ -129,7 +129,6 @@ function reportCheckoutFailure(error: unknown): CheckoutError | null {
   return error;
 }
 
-/** Shows the plan and, unless it is Free, the page that manages or cancels it; `open` opens that page at a terminal. */
 async function showPlan(open: boolean): Promise<void> {
   const plan = await readPlan();
   console.log(`HyperFrames: ${plan ? describe(plan) : "plan unavailable"}`);

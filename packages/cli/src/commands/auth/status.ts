@@ -66,7 +66,6 @@ interface VerifiedStatus {
   apiError: string | null;
   /** The HyperFrames plan and credits, when the server (or the mock) answers. */
   plan?: Plan | null;
-  /** Free: the plans page. Paid: the page that manages or cancels the plan. */
   planUrl?: string;
 }
 
