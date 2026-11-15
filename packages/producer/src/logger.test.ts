@@ -194,6 +194,13 @@ describe("createConsoleLogger", () => {
       );
     });
 
+    it("writes DEL and C1 controls in meta out as visible escapes, which JSON leaves raw", () => {
+      const log = createConsoleLogger("info");
+      log.warn("clip", { src: "a\u009b31mb\u007fc" });
+
+      expect(warnSpy.mock.calls[0]?.[0]).toBe('[WARN] clip {"src":"a\\x9b31mb\\x7fc"}');
+    });
+
     it("emits message only when meta is omitted", () => {
       const log = createConsoleLogger("info");
       log.info("plain");

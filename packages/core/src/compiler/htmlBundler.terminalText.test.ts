@@ -33,4 +33,23 @@ describe("bundler warnings that name project files", () => {
       for (const control of ["\u001b", "\u0007"]) expect(printed).not.toContain(control);
     },
   );
+
+  it("write control characters in an inline template's id out as visible escapes when its import map is skipped", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-bundler-terminal-"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const id = "sc&#27;]0;title&#7;";
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<html><body><main data-composition-id="root" data-width="320" data-height="180"><div data-composition-id="${id}"></div></main><template id="${id}-template"><div data-composition-id="${id}"><script type="importmap">{ not json</script></div></template></body></html>`,
+      );
+      await bundleToSingleHtml(dir, { runtime: "placeholder" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("sc\\x1b]0;title\\x07: import map is not valid JSON");
+    for (const control of ["\u001b", "\u0007"]) expect(printed).not.toContain(control);
+  });
 });
