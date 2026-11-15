@@ -148,18 +148,20 @@ describe("auth/store", () => {
     await expect(readStore(path)).rejects.toSatisfy((err) => isAuthError(err));
   });
 
+  const FAKE_SK_V2_KEY = ["sk", "V2", "hgu", "0".repeat(11), "x".repeat(32)].join("_");
+
   it("accepts a legacy plaintext key of any HeyGen key format", async () => {
     // Real HeyGen keys come in multiple formats (`sk_V2_…`, `hg_…`,
     // partner keys, etc.). The CLI doesn't shape-check — the backend
     // does. Any single-line printable non-empty value is accepted as
     // a legacy key here; the next /v3/users/me call decides validity.
-    await fs.writeFile(path, "sk_V2_hgu_kVzzCxfI3cT_Yi96MxT2Ki6UamtWxyP7oOIPqsxaFHqN", {
+    await fs.writeFile(path, FAKE_SK_V2_KEY, {
       mode: 0o600,
     });
     const result = await readStore(path);
     expect(result.source).toBe("file_legacy");
     expect(result.credentials.api_key).toBe(
-      "sk_V2_hgu_kVzzCxfI3cT_Yi96MxT2Ki6UamtWxyP7oOIPqsxaFHqN",
+      FAKE_SK_V2_KEY,
     );
   });
 
