@@ -1902,11 +1902,17 @@ async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
       if (!element) return fallback;
       if (element.id) return `#${escape(element.id)}`;
       const parts: string[] = [];
+      let anchorIndex = -1;
+      let anchorId = "";
       for (
         let current: Element | null = element;
         current && current !== document.body;
         current = current.parentElement
       ) {
+        if (anchorIndex < 0 && current.id) {
+          anchorIndex = parts.length;
+          anchorId = current.id;
+        }
         const tag = current.tagName.toLowerCase();
         const siblings = current.parentElement
           ? Array.from(current.parentElement.children).filter(
@@ -1917,7 +1923,16 @@ async function prepareContrast(page: Page, time: number): Promise<unknown[]> {
           siblings.length > 1 ? `${tag}:nth-of-type(${siblings.indexOf(current) + 1})` : tag,
         );
       }
-      return parts.reverse().join(" > ") || fallback;
+      const full = parts.reverse().join(" > ") || fallback;
+      if (anchorIndex < 0) return full;
+      const anchored = parts.slice(parts.length - 1 - anchorIndex);
+      anchored[0] = `#${escape(anchorId)}`;
+      const anchoredSelector = anchored.join(" > ");
+      try {
+        return document.querySelectorAll(anchoredSelector).length === 1 ? anchoredSelector : full;
+      } catch {
+        return full;
+      }
     };
     // Part of the serialized evaluate body above; cannot delegate to Node helpers.
     // fallow-ignore-next-line complexity
