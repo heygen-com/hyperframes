@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
@@ -97,55 +97,84 @@ function referencedFiles(file: string, projectDir: string) {
 
 const isPageOrStylesheet = (path: string) => /\.(?:html?|css)$/i.test(path);
 
-interface OutsideReferences {
+interface RenderGraph {
   assets: Set<string>;
   compositions: Set<string>;
+  received: string[];
 }
 
-// References from the entry, and the compositions and stylesheets it pulls in, that reach existing files outside the project.
-function outsideReferences(projectDir: string, entryFile: string): OutsideReferences {
-  const found: OutsideReferences = { assets: new Set(), compositions: new Set() };
+function recordReferences(graph: RenderGraph, file: string, projectDir: string): string[] {
+  const next: string[] = [];
+  for (const ref of referencedFiles(file, projectDir)) {
+    if (!linksOutside(projectDir, ref.path)) {
+      if (isPageOrStylesheet(ref.path)) next.push(ref.path);
+    } else if (ref.composition) graph.compositions.add(ref.raw);
+    else graph.assets.add(ref.raw);
+  }
+  return next;
+}
+
+// Walks the entry and the compositions and stylesheets it pulls in: which of them came from someone else, and which references reach existing files outside the project.
+function walkRenderGraph(
+  projectDir: string,
+  entryFile: string,
+  isReceived: (path: string) => boolean,
+): RenderGraph {
+  const graph: RenderGraph = { assets: new Set(), compositions: new Set(), received: [] };
   const visited = new Set<string>();
+  const unvisited = (file: string) =>
+    !visited.has(file) && isPathInside(file, projectDir) && isFile(file);
   const pending = [resolve(projectDir, entryFile)];
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
-    if (visited.has(file) || !isPathInside(file, projectDir) || !isFile(file)) continue;
+    if (!unvisited(file)) continue;
     visited.add(file);
-    for (const { raw, path, composition } of referencedFiles(file, projectDir)) {
-      if (linksOutside(projectDir, path))
-        (composition ? found.compositions : found.assets).add(raw);
-      else if (isPageOrStylesheet(path)) pending.push(path);
-    }
+    const path = relative(projectDir, file).split(sep).join("/");
+    if (isReceived(path)) graph.received.push(path);
+    pending.push(...recordReferences(graph, file, projectDir));
   }
-  return found;
+  return graph;
 }
 
-function receivedEntryNotice(entry: string, refs: OutsideReferences): string | null {
+function refusedReferences(graph: RenderGraph): string {
   const parts: string[] = [];
-  if (refs.assets.size > 0) parts.push(`It leaves out ${[...refs.assets].join(", ")}.`);
-  if (refs.compositions.size > 0) {
+  if (graph.assets.size > 0) parts.push(` It leaves out ${[...graph.assets].join(", ")}.`);
+  if (graph.compositions.size > 0) {
     parts.push(
-      `It stops on the compositions ${[...refs.compositions].join(", ")}; move them into the project to render them.`,
+      ` It stops on the compositions ${[...graph.compositions].join(", ")}; move them into the project to render them.`,
     );
   }
-  if (parts.length === 0) return null;
-  return `${entry} came from someone else, so the render reads nothing outside the project. ${parts.join(" ")}`;
+  return parts.join("");
 }
 
-/** False when the composition a local render opens came from someone else; `warn` then names the references outside the project it refuses. */
+function receivedNotice(graph: RenderGraph): string | null {
+  const refused = refusedReferences(graph);
+  if (refused === "") return null;
+  const [first, ...others] = graph.received;
+  const who = others.length === 0 ? first : `${first} and ${others.length} more file(s)`;
+  return `${who} came from someone else, so the render reads nothing outside the project.${refused}`;
+}
+
+/** False when the composition a local render opens, or any composition or stylesheet it pulls in, came from someone else, or when the received-files record cannot be read; `warn` then says why and names the references outside the project it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
   warn: (line: string) => void,
 ): boolean {
   const absProjectDir = resolve(projectDir);
-  const entry = entryFile ?? "index.html";
+  const graph = walkRenderGraph(
+    absProjectDir,
+    entryFile ?? "index.html",
+    receivedFiles(absProjectDir),
+  );
   const unreadable = unreadableReceivedRecord(absProjectDir);
   if (unreadable !== null) {
-    warn(`Could not read ${unreadable}; the render brings in files outside the project as usual.`);
-    return true;
+    warn(
+      `Could not read ${unreadable}, so the render treats the project as received and reads nothing outside it.${refusedReferences(graph)}`,
+    );
+    return false;
   }
-  if (!receivedFiles(absProjectDir)(entry)) return true;
-  const notice = receivedEntryNotice(entry, outsideReferences(absProjectDir, entry));
+  if (graph.received.length === 0) return true;
+  const notice = receivedNotice(graph);
   if (notice !== null) warn(notice);
   return false;
 }

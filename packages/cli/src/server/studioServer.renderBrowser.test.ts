@@ -46,6 +46,9 @@ afterEach(() => {
 function startStudioRender(extra: Record<string, unknown> = {}, receivedFiles?: string[]) {
   const dir = mkdtempSync(join(tmpdir(), "hf-studio-render-browser-"));
   dirs.push(dir);
+  writeFileSync(join(dir, "index.html"), `<div data-composition-src="scene.html"></div>`);
+  writeFileSync(join(dir, "scene.html"), "<div></div>");
+  writeFileSync(join(dir, "other.html"), "<div></div>");
   if (receivedFiles) {
     mkdirSync(join(dir, ".hyperframes"));
     writeFileSync(
@@ -151,6 +154,12 @@ describe("Studio render of a received composition", () => {
     {
       name: "a received composition picked to render",
       extra: { composition: "scene.html" },
+      files: ["scene.html"],
+      allowed: false,
+    },
+    {
+      name: "the person's own entry playing a received composition",
+      extra: {},
       files: ["scene.html"],
       allowed: false,
     },

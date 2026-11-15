@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { outsideAssetsAllowed } from "./receivedRender.js";
@@ -60,13 +60,29 @@ describe("outsideAssetsAllowed", () => {
     expect(line).not.toContain("cdn.example");
   });
 
-  it("checks the composition being rendered, not index.html", () => {
+  it("refuses outside files when the own entry plays a received composition, and names it", () => {
     const dir = project(received("compositions/scene.html"));
+    for (const entry of ["compositions/scene.html", undefined]) {
+      const warn = vi.fn();
+      expect(outsideAssetsAllowed(dir, entry, warn)).toBe(false);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain("compositions/scene.html came from someone else");
+      expect(line).toContain("../../outside/clip.mp4");
+    }
+  });
+
+  it("refuses outside files when a received stylesheet is pulled in", () => {
     const warn = vi.fn();
-    expect(outsideAssetsAllowed(dir, "compositions/scene.html", warn)).toBe(false);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("../../outside/clip.mp4"));
+    expect(outsideAssetsAllowed(project(received("style.css")), undefined, warn)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("style.css came from someone else"));
+  });
+
+  it("keeps outside files when the received file is one the render never opens", () => {
+    const dir = project(received("unused.html"));
+    write(join(dir, "unused.html"), `<img src="../outside/pic.png">`);
+    const warn = vi.fn();
     expect(outsideAssetsAllowed(dir, undefined, warn)).toBe(true);
-    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("keeps outside files for the person's own entry", () => {
@@ -82,15 +98,17 @@ describe("outsideAssetsAllowed", () => {
   });
 
   it.each(["{not json", "", "{}"])(
-    "keeps outside files and names the record when it cannot be read: %j",
+    "refuses outside files and names the record when it cannot be read: %j",
     (record) => {
       const dir = project(record);
       const warn = vi.fn();
-      expect(outsideAssetsAllowed(dir, undefined, warn)).toBe(true);
+      expect(outsideAssetsAllowed(dir, undefined, warn)).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       const line = String(warn.mock.calls[0]?.[0]);
-      expect(line).toContain(join(dir, ".hyperframes", "received-files.json"));
-      expect(line).not.toContain("someone else");
+      expect(line).toContain(
+        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-files.json")}`,
+      );
+      expect(line).toContain("../outside/secret.js");
     },
   );
 
