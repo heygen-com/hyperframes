@@ -1218,6 +1218,21 @@ export async function captureSnapshots(
         remoteCopies.set(href, copy);
         return copy;
       };
+      const projectVideos = new Map<string, ReturnType<typeof projectVideoFile>>();
+      const checkedProjectVideo = (src: string): ReturnType<typeof projectVideoFile> => {
+        const known = projectVideos.get(src);
+        if (known) return known;
+        const checked = projectVideoFile(projectDir, src).then((project) => {
+          if (project?.refused) {
+            const message = `${relative(projectDir, project.file)} is not media: a document or a playlist naming files outside its folder`;
+            warnings.push(message);
+            console.warn(`   ${c.warn("⚠")} ${message}`);
+          }
+          return project;
+        });
+        projectVideos.set(src, checked);
+        return checked;
+      };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
         const cached = alphaDecoderCache.get(filePath);
@@ -1336,11 +1351,8 @@ export async function captureSnapshots(
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const project = await projectVideoFile(projectDir, v.src);
+              const project = await checkedProjectVideo(v.src);
               if (project?.refused) {
-                const message = `${relative(projectDir, project.file)} is not media: a document or a playlist naming files outside its folder`;
-                warnings.push(message);
-                console.warn(`   ${c.warn("⚠")} ${message}`);
                 unreadVideoFrames += 1;
                 return null;
               }
