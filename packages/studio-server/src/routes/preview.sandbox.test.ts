@@ -168,3 +168,50 @@ describe("a thumbnail capture document", () => {
     expect(plain).not.toContain('crossorigin="anonymous"');
   });
 });
+
+describe("a plain-HTTP request to a LAN name, which carries no fetch metadata", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const LAN = "http://192.168.1.20:3002";
+  const documents = routes.filter(([, , type]) => type === "text/html");
+  const lanGet = (path: string, headers: Record<string, string> = {}) =>
+    api.request(`${LAN}${path}`, { headers });
+
+  it.each(documents)(
+    "%s is marked and sandboxed for a frame that sends no Referer",
+    async (_n, path) => {
+      const res = await lanGet(path);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    },
+  );
+
+  it.each(documents)("%s is marked and sandboxed for another site's Referer", async (_n, path) => {
+    const res = await lanGet(path, { referer: "http://elsewhere.example/page" });
+    expect(await res.text()).toContain(MARK);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it.each(documents)("%s stays unmarked for the Studio's own player", async (_n, path) => {
+    const res = await lanGet(path, { referer: `${LAN}/?project=demo` });
+    expect(await res.text()).not.toContain(MARK);
+    expect(res.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("never answers the unmarked copy's validators with a 304", async () => {
+    const own = await lanGet("/projects/demo/preview", { referer: `${LAN}/` });
+    const etag = own.headers.get("etag");
+    expect(etag).toBeTruthy();
+    const res = await lanGet("/projects/demo/preview", { "if-none-match": etag! });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(MARK);
+  });
+
+  it.each(["frame-token", "thumbnail/index.html", "waveform/clip.mp4", "peaks/clip.mp4"])(
+    "refuses %s with no Referer and answers the Studio's own page",
+    async (route) => {
+      expect((await lanGet(`/projects/demo/${route}`)).status).toBe(403);
+      const own = await lanGet(`/projects/demo/${route}`, { referer: `${LAN}/` });
+      expect(own.status).not.toBe(403);
+    },
+  );
+});

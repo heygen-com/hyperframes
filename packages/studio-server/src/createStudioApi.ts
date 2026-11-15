@@ -23,6 +23,7 @@ import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
+  requestFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
@@ -42,10 +43,12 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
-const fromAnotherSite = (c: Context) => {
-  const site = c.req.header("sec-fetch-site");
-  return site === "cross-site" || site === "same-site";
-};
+const fromAnotherSite = (c: Context) =>
+  requestFromAnotherSite({
+    fetchSite: c.req.header("sec-fetch-site"),
+    host: c.req.header("host") ?? urlHost(c.req.url),
+    referer: c.req.header("referer"),
+  });
 
 const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
@@ -63,8 +66,11 @@ async function markPreviewForAnotherSite(c: Context) {
 }
 
 const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
-const framedByAnotherSite = (c: Context) =>
-  fromAnotherSite(c) && FRAMED_DESTS.has(c.req.header("sec-fetch-dest") ?? "");
+const framedByAnotherSite = (c: Context) => {
+  if (!fromAnotherSite(c)) return false;
+  const dest = c.req.header("sec-fetch-dest");
+  return dest === undefined || FRAMED_DESTS.has(dest);
+};
 
 function withoutValidators(request: Request): Request {
   const headers = new Headers(request.headers);
