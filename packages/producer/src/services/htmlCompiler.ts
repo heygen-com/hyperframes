@@ -237,13 +237,22 @@ function normalizeCompositionSrcs(html: string, projectDir: string): string {
   });
 }
 
+const COMPOSITION_FILE = /\.html?$/i;
+
+const NOT_A_COMPOSITION_FILE: Record<ReturnType<typeof readProjectFile>["kind"], string> = {
+  missing: "the file does not exist",
+  folder: "it is a folder, not an HTML file",
+  file: "it is not an .html file",
+};
+
 function resolveCompositionFile(
   projectDir: string,
   src: string,
   assetRoot: string | undefined,
 ): string | null {
   const file = resolveCompositionSrc(projectDir, src);
-  return file === null || escapesAssetRoot(file, assetRoot) ? null : file;
+  if (file === null || !COMPOSITION_FILE.test(file)) return null;
+  return escapesAssetRoot(file, assetRoot) ? null : file;
 }
 
 // Git metadata and env files are never inlined into a render, as the preview bundler refuses them.
@@ -280,6 +289,11 @@ function assertSubCompositionsUsable(
     if (!srcPath) continue;
     if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
+    const named = resolveCompositionSrc(projectDir, srcPath);
+    if (named !== null && !COMPOSITION_FILE.test(named)) {
+      problems.push({ srcPath, detail: NOT_A_COMPOSITION_FILE[readProjectFile(named).kind] });
+      continue;
+    }
     const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });

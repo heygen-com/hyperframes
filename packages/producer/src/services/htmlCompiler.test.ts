@@ -1171,6 +1171,23 @@ describe("detectRenderModeHints", () => {
     }
   });
 
+  it.each(["compositions/scene.png", "/compositions/scene.png", "compositions/scene.mp4"])(
+    "compileForRender refuses a data-composition-src that is not an .html file: %s",
+    async (src) => {
+      const name = src.split("/").pop() ?? "";
+      const projectDir = makeSubCompProject("hf-media-subcomp-", [{ id: "intro", src }], {
+        [name]: validSubCompHtml("intro", "Media named"),
+      });
+      try {
+        await expect(
+          compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+        ).rejects.toThrow(/not an \.html file/);
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it.each([
     ["dot-dot segments", "../outside-scene.html"],
     ["an encoded ../", "%2e%2e%2foutside-scene.html"],

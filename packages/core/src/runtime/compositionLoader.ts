@@ -793,6 +793,9 @@ async function mountExternalCompositions(
             onDiagnostic: params.onDiagnostic,
           });
         }
+        if (!compositionUrl || !/\.html?$/i.test(compositionUrl.pathname)) {
+          throw new Error("data-composition-src must name an .html file");
+        }
         const response = await fetch(src);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
