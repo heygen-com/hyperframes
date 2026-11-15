@@ -252,7 +252,7 @@ import {
   planVideoLayerPassthrough,
   type VideoLayerPlan,
 } from "./render/videoLayerPassthroughPlan.js";
-import { runAudioStage } from "./render/stages/audioStage.js";
+import { audioWorkDir, runAudioStage } from "./render/stages/audioStage.js";
 import { inspectDiskCaptureHeadroom, runCaptureStage } from "./render/stages/captureStage.js";
 import {
   type CaptureStreamingStageResult,
@@ -3620,6 +3620,7 @@ async function executeRenderPipeline(input: {
           log,
           composition,
           skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
+          audioDownloadDir: audioWorkDir(workDir),
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.

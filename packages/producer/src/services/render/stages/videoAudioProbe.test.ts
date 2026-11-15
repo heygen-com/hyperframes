@@ -5,9 +5,11 @@ import type { AddressInfo } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _setDownloadFetchForTests, getFfmpegBinary } from "@hyperframes/engine";
+import { _setDownloadFetchForTests, getFfmpegBinary, resolveConfig } from "@hyperframes/engine";
+import type { ProducerLogger } from "../../../logger.js";
+import { createRenderJob } from "../../renderOrchestrator.js";
 import { collectRenderMedia } from "../../renderMediaCollector.js";
-import { appendVideoAudioFromProbe } from "./extractVideosStage.js";
+import { appendVideoAudioFromProbe, runExtractVideosStage } from "./extractVideosStage.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
 
@@ -87,10 +89,19 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
-  it("on a render service probes a composition URL from a copy the downloader fetched", async () => {
+
+  const remoteSrc = "https://media.probe.example/talk.mp4";
+  const remoteComposition = (attrs = 'data-has-audio="true"') => {
+    const composition =
+      collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
+      <video id="r" src="${remoteSrc}" data-start="0" data-duration="2" ${attrs}></video>
+    </div>`);
+    composition.audios.length = 0;
+    return composition;
+  };
+  const serveTalk = (fetched: string[] = []) => {
     make("talk.mp4", true);
     const bytes = readFileSync(join(dir, "talk.mp4"));
-    const fetched: string[] = [];
     _setDownloadFetchForTests(async (url) => {
       fetched.push(url);
       return new Response(bytes, {
@@ -99,12 +110,19 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
       });
     });
     process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
-    const src = "https://media.probe.example/talk.mp4";
-    const composition =
-      collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
-      <video id="r" src="${src}" data-start="0" data-duration="2" data-has-audio="true"></video>
-    </div>`);
-    composition.audios.length = 0;
+    return fetched;
+  };
+  const failDownloads = (error: Error | Response) => {
+    _setDownloadFetchForTests(async () => {
+      if (error instanceof Response) return error;
+      throw error;
+    });
+    process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
+  };
+
+  it("on a render service probes a composition URL from a copy the downloader fetched", async () => {
+    const fetched = serveTalk();
+    const composition = remoteComposition();
     const downloadDir = join(dir, "audio-work");
 
     await appendVideoAudioFromProbe({
@@ -114,24 +132,69 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
       downloadDir,
     });
 
-    expect(fetched).toEqual([src]);
+    expect(fetched).toEqual([remoteSrc]);
     expect(readdirSync(downloadDir)).toHaveLength(1);
     expect(composition.audios.map((audio) => audio.id)).toEqual(["r-audio"]);
-    expect(composition.audios[0]?.src).toBe(src);
+    expect(composition.audios[0]?.src).toBe(remoteSrc);
   });
 
-  it("on a render service skips a composition URL the downloader refuses", async () => {
-    _setDownloadFetchForTests(async () => {
-      throw Object.assign(new Error("host resolves to a non-public address"), {
+  it("on a render service skips and logs a composition URL the address rules refuse", async () => {
+    failDownloads(
+      Object.assign(new Error("host resolves to a non-public address"), {
         code: "HF_NON_PUBLIC_ADDRESS",
-      });
+      }),
+    );
+    const composition = remoteComposition();
+    const warnings: unknown[][] = [];
+    const log = { warn: (...args: unknown[]) => warnings.push(args) } as unknown as ProducerLogger;
+
+    await appendVideoAudioFromProbe({
+      projectDir: dir,
+      compiledDir: join(dir, "compiled"),
+      composition,
+      log,
     });
-    process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
-    const composition =
-      collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
-      <video id="r" src="https://media.probe.example/clip.mp4" data-start="0" data-duration="2" data-has-audio="true"></video>
-    </div>`);
-    composition.audios.length = 0;
+
+    expect(composition.audios).toEqual([]);
+    expect(warnings).toEqual([[expect.stringContaining("skipped"), { videoId: "r" }]]);
+  });
+
+  it("on a render service fails on a download error that is not an address refusal", async () => {
+    failDownloads(new Response("gone", { status: 404 }));
+
+    await expect(
+      appendVideoAudioFromProbe({
+        projectDir: dir,
+        compiledDir: join(dir, "compiled"),
+        composition: remoteComposition(),
+      }),
+    ).rejects.toThrow(/HTTP 404/);
+  });
+
+  it("on a render service a cancelled render stops the download", async () => {
+    const fetched = serveTalk();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      appendVideoAudioFromProbe({
+        projectDir: dir,
+        compiledDir: join(dir, "compiled"),
+        composition: remoteComposition(),
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect(fetched).toEqual([]);
+  });
+
+  it.each([
+    ["has no sound", ""],
+    ["is muted", 'data-has-audio="true" muted'],
+    ["is hidden", 'data-has-audio="true"'],
+  ])("on a render service downloads nothing for a video that %s", async (name, attrs) => {
+    const fetched = serveTalk();
+    const composition = remoteComposition(attrs);
+    if (name === "is hidden") composition.videos[0]!.hidden = true;
 
     await appendVideoAudioFromProbe({
       projectDir: dir,
@@ -139,6 +202,29 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
       composition,
     });
 
+    expect(fetched).toEqual([]);
     expect(composition.audios).toEqual([]);
+  });
+
+  it("the extract stage downloads a passthrough video's URL into the audio work folder", async () => {
+    const fetched = serveTalk();
+    const composition = remoteComposition();
+    const audioDownloadDir = join(dir, "audio-work");
+
+    await runExtractVideosStage({
+      projectDir: dir,
+      compiledDir: join(dir, "compiled"),
+      job: createRenderJob({ fps: { num: 30, den: 1 }, quality: "standard", hdrMode: "force-sdr" }),
+      cfg: resolveConfig(),
+      composition,
+      skipFrameExtractionIds: ["r"],
+      audioDownloadDir,
+      abortSignal: undefined,
+      assertNotAborted: () => {},
+    });
+
+    expect(fetched).toEqual([remoteSrc]);
+    expect(readdirSync(audioDownloadDir)).toHaveLength(1);
+    expect(composition.audios.map((audio) => audio.id)).toEqual(["r-audio"]);
   });
 });

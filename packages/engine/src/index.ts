@@ -423,6 +423,7 @@ export {
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
+  isUrlNotPermittedError,
   writeUrlDownloadTelemetry,
   type SafeDownloadUrlIdentity,
   type UrlDownloadOptions,

@@ -54,6 +54,7 @@ import {
   assertPublicHttpsUrl,
   downloadToTemp,
   resolveRestrictPageNetwork,
+  isUrlNotPermittedError,
   writeUrlDownloadTelemetry,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
@@ -105,6 +106,7 @@ export interface ExtractVideosStageInput {
   shownBoxes?: ReadonlyMap<string, ShownBox>;
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  audioDownloadDir?: string;
   onProgress?: ProgressCallback;
 }
 
@@ -431,6 +433,7 @@ export async function runExtractVideosStage(
     deferRangeExtraction,
     shownBoxes,
     urlByAbsentLocalPath,
+    audioDownloadDir,
     skipFrameExtractionIds = [],
   } = input;
 
@@ -533,7 +536,15 @@ export async function runExtractVideosStage(
   }
 
   if (skipFrameExtractionIds.length > 0) {
-    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    await appendVideoAudioFromProbe({
+      projectDir,
+      compiledDir,
+      composition,
+      urlByAbsentLocalPath,
+      downloadDir: audioDownloadDir,
+      signal: abortSignal,
+      log,
+    });
     videoReadinessSkipIds = [...skipFrameExtractionIds];
   } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
@@ -661,9 +672,10 @@ interface VideoAudioProbeInput {
   compiledDir: string;
   composition: CompositionMetadata;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
-  /** Where a composition URL is downloaded before probing on a render service. Defaults to the compile's remote media folder. */
+  /** Where a composition URL is downloaded before probing on a render service: the mixer's work folder, so the mix reuses it. */
   downloadDir?: string;
   signal?: AbortSignal;
+  log?: ProducerLogger;
 }
 
 function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {
@@ -673,13 +685,25 @@ function localProbeSource(src: string, input: VideoAudioProbeInput): string | nu
 }
 
 /** On a render service a composition URL is fetched under the download address rules and probed from that copy. */
-async function remoteProbeSource(src: string, input: VideoAudioProbeInput): Promise<string | null> {
-  if (!isPublicHttpsUrl(src)) return null;
-  if (!resolveRestrictPageNetwork()) return src;
+async function remoteProbeSource(
+  video: CompositionMetadata["videos"][number],
+  input: VideoAudioProbeInput,
+): Promise<string | null> {
+  if (!isPublicHttpsUrl(video.src)) return null;
+  if (!resolveRestrictPageNetwork()) return video.src;
+  if (!video.hasAudio || video.hidden) return null;
   const downloadDir = input.downloadDir ?? join(input.compiledDir, REMOTE_MEDIA_SUBDIR);
-  return downloadToTemp(src, downloadDir, undefined, input.signal, undefined, {
-    onTelemetry: writeUrlDownloadTelemetry,
-  }).catch(() => null);
+  try {
+    return await downloadToTemp(video.src, downloadDir, undefined, input.signal, undefined, {
+      onTelemetry: writeUrlDownloadTelemetry,
+    });
+  } catch (error) {
+    if (!isUrlNotPermittedError(error)) throw error;
+    input.log?.warn("Video sound skipped: its URL is outside the download address rules", {
+      videoId: video.id,
+    });
+    return null;
+  }
 }
 
 /**
@@ -694,7 +718,7 @@ export async function appendVideoAudioFromProbe(input: VideoAudioProbeInput): Pr
   const probed = await Promise.all(
     videos.map(async (video) => {
       const readFrom = isHttpUrl(video.src)
-        ? await remoteProbeSource(video.src, input)
+        ? await remoteProbeSource(video, input)
         : localProbeSource(video.src, input);
       if (readFrom === null) return null;
       const metadata = await extractMediaMetadata(readFrom);
