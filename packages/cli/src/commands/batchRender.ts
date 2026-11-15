@@ -87,6 +87,7 @@ interface RunBatchRenderOptions {
 }
 
 const PLACEHOLDER_RE = /\{([A-Za-z0-9_.-]+)\}/g;
+const ROWS_NAME_WHOLE_OUTPUT_PATH = "{path}";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -160,8 +161,7 @@ function folderOfPrefix(prefix: string): string {
 }
 
 function checkOutputsInsideTemplateFolder(rows: readonly PreparedBatchRow[], template: string) {
-  // A bare {path} lets each row name its whole output path; any other template stays under its folder or the cwd.
-  if (template === "{path}") return;
+  if (template === ROWS_NAME_WHOLE_OUTPUT_PATH) return;
   const firstPlaceholder = template.search(PLACEHOLDER_RE);
   if (firstPlaceholder < 0) return;
   const folder =
