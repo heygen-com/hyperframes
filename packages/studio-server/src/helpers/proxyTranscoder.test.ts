@@ -1994,6 +1994,29 @@ describe("resolveProxy", () => {
 describe("resolveStill", () => {
   const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
 
+  it.skipIf(!canStill)(
+    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=3"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+
+      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
+      expect(first.endsWith(".jpg")).toBe(true);
+      const bytes = readFileSync(first);
+      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
+      expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
+    },
+    60_000,
+  );
+
   async function stillSetup() {
     const spy = createSpawnSpy();
     const { resolveStill } = await loadModule(spy.spawn, FFMPEG_PATH);
@@ -2076,29 +2099,6 @@ describe("resolveStill", () => {
     await flush();
     expect(calls).toHaveLength(0);
   });
-
-  it.skipIf(!canStill)(
-    "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
-    async () => {
-      vi.resetModules();
-      vi.doUnmock("./mediaMetadata.js");
-      const { resolveStill } = await import("./proxyTranscoder.js");
-      const projectDir = tmpProject();
-      const clip = join(projectDir, "clip.mp4");
-      execFileSync(realFfmpeg!, [
-        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=3"],
-        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
-      ]);
-
-      const first = await resolveStill(projectDir, clip, 1.26, { width: 160, height: 90 });
-      expect(first.endsWith(".jpg")).toBe(true);
-      const bytes = readFileSync(first);
-      expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
-      expect(await resolveStill(projectDir, clip, 1.34, { width: 160, height: 90 })).toBe(first);
-      expect(await resolveStill(projectDir, clip, 2.5, { width: 160, height: 90 })).not.toBe(first);
-    },
-    60_000,
-  );
 });
 
 describe("sourceFolderKind", () => {
