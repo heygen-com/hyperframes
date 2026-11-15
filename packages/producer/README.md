@@ -38,6 +38,13 @@ await startServer({ port: 8080 });
 // POST /render or /render/stream with projectDir, html, or previewUrl (public HTTPS only) and render options
 ```
 
+A browser request (one that carries an `Origin` or `Sec-Fetch-Site` header) is accepted
+only under an IP address, `localhost` or a `*.localhost` name, so a page that points its
+own domain at the server cannot start renders or lint. If browsers reach the server
+through a proxy name, list that name in `allowedHosts` or in the comma-separated
+`PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
+another service, are unaffected.
+
 Both HTTP routes accept optional `pageMotionBlur: "off"` to disable authored page
 motion blur. Omit it to preserve the composition's behavior. Other explicit values
 are rejected before a render starts. This is separate from engine sub-frame
