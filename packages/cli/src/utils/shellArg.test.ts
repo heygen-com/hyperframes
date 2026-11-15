@@ -12,6 +12,7 @@ const WINDOWS_ROUND_TRIP = [
   "o\u2019neil \u2018draft\u2019 it's",
   "\u201Alow\u201B 'n\u2019 \u2018mixed'",
   "Q&A (draft); 100% | a<b>c ^",
+  "100% done",
   "서울 여행",
   "a,b",
   "@scope",
@@ -20,7 +21,8 @@ const WINDOWS_ROUND_TRIP = [
   "C:\\work\\it's\\",
 ];
 
-// `“ ” „` end a PowerShell double-quoted string; `$` and a backtick expand in PowerShell and Git Bash.
+// `“ ” „` end a PowerShell double-quoted string; `$` and a backtick expand in PowerShell and Git Bash,
+// `!` in interactive Git Bash, and `%NAME%` in cmd.exe.
 const WINDOWS_UNPRINTABLE = [
   "$(calc)",
   "a`b",
@@ -30,6 +32,10 @@ const WINDOWS_UNPRINTABLE = [
   "$(calc)&calc",
   "\u201Cquoted\u201D",
   "a\nb",
+  "%USERPROFILE%",
+  "50% off, 20% more",
+  "Hello!",
+  "a!b",
 ];
 
 const NAMES = [
