@@ -317,10 +317,14 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
 
     expect(await playlistLeavesItsFolder(join(root, "proj", "clip.m3u8"))).toBe(true);
     if (!FFPROBE_8) return;
-    const probe = spawnSync(getFfprobeBinary(), ["-loglevel", "debug", "-i", "clip.m3u8"], {
-      cwd: join(root, "proj"),
-      encoding: "utf-8",
-    });
+    const probe = spawnSync(
+      getFfprobeBinary(),
+      ["-loglevel", "debug", "-show_format", "--", "clip.m3u8"],
+      {
+        cwd: join(root, "proj"),
+        encoding: "utf-8",
+      },
+    );
     expect(probe.stderr).toMatch(/outside\/secret\.mp4' for reading/);
   });
 
