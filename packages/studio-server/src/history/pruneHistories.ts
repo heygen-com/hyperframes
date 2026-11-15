@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, renameSync, statSync } from "node:fs";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { isSafePath } from "../helpers/safePath.js";
 import { ID_PATH, isHistoryId, readId, readRecord } from "./historyId.js";
 import { HistoryBusyError, takeHistoryOwnership } from "./ownerLock.js";
@@ -220,7 +221,7 @@ export function pruneGoneProjectHistoriesDaily(
   pruning.add(historyRoot);
   setImmediate(() => {
     pruneWithin(historyRoot, { now, onError, budgetMs, measure: false })
-      .then(({ finished }) => finished && writeFileSync(stamp, String(now)))
+      .then(({ finished }) => finished && replaceFileAtomically(stamp, String(now)))
       .catch((error) => onError?.(error))
       .finally(() => pruning.delete(historyRoot));
   });

@@ -3,8 +3,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  lstatSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -18,6 +20,7 @@ import {
   KEEP_GONE_PROJECT_HISTORY_MS,
   listProjectHistories,
   pruneGoneProjectHistories,
+  pruneGoneProjectHistoriesDaily,
 } from "./pruneHistories.js";
 
 vi.mock("./ownerLock.js", async (importOriginal) => {
@@ -325,5 +328,18 @@ describe("listProjectHistories", () => {
 
   it("lists nothing for a history root that does not exist", () => {
     expect(listProjectHistories(join(tmpdir(), "hf-no-such-history-root"))).toEqual([]);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("pruneGoneProjectHistoriesDaily", () => {
+  it("replaces a symlink at the last-prune stamp instead of writing through it", async () => {
+    const historyRoot = tempDir("hf-prune-root-");
+    const sentinel = join(tempDir("hf-prune-outside-"), "sentinel");
+    writeFileSync(sentinel, "unchanged");
+    const stamp = join(historyRoot, ".last-prune");
+    symlinkSync(sentinel, stamp);
+    pruneGoneProjectHistoriesDaily(historyRoot, Date.now());
+    await vi.waitFor(() => expect(lstatSync(stamp).isFile()).toBe(true));
+    expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
   });
 });

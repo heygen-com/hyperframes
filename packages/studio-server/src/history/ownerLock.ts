@@ -1,6 +1,17 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  linkSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { uptime } from "node:os";
 import { join } from "node:path";
 import { cannotHardLink, replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -18,6 +29,9 @@ export class HistoryBusyError extends Error {
 const WINDOWS_BUSY = new Set(["EPERM", "EBUSY", "EACCES"]);
 const TAKING_MS = 2_000;
 const BOOT_SLACK_MS = 60_000;
+const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
+const NON_BLOCK = constants.O_NONBLOCK ?? 0;
+const LINKED = new Set(["ELOOP", "EMLINK"]);
 
 function busyOnWindows(error: unknown): boolean {
   return (
@@ -53,9 +67,19 @@ export function processStart(pid: number): string | null {
   }
 }
 
+/** The text of `path` when it names a regular file, else null; a link is never followed, a FIFO never waited on. */
+function readPlainFile(path: string): string | null {
+  const fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
+  try {
+    return fstatSync(fd).isFile() ? readFileSync(fd, "utf-8") : null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function recordedStart(file: string, pid: number): string | null {
   try {
-    const [owner, ...start] = readFileSync(`${file}.start`, "utf-8").split("\n");
+    const [owner, ...start] = (readPlainFile(`${file}.start`) ?? "").split("\n");
     return Number(owner) === pid && start.length > 0 ? start.join("\n") : null;
   } catch {
     return null;
@@ -64,7 +88,7 @@ function recordedStart(file: string, pid: number): string | null {
 
 function recordStart(file: string): void {
   const start = processStart(process.pid);
-  if (start) writeFileSync(`${file}.start`, `${process.pid}\n${start}`);
+  if (start) replaceFileAtomically(`${file}.start`, `${process.pid}\n${start}`);
 }
 
 /** Whether `pid` still runs the process that took `file`: its recorded start matches, else the lock postdates boot. */
@@ -82,13 +106,15 @@ function holdsLock(file: string, pid: number): boolean {
   }
 }
 
-/** The pid in `file`; null when there is no file, NaN when it holds no pid (so it reads as dead). */
+/** The pid in `file`; null when there is no file, NaN when it holds no pid or is no plain file (so it reads as dead). */
 function ownerOf(file: string): number | null {
   try {
-    const text = readFileSync(file, "utf-8");
-    return /^\d+$/.test(text) ? Number(text) : Number.NaN;
+    const text = readPlainFile(file);
+    return text !== null && /^\d+$/.test(text) ? Number(text) : Number.NaN;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    const code = (error as NodeJS.ErrnoException).code ?? "";
+    if (code === "ENOENT") return null;
+    if (LINKED.has(code)) return Number.NaN;
     throw error;
   }
 }
@@ -184,7 +210,7 @@ function advertise(urlFile: string, url: string | undefined): void {
 /** The url `pid` advertised, only while `pid` is alive and still holds `file`. */
 function servedBy(file: string, urlFile: string, pid: number): string | undefined {
   try {
-    const said = JSON.parse(readFileSync(urlFile, "utf-8")) as { pid?: unknown; url?: unknown };
+    const said = JSON.parse(readPlainFile(urlFile) ?? "") as { pid?: unknown; url?: unknown };
     const live = said.pid === pid && holdsLock(file, pid) && ownerOf(file) === pid;
     return live && typeof said.url === "string" ? said.url : undefined;
   } catch {
