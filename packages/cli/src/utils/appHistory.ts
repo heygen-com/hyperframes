@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { realpath } from "@hyperframes/core/safe-path";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -54,11 +54,22 @@ export function readAppTurns(dir: string): AppTurn[] {
   return turnsIn(readRecord(dir, APP_HISTORY, MAX_READ_BYTES));
 }
 
-/** Digests of the lines the history held at the hand-off (null when it was too large to note: nothing shows until
- * the next hand-off), and of the lines shown since that it still holds. */
+/** The project folder noted at the hand-off, digests of the lines the history then held (null when too large to
+ * note: nothing shows until the next hand-off), and digests of the lines shown since that it still holds. */
 interface Known {
+  folder: string;
   held: string[] | null;
   shown: string[];
+}
+
+/** Which folder is at `dir`: another one there since the hand-off is another project, with nothing to catch up on. */
+function folderId(dir: string): string {
+  try {
+    const stats = statSync(dir, { bigint: true });
+    return `${stats.dev}:${stats.ino}:${stats.birthtimeNs}`;
+  } catch {
+    return "";
+  }
 }
 
 export interface Seen {
@@ -76,9 +87,10 @@ const isDigests = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === "string");
 
 function toKnown(value: unknown): Known | undefined {
-  const { held, shown } = Object(value) as Record<string, unknown>;
-  if ((held !== null && !isDigests(held)) || !isDigests(shown)) return undefined;
-  return { held, shown };
+  const { folder, held, shown } = Object(value) as Record<string, unknown>;
+  if (typeof folder !== "string" || (held !== null && !isDigests(held)) || !isDigests(shown))
+    return undefined;
+  return { folder, held, shown };
 }
 
 export function seenPath(dir: string): string {
@@ -104,6 +116,7 @@ export function readSeen(dir: string): Seen {
     );
     const at = stamp(seen.at);
     const history = toKnown(seen.history);
+    if (history && history.folder !== folderId(dir)) return { at: 0, checked: 0 };
     return { at, checked: stamp(seen.checked) || at, ...(history && { history }) };
   } catch {
     return { at: 0, checked: 0 };
@@ -151,7 +164,7 @@ function knownTurns(dir: string, known: Known): Unseen {
   const old = new Set([...known.held, ...known.shown]);
   return {
     turns: lines.filter((line) => !old.has(digest(line))).flatMap((line) => toTurn(line) ?? []),
-    history: { held: known.held, shown: digests(lines).filter((key) => !held.has(key)) },
+    history: { ...known, shown: digests(lines).filter((key) => !held.has(key)) },
   };
 }
 
@@ -162,7 +175,7 @@ function datedTurns(dir: string, since: number, now: number): Unseen {
   const allAfter = turns.every((turn) => Date.parse(turn.at) > since);
   return {
     turns: allAfter ? turns.filter((turn) => Date.parse(turn.at) <= now) : [],
-    history: { held: digests(lines), shown: [] },
+    history: { folder: folderId(dir), held: digests(lines), shown: [] },
   };
 }
 
@@ -180,7 +193,11 @@ export function noteHandoff(dir: string, now = Date.now()): boolean {
   return markSeen(dir, {
     at: seen.at || now,
     checked: seen.at ? seen.checked : now,
-    history: { held: whole ? digests(tail ? [...lines, tail] : lines) : null, shown: [] },
+    history: {
+      folder: folderId(dir),
+      held: whole ? digests(tail ? [...lines, tail] : lines) : null,
+      shown: [],
+    },
   });
 }
 

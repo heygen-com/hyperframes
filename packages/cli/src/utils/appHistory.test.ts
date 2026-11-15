@@ -241,6 +241,26 @@ describe("app history", () => {
     expect(asked(dir)).toEqual(["mine"]);
   });
 
+  it("another project at the same path shows nothing until its hand-off, then only new turns", () => {
+    const dir = project();
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "mine");
+    expect(asked(dir)).toEqual(["mine"]);
+
+    const other = project([turn("2026-01-01T09:00:00Z", "shipped"), ""]);
+    rmSync(dir, { recursive: true });
+    renameSync(other, dir);
+    appended(dir, "2026-01-01T11:00:00Z", "shipped later");
+    expect(readSeen(dir).at).toBe(0);
+    expect(asked(dir)).toEqual([]);
+    expect(appHistoryNotice(dir, [])).toBeNull();
+
+    noteHandoff(dir);
+    expect(asked(dir)).toEqual([]);
+    appended(dir, "2026-01-01T12:00:00Z", "mine there");
+    expect(asked(dir)).toEqual(["mine there"]);
+  });
+
   it("a later hand-off keeps the turns the app added since the first for catch-up", () => {
     const dir = project();
     noteHandoff(dir);
