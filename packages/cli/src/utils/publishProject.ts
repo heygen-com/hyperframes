@@ -39,6 +39,11 @@ import {
   outsideFileReference,
 } from "./leftOutReference.js";
 import { isUploadedOutsideFileType } from "./outsideFileType.js";
+import {
+  collectSubCompositionSrcs,
+  decodeTextHonoringBom,
+  resolveCompositionSrc,
+} from "@hyperframes/parsers/asset-resolution";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -411,6 +416,7 @@ interface ExternalAssetContext {
   onLeftOut?: OnLeftOut;
   onOutsideFile?: OnOutsideFile;
   received: (path: string) => boolean;
+  filmPages: Set<string> | null;
 }
 
 function addExternalAsset(
@@ -488,7 +494,7 @@ function includeReferencedProjectFile(
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
 
-/** References with no fallback: a missing file here cannot render. */
+/** References with no fallback: on a page the video plays, a missing file here cannot render. */
 const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
 
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
@@ -690,7 +696,9 @@ function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content
       val,
       dir,
       entryPath,
-      ref !== undefined && HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
+      (ctx.filmPages?.has(entryPath) ?? true) &&
+        ref !== undefined &&
+        HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
     );
   const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "href", "poster"],
@@ -712,6 +720,26 @@ function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content:
   if (result.modified) {
     ctx.fileContents.set(entryPath, Buffer.from(result.css, "utf-8"));
   }
+}
+
+/** Staged pages the video plays, as the renderer mounts them; null (check every page) when one is not staged. */
+function filmPagesOf(
+  absProjectDir: string,
+  fileContents: Map<string, StagedFile>,
+): Set<string> | null {
+  const pages = new Set<string>();
+  const queue = ["index.html"];
+  for (const page of queue) {
+    if (pages.has(page)) continue;
+    const file = fileContents.get(page);
+    if (!Buffer.isBuffer(file)) return null;
+    pages.add(page);
+    for (const src of collectSubCompositionSrcs(decodeTextHonoringBom(file))) {
+      const absPath = resolveCompositionSrc(absProjectDir, src);
+      if (absPath) queue.push(archiveKey(relative(absProjectDir, absPath).replaceAll("\\", "/")));
+    }
+  }
+  return pages;
 }
 
 /**
@@ -736,6 +764,7 @@ export function localizeExternalAssets(
     onLeftOut,
     onOutsideFile,
     received: receivedFiles(absProjectDir),
+    filmPages: filmPagesOf(absProjectDir, fileContents),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
