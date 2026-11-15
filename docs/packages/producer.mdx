@@ -207,6 +207,10 @@ address a name resolves to and connects to the address it checked. A refused req
 fails like any other unreachable asset. Leave it unset for local renders that load
 assets from your own machine or network.
 
+The setting accepts `true`, `1`, `yes` or `on` to turn the restriction on and `false`, `0`,
+`no` or `off` to leave it off, in any letter case. Any other value turns it on and logs a
+warning, so a misspelled value never leaves a render service open.
+
 If your network routes a range that is not a private one, such as a cluster's pod range,
 add it with `PRODUCER_NON_PUBLIC_CIDRS`, a comma-separated list like `192.160.0.0/16`. Asset
 downloads and the render browser then refuse those addresses too. A malformed entry

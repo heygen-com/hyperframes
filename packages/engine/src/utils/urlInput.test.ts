@@ -32,19 +32,22 @@ describe("urlInputArgs", () => {
     expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual(verifyAndReconnect);
   });
 
-  it("limits what an https input may open to HTTPS on a render service", () => {
-    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
-    try {
-      expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual([
-        ...verifyAndReconnect,
-        "-protocol_whitelist",
-        "https,tls,tcp",
-      ]);
-      expect(urlInputArgs("/plan/compiled/bg.mp4", { caBundles: [] })).toEqual([]);
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
+  it.each(["true", "1", " TRUE\n"])(
+    "limits what an https input may open to HTTPS on a render service (%j)",
+    (flag) => {
+      vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", flag);
+      try {
+        expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual([
+          ...verifyAndReconnect,
+          "-protocol_whitelist",
+          "https,tls,tcp",
+        ]);
+        expect(urlInputArgs("/plan/compiled/bg.mp4", { caBundles: [] })).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("adds nothing for local paths and plain http", () => {
     expect(urlInputArgs("/plan/compiled/bg.mp4", { caBundles: [] })).toEqual([]);
