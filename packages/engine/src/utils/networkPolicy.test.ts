@@ -9,6 +9,9 @@ describe("special-use network list", () => {
   it.each(["192.0.66.108", "192.0.1.1", "192.0.3.1"])("leaves public %s reachable", (ip) =>
     expect(isBlockedNetworkHost(ip)).toBe(false),
   );
+  it.each(["64:ff9b::a00:1", "64:ff9b::7f00:1", "64:ff9b:1::1"])("blocks NAT64 %s", (ip) =>
+    expect(isBlockedNetworkHost(ip)).toBe(true),
+  );
 });
 
 describe("IPv4 host class", () => {

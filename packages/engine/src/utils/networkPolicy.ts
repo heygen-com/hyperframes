@@ -93,6 +93,8 @@ for (const [network, prefix] of [
   ["fec0::", 10],
   ["ff00::", 8],
   ["2001:db8::", 32],
+  ["64:ff9b::", 96],
+  ["64:ff9b:1::", 48],
 ] as const) {
   NON_PUBLIC_IPV6_ADDRESSES.addSubnet(network, prefix, "ipv6");
 }
