@@ -115,12 +115,13 @@ async function openRegular(path: string | Buffer): Promise<FileHandle | null> {
   return null;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file; null when it is not a regular file. */
-async function readHead(filePath: string): Promise<Buffer | null> {
+/** Read up to {@link SNIFF_BYTES} from the front of the file, with its length; null when it is not a regular file. */
+async function readHead(filePath: string): Promise<{ head: Buffer; fileSize: number } | null> {
   const fh = await openRegular(filePath);
   if (!fh) return null;
   try {
-    return await readAt(fh, SNIFF_BYTES, 0);
+    const { size } = await fh.stat();
+    return { head: await readAt(fh, SNIFF_BYTES, 0), fileSize: size };
   } finally {
     await fh.close().catch(() => {});
   }
@@ -139,14 +140,34 @@ const BMFF_BOX_TYPES = new Set([
   "pdin",
 ]);
 
-function opensWithMediaBox(head: Buffer): boolean {
-  if (head.length < 8) return false;
-  const size = head.readUInt32BE(0);
-  return (size < 2 || size >= 8) && BMFF_BOX_TYPES.has(head.toString("latin1", 4, 8));
+/** A box's declared length, from its 64-bit size when its size is 1; -1 when shorter than its own header. */
+function boxLength(head: Buffer, offset: number): number {
+  const size = head.readUInt32BE(offset);
+  if (size !== 1) return size >= 8 ? size : -1;
+  if (offset + 16 > head.length) return -1;
+  const largeSize = Number(head.readBigUInt64BE(offset + 8));
+  return largeSize >= 16 ? largeSize : -1;
 }
 
-function startsWithDocumentByte(head: Buffer): boolean {
-  if (opensWithMediaBox(head)) return false;
+/** Where the media box at `offset` ends, or -1 when no box header that fits the file is there. */
+function mediaBoxEnd(head: Buffer, offset: number, fileSize: number): number {
+  const type = head.toString("latin1", offset + 4, offset + 8);
+  if (offset + 8 > head.length || !BMFF_BOX_TYPES.has(type)) return -1;
+  if (head.readUInt32BE(offset) === 0) return type === "mdat" ? fileSize : -1;
+  const length = boxLength(head, offset);
+  return length >= 0 && offset + length <= fileSize ? offset + length : -1;
+}
+
+/** An mp4/mov opening: an ftyp or styp box that fits the file, then another media box when the sniff window holds its header. */
+function opensWithMediaBox(head: Buffer, fileSize: number): boolean {
+  if (!["ftyp", "styp"].includes(head.toString("latin1", 4, 8))) return false;
+  const end = mediaBoxEnd(head, 0, fileSize);
+  if (end < 0) return false;
+  return end === fileSize || end + 16 > head.length || mediaBoxEnd(head, end, fileSize) >= 0;
+}
+
+function startsWithDocumentByte(head: Buffer, fileSize: number): boolean {
+  if (opensWithMediaBox(head, fileSize)) return false;
   for (let index = byteOrderMarkLength(head); index < head.length; index++) {
     const byte = head[index];
     if (byte === undefined) break;
@@ -176,8 +197,12 @@ function startsWithDocumentByte(head: Buffer): boolean {
  */
 export async function isNotMediaPayload(filePath: string): Promise<boolean> {
   try {
-    const head = await readHead(filePath);
-    return !head || startsWithDocumentByte(head) || (await playlistLeavesItsFolder(filePath));
+    const sniffed = await readHead(filePath);
+    return (
+      !sniffed ||
+      startsWithDocumentByte(sniffed.head, sniffed.fileSize) ||
+      (await playlistLeavesItsFolder(filePath))
+    );
   } catch {
     return false;
   }
