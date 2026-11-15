@@ -15,6 +15,7 @@ export const DESCRIPTION_MAX = 320;
 // that has every CLI command run through the launcher (`launcherProblems`).
 export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
+  // +64 B for the lane pointer to format.md.
   hyperframes: 7712,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
   "hyperframes-cli": 7776,
