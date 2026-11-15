@@ -73,7 +73,15 @@ describe("urlInputArgs", () => {
         const concat = join(dir, "concat.mp4");
         writeFileSync(concat, "ffconcat version 1.0\nfile https://127.0.0.1:9/a.mp4\n");
         const probe = (path: string) =>
-          spawnSync(getFfprobeBinary(), ["-v", "error", "-format_whitelist", formats, path]).status;
+          spawnSync(getFfprobeBinary(), [
+            "-v",
+            "error",
+            "-format_whitelist",
+            formats,
+            "-show_format",
+            "--",
+            path,
+          ]).status;
         expect(probe(video)).toBe(0);
         expect(probe(playlist)).not.toBe(0);
         expect(probe(concat)).not.toBe(0);

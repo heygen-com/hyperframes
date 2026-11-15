@@ -29,7 +29,7 @@ import {
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
-import type { CompositionMetadata } from "../shared.js";
+import { audioWorkDir, type CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
@@ -94,10 +94,6 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
       ...(failures ?? []).filter((failure) => failure !== interrupted),
     ]),
   });
-}
-
-export function audioWorkDir(workDir: string): string {
-  return join(workDir, "audio-work");
 }
 
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {

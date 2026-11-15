@@ -77,7 +77,8 @@ import {
   planFrameWeights,
   withChunkCaptureCost,
 } from "./chunkWeights.js";
-import { audioWorkDir, runAudioStage } from "../render/stages/audioStage.js";
+import { runAudioStage } from "../render/stages/audioStage.js";
+import { audioWorkDir } from "../render/shared.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import {
   appendVideoAudioFromProbe,

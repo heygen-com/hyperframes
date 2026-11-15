@@ -155,6 +155,7 @@ import {
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
@@ -252,7 +253,7 @@ import {
   planVideoLayerPassthrough,
   type VideoLayerPlan,
 } from "./render/videoLayerPassthroughPlan.js";
-import { audioWorkDir, runAudioStage } from "./render/stages/audioStage.js";
+import { runAudioStage } from "./render/stages/audioStage.js";
 import { inspectDiskCaptureHeadroom, runCaptureStage } from "./render/stages/captureStage.js";
 import {
   type CaptureStreamingStageResult,
