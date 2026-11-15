@@ -293,11 +293,18 @@ test("a received .env key still works with no saved credential, and is named onc
   });
 });
 
-for (const [why, oauth] of [
-  ["expired", { client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g", expires_at: "2000-01-01T00:00:00Z" }],
+for (const [why, oauth, state, hint] of [
+  [
+    "expired",
+    { client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g", expires_at: "2000-01-01T00:00:00Z" },
+    { expired: true },
+    /OAuth token expired — run `npx hyperframes auth refresh`/,
+  ],
   [
     "from another client",
     { client_id: "shared-heygen-client", expires_at: "2099-01-01T00:00:00Z" },
+    { expired: true, foreign: true },
+    /another OAuth client or environment — run `npx hyperframes auth login`/,
   ],
 ]) {
   test(`a received .env key never replaces a saved login that is ${why}`, () => {
@@ -308,12 +315,28 @@ for (const [why, oauth] of [
         ...oauth,
       };
       writeFileSync(join(dir, "credentials"), JSON.stringify({ oauth: login }));
-      assert.deepEqual(heygenCredential(), { expired: true });
-      assert.throws(() => heygenAuthHeaders(), /OAuth token expired/);
+      assert.deepEqual(heygenCredential(), state);
+      assert.throws(() => heygenAuthHeaders(), hint);
       assert.deepEqual(notes, []);
     });
   });
 }
+
+test("a malformed credentials file refuses a received .env key and says to fix that file", () => {
+  withProjectEnv("hg_received", JSON.stringify({ files: [".env"] }), (dir, notes) => {
+    writeFileSync(join(dir, "credentials"), "{not valid");
+    assert.equal(heygenCredential(), null);
+    assert.throws(() => heygenAuthHeaders(), /can't be read \(not valid JSON\)/);
+    assert.deepEqual(notes, []);
+  });
+});
+
+test("a person's own project .env key stands in for a malformed credentials file", () => {
+  withProjectEnv("hg_own", undefined, (dir) => {
+    writeFileSync(join(dir, "credentials"), "{not valid");
+    assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_own" } });
+  });
+});
 
 test("a person's own project .env key stands in for a saved login that expired", () => {
   withProjectEnv("hg_own", undefined, (dir) => {
@@ -389,7 +412,7 @@ test("an expired or foreign OAuth login never falls back to a saved API wallet",
       credential.oauth.expires_at = "2099-01-01T00:00:00Z";
       credential.oauth.client_id = "shared-heygen-client";
       writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
-      assert.deepEqual(heygenCredential(), { expired: true });
+      assert.deepEqual(heygenCredential(), { expired: true, foreign: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

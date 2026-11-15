@@ -6,8 +6,8 @@
  *   4. The API key saved in `~/.hyperframes/credentials`, else a received project `.env` key
  *
  * The env key goes first for a host app's gateway, and once HeyGen refused to refresh the login.
- * A broken store gives way to an env key, else surfaces `ErrInvalidStore`. Neither a saved API key
- * nor a received `.env` key replaces an expired login (60s skew).
+ * A broken store gives way to an env key not from a received `.env`, else surfaces `ErrInvalidStore`.
+ * Neither a saved API key nor a received `.env` key replaces an expired login (60s skew).
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
@@ -77,8 +77,8 @@ async function fromStore(
   now: Date,
   envKey: ApiKeyCredential | undefined,
 ): Promise<ResolvedCredential> {
-  const store = await readStore().catch((err: unknown) => {
-    if (envKey) return null;
+  const store = await readStore().catch(async (err: unknown) => {
+    if (envKey && !(await fromReceivedProjectEnv(envKey))) return null;
     throw err;
   });
   if (!store || store.source === "absent") {

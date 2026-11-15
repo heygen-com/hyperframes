@@ -216,6 +216,18 @@ describe("auth/resolver", () => {
     },
   );
 
+  it("says the credentials file cannot be read rather than use a received .env key", async () => {
+    await projectEnvKey("received-key-6", JSON.stringify({ files: [".env"] }));
+    await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "INVALID_STORE" });
+  });
+
+  it("keeps a person's own project .env key in place of a broken credentials file", async () => {
+    await projectEnvKey("own-key-3");
+    await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-3", source: "env" });
+  });
+
   it("keeps a person's own project .env key in place of a login that expired", async () => {
     await projectEnvKey("own-key-2");
     await writeStore({ oauth: { access_token: "stale-at", expires_at: anHourAgo() } });
