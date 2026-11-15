@@ -1,4 +1,13 @@
 import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
+import {
+  cssUrlMatches,
+  hasBackgroundImageDeclaration,
+  importRuleMatches,
+  localFontFaceUrlMatches,
+  remoteBackgroundUrlMatches,
+  remoteFontFaceUrlMatches,
+  replaceMatches,
+} from "@hyperframes/parsers/css-url-scans";
 // fallow-ignore-file code-duplication complexity
 /**
  * HTML Compiler for Producer
@@ -23,7 +32,6 @@ import {
   extractResolvedMedia,
   clampDurations,
   shouldClampResolvedMediaDuration,
-  CSS_URL_RE,
   isNonRelativeUrl,
   parseStrictFiniteTimingNumber,
   readMediaStart,
@@ -462,10 +470,6 @@ export function detectThreeDTransformUsage(html: string): boolean {
   return THREE_D_CONTEXT_PATTERN.test(html);
 }
 
-/** A background declaration whose value paints an image (gradient or url). */
-const BACKGROUND_IMAGE_DECL_PATTERN =
-  /(?:^|;|\{)\s*background(?:-image)?\s*:[^;}]*(?:\bgradient\s*\(|url\s*\()/i;
-
 /**
  * Background-image signals on ancestors of the composition root.
  * drawElementImage only paints the captured subtree; drawElementService's
@@ -492,7 +496,7 @@ export function detectAncestorBackgroundImage(html: string): boolean {
   // Inline styles on the ancestor chain.
   for (const el of ancestors) {
     const style = el.getAttribute("style");
-    if (style && BACKGROUND_IMAGE_DECL_PATTERN.test(`{${style}}`)) return true;
+    if (style && hasBackgroundImageDeclaration(`{${style}}`)) return true;
   }
   // <style> rules: any rule carrying an image-painting background declaration
   // whose selector resolves to an ancestor of the root. Selector matching goes
@@ -502,7 +506,7 @@ export function detectAncestorBackgroundImage(html: string): boolean {
     const css = styleEl.textContent ?? "";
     for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
       const [, selectorList = "", declarations = ""] = rule;
-      if (!BACKGROUND_IMAGE_DECL_PATTERN.test(`{${declarations}}`)) continue;
+      if (!hasBackgroundImageDeclaration(`{${declarations}}`)) continue;
       for (const selector of selectorList.split(",")) {
         const sel = selector.trim();
         if (!sel || sel.startsWith("@")) continue;
@@ -1025,7 +1029,6 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
   });
 
   const styleEls = head ? Array.from(head.querySelectorAll("style")) : [];
-  const importRe = /@import\s+url\([^)]*\)\s*;|@import\s+["'][^"']+["']\s*;/gi;
   for (const run of styleEls.length > 1 ? headStyleRuns(styleEls) : []) {
     const imports: string[] = [];
     const cssParts: string[] = [];
@@ -1034,7 +1037,7 @@ function coalesceHeadStylesAndBodyScripts(html: string): string {
     for (const el of run) {
       const raw = (el.textContent || "").trim();
       if (!raw) continue;
-      const nonImportCss = raw.replace(importRe, (match) => {
+      const nonImportCss = replaceMatches(raw, importRuleMatches(raw), (match) => {
         const cleaned = match.trim();
         if (!seenImports.has(cleaned)) {
           seenImports.add(cleaned);
@@ -1481,7 +1484,7 @@ export function collectExternalAssets(
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent || "";
     if (!css.includes("url(")) continue;
-    const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+    const rewritten = replaceMatches(css, cssUrlMatches(css), (full, quote, rawUrl) => {
       const result = processPath((rawUrl || "").trim());
       if (!result) return full;
       return `url(${quote || ""}${result}${quote || ""})`;
@@ -1493,7 +1496,7 @@ export function collectExternalAssets(
   for (const el of document.querySelectorAll("[style]")) {
     const style = el.getAttribute("style") || "";
     if (!style.includes("url(")) continue;
-    const rewritten = style.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+    const rewritten = replaceMatches(style, cssUrlMatches(style), (full, quote, rawUrl) => {
       const result = processPath((rawUrl || "").trim());
       if (!result) return full;
       return `url(${quote || ""}${result}${quote || ""})`;
@@ -1689,12 +1692,6 @@ export async function localizeRemoteImageSources(
   );
 }
 
-// Match a remote url() inside a `background` / `background-image` CSS declaration
-// (style blocks or inline style attrs). `[^;}"']*?` lets position/color tokens
-// precede the url() in the shorthand while stopping at the declaration boundary.
-const REMOTE_BG_URL_RE =
-  /background(?:-image)?\s*:\s*[^;}"']*?url\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/gi;
-
 /**
  * Download remote CSS `background-image: url(https://...)` references and rewrite
  * them to local same-origin paths.
@@ -1713,10 +1710,8 @@ export async function localizeRemoteBackgroundImages(
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set<string>();
-  const re = new RegExp(REMOTE_BG_URL_RE.source, REMOTE_BG_URL_RE.flags);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    if (m[1] && !isGoogleFontsUrl(m[1])) urlSet.add(m[1]);
+  for (const { parts } of remoteBackgroundUrlMatches(html)) {
+    if (parts[1] && !isGoogleFontsUrl(parts[1])) urlSet.add(parts[1]);
   }
   return downloadAndRewriteUrls(
     urlSet,
@@ -1729,16 +1724,6 @@ export async function localizeRemoteBackgroundImages(
     (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
   );
 }
-
-// Match url("https://...") or url('https://...') inside @font-face blocks.
-// We scan the full HTML (which includes <style> blocks) — matching against
-// @font-face context precisely would require a CSS parser; instead we match
-// any url(https?://...) that appears inside a @font-face rule by looking for
-// the surrounding context. Simple pattern: capture all HTTP url() references
-// that follow a @font-face opener (before the closing brace). The regex is
-// applied to the CSS text extracted from <style> blocks so it can't
-// accidentally match JavaScript string literals.
-const REMOTE_FONTFACE_URL_RE = /url\(["']?(https?:\/\/[^"')]+)["']?\)/gi;
 
 /**
  * Download any remote font URLs from `@font-face` src declarations, rewrite
@@ -1881,7 +1866,7 @@ function projectStylesheetFontFamilies(html: string, projectDir: string): string
         .exec(face)?.[1]
         ?.trim()
         .replace(/^['"]|['"]$/g, "");
-      const shipsFile = [...face.matchAll(LOCAL_FONTFACE_URL_RE)].some(([, url = ""]) => {
+      const shipsFile = [...localFontFaceUrlMatches(face)].some(({ parts: [, url = ""] }) => {
         const path = decodedUrlPath(url);
         const file = path.startsWith("/")
           ? resolve(projectDir, `.${path}`)
@@ -1922,10 +1907,8 @@ function collectFontFaceUrls(html: string): Set<string> {
         j++;
       }
       const block = cssText.slice(braceStart + 1, j - 1);
-      const urlRe = new RegExp(REMOTE_FONTFACE_URL_RE.source, REMOTE_FONTFACE_URL_RE.flags);
-      let urlMatch: RegExpExecArray | null;
-      while ((urlMatch = urlRe.exec(block)) !== null) {
-        if (urlMatch[1]) urlSet.add(urlMatch[1]);
+      for (const { parts } of remoteFontFaceUrlMatches(block)) {
+        if (parts[1]) urlSet.add(parts[1]);
       }
       i = j;
     }
@@ -1955,12 +1938,6 @@ function localizeFontFaceUrls(
     (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );
 }
-
-// `file:` joins data: and http(s): in the exclusion list. Without it an
-// absolute `file:///abs/path/font.ttf` src was read as a project-RELATIVE path,
-// resolved to `<projectDir>/file:/abs/path/...`, and the failed read was
-// swallowed below — leaving the rule untouched for the browser to reject.
-const LOCAL_FONTFACE_URL_RE = /url\(["']?(?!data:|file:|https?:\/\/)([^"')]+)["']?\)/gi;
 
 /**
  * Match one `url(<path>)` occurrence, with or without quotes, for a literal
@@ -2016,10 +1993,8 @@ async function embedLocalFontFaces(
     let ffMatch: RegExpExecArray | null;
     while ((ffMatch = ffRe.exec(cssText)) !== null) {
       const block = ffMatch[1] ?? "";
-      const urlRe = new RegExp(LOCAL_FONTFACE_URL_RE.source, LOCAL_FONTFACE_URL_RE.flags);
-      let urlMatch: RegExpExecArray | null;
-      while ((urlMatch = urlRe.exec(block)) !== null) {
-        const localPath = urlMatch[1];
+      for (const { parts } of localFontFaceUrlMatches(block)) {
+        const localPath = parts[1];
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
         if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
