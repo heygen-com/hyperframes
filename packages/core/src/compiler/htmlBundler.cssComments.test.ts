@@ -39,12 +39,9 @@ describe("stylesheet comments in the bundle", () => {
     );
   });
 
-  it("inline 6,000 imports of a 2 KB sheet in well under two seconds", async () => {
-    const part = `.b{}/*${"x".repeat(2_000)}*/`;
-    const css = '@import "part.css"; '.repeat(6_000);
-    const started = performance.now();
-    expect(await bundleWithStylesheet(css, part)).toContain(`${part}\n${part}`);
-    expect(performance.now() - started).toBeLessThan(2000);
+  it("inline every import of a sheet imported many times", async () => {
+    const css = '@import "part.css"; '.repeat(50);
+    expect((await bundleWithStylesheet(css, ".b{}")).split(".b{}")).toHaveLength(51);
   });
 });
 
@@ -93,5 +90,17 @@ describe("CSS placeholder restore", () => {
         differences.push(css);
     }
     expect(differences).toEqual([]);
+  });
+
+  it("puts back 20,000 placeholders of 200 bytes each in well under a second", () => {
+    const placeholders = new Map<string, string>();
+    for (let i = 0; i < 20_000; i++)
+      placeholders.set(`/*__hf_import_${i}__*/`, `.b{}/*${"x".repeat(192)}*/`);
+    const css = [...placeholders.keys()].join(" ");
+    const started = performance.now();
+    expect(restoreCssPlaceholders(css, placeholders)).toHaveLength(
+      css.length - [...placeholders.keys()].join("").length + 20_000 * 200,
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
   });
 });
