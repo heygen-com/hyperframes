@@ -13,12 +13,12 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
   description="Released - 2026-11-15"
   tags={["Release", "Studio", "CLI", "Studio Server"]}
 >
-A sealed Studio preview now plays a video's proxy copy and reloads under one current frame token. The file servers check the Host they are asked under, and publish and cloud render staging skip other computers' network shares.
+A sealed Studio preview now plays a video's proxy copy and reloads under one current frame token. Cloud render sends one zip when it fits and uploads only the largest media. The file servers check the Host they are asked under, and publish and cloud render staging skip other computers' network shares.
 
 ## Fixes
 
 - **CLI:** Cloud render sends one zip when it fits and uploads only the largest media ([9bc2b231d](https://github.com/heygen-com/hyperframes/commit/9bc2b231d339609a3f2f48b63f80b162a3d97a4d), [#7859](https://github.com/heygen-com/hyperframes/pull/7859)).
-- **Engine:** Download limits apply per attempt and per process ([4c09c8b79](https://github.com/heygen-com/hyperframes/commit/4c09c8b7937eb8972b947df06dd187608ff02345), [#7867](https://github.com/heygen-com/hyperframes/pull/7867)).
+- **Docs:** The engine docs say download limits apply per attempt and per process ([4c09c8b79](https://github.com/heygen-com/hyperframes/commit/4c09c8b7937eb8972b947df06dd187608ff02345), [#7867](https://github.com/heygen-com/hyperframes/pull/7867)).
 - **CLI:** Upload archives never include credential or agent-state files ([52d43f33a](https://github.com/heygen-com/hyperframes/commit/52d43f33a3102e3fadfbe3d6d24f18c9f2ea689e), [#7830](https://github.com/heygen-com/hyperframes/pull/7830)).
 - Static, producer and engine file servers check Host and mark runtime pages ([490199cef](https://github.com/heygen-com/hyperframes/commit/490199cef8475e65eaa166b23bbf1f3034d272a9), [#7852](https://github.com/heygen-com/hyperframes/pull/7852)).
 - **Studio:** A sealed preview's reload asks under one current frame token ([1f17b3dfe](https://github.com/heygen-com/hyperframes/commit/1f17b3dfebf9cc1bfd20107c089151e0e8b07910), [#7862](https://github.com/heygen-com/hyperframes/pull/7862)).
