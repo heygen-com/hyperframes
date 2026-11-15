@@ -6,21 +6,20 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import { windowsLocalAppData } from "./windowsAppData.js";
 import {
-  type PlainBytes,
   readPlainFile,
   readRecord,
-  readRecordBytes,
+  readRecordTail,
   recordChangedAt,
-  recordFiles,
   replaceFile,
 } from "./projectRecords.js";
 
-// The desktop app records each chat turn in .hyperframes/, one JSON object a line, appended. The seen record holds
-// the newest turn shown here, when files were last checked, and how far into the history file this person has
-// read. It starts at a hand-off and lives in this person's ~/.hyperframes, keyed by the project's real path, so a
-// file a cloned repo ships can never claim one, and lines the history already held at the hand-off are never shown.
+// The desktop app records each chat turn in .hyperframes/, one JSON object a line. The seen record holds the newest
+// turn shown here, when files were last checked, and digests of the history lines this person has no news in. It
+// starts at a hand-off and lives in this person's ~/.hyperframes, keyed by the project's real path, so a file a
+// cloned repo ships can never claim one, and lines the history already held at the hand-off are never shown.
 export const APP_HISTORY = "app-history.jsonl";
 const MAX_READ_BYTES = 1024 * 1024;
+const MAX_SEEN_BYTES = 2 * MAX_READ_BYTES;
 const MAX_FIELD_CHARS = 2000;
 const MAX_WALKED_FILES = 5000;
 const SKIPPED_DIRS = new Set(["node_modules", "renders", "snapshots"]);
@@ -55,11 +54,11 @@ export function readAppTurns(dir: string): AppTurn[] {
   return turnsIn(readRecord(dir, APP_HISTORY, MAX_READ_BYTES));
 }
 
-/** The history file ("dev:ino", "" for none), its bytes already read, and the digest of the last line shown. */
-interface HistoryMark {
-  file: string;
-  size: number;
-  line?: string;
+/** Digests of the lines the history held at the hand-off (null when it was too large to note: nothing shows until
+ * the next hand-off), and of the lines shown since that it still holds. */
+interface Known {
+  held: string[] | null;
+  shown: string[];
 }
 
 export interface Seen {
@@ -67,17 +66,19 @@ export interface Seen {
   at: number;
   /** When the project's files were last checked for changes. */
   checked: number;
-  /** Absent in a record written before the history was marked. */
-  history?: HistoryMark;
+  /** Absent in a record written before the history's lines were noted. */
+  history?: Known;
 }
 
 const stamp = (value: unknown): number => (typeof value === "string" ? Date.parse(value) || 0 : 0);
 
-function toMark(value: unknown): HistoryMark | undefined {
-  const { file, size, line } = Object(value) as Record<string, unknown>;
-  if (typeof file !== "string" || typeof size !== "number") return undefined;
-  if (!Number.isSafeInteger(size) || size < 0) return undefined;
-  return typeof line === "string" ? { file, size, line } : { file, size };
+const isDigests = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+function toKnown(value: unknown): Known | undefined {
+  const { held, shown } = Object(value) as Record<string, unknown>;
+  if ((held !== null && !isDigests(held)) || !isDigests(shown)) return undefined;
+  return { held, shown };
 }
 
 export function seenPath(dir: string): string {
@@ -98,9 +99,11 @@ export function seenPath(dir: string): string {
 
 export function readSeen(dir: string): Seen {
   try {
-    const seen: Record<string, unknown> = Object(JSON.parse(readPlainFile(seenPath(dir), 4096)));
+    const seen: Record<string, unknown> = Object(
+      JSON.parse(readPlainFile(seenPath(dir), MAX_SEEN_BYTES)),
+    );
     const at = stamp(seen.at);
-    const history = toMark(seen.history);
+    const history = toKnown(seen.history);
     return { at, checked: stamp(seen.checked) || at, ...(history && { history }) };
   } catch {
     return { at: 0, checked: 0 };
@@ -120,94 +123,64 @@ export function markSeen(dir: string, seen: Seen): boolean {
   return replaceFile(path, JSON.stringify(record), 0o600);
 }
 
-const digest = (line: Buffer): string => createHash("sha256").update(line).digest("hex");
+const digest = (line: string): string =>
+  createHash("sha256").update(line).digest("hex").slice(0, 16);
 
-interface Line {
-  bytes: Buffer;
-  endsAt: number;
-}
+const digests = (lines: string[]): string[] => [...new Set(lines.map(digest))];
 
-/** The whole lines of `read` from the byte `from` on, and the byte after the last of them. */
-function wholeLines(read: PlainBytes, from: number): { lines: Line[]; end: number } {
-  let at = Math.max(0, from - read.start);
-  // Read from partway into a line: that line is not whole.
-  if (from < read.start) at = read.bytes.indexOf(0x0a) + 1 || read.bytes.length;
-  const lines: Line[] = [];
-  for (let next = read.bytes.indexOf(0x0a, at); next !== -1; next = read.bytes.indexOf(0x0a, at)) {
-    if (next > at)
-      lines.push({ bytes: read.bytes.subarray(at, next), endsAt: read.start + next + 1 });
-    at = next + 1;
-  }
-  return { lines, end: read.start + at };
-}
-
-function afterLine(read: PlainBytes, line: string): number | null {
-  const found = wholeLines(read, read.start).lines.filter((whole) => digest(whole.bytes) === line);
-  return found.at(-1)?.endsAt ?? null;
-}
-
-const grewFrom = (read: PlainBytes | null, mark: HistoryMark): boolean =>
-  (!mark.file || mark.file === read?.file) && (read?.size ?? 0) >= mark.size;
-
-const setAside = (dir: string, file: string): boolean =>
-  [...recordFiles(dir)].some(
-    ([name, held]) => name !== APP_HISTORY && name.startsWith("app-history.") && held === file,
-  );
-
-/** Past the marked bytes, past the last line shown once the app trimmed the history, or from the start of the one
- * it began after setting the marked file aside. Null for a history replaced or cut short: nothing until a hand-off. */
-function unseenStart(dir: string, read: PlainBytes | null, mark: HistoryMark): number | null {
-  if (grewFrom(read, mark)) return mark.size;
-  const found = read && mark.line ? afterLine(read, mark.line) : null;
-  if (found !== null) return found;
-  return mark.file && setAside(dir, mark.file) ? 0 : null;
-}
-
-function markedTurns(dir: string, mark: HistoryMark): Unseen {
-  const read = readRecordBytes(dir, APP_HISTORY, MAX_READ_BYTES);
-  const start = unseenStart(dir, read, mark);
-  if (start === null) return { turns: [] };
-  if (!read) return { turns: [], history: mark };
-  const { lines, end } = wholeLines(read, start);
-  const last = lines.at(-1);
-  const line = last ? digest(last.bytes) : mark.line;
-  return {
-    turns: lines.flatMap((whole) => toTurn(whole.bytes.toString("utf8")) ?? []),
-    history: { file: read.file, size: end, ...(line && { line }) },
-  };
-}
-
-/** A record from before the history was marked: turns dated after `since`, not after `now`; then marked at its end. */
-function datedTurns(dir: string, since: number, now: number): Unseen {
-  const read = readRecordBytes(dir, APP_HISTORY, MAX_READ_BYTES);
-  const turns = turnsIn(read?.bytes.toString("utf8") ?? "").filter(
-    (turn) => Date.parse(turn.at) > since && Date.parse(turn.at) <= now,
-  );
-  const size = read ? wholeLines(read, read.start).end : 0;
-  return { turns, history: { file: read?.file ?? "", size } };
+/** The history's whole lines; a line still being written, after the last newline, is `tail`. */
+function historyLines(dir: string): { lines: string[]; tail: string; whole: boolean } {
+  const read = readRecordTail(dir, APP_HISTORY, MAX_READ_BYTES);
+  const parts = (read?.text ?? "").split("\n");
+  const startsMidLine = read !== null && !read.whole;
+  if (startsMidLine) parts.shift();
+  const tail = parts.pop() ?? "";
+  return { lines: parts.filter(Boolean), tail, whole: read?.whole ?? true };
 }
 
 interface Unseen {
   turns: AppTurn[];
-  /** Absent when the history is not the one marked. */
-  history?: HistoryMark;
+  history?: Known;
 }
 
-/** The turns this person's app recorded since the hand-off or the last look, and where the history then stands. */
+/** Lines not held at the hand-off nor shown since, in the history's order, whatever rewrote the file. */
+function knownTurns(dir: string, known: Known): Unseen {
+  if (!known.held) return { turns: [] };
+  const { lines } = historyLines(dir);
+  const held = new Set(known.held);
+  const old = new Set([...known.held, ...known.shown]);
+  return {
+    turns: lines.filter((line) => !old.has(digest(line))).flatMap((line) => toTurn(line) ?? []),
+    history: { held: known.held, shown: digests(lines).filter((key) => !held.has(key)) },
+  };
+}
+
+/** A record from before lines were noted: only when every turn is dated after `since`, those not after `now`. */
+function datedTurns(dir: string, since: number, now: number): Unseen {
+  const { lines } = historyLines(dir);
+  const turns = lines.flatMap((line) => toTurn(line) ?? []);
+  const allAfter = turns.every((turn) => Date.parse(turn.at) > since);
+  return {
+    turns: allAfter ? turns.filter((turn) => Date.parse(turn.at) <= now) : [],
+    history: { held: digests(lines), shown: [] },
+  };
+}
+
+/** The turns this person's app recorded since the hand-off or the last look, and what is then known. */
 export function unseenTurns(dir: string, seen: Seen, now = Date.now()): Unseen {
   if (!seen.at) return { turns: [] };
-  return seen.history ? markedTurns(dir, seen.history) : datedTurns(dir, seen.at, now);
+  return seen.history ? knownTurns(dir, seen.history) : datedTurns(dir, seen.at, now);
 }
 
-/** The first hand-off from here, or one after the marked history was replaced, marks the history as it is now. */
+/** A hand-off notes every line the history holds, unless one since the update already did. */
 export function noteHandoff(dir: string, now = Date.now()): boolean {
   const seen = readSeen(dir);
-  if (seen.at && (!seen.history || unseenTurns(dir, seen).history)) return true;
-  const read = readRecordBytes(dir, APP_HISTORY, 0);
+  if (seen.at && seen.history?.held) return true;
+  const { lines, tail, whole } = historyLines(dir);
   return markSeen(dir, {
     at: seen.at || now,
     checked: seen.at ? seen.checked : now,
-    history: { file: read?.file ?? "", size: read?.size ?? 0 },
+    history: { held: whole ? digests(tail ? [...lines, tail] : lines) : null, shown: [] },
   });
 }
 
