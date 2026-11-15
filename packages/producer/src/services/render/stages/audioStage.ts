@@ -96,6 +96,10 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
   });
 }
 
+export function audioWorkDir(workDir: string): string {
+  return join(workDir, "audio-work");
+}
+
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
   return collectScratchLeftovers(
     () => runAudioStageScoped(input),
@@ -202,7 +206,7 @@ async function mixAudioForDelivery(
       audioResult = await processCompositionAudio(
         audios,
         projectDir,
-        join(workDir, "audio-work"),
+        audioWorkDir(workDir),
         audioOutputPath,
         duration,
         abortSignal,

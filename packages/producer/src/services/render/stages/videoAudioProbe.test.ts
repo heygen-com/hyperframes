@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getFfmpegBinary } from "@hyperframes/engine";
+import { _setDownloadFetchForTests, getFfmpegBinary } from "@hyperframes/engine";
 import { collectRenderMedia } from "../../renderMediaCollector.js";
 import { appendVideoAudioFromProbe } from "./extractVideosStage.js";
 
@@ -17,7 +17,11 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-video-audio-probe-"));
     mkdirSync(join(dir, "compiled"));
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    _setDownloadFetchForTests();
+    delete process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+  });
 
   const make = (name: string, withAudio: boolean) => {
     const args = [
@@ -82,5 +86,59 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
+  });
+  it("on a render service probes a composition URL from a copy the downloader fetched", async () => {
+    make("talk.mp4", true);
+    const bytes = readFileSync(join(dir, "talk.mp4"));
+    const fetched: string[] = [];
+    _setDownloadFetchForTests(async (url) => {
+      fetched.push(url);
+      return new Response(bytes, {
+        status: 200,
+        headers: { "content-type": "video/mp4", "content-length": String(bytes.length) },
+      });
+    });
+    process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
+    const src = "https://media.probe.example/talk.mp4";
+    const composition =
+      collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
+      <video id="r" src="${src}" data-start="0" data-duration="2" data-has-audio="true"></video>
+    </div>`);
+    composition.audios.length = 0;
+    const downloadDir = join(dir, "audio-work");
+
+    await appendVideoAudioFromProbe({
+      projectDir: dir,
+      compiledDir: join(dir, "compiled"),
+      composition,
+      downloadDir,
+    });
+
+    expect(fetched).toEqual([src]);
+    expect(readdirSync(downloadDir)).toHaveLength(1);
+    expect(composition.audios.map((audio) => audio.id)).toEqual(["r-audio"]);
+    expect(composition.audios[0]?.src).toBe(src);
+  });
+
+  it("on a render service skips a composition URL the downloader refuses", async () => {
+    _setDownloadFetchForTests(async () => {
+      throw Object.assign(new Error("host resolves to a non-public address"), {
+        code: "HF_NON_PUBLIC_ADDRESS",
+      });
+    });
+    process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
+    const composition =
+      collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
+      <video id="r" src="https://media.probe.example/clip.mp4" data-start="0" data-duration="2" data-has-audio="true"></video>
+    </div>`);
+    composition.audios.length = 0;
+
+    await appendVideoAudioFromProbe({
+      projectDir: dir,
+      compiledDir: join(dir, "compiled"),
+      composition,
+    });
+
+    expect(composition.audios).toEqual([]);
   });
 });

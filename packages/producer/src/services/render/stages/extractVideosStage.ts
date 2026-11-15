@@ -52,6 +52,9 @@ import {
   resolveVideoExtractionWindow,
   isHttpUrl,
   assertPublicHttpsUrl,
+  downloadToTemp,
+  resolveRestrictPageNetwork,
+  writeUrlDownloadTelemetry,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
@@ -653,28 +656,47 @@ function isPublicHttpsUrl(url: string): boolean {
   }
 }
 
-/**
- * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
- * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
- */
-export async function appendVideoAudioFromProbe(input: {
+interface VideoAudioProbeInput {
   projectDir: string;
   compiledDir: string;
   composition: CompositionMetadata;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
-}): Promise<void> {
-  const { projectDir, compiledDir, composition, urlByAbsentLocalPath } = input;
+  /** Where a composition URL is downloaded before probing on a render service. Defaults to the compile's remote media folder. */
+  downloadDir?: string;
+  signal?: AbortSignal;
+}
+
+function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {
+  const path = resolveProjectRelativeSrc(src, input.projectDir, input.compiledDir);
+  const readFrom = input.urlByAbsentLocalPath?.get(path) ?? path;
+  return isHttpUrl(readFrom) || existsSync(readFrom) ? readFrom : null;
+}
+
+/** On a render service a composition URL is fetched under the download address rules and probed from that copy. */
+async function remoteProbeSource(src: string, input: VideoAudioProbeInput): Promise<string | null> {
+  if (!isPublicHttpsUrl(src)) return null;
+  if (!resolveRestrictPageNetwork()) return src;
+  const downloadDir = input.downloadDir ?? join(input.compiledDir, REMOTE_MEDIA_SUBDIR);
+  return downloadToTemp(src, downloadDir, undefined, input.signal, undefined, {
+    onTelemetry: writeUrlDownloadTelemetry,
+  }).catch(() => null);
+}
+
+/**
+ * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
+ * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
+ */
+export async function appendVideoAudioFromProbe(input: VideoAudioProbeInput): Promise<void> {
+  const { composition } = input;
   const videos = composition.videos.filter(
     (video) => !isVideoPastTimelineEnd(video, composition.duration),
   );
   const probed = await Promise.all(
     videos.map(async (video) => {
-      if (isHttpUrl(video.src) && !isPublicHttpsUrl(video.src)) return null;
-      const path = isHttpUrl(video.src)
-        ? video.src
-        : resolveProjectRelativeSrc(video.src, projectDir, compiledDir);
-      const readFrom = urlByAbsentLocalPath?.get(path) ?? path;
-      if (!isHttpUrl(readFrom) && !existsSync(readFrom)) return null;
+      const readFrom = isHttpUrl(video.src)
+        ? await remoteProbeSource(video.src, input)
+        : localProbeSource(video.src, input);
+      if (readFrom === null) return null;
       const metadata = await extractMediaMetadata(readFrom);
       const window = await resolveFinalFrameExtractionWindow(
         readFrom,

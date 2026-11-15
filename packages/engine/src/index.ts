@@ -60,6 +60,7 @@ export type {
 export {
   resolveConfig,
   resolvePageNavigationTimeout,
+  resolveRestrictPageNetwork,
   validateEngineConfigSnapshot,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
