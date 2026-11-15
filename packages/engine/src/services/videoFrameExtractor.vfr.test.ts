@@ -656,7 +656,8 @@ describe.skipIf(!HAS_FFMPEG)("extractAllVideoFrames on a VFR source", () => {
         expect(String(stderr.mock.calls[0]?.[0])).toContain("caching disabled for this render");
       } finally {
         stderr.mockRestore();
-        process.env.TMPDIR = savedTmpdir;
+        if (savedTmpdir === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = savedTmpdir;
         rmSync(sharedTmp, { recursive: true, force: true });
       }
     },
