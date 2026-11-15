@@ -100,6 +100,10 @@ function embeddedIPv4(address: string): string | undefined {
   return [high! >> 8, high! & 255, low! >> 8, low! & 255].join(".");
 }
 
+export function carriedIPv4(address: string): string | undefined {
+  return MAPPED_OR_NAT64_IPV6.check(address, "ipv6") ? embeddedIPv4(address) : undefined;
+}
+
 const NON_PUBLIC_IPV6_ADDRESSES = new BlockList();
 for (const [network, prefix] of [
   ["::", 128],
@@ -131,7 +135,7 @@ export function isBlockedNetworkHost(hostname: string): boolean {
   if (addressType === 0) return false;
   if (inOperatorRange(h, addressType === 4 ? "ipv4" : "ipv6")) return true;
   if (addressType === 6 && MAPPED_OR_NAT64_IPV6.check(h, "ipv6")) {
-    const ipv4 = embeddedIPv4(h);
+    const ipv4 = carriedIPv4(h);
     return ipv4 === undefined || isBlockedNetworkHost(ipv4);
   }
   return addressType === 4
