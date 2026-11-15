@@ -141,6 +141,13 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
+async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
+  const url = new URL(previewSource, window.location.origin);
+  applyPreviewVariablesToUrl(url);
+  const src = url.pathname + url.search;
+  return opaque ? previewUnderFrameToken(src) : src;
+}
+
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
   (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
 
@@ -166,7 +173,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       style,
       suppressLoadingOverlay,
       noLoadTimeout,
-      sandboxOrigin,
       ...host
     },
     ref,
@@ -222,15 +228,9 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      const srcUrl = new URL(previewSource, window.location.origin);
-      applyPreviewVariablesToUrl(srcUrl);
-      const plainSrc = srcUrl.pathname + srcUrl.search;
-      const opaque = sandboxOrigin === "opaque";
+      const opaque = host.sandboxOrigin === "opaque";
 
-      void Promise.all([
-        loadPlayerModule(),
-        opaque ? previewUnderFrameToken(plainSrc) : plainSrc,
-      ]).then(([, src]) => {
+      void Promise.all([loadPlayerModule(), playerSrc(previewSource, opaque)]).then(([, src]) => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
