@@ -2,12 +2,13 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { bundleToSingleHtml } from "./htmlBundler";
+import { bundleToSingleHtml, restoreCssPlaceholders } from "./htmlBundler";
 
-async function bundleWithStylesheet(css: string): Promise<string> {
+async function bundleWithStylesheet(css: string, imported = ""): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "hf-css-comments-"));
   try {
     writeFileSync(join(dir, "style.css"), css);
+    writeFileSync(join(dir, "part.css"), imported);
     writeFileSync(
       join(dir, "index.html"),
       '<html><head><link rel="stylesheet" href="style.css"></head><body><main data-composition-id="root" data-width="320" data-height="180"></main></body></html>',
@@ -29,5 +30,68 @@ describe("stylesheet comments in the bundle", () => {
     const started = performance.now();
     expect(await bundleWithStylesheet(css)).toContain("/**//**/");
     expect(performance.now() - started).toBeLessThan(2000);
+  });
+
+  it("inline imported stylesheets verbatim, replacement patterns included", async () => {
+    const part = '.b { content: "$\' $&" }';
+    expect(await bundleWithStylesheet('@import "part.css"; .a { color: red }', part)).toContain(
+      part,
+    );
+  });
+
+  it("inline 6,000 imports of a 2 KB sheet in well under two seconds", async () => {
+    const part = `.b{}/*${"x".repeat(2_000)}*/`;
+    const css = '@import "part.css"; '.repeat(6_000);
+    const started = performance.now();
+    expect(await bundleWithStylesheet(css, part)).toContain(`${part}\n${part}`);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+});
+
+/** The restore it replaces: each comment, then each import, swapped in at its first occurrence. */
+function sequentialRestore(css: string, comments: string[], imports: string[]): string {
+  let out = css;
+  comments.forEach((text, i) => (out = out.replace(`/*__hf_c${i}__*/`, text)));
+  imports.forEach((text, i) => {
+    out = out.replace(`/*__hf_import_${comments.length + i}__*/`, text);
+  });
+  return out;
+}
+
+const PIECES = [
+  "a",
+  " ",
+  "{",
+  "}",
+  ";",
+  "/*",
+  "*/",
+  "/**/",
+  "url(x)",
+  "\n",
+  "@media x {",
+  "_hf_",
+  "c1",
+];
+
+describe("CSS placeholder restore", () => {
+  it("puts back what the sequential restore put back on 20,000 generated sheets", () => {
+    let seed = 3;
+    const next = (n: number) =>
+      Math.floor(((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * n);
+    const text = () => Array.from({ length: next(6) }, () => PIECES[next(PIECES.length)]).join("");
+    const differences: string[] = [];
+    for (let run = 0; run < 20_000; run++) {
+      const comments = Array.from({ length: next(4) }, () => `/*${text()}*/`);
+      const imports = Array.from({ length: next(4) }, text);
+      const placeholders = new Map<string, string>();
+      comments.forEach((c, i) => placeholders.set(`/*__hf_c${i}__*/`, c));
+      imports.forEach((c, i) => placeholders.set(`/*__hf_import_${comments.length + i}__*/`, c));
+      const keys = [...placeholders.keys()].sort(() => next(2) - 0.5);
+      const css = keys.map((key) => text() + key).join("") + text();
+      if (restoreCssPlaceholders(css, placeholders) !== sequentialRestore(css, comments, imports))
+        differences.push(css);
+    }
+    expect(differences).toEqual([]);
   });
 });

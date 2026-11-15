@@ -153,22 +153,20 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
-const COMMENT_PLACEHOLDER_RE = /\/\*__hf_c\d+__\*\//g;
+const CSS_PLACEHOLDER_RE = /\/\*__hf_(?:c|import_)\d+__\*\//g;
 
-function withCommentsStripped<T>(
-  css: string,
-  fn: (stripped: string) => T,
-): { result: T; restore: (s: string) => string } {
+export function restoreCssPlaceholders(css: string, texts: ReadonlyMap<string, string>): string {
+  return css.replace(CSS_PLACEHOLDER_RE, (placeholder) => texts.get(placeholder) ?? placeholder);
+}
+
+function withCommentsStripped(css: string): { stripped: string; comments: Map<string, string> } {
   const comments = new Map<string, string>();
   const stripped = replaceMatches(css, blockCommentMatches(css), (m) => {
     const placeholder = `/*__hf_c${comments.size}__*/`;
     comments.set(placeholder, m);
     return placeholder;
   });
-  const result = fn(stripped);
-  const restore = (s: string) =>
-    s.replace(COMMENT_PLACEHOLDER_RE, (placeholder) => comments.get(placeholder) ?? placeholder);
-  return { result, restore };
+  return { stripped, comments };
 }
 
 function resolveRelativeUrlPath(fromDir: string, basePath: string): string {
@@ -274,8 +272,7 @@ function inlineCssFile(
   projectDir: string,
   activeImports: Set<string>,
 ): string {
-  const { result: strippedCss, restore: restoreComments } = withCommentsStripped(css, (s) => s);
-  const importPlaceholders: string[] = [];
+  const { stripped: strippedCss, comments: placeholders } = withCommentsStripped(css);
   const withPlaceholders = replaceMatches(
     strippedCss,
     cssImportMatches(strippedCss),
@@ -294,17 +291,15 @@ function inlineCssFile(
       activeImports.delete(resolved);
       const trimmedMedia = (mediaQuery || "").trim();
       const block = trimmedMedia ? `@media ${trimmedMedia} {\n${inlined}\n}\n` : inlined + "\n";
-      const idx = importPlaceholders.length;
-      importPlaceholders.push(block);
-      return `/*__hf_import_${idx}__*/`;
+      const placeholder = `/*__hf_import_${placeholders.size}__*/`;
+      placeholders.set(placeholder, block);
+      return placeholder;
     },
   );
-  let rebased = rebaseCssUrls(withPlaceholders, cssFileDir, projectDir);
-  rebased = restoreComments(rebased);
-  for (let i = 0; i < importPlaceholders.length; i++) {
-    rebased = rebased.replace(`/*__hf_import_${i}__*/`, importPlaceholders[i]!);
-  }
-  return rebased;
+  return restoreCssPlaceholders(
+    rebaseCssUrls(withPlaceholders, cssFileDir, projectDir),
+    placeholders,
+  );
 }
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
