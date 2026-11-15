@@ -90,46 +90,6 @@ describe("searchOnlyTrustedFolders", () => {
     );
   });
 
-  it("keeps the Windows system folders when started from inside System32", () => {
-    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
-    onTestFinished(() => {
-      vi.restoreAllMocks();
-    });
-    const env: NodeJS.ProcessEnv = {
-      SystemRoot: "C:\\Windows",
-      Path: [
-        "C:\\Windows\\system32",
-        ".",
-        "C:\\Windows",
-        "C:/Windows/System32/Wbem/",
-        "C:\\Windows\\System32\\evil",
-        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
-      ].join(win32.delimiter),
-    };
-
-    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe(
-      [
-        "C:\\Windows\\system32",
-        "C:\\Windows",
-        "C:/Windows/System32/Wbem/",
-        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
-      ].join(win32.delimiter),
-    );
-  });
-
-  it("takes the system folders from SystemRoot", () => {
-    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
-    onTestFinished(() => {
-      vi.restoreAllMocks();
-    });
-    const env: NodeJS.ProcessEnv = {
-      SYSTEMROOT: "D:\\WinNT",
-      Path: ["C:\\Windows\\System32", "D:\\WinNT\\System32"].join(win32.delimiter),
-    };
-
-    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe("D:\\WinNT\\System32");
-  });
-
   it("never leaves an empty PATH, which would mean the working directory", () => {
     const { project } = inProject();
     const env: NodeJS.ProcessEnv = { PATH: ["", ".", project].join(delimiter) };

@@ -14,7 +14,7 @@ import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js
  * `progress` don't need them re-passed every call.
  */
 
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -32,6 +32,7 @@ import { defaultCloudFps } from "../utils/compositionFps.js";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
 import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
+import { projectCopyHint } from "../utils/projectCopyHint.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -306,14 +307,20 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as Partial<T>;
 }
 
+function assertStarted(cmd: string, res: SpawnSyncReturns<unknown>): void {
+  if ((res.error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") return;
+  throw new Error(`[cloudrun] \`${cmd}\` not found on PATH.${projectCopyHint(cmd)}`);
+}
 function run(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): void {
   const res = spawnSync(cmd, cmdArgs, { stdio: "inherit", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` exited with ${res.status}`);
   }
 }
 function capture(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): string {
   const res = spawnSync(cmd, cmdArgs, { encoding: "utf8", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` failed: ${res.stderr}`);
   }

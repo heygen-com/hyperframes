@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   findTrustedExecutable,
@@ -93,7 +93,7 @@ describe("findTrustedExecutable", () => {
       Object.defineProperty(process, "platform", { value: realPlatform, configurable: true });
     });
     vi.spyOn(process, "cwd").mockReturnValue(project);
-    vi.stubEnv("PATH", [".", project, tools].join(delimiter));
+    vi.stubEnv("PATH", [".", project, `"${tools}"`].join(win32.delimiter));
 
     expect(findTrustedExecutable("ffprobe")).toBe(join(tools, "ffprobe.exe"));
   });
@@ -116,4 +116,48 @@ describe("trustedPathDirs", () => {
       ]);
     },
   );
+});
+
+describe("trustedPathDirs on Windows", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads an entry wrapped in double quotes", () => {
+    const project = tempDir("hf-trusted-project-");
+    const tools = tempDir("hf-trusted-tools-");
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+
+    expect(
+      trustedPathDirs([`"${tools}"`, `"${project}"`].join(win32.delimiter), "win32", {}),
+    ).toEqual([tools]);
+  });
+
+  it("keeps the system folders when started from inside System32", () => {
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
+    const pathValue = [
+      "C:\\Windows\\system32",
+      ".",
+      "C:\\Windows",
+      "C:/Windows/System32/Wbem/",
+      "C:\\Windows\\System32\\evil",
+      "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
+    ].join(win32.delimiter);
+
+    expect(trustedPathDirs(pathValue, "win32", { SystemRoot: "C:\\Windows" })).toEqual([
+      "C:\\Windows\\system32",
+      "C:\\Windows",
+      "C:/Windows/System32/Wbem/",
+      "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
+    ]);
+  });
+
+  it("takes the system folders from SystemRoot", () => {
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
+    const pathValue = ["C:\\Windows\\System32", "D:\\WinNT\\System32"].join(win32.delimiter);
+
+    expect(trustedPathDirs(pathValue, "win32", { SYSTEMROOT: "D:\\WinNT" })).toEqual([
+      "D:\\WinNT\\System32",
+    ]);
+  });
 });

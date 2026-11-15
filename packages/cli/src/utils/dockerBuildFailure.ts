@@ -1,4 +1,5 @@
 import { normalizeErrorMessage } from "./errorMessage.js";
+import { projectCopyHint } from "./projectCopyHint.js";
 
 export const DOCKER_BUILD_TIMEOUT_MINUTES = 10;
 
@@ -25,7 +26,7 @@ export function describeDockerBuildFailure(error: unknown): DockerBuildFailure {
     return {
       title: "Docker not available",
       message,
-      hint: "Install Docker: https://docs.docker.com/get-docker/",
+      hint: `Install Docker: https://docs.docker.com/get-docker/${projectCopyHint("docker")}`,
     };
   }
   return {
