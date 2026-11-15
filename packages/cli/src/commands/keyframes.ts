@@ -9,6 +9,7 @@ import {
 } from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { terminalText } from "../utils/terminalText.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -999,7 +1000,7 @@ function printCompositionTweens(cmp: SurfacedComposition): void {
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
 function printComposition(cmp: SurfacedComposition): void {
   if (isEmptyComposition(cmp)) return;
-  console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
+  console.log(c.bold(terminalText(cmp.composition)) + c.dim(`  (${terminalText(cmp.source)})`));
   for (const tr of cmp.traces) printTrace(tr);
   printCompositionTweens(cmp);
   for (const cssKeyframes of cmp.cssKeyframes) printCssKeyframes(cssKeyframes);

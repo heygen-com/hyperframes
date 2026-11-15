@@ -14,7 +14,8 @@ import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";
-import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { cssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
@@ -34,8 +35,15 @@ import {
   leftOutWarning,
   type LeftOutReason,
   type OnLeftOut,
+  type OnOutsideFile,
+  outsideFileReference,
 } from "./leftOutReference.js";
-import { isCopiedOutsideFileType } from "./outsideFileType.js";
+import { isUploadedOutsideFileType } from "./outsideFileType.js";
+import {
+  collectSubCompositionSrcs,
+  decodeTextHonoringBom,
+  resolveCompositionSrc,
+} from "@hyperframes/parsers/asset-resolution";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -406,12 +414,20 @@ interface ExternalAssetContext {
   usedArchivePaths: Set<string>;
   leftOut: Set<string>;
   onLeftOut?: OnLeftOut;
+  onOutsideFile?: OnOutsideFile;
   received: (path: string) => boolean;
+  filmPages: Set<string> | null;
 }
 
-function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
+function addExternalAsset(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  entryPath: string,
+  rawPath: string,
+): string {
   const existing = ctx.externalMap.get(absPath);
   if (existing) return existing;
+  ctx.onOutsideFile?.(outsideFileReference(ctx.absProjectDir, entryPath, rawPath, absPath));
 
   const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
   const stripped = rel.replace(/^(?:\.\.\/)+/, "");
@@ -439,6 +455,17 @@ function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): bool
   );
 }
 
+function reportProjectLinkOutside(
+  absProjectDir: string,
+  file: string,
+  absPath: string,
+  onOutsideFile: OnOutsideFile | undefined,
+): void {
+  if (onOutsideFile && linksOutside(absProjectDir, absPath)) {
+    onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath));
+  }
+}
+
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
@@ -458,6 +485,7 @@ function includeReferencedProjectFile(
       return leaveOut(ctx, entryPath, rawPath, absPath, "received");
     }
     if (statSync(absPath).isFile()) {
+      reportProjectLinkOutside(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile);
       ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     }
     return;
@@ -466,7 +494,7 @@ function includeReferencedProjectFile(
   throw new Error(`The composition references "${rawPath}", which is not in the project folder.`);
 }
 
-/** References with no fallback: a missing file here cannot render. */
+/** References with no fallback: on a page the video plays, a missing file here cannot render. */
 const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[poster]"]);
 
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
@@ -508,14 +536,14 @@ function archiveTargetOf(
       leaveOut(ctx, options.entryPath, rawPath, absPath);
       return undefined;
     }
-    if (!isCopiedOutsideFileType(absPath)) {
+    if (!isUploadedOutsideFileType(absPath)) {
       leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
       return undefined;
     }
   } catch {
     return undefined;
   }
-  return encodeUrlPath(addExternalAsset(ctx, absPath));
+  return encodeUrlPath(addExternalAsset(ctx, absPath, options.entryPath, rawPath));
 }
 
 function tryResolveExternal(
@@ -559,7 +587,7 @@ export function rewriteCssUrls(
   resolveTarget: HtmlAttributeResolver,
 ): { css: string; modified: boolean } {
   let modified = false;
-  const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  const rewritten = replaceMatches(css, cssUrlMatches(css), (full, quote, rawUrl) => {
     const target = resolveTarget((rawUrl || "").trim(), referrerAbsDir);
     if (!target) return full;
     modified = true;
@@ -668,7 +696,9 @@ function localizeHtmlEntry(ctx: ExternalAssetContext, entryPath: string, content
       val,
       dir,
       entryPath,
-      ref !== undefined && HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
+      (ctx.filmPages?.has(entryPath) ?? true) &&
+        ref !== undefined &&
+        HARD_REFERENCES.has(`${ref.tag}[${ref.attr}]`),
     );
   const attrsChanged = rewriteHtmlAttributes(document, referrerAbsDir, entryPath, resolveTarget, {
     attrs: ["src", "href", "poster"],
@@ -692,6 +722,27 @@ function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content:
   }
 }
 
+/** Staged pages played from `entry`, as the renderer mounts them; null (check every page) when one is not staged. */
+function filmPagesOf(
+  absProjectDir: string,
+  fileContents: Map<string, StagedFile>,
+  entry: string,
+): Set<string> | null {
+  const pages = new Set<string>();
+  const queue = [entry];
+  for (const page of queue) {
+    if (pages.has(page)) continue;
+    const file = fileContents.get(page);
+    if (!Buffer.isBuffer(file)) return null;
+    pages.add(page);
+    for (const src of collectSubCompositionSrcs(decodeTextHonoringBom(file))) {
+      const absPath = resolveCompositionSrc(absProjectDir, src);
+      if (absPath) queue.push(archiveKey(relative(absProjectDir, absPath).replaceAll("\\", "/")));
+    }
+  }
+  return pages;
+}
+
 /**
  * Scan HTML and CSS files for asset references that resolve outside the
  * project directory. Copy those files into the archive under `_ext/` and
@@ -702,6 +753,8 @@ export function localizeExternalAssets(
   fileContents: Map<string, StagedFile>,
   onDiskMinBytes = Infinity,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
+  entry = "index.html",
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -711,7 +764,9 @@ export function localizeExternalAssets(
     usedArchivePaths: new Set(),
     leftOut: new Set(),
     onLeftOut,
+    onOutsideFile,
     received: receivedFiles(absProjectDir),
+    filmPages: filmPagesOf(absProjectDir, fileContents, entry),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
@@ -736,8 +791,9 @@ export function localizeExternalAssets(
 export function buildPublishFileMap(
   projectDir: string,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): Map<string, Buffer> {
-  return stagePublishFiles(projectDir, Infinity, onLeftOut) as Map<string, Buffer>;
+  return stagePublishFiles(projectDir, Infinity, onLeftOut, onOutsideFile) as Map<string, Buffer>;
 }
 
 export const archiveKey = (path: string): string => path.normalize("NFC");
@@ -760,11 +816,36 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-/** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type">;
+
+const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
+  private: "holds secrets or tool data (an env file, Git data or Studio records)",
+  blocklisted: "links to a file outside the project in a private location",
+  received: "links to a file outside the project and came in with an imported project",
+};
+
+function walkedFileLeftOut(
+  absProjectDir: string,
+  filePath: string,
+  absPath: string,
+  received: (path: string) => boolean,
+): WalkedLeftOutReason | null {
+  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
+  if (linksToPrivateOutsideFile(absProjectDir, absPath)) return "blocklisted";
+  if (received(filePath) && linksOutside(absProjectDir, absPath)) return "received";
+  return null;
+}
+
+/**
+ * {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk.
+ * `entry` is the archive key of the page that will render.
+ */
 export function stagePublishFiles(
   projectDir: string,
   onDiskMinBytes: number,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
+  entry = "index.html",
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
@@ -780,16 +861,10 @@ export function stagePublishFiles(
   const received = receivedFiles(absProjectDir);
   for (const filePath of filePaths) {
     const absPath = join(absProjectDir, filePath);
-    const reason = linksToPrivateOutsideFile(absProjectDir, absPath)
-      ? "blocklisted"
-      : received(filePath) && linksOutside(absProjectDir, absPath)
-        ? "received"
-        : null;
+    const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
     if (reason) {
-      const why =
-        reason === "received" ? "and came in with an imported project" : "in a private location";
       onLeftOut?.(
-        `${filePath} links to a file outside the project ${why}; it was left out of the upload.`,
+        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
       continue;
@@ -802,11 +877,19 @@ export function stagePublishFiles(
       );
     }
     diskPathOf.set(key, filePath);
+    reportProjectLinkOutside(absProjectDir, filePath, absPath, onOutsideFile);
     fileContents.set(key, stageFile(absPath, onDiskMinBytes));
   }
 
   composeNamesInText(fileContents, filePaths);
-  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut);
+  localizeExternalAssets(
+    absProjectDir,
+    fileContents,
+    onDiskMinBytes,
+    onLeftOut,
+    onOutsideFile,
+    entry,
+  );
   return fileContents;
 }
 
@@ -855,8 +938,9 @@ export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArc
 export function createPublishArchive(
   projectDir: string,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): PublishArchiveResult {
-  return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut));
+  return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut, onOutsideFile));
 }
 
 export function getPublishApiBaseUrl(): string {

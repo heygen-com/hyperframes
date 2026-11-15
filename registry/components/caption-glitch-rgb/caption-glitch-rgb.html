@@ -196,7 +196,7 @@
         }
 
         function shouldAftershock(word) {
-          return /\d|\$|%/.test(word.text) || word.text.replace(/[^\w]/g, "").length >= 7;
+          return /\d|\$|%/.test(word.text) || word.text.replace(/[^\p{L}\p{N}_]/gu, "").length >= 7;
         }
 
         var RAW_GROUPS = buildGroups(TRANSCRIPT);

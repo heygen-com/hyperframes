@@ -113,6 +113,8 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
+      - name: Reject symbolic links outside the allowlist
+        run: node scripts/check-symlinks.mjs
       - name: Find a release-only diff
         id: release
         uses: ./.github/actions/release-only-diff
@@ -880,7 +882,7 @@ jobs:
         run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
-      - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts
+      - run: bun run --cwd packages/cli test src/utils/npxCommand.test.ts src/commands/skills.test.ts src/utils/shellArg.test.ts
         env:
           HF_NPX_SHIM_E2E: "1"
 

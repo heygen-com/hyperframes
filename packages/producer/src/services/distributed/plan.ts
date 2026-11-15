@@ -78,6 +78,7 @@ import {
   withChunkCaptureCost,
 } from "./chunkWeights.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
+import { audioWorkDir } from "../render/shared.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import {
   appendVideoAudioFromProbe,
@@ -1874,7 +1875,11 @@ export async function buildPlanAudio(
   });
   try {
     let stageStarted = Date.now();
-    await appendVideoAudioFromProbe(c);
+    await appendVideoAudioFromProbe({
+      ...c,
+      downloadDir: audioWorkDir(c.workDir),
+      signal: c.abortSignal,
+    });
     logPlanStage(c.log, "extract", stageStarted);
     stageStarted = Date.now();
     const mixed = await mixPlanAudio(c, c.compiledDir);

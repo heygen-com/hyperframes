@@ -20,11 +20,18 @@ import dns from "node:dns";
 import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 import { type LookupFunction } from "node:net";
 import { isBlockedNetworkHost } from "./networkPolicy.js";
+import { resolveRestrictPageNetwork } from "../config.js";
+import {
+  assertPublicHostname,
+  NonPublicHostError,
+  resolvePublicAddress,
+} from "../services/publicNetwork/publicNetwork.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { playlistLeavesItsFolder } from "./notMediaPayload.js";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -143,6 +150,24 @@ export class UrlDownloadError extends Error {
   }
 }
 
+const URL_NOT_PERMITTED = "Download URL is not permitted";
+const REDIRECT_NOT_PERMITTED = "Download redirect target is not permitted";
+
+function notPermittedError(redirect: boolean): UrlDownloadError {
+  return new UrlDownloadError(
+    "http_rejected",
+    false,
+    redirect ? REDIRECT_NOT_PERMITTED : URL_NOT_PERMITTED,
+  );
+}
+
+export function isUrlNotPermittedError(error: unknown): boolean {
+  return (
+    error instanceof UrlDownloadError &&
+    (error.message === URL_NOT_PERMITTED || error.message === REDIRECT_NOT_PERMITTED)
+  );
+}
+
 function classifyHttpFailure(status: number): UrlDownloadError {
   // Response.statusText is remote-controlled and some CDNs/proxies echo the
   // signed request URL into it. The numeric status is sufficient and bounded.
@@ -221,8 +246,18 @@ export function assertPublicHttpsUrl(url: string): void {
   if (parsed.protocol !== "https:") {
     throw new Error(`[URLDownloader] Only HTTPS URLs are permitted in compositions`);
   }
-  if (isBlockedNetworkHost(parsed.hostname)) {
+  if (isBlockedNetworkHost(parsed.hostname) || refusedByRestrictedNetwork(parsed.hostname)) {
     throw new Error("[URLDownloader] URL targets a private/reserved address and is not permitted");
+  }
+}
+
+function refusedByRestrictedNetwork(hostname: string): boolean {
+  if (!resolveRestrictPageNetwork()) return false;
+  try {
+    assertPublicHostname(hostname);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -419,6 +454,12 @@ const MAX_REDIRECTS = 5;
 
 const NON_PUBLIC_ADDRESS_CODE = "HF_NON_PUBLIC_ADDRESS";
 
+function nonPublicAddressError(): Error {
+  return Object.assign(new Error("host resolves to a non-public address"), {
+    code: NON_PUBLIC_ADDRESS_CODE,
+  });
+}
+
 /** Resolves a host and refuses to connect when any answer is a non-public address. */
 const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
@@ -427,28 +468,49 @@ const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
       answers.length === 0 ||
       answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))
     ) {
-      const refused = Object.assign(new Error("host resolves to a non-public address"), {
-        code: NON_PUBLIC_ADDRESS_CODE,
-      });
-      return callback(refused, "", 0);
+      return callback(nonPublicAddressError(), "", 0);
     }
     if (options.all) return callback(null, answers as never);
     return callback(null, answers[0]!.address, answers[0]!.family);
   });
 };
 
+/** The capture proxy's resolver: IPv4 answers only, every one public, and the checked address is dialled. */
+const capturePolicyLookup: LookupFunction = (hostname, options, callback) => {
+  resolvePublicAddress(hostname).then(
+    (address) =>
+      options.all ? callback(null, [{ address, family: 4 }]) : callback(null, address, 4),
+    (error: unknown) =>
+      callback(
+        error instanceof NonPublicHostError ? nonPublicAddressError() : (error as Error),
+        "",
+        0,
+      ),
+  );
+};
+
 type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
-let undiciTransport: Promise<DownloadFetch> | undefined;
+const undiciTransports = new Map<LookupFunction, Promise<DownloadFetch>>();
+
+function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
+  let transport = undiciTransports.get(lookup);
+  if (!transport) {
+    transport = import("undici").then(({ Agent, fetch: undiciFetch }) => {
+      const dispatcher = new Agent({ connect: { lookup } });
+      return (target, options) =>
+        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+    });
+    undiciTransports.set(lookup, transport);
+  }
+  return transport;
+}
+
 const fetchPublic: DownloadFetch = async (url, init) => {
+  if (resolveRestrictPageNetwork()) return (await undiciTransport(capturePolicyLookup))(url, init);
   // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
   if (fetchGoesThroughEnvProxy()) return fetch(url, init);
-  undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
-    const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
-    return (target, options) =>
-      undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
-  });
-  return (await undiciTransport)(url, init);
+  return (await undiciTransport(publicOnlyLookup))(url, init);
 };
 
 let downloadFetch: DownloadFetch = fetchPublic;
@@ -472,11 +534,7 @@ function assertAllowedDownloadUrl(url: string, redirect: boolean): void {
   try {
     assertPublicHttpsUrl(url);
   } catch {
-    throw new UrlDownloadError(
-      "http_rejected",
-      false,
-      redirect ? "Download redirect target is not permitted" : "Download URL is not permitted",
-    );
+    throw notPermittedError(redirect);
   }
 }
 
@@ -524,13 +582,7 @@ async function fetchWithValidatedRedirects(
       headers: { "accept-encoding": "identity" },
     }).catch((error: unknown) => {
       if (!refusedNonPublicAddress(error)) throw error;
-      throw new UrlDownloadError(
-        "http_rejected",
-        false,
-        redirects > 0
-          ? "Download redirect target is not permitted"
-          : "Download URL is not permitted",
-      );
+      throw notPermittedError(redirects > 0);
     });
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: currentUrl };
 
@@ -539,12 +591,12 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+/** Fetch bounded bytes while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
-export async function fetchPublicHttpsText(
+export async function fetchPublicHttpsBytes(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -573,7 +625,7 @@ export async function fetchPublicHttpsText(
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -623,7 +675,7 @@ export async function fetchPublicHttpsText(
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
@@ -637,6 +689,13 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {
@@ -788,6 +847,79 @@ function checksumMismatchError(
   );
 }
 
+const DEFAULT_MAX_DOWNLOAD_BYTES = 20 * 1024 ** 3;
+const DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC = 32 * 1024;
+const THROUGHPUT_WINDOW_SECONDS = 60;
+
+function integerFromEnv(name: string, fallback: number, minimum: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= minimum ? value : fallback;
+}
+
+const maxDownloadBytes = (): number =>
+  integerFromEnv("HYPERFRAMES_MAX_DOWNLOAD_BYTES", DEFAULT_MAX_DOWNLOAD_BYTES, 1);
+
+const minDownloadBytesPerSec = (): number =>
+  integerFromEnv("HYPERFRAMES_MIN_DOWNLOAD_BYTES_PER_SEC", DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC, 0);
+
+function isCompressedEncoding(contentEncoding: string | null): boolean {
+  const encoding = contentEncoding?.trim().toLowerCase();
+  return Boolean(encoding) && encoding !== "identity";
+}
+
+function overByteLimitError(
+  maxBytes: number,
+  status: number,
+  telemetry: Partial<UrlDownloadTelemetry>,
+): UrlDownloadError {
+  return new UrlDownloadError(
+    "length_mismatch",
+    false,
+    `Download exceeded the ${maxBytes}-byte limit`,
+    status,
+    telemetry,
+  );
+}
+
+// One spare bucket so the summed span is never shorter than the window, which errs toward keeping
+// a download that runs right at the floor.
+class ThroughputWindow {
+  private readonly buckets = new Array<number>(THROUGHPUT_WINDOW_SECONDS + 1).fill(0);
+  private bytesInWindow = 0;
+  private currentSecond: number;
+
+  constructor(private readonly startedAtMs: number) {
+    this.currentSecond = Math.floor(startedAtMs / 1000);
+  }
+
+  record(byteCount: number, nowMs: number): void {
+    this.advanceTo(nowMs);
+    this.buckets[this.currentSecond % this.buckets.length]! += byteCount;
+    this.bytesInWindow += byteCount;
+  }
+
+  isBelow(minBytesPerSec: number, nowMs: number): boolean {
+    this.advanceTo(nowMs);
+    return (
+      nowMs - this.startedAtMs >= THROUGHPUT_WINDOW_SECONDS * 1000 &&
+      this.bytesInWindow < minBytesPerSec * THROUGHPUT_WINDOW_SECONDS
+    );
+  }
+
+  private advanceTo(nowMs: number): void {
+    const second = Math.floor(nowMs / 1000);
+    const expired = Math.min(second - this.currentSecond, this.buckets.length);
+    for (let step = 1; step <= expired; step += 1) {
+      const index = (this.currentSecond + step) % this.buckets.length;
+      this.bytesInWindow -= this.buckets[index]!;
+      this.buckets[index] = 0;
+    }
+    this.currentSecond = Math.max(second, this.currentSecond);
+  }
+}
+
 // Response protocol, streamed byte accounting, hashes, and payload validation
 // share one lifecycle so no validation can happen after publication.
 // fallow-ignore-next-line complexity
@@ -796,7 +928,7 @@ async function fetchToPartial(
   partialPath: string,
   controller: AbortController,
   options: UrlDownloadOptions,
-  onSizedBodyBytes: () => void,
+  onBodyBytes: (byteCount: number, sized: boolean) => void,
 ): Promise<PartialIntegrity> {
   const { response, finalUrl } = await fetchWithValidatedRedirects(url, controller);
   const finalIdentity = safeDownloadUrlIdentity(finalUrl);
@@ -861,9 +993,26 @@ async function fetchToPartial(
     }
     throw error;
   }
-  const contentEncoding = response.headers.get("content-encoding")?.trim().toLowerCase();
-  const expectedBytes =
-    !contentEncoding || contentEncoding === "identity" ? declaredLength : undefined;
+  const responseTelemetry = { finalHost: finalIdentity.host, status: response.status };
+  if (isCompressedEncoding(response.headers.get("content-encoding"))) {
+    await cancelResponseBody(response);
+    throw new UrlDownloadError(
+      "http_rejected",
+      false,
+      "Download response is compressed; only identity Content-Encoding is accepted",
+      response.status,
+      responseTelemetry,
+    );
+  }
+  const maxBytes = maxDownloadBytes();
+  if (declaredLength !== undefined && declaredLength > maxBytes) {
+    await cancelResponseBody(response);
+    throw overByteLimitError(maxBytes, response.status, {
+      ...responseTelemetry,
+      expectedBytes: declaredLength,
+    });
+  }
+  const expectedBytes = declaredLength;
 
   let receivedBytes = 0;
   const sha256 = createHash("sha256");
@@ -873,8 +1022,18 @@ async function fetchToPartial(
   const inspector = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      if (declaredLength !== undefined) onSizedBodyBytes();
+      onBodyBytes(bytes.length, declaredLength !== undefined);
       receivedBytes += bytes.length;
+      if (receivedBytes > maxBytes) {
+        callback(
+          overByteLimitError(maxBytes, response.status, {
+            ...responseTelemetry,
+            expectedBytes,
+            receivedBytes,
+          }),
+        );
+        return;
+      }
       sha256.update(bytes);
       md5.update(bytes);
       if (prefixBytes < 1024) {
@@ -1076,13 +1235,44 @@ async function runDownloadAttempt(
     sizedBodyStarted = true;
     armTimeout();
   };
+  const minBytesPerSec = minDownloadBytesPerSec();
+  let throughput: ThroughputWindow | undefined;
+  let tooSlow = false;
+  let floorCheckId: ReturnType<typeof setTimeout> | undefined;
+  const checkThroughputFloor = (): void => {
+    if (throughput?.isBelow(minBytesPerSec, Date.now())) {
+      tooSlow = true;
+      controller.abort();
+      return;
+    }
+    floorCheckId = setTimeout(checkThroughputFloor, 1000);
+  };
+  const onBodyBytes = (byteCount: number, sized: boolean): void => {
+    if (sized) extendTimeout();
+    if (minBytesPerSec === 0) return;
+    if (!throughput) {
+      throughput = new ThroughputWindow(Date.now());
+      floorCheckId = setTimeout(checkThroughputFloor, 1000);
+    }
+    throughput.record(byteCount, Date.now());
+  };
   const identity = safeDownloadUrlIdentity(url);
 
   try {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
-    const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
+    const integrity = await fetchToPartial(url, partialPath, controller, options, onBodyBytes);
+    clearTimeout(floorCheckId);
+    if (await playlistLeavesItsFolder(partialPath, localPath)) {
+      throw new UrlDownloadError(
+        "invalid_payload",
+        false,
+        "Download is a playlist naming files outside its folder",
+        integrity.status,
+        integrity,
+      );
+    }
     let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {
@@ -1154,6 +1344,21 @@ async function runDownloadAttempt(
       });
       throw classified;
     }
+    if (tooSlow) {
+      const classified = new UrlDownloadError(
+        "timeout",
+        true,
+        `Download too slow: under ${minBytesPerSec} bytes/s over the last ${THROUGHPUT_WINDOW_SECONDS}s`,
+      );
+      emitDownloadTelemetry(options, {
+        urlFingerprint: identity.urlFingerprint,
+        initialHost: identity.host,
+        attempt,
+        outcome: "attempt_failed",
+        failureKind: classified.kind,
+      });
+      throw classified;
+    }
     const classified = classifyDownloadFailure(error);
     emitDownloadTelemetry(options, {
       urlFingerprint: identity.urlFingerprint,
@@ -1166,6 +1371,7 @@ async function runDownloadAttempt(
     throw classified;
   } finally {
     clearTimeout(timeoutId);
+    clearTimeout(floorCheckId);
     signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
     rmSync(attemptDir, { recursive: true, force: true });

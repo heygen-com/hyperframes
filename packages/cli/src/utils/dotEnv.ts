@@ -87,6 +87,7 @@ export function applyDotEnv(
   content: string,
   env: NodeJS.ProcessEnv,
   allowedKeys?: readonly string[],
+  sourceDir?: string,
 ): string[] {
   const allowed = allowedKeys === undefined ? undefined : new Set(allowedKeys);
   const ignored: string[] = [];
@@ -95,9 +96,20 @@ export function applyDotEnv(
     const [key, value] = entry;
     if (!key || key.toUpperCase() === FEEDBACK_EMAIL_ENV) continue;
     if (allowed !== undefined && !allowed.has(key)) ignored.push(key);
-    else if (!(key in env)) env[key] = value;
+    else if (!(key in env)) {
+      env[key] = value;
+      if (sourceDir !== undefined && env === process.env)
+        projectEnvValues.set(key, { value, sourceDir });
+    }
   }
   return ignored;
+}
+
+const projectEnvValues = new Map<string, { value: string; sourceDir: string }>();
+
+export function projectEnvDir(name: string): string | undefined {
+  const set = projectEnvValues.get(name);
+  return set !== undefined && process.env[name] === set.value ? set.sourceDir : undefined;
 }
 
 export function loadProjectDotEnv(
@@ -111,7 +123,7 @@ export function loadProjectDotEnv(
   } catch {
     return;
   }
-  const ignored = [...new Set(applyDotEnv(content, env, PROJECT_ENV_KEYS))];
+  const ignored = [...new Set(applyDotEnv(content, env, PROJECT_ENV_KEYS, dir))];
   if (ignored.length > 0) {
     warn(
       `[hyperframes] .env: ignoring ${ignored.join(", ")} (a project .env only sets the CLI's own settings)`,

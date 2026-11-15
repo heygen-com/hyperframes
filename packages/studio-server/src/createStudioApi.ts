@@ -1,4 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -21,6 +23,7 @@ import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
+  requestFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
@@ -40,26 +43,58 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
-const fromAnotherSite = (c: Context) => {
-  const site = c.req.header("sec-fetch-site");
-  return site === "cross-site" || site === "same-site";
-};
+const fromAnotherSite = (c: Context) =>
+  requestFromAnotherSite({
+    fetchSite: c.req.header("sec-fetch-site"),
+    host: c.req.header("host") ?? urlHost(c.req.url),
+    referer: c.req.header("referer"),
+  });
 
 const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
+async function markPreviewForAnotherSite(c: Context) {
+  if (c.res.status !== 200 || !c.res.headers.get("content-type")?.startsWith("text/html")) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  headers.delete("etag");
+  const marked = injectTagsAtHeadStart(
+    await c.res.text(),
+    `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`,
+  );
+  c.res = undefined;
+  c.res = new Response(marked, { status: 200, headers });
+}
+
+const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
+const framedByAnotherSite = (c: Context) => {
+  if (!fromAnotherSite(c)) return false;
+  const dest = c.req.header("sec-fetch-dest");
+  return dest === undefined || FRAMED_DESTS.has(dest);
+};
+
+function withoutValidators(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(request, { headers });
+}
+
 const sandboxPreviewForAnotherSiteOrCapture =
   (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
+    if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
     c.header("Vary", "Sec-Fetch-Site", { append: true });
-    if (fromAnotherSite(c) || (sandboxCaptures && isThumbnailCapture(c)))
+    const anotherSite = fromAnotherSite(c);
+    if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
       c.header("Content-Security-Policy", "sandbox allow-scripts");
+    if (anotherSite) await markPreviewForAnotherSite(c);
   };
 
-async function refuseThumbnailForAnotherSite(c: Context, next: Next) {
+const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
-    return c.json({ error: "forbidden: thumbnail requested by another site" }, 403);
+    return c.json({ error: `forbidden: ${what} requested by another site` }, 403);
   return next();
-}
+};
 
 function urlHost(url: string): string | undefined {
   try {
@@ -103,7 +138,9 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     if (!projectId) return c.json({ error: "not found" }, 404);
     return c.json({ token: frameTokens.tokenFor(projectId) }, 200, { "Cache-Control": "no-store" });
   });
-  api.use("/projects/:id/thumbnail/*", refuseThumbnailForAnotherSite);
+  api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
+  api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
+  api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {

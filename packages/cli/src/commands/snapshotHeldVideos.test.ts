@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 
@@ -140,3 +142,76 @@ describe("heldVideoHints", () => {
     ]);
   });
 });
+
+describe("projectVideoFile", () => {
+  const root = mkdtempSync(join(tmpdir(), "hf-held-playlist-"));
+  const dir = join(root, "project");
+  mkdirSync(join(root, "outside"));
+  mkdirSync(dir);
+  writeFileSync(join(root, "outside", "secret.mp4"), "outside media");
+  writeFileSync(join(dir, "clip.mp4"), Buffer.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70]));
+  const list = (entry: string) =>
+    `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
+  writeFileSync(join(dir, "escape.m3u8"), list("../outside/secret.mp4"));
+  writeFileSync(join(dir, "escape.mp4"), list(join(root, "outside", "secret.mp4")));
+  writeFileSync(join(dir, "stream.m3u8"), list("seg0.ts"));
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  beforeEach(() => {
+    run.mockReset();
+  });
+
+  it.each([
+    ["a playlist naming a file above the project", "escape.m3u8"],
+    ["a playlist behind a media extension", "escape.mp4"],
+  ])("refuses %s, and FFprobe never reads it", async (_label, src) => {
+    await expect(projectVideoFile(dir, src)).resolves.toEqual({
+      file: join(dir, src),
+      refused: true,
+    });
+    await expect(probeHeldVideo(join(dir, src), new Map(), "ffprobe")).resolves.toEqual({
+      duration: 0,
+      width: 0,
+      height: 0,
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a media file", "clip.mp4"],
+    ["a playlist of segments beside it", "stream.m3u8"],
+  ])("keeps %s", async (_label, src) => {
+    await expect(projectVideoFile(dir, src)).resolves.toEqual({
+      file: join(dir, src),
+      refused: false,
+    });
+  });
+
+  it("gives null for a src outside the project", async () => {
+    await expect(projectVideoFile(dir, "../outside/secret.mp4")).resolves.toBeNull();
+  });
+});
+
+describe.skipIf(process.platform === "win32")(
+  "a project video that is a FIFO with no writer",
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-held-fifo-"));
+    execFileSync("mkfifo", [join(dir, "pipe.mp4")]);
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it("is refused for frame extraction without waiting for a writer", async () => {
+      await expect(projectVideoFile(dir, "pipe.mp4")).resolves.toEqual({
+        file: join(dir, "pipe.mp4"),
+        refused: true,
+      });
+    });
+
+    it("gets no held-video hint, and FFprobe never reads it", async () => {
+      const videos = localVideos('<body><video id="pipe" src="pipe.mp4"></video></body>');
+      await expect(heldVideoHints(dir, videos, new Map(), "ffprobe")).resolves.toEqual([]);
+      expect(run).not.toHaveBeenCalled();
+    });
+  },
+);

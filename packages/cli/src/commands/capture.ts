@@ -130,7 +130,7 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const { captureUpstreamProxy } = await import("../capture/upstreamProxy.js");
+    const { captureUpstreamProxy } = await import("@hyperframes/engine/public-network");
     try {
       captureUpstreamProxy();
     } catch (error) {

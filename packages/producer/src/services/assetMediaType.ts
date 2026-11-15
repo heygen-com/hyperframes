@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   fingerprintElementId,
   isNotMediaPayload,
+  playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
   resolveProjectRelativeSrc,
@@ -28,8 +29,11 @@ export interface AssetMediaTypeMismatch {
 }
 
 export class AssetMediaTypeMismatchError extends Error {
+  // fallow-ignore-next-line unused-class-member
   readonly code = ASSET_MEDIA_TYPE_MISMATCH;
+  // fallow-ignore-next-line unused-class-member
   readonly owner = "user" as const;
+  // fallow-ignore-next-line unused-class-member
   readonly retryable = false as const;
   readonly mismatches: readonly AssetMediaTypeMismatch[];
 
@@ -119,6 +123,17 @@ export function dropMediaOutsideProject(input: {
   composition.images = composition.images.filter(staysInside);
 }
 
+// STUDIO-5433: the one place every local src is seen whatever its timing. Documents are refused under <video> only
+// (an <img> may be SVG, a bad audio track is per-element in audioMixer); a playlist leaving its folder, under any.
+async function notMediaReferences(
+  path: string,
+  references: MediaReference[],
+): Promise<MediaReference[]> {
+  const videos = references.filter((ref) => ref.expected === "video");
+  if (videos.length > 0 && (await isNotMediaPayload(path))) return videos;
+  return (await playlistLeavesItsFolder(path)) ? references : [];
+}
+
 /**
  * Fail early when a successfully-probed local asset cannot satisfy the HTML
  * element that owns it. Missing, corrupt, remote-at-runtime, and unprobeable
@@ -167,21 +182,9 @@ export async function preflightCompositionAssetMediaTypes(input: {
   await Promise.all(
     entries.map(([resolvedPath, pathReferences]) =>
       withMediaProbeSlot(async () => {
-        // STUDIO-5433. This preflight is the only place every local media src is
-        // seen regardless of its authored timing, so it is where a document
-        // payload behind a `data-end` video gets caught — the compiler's own
-        // sniff only runs for elements whose duration it has to resolve.
-        //
-        // Video only, deliberately. An `<img>` may legitimately be an SVG,
-        // which ffprobe reads through its `svg_pipe` demuxer. And a bad audio
-        // source is non-fatal by existing policy (audioStage ships the render
-        // without the track and reports `audioError`), so it is classified
-        // per-element in audioMixer instead of aborted here.
-        const sniffableReferences = pathReferences.filter((ref) => ref.expected === "video");
-        if (sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath))) {
-          notMediaFingerprints.push(
-            ...sniffableReferences.map((ref) => fingerprintElementId(ref.id)),
-          );
+        const refused = await notMediaReferences(resolvedPath, pathReferences);
+        if (refused.length > 0) {
+          notMediaFingerprints.push(...refused.map((ref) => fingerprintElementId(ref.id)));
           return;
         }
 

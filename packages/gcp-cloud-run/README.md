@@ -105,6 +105,12 @@ terraform -chdir=node_modules/@hyperframes/gcp-cloud-run/terraform apply \
 Terraform outputs `render_bucket_name`, `service_url`, `workflow_name`, and
 `region` — pass them straight into the SDK.
 
+### Page network restriction
+
+The service sets `PRODUCER_RESTRICT_PAGE_NETWORK=true`, so a rendered page reaches only its own project files and public internet addresses. Loopback, private, link-local and IPv6 addresses are refused for anything the page loads. An asset on a VPC-only host or behind private DNS is missing from the video. ffmpeg's https inputs may open only https, so an https source that redirects to http, or encrypted HLS, does not load.
+
+Keep it on when you render compositions you did not write. To turn it off, apply the module with `-var restrict_page_network=false`, or set `TF_VAR_restrict_page_network=false` before `hyperframes cloudrun deploy`.
+
 ## Using the SDK
 
 ```ts

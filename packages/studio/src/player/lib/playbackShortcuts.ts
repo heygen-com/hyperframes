@@ -6,8 +6,8 @@
  * is active and the user is navigating caption segments).
  */
 
-import { ownsPlainKeys } from "../../utils/typingTarget";
-import type { ComboEvent } from "../components/studioCombo";
+import { shouldIgnorePlaybackShortcutTarget } from "@hyperframes/core/typing-target";
+import type { ComboEvent } from "@hyperframes/core/key-combo";
 import { matchesKey } from "../components/studioShortcuts";
 import { usePlayerStore } from "../store/playerStore";
 
@@ -18,32 +18,7 @@ const FRAME_STEP_ACTIONS = [
   "frameForwardTen",
 ] as const;
 
-const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
-  "button",
-  "a[href]",
-  "[role='button']",
-  "[role='checkbox']",
-  "[role='menuitem']",
-  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
-  "[role='menuitemradio']",
-  "[role='radio']",
-  "[role='spinbutton']",
-].join(",");
-
-export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): boolean {
-  // Anything the user is typing into owns its keys outright, editable elements
-  // included: a letter claimed here never reaches the text. So does a native player.
-  if (ownsPlainKeys(target)) return true;
-  if (!target || typeof target !== "object") return false;
-  const candidate = target as { closest?: unknown };
-  if (typeof candidate.closest !== "function") return false;
-  return (
-    (candidate.closest as (selector: string) => Element | null).call(
-      target,
-      PLAYBACK_SHORTCUT_IGNORED_SELECTOR,
-    ) !== null
-  );
-}
+export { shouldIgnorePlaybackShortcutTarget };
 
 const MODAL_DIALOG_SELECTOR = "[role=dialog][aria-modal=true]";
 

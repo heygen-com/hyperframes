@@ -159,6 +159,17 @@ describe("serveStaticProjectHtml colour-tagged PNGs", () => {
   });
 });
 
+describe("serveStaticProjectHtml content types", () => {
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const { url } = await serveWith(Buffer.from("window.ran = true;"), "scene.png");
+    for (const path of ["", "scene.png", "missing.js"]) {
+      const response = await fetch(`${url}${path}`);
+      expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
+    }
+    expect((await fetch(`${url}scene.png`)).headers.get("content-type")).toBe("image/png");
+  });
+});
+
 describe("serveStaticProjectHtml range support", () => {
   it("answers a Range request with 206 + the requested byte slice", async () => {
     // Chromium needs byte-range seekability or WAV `.duration` reports Infinity,
@@ -689,4 +700,24 @@ describe("serveStaticProjectHtml when a sandbox refuses listen()", () => {
       code: "EADDRINUSE",
     });
   });
+});
+
+describe("serveStaticProjectHtml private project files", () => {
+  it.each([".env", ".env.local", ".git/config", "%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-private-"));
+      mkdirSync(join(dir, ".git"));
+      writeFileSync(join(dir, ".env"), "SECRET=1");
+      writeFileSync(join(dir, ".env.local"), "SECRET=1");
+      writeFileSync(join(dir, ".git", "config"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
 });

@@ -35,16 +35,26 @@ export async function oversizedVideos(
   return videos.filter((_, index) => sized[index]);
 }
 
-/** Each video's first and last frame and every stride between, in composition seconds, ascending. */
+/** Each video's first and last frame before `duration`, and the one stride grid all videos share between. */
 export function shownBoxTimes(
   videos: readonly VideoElement[],
   fps: { num: number; den: number },
+  duration: number,
 ): number[] {
   const frame = fps.den / fps.num;
   const times = new Set<number>();
-  for (const { start, end } of videos) {
+  for (const { start, end: authoredEnd } of videos) {
+    const end = Math.min(authoredEnd, duration);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) continue;
     const last = Math.max(start, end - frame);
-    for (let t = start; t < last; t += SHOWN_BOX_STRIDE_S) times.add(t);
+    times.add(start);
+    for (
+      let step = Math.floor(start / SHOWN_BOX_STRIDE_S) + 1;
+      step * SHOWN_BOX_STRIDE_S < last;
+      step += 1
+    ) {
+      times.add(step * SHOWN_BOX_STRIDE_S);
+    }
     times.add(last);
   }
   return [...times].sort((a, b) => a - b);
@@ -58,11 +68,13 @@ export async function measureLocalShownBoxes(
   page: Page,
   videos: readonly VideoElement[],
   fps: { num: number; den: number },
+  duration: number,
   log: ProducerLogger,
 ): Promise<Map<string, ShownBox> | undefined> {
-  const times = shownBoxTimes(videos, fps);
+  let times: number[] = [];
   const startedAt = Date.now();
   try {
+    times = shownBoxTimes(videos, fps, duration);
     const ranges = await measureVideoShownBoxRanges(
       page,
       videos.map((video) => video.id),

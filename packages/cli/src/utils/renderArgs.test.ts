@@ -173,6 +173,8 @@ describe("parseCompositionEntryArg", () => {
     [resolve(PROJECT, "index.html")]: "file",
     [resolve(PROJECT, "compositions/intro.html")]: "file",
     [resolve(PROJECT, "compositions")]: "directory",
+    [resolve(PROJECT, "assets/scene.png")]: "file",
+    [resolve(PROJECT, "compositions/old.htm")]: "file",
     [PROJECT]: "directory",
   });
 
@@ -239,6 +241,13 @@ describe("parseCompositionEntryArg", () => {
     });
   });
 
+  it("accepts an .htm entry", () => {
+    expect(parseCompositionEntryArg("compositions/old.htm", PROJECT, stat)).toEqual({
+      ok: true,
+      value: "compositions/old.htm",
+    });
+  });
+
   it("rejects an absolute path outside the project", () => {
     const outsideStat = makeStat({ "/elsewhere/x.html": "file", [PROJECT]: "directory" });
     const err = expectCompositionErr(
@@ -251,6 +260,7 @@ describe("parseCompositionEntryArg", () => {
     ["../escape.html", "outside-project", "/escape.html"],
     ["missing.html", "not-found", "/proj/missing.html"],
     ["compositions", "not-a-file", "/proj/compositions"],
+    ["assets/scene.png", "not-html", "/proj/assets/scene.png"],
   ])("names the resolved entry path and project directory for %s", (raw, kind, entryPath) => {
     const err = expectCompositionErr(parseCompositionEntryArg(raw, PROJECT, stat));
     expect(err).toEqual({

@@ -14,7 +14,7 @@ import { Button, type ButtonSize, type ButtonVariant } from "./Button";
 import { IconButton } from "./IconButton";
 import { Tab, Tabs, TabsList } from "./Tabs";
 import { cleanupMounted, mountHost } from "./mountHost.testHelpers";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 
 const VARIANTS: ButtonVariant[] = ["primary", "secondary", "danger", "ghost"];

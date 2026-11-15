@@ -29,6 +29,7 @@ import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -98,6 +99,7 @@ const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
+  ".cjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".cube": "text/plain; charset=utf-8",
   ".png": "image/png",
@@ -962,6 +964,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
 
+  app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
+    await next();
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  });
+
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
@@ -976,6 +983,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
       if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
+      if (isPrivateFileUnder(root, candidate, isVcsOrSecretPath)) continue;
       const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
       if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
       file = openRegularFile(candidate);

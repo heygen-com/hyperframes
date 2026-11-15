@@ -1,12 +1,15 @@
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
   fingerprintElementId,
   isNotMediaPayload,
   NotMediaPayloadError,
+  playlistLeavesItsFolder,
 } from "./notMediaPayload.js";
 
 function writeFixture(name: string, contents: string | Buffer): string {
@@ -14,6 +17,15 @@ function writeFixture(name: string, contents: string | Buffer): string {
   const filePath = join(dir, name);
   writeFileSync(filePath, contents);
   return filePath;
+}
+
+function writeTree(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "hf-playlist-tree-"));
+  for (const [name, contents] of Object.entries(files)) {
+    mkdirSync(join(dir, name, ".."), { recursive: true });
+    writeFileSync(join(dir, name), contents);
+  }
+  return join(dir, Object.keys(files)[0]!);
 }
 
 describe("isNotMediaPayload", () => {
@@ -173,5 +185,209 @@ describe("assertMediaPayload", () => {
     );
     expect(error.message).toContain("+4");
     expect(error.message.length).toBeLessThan(500);
+  });
+});
+
+describe("playlistLeavesItsFolder", () => {
+  const hls = (...lines: string[]) =>
+    ["#EXTM3U", "#EXT-X-TARGETDURATION:1", ...lines, "#EXT-X-ENDLIST"].join("\n");
+  const concat = (entry: string) => `ffconcat version 1.0\nfile ${entry}\n`;
+
+  it.each([
+    ["an absolute segment", hls("#EXTINF:1,", "/var/renders/other/out.mp4")],
+    ["a segment above its folder", hls("#EXTINF:1,", "../other/out.mp4")],
+    ["an encoded escape", hls("#EXTINF:1,", "%2e%2e/other/out.mp4")],
+    ["a file: segment", hls("#EXTINF:1,", "file:///var/renders/other/out.ts")],
+    [
+      "a key outside its folder",
+      hls('#EXT-X-KEY:METHOD=AES-128,URI="/etc/key.bin"', "#EXTINF:1,", "seg.ts"),
+    ],
+    ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
+    ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
+    ["a concat entry above its folder", concat("../other/out.mp4")],
+    ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
+  ])("refuses %s", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it("refuses a list whose nested list names a file outside the top folder", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "/var/renders/other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses a nested list that steps above the top folder from its own", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../../other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses lists nested deeper than it reads", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 12; i++)
+      files[`l${i}.m3u8`] = `#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nl${i + 1}.m3u8\n`;
+    files["l12.m3u8"] = hls("#EXTINF:1,", "seg.ts");
+    expect(await playlistLeavesItsFolder(writeTree(files))).toBe(true);
+  });
+
+  it("keeps nested lists that stay in the top folder, cycles included", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../seg.ts", "#EXTINF:1,", "../master.m3u8"),
+      "seg.ts": "segment",
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(false);
+  });
+
+  it.each([
+    ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
+    ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
+    ["a concat entry beside it", concat("'part 1.mp4'")],
+    ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
+  ])("keeps %s", async (_name, contents) => {
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
+  const FFPROBE_8 = /^ffprobe version n?8\./.test(
+    spawnSync(getFfprobeBinary(), ["-version"], { encoding: "utf-8" }).stdout ?? "",
+  );
+  const head = "#EXTM3U\n#EXT-X-TARGETDURATION:1\n";
+  const tail = "#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n";
+  const outside = "../outside/secret.mp4";
+  // Cut at ffmpeg's 4095-byte line limit this names the outside file; whole, it walks back in.
+  const cutLine = "./".repeat((4095 - outside.length) / 2) + outside + "/../../proj/seg.ts";
+  // Each 0xFF is one byte to ffmpeg, so the cut lands after the outside name, not inside it.
+  const tagStart = Buffer.concat([
+    Buffer.from('#EXT-X-MAP:X="'),
+    Buffer.alloc(40, 0xff),
+    Buffer.from('",URI="'),
+  ]);
+  const tagPad = 4095 - tagStart.length - outside.length;
+  const notUtf8Line = Buffer.concat([
+    tagStart,
+    Buffer.from(
+      "./".repeat(Math.floor(tagPad / 2)) +
+        (tagPad % 2 ? "/" : "") +
+        outside +
+        '/../../proj/seg.ts"',
+    ),
+  ]);
+
+  it.each([
+    ["a segment after a bare carriage return", `${head}#EXTINF:1,\r${outside}\n#EXT-X-ENDLIST\n`],
+    ["a segment after a NUL", `${head}#EXTINF:1,\0${outside}\n#EXT-X-ENDLIST\n`],
+    ["an unquoted map URI", `${head}#EXT-X-MAP:URI=${outside}\n${tail}`],
+    ["a backslash-escaped map URI", `${head}#EXT-X-MAP:URI=".\\./outside/secret.mp4"\n${tail}`],
+    [
+      "an unquoted rendition URI",
+      `#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=a,NAME=a,URI=${outside}\n` +
+        '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="a"\nv.m3u8\n',
+    ],
+    [
+      "a list behind an ID3 tag",
+      Buffer.concat([
+        Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]),
+        Buffer.from(`${head}#EXTINF:1,\n${outside}\n#EXT-X-ENDLIST\n`),
+      ]),
+    ],
+    ["a segment line longer than ffmpeg reads", `${head}#EXTINF:1,\n${cutLine}\n#EXT-X-ENDLIST\n`],
+    [
+      "a long tag line with bytes that are not UTF-8",
+      Buffer.concat([
+        Buffer.from(head),
+        notUtf8Line,
+        Buffer.from("\n#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n"),
+      ]),
+    ],
+  ])("refuses %s", async (_name, contents) => {
+    const root = mkdtempSync(join(tmpdir(), "hf-playlist-ffprobe-"));
+    mkdirSync(join(root, "proj"));
+    mkdirSync(join(root, "outside"));
+    writeFileSync(join(root, "outside", "secret.mp4"), "outside media");
+    writeFileSync(join(root, "proj", "v.m3u8"), head + tail);
+    writeFileSync(join(root, "proj", "clip.m3u8"), contents);
+
+    expect(await playlistLeavesItsFolder(join(root, "proj", "clip.m3u8"))).toBe(true);
+    if (!FFPROBE_8) return;
+    const probe = spawnSync(
+      getFfprobeBinary(),
+      ["-loglevel", "debug", "-show_format", "--", "clip.m3u8"],
+      {
+        cwd: join(root, "proj"),
+        encoding: "utf-8",
+      },
+    );
+    expect(probe.stderr).toMatch(/outside\/secret\.mp4' for reading/);
+  });
+
+  it("refuses a nested name it cannot read, and keeps one that does not exist", async () => {
+    const list = (entry: string) => `${head}#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
+    const unreadable = writeTree({ "clip.m3u8": list("sub"), "sub/seg.ts": "segment" });
+    expect(await playlistLeavesItsFolder(unreadable)).toBe(true);
+    const missing = writeTree({ "clip.m3u8": list("gone.ts") });
+    expect(await playlistLeavesItsFolder(missing)).toBe(false);
+    const tooLong = writeTree({ "clip.m3u8": list("a".repeat(5000)) });
+    expect(await playlistLeavesItsFolder(tooLong)).toBe(false);
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "reads a nested list whose name is not UTF-8 by its bytes",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-playlist-bytes-"));
+      const name = Buffer.concat([Buffer.from("in"), Buffer.from([0xff]), Buffer.from(".m3u8")]);
+      writeFileSync(Buffer.from(`${root}/${name.toString("latin1")}`, "latin1"), list(outside));
+      const top = Buffer.concat([
+        Buffer.from("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n"),
+        name,
+        Buffer.from("\n"),
+      ]);
+      writeFileSync(join(root, "clip.m3u8"), top);
+      expect(await playlistLeavesItsFolder(join(root, "clip.m3u8"))).toBe(true);
+
+      function list(entry: string): string {
+        return `${head}#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
+      }
+    },
+  );
+
+  it("keeps a list with the same tags naming files beside it", async () => {
+    const list = `${head}#EXT-X-MAP:URI=init.mp4\r#EXT-X-KEY:METHOD=AES-128,URI="k\\ey.bin"\r${tail}`;
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", list))).toBe(false);
+  });
+
+  it("refuses a file behind more ID3 tags than it skips", async () => {
+    const tag = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
+    const file = writeFixture(
+      "clip.m3u8",
+      Buffer.concat([...Array(17).fill(tag), Buffer.from(head)]),
+    );
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("a FIFO with no writer", () => {
+  function fifoBeside(list?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-playlist-fifo-"));
+    execFileSync("mkfifo", [join(dir, "pipe.mp4")]);
+    if (list === undefined) return join(dir, "pipe.mp4");
+    writeFileSync(join(dir, "clip.m3u8"), list);
+    return join(dir, "clip.m3u8");
+  }
+
+  it("is refused as media without waiting for a writer", async () => {
+    expect(await isNotMediaPayload(fifoBeside())).toBe(true);
+  });
+
+  it("is refused when a list names it, without waiting for a writer", async () => {
+    const list = fifoBeside("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\npipe.mp4\n");
+    expect(await playlistLeavesItsFolder(list)).toBe(true);
   });
 });

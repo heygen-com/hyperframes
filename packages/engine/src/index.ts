@@ -60,6 +60,7 @@ export type {
 export {
   resolveConfig,
   resolvePageNavigationTimeout,
+  resolveRestrictPageNetwork,
   validateEngineConfigSnapshot,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
@@ -300,7 +301,11 @@ export {
 } from "./services/videoFrameExtractor.js";
 export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
-export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
+export {
+  directorySizeBytes,
+  gcExtractionCache,
+  privateCacheRoot,
+} from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,
@@ -409,6 +414,7 @@ export {
   NOT_MEDIA_PAYLOAD,
   NotMediaPayloadError,
   assertMediaPayload,
+  playlistLeavesItsFolder,
   fingerprintElementId,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";
@@ -417,9 +423,11 @@ export {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
+  isUrlNotPermittedError,
   writeUrlDownloadTelemetry,
   type SafeDownloadUrlIdentity,
   type UrlDownloadOptions,
@@ -427,6 +435,8 @@ export {
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
+export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
+export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {
   runFfmpeg,
   formatFfmpegError,
@@ -561,7 +571,12 @@ export {
   pipeLaunchClosedOnMac,
   sandboxDeniedRemediation,
 } from "./services/sandboxLaunch.js";
-export { launchWithChromeSandboxFallback } from "./services/chromeSandbox.js";
+export {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+  type ChromeSandboxHost,
+} from "./services/chromeSandbox.js";
 export {
   VariablesInvalidError,
   type VariablesIssue,

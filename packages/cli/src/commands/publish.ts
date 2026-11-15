@@ -31,7 +31,11 @@ import {
   writeTeamProject,
 } from "../utils/projectLink.js";
 import { cliSourced } from "../utils/sourceTag.js";
-import type { LeftOutReference } from "../utils/leftOutReference.js";
+import {
+  type LeftOutReference,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
 
 export const examples: Example[] = [
@@ -237,17 +241,28 @@ export default defineCommand({
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
       const leftOut: string[] = [];
       const references: LeftOutReference[] = [];
-      const fileMap = buildPublishFileMap(dir, (warning, reference) => {
-        leftOut.push(warning);
-        references.push(reference);
-      });
+      const outsideFiles: OutsideFileReference[] = [];
+      const fileMap = buildPublishFileMap(
+        dir,
+        (warning, reference) => {
+          leftOut.push(warning);
+          references.push(reference);
+        },
+        (reference) => outsideFiles.push(reference),
+      );
       trackUploadLeftOut("publish", references);
       let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {
         proxyBakeManifest = await bakeMediaProxies(dir, fileMap);
       }
       const archive = zipPublishFileMap(fileMap);
-      publishSpinner.message("Uploading project...");
+      if (outsideFiles.length > 0) {
+        publishSpinner.stop("Project prepared");
+        clack.log.info(outsideFilesNotice(outsideFiles));
+        publishSpinner.start("Uploading project...");
+      } else {
+        publishSpinner.message("Uploading project...");
+      }
 
       const published = await publishProjectArchive(dir, {
         public: args.public === true,

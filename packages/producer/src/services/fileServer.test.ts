@@ -405,6 +405,33 @@ describe("createFileServer", () => {
     }
   });
 
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-nosniff-"));
+    try {
+      writeEmptyIndex(projectDir);
+      writeFileSync(join(projectDir, "scene.png"), "window.ran = true;");
+      writeFileSync(join(projectDir, "scene.js"), "window.ran = true;");
+      const server = await createFileServer({ projectDir, preHeadScripts: [], headScripts: [] });
+      try {
+        for (const [name, type] of [
+          ["scene.png", "image/png"],
+          ["scene.js", "application/javascript; charset=utf-8"],
+          ["index.html", "text/html; charset=utf-8"],
+        ]) {
+          const response = await fetch(`${server.url}/${name}`);
+          expect(response.headers.get("content-type")).toBe(type);
+          expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+        }
+        const missing = await fetch(`${server.url}/missing.js`);
+        expect(missing.headers.get("x-content-type-options")).toBe("nosniff");
+      } finally {
+        server.close();
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("serves ES modules with a JavaScript MIME type", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mjs-"));
     try {
@@ -1132,4 +1159,34 @@ describe("createFileServer colour-tagged PNGs", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+});
+
+describe("createFileServer private project files", () => {
+  it.each(["/.env", "/.ENV.local", "/.env.production", "/.git/config", "/%2egit/HEAD", "/.envrc"])(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-private-"));
+      try {
+        writeEmptyIndex(projectDir);
+        mkdirSync(join(projectDir, ".git"));
+        for (const name of [".env", ".ENV.local", ".env.production", ".envrc"]) {
+          writeFileSync(join(projectDir, name), "SECRET=1");
+        }
+        writeFileSync(join(projectDir, ".git", "config"), "SECRET=1");
+        writeFileSync(join(projectDir, ".git", "HEAD"), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        symlinkSync(join(projectDir, ".env"), join(projectDir, "linked.txt"));
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          const linked = await fetch(`${server.url}/linked.txt`);
+          expect(linked.status).toBe(404);
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
 });
