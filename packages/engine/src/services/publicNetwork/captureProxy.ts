@@ -4,7 +4,12 @@ import { connect, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Duplex } from "node:stream";
-import { assertPublicHostname, resolvePublicAddress } from "./publicNetwork.js";
+import {
+  assertPublicHostname,
+  NonPublicHostError,
+  resolvePublicAddress,
+  type RefusedHostClass,
+} from "./publicNetwork.js";
 import {
   captureUpstreamProxy,
   connectAuthority,
@@ -48,6 +53,15 @@ function destination(raw: string, tunnel: boolean): URL {
   return url;
 }
 
+type OnRefused = (hostClass: RefusedHostClass) => void;
+
+export const logRefusal: OnRefused = (hostClass) =>
+  console.warn(`[CaptureProxy:REFUSED] class=${hostClass}`);
+
+function reportRefusal(error: unknown, onRefused: OnRefused | undefined): void {
+  if (error instanceof NonPublicHostError) onRefused?.(error.hostClass);
+}
+
 function refuse(response: ServerResponse): void {
   if (!response.headersSent) response.writeHead(403, { Connection: "close" });
   response.end();
@@ -67,6 +81,7 @@ async function forwardHttp(
   response: ServerResponse,
   sockets: Set<Socket>,
   proxy: UpstreamProxy | undefined,
+  onRefused: OnRefused | undefined,
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", false);
@@ -100,7 +115,8 @@ async function forwardHttp(
     response.on("close", () => upstream.destroy());
     incoming.on("error", () => upstream.destroy());
     incoming.pipe(upstream);
-  } catch {
+  } catch (error) {
+    reportRefusal(error, onRefused);
     refuse(response);
   }
 }
@@ -146,6 +162,7 @@ async function forwardTunnel(
   head: Buffer,
   sockets: Set<Socket>,
   proxy: UpstreamProxy | undefined,
+  onRefused: OnRefused | undefined,
 ): Promise<void> {
   try {
     const url = destination(incoming.url ?? "", true);
@@ -171,7 +188,8 @@ async function forwardTunnel(
     });
     upstream.once("close", () => client.destroy());
     client.once("close", () => upstream.destroy());
-  } catch {
+  } catch (error) {
+    reportRefusal(error, onRefused);
     client.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
   }
 }
@@ -179,16 +197,18 @@ async function forwardTunnel(
 /** Every browser target uses this proxy; it dials a checked numeric IPv4, or (unless null) the upstream proxy. */
 export async function startCaptureProxy(
   upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
+  onRefused?: OnRefused,
 ): Promise<{ url: string; close(): Promise<void> }> {
   const proxy = upstream ?? undefined;
   const sockets = new Set<Socket>();
   const server = createServer(
-    (incoming, response) => void forwardHttp(incoming, response, sockets, proxy),
+    (incoming, response) => void forwardHttp(incoming, response, sockets, proxy, onRefused),
   );
   server.on("connection", (socket) => trackSocket(socket, sockets));
   server.on(
     "connect",
-    (incoming, socket, head) => void forwardTunnel(incoming, socket, head, sockets, proxy),
+    (incoming, socket, head) =>
+      void forwardTunnel(incoming, socket, head, sockets, proxy, onRefused),
   );
   server.on("upgrade", (_incoming, socket) => socket.destroy());
   server.maxConnections = 128;
