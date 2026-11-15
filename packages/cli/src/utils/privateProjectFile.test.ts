@@ -1,8 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isEnvOrGitPath, isPrivateCompositionFile, receivedFiles } from "./privateProjectFile.js";
+import {
+  isEnvOrGitPath,
+  isPrivateCompositionFile,
+  receivedFiles,
+  recordReceivedFiles,
+} from "./privateProjectFile.js";
 
 const zeroFileIds = vi.hoisted(() => ({ on: false }));
 
@@ -80,5 +94,54 @@ describe("receivedFiles", () => {
     const received = receivedFiles(dir);
     expect(received("theirs.html")).toBe(true);
     expect(received("mine.html")).toBe(false);
+  });
+});
+
+describe("recordReceivedFiles", () => {
+  const record = (root: string) => join(root, ".hyperframes", "received-files.json");
+  const lock = (root: string) => `${record(root)}.lock`;
+  const listed = (root: string) => JSON.parse(readFileSync(record(root), "utf-8")).files;
+  function project(): string {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-lock-"));
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(record(dir), JSON.stringify({ files: ["hyperframes.json"] }));
+    return dir;
+  }
+
+  it("waits for another writer's lock, so both writers keep their entries", async () => {
+    const root = project();
+    writeFileSync(lock(root), "");
+    // Another writer: it read the record, holds the lock, writes its entry, then lets go.
+    const other = spawn(process.execPath, [
+      "-e",
+      `const fs = require("node:fs");
+       const files = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).files;
+       setTimeout(() => {
+         fs.writeFileSync(process.argv[1], JSON.stringify({ files: [...files, "theirs.html"] }));
+         fs.rmSync(process.argv[2]);
+       }, 300);`,
+      record(root),
+      lock(root),
+    ]);
+    await new Promise((resolve) => other.once("spawn", resolve));
+    recordReceivedFiles(root, ["mine.html"]);
+    await new Promise((resolve) => other.once("exit", resolve));
+    expect(listed(root)).toEqual(["hyperframes.json", "mine.html", "theirs.html"]);
+  });
+
+  it("takes over a lock left behind for more than ten seconds", () => {
+    const root = project();
+    writeFileSync(lock(root), "");
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(lock(root), old, old);
+    expect(recordReceivedFiles(root, ["mine.html"])).toEqual(["mine.html"]);
+    expect(listed(root)).toEqual(["hyperframes.json", "mine.html"]);
+  });
+
+  it("fails rather than write past a lock that stays held", () => {
+    const root = project();
+    writeFileSync(lock(root), "");
+    expect(() => recordReceivedFiles(root, ["mine.html"])).toThrow(/Another program is changing/);
+    expect(listed(root)).toEqual(["hyperframes.json"]);
   });
 });

@@ -30,6 +30,7 @@ import {
   resolveItemsByTag,
   type PreparedItem,
 } from "../registry/index.js";
+import { registryRoot } from "../registry/publication.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import { InvalidVariableValuesError } from "../registry/variableDefaults.js";
 import {
@@ -45,7 +46,11 @@ import {
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
-import { receivedFiles, recordReceivedFiles } from "../utils/privateProjectFile.js";
+import {
+  forgetReceivedFiles,
+  receivedFiles,
+  recordReceivedFiles,
+} from "../utils/privateProjectFile.js";
 import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
@@ -302,15 +307,26 @@ function fromReceivedRegistry(projectDir: string, registry: string): boolean {
   return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
 }
 
-function recordReceivedPlan(prepared: PreparedItem[]): void {
-  const root = prepared[0]?.root;
-  if (!root) return;
-  const paths = prepared.flatMap((item) =>
-    item.outcomes.flatMap((o) =>
-      o.bytes ? [relative(item.root, o.destPath).split(sep).join("/")] : [],
-    ),
-  );
-  recordReceivedFiles(root, paths);
+const PLAIN_WRITES = { guard: (_: string, write: () => void) => write(), undo: () => {} };
+
+// Lists each file as received just before it is written; undo() takes back what this install listed but never wrote.
+function receivedWrites(root: string): typeof PLAIN_WRITES {
+  const listedHere: string[] = [];
+  const landed = new Set<string>();
+  return {
+    guard(destPath: string, write: () => void) {
+      const path = relative(root, destPath).split(sep).join("/");
+      listedHere.push(...recordReceivedFiles(root, [path]));
+      write();
+      landed.add(path);
+    },
+    undo() {
+      forgetReceivedFiles(
+        root,
+        listedHere.filter((path) => !landed.has(path)),
+      );
+    },
+  };
 }
 
 // Install a topologically-ordered plan (dependencies first, requested item
@@ -335,6 +351,7 @@ async function installAll(
   const preserved: string[] = [];
   let variablesApplied: string[] = [];
   let variablesUnknown: string[] = [];
+  const writes = received ? receivedWrites(registryRoot(destDir)) : PLAIN_WRITES;
   try {
     const prepared: PreparedItem[] = [];
     for (const planItem of installPlan) {
@@ -350,9 +367,8 @@ async function installAll(
         }),
       );
     }
-    if (received) recordReceivedPlan(prepared);
     for (const [i, planItem] of installPlan.entries()) {
-      const result = publishItem(prepared[i]!);
+      const result = publishItem(prepared[i]!, writes.guard);
       written.push(...result.written);
       preserved.push(...result.preserved);
       if (planItem.name === requestedName) {
@@ -361,6 +377,7 @@ async function installAll(
       }
     }
   } catch (err) {
+    writes.undo();
     if (isProjectRootMissing(err)) throw err;
     if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
     throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");

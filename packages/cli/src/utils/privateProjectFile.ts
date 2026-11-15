@@ -1,4 +1,12 @@
-import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
@@ -6,7 +14,8 @@ import {
   linksOutside,
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
-import { publishRegistryFile } from "../registry/publication.js";
+import { mkdirWithinProject } from "@hyperframes/core";
+import { publishRegistryFile, registryTargetPath } from "../registry/publication.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
 
@@ -15,6 +24,9 @@ export function linksToPrivateOutsideFile(projectDir: string, filePath: string):
 }
 
 const RECEIVED_RECORD = join(".hyperframes", "received-files.json");
+const RECEIVED_RECORD_LOCK = `${RECEIVED_RECORD}.lock`;
+const LOCK_WAIT_MS = 2_000;
+const LOCK_STALE_MS = 10_000;
 
 interface ReceivedRecord {
   root: string;
@@ -40,13 +52,58 @@ function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null
   }
 }
 
-export function recordReceivedFiles(root: string, paths: string[]): void {
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function takeRecordLock(lock: string): void {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, "wx"));
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+    if (heldFor > LOCK_STALE_MS) rmSync(lock, { force: true });
+    else if (Date.now() < deadline) sleepSync(25);
+    else throw new Error(`Another program is changing ${RECEIVED_RECORD}; try again.`);
+  }
+}
+
+function changeReceivedRecord(projectDir: string, change: (files: Set<string>) => boolean): void {
+  const root = realpathSync(projectDir);
+  const lock = registryTargetPath(root, RECEIVED_RECORD_LOCK);
+  mkdirWithinProject(root, dirname(lock));
+  takeRecordLock(lock);
+  try {
+    const record = readRecord(root, true);
+    if (record && !Array.isArray(record.listed)) return;
+    const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
+    if (!change(files)) return;
+    publishRegistryFile(root, RECEIVED_RECORD, `${JSON.stringify({ files: [...files].sort() })}\n`);
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
+export function recordReceivedFiles(root: string, paths: string[]): string[] {
+  const added: string[] = [];
+  if (paths.length === 0) return added;
+  changeReceivedRecord(root, (files) => {
+    for (const path of paths.map((one) => one.normalize("NFC"))) {
+      if (!files.has(path)) added.push(path);
+      files.add(path);
+    }
+    return added.length > 0;
+  });
+  return added;
+}
+
+export function forgetReceivedFiles(root: string, paths: string[]): void {
   if (paths.length === 0) return;
-  const record = readRecord(root, true);
-  if (record && !Array.isArray(record.listed)) return;
-  const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
-  for (const path of paths) files.add(path.normalize("NFC"));
-  publishRegistryFile(root, RECEIVED_RECORD, `${JSON.stringify({ files: [...files].sort() })}\n`);
+  changeReceivedRecord(root, (files) => paths.map((path) => files.delete(path)).some(Boolean));
 }
 
 function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { runCommand as runCittyCommand, type CommandDef } from "citty";
 import {
+  chmodSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -888,6 +889,44 @@ describe("installs from the registry a received hyperframes.json names", () => {
     await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
 
     expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
+    expect(listed()).toEqual(["hyperframes.json"]);
+  });
+
+  it("takes back what a failed install listed but never wrote", async () => {
+    writeConfig(uniqueBase());
+    receive(["hyperframes.json"]);
+    mkdirSync(join(dir, "compositions"));
+    chmodSync(join(dir, "compositions"), 0o555);
+    try {
+      await expect(
+        runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true }),
+      ).rejects.toThrow(AddError);
+    } finally {
+      chmodSync(join(dir, "compositions"), 0o755);
+    }
+    expect(listed()).toEqual(["hyperframes.json"]);
+  });
+
+  it("leaves off a file the person edited while the install downloaded", async () => {
+    writeConfig(uniqueBase());
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+    receive(["hyperframes.json"]);
+    const block = join(dir, "compositions", "my-block.html");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        if (url.pathname.endsWith("/registry.json")) return Response.json(MANIFEST);
+        if (url.pathname.endsWith("/registry-item.json")) return Response.json(BLOCK_ITEM);
+        writeFileSync(block, "<div>the person's edit</div>");
+        return new Response(FILE_BODIES["my-block.html"]);
+      }),
+    );
+
+    const result = await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(result.preserved).toHaveLength(1);
+    expect(readFileSync(block, "utf-8")).toBe("<div>the person's edit</div>");
     expect(listed()).toEqual(["hyperframes.json"]);
   });
 
