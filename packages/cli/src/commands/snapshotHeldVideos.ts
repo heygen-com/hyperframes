@@ -41,10 +41,23 @@ export async function projectVideoFile(
   src: string,
 ): Promise<{ file: string; refused: boolean } | null> {
   const file = projectLocalFile(projectDir, src);
-  return file ? { file, refused: await isNotMediaPayload(file) } : null;
+  return file ? { file, refused: !(await readableAsMediaWithinProbeLimit(file)) } : null;
 }
 
 const PROBE_TIMEOUT_MS = 30_000;
+
+async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<boolean>((done) => {
+    timer = setTimeout(() => done(false), PROBE_TIMEOUT_MS);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([isNotMediaPayload(path).then((notMedia) => !notMedia), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface HeldVideoProbe {
   duration: number;
@@ -92,7 +105,7 @@ export function probeHeldVideo(
   const known = cache.get(path);
   if (known) return known;
   const read = (async () => {
-    if (!ffprobe || (await isNotMediaPayload(path))) return UNKNOWN_VIDEO;
+    if (!ffprobe || !(await readableAsMediaWithinProbeLimit(path))) return UNKNOWN_VIDEO;
     try {
       const { stdout } = await runCancellableProcess(
         ffprobe,

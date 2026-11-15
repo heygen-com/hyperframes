@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -189,3 +190,28 @@ describe("projectVideoFile", () => {
     await expect(projectVideoFile(dir, "../outside/secret.mp4")).resolves.toBeNull();
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "a project video that is a FIFO with no writer",
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-held-fifo-"));
+    execFileSync("mkfifo", [join(dir, "pipe.mp4")]);
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    beforeEach(() => {
+      run.mockReset();
+    });
+
+    it("is refused for frame extraction without waiting for a writer", async () => {
+      await expect(projectVideoFile(dir, "pipe.mp4")).resolves.toEqual({
+        file: join(dir, "pipe.mp4"),
+        refused: true,
+      });
+    });
+
+    it("gets no held-video hint, and FFprobe never reads it", async () => {
+      const videos = localVideos('<body><video id="pipe" src="pipe.mp4"></video></body>');
+      await expect(heldVideoHints(dir, videos, new Map(), "ffprobe")).resolves.toEqual([]);
+      expect(run).not.toHaveBeenCalled();
+    });
+  },
+);

@@ -1016,12 +1016,12 @@ export async function captureSnapshots(
   const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
-  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
 
   try {
+    const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
     const {
       browser: chromeBrowser,
       page,
@@ -1224,7 +1224,7 @@ export async function captureSnapshots(
         if (known) return known;
         const checked = projectVideoFile(projectDir, src).then((project) => {
           if (project?.refused) {
-            const message = `${relative(projectDir, project.file)} is not media: a document or a playlist naming files outside its folder`;
+            const message = `${relative(projectDir, project.file)} is not media: a document, a pipe or device, or a playlist naming files outside its folder`;
             warnings.push(message);
             console.warn(`   ${c.warn("⚠")} ${message}`);
           }
