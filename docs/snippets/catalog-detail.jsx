@@ -240,6 +240,21 @@ export const CatalogDetail = ({
   font-variant-numeric: tabular-nums;
   color: var(--ve-muted);
 }
+.hf-ve-link-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--ve-line);
+  border-radius: 14px;
+  background: var(--ve-surface);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ve-fg);
+}
 .hf-ve-desc {
   margin: 6px 0 0;
   font-size: 12px;
@@ -1762,6 +1777,33 @@ export const CatalogDetail = ({
   }
   // <<< preview values
 
+  // >>> copied values
+  /**
+   * Whether a value a link arrived with can go into a copied command as it is.
+   *
+   * The command is pasted into whatever shell the reader has: bash, zsh, fish,
+   * PowerShell or cmd.exe. They agree on almost nothing about quoting, so
+   * rather than escape for each, a link's text is carried only when it is
+   * short and made of letters, digits, spaces and punctuation that none of them
+   * reads as syntax inside the argument. Numbers and booleans always qualify.
+   */
+  function plainLinkValue(value) {
+    if (typeof value === "number") return Number.isFinite(value);
+    if (typeof value === "boolean") return true;
+    return typeof value === "string" && value.length <= 200 && /^[A-Za-z0-9 .,:_#+\-/@()?]*$/.test(value);
+  }
+
+  /**
+   * The changed values copied text may carry: every value the reader set on
+   * this page, and a value a link arrived with only when `keepFromLink` allows.
+   */
+  function copiedValues(changed, edited, keepFromLink) {
+    return Object.fromEntries(
+      Object.entries(changed).filter(([id, value]) => edited.includes(id) || keepFromLink(id, value)),
+    );
+  }
+  // <<< copied values
+
   const readFromUrl = () => {
     if (typeof window === "undefined") return {};
     try {
@@ -1781,6 +1823,18 @@ export const CatalogDetail = ({
   const [values, setValues] = useState(() => ({ ...defaults, ...readFromUrl() }));
 
   /**
+   * Ids the reader set on this page, and ids the link opened the page with.
+   *
+   * A link is written by whoever shared it. Its values still drive the
+   * preview, but the copy buttons only treat a value as the reader's own once
+   * they have set it here: until then a link's free text stays out of the
+   * agent request and the commands. The install command is a separate
+   * component, so the list is also published on `window` for it.
+   */
+  const [edited, setEdited] = useState([]);
+  const [fromLink, setFromLink] = useState([]);
+
+  /**
    * Read the URL again once the component is actually in a browser.
    *
    * The first render happens on the server, where there is no `window`, so the
@@ -1795,11 +1849,15 @@ export const CatalogDetail = ({
   useEffect(() => {
     const fromUrl = readFromUrl();
     if (Object.keys(fromUrl).length > 0) setValues((current) => ({ ...current, ...fromUrl }));
+    setFromLink(
+      Object.keys(fromUrl).filter((id) => JSON.stringify(fromUrl[id]) !== JSON.stringify(defaults[id])),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // `replaceState` rather than `pushState`: dragging a slider should not stack
   // up history entries the back button has to walk through.
+  const publishedEdited = useRef("");
   useEffect(() => {
     if (typeof window === "undefined") return;
     const changed = Object.fromEntries(
@@ -1813,13 +1871,16 @@ export const CatalogDetail = ({
     // Comparing first keeps it to an actual change rather than touching the
     // history API on each one.
     const next = url.toString();
-    if (next !== window.location.href) {
-      window.history.replaceState(null, "", next);
+    const editedNow = JSON.stringify(edited);
+    if (next !== window.location.href || editedNow !== publishedEdited.current) {
+      if (next !== window.location.href) window.history.replaceState(null, "", next);
+      publishedEdited.current = editedNow;
+      window.__hfEditedVars = { ...window.__hfEditedVars, [compositionId]: edited };
       // `replaceState` fires no event, and the install command on the same page
       // needs to follow these values.
       window.dispatchEvent(new CustomEvent("hf-vars-changed"));
     }
-  }, [values, defaults, urlKey]);
+  }, [values, defaults, urlKey, edited, compositionId]);
   // What the SVG import last had to say, per variable. Held here because
   // `control` is a function rather than a component and cannot hold it itself.
   const [notes, setNotes] = useState({});
@@ -1975,6 +2036,16 @@ export const CatalogDetail = ({
   snippetLines.push([[SHIKI.punct, "></"], [SHIKI.tag, "div"], [SHIKI.punct, ">"]]);
 
   const dirty = variables.some((v) => values[v.id] !== defaults[v.id]);
+  const resetValues = () => {
+    setValues(defaults);
+    setNotes({});
+    setEdited([]);
+    setFromLink([]);
+  };
+  // Values the link set that the reader has not touched since.
+  const heldFromLink = fromLink.filter(
+    (id) => !edited.includes(id) && JSON.stringify(values[id]) !== JSON.stringify(defaults[id]),
+  );
 
   const hasTune = variables.length > 0;
   const [tab, setTab] = useState("preview");
@@ -1994,12 +2065,16 @@ export const CatalogDetail = ({
     return changed;
   };
   const renderCommand = (() => {
-    const changed = changedValues();
+    const changed = copiedValues(changedValues(), edited, (id, value) => plainLinkValue(value));
     const vars = Object.keys(changed).length ? ` --variables '${JSON.stringify(changed).replace(/'/g, "'\\''")}'` : "";
     return `# Run from the installed project's root.\nnpx hyperframes render --composition '${compositionSrc}'${vars}`;
   })();
   const agentRequest = (() => {
-    const changed = changedValues();
+    // The reader pastes this to an agent as their own words, so a link's text
+    // never goes in: only numbers, switches and the author's own options do.
+    const changed = copiedValues(changedValues(), edited, (id, value) =>
+      typeof value !== "string" || variables.some((v) => v.id === id && v.type === "enum"),
+    );
     const base = `Install the HyperFrames catalog item "${compositionId}" (${title || compositionId}) into my project with \`npx hyperframes add ${compositionId}\`, mount it at the point of my composition where it should play, and verify with \`npx hyperframes check\`.`;
     const set = Object.entries(changed).map(([id, value]) => `${id} = ${JSON.stringify(value)}`);
     return set.length ? `${base} Set ${set.join(", ")}; keep the other variables at their defaults.` : `${base} Keep the default variables unless I say otherwise.`;
@@ -2145,6 +2220,18 @@ export const CatalogDetail = ({
 
       <div className="not-prose">
 
+        {heldFromLink.length > 0 && (
+          <div className="hf-ve-link-notice" role="status">
+            <span>
+              This page opened with settings from its link: {heldFromLink.join(", ")}. Text from a link
+              stays out of copied commands and the agent request until you set it here.
+            </span>
+            <button type="button" className="hf-ve-action" onClick={resetValues}>
+              Reset to defaults
+            </button>
+          </div>
+        )}
+
         <div className="hf-ve-bar">
           <div className="hf-ve-meta">
             {seconds && (
@@ -2198,7 +2285,10 @@ export const CatalogDetail = ({
                       {control(
                         v,
                         values[v.id],
-                        (next) => setValues((prev) => ({ ...prev, [v.id]: next })),
+                        (next) => {
+                          setEdited((prev) => (prev.includes(v.id) ? prev : [...prev, v.id]));
+                          setValues((prev) => ({ ...prev, [v.id]: next }));
+                        },
                         notes[v.id],
                         (note) => setNotes((prev) => ({ ...prev, [v.id]: note })),
                         setTyping,
@@ -2210,10 +2300,7 @@ export const CatalogDetail = ({
                 <div className="hf-ve-tune-foot">
                   <button
                     type="button"
-                    onClick={() => {
-                      setValues(defaults);
-                      setNotes({});
-                    }}
+                    onClick={resetValues}
                     disabled={!dirty}
                     className="hf-ve-action"
                   >
