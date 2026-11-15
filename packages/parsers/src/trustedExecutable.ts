@@ -1,6 +1,6 @@
 import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /**
  * The one rule for finding a helper program by name. A project can come from anyone, so a program
@@ -9,13 +9,17 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "no
  */
 
 function comparable(path: string): string {
-  let full = resolve(path);
-  try {
-    full = realpathSync.native(full);
-  } catch {
-    full = resolve(path);
+  const full = resolve(path);
+  const missing: string[] = [];
+  for (let dir = full; ; dir = dirname(dir)) {
+    try {
+      const real = join(realpathSync.native(dir), ...missing.reverse());
+      return process.platform === "win32" ? real.toLowerCase() : real;
+    } catch {
+      if (dirname(dir) === dir) return process.platform === "win32" ? full.toLowerCase() : full;
+      missing.push(basename(dir));
+    }
   }
-  return process.platform === "win32" ? full.toLowerCase() : full;
 }
 
 function contains(parent: string, child: string): boolean {

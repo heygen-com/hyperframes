@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -72,6 +80,23 @@ describe("isTrustedDirectory from a subfolder of a project", () => {
     expect(isTrustedDirectory(project)).toBe(false);
     expect(isTrustedDirectory(join(root, "tools"))).toBe(true);
   });
+
+  // fails without the fix: a folder that does not exist kept the spelling it was given, so a project
+  // folder named through a link (or a Windows short name such as RUNNER~1) never matched.
+  it.skipIf(process.platform === "win32")(
+    "drops a project folder that does not exist yet, named through a link",
+    () => {
+      const root = tempDir("hf-trusted-link-");
+      const project = join(root, "project");
+      const sub = join(project, "video");
+      mkdirSync(sub, { recursive: true });
+      symlinkSync(root, join(root, "link"));
+      vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+      expect(isTrustedDirectory(join(root, "link", "project", "node_modules", ".bin"))).toBe(false);
+      expect(isTrustedDirectory(join(root, "link", "node_modules", ".bin"))).toBe(false);
+    },
+  );
 
   it("keeps the per-user install dirs when the home folder itself holds a package.json or .git", () => {
     const home = tempDir("hf-trusted-home-");
