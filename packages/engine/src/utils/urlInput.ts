@@ -12,7 +12,10 @@ const CA_BUNDLES = [
 // Lambda's ffprobe 4.0 accepts these but not -reconnect_on_network_error; a stalled read fails after 30 s.
 const RECONNECT_ARGS = ["-rw_timeout", "30000000", "-reconnect", "1", "-reconnect_delay_max", "2"];
 
-/** ffmpeg and ffprobe skip TLS certificate checks unless told to; an https input must be verified, and on a render service whatever it names must be HTTPS too. */
+const SELF_CONTAINED_FORMATS =
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+
+/** ffmpeg and ffprobe skip TLS certificate checks unless told to; an https input must be verified, and on a render service be a self-contained container that names only HTTPS. */
 export function urlInputArgs(
   input: string,
   {
@@ -28,8 +31,8 @@ export function urlInputArgs(
     );
   }
   const networkRetry = tool === "ffmpeg" ? ["-reconnect_on_network_error", "1"] : [];
-  const nestedOpensStayOnHttps = resolveRestrictPageNetwork()
-    ? ["-protocol_whitelist", "https,tls,tcp"]
+  const renderServiceLimits = resolveRestrictPageNetwork()
+    ? ["-protocol_whitelist", "https,tls,tcp", "-format_whitelist", SELF_CONTAINED_FORMATS]
     : [];
   return [
     "-tls_verify",
@@ -38,7 +41,7 @@ export function urlInputArgs(
     caFile,
     ...RECONNECT_ARGS,
     ...networkRetry,
-    ...nestedOpensStayOnHttps,
+    ...renderServiceLimits,
   ];
 }
 

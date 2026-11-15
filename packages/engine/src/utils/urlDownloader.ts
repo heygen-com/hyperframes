@@ -144,6 +144,24 @@ export class UrlDownloadError extends Error {
   }
 }
 
+const URL_NOT_PERMITTED = "Download URL is not permitted";
+const REDIRECT_NOT_PERMITTED = "Download redirect target is not permitted";
+
+function notPermittedError(redirect: boolean): UrlDownloadError {
+  return new UrlDownloadError(
+    "http_rejected",
+    false,
+    redirect ? REDIRECT_NOT_PERMITTED : URL_NOT_PERMITTED,
+  );
+}
+
+export function isUrlNotPermittedError(error: unknown): boolean {
+  return (
+    error instanceof UrlDownloadError &&
+    (error.message === URL_NOT_PERMITTED || error.message === REDIRECT_NOT_PERMITTED)
+  );
+}
+
 function classifyHttpFailure(status: number): UrlDownloadError {
   // Response.statusText is remote-controlled and some CDNs/proxies echo the
   // signed request URL into it. The numeric status is sufficient and bounded.
@@ -473,11 +491,7 @@ function assertAllowedDownloadUrl(url: string, redirect: boolean): void {
   try {
     assertPublicHttpsUrl(url);
   } catch {
-    throw new UrlDownloadError(
-      "http_rejected",
-      false,
-      redirect ? "Download redirect target is not permitted" : "Download URL is not permitted",
-    );
+    throw notPermittedError(redirect);
   }
 }
 
@@ -525,13 +539,7 @@ async function fetchWithValidatedRedirects(
       headers: { "accept-encoding": "identity" },
     }).catch((error: unknown) => {
       if (!refusedNonPublicAddress(error)) throw error;
-      throw new UrlDownloadError(
-        "http_rejected",
-        false,
-        redirects > 0
-          ? "Download redirect target is not permitted"
-          : "Download URL is not permitted",
-      );
+      throw notPermittedError(redirects > 0);
     });
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: currentUrl };
 

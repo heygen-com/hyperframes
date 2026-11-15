@@ -37,7 +37,13 @@ export async function checkPageLoads(
     failures.push(`pageerror: ${err instanceof Error ? err.message : String(err)}`);
   });
   page.on("console", (msg) => {
-    if (msg.type() === "error") failures.push(`console.error: ${msg.text()}`);
+    if (msg.type() !== "error") return;
+    const failedResourceUrl = msg.text().startsWith("Failed to load resource")
+      ? msg.location().url
+      : "";
+    failures.push(
+      `console.error: ${msg.text()}${failedResourceUrl ? ` (${failedResourceUrl})` : ""}`,
+    );
   });
   try {
     await page.goto(originUrl, { waitUntil: "domcontentloaded" });
