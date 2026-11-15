@@ -549,7 +549,10 @@ describe("texture_mask_asset_not_found declarations", () => {
     },
   );
 
-  it("reads long runs of unclosed urls in valid and malformed stylesheets in well under two seconds", async () => {
+  it("reads long runs of unclosed urls in valid and malformed stylesheets in linear time", async () => {
+    // A linear scan lints these stylesheets in about 0.1 s on a laptop. A quadratic one takes
+    // over 10 s, because it reads to the end of broken.css after each unclosed url(. The cap
+    // leaves room for slow shared CI runners.
     const links =
       '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
     const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
@@ -557,13 +560,13 @@ describe("texture_mask_asset_not_found declarations", () => {
       join(project, "nested.css"),
       `a{background:${"url(".repeat(40_000)}${")".repeat(40_000)}}`,
     );
-    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(3_000)}`);
+    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(30_000)}`);
 
     const started = performance.now();
     await lintProject(project);
 
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
+    expect(performance.now() - started).toBeLessThan(4000);
+  }, 60_000);
 });
 
 describe("template shell style sources", () => {
