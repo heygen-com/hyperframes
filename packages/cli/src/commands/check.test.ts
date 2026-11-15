@@ -78,7 +78,7 @@ import type {
   LayoutOverflow,
   LayoutRect,
 } from "../utils/layoutAudit.js";
-import type { CraftFrame, SeekClock } from "../utils/checkTypes.js";
+import type { CheckContrastFinding, CraftFrame, SeekClock } from "../utils/checkTypes.js";
 import type { ProjectDir } from "../utils/project.js";
 
 const PROJECT: ProjectDir = {
@@ -836,6 +836,45 @@ it("prints composition text in a finding with its control characters as visible 
   expect(out).toContain("voice\\x1b[2K.wav has no audio");
   expect(out).toContain("scene\\x9b2J.html #v\\x1b]0;t\\x07");
   expect(out).toContain("Fix: use \\x1b]52;c;Y2xpcA==\\x07");
+});
+
+it("prints a contrast finding's selector, colour and source with control characters escaped", async () => {
+  const planted: CheckContrastFinding = {
+    code: "contrast_aa_failure",
+    severity: "error",
+    message: "low contrast",
+    selector: "#t\u001b]0;x\u0007",
+    dataAttributes: {},
+    sourceFile: "scene\u009b2J.html",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+    fg: "#777",
+    bg: "#888",
+    ratio: 1.2,
+    requiredRatio: 4.5,
+    suggestedColor: "#000\u001b[2K",
+    large: false,
+  };
+  const { report } = await runScenario(fakeDriver());
+  const plantedReport = {
+    ...report,
+    contrast: { ...report.contrast, enabled: true, findings: [planted], errorCount: 1 },
+  };
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => plantedReport),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b]", "\u001b[2K", "\u009b"])
+    expect(out).not.toContain(control);
+  expect(out).toContain("#t\\x1b]0;x\\x07 1.2:1");
+  expect(out).toContain("Try #000\\x1b[2K; source scene\\x9b2J.html");
 });
 
 it("fails the check on an audio error and reports it in its own section", async () => {
