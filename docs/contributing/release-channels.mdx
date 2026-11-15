@@ -50,6 +50,8 @@ git push origin next
 git push origin v0.4.25-alpha.1
 ```
 
+The tag push starts the publish workflow, which builds and packs the release and then waits in the `npm-prerelease` environment. A maintainer other than the person who pushed the tag approves the run on the workflow page, and only then is anything published. A prerelease branch has no PR review, so this approval is its review.
+
 Consumers can install alpha builds explicitly:
 
 ```bash
@@ -65,6 +67,7 @@ The publish workflow validates release channel boundaries before publishing:
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
 - Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
 - Prerelease tags must be reachable from a prerelease branch.
+- Prerelease tag pushes publish only after a maintainer approves the run in the `npm-prerelease` environment.
 - Merged `release/vX.Y.Z` PRs publish stable releases only.
 - Every publish job verifies that its checkout matches the immutable event SHA.
 - Builds, lifecycle scripts and `npm pack` run in a job with a read-only token and no secrets.

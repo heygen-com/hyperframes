@@ -299,7 +299,10 @@ jobs:
     needs: [pack]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: npm-publish
+    # A tag push can come from any prerelease branch, which no PR review
+    # covers, so npm-prerelease requires a maintainer's approval. A merged
+    # release PR was already reviewed and uses npm-publish.
+    environment: ${{ github.event_name == 'push' && 'npm-prerelease' || 'npm-publish' }}
     # This job holds the release credentials, so it runs no code from the
     # release commit: no install, no build, no repo scripts. It checks the
     # pack job's tarballs and uploads them.
