@@ -2,7 +2,8 @@ import { delimiter, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { trustedPathDirs } from "@hyperframes/parsers/ff-binaries";
 
-const NEVER_CREATED_PATH_FOLDER = fileURLToPath(new URL("no-trusted-path-folder", import.meta.url));
+const neverCreatedPathFolder = () =>
+  fileURLToPath(new URL("no-trusted-path-folder", import.meta.url));
 
 function keyOf(env: NodeJS.ProcessEnv, name: string): string | undefined {
   return Object.keys(env).find((key) => key.toUpperCase() === name);
@@ -48,7 +49,7 @@ export function withOnlyTrustedPathFolders(
   const value = env[pathKey] ?? "";
   const dirs = platform === "win32" ? windowsTrustedDirs(value, env) : trustedPathDirs(value);
   const separator = platform === "win32" ? win32.delimiter : delimiter;
-  return { ...env, [pathKey]: dirs.length > 0 ? dirs.join(separator) : NEVER_CREATED_PATH_FOLDER };
+  return { ...env, [pathKey]: dirs.length > 0 ? dirs.join(separator) : neverCreatedPathFolder() };
 }
 
 export function skipWorkingDirectoryInExeSearch(
