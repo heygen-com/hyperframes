@@ -132,10 +132,14 @@ describe("auth/resolver", () => {
     expect(r).toEqual({ type: "api_key", key: "env-key", source: "env" });
   });
 
-  /** Loads `HEYGEN_API_KEY=<key>` from a project `.env`; `received` writes the received-files record. */
-  async function projectEnvKey(key: string, received?: string): Promise<void> {
+  /** Loads `<name>=<key>` from a project `.env`; `received` writes the received-files record. */
+  async function projectEnvKey(
+    key: string,
+    received?: string,
+    name = "HEYGEN_API_KEY",
+  ): Promise<void> {
     const project = await fs.mkdtemp(join(dir, "project-"));
-    await fs.writeFile(join(project, ".env"), `HEYGEN_API_KEY=${key}\n`);
+    await fs.writeFile(join(project, ".env"), `${name}=${key}\n`);
     if (received !== undefined) {
       await fs.mkdir(join(project, ".hyperframes"));
       await fs.writeFile(join(project, ".hyperframes", "received-files.json"), received);
@@ -162,6 +166,20 @@ describe("auth/resolver", () => {
         key: "file-key",
         source: "file_json",
       });
+    },
+  );
+
+  it.each([
+    ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "env_alias"],
+    ["HYPERFRAMES_API_KEY", "HEYGEN_API_KEY", "env"],
+  ] as const)(
+    "uses the shell's key over a received .env's %s, with or without a saved key",
+    async (receivedName, shellName, source) => {
+      process.env[shellName] = "shell-key";
+      await projectEnvKey("received-key-5", JSON.stringify({ files: [".env"] }), receivedName);
+      expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
+      await writeStore({ api_key: "file-key" });
+      expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
     },
   );
 

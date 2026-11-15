@@ -60,7 +60,7 @@ export async function resolveCredential(opts: ResolveOptions = {}): Promise<Reso
 async function resolveFromSources(opts: ResolveOptions): Promise<ResolvedCredential> {
   const now = (opts.now ?? (() => new Date()))();
 
-  const envKey = envApiKey();
+  const envKey = await envApiKey();
   // A gateway takes the key its host app set and must never receive an OAuth token.
   if (envKey && !heygenApiHost()) return envKey;
 
@@ -136,12 +136,17 @@ function storedApiKey(
   throw ErrNotConfigured();
 }
 
-function envApiKey(): ApiKeyCredential | undefined {
-  const heygenEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env);
-  if (heygenEnv) return { type: "api_key", key: heygenEnv, source: "env" };
-  const hfEnv = headerSafeEnv(ENV_CREDENTIAL_VAR.env_alias);
-  if (hfEnv) return { type: "api_key", key: hfEnv, source: "env_alias" };
-  return undefined;
+/** The first env key the person set, else the first one a received project `.env` set. */
+async function envApiKey(): Promise<ApiKeyCredential | undefined> {
+  let received: ApiKeyCredential | undefined;
+  for (const source of ["env", "env_alias"] as const) {
+    const key = headerSafeEnv(ENV_CREDENTIAL_VAR[source]);
+    if (!key) continue;
+    const credential: ApiKeyCredential = { type: "api_key", key, source };
+    if (!(await fromReceivedProjectEnv(credential))) return credential;
+    received ??= credential;
+  }
+  return received;
 }
 
 /** False when `HEYGEN_API_URL` or `HEYGEN_API_BASE` names a host app's gateway, not HeyGen. */
@@ -187,7 +192,7 @@ export async function afterRefreshFailure(
     }
   }
   if (!err.refused && err.code !== "LOGIN_EXPIRED") throw err;
-  const key = envApiKey();
+  const key = await envApiKey();
   if (!key) throw err;
   loginRefreshFailed = true;
   return noteProjectKey(key);

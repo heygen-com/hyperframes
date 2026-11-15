@@ -11,7 +11,7 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
@@ -90,23 +90,49 @@ function isFile(path) {
   }
 }
 
-// The CLI's received-files rule: any `.hyperframes/received-files.json` at or above `dir` that lists the
-// file, or that cannot be read, makes it received.
+// The CLI's received-files rule: a `.hyperframes/received-files.json` at or above `dir` that lists the file
+// (by path or as the same file on disk), or that cannot be read, makes it received.
+function recordFiles(root, ownFolder) {
+  const record = join(root, ".hyperframes", "received-files.json");
+  if (!ownFolder && !isFile(record)) return null;
+  try {
+    return { files: JSON.parse(readFileSync(record, "utf8")).files };
+  } catch (error) {
+    return ownFolder && ["ENOENT", "ENOTDIR"].includes(error.code) ? null : { files: undefined };
+  }
+}
+
+function fileIdentity(path) {
+  try {
+    const stat = lstatSync(path, { bigint: true });
+    return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;
+  } catch {
+    return null;
+  }
+}
+
+function listsEnvFile(files, root, start, envIdentity) {
+  if (!Array.isArray(files)) return true;
+  const key = relative(root, join(start, ".env")).split(sep).join("/").normalize("NFC");
+  return files.some((file) => {
+    const entry = String(file).normalize("NFC");
+    return (
+      entry === key || (envIdentity !== null && fileIdentity(join(root, entry)) === envIdentity)
+    );
+  });
+}
+
 function receivedEnvFile(dir) {
-  const start = resolve(dir);
+  let start;
+  try {
+    start = realpathSync(dir);
+  } catch {
+    start = resolve(dir);
+  }
+  const envIdentity = fileIdentity(join(dir, ".env"));
   for (let root = start; ; root = dirname(root)) {
-    const record = join(root, ".hyperframes", "received-files.json");
-    if (isFile(record)) {
-      let files;
-      try {
-        files = JSON.parse(readFileSync(record, "utf8")).files;
-      } catch {
-        return true;
-      }
-      if (!Array.isArray(files)) return true;
-      const key = relative(root, join(start, ".env")).split(sep).join("/").normalize("NFC");
-      if (files.some((file) => String(file).normalize("NFC") === key)) return true;
-    }
+    const record = recordFiles(root, root === start);
+    if (record && listsEnvFile(record.files, root, start, envIdentity)) return true;
     if (dirname(root) === root) return false;
   }
 }
@@ -164,9 +190,11 @@ function resolveCredential() {
   if (!heygenOwnBase()) return null;
   const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
-  const envName = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find((name) => process.env[name]);
+  const envNames = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].filter((name) => process.env[name]);
+  const envName =
+    envNames.find((name) => !receivedProjectKey(name, process.env[name])) ?? envNames[0];
   const envKey = envName && process.env[envName];
-  const fromProject = envKey !== undefined && receivedProjectKey(envName, envKey);
+  const fromProject = envName !== undefined && receivedProjectKey(envName, envKey);
   const stored = storedCredential();
   // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
   if (stored?.headers && "Authorization" in stored.headers) return stored;
