@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  isCredentialOrToolStatePath,
   isEnvOrGitPath,
   isPrivateCompositionFile,
   receivedFiles,
@@ -49,6 +50,44 @@ describe("isEnvOrGitPath", () => {
     expect(isEnvOrGitPath(".environment.json")).toBe(false);
     expect(isEnvOrGitPath("assets/environment.png")).toBe(false);
     expect(isEnvOrGitPath("dotfiles.git/logo.png")).toBe(false);
+  });
+});
+
+describe("isCredentialOrToolStatePath", () => {
+  it("names logins, keys and agent or editor state at any depth and in any case", () => {
+    for (const path of [
+      ".npmrc",
+      "a/b/.YARNRC.yml",
+      "_netrc",
+      "pip.ini",
+      ".git-credentials",
+      ".ssh/config",
+      "x\\.AWS\\credentials",
+      ".config/gcloud/application_default_credentials.json",
+      ".config/gh/hosts.yml",
+      "keys/id_ecdsa.pub",
+      "certs/site.PEM",
+      ".claude/settings.json",
+      ".idea/workspace.xml",
+      "sub/.mcp.json",
+    ]) {
+      expect(isCredentialOrToolStatePath(path), path).toBe(true);
+    }
+  });
+
+  it("leaves ordinary composition files alone", () => {
+    for (const path of [
+      "assets/keyframes.json",
+      "monkey.png",
+      "id.png",
+      "fonts/key.woff2",
+      ".config/theme.json",
+      "claude/logo.svg",
+      "scenes/mcp.json",
+      ".media/clip.mp4",
+    ]) {
+      expect(isCredentialOrToolStatePath(path), path).toBe(false);
+    }
   });
 });
 

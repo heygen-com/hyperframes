@@ -7,7 +7,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
   isPrivateOutsideFile,
@@ -15,6 +15,7 @@ import {
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 import { mkdirWithinProject } from "@hyperframes/core";
+import { projectPathSegments } from "@hyperframes/core/safe-path";
 import { publishRegistryFile, registryRoot, registryTargetPath } from "../registry/publication.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
@@ -160,11 +161,71 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
   return (path) => listedInAnyRecord.some((listed) => listed(path));
 }
 
-/** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
-export function isPrivateCompositionFile(projectDir: string, filePath: string): boolean {
+const CREDENTIAL_FILES = new Set([
+  ".npmrc",
+  ".yarnrc",
+  ".yarnrc.yml",
+  ".pypirc",
+  "pip.conf",
+  "pip.ini",
+  ".netrc",
+  "_netrc",
+  ".git-credentials",
+  ".gitconfig",
+  ".mcp.json",
+]);
+const CREDENTIAL_FOLDERS = new Set([
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".docker",
+  ".kube",
+  ".azure",
+  ".claude",
+  ".codex",
+  ".cursor",
+  ".agents",
+  ".gemini",
+  ".vscode",
+  ".idea",
+]);
+const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
+const KEY_FILE = /^id_(?:rsa|dsa|ecdsa|ed25519)|\.(?:pem|key|p12|pfx)$/;
+
+export function isCredentialOrToolStatePath(relPath: string): boolean {
+  const segments = projectPathSegments(relPath);
+  const name = segments.at(-1) ?? "";
   return (
-    isEnvOrGitPath(relative(projectDir, filePath)) ||
-    isEnvOrGitPath(relative(realFilePath(projectDir), realFilePath(filePath))) ||
+    CREDENTIAL_FILES.has(name) ||
+    KEY_FILE.test(name) ||
+    segments.some(
+      (segment, at) =>
+        CREDENTIAL_FOLDERS.has(segment) ||
+        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
+    )
+  );
+}
+
+const leavesProject = (path: string): boolean =>
+  isAbsolute(path) || path.split(/[\\/]/)[0] === "..";
+
+const projectRelatives = (projectDir: string, filePath: string): string[] => [
+  relative(projectDir, filePath),
+  relative(realFilePath(projectDir), realFilePath(filePath)),
+];
+
+/** Project files no composition loads, so none is served or uploaded: env, Git, credentials, tool and agent state. */
+export function isPrivateCompositionFile(projectDir: string, filePath: string): boolean {
+  const paths = projectRelatives(projectDir, filePath);
+  return (
+    paths.some(isEnvOrGitPath) ||
+    paths.some((path) => !leavesProject(path) && isCredentialOrToolStatePath(path)) ||
     isPrivateProjectFile(projectDir, filePath)
+  );
+}
+
+export function isHiddenProjectFile(projectDir: string, filePath: string): boolean {
+  return projectRelatives(projectDir, filePath).some((path) =>
+    path.split(/[\\/]/).some((segment) => segment.startsWith(".") && segment !== ".."),
   );
 }

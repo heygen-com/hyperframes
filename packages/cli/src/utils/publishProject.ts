@@ -24,6 +24,7 @@ import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../au
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
 import {
+  isHiddenProjectFile,
   isPrivateCompositionFile,
   isPrivateOutsideFile,
   linksOutside,
@@ -408,6 +409,7 @@ interface ExternalAssetContext {
   leftOut: Set<string>;
   onLeftOut?: OnLeftOut;
   received: (path: string) => boolean;
+  walkedLeftOut: ReadonlySet<string>;
 }
 
 function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
@@ -432,12 +434,28 @@ function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
   return archivePath;
 }
 
-function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): boolean {
-  if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return true;
+function staysOut(ctx: ExternalAssetContext, rel: string): boolean {
   return (
-    isPrivateCompositionFile(ctx.absProjectDir, absPath) ||
-    (existsSync(absPath) && linksToPrivateOutsideFile(ctx.absProjectDir, absPath))
+    !rel ||
+    ctx.fileContents.has(rel) ||
+    ctx.walkedLeftOut.has(rel) ||
+    rel.split("/").some(shouldIgnoreSegment)
   );
+}
+
+const loadableReference = (absProjectDir: string, absPath: string): boolean =>
+  isCopiedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
+
+function referencedFileLeftOut(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  absPath: string,
+): LeftOutReason | null {
+  if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
+  if (linksToPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
+  if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) return "received";
+  if (!loadableReference(ctx.absProjectDir, absPath)) return "private";
+  return null;
 }
 
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
@@ -453,14 +471,15 @@ function includeReferencedProjectFile(
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
-    if (staysOut(ctx, rel, absPath)) return;
-    if (!existsSync(absPath)) continue;
-    if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) {
-      return leaveOut(ctx, entryPath, rawPath, absPath, "received");
+    if (staysOut(ctx, rel)) return;
+    if (!existsSync(absPath)) {
+      if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return;
+      continue;
     }
-    if (statSync(absPath).isFile()) {
-      ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
-    }
+    if (!statSync(absPath).isFile()) return;
+    const reason = referencedFileLeftOut(ctx, entryPath, absPath);
+    if (reason) return leaveOut(ctx, entryPath, rawPath, absPath, reason);
+    ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     return;
   }
   if (!requireOnDisk) return;
@@ -703,6 +722,7 @@ export function localizeExternalAssets(
   fileContents: Map<string, StagedFile>,
   onDiskMinBytes = Infinity,
   onLeftOut?: OnLeftOut,
+  walkedLeftOut: ReadonlySet<string> = new Set(),
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -713,6 +733,7 @@ export function localizeExternalAssets(
     leftOut: new Set(),
     onLeftOut,
     received: receivedFiles(absProjectDir),
+    walkedLeftOut,
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
@@ -764,7 +785,8 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
 type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type">;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
-  private: "holds secrets or tool data (an env file, Git data or Studio records)",
+  private:
+    "holds secrets or tool data (an env file, Git data, credentials, agent or editor state, or Studio records)",
   blocklisted: "links to a file outside the project in a private location",
   received: "links to a file outside the project and came in with an imported project",
 };
@@ -799,6 +821,7 @@ export function stagePublishFiles(
   const fileContents = new Map<string, StagedFile>();
   const diskPathOf = new Map<string, string>();
   const received = receivedFiles(absProjectDir);
+  const walkedLeftOut = new Set<string>();
   for (const filePath of filePaths) {
     const absPath = join(absProjectDir, filePath);
     const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
@@ -807,6 +830,7 @@ export function stagePublishFiles(
         `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
+      walkedLeftOut.add(archiveKey(filePath));
       continue;
     }
     const key = archiveKey(filePath);
@@ -821,7 +845,7 @@ export function stagePublishFiles(
   }
 
   composeNamesInText(fileContents, filePaths);
-  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut);
+  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut, walkedLeftOut);
   return fileContents;
 }
 
