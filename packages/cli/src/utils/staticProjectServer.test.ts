@@ -159,6 +159,17 @@ describe("serveStaticProjectHtml colour-tagged PNGs", () => {
   });
 });
 
+describe("serveStaticProjectHtml content types", () => {
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const { url } = await serveWith(Buffer.from("window.ran = true;"), "scene.png");
+    for (const path of ["", "scene.png", "missing.js"]) {
+      const response = await fetch(`${url}${path}`);
+      expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
+    }
+    expect((await fetch(`${url}scene.png`)).headers.get("content-type")).toBe("image/png");
+  });
+});
+
 describe("serveStaticProjectHtml range support", () => {
   it("answers a Range request with 206 + the requested byte slice", async () => {
     // Chromium needs byte-range seekability or WAV `.duration` reports Infinity,
