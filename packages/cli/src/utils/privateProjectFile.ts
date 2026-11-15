@@ -39,23 +39,24 @@ function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null
   }
 }
 
-function nearestReceivedRecordAtOrAbove(projectDir: string): ReceivedRecord | null {
+function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {
   let start: string;
   try {
     start = realpathSync(projectDir);
   } catch {
     start = resolve(projectDir);
   }
+  const records: ReceivedRecord[] = [];
   for (let dir = start; ; ) {
     const record = readRecord(dir, dir === start);
     if (record)
-      return {
+      records.push({
         root: dir,
         projectDirFromRoot: relative(dir, start).split(sep).join("/"),
         ...record,
-      };
+      });
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return records;
     dir = parent;
   }
 }
@@ -69,11 +70,8 @@ function fileIdentity(path: string): string | null {
   }
 }
 
-export function receivedFiles(projectDir: string): (path: string) => boolean {
-  const record = nearestReceivedRecordAtOrAbove(projectDir);
-  if (!record) return () => false;
-  if (!Array.isArray(record.listed)) return () => true;
-  const listed = record.listed.map((path) => String(path).normalize("NFC"));
+function listedIn(record: ReceivedRecord, projectDir: string): (path: string) => boolean {
+  const listed = (record.listed as unknown[]).map((path) => String(path).normalize("NFC"));
   const files = new Set(listed);
   const keyOf = (path: string) =>
     (record.projectDirFromRoot ? `${record.projectDirFromRoot}/${path}` : path).normalize("NFC");
@@ -88,19 +86,30 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
   return (path) => files.has(keyOf(path)) || sameFileAsListed(path);
 }
 
-export function receivedRecordStatus(
-  projectDir: string,
-): { path: string; listed: string[] | null } | null {
-  const record = nearestReceivedRecordAtOrAbove(projectDir);
-  if (!record) return null;
-  const path = join(record.root, RECEIVED_RECORD);
-  if (!Array.isArray(record.listed)) return { path, listed: null };
+export function receivedFiles(projectDir: string): (path: string) => boolean {
+  const records = receivedRecordsAtOrAbove(projectDir);
+  if (records.some((record) => !Array.isArray(record.listed))) return () => true;
+  const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
+  return (path) => listedInAnyRecord.some((listed) => listed(path));
+}
+
+function listedUnder(record: ReceivedRecord): string[] {
   const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/`.normalize("NFC") : "";
-  const listed = record.listed
+  return (record.listed as unknown[])
     .map(String)
     .filter((entry) => entry.normalize("NFC").startsWith(prefix))
     .map((entry) => join(record.root, entry));
-  return { path, listed };
+}
+
+export function receivedRecordStatus(
+  projectDir: string,
+): { path: string; listed: string[] | null } | null {
+  const records = receivedRecordsAtOrAbove(projectDir);
+  const [nearest] = records;
+  if (!nearest) return null;
+  const unreadable = records.find((record) => !Array.isArray(record.listed));
+  if (unreadable) return { path: join(unreadable.root, RECEIVED_RECORD), listed: null };
+  return { path: join(nearest.root, RECEIVED_RECORD), listed: records.flatMap(listedUnder) };
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */

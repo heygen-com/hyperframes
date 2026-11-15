@@ -55,6 +55,22 @@ describe("endPreviewBeforeOpening", () => {
     );
   });
 
+  it("gives JSON no stop command when the folder name has no safe spelling", async () => {
+    const hostile = join(projectDir, "$(calc)&calc");
+    const result = await endPreviewBeforeOpening(hostile, {
+      status: async () => ({ pid: 999, port: 3002, projectDir: hostile }),
+      stop: never,
+      appInstalled: () => true,
+      platform: "win32",
+    });
+
+    expect(result).toMatchObject({
+      state: "left-running",
+      stopCommand: null,
+      stopCommandFromProject: "hyperframes preview --stop --port 3002",
+    });
+  });
+
   it("keeps the preview when the app isn't installed, since nothing will open", async () => {
     const result = await endPreviewBeforeOpening(projectDir, {
       status: async () => background,
