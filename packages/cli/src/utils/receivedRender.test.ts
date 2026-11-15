@@ -358,4 +358,35 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain("../../outside/pic.png");
     });
   });
+
+  describe("a received media file in a composition slot", () => {
+    it.each(["assets/scene.png", "/assets/scene.png"])(
+      "the render compiler refuses %s as a page, so the media exemption holds",
+      async (src) => {
+        const dir = project(received("assets/scene.png"));
+        write(
+          join(dir, "assets", "scene.png"),
+          Buffer.concat([
+            SIGNATURES.png,
+            Buffer.from(
+              `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+                `<p>received-scene-marker</p><img src="../../outside/pic.png"></div></template>`,
+            ),
+          ]),
+        );
+        write(
+          join(dir, "index.html"),
+          `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1">` +
+            `<div data-composition-src="${src}"></div></div>`,
+        );
+
+        await expect(
+          compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
+            allowOutsideProjectAssets: true,
+          }),
+        ).rejects.toThrow(/assets\/scene\.png: it is not an \.html file/);
+        expect(decide(dir).allowed).toBe(true);
+      },
+    );
+  });
 });
