@@ -265,3 +265,56 @@ describe("a frame without the project's token", () => {
     expectNotGranted(res);
   });
 });
+
+describe("an opaque preview frame's wait for a video's proxy copy", () => {
+  const preflight = (path: string, headers: Record<string, string> = {}, prefix = `~${token}/`) =>
+    api.request(`http://localhost/projects/demo/preview/${prefix}${path}`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "null",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "cors",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "range,x-hf-proxy-priority",
+        ...headers,
+      },
+    });
+
+  it("answers its preflight with the proxy GET's method and headers", async () => {
+    const res = await preflight("clip.mp4?hf-proxy=1");
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("null");
+    expect(res.headers.get("access-control-allow-methods")).toBe("GET");
+    expect(res.headers.get("access-control-allow-headers")?.toLowerCase()).toBe(
+      "range, x-hf-proxy-priority",
+    );
+    expect(res.headers.get("vary")).toBe("Origin");
+  });
+
+  it.each([
+    ["a file that is not a video", "data.json?hf-proxy=1", {}],
+    ["a video without the proxy query", "clip.mp4", {}],
+    ["a caller that is not an opaque frame", "clip.mp4?hf-proxy=1", { origin: "https://a.test" }],
+    ["a method other than GET", "clip.mp4?hf-proxy=1", { "access-control-request-method": "PUT" }],
+  ])("leaves the preflight of %s unanswered", async (_name, path, headers) => {
+    const res = await preflight(path, headers);
+    expect(res.status).not.toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("leaves a preflight without the project's token unanswered", async () => {
+    const res = await preflight("clip.mp4?hf-proxy=1", {}, `~${"A".repeat(43)}/`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("lets the frame read the proxy wait's headers on a granted load", async () => {
+    const res = await load("clip.mp4", { origin: "null", "sec-fetch-dest": "empty" });
+    expectGranted(res);
+    expect(res.headers.get("access-control-expose-headers")?.split(/,\s*/)).toEqual([
+      "Retry-After",
+      "X-HF-Proxy-Progress",
+      "Content-Range",
+    ]);
+  });
+});
