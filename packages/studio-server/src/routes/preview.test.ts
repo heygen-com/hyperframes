@@ -2001,6 +2001,60 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(mostRunning).toBe(4);
     });
 
+    it("makes a still again for a request that shared a waiter whose client left", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      const inFlight = new Map<number, Promise<string>>();
+      const made: number[] = [];
+      const resolveStillMock = vi.fn(
+        (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          const shared = inFlight.get(at);
+          if (shared) return shared;
+          const making = startUncachedStill!(async () => {
+            made.push(at);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            return stillPath;
+          }).finally(() => inFlight.delete(at));
+          inFlight.set(at, making);
+          return making;
+        },
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const busy = [1, 2, 3, 4].map((at) => app.request(`${url}${at}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const leaving = new AbortController();
+      const first = app.request(`${url}10`, { signal: leaving.signal }).catch(() => null);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(5));
+      const second = app.request(`${url}10`);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(6));
+      leaving.abort();
+      await first;
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(7));
+
+      for (let ended = 0; ended < 5; ended++) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+      }
+      expect((await second).status).toBe(200);
+      for (const res of await Promise.all(busy)) expect(res.status).toBe(200);
+      expect(made).toEqual([1, 2, 3, 4, 10]);
+    });
+
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
