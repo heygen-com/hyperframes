@@ -38,9 +38,12 @@ export async function checkPageLoads(
   });
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
-    // Chrome's "Failed to load resource" text omits the URL; the message location carries it.
-    const resource = msg.text().startsWith("Failed to load resource") ? msg.location().url : "";
-    failures.push(`console.error: ${msg.text()}${resource ? ` (${resource})` : ""}`);
+    const failedResourceUrl = msg.text().startsWith("Failed to load resource")
+      ? msg.location().url
+      : "";
+    failures.push(
+      `console.error: ${msg.text()}${failedResourceUrl ? ` (${failedResourceUrl})` : ""}`,
+    );
   });
   try {
     await page.goto(originUrl, { waitUntil: "domcontentloaded" });
