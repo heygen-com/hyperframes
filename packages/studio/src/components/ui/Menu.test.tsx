@@ -443,12 +443,14 @@ describe("open motion", () => {
     );
   });
 
-  it("rounds a row's highlight more than the panel that holds it", async () => {
+  it("rounds a row's highlight to the panel's corner less the panel's inset", async () => {
     await openActionMenu();
 
     const rowRadius = [...items()[0]!.classList].find((c) => c.startsWith("rounded-"))!;
-    expect([...popup()!.classList]).toContain("rounded-lg");
-    expect(compileStudioCss([rowRadius])).toMatch(/calc\(var\(--radius-lg\) \+ 6px\)/);
+    expect([...popup()!.classList]).toEqual(expect.arrayContaining(["rounded-lg", "p-1"]));
+    expect(compileStudioCss([rowRadius])).toMatch(
+      /border-radius: calc\(var\(--radius-lg\) - 4px\)/,
+    );
   });
 });
 
