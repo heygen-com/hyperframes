@@ -178,10 +178,11 @@ describe("prepareRenderBody — validation", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-server-test-"));
     writeFileSync(join(dir, "index.html"), "<html><body></body></html>", "utf-8");
 
-    const result = await prepareRenderBody(
-      { projectDir: dir, variables: { title: "Q4" }, outputResolution: "4k" },
-      { projectsDir: tmpdir(), allowDebug: false },
-    );
+    const result = await prepareRenderBody({
+      projectDir: dir,
+      variables: { title: "Q4" },
+      outputResolution: "4k",
+    });
 
     expect(result).toHaveProperty("prepared");
     const { input } = (result as { prepared: { input: Record<string, unknown> } }).prepared;

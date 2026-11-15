@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
 const debugDir = vi.hoisted(() => ({ path: "" }));
@@ -25,7 +26,12 @@ vi.mock("./services/renderOrchestrator.js", () => {
   };
 });
 
-import { createProducerApp, startServer, type HandlerOptions } from "./server.js";
+import {
+  createProducerApp,
+  createRenderHandlers,
+  startServer,
+  type HandlerOptions,
+} from "./server.js";
 
 function setup() {
   const root = mkdtempSync(join(tmpdir(), "hf-server-access-"));
@@ -37,6 +43,7 @@ function setup() {
   writeFileSync(join(root, "outside.html"), "<html></html>");
   mkdirSync(join(debugDir.path, "job"), { recursive: true });
   writeFileSync(join(debugDir.path, "job", "index.html"), "<html></html>");
+  symlinkSync(join(root, "outside.html"), join(projectsDir, "demo", "link.html"));
   return { root, projectsDir, rendersDir };
 }
 
@@ -79,7 +86,8 @@ describe("createProducerApp: request paths", () => {
   it("refuses an output path outside the renders dir without creating it", async () => {
     const { root, projectsDir, rendersDir } = setup();
     const outputPath = join(root, "elsewhere", "x.mp4");
-    const res = await post({ projectsDir, rendersDir }, { projectDir: "demo", outputPath });
+    const projectDir = join(projectsDir, "demo");
+    const res = await post({ projectsDir, rendersDir }, { projectDir, outputPath });
     expect(res.status).toBe(400);
     expect(existsSync(join(root, "elsewhere"))).toBe(false);
   });
@@ -91,6 +99,7 @@ describe("createProducerApp: request paths", () => {
     expect(
       (await post(options, { projectDir: "demo", entryFile: "../../outside.html" })).status,
     ).toBe(400);
+    expect((await post(options, { projectDir: "demo", entryFile: "link.html" })).status).toBe(400);
     const res = await post(options, { projectDir: "../" });
     expect(res.status).toBe(400);
     expect(await res.text()).not.toContain(root);
@@ -114,22 +123,55 @@ describe("createProducerApp: request paths", () => {
 });
 
 describe("createProducerApp: lint paths", () => {
+  const lint = (options: HandlerOptions, body: Record<string, unknown>) =>
+    createProducerApp(options).request("http://localhost:9847/lint", {
+      method: "POST",
+      headers: { host: "localhost:9847" },
+      body: JSON.stringify(body),
+    });
+
   it("refuses a lint projectDir outside the projects root", async () => {
     const { root, projectsDir, rendersDir } = setup();
-    const lint = (projectDir: string) =>
-      createProducerApp({ projectsDir, rendersDir }).request("http://localhost:9847/lint", {
-        method: "POST",
-        headers: { host: "localhost:9847" },
-        body: JSON.stringify({ projectDir }),
-      });
-    expect((await lint(root)).status).toBe(400);
-    expect((await lint("../")).status).toBe(400);
-    expect((await lint("demo")).status).toBe(200);
+    expect((await lint({ projectsDir, rendersDir }, { projectDir: root })).status).toBe(400);
+    expect((await lint({ projectsDir, rendersDir }, { projectDir: "../" })).status).toBe(400);
+    expect((await lint({ projectsDir, rendersDir }, { projectDir: "demo" })).status).toBe(200);
+  });
+
+  it("refuses a lint entry that leaves the project or reaches the debug dir", async () => {
+    const { root, projectsDir, rendersDir } = setup();
+    const symlinked = { projectDir: "demo", entryFile: "link.html" };
+    expect((await lint({ projectsDir, rendersDir }, symlinked)).status).toBe(400);
+    const debugEntry = { projectDir: ".", entryFile: ".debug/job/index.html" };
+    expect((await lint({ projectsDir: root, rendersDir }, debugEntry)).status).toBe(400);
+  });
+});
+
+describe("createRenderHandlers: embedded contract", () => {
+  it("keeps accepting trusted absolute paths and debug unless confineRequests is set", async () => {
+    const { root, projectsDir, rendersDir } = setup();
+    const app = new Hono();
+    app.post("/v1/render-sync", createRenderHandlers({ rendersDir }).render);
+    const res = await app.request("/v1/render-sync", {
+      method: "POST",
+      body: JSON.stringify({
+        projectDir: join(projectsDir, "demo"),
+        outputPath: join(root, "elsewhere", "x.mp4"),
+        debug: true,
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { perf: unknown }).perf).toEqual({
+      renderId: "job-id",
+      workers: 1,
+    });
   });
 });
 
 describe("startServer: listen address", () => {
   it("refuses a non-loopback address without an auth token", () => {
     expect(() => startServer({ hostname: "0.0.0.0", port: 0 })).toThrow(/auth token/);
+    expect(() => startServer({ hostname: "0.0.0.0", port: 0, authToken: "  " })).toThrow(
+      /auth token/,
+    );
   });
 });
