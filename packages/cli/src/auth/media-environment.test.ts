@@ -87,6 +87,25 @@ describe("media-use authentication", () => {
     });
   });
 
+  it("leaves out a received project .env key when the saved login expired", async () => {
+    await persistFreshOAuth({
+      access_token: "expired",
+      expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    });
+    const project = join(fixture.dir, "project");
+    await fs.mkdir(join(project, ".hyperframes"), { recursive: true });
+    await fs.writeFile(join(project, ".env"), "HEYGEN_API_KEY=received-key-4\n");
+    await fs.writeFile(
+      join(project, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: [".env"] }),
+    );
+    loadProjectDotEnv(project, process.env, () => {});
+    await withMediaAuthEnvironment(async (env) => {
+      expect(env.HEYGEN_API_KEY).toBeUndefined();
+      expect(env.HEYGEN_ACCESS_TOKEN).toBeUndefined();
+    });
+  });
+
   it("falls back to HEYGEN_API_KEY when the login cannot be refreshed", async () => {
     await persistFreshOAuth({
       access_token: "expired",

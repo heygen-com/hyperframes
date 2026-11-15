@@ -21,6 +21,8 @@ writeFileSync(join(projectDir, "scene.js"), "export const scene = 1;");
 writeFileSync(join(projectDir, "scene.mjs"), "export const scene = 2;");
 writeFileSync(join(projectDir, "data.json"), '{"secret":true}');
 writeFileSync(join(projectDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+writeFileSync(join(projectDir, "clip.mp4"), Buffer.from("mp4-bytes"));
+writeFileSync(join(projectDir, "music.mp3"), Buffer.from("mp3-bytes"));
 writeFileSync(join(root, "other", "index.html"), '<div data-composition-id="main"></div>');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 afterEach(() => vi.useRealTimers());
@@ -91,6 +93,14 @@ describe("an opaque preview frame's loads under its token", () => {
     ["font", "fonts/Brand.ttf", "font/ttf"],
     ["script", "scene.js", "text/javascript"],
     ["script", "scene.mjs", "text/javascript"],
+    ["image", "logo.png", "image/png"],
+    ["video", "clip.mp4", "video/mp4"],
+    ["audio", "music.mp3", "audio/mpeg"],
+    // The runtime fetches captions, sub-compositions, grades and audio from its own frame.
+    ["empty", "data.json", "application/json"],
+    ["empty", "comp/scene.html", "text/html"],
+    ["empty", "music.mp3", "audio/mpeg"],
+    ["empty", "fonts/Brand.woff2", "font/woff2"],
   ])("lets a %s load of %s through", async (dest, path, type) => {
     const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
     expect(res.status).toBe(200);
@@ -138,14 +148,15 @@ describe("an opaque preview frame's loads under its token", () => {
   });
 
   it.each([
-    ["empty", "fonts/Brand.woff2"],
-    ["empty", "scene.js"],
-    ["empty", "data.json"],
-    ["empty", "scene.html"],
     ["document", "scene.html"],
     ["iframe", "scene.html"],
-    ["image", "logo.png"],
     ["style", "fonts/Brand.woff2"],
+    ["image", "data.json"],
+    ["image", "clip.mp4"],
+    ["video", "music.mp3"],
+    ["video", "logo.png"],
+    ["audio", "clip.mp4"],
+    ["audio", "comp/music.mp3"],
     ["font", "data.json"],
     ["font", "scene.js"],
     ["script", "data.json"],
@@ -163,7 +174,7 @@ describe("an opaque preview frame's loads under its token", () => {
     expectNotGranted(res);
   });
 
-  it("refuses a page's own fetch, which carries no Sec-Fetch-Dest it can choose", async () => {
+  it("refuses a load that names no Sec-Fetch-Dest", async () => {
     expectNotGranted(await load("fonts/Brand.woff2", { origin: "null" }));
   });
 
@@ -194,6 +205,16 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html).toContain(`<base href="${tokened}">`);
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
+
+  it("serves the main preview under the token, re-based", async () => {
+    const res = await api.request(`http://localhost/projects/demo/preview/~${token}`, {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-composition-id="main"');
+    expect(html).toContain(`<base href="/api/projects/demo/preview/~${token}/">`);
+  });
 });
 
 describe("a frame without the project's token", () => {
@@ -203,11 +224,13 @@ describe("a frame without the project's token", () => {
     ["a guessed token", `~${guessed}/`],
     ["another project's token", () => `~${otherToken}/`],
     ["a token of the wrong length", `~${"A".repeat(42)}/`],
-  ])("gets no grant for a font or module script on %s", async (_name, prefix) => {
+  ])("gets no grant for any load on %s", async (_name, prefix) => {
     const at = typeof prefix === "function" ? prefix() : prefix;
     for (const [dest, path] of [
       ["font", "fonts/Brand.woff2"],
       ["script", "scene.js"],
+      ["image", "logo.png"],
+      ["empty", "data.json"],
     ]) {
       const res = await load(path!, { origin: "null", "sec-fetch-dest": dest! }, at);
       expectNotGranted(res);
@@ -232,9 +255,12 @@ describe("a frame without the project's token", () => {
     expectNotGranted(res);
   });
 
-  it("refuses a font outside the preview path", async () => {
-    const res = await api.request("http://localhost/projects/demo/files/fonts/Brand.woff2", {
-      headers: { origin: "null", "sec-fetch-dest": "font", "sec-fetch-site": "cross-site" },
+  it.each([
+    ["font", "fonts/Brand.woff2"],
+    ["empty", "data.json"],
+  ])("refuses a %s load of %s outside the preview path", async (dest, path) => {
+    const res = await api.request(`http://localhost/projects/demo/files/${path}`, {
+      headers: { origin: "null", "sec-fetch-dest": dest, "sec-fetch-site": "cross-site" },
     });
     expectNotGranted(res);
   });

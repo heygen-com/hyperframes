@@ -104,6 +104,27 @@ export function wildcardBindHostAllowed(
   );
 }
 
+function refererNamesHost(referer: string | undefined, host: string): boolean {
+  if (!referer) return false;
+  try {
+    return new URL(referer).host.toLowerCase() === host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+export function requestFromAnotherSite(headers: {
+  fetchSite?: string;
+  host?: string;
+  referer?: string;
+}): boolean {
+  const site = headers.fetchSite;
+  if (site !== undefined) return site === "cross-site" || site === "same-site";
+  const { host } = headers;
+  if (!host || isLoopbackHost(host)) return false;
+  return !refererNamesHost(headers.referer, host);
+}
+
 function firstForwarded(value: string | undefined): string | undefined {
   const first = value?.split(",")[0]?.trim();
   return first === "" ? undefined : first;

@@ -14,8 +14,8 @@ export {
   studioKeyClash,
   useStudioKeys,
 } from "./player/components/studioShortcuts";
-export { formatCombo, matchCombo, parseCombo } from "./player/components/studioCombo";
-export type { Combo } from "./player/components/studioCombo";
+export { formatCombo, matchCombo, parseCombo } from "@hyperframes/core/key-combo";
+export type { Combo } from "@hyperframes/core/key-combo";
 export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
