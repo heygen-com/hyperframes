@@ -54,11 +54,16 @@ import {
   TEXT_FILE_EXTS,
 } from "../utils/publishProject.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 
 const execFileAsync = promisify(execFile);
 
-/** Media at or above this size leaves the zip as a HeyGen asset. */
+/** Staged media this big stays on disk until it uploads; an entry GIF this big becomes a video first. */
 export const OFFLOAD_MIN_BYTES = 5 * 1024 * 1024;
+
+/** Media files prepared and uploaded at once; each keeps its own upload retries. Each upload costs about a second
+ * of requests whatever its size: 60 x 4 MB took 63 s one at a time, 16 s four at a time, 9 s eight at a time. */
+const OFFLOAD_CONCURRENCY = 8;
 
 const MiB = 1024 * 1024;
 const AUDIO_MAX_BYTES = 1_500_000_000;
@@ -147,6 +152,9 @@ export interface OffloadOptions {
   gifPrep?: GifPrep;
   onFile?: (item: OffloadedMedia) => void;
   variablesText?: string;
+  /** Media offloads, largest first, only until the files left in the zip come to this many bytes or fewer;
+   * absent, every media file a page uses offloads. */
+  zipBudgetBytes?: number;
 }
 
 type MediaKind = "video" | "audio" | "image";
@@ -601,6 +609,8 @@ interface OffloadContext {
   /** Staged GIFs the entry composition no longer shows as images. */
   preparedGifSources: string[];
   fileMap: Map<string, StagedFile>;
+  /** Uploads in flight by cache key, so two files with the same bytes upload once. */
+  uploading: Map<string, Promise<{ url: string; asset_id: string }>>;
 }
 
 interface FilePlan {
@@ -634,7 +644,7 @@ async function planFile(
   file: StagedFile,
 ): Promise<FilePlan | null> {
   const size = stagedSize(file);
-  let kind = size < OFFLOAD_MIN_BYTES ? null : mediaFileKind(path, file);
+  let kind = mediaFileKind(path, file);
   if (!kind) return null;
   const ext = extname(path).toLowerCase();
   const accepted = ACCEPTED[ext];
@@ -675,8 +685,10 @@ async function planFileTrim(
   kind: MediaKind,
 ): Promise<PlayedSegment[] | null> {
   const entryPath = ctx.opts.entryPath ?? "index.html";
+  if (!textOf(entryPath, ctx.fileMap.get(entryPath))) return null;
+  const gridPerSecond = await ctx.reencoder.trimGrid?.(sourcePath, kind);
+  // Read after the await: another file planned meanwhile may have rewritten the page.
   const entryHtml = textOf(entryPath, ctx.fileMap.get(entryPath));
-  const gridPerSecond = entryHtml ? await ctx.reencoder.trimGrid?.(sourcePath, kind) : null;
   if (!entryHtml || !gridPerSecond) return null;
   const name = basename(path);
   const plan = planTrim({
@@ -719,6 +731,21 @@ async function offloadFile(
 }
 
 async function uploadPlanned(
+  ctx: OffloadContext,
+  upload: NonNullable<OffloadOptions["upload"]>,
+  path: string,
+  staged: StagedFile,
+  plan: FilePlan,
+): Promise<{ url: string; asset_id: string }> {
+  if (plan.key === undefined) return uploadOnce(ctx, upload, path, staged, plan);
+  const pending = ctx.uploading.get(plan.key);
+  if (pending) return pending;
+  const started = uploadOnce(ctx, upload, path, staged, plan);
+  ctx.uploading.set(plan.key, started);
+  return started;
+}
+
+async function uploadOnce(
   ctx: OffloadContext,
   upload: NonNullable<OffloadOptions["upload"]>,
   path: string,
@@ -800,8 +827,9 @@ function entryGifSources(
 }
 
 /**
- * Upload each heavy media file as an asset (or reuse a cached one still served), point its references at the
- * asset URL and drop it from `fileMap`. Without `upload`, nothing uploads and only animated GIFs are encoded.
+ * Upload each media file a page uses, whatever its size, as an asset (or reuse a cached one still served),
+ * point its references at the asset URL and drop it from `fileMap`. Without `upload`, nothing uploads and only
+ * animated GIFs are encoded.
  */
 export async function offloadHeavyMedia(
   projectDir: string,
@@ -826,6 +854,7 @@ export async function offloadHeavyMedia(
     tempFiles: [],
     preparedGifSources: [],
     fileMap,
+    uploading: new Map(),
   };
   const urls = new Map<string, string>();
   const report: OffloadedMedia[] = [];
@@ -834,39 +863,56 @@ export async function offloadHeavyMedia(
     await prepareEntryGifs(ctx, fileMap);
     // Only files a reference points at: one used through render-time --variables must stay in the zip.
     referenced = referencedFiles(ctx.absDir, fileMap);
-    for (const [path, file] of [...fileMap].sort(([a], [b]) => a.localeCompare(b))) {
-      if (!referenced.has(path)) continue;
-      const item = await offloadFile(ctx, path, file);
-      if (!item) continue;
-      // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
-      urls.set(path, item.url ?? `https://assets.invalid/${report.length}`);
-      report.push(item);
-      opts.onFile?.(item);
+    dropUnusedMedia(ctx, referenced);
+    // One zip upload is far faster than many small ones, so only the largest files leave it, just enough to fit.
+    const used = [...fileMap]
+      .filter(([path]) => referenced.has(path))
+      .sort(([a, x], [b, y]) => stagedSize(y) - stagedSize(x) || a.localeCompare(b));
+    const budget = opts.zipBudgetBytes ?? 0;
+    let left = [...fileMap.values()].reduce((sum, file) => sum + stagedSize(file), 0);
+    let next = 0;
+    while (left > budget && next < used.length) {
+      const batch: (typeof used)[number][] = [];
+      for (let after = left; after > budget && next < used.length; next += 1) {
+        batch.push(used[next]!);
+        after -= stagedSize(used[next]![1]);
+      }
+      const items = await runWithConcurrencyLimit(
+        batch,
+        OFFLOAD_CONCURRENCY,
+        async ([path, file]) => {
+          const item = await offloadFile(ctx, path, file);
+          if (item) opts.onFile?.(item);
+          return item;
+        },
+      );
+      for (const item of items) {
+        if (!item) continue;
+        // A dry run rewrites to a stand-in URL so the reported archive size matches the real one.
+        urls.set(item.path, item.url ?? `https://assets.invalid/${report.length}`);
+        report.push(item);
+        left -= item.size_bytes;
+      }
     }
+    report.sort((a, b) => a.path.localeCompare(b.path));
   } finally {
     for (const dir of ctx.tempFiles) rmSync(dir, { recursive: true, force: true });
   }
 
   if (urls.size > 0) rewriteReferences(ctx.absDir, fileMap, (key) => urls.get(key) ?? null);
   dropReplacedFiles(fileMap, report, ctx.preparedGifSources, [...urls.values()]);
-  dropUnusedHeavyFiles(ctx, referenced, [...urls.values()]);
   return report;
 }
 
-function dropUnusedHeavyFiles(
-  ctx: OffloadContext,
-  referenced: Set<string>,
-  assetUrls: string[],
-): void {
+/** Media no reference, script or variable names leaves the zip, before anything is uploaded. */
+function dropUnusedMedia(ctx: OffloadContext, referenced: Set<string>): void {
   const { fileMap } = ctx;
-  const withoutUrls = (text: string) =>
-    assetUrls.reduce((acc, url) => acc.replaceAll(url, ""), text);
-  const code = withoutUrls(scriptCode(fileMap));
+  const code = scriptCode(fileMap);
   const variables = ctx.opts.variablesText ?? "";
-  for (const [path, file] of [...fileMap]) {
-    if (referenced.has(path) || stagedSize(file) < OFFLOAD_MIN_BYTES) continue;
+  for (const path of [...fileMap.keys()]) {
+    if (referenced.has(path) || mediaKind(path) === null) continue;
     if (variables.includes(basename(path))) continue;
-    if (!isStillMentioned(fileMap, path, code, withoutUrls)) fileMap.delete(path);
+    if (!isStillMentioned(fileMap, path, code, (text) => text)) fileMap.delete(path);
   }
 }
 
