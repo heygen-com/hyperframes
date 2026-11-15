@@ -76,11 +76,14 @@ export function identityAllowed(host: string | undefined): boolean {
   return hostMatchesBind(host, bind);
 }
 
-function hostAllowed(host: string, allowedHosts: readonly string[] | undefined): boolean {
-  if (identityAllowed(host)) return true;
+function inAllowedHosts(host: string, allowedHosts: readonly string[] | undefined): boolean {
   if (!allowedHosts) return false;
   const name = hostnameOf(host);
   return name !== "" && allowedHosts.some((allowed) => hostnameOf(allowed) === name);
+}
+
+function hostAllowed(host: string, allowedHosts: readonly string[] | undefined): boolean {
+  return identityAllowed(host) || inAllowedHosts(host, allowedHosts);
 }
 
 // Reads included. Only Host counts: a page can set X-Forwarded-Host, and a read has no Origin to check.
@@ -89,6 +92,16 @@ export function hostHeaderAllowed(
   allowedHosts?: readonly string[],
 ): boolean {
   return host !== undefined && host !== "" && hostAllowed(host, allowedHosts);
+}
+
+export function wildcardBindHostAllowed(
+  host: string | undefined,
+  allowedHosts?: readonly string[],
+): boolean {
+  if (host === undefined || host === "") return false;
+  return (
+    isLoopbackHost(host) || hostMatchesBind(host, "0.0.0.0") || inAllowedHosts(host, allowedHosts)
+  );
 }
 
 function firstForwarded(value: string | undefined): string | undefined {

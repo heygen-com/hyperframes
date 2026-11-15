@@ -40,7 +40,7 @@ export const MEDIA_INPUT_ARGS: readonly string[] = [
 
 const PLAYLIST_START = /^(?:\xEF\xBB\xBF)?\s*(?:#EXTM3U|ffconcat)/;
 const MARKUP_START = /^(?:\xEF\xBB\xBF)?\s*</;
-const isControlByte = (byte: number) => byte < 0x09 || (byte > 0x0d && byte < 0x20);
+export const isControlByte = (byte: number) => byte < 0x09 || (byte > 0x0d && byte < 0x20);
 
 export function startsAsMediaPlaylist(head: Buffer): boolean {
   const text = head.toString("latin1");

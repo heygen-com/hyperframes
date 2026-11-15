@@ -43,6 +43,7 @@ import {
 } from "@hyperframes/studio-server/request-identity";
 import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
@@ -667,6 +668,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
+          const allowOutsideProjectAssets = outsideAssetsAllowed(
+            opts.project.dir,
+            opts.composition,
+            (line) => console.warn(`[studio] ${line}`),
+          );
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
           const manualEditsRenderScript = createStudioManualEditsRenderBodyScript(manifestContent);
           const job = createRenderJob({
@@ -683,7 +689,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
-            allowOutsideProjectAssets: true,
+            allowOutsideProjectAssets,
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {

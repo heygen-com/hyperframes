@@ -37,7 +37,7 @@ import {
   type LeftOutReason,
   type OnLeftOut,
 } from "./leftOutReference.js";
-import { isCopiedOutsideFileType } from "./outsideFileType.js";
+import { isUploadedOutsideFileType } from "./outsideFileType.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -444,7 +444,7 @@ function staysOut(ctx: ExternalAssetContext, rel: string): boolean {
 }
 
 const loadableReference = (absProjectDir: string, absPath: string): boolean =>
-  isCopiedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
+  isUploadedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
 
 function referencedFileLeftOut(
   ctx: ExternalAssetContext,
@@ -528,7 +528,7 @@ function archiveTargetOf(
       leaveOut(ctx, options.entryPath, rawPath, absPath);
       return undefined;
     }
-    if (!isCopiedOutsideFileType(absPath)) {
+    if (!isUploadedOutsideFileType(absPath)) {
       leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
       return undefined;
     }

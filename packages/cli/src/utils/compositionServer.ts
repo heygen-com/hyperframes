@@ -9,6 +9,12 @@ import { fileURLToPath } from "node:url";
 import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import {
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+  wildcardBindHostAllowed,
+} from "@hyperframes/studio-server/request-identity";
+import type { Hono } from "hono";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
@@ -172,6 +178,29 @@ export function buildRangeResponse(
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Content-Length": String(end - start + 1),
     },
+  });
+}
+
+/**
+ * The server listens on every interface, so every route answers only loopback,
+ * this machine's own addresses and names, or a host named in
+ * HYPERFRAMES_PREVIEW_ALLOWED_HOSTS. A browser cannot forge Host, which keeps a
+ * rebound page name from reading project files.
+ */
+export function refuseUnknownHosts(app: Hono): void {
+  const allowedHosts = previewAllowedHostsFromEnv();
+  app.use(async function refuseUnknownHost(c, next) {
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    if (wildcardBindHostAllowed(host, allowedHosts)) return next();
+    return c.json(
+      {
+        error:
+          `forbidden: host "${host}" is not allowed. ` +
+          `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+          `(comma separated for several hosts).`,
+      },
+      403,
+    );
   });
 }
 
