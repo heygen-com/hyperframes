@@ -41,7 +41,13 @@ import {
   decodedUrlPath,
   splitUrlSuffix,
 } from "@hyperframes/parsers/asset-paths";
-import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
+import {
+  cssImportMatches,
+  cssUrlMatches,
+  rawCssUrlMatches,
+  replaceMatches,
+} from "@hyperframes/parsers/css-url-scans";
+import { isNonRelativeUrl } from "./assetPaths.js";
 import { rewriteSrcsetUrls } from "./srcset.js";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
@@ -146,9 +152,6 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
-const CSS_IMPORT_RE =
-  /@import\s+(?:url\(\s*(["']?)([^)"']+)\1\s*\)|(["'])([^"']+)\3)\s*([^;]*);\s*/g;
-
 const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
 
 function withCommentsStripped<T>(
@@ -180,7 +183,7 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
   const resolvedRoot = resolve(projectDir);
   const resolvedDir = resolve(cssFileDir);
   if (resolvedDir === resolvedRoot) return css;
-  return css.replace(CSS_URL_RE, (full, quote: string, urlValue: string) => {
+  return replaceMatches(css, cssUrlMatches(css), (full, quote, urlValue) => {
     const decoded = decodeCssEscapes(urlValue);
     if (!decoded || !isRelativeUrl(decoded)) return full;
     const { basePath, suffix } = splitUrlSuffix(decoded);
@@ -277,8 +280,9 @@ function inlineCssFile(
 ): string {
   const { result: strippedCss, restore: restoreComments } = withCommentsStripped(css, (s) => s);
   const importPlaceholders: string[] = [];
-  const withPlaceholders = strippedCss.replace(
-    CSS_IMPORT_RE,
+  const withPlaceholders = replaceMatches(
+    strippedCss,
+    cssImportMatches(strippedCss),
     (full, _q1, urlPath, _q2, barePath, mediaQuery) => {
       const importPath = urlPath ?? barePath;
       if (!importPath || !isRelativeUrl(importPath)) return full;
@@ -507,14 +511,11 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, inlineAsset: Ass
 
 function rewriteCssUrlsWithInlinedAssets(cssText: string, inlineAsset: AssetInliner): string {
   if (!cssText) return cssText;
-  return cssText.replace(
-    /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g,
-    (_full, quote: string, rawUrl: string) => {
-      const maybeInlined = inlineAsset((rawUrl || "").trim());
-      if (!maybeInlined) return _full;
-      return `url(${quote || ""}${maybeInlined}${quote || ""})`;
-    },
-  );
+  return replaceMatches(cssText, rawCssUrlMatches(cssText), (_full, quote, rawUrl) => {
+    const maybeInlined = inlineAsset((rawUrl || "").trim());
+    if (!maybeInlined) return _full;
+    return `url(${quote || ""}${maybeInlined}${quote || ""})`;
+  });
 }
 
 /**
@@ -716,7 +717,8 @@ function joinCssHoistingImports(sheets: string[]): string {
   const imports = new Set<string>();
   const cssParts: string[] = [];
   for (const sheet of sheets) {
-    const rest = sheet.trim().replace(CSS_IMPORT_RE, (match) => {
+    const trimmed = sheet.trim();
+    const rest = replaceMatches(trimmed, cssImportMatches(trimmed), (match) => {
       imports.add(match.trim());
       return "";
     });
@@ -730,9 +732,11 @@ function placeSceneStylesLikeRender(document: Document): void {
   const styles = [...document.querySelectorAll("head style")];
   const imports = new Set<string>();
   for (const el of styles) {
-    el.textContent = (el.textContent || "")
-      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
-      .trim();
+    const css = el.textContent || "";
+    el.textContent = replaceMatches(css, cssImportMatches(css), (match) => {
+      imports.add(match.trim());
+      return "";
+    }).trim();
   }
   styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
   if (imports.size === 0) return;

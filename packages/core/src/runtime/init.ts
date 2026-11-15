@@ -147,6 +147,7 @@ import {
 } from "./timeline";
 import { findRootCompositionElement, parseLayoutDimension } from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import { sceneCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import {
   LOOP_INFLATED_TIMELINE_SECONDS,
   MIN_VALID_TIMELINE_DURATION_SECONDS,
@@ -4286,8 +4287,7 @@ export function initSandboxRuntimeModular(): void {
   const sceneUrls = (parts: Element[]): Set<string> => {
     const urls = new Set<string>();
     const addCssUrls = (css: string | null) => {
-      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
-        urls.add(m[2] ?? m[4]!);
+      for (const { parts: m } of sceneCssUrlMatches(css ?? "")) urls.add(m[2] ?? m[4]!);
       for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
         for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
     };
