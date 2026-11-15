@@ -19,10 +19,7 @@ import {
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
-import {
-  isLoopbackHost,
-  requestFromAnotherSite,
-} from "@hyperframes/studio-server/request-identity";
+import { requestFromAnotherSite } from "@hyperframes/studio-server/request-identity";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -40,7 +37,11 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
-import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import {
+  isOwnLoopbackHost,
+  listenOnBrowserSafePort,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
@@ -90,7 +91,11 @@ function socketPair(): [Duplex, Duplex] {
 }
 
 /** Hands one request to `server` over an in-memory socket, so its handler (Range, proxies) answers unchanged. */
-function answerInProcess(server: Server, request: InProcessRequest): Promise<InProcessResponse> {
+function answerInProcess(
+  server: Server,
+  host: string,
+  request: InProcessRequest,
+): Promise<InProcessResponse> {
   const [client, served] = socketPair();
   server.emit("connection", served);
   return new Promise((resolveAnswer, rejectAnswer) => {
@@ -98,7 +103,7 @@ function answerInProcess(server: Server, request: InProcessRequest): Promise<InP
       {
         method: request.method,
         path: request.path,
-        headers: { ...request.headers, connection: "close" },
+        headers: { ...request.headers, host, connection: "close" },
         // No `agent`: Node uses createConnection only when no agent is given.
         createConnection: () => client as never,
       },
@@ -289,18 +294,6 @@ function markForAnotherSite(html: string): string {
   return injectTagsAtHeadStart(html, `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`);
 }
 
-/**
- * Only loopback, or the in-process name handed out when nothing listens, may ask. A browser
- * cannot forge Host, so a page whose own name resolves to loopback is refused before any file is read.
- */
-function refusedHost(req: IncomingMessage, res: ServerResponse, ownHost: () => string): boolean {
-  const host = req.headers.host;
-  if (isLoopbackHost(host) || host?.toLowerCase() === ownHost()) return false;
-  res.writeHead(403, { "Content-Type": "text/plain" });
-  res.end("forbidden: unknown host");
-  return true;
-}
-
 /** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
 function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean {
   const anotherSite = requestFromAnotherSite({
@@ -308,7 +301,10 @@ function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean
     host: req.headers.host,
     referer: req.headers.referer,
   });
-  if (anotherSite) res.setHeader("Content-Security-Policy", "sandbox allow-scripts");
+  if (anotherSite) {
+    const policies = [res.getHeader("Content-Security-Policy"), "sandbox allow-scripts"];
+    res.setHeader("Content-Security-Policy", policies.filter((p) => p !== undefined).map(String));
+  }
   return anotherSite;
 }
 
@@ -348,12 +344,24 @@ export async function serveStaticProjectHtml(
       )
     : html;
   const markedHtml = markForAnotherSite(servedHtml);
-  let inProcessHost = "";
+
+  let listeningPort = -1;
+  let inProcessHost: string | undefined;
+  const answersHost = (host: string | undefined) =>
+    isOwnLoopbackHost(host, listeningPort) ||
+    (inProcessHost !== undefined && host === inProcessHost);
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (refusedHost(req, res, () => inProcessHost)) return;
+    if (!answersHost(req.headers.host)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      res.setHeader(name, value);
+    }
     const anotherSite = loadedByAnotherSite(req, res);
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
@@ -422,8 +430,9 @@ export async function serveStaticProjectHtml(
     server.removeAllListeners("error");
     // A sandbox (e.g. an agent's) may refuse listen(); the browser asks this origin and the process answers.
     const url = `http://hyperframes-${++inProcessServers}.localhost/`;
-    inProcessHost = new URL(url).host;
-    const answer = (request: InProcessRequest) => answerInProcess(server, request);
+    const host = new URL(url).host;
+    inProcessHost = host;
+    const answer = (request: InProcessRequest) => answerInProcess(server, host, request);
     inProcessAnswers.set(new URL(url).origin, answer);
     return {
       url,
@@ -436,6 +445,7 @@ export async function serveStaticProjectHtml(
     };
   }
 
+  listeningPort = port;
   return {
     url: `http://127.0.0.1:${port}/`,
     port,

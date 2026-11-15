@@ -1,7 +1,9 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   fingerprintElementId,
+  isHttpUrl,
+  isInsideAssetRoots,
   isNotMediaPayload,
   playlistLeavesItsFolder,
   NotMediaPayloadError,
@@ -13,7 +15,7 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
-import { escapesAssetRoot, leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
+import { leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
 import type { ProducerLogger } from "../logger.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
@@ -91,8 +93,8 @@ interface MediaReference {
   expected: AssetElementMediaType;
 }
 
-function isRemoteOrInlineSource(src: string): boolean {
-  return /^(?:https?:|data:|blob:|about:)/i.test(src.trim());
+export function mediaAssetRoots(projectDir: string, compiledDir: string): string[] {
+  return [projectDir, compiledDir, join(dirname(compiledDir), "downloads")];
 }
 
 /** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
@@ -105,11 +107,11 @@ export function dropMediaOutsideProject(input: {
 }): void {
   const { projectDir, workDir, composition, log } = input;
   const compiledDir = join(workDir, "compiled");
-  const roots = [projectDir, compiledDir, join(workDir, "downloads")];
+  const roots = mediaAssetRoots(projectDir, compiledDir);
   const staysInside = ({ id, src }: { id: string; src: string }) => {
-    if (!src || isRemoteOrInlineSource(src)) return true;
+    if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
-    if (roots.some((root) => !escapesAssetRoot(path, root))) return true;
+    if (isInsideAssetRoots(path, roots)) return true;
     if (input.allowOutsideProjectAssets) {
       const refusal = outsideAssetRefusal(projectDir, path);
       if (refusal) log.warn(`[Render] ${leftOutOfRender(`Media "${id}"`, src, refusal)}`);
@@ -166,7 +168,7 @@ export async function preflightCompositionAssetMediaTypes(input: {
 
   const byPath = new Map<string, MediaReference[]>();
   for (const reference of references) {
-    if (!reference.src || isRemoteOrInlineSource(reference.src)) continue;
+    if (!reference.src || isHttpUrl(reference.src)) continue;
     const resolvedPath = resolveProjectRelativeSrc(
       reference.src,
       input.projectDir,

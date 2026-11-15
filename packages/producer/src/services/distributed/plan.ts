@@ -1469,6 +1469,7 @@ function mixPlanAudio(c: PlanComposition, compiledDir: string) {
     compiledDir,
     urlByAbsentLocalPath: c.urlByAbsentLocalPath,
     audioSidecarUrlByLocalPath: c.audioSidecarUrlByLocalPath,
+    allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
     totalFrames: c.totalFrames,
     fps: c.job.config.fps,
     ffmpegProcessTimeout: c.cfg.ffmpegProcessTimeout,
@@ -1878,6 +1879,7 @@ export async function buildPlanAudio(
     await appendVideoAudioFromProbe({
       ...c,
       downloadDir: audioWorkDir(c.workDir),
+      allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
       signal: c.abortSignal,
     });
     logPlanStage(c.log, "extract", stageStarted);

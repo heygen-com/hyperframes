@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
+import { terminalText } from "./terminalText.js";
 
 const SIGNATURES = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),
@@ -251,6 +252,24 @@ describe("outsideAssetsAllowed", () => {
     const { allowed, line } = decide(dir);
     expect(allowed).toBe(false);
     expect(line).toContain("stops on the compositions ../outside/shared.html");
+  });
+
+  it("prints references and file names from the project without their control characters", () => {
+    const dir = project(received("notes\u001b[31m\u009b2J.txt"));
+    write(join(dir, "..", "outside", "café.png"), SIGNATURES.png);
+    write(
+      join(dir, "index.html"),
+      `<img src="../outside/pic.png?\u001b[2K\u001b[1Aspoof\u0007">
+<img src="../outside/café.png">
+<div style="background: url('../outside/bg.png#\u009b31m\u007f')"></div>`,
+    );
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toBe(terminalText(line));
+    expect(line).toContain("notes\\x1b[31m\\x9b2J.txt");
+    expect(line).toContain("../outside/pic.png?\\x1b[2K\\x1b[1Aspoof\\x07");
+    expect(line).toContain("../outside/bg.png#\\x9b31m\\x7f");
+    expect(line).toContain("../outside/café.png");
   });
 
   it.runIf(process.platform !== "win32")(

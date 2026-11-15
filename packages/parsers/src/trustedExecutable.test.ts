@@ -82,6 +82,48 @@ describe("findTrustedExecutable", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "run from a subfolder, skips the project's node_modules/.bin and every folder inside the project",
+    () => {
+      const project = tempDir("hf-trusted-project-");
+      const tools = tempDir("hf-trusted-tools-");
+      const bin = join(project, "node_modules", ".bin");
+      const scenes = join(project, "scenes", "intro");
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(scenes, { recursive: true });
+      writeFileSync(join(project, "package.json"), "{}");
+      for (const dir of [bin, project, tools])
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      vi.spyOn(process, "cwd").mockReturnValue(scenes);
+      vi.stubEnv("PATH", [bin, project, tools, "/usr/bin", "/bin"].join(delimiter));
+
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+      expect(trustedPathDirs()).not.toContain(bin);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "in a monorepo, skips the repository's hoisted node_modules/.bin as well as the package's",
+    () => {
+      const repo = tempDir("hf-trusted-repo-");
+      const tools = tempDir("hf-trusted-tools-");
+      const pkg = join(repo, "packages", "film");
+      const hoisted = join(repo, "node_modules", ".bin");
+      const local = join(pkg, "node_modules", ".bin");
+      const cwd = join(pkg, "scenes");
+      for (const dir of [hoisted, local, cwd]) mkdirSync(dir, { recursive: true });
+      mkdirSync(join(repo, ".git"));
+      writeFileSync(join(pkg, "package.json"), "{}");
+      for (const dir of [hoisted, local, tools])
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      vi.spyOn(process, "cwd").mockReturnValue(cwd);
+      vi.stubEnv("PATH", [local, hoisted, tools].join(delimiter));
+
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+      expect(trustedPathDirs()).toEqual([tools]);
+    },
+  );
+
   it("on Windows, takes the PATH copy and skips one in the working directory", () => {
     const project = tempDir("hf-trusted-project-");
     const tools = tempDir("hf-trusted-tools-");

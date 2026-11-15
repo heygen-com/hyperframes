@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { settleOnBrowserSafePort } from "@hyperframes/engine";
+import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -34,7 +34,6 @@ import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
-import { isLoopbackHost } from "@hyperframes/studio-server/request-identity";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { servedPath } from "./servedPath.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
@@ -822,16 +821,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+  let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
     await next();
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
-
-  app.use(async function refuseHostThatIsNotLoopback(c, next) {
-    if (isLoopbackHost(c.req.header("host") ?? new URL(c.req.url).host)) return next();
-    return c.text("Forbidden: unknown host", 403);
-  });
+  answerOwnLoopbackHostOnly(app, () => listeningPort);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
@@ -982,6 +978,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const bound =
         port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
       bound.then((boundPort) => {
+        listeningPort = boundPort;
         resolve({
           url: `http://localhost:${boundPort}`,
           port: boundPort,

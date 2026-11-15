@@ -16,6 +16,7 @@ import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document"
 import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
+import { answerOwnLoopbackHostOnly } from "../utils/loopbackOnly.js";
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -154,12 +155,16 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [];
 
   const app = new Hono();
-  const hostAllowed = hostAllowedFor(hostname);
-
-  app.use(async function refuseHostNotServedHere(c, next) {
-    if (hostAllowed(c.req.header("host") ?? new URL(c.req.url).host)) return next();
-    return c.text("Forbidden: unknown host", 403);
-  });
+  let listeningPort = -1;
+  const boundToLoopbackOnly = ["127.0.0.1", "localhost", "::1"].includes(hostname);
+  if (boundToLoopbackOnly) answerOwnLoopbackHostOnly(app, () => listeningPort);
+  if (!boundToLoopbackOnly) {
+    const hostAllowed = hostAllowedFor(hostname);
+    app.use(async function refuseHostNotServedHere(c, next) {
+      if (hostAllowed(c.req.header("host") ?? new URL(c.req.url).host)) return next();
+      return c.text("Forbidden: unknown host", 403);
+    });
+  }
 
   app.get("/*", (c) => {
     let requestPath = c.req.path;
@@ -200,6 +205,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   return new Promise((resolve) => {
     const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
       const actualPort = info.port;
+      listeningPort = actualPort;
       const url = `http://localhost:${actualPort}`;
       resolve({
         url,
