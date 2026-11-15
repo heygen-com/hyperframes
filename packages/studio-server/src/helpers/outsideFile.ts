@@ -90,9 +90,10 @@ export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
 /** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type";
+export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private";
 
 const WHY: Record<LeftOutReason, string> = {
+  private: "which holds secrets or tool data",
   blocklisted: "which is outside the project in a private location",
   received: "which leads outside the project and came in with an imported project",
   file_type: "which is outside the project and is not an image, video, audio, font, CSS or JS file",

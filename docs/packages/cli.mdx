@@ -2660,6 +2660,9 @@ match. Those rules use gitignore syntax and apply to `hyperframes publish` too, 
 the project lint behind `lint`, `check`, `snapshot` and `render` does not read compositions they match.
 Keep them narrow — a dynamically selected asset may have no static reference to
 protect it.
+Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private records
+under `.hyperframes/` are always left out, even when a rule re-includes them, and
+each one is reported as left out with the reason `private`.
 
 Media files of 5 MB or more that the project names by path go up as HeyGen
 assets before zipping, and the zip's copy of each HTML, CSS, script and JSON
@@ -2693,7 +2696,7 @@ imported project are left out, with a warning naming each. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received` or `file_type`) and `levels_up`, how many folders above the project
+`received`, `file_type` or `private`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
