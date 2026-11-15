@@ -88,7 +88,6 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
   return (path) => files.has(keyOf(path)) || sameFileAsListed(path);
 }
 
-/** The nearest received-files record when it exists but lists no files a reader can trust, else null. */
 export function unreadableReceivedRecord(projectDir: string): string | null {
   const record = nearestReceivedRecordAtOrAbove(projectDir);
   return record && !Array.isArray(record.listed) ? join(record.root, RECEIVED_RECORD) : null;
