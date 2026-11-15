@@ -714,7 +714,7 @@ async function bundledFamilyFaceRules(
   emitFamily: string,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<string[]> {
   const rules: string[] = [];
   const coveredWeights = new Set<string>();
@@ -783,7 +783,7 @@ async function googleFamilyFaceRules(
   emitFamily: string,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<string[] | null> {
   const googleFaces = await fetchFamilyFaces(
     lookupFamily,
@@ -834,7 +834,7 @@ async function resolveFamilyFaceRules(
   emitFamily: string,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<string[] | null> {
   const canonicalKey = FONT_ALIASES[normalizedFamily];
   if (canonicalKey) {
@@ -1020,7 +1020,7 @@ async function resolveWeightedClassFamily(
   authoredFamily: string,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<string[] | null> {
   const family = WEIGHTED_CLASS_FAMILY.exec(authoredFamily)?.[1];
   if (!family) return null;
@@ -1041,7 +1041,7 @@ async function resolveDeclaredFamilyAlias(
   declaredFamilies: DeclaredFontFamilies,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<string[] | null> {
   const declared = findDeclaredFamilyAlias(authoredFamily, declaredFamilies);
   if (!declared) return null;
@@ -1079,7 +1079,7 @@ async function buildFontFaceCss(
   requestedFamilies: Map<string, ResolvedFamily>,
   options: InternalFontFetchOptions,
   declaredFamilies: () => DeclaredFontFamilies,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<{
   css: string;
   unresolved: string[];
@@ -1648,26 +1648,6 @@ function declaredFaceFamily(block: string): string | undefined {
   return found?.[1];
 }
 
-/** Page text split into runs that each fit one `text=` request; `[undefined]` when there is none. */
-function pageTextChunks(fontText: string | undefined): (string | undefined)[] {
-  if (!fontText) return [undefined];
-  const chunks: string[] = [];
-  let chunk = "";
-  let encodedLength = 0;
-  for (const character of fontText) {
-    const size = encodeURIComponent(character).length;
-    if (chunk && encodedLength + size > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) {
-      chunks.push(chunk);
-      chunk = "";
-      encodedLength = 0;
-    }
-    chunk += character;
-    encodedLength += size;
-  }
-  chunks.push(chunk);
-  return chunks;
-}
-
 function unicodeRangeOf(text: string): string {
   const points = [...new Set(Array.from(text, (character) => character.codePointAt(0)!))].sort(
     (a, b) => a - b,
@@ -1701,9 +1681,7 @@ async function fetchTextChunks(
   for (const [index, url] of urls.entries()) {
     const result = await fetchUrl(url);
     const range = unicodeRangeOf(chunks[index]!);
-    faces.push(
-      ...result.faces.map((face) => ({ ...face, unicodeRange: range })),
-    );
+    faces.push(...result.faces.map((face) => ({ ...face, unicodeRange: range })));
     status ??= result.status;
   }
   return { faces, status };
@@ -1714,7 +1692,7 @@ async function fetchGoogleFont(
   familyName: string,
   path: FontDiagPath,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<GoogleFontFace[]> {
   // Agents sometimes copy the `family=` value from a Google Fonts URL into
   // CSS, where `+` remains a literal character instead of being decoded as a
@@ -1744,7 +1722,7 @@ async function fetchGoogleFont(
   const fetchPageText = (
     urlFor: (text: string | undefined) => string,
     urlSource: FontAttemptDiag["urlSource"],
-  ) => fetchTextChunks(pageTextChunks(fontText), urlFor, (url) => fetchStylesheet(url, urlSource));
+  ) => fetchTextChunks(fontText ?? [undefined], urlFor, (url) => fetchStylesheet(url, urlSource));
   if (!authoredStylesheet) {
     return (await fetchPageText(defaultUrl, "default")).faces;
   }
@@ -1870,7 +1848,7 @@ async function fetchFamilyFaces(
   path: FontDiagPath,
   optional: boolean,
   options: InternalFontFetchOptions,
-  fontText?: string,
+  fontText?: PageText,
 ): Promise<GoogleFontFace[]> {
   if (!optional) return fetchGoogleFont(familyName, path, options, fontText);
   const maxAttempts = Math.min(options.retryPolicy.maxAttempts, 2);
@@ -1950,6 +1928,50 @@ export interface InjectDeterministicFontFacesOptions {
 // static text, strings authored in scripts, and CSS case transforms while
 // collapsing repeated prose and base64 assets to a tiny set.
 const GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH = 1_700;
+
+/** The page's characters as `text=` runs, each within the URL budget. */
+type PageText = readonly string[];
+
+// One glyph per character, so these may go to any run. Everything else (joining scripts, kerning
+// pairs, combining marks) stays in the first run, so text that shapes together shares one face.
+const STANDALONE_CHARACTER_RE =
+  /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7A3]$/u;
+// A standalone character a mark or variation selector attaches to must share that mark's face.
+const ATTACHED_CHARACTER_RE =
+  /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7A3])(?=[\p{M}\uFE00-\uFE0F\u{E0100}-\u{E01EF}])/gu;
+
+function encodedLength(text: string): number {
+  return encodeURIComponent(text).length;
+}
+
+/** Undefined when the characters that must share one face do not fit one request: the whole family, as before. */
+function pageTextRuns(
+  characters: readonly string[],
+  sources: readonly string[],
+): PageText | undefined {
+  if (characters.length === 0) return undefined;
+  const attached = new Set(
+    sources.flatMap((text) => [...text.matchAll(ATTACHED_CHARACTER_RE)].map((m) => m[1]!)),
+  );
+  const isLoose = (character: string) =>
+    STANDALONE_CHARACTER_RE.test(character) && !attached.has(character);
+  let run = characters.filter((character) => !isLoose(character)).join("");
+  if (encodedLength(run) > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) return undefined;
+  const runs: string[] = [];
+  let length = encodedLength(run);
+  for (const character of characters.filter(isLoose)) {
+    const size = encodedLength(character);
+    if (run && length + size > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) {
+      runs.push(run);
+      run = "";
+      length = 0;
+    }
+    run += character;
+    length += size;
+  }
+  runs.push(run);
+  return runs;
+}
 
 const SMALL_TO_FULL_KANA: ReadonlyMap<string, string> = new Map([
   ["ぁ", "あ"],
@@ -2056,13 +2078,13 @@ function hasTextTransformKeyword(html: string, keyword: RegExp): boolean {
   }
 }
 
-function extractGoogleFontsText(html: string): string | undefined {
+function extractGoogleFontsText(html: string): PageText | undefined {
   const document = readPage(html);
   const decodedBodyText = document.body?.textContent ?? "";
   const locales = collectLangAttributes(document);
 
   // Intentional over-approximation: raw html includes base64, scripts, and
-  // class names, but they collapse in the Set; text past one request is split, never dropped.
+  // class names, but they collapse in the Set; text past one request is split by pageTextRuns.
   const uniqueCharacters = new Set<string>();
   const seen = new Set<string>();
   for (const text of [html, decodedBodyText]) {
@@ -2077,7 +2099,7 @@ function extractGoogleFontsText(html: string): string | undefined {
   if (hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE))
     addFullSizeKanaVariants(uniqueCharacters);
 
-  return [...uniqueCharacters].join("") || undefined;
+  return pageTextRuns([...uniqueCharacters], [html, decodedBodyText]);
 }
 
 function resolveFontFetchRetryPolicy(

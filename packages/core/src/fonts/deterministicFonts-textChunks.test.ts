@@ -101,4 +101,51 @@ describe("Google Fonts text= past one request's budget", () => {
     });
     for (const character of CJK) expect(owners.get(character.codePointAt(0)!)).toBe(1);
   });
+
+  function faceOwning(html: string, character: string): number {
+    const faces = html
+      .split("@font-face")
+      .slice(1)
+      .filter((block) => block.includes("Hf Chunk Test"));
+    return faces.findIndex((face) => {
+      const range = /unicode-range:\s*([^;}]+)/.exec(face)?.[1];
+      return range !== undefined && codePointsOf(range).has(character.codePointAt(0)!);
+    });
+  }
+
+  async function render(body: string) {
+    const { fetchImpl, cssUrls } = googleFetch();
+    const html = await injectDeterministicFontFaces(
+      `<!doctype html><html><head><style>h1 { font-family: "Hf Chunk Test", serif; }</style></head><body><h1>${body}</h1></body></html>`,
+      { fetchImpl, allowSystemFontCapture: false },
+    );
+    return { html, cssUrls };
+  }
+
+  it("keeps characters that shape together in one face: Arabic lam-alef beside 600 CJK", async () => {
+    const { html, cssUrls } = await render(`ل${CJK}ا`);
+
+    expect(cssUrls.length).toBeGreaterThan(1);
+    const lam = faceOwning(html, "ل");
+    expect(lam).toBeGreaterThanOrEqual(0);
+    expect(faceOwning(html, "ا")).toBe(lam);
+    expect(faceOwning(html, "a")).toBe(lam);
+  });
+
+  it("keeps an ideograph with the variation selector that follows it", async () => {
+    const { html } = await render(`${CJK}葛\u{E0100}`);
+
+    const ideograph = faceOwning(html, "葛");
+    expect(ideograph).toBeGreaterThanOrEqual(0);
+    expect(faceOwning(html, "\u{E0100}")).toBe(ideograph);
+  });
+
+  it("asks for the whole family, as before, when characters that must share a face overflow one request", async () => {
+    const cyrillic = Array.from({ length: 400 }, (_, index) =>
+      String.fromCodePoint(0x0400 + index),
+    ).join("");
+    const { cssUrls } = await render(cyrillic);
+
+    expect(cssUrls.map((url) => url.searchParams.has("text"))).toEqual([false]);
+  });
 });

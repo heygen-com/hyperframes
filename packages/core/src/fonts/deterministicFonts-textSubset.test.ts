@@ -68,7 +68,7 @@ describe("Google Fonts text subsetting", () => {
     expect(text).toContain("W");
   });
 
-  it("splits case closure past the text URL budget into several bounded text= requests", async () => {
+  it("falls back to the full font when case closure exceeds the text URL budget", async () => {
     const caseChangingCharacters = Array.from({ length: 0x500 }, (_, index) =>
       String.fromCodePoint(index),
     )
@@ -76,24 +76,13 @@ describe("Google Fonts text subsetting", () => {
       .slice(0, 300)
       .join("");
 
-    const urls: URL[] = [];
-    const fetchImpl = (async (input: unknown) => {
-      urls.push(new URL(String(input)));
-      return new Response("", { status: 400 });
-    }) as unknown as typeof fetch;
-    await injectDeterministicFontFaces(
+    const url = await requestedGoogleFontUrl(
       `<!doctype html><html><head><style>
         p { font-family: "Inter", sans-serif; font-weight: 800; text-transform: uppercase; }
       </style></head><body><p>${caseChangingCharacters}</p></body></html>`,
-      { fetchImpl, allowSystemFontCapture: false },
     );
 
-    const css = urls.filter((url) => url.pathname === "/css2");
-    expect(css.length).toBeGreaterThan(1);
-    for (const url of css) {
-      expect(url.searchParams.has("text")).toBe(true);
-      expect(encodeURIComponent(url.searchParams.get("text")!).length).toBeLessThanOrEqual(1_700);
-    }
+    expect(url.searchParams.has("text")).toBe(false);
   });
 
   it("includes Turkish İ and ı when lang=tr is present", async () => {
