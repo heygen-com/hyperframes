@@ -13,6 +13,7 @@ vi.mock("@hyperframes/studio-server/loudness", async (importOriginal) => ({
 }));
 
 import normalizeAudioCommand from "./normalize-audio.js";
+import { CliRuntimeError } from "../utils/commandResult.js";
 
 describe("absolute normalize-audio command", () => {
   it.each([
@@ -122,6 +123,87 @@ describe("normalize-audio on a clip inside a mounted scene", () => {
       expect(measureAudio.mock.calls[0]?.[1]).toBe(join(dir, "assets", "voice.wav"));
     } finally {
       log.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("normalize-audio on nested template scenes", () => {
+  it("writes the gain only into the nested scene that declares the target", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-nested-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const root = `<div data-composition-id="main"><div data-composition-src="compositions/outer.html"></div></div>`;
+    const outer = `<template><div data-composition-id="outer"><div data-composition-src="compositions/inner.html"></div></div></template>`;
+    const inner = `<template><div data-composition-id="inner"><audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio></div></template>`;
+    try {
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "outer.html"), outer);
+      writeFileSync(join(dir, "compositions", "inner.html"), inner);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockReset();
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        targetId: "voice",
+        wrote: true,
+      });
+      expect(measureAudio).toHaveBeenCalledTimes(1);
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(dir, "compositions", "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(dir, "compositions", "inner.html"), "utf8")).toBe(
+        inner.replace('data-volume="0"', 'data-volume="1"'),
+      );
+      expect(readFileSync(join(dir, "voice.wav"), "utf8")).toBe("audio bytes");
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a target declared in the root and a nested scene before measuring or writing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-nested-duplicate-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const audio = `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`;
+    const root = `<div data-composition-id="main">${audio}<div data-composition-src="compositions/outer.html"></div></div>`;
+    const outer = `<template><div data-composition-id="outer"><div data-composition-src="compositions/inner.html"></div></div></template>`;
+    const inner = `<template><div data-composition-id="inner">${audio}</div></template>`;
+    try {
+      mkdirSync(join(dir, "compositions"));
+      writeFileSync(join(dir, "index.html"), root);
+      writeFileSync(join(dir, "compositions", "outer.html"), outer);
+      writeFileSync(join(dir, "compositions", "inner.html"), inner);
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      measureAudio.mockReset();
+      measureAudio.mockResolvedValue({ integratedLufs: -16, truePeakDbfs: -12.3 });
+
+      await expect(
+        runCommand(normalizeAudioCommand, {
+          rawArgs: [dir, "--target", "voice", "--json", "--write"],
+        }),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: false,
+        error: {
+          code: "runtime_error",
+          message: "Target audio #voice is declared in index.html, compositions/inner.html",
+        },
+      });
+      expect(measureAudio).not.toHaveBeenCalled();
+      expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(root);
+      expect(readFileSync(join(dir, "compositions", "outer.html"), "utf8")).toBe(outer);
+      expect(readFileSync(join(dir, "compositions", "inner.html"), "utf8")).toBe(inner);
+      expect(readFileSync(join(dir, "voice.wav"), "utf8")).toBe("audio bytes");
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
       rmSync(dir, { recursive: true, force: true });
     }
   });
