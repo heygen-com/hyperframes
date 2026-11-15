@@ -109,8 +109,6 @@ export { prepareHeifImageInputs } from "./services/heifImagePrep.js";
 
 // ── Video frame injection (Hyperframes-specific hook) ───────────────────────
 export { createVideoFrameInjector } from "@hyperframes/engine";
-
-// ── Network rules ───────────────────────────────────────────────────────────
 export { isBlockedNetworkHost } from "@hyperframes/engine";
 
 // ── Configuration ───────────────────────────────────────────────────────────
