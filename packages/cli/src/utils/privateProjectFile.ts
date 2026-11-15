@@ -95,10 +95,10 @@ export function receivedRecordStatus(
   if (!record) return null;
   const path = join(record.root, RECEIVED_RECORD);
   if (!Array.isArray(record.listed)) return { path, listed: null };
-  const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/` : "";
+  const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/`.normalize("NFC") : "";
   const listed = record.listed
-    .map((entry) => String(entry).normalize("NFC"))
-    .filter((entry) => entry.startsWith(prefix))
+    .map(String)
+    .filter((entry) => entry.normalize("NFC").startsWith(prefix))
     .map((entry) => join(record.root, entry));
   return { path, listed };
 }

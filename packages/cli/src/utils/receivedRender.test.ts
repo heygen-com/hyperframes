@@ -13,6 +13,14 @@ import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
 
+const SIGNATURES = {
+  png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),
+  mp4: Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom\0\0\0\0")]),
+  mp3: Buffer.from("ID3\u0004\0\0\0\0\0\0"),
+  woff2: Buffer.from("wOF2\0\u0001\0\0\0\0\0\0"),
+  jpg: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]),
+};
+
 let root: string | undefined;
 
 afterEach(() => {
@@ -20,7 +28,7 @@ afterEach(() => {
   root = undefined;
 });
 
-function write(path: string, text: string): void {
+function write(path: string, text: string | Buffer): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, text);
 }
@@ -41,7 +49,7 @@ function project(record?: string): string {
   );
   write(join(dir, "compositions", "scene.html"), `<video src="../../outside/clip.mp4"></video>`);
   write(join(dir, "style.css"), `body { background: url(../outside/bg.png); }`);
-  write(join(dir, "assets", "in.png"), "x");
+  write(join(dir, "assets", "in.png"), SIGNATURES.png);
   write(join(dir, "unused.html"), `<img src="../outside/pic.png">`);
   if (record !== undefined) write(join(dir, ".hyperframes", "received-files.json"), record);
   return dir;
@@ -49,7 +57,7 @@ function project(record?: string): string {
 
 const received = (...files: string[]) => JSON.stringify({ files });
 
-const SOMEONE_ELSE = "came from someone else and can load other files";
+const SOMEONE_ELSE = "came from someone else and is not a media, font or image file";
 
 function decide(dir: string, entry?: string) {
   const warn = vi.fn();
@@ -117,15 +125,49 @@ describe("outsideAssetsAllowed", () => {
   });
 
   it.each([
-    ["an image", "assets/in.png"],
-    ["a video", "media/clip.mp4"],
-    ["a font", "fonts/brand.woff2"],
-  ])("keeps outside files when only %s was received", (_kind, file) => {
+    ["an image", "assets/in.png", SIGNATURES.png],
+    ["a JPEG", "media/photo.jpg", SIGNATURES.jpg],
+    ["a video", "media/clip.mp4", SIGNATURES.mp4],
+    ["audio", "media/voice.mp3", SIGNATURES.mp3],
+    ["a font", "fonts/brand.woff2", SIGNATURES.woff2],
+  ])("keeps outside files when only %s was received", (_kind, file, bytes) => {
     const dir = project(received(file));
-    if (file !== "assets/in.png") write(join(dir, file), "\u0000binary\u0000");
+    write(join(dir, file), bytes);
     const { allowed, warn } = decide(dir);
     expect(allowed).toBe(true);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a media name over HTML", "media/clip.mp4", "<div data-composition-id='x'></div>"],
+    ["an image name over a script", "assets/in.png", "window.x = 1;"],
+    ["UTF-16 HTML under an unknown name", "scene.dat", Buffer.from("\uFEFF<div></div>", "utf16le")],
+    ["an empty media file", "media/empty.mp4", ""],
+  ])("refuses outside files for %s", (_kind, file, content) => {
+    const dir = project(received(file));
+    write(join(dir, file), content);
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain(SOMEONE_ELSE);
+  });
+
+  it("refuses outside files when a listed media file is missing", () => {
+    expect(decide(project(received("media/gone.mp4"))).allowed).toBe(false);
+  });
+
+  it("keeps a received entry listed by an ancestor record for a decomposed-Unicode subfolder", () => {
+    root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+    write(join(root, "outside", "pic.png"), SIGNATURES.png);
+    const nfd = "Su\u0308bfolder";
+    const dir = join(root, nfd);
+    write(join(dir, "index.html"), `<img src="../outside/pic.png">`);
+    write(
+      join(root, ".hyperframes", "received-files.json"),
+      received(`${nfd.normalize("NFC")}/index.html`),
+    );
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain("../outside/pic.png");
   });
 
   it.each([

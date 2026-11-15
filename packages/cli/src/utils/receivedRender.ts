@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
@@ -202,15 +202,54 @@ function refusedReferences(found: OutsideReferences): string {
   return parts.join("");
 }
 
-const REFERENCING_EXTENSION = /\.(?:html?|css|[cm]?js|svg)$/i;
-const SNIFFED_BYTES = 4096;
+const SIGNATURE_BYTES = 16;
+
+const ascii = (bytes: Buffer, at: number, text: string) =>
+  bytes.toString("latin1", at, at + text.length) === text;
+const startsWith = (bytes: Buffer, ...values: number[]) =>
+  values.every((value, index) => bytes[index] === value);
+const isoMedia = (bytes: Buffer) =>
+  ["ftyp", "moov", "mdat", "wide", "free", "skip"].some((box) => ascii(bytes, 4, box));
+const riff = (form: string) => (bytes: Buffer) => ascii(bytes, 0, "RIFF") && ascii(bytes, 8, form);
+const ebml = (bytes: Buffer) => startsWith(bytes, 0x1a, 0x45, 0xdf, 0xa3);
+const mpegAudio = (bytes: Buffer) =>
+  ascii(bytes, 0, "ID3") || (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0);
+const adts = (bytes: Buffer) =>
+  ascii(bytes, 0, "ADIF") || (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xf6) === 0xf0);
+const avif = (bytes: Buffer) =>
+  ascii(bytes, 4, "ftyp") && ["avif", "avis", "mif1"].some((brand) => ascii(bytes, 8, brand));
+
+// Each media, font or image extension and the leading bytes a file of that type starts with.
+const MEDIA_SIGNATURES: Record<string, (bytes: Buffer) => boolean> = {
+  ".mp4": isoMedia,
+  ".m4v": isoMedia,
+  ".m4a": isoMedia,
+  ".mov": isoMedia,
+  ".webm": ebml,
+  ".mkv": ebml,
+  ".mp3": mpegAudio,
+  ".wav": riff("WAVE"),
+  ".ogg": (bytes) => ascii(bytes, 0, "OggS"),
+  ".flac": (bytes) => ascii(bytes, 0, "fLaC"),
+  ".aac": adts,
+  ".png": (bytes) => startsWith(bytes, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a),
+  ".jpg": (bytes) => startsWith(bytes, 0xff, 0xd8, 0xff),
+  ".jpeg": (bytes) => startsWith(bytes, 0xff, 0xd8, 0xff),
+  ".gif": (bytes) => ascii(bytes, 0, "GIF87a") || ascii(bytes, 0, "GIF89a"),
+  ".webp": riff("WEBP"),
+  ".avif": avif,
+  ".woff": (bytes) => ascii(bytes, 0, "wOFF"),
+  ".woff2": (bytes) => ascii(bytes, 0, "wOF2"),
+  ".ttf": (bytes) => startsWith(bytes, 0x00, 0x01, 0x00, 0x00) || ascii(bytes, 0, "true"),
+  ".otf": (bytes) => ascii(bytes, 0, "OTTO"),
+};
 
 function firstBytes(path: string): Buffer | null {
   let fd: number | undefined;
   try {
     fd = openSync(path, "r");
-    const head = Buffer.alloc(SNIFFED_BYTES);
-    return head.subarray(0, readSync(fd, head, 0, SNIFFED_BYTES, 0));
+    const head = Buffer.alloc(SIGNATURE_BYTES);
+    return head.subarray(0, readSync(fd, head, 0, SIGNATURE_BYTES, 0));
   } catch {
     return null;
   } finally {
@@ -218,26 +257,13 @@ function firstBytes(path: string): Buffer | null {
   }
 }
 
-function readsAsPageOrStylesheet(text: string): boolean {
-  if (text.startsWith("<") || text.includes("@import") || text.includes("url(")) return true;
-  return text.includes("{") && text.includes(":") && text.includes("}");
+function isMediaFontOrImage(path: string): boolean {
+  const matches = MEDIA_SIGNATURES[extname(path).toLowerCase()];
+  const bytes = matches && isFile(path) ? firstBytes(path) : null;
+  return bytes !== null && matches !== undefined && matches(bytes);
 }
 
-function sniffsAsPageOrStylesheet(path: string): boolean {
-  const bytes = isFile(path) ? firstBytes(path) : null;
-  if (bytes === null || bytes.includes(0)) return false;
-  return readsAsPageOrStylesheet(
-    bytes
-      .toString("utf-8")
-      .replace(/^\uFEFF/, "")
-      .trimStart(),
-  );
-}
-
-const canReferenceFiles = (path: string) =>
-  REFERENCING_EXTENSION.test(path) || sniffsAsPageOrStylesheet(path);
-
-/** False when the received-files record cannot be read, or lists a received page, stylesheet, script or SVG; the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
+/** False when the received-files record cannot be read, or lists a received file that is not positively media, a font or an image by extension and leading bytes; the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
@@ -246,7 +272,7 @@ export function outsideAssetsAllowed(
   const absProjectDir = resolve(projectDir);
   const record = receivedRecordStatus(absProjectDir);
   if (record === null) return true;
-  const referencing = record.listed?.find(canReferenceFiles);
+  const referencing = record.listed?.find((path) => !isMediaFontOrImage(path));
   if (record.listed !== null && referencing === undefined) return true;
   const refused = refusedReferences(outsideReferences(absProjectDir, entryFile ?? "index.html"));
   if (referencing === undefined) {
@@ -255,7 +281,7 @@ export function outsideAssetsAllowed(
     );
   } else if (refused !== "") {
     warn(
-      `${relative(realOrNull(absProjectDir) ?? absProjectDir, referencing)} came from someone else and can load other files, so the render reads nothing outside the project.${refused}`,
+      `${relative(realOrNull(absProjectDir) ?? absProjectDir, referencing)} came from someone else and is not a media, font or image file, so the render reads nothing outside the project.${refused}`,
     );
   }
   return false;
