@@ -66,9 +66,8 @@ const SNIFF_BYTES = 512;
 // error body, which some gateways return with a 200.
 const DOCUMENT_OPENING_BYTES = new Set([0x3c, 0x7b, 0x5b]);
 // NUL is skippable so UTF-16-encoded text (`3C 00 68 00 …`) is caught, and so
-// is a payload padded with NULs. No supported container is defeated by this:
-// mp4/mov open with a box size whose first non-NUL byte is the size itself, and
-// MPEG-PS `00 00 01 BA` stops at 0x01.
+// is a payload padded with NULs. An mp4/mov box header is recognised before
+// skipping, since its size byte can read as `<`; MPEG-PS `00 00 01 BA` stops at 0x01.
 const SKIPPABLE_LEADING_BYTES = new Set([0x00, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20]);
 const BYTE_ORDER_MARKS = [
   Buffer.from([0xef, 0xbb, 0xbf]), // UTF-8
@@ -116,18 +115,63 @@ async function openRegular(path: string | Buffer): Promise<FileHandle | null> {
   return null;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file; null when it is not a regular file. */
-async function readHead(filePath: string): Promise<Buffer | null> {
+/** Read up to {@link SNIFF_BYTES} from the front of the file, with its length; null when it is not a regular file. */
+async function readHead(filePath: string): Promise<{ head: Buffer; fileSize: number } | null> {
   const fh = await openRegular(filePath);
   if (!fh) return null;
   try {
-    return await readAt(fh, SNIFF_BYTES, 0);
+    const { size } = await fh.stat();
+    return { head: await readAt(fh, SNIFF_BYTES, 0), fileSize: size };
   } finally {
     await fh.close().catch(() => {});
   }
 }
 
-function startsWithDocumentByte(head: Buffer): boolean {
+const FIRST_BOX_TYPES = new Set([
+  "ftyp",
+  "styp",
+  "free",
+  "skip",
+  "wide",
+  "uuid",
+  "pdin",
+  "moov",
+  "mdat",
+  "moof",
+]);
+const BOX_TYPE = /^[\x21-\x7e\xa9][\x21-\x7e]{3}$/;
+
+/** A box's declared length, from its 64-bit size when its size is 1; -1 when shorter than its own header. */
+function boxLength(head: Buffer, offset: number): number {
+  const size = head.readUInt32BE(offset);
+  if (size !== 1) return size >= 8 ? size : -1;
+  if (offset + 16 > head.length) return -1;
+  const largeSize = Number(head.readBigUInt64BE(offset + 8));
+  return largeSize >= 16 ? largeSize : -1;
+}
+
+/** Where the box at `offset` ends, or -1 when no box header with a printable type that fits the file is there. */
+function boxEnd(head: Buffer, offset: number, fileSize: number): number {
+  if (offset + 8 > head.length || !BOX_TYPE.test(head.toString("latin1", offset + 4, offset + 8))) {
+    return -1;
+  }
+  if (head.readUInt32BE(offset) === 0) return fileSize;
+  const length = boxLength(head, offset);
+  return length >= 0 && offset + length <= fileSize ? offset + length : -1;
+}
+
+/** An mp4/mov opening: a box an mp4 or QuickTime file can start with, then boxes that each fit the file, as far as the sniff window holds their headers. */
+function opensWithMediaBox(head: Buffer, fileSize: number): boolean {
+  if (!FIRST_BOX_TYPES.has(head.toString("latin1", 4, 8))) return false;
+  let offset = boxEnd(head, 0, fileSize);
+  while (offset >= 0 && offset < fileSize && offset + 16 <= head.length) {
+    offset = boxEnd(head, offset, fileSize);
+  }
+  return offset >= 0;
+}
+
+function startsWithDocumentByte(head: Buffer, fileSize: number): boolean {
+  if (opensWithMediaBox(head, fileSize)) return false;
   for (let index = byteOrderMarkLength(head); index < head.length; index++) {
     const byte = head[index];
     if (byte === undefined) break;
@@ -157,8 +201,12 @@ function startsWithDocumentByte(head: Buffer): boolean {
  */
 export async function isNotMediaPayload(filePath: string): Promise<boolean> {
   try {
-    const head = await readHead(filePath);
-    return !head || startsWithDocumentByte(head) || (await playlistLeavesItsFolder(filePath));
+    const sniffed = await readHead(filePath);
+    return (
+      !sniffed ||
+      startsWithDocumentByte(sniffed.head, sniffed.fileSize) ||
+      (await playlistLeavesItsFolder(filePath))
+    );
   } catch {
     return false;
   }
