@@ -212,6 +212,14 @@ export async function playlistLeavesItsFolder(
   return listLeaves(resolve(filePath), placed, dirname(placed), new Set(), 0);
 }
 
+async function startsAsPlaylist(path: string): Promise<boolean> {
+  const head = (await readHead(path))
+    .toString("utf8")
+    .replace(/^\uFEFF/, "")
+    .trimStart();
+  return head.startsWith("#EXTM3U") || /^ffconcat\s+version/i.test(head);
+}
+
 /** Every list a list names is read too, against the top list's folder. */
 async function listLeaves(
   readPath: string,
@@ -221,27 +229,33 @@ async function listLeaves(
   depth: number,
 ): Promise<boolean> {
   try {
-    const head = (await readHead(readPath))
-      .toString("utf8")
-      .replace(/^\uFEFF/, "")
-      .trimStart();
-    if (!head.startsWith("#EXTM3U") && !/^ffconcat\s+version/i.test(head)) return false;
+    if (!(await startsAsPlaylist(readPath))) return false;
     if (depth >= MAX_PLAYLIST_DEPTH) return true;
     if (seen.has(path)) return false;
     seen.add(path);
     const body = await readHead(readPath, MAX_PLAYLIST_BYTES + 1);
     if (body.length > MAX_PLAYLIST_BYTES) return true;
-    const base = dirname(path);
     for (const entry of playlistEntries(body.toString("utf8")) ?? []) {
-      if (entryLeavesFolder(entry, base, folder)) return true;
-      if (HTTP_URL.test(entry)) continue;
-      for (const local of new Set([entry, safeDecode(entry)])) {
-        const nested = resolve(base, local);
-        if (await listLeaves(nested, nested, folder, seen, depth + 1)) return true;
-      }
+      if (await entryLeaves(entry, dirname(path), folder, seen, depth)) return true;
     }
     return false;
   } catch {
     return false;
   }
+}
+
+async function entryLeaves(
+  entry: string,
+  base: string,
+  folder: string,
+  seen: Set<string>,
+  depth: number,
+): Promise<boolean> {
+  if (entryLeavesFolder(entry, base, folder)) return true;
+  if (HTTP_URL.test(entry)) return false;
+  for (const local of new Set([entry, safeDecode(entry)])) {
+    const nested = resolve(base, local);
+    if (await listLeaves(nested, nested, folder, seen, depth + 1)) return true;
+  }
+  return false;
 }
