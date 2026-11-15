@@ -548,6 +548,22 @@ describe("texture_mask_asset_not_found declarations", () => {
       expect(findings[0]?.message).not.toContain("example.png");
     },
   );
+
+  it("reads long runs of unclosed urls in valid and malformed stylesheets in well under two seconds", async () => {
+    const links =
+      '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
+    const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
+    writeFileSync(
+      join(project, "nested.css"),
+      `a{background:${"url(".repeat(40_000)}${")".repeat(40_000)}}`,
+    );
+    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(3_000)}`);
+
+    const started = performance.now();
+    await lintProject(project);
+
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });
 
 describe("template shell style sources", () => {
