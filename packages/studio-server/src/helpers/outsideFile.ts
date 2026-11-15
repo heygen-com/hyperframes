@@ -1,10 +1,11 @@
-import { closeSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { MIME_TYPES } from "./mime.js";
 import {
   AUDIO_EXTS,
   CONVERTIBLE_IMAGE_EXTS,
+  isControlByte,
   MEDIA_INPUT_ARGS,
   startsAsMediaPlaylist,
   VIDEO_EXTS,
@@ -39,21 +40,38 @@ export const UPLOADED_OUTSIDE_FILE_EXTENSIONS: ReadonlySet<string> = new Set(
 const TYPESCRIPT_OR_TRANSPORT_STREAM = new Set([".ts", ".mts"]);
 const TS_SYNC_BYTE = 0x47;
 
-function startsAsTransportStream(path: string): boolean {
-  const head = Buffer.alloc(200);
-  let fd: number | undefined;
+const TS_PACKETS = [
+  { size: 188, offset: 0 },
+  { size: 192, offset: 4 },
+];
+
+function readRegularFileHead(path: string, length: number): Buffer | null {
+  let fd: number;
   try {
-    fd = openSync(path, "r");
-    readSync(fd, head, 0, head.length, 0);
+    // A FIFO would wait for a writer on a blocking open; fstat refuses it first.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
   } catch {
-    return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
+    return null;
   }
-  const packetsAt = (offset: number, size: number) =>
-    head[offset] === TS_SYNC_BYTE && head[offset + size] === TS_SYNC_BYTE;
-  const m2tsTimestampBytes = 4;
-  return packetsAt(0, 188) || packetsAt(m2tsTimestampBytes, 192);
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    const head = Buffer.alloc(length);
+    return head.subarray(0, readSync(fd, head, 0, length, 0));
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function startsAsTransportStream(path: string): boolean {
+  const head = readRegularFileHead(path, 4 * 192);
+  if (!head?.some(isControlByte)) return false;
+  return TS_PACKETS.some(({ size, offset }) => {
+    const starts = [];
+    for (let at = offset; at < head.length; at += size) starts.push(at);
+    return starts.length >= 2 && starts.every((at) => head[at] === TS_SYNC_BYTE);
+  });
 }
 
 function isCopiedType(absPath: string, extensions: ReadonlySet<string>): boolean {

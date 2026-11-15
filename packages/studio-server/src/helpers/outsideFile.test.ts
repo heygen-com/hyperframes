@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,6 +58,23 @@ describe("outside file types", () => {
       expect(isUploadedOutsideFileType(path)).toBe(true);
     }
   });
+
+  it("does not count text with a sync byte at every packet as a transport stream", () => {
+    const text = Array.from({ length: 4 }, () => `G${"/".repeat(187)}`).join("");
+    for (const name of ["spaced.ts", "spaced.mts"]) {
+      expect(isUploadedOutsideFileType(write(name, text))).toBe(false);
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "refuses a named pipe without waiting for a writer",
+    () => {
+      const fifo = join(dir, "pipe.ts");
+      execFileSync("mkfifo", [fifo]);
+      expect(isCopiedOutsideFileType(fifo)).toBe(false);
+      expect(isUploadedOutsideFileType(fifo)).toBe(false);
+    },
+  );
 
   it("names the copied types for the upload or render that left a file out", () => {
     expect(leftOutWarning("index.html", "../lib.js", "file_type")).toBe(
