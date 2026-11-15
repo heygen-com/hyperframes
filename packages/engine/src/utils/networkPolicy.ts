@@ -34,7 +34,42 @@ for (const [network, prefix, hostClass] of [
 
 export function ipv4HostClass(address: string): NonPublicIPv4Class | "public" {
   for (const [hostClass, list] of IPV4_CLASSES) if (list.check(address, "ipv4")) return hostClass;
-  return "public";
+  return inOperatorRange(address, "ipv4") ? "private" : "public";
+}
+
+const OPERATOR_RANGES_ENV = "PRODUCER_NON_PUBLIC_CIDRS";
+let operatorRangesFor: string | undefined;
+let operatorRangeList: BlockList | "malformed" = new BlockList();
+
+function operatorRanges(): BlockList | "malformed" {
+  const raw = process.env[OPERATOR_RANGES_ENV] ?? "";
+  if (raw === operatorRangesFor) return operatorRangeList;
+  operatorRangesFor = raw;
+  operatorRangeList = parseRanges(raw);
+  if (operatorRangeList === "malformed") {
+    console.warn(`[hyperframes] ${OPERATOR_RANGES_ENV}="${raw}" is not a list like 192.160.0.0/16; every address is refused.`);
+  }
+  return operatorRangeList;
+}
+
+function parseRanges(raw: string): BlockList | "malformed" {
+  const list = new BlockList();
+  for (const range of raw.split(",").map((part) => part.trim()).filter(Boolean)) {
+    const [network = "", bits] = range.split("/");
+    const family = isIP(network);
+    const prefix = Number(bits);
+    const max = family === 4 ? 32 : 128;
+    if (family === 0 || bits === undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > max) {
+      return "malformed";
+    }
+    list.addSubnet(network, prefix, family === 4 ? "ipv4" : "ipv6");
+  }
+  return list;
+}
+
+function inOperatorRange(address: string, family: "ipv4" | "ipv6"): boolean {
+  const ranges = operatorRanges();
+  return ranges === "malformed" || ranges.check(address, family);
 }
 
 const NON_PUBLIC_IPV6_ADDRESSES = new BlockList();
@@ -66,6 +101,7 @@ export function isBlockedNetworkHost(hostname: string): boolean {
     return true;
   const addressType = isIP(h);
   if (addressType === 0) return false;
+  if (inOperatorRange(h, addressType === 4 ? "ipv4" : "ipv6")) return true;
   return addressType === 4
     ? NON_PUBLIC_IPV4_ADDRESSES.check(h, "ipv4")
     : NON_PUBLIC_IPV6_ADDRESSES.check(h, "ipv6");
