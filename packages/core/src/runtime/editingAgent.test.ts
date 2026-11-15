@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const H = "0123456789abcdef:1";
@@ -108,6 +109,20 @@ describe("installEditingAgent", () => {
       topLevel.dispose();
       selfPost.mockRestore();
     }
+  });
+
+  it("never hands off in a document its server answered to another site", () => {
+    const mark = document.createElement("meta");
+    mark.name = PREVIEW_FOR_ANOTHER_SITE_META;
+    document.head.appendChild(mark);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).not.toHaveBeenCalled();
+    } finally {
+      mark.remove();
+    }
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
   });
 
   it("stops listening for a connect once disposed", () => {

@@ -782,9 +782,10 @@ export function registerPreviewRoutes(
       }
       try {
         const inSlot = (make: () => Promise<string>) => runStillJob(make, c.req.raw.signal);
-        const still = await resolveStill(project.dir, file, at, proxyBox, inSlot).catch((err) =>
+        const ask = () => resolveStill(project.dir, file, at, proxyBox, inSlot, c.req.raw.signal);
+        const still = await ask().catch((err) =>
           err instanceof JobAbandonedError && !c.req.raw.signal.aborted
-            ? resolveStill(project.dir, file, at, proxyBox, inSlot)
+            ? ask()
             : Promise.reject(err),
         );
         return new Response(readFileSync(still), {
