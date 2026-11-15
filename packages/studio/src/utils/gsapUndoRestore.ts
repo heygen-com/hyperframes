@@ -8,6 +8,8 @@ import {
   extractGsapScriptText,
   findGsapScriptElements,
   readNestedFiles,
+  repaintDroppedTweenStyle,
+  timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
@@ -341,6 +343,19 @@ export function readUndoNestedFiles(
   return script ? readNestedFiles(iframe, script, readFile) : null;
 }
 
+/** A preview about to reload still shows the timeline's last composed transform; take it back to the file. */
+function repaintWhileReloading(win: PreviewWindow, doc: Document, restored?: string): void {
+  const keys = findGsapScriptElements(doc).flatMap((s) => timelineKeys(s.textContent ?? ""));
+  if (!restored || keys.length === 0) return;
+  repaintDroppedTweenStyle(
+    win,
+    doc,
+    parseRestoreSource(restored),
+    keys,
+    extractGsapScriptText(restored),
+  );
+}
+
 /**
  * Soft-apply an undo/redo restore to the live preview WITHOUT a full iframe
  * remount (which blanks the frame black and re-flashes the WebGL context). Eligible
@@ -391,6 +406,7 @@ export function applyUndoRestoreToPreview(
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;
   if (!iframe || !doc || !files || !win || !plan) {
+    if (doc && win) repaintWhileReloading(win, doc, files?.[activeDocPath]?.restored);
     reloadPreview();
     return "full";
   }

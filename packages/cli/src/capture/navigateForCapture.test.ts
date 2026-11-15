@@ -545,6 +545,17 @@ describe("a proxy that was in the way", () => {
     );
   });
 
+  it("tells a file URL apart from a page when the browser turns it into a download", async () => {
+    const goto = vi
+      .fn()
+      .mockRejectedValue(new Error("net::ERR_ABORTED at https://cdn.example/arabic.woff2"));
+    await expect(
+      navigateForCapture({ goto }, "https://cdn.example/arabic.woff2", 120_000),
+    ).rejects.toThrow(
+      /cdn\.example stopped loading as a page.*file download such as a font.*assets\/fonts.*net::ERR_ABORTED/,
+    );
+  });
+
   it("leaves every other failure as it was", async () => {
     const name = new Error("net::ERR_NAME_NOT_RESOLVED at https://nope.example/");
     expect(explainProxyRefusal(name, "https://nope.example/")).toBe(name);

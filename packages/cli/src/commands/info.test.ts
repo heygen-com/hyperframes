@@ -69,7 +69,7 @@ describe("info", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       writeFileSync(join(dir, "index.html"), html);
-      await info.run?.({ args: { _: [], dir, json: true }, rawArgs: [], cmd: info });
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
 
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
         resolution: "portrait",
@@ -93,7 +93,7 @@ describe("info", () => {
           <div class="clip" data-start="1" data-duration="2"></div>
         </div></body></html>`,
       );
-      await info.run?.({ args: { _: [], dir, json: true }, rawArgs: [], cmd: info });
+      await info.run?.({ args: { _: [], dir, json: true, media: false }, rawArgs: [], cmd: info });
 
       expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({
         resolution: "landscape",

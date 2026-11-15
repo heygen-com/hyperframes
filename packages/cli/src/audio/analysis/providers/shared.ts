@@ -98,22 +98,22 @@ async function heygenHeaders(): Promise<Record<string, string> | string> {
 
 /** An explicit service URL requires its own key; never forward the HeyGen credential to it. */
 export async function serviceAccess(
-  env: { url: string; key: string; timeout: string },
+  env: { url: string; key: string; timeout: string } | null,
   path: string,
   defaultMs: number,
 ): Promise<ServiceAccess | string> {
-  const timeout = Number(process.env[env.timeout]);
+  const timeout = env ? Number(process.env[env.timeout]) : 0;
   const timeoutMs = timeout > 0 ? timeout : defaultMs;
-  const url = process.env[env.url]?.trim();
-  const key = process.env[env.key]?.trim();
-  if (url === "") return `${env.url} is empty, which turns this service off`;
+  const url = env ? process.env[env.url]?.trim() : undefined;
+  const key = env ? process.env[env.key]?.trim() : undefined;
+  if (env && url === "") return `${env.url} is empty, which turns this service off`;
   if (key)
     return {
       url: url || `${resolveCloudBaseUrl()}${path}`,
       headers: { "x-api-key": key },
       timeoutMs,
     };
-  if (url) return `${env.url} is set but ${env.key} is not`;
+  if (env && url) return `${env.url} is set but ${env.key} is not`;
   const headers = await heygenHeaders();
   if (typeof headers === "string") return headers;
   return { url: `${resolveCloudBaseUrl()}${path}`, headers, timeoutMs };

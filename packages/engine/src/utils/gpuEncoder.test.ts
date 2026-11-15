@@ -6,6 +6,7 @@ import {
   getGpuEncoderName,
   getProbeArgs,
   mapPresetForGpuEncoder,
+  parseEncoderPresetNames,
   resetCachedGpuEncoder,
   selectUsableGpuEncoder,
 } from "./gpuEncoder.js";
@@ -97,6 +98,37 @@ describe("mapPresetForGpuEncoder", () => {
     it("falls back to p4 for unknown preset values", () => {
       expect(mapPresetForGpuEncoder("nvenc", "nonsense")).toBe("p4");
     });
+
+    describe("on an ffmpeg build whose encoder lists only the legacy presets", () => {
+      const legacy = parseEncoderPresetNames(LEGACY_NVENC_HELP);
+
+      it.each([
+        ["ultrafast", "hp"],
+        ["superfast", "hp"],
+        ["veryfast", "hp"],
+        ["faster", "fast"],
+        ["fast", "fast"],
+        ["medium", "medium"],
+        ["slow", "slow"],
+        ["slower", "slow"],
+        ["veryslow", "slow"],
+        ["placebo", "slow"],
+        ["p4", "medium"],
+        ["nonsense", "medium"],
+      ])("maps %s to the legacy preset %s", (input, expected) => {
+        expect(mapPresetForGpuEncoder("nvenc", input, legacy)).toBe(expected);
+      });
+    });
+
+    it("keeps the pN names when the encoder lists them", () => {
+      const modern = parseEncoderPresetNames(MODERN_NVENC_HELP);
+      expect(mapPresetForGpuEncoder("nvenc", "slow", modern)).toBe("p5");
+      expect(mapPresetForGpuEncoder("nvenc", "p7", modern)).toBe("p7");
+    });
+
+    it("keeps the pN names when the encoder's list could not be read", () => {
+      expect(mapPresetForGpuEncoder("nvenc", "slow", new Set())).toBe("p5");
+    });
   });
 
   describe("qsv", () => {
@@ -155,5 +187,53 @@ describe("getCachedGpuEncoder", () => {
   it("is one probe however many callers ask while it runs", () => {
     const first = getCachedGpuEncoder();
     expect(getCachedGpuEncoder()).toBe(first);
+  });
+});
+
+const LEGACY_NVENC_HELP = `Encoder h264_nvenc [NVIDIA NVENC H.264 encoder]:
+    General capabilities: dr1 delay hardware
+h264_nvenc AVOptions:
+  -preset            <int>        E..V....... Set the encoding preset (from 0 to 11) (default medium)
+     default         0            E..V.......
+     slow            1            E..V....... hq 2 passes
+     medium          2            E..V....... hq 1 pass
+     fast            3            E..V....... hp 1 pass
+     hp              4            E..V.......
+     hq              5            E..V.......
+     bd              6            E..V.......
+     ll              7            E..V....... low latency
+     llhq            8            E..V....... low latency hq
+     llhp            9            E..V....... low latency hp
+     lossless        10           E..V.......
+     losslesshp      11           E..V.......
+  -profile           <int>        E..V....... Set the encoding profile (from 0 to 3) (default main)
+     baseline        0            E..V.......
+     main            1            E..V.......
+`;
+
+const MODERN_NVENC_HELP = `Encoder h264_nvenc [NVIDIA NVENC H.264 encoder]:
+h264_nvenc AVOptions:
+  -preset            <int>        E..V....... Set the encoding preset (from 0 to 18) (default p4)
+     default         0            E..V.......
+     slow            1            E..V....... hq 2 passes
+     p1              12           E..V....... fastest (lowest quality)
+     p4              15           E..V....... medium (default)
+     p7              18           E..V....... slowest (best quality)
+  -tune              <int>        E..V....... Set the encoding tuning info (from 1 to 4) (default hq)
+     hq              1            E..V.......
+`;
+
+describe("parseEncoderPresetNames", () => {
+  it("lists the names under -preset and stops at the next option", () => {
+    expect([...parseEncoderPresetNames(LEGACY_NVENC_HELP)].sort()).toEqual(
+      "bd default fast hp hq ll llhp llhq lossless losslesshp medium slow".split(" "),
+    );
+    const modern = parseEncoderPresetNames(MODERN_NVENC_HELP);
+    expect(modern.has("p4")).toBe(true);
+    expect(modern.has("main")).toBe(false);
+  });
+
+  it("is empty for text with no -preset option", () => {
+    expect(parseEncoderPresetNames("Codec 'h264_nvenc' is not recognized by FFmpeg.").size).toBe(0);
   });
 });

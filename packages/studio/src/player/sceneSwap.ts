@@ -1,4 +1,9 @@
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { studioFileRevision } from "../utils/studioFileVersion";
+import { logReload } from "../utils/reloadDebug";
+import { whileScriptWrites } from "./previewReloading";
+import { previewFrameOpaque } from "./lib/previewChannel";
+
 type SwapWindow = Window & {
   __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
 };
@@ -74,10 +79,43 @@ export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonl
 export const supersededByNewerEdit = () =>
   new DOMException("superseded by a newer edit", "AbortError");
 
+const SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS = 5;
+
+type SceneSwap = (url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>;
+
+export function swapFreshly(
+  swap: SceneSwap,
+  url: URL,
+  isCurrent: () => boolean,
+  cancel: AbortSignal,
+  reloadWholeFilm: (url: string) => void,
+  attempt = 0,
+): void {
+  const at = studioFileRevision();
+  const fresh = () => studioFileRevision() === at;
+  const again = () => {
+    url.searchParams.set("_t", String(Date.now()));
+    swapFreshly(swap, url, isCurrent, cancel, reloadWholeFilm, attempt + 1);
+  };
+  const retries = attempt < SWAP_REFETCHES_BEFORE_THE_COPY_IN_HAND_WINS;
+  const gate = retries ? () => isCurrent() && fresh() : isCurrent;
+  whileScriptWrites(() => swap(url.toString(), gate, cancel))
+    .then(() => {
+      if (isCurrent() && !fresh() && retries) again();
+    })
+    .catch((error: unknown) => {
+      if (!isCurrent()) return;
+      if (!fresh() && retries) return again();
+      logReload("scene-swap-refused", { reason: String(error) });
+      reloadWholeFilm(url.toString());
+    });
+}
+
 /** Null when the preview cannot swap; rejects when superseded, cancelled or a full reload is needed. */
 export function sceneSwapFor(
   iframe: HTMLIFrameElement,
 ): ((url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>) | null {
+  if (previewFrameOpaque(iframe)) return null;
   const win = iframe.contentWindow as SwapWindow | null;
   const swap = win?.__hfSwapScenes;
   if (typeof swap !== "function") return null;

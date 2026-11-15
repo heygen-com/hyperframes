@@ -1,10 +1,12 @@
 import { failCommand } from "../utils/commandResult.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, join, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
+import type { ReferenceBackground, ReferenceBackgroundResult } from "@hyperframes/producer";
 import {
   loadProjectVariableSchema,
   reportVariableIssues,
@@ -36,7 +38,7 @@ export interface PreparedBatchRender {
   rows: PreparedBatchRow[];
 }
 
-interface BatchRenderResult {
+interface BatchRenderResult extends Partial<ReferenceBackgroundResult> {
   durationMs?: number;
   renderTimeMs: number;
 }
@@ -47,6 +49,7 @@ export interface BatchManifestRow {
   status: "pending" | "running" | "completed" | "failed" | "skipped";
   durationMs: number | null;
   renderTimeMs: number | null;
+  reference_background: ReferenceBackground | null;
   error: string | null;
   startedAt: string | null;
   completedAt: string | null;
@@ -303,6 +306,7 @@ function makeInitialManifest(prepared: PreparedBatchRender): BatchManifest {
       status: "pending",
       durationMs: null,
       renderTimeMs: null,
+      reference_background: null,
       error: null,
       startedAt: null,
       completedAt: null,
@@ -319,7 +323,7 @@ function summarizeManifest(manifest: BatchManifest): void {
 
 function writeManifest(manifest: BatchManifest): void {
   summarizeManifest(manifest);
-  mkdirSync(dirname(manifest.manifestPath), { recursive: true });
+  makeOutputFolder(dirname(manifest.manifestPath));
   writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
 }
 
@@ -341,11 +345,12 @@ async function renderBatchRow(
   }
 
   try {
-    mkdirSync(dirname(row.outputPath), { recursive: true });
+    makeOutputFolder(dirname(row.outputPath));
     const result = await options.renderOne(row);
     manifestRow.status = "completed";
     manifestRow.durationMs = result.durationMs ?? null;
     manifestRow.renderTimeMs = result.renderTimeMs;
+    manifestRow.reference_background = result.reference_background ?? null;
     manifestRow.completedAt = new Date().toISOString();
     writeManifest(manifest);
     return true;

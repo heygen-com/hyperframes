@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.8.223",
+  "version": "0.9.52",
   "description": "",
   "repository": {
     "type": "git",
@@ -68,17 +68,35 @@
       "import": "./src/safePath.ts",
       "types": "./src/safePath.ts"
     },
+    "./safe-areas": {
+      "bun": "./src/safeAreas.ts",
+      "node": "./dist/safeAreas.js",
+      "import": "./src/safeAreas.ts",
+      "types": "./src/safeAreas.ts"
+    },
     "./browser-marker": {
       "bun": "./src/browserMarker.ts",
       "node": "./dist/browserMarker.js",
       "import": "./src/browserMarker.ts",
       "types": "./src/browserMarker.ts"
     },
+    "./chrome-env": {
+      "bun": "./src/chromeEnv.ts",
+      "node": "./dist/chromeEnv.js",
+      "import": "./src/chromeEnv.ts",
+      "types": "./src/chromeEnv.ts"
+    },
     "./atomic-file": {
       "bun": "./src/atomicFile.ts",
       "node": "./dist/atomicFile.js",
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
+    },
+    "./cache-dir": {
+      "bun": "./src/cacheDir.ts",
+      "node": "./dist/cacheDir.js",
+      "import": "./src/cacheDir.ts",
+      "types": "./src/cacheDir.ts"
     },
     "./remove-tree": {
       "bun": "./src/removeTree.ts",
@@ -139,6 +157,12 @@
       "node": "./dist/studioPreviewMark.js",
       "import": "./src/studioPreviewMark.ts",
       "types": "./src/studioPreviewMark.ts"
+    },
+    "./page-motion-blur": {
+      "bun": "./src/pageMotionBlur.ts",
+      "node": "./dist/pageMotionBlur.js",
+      "import": "./src/pageMotionBlur.ts",
+      "types": "./src/pageMotionBlur.ts"
     },
     "./keyframe-defaults": {
       "bun": "./src/keyframeDefaults.ts",
@@ -411,6 +435,12 @@
       "import": "./src/runtime/protocol.ts",
       "types": "./src/runtime/protocol.ts"
     },
+    "./runtime/editing-port": {
+      "bun": "./src/runtime/editingPort.ts",
+      "node": "./dist/runtime/editingPort.js",
+      "import": "./src/runtime/editingPort.ts",
+      "types": "./src/runtime/editingPort.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -654,13 +684,25 @@
         "import": "./dist/safePath.js",
         "types": "./dist/safePath.d.ts"
       },
+      "./safe-areas": {
+        "import": "./dist/safeAreas.js",
+        "types": "./dist/safeAreas.d.ts"
+      },
       "./browser-marker": {
         "import": "./dist/browserMarker.js",
         "types": "./dist/browserMarker.d.ts"
       },
+      "./chrome-env": {
+        "import": "./dist/chromeEnv.js",
+        "types": "./dist/chromeEnv.d.ts"
+      },
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
+      },
+      "./cache-dir": {
+        "import": "./dist/cacheDir.js",
+        "types": "./dist/cacheDir.d.ts"
       },
       "./remove-tree": {
         "import": "./dist/removeTree.js",
@@ -701,6 +743,10 @@
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",
         "types": "./dist/studioPreviewMark.d.ts"
+      },
+      "./page-motion-blur": {
+        "import": "./dist/pageMotionBlur.js",
+        "types": "./dist/pageMotionBlur.d.ts"
       },
       "./keyframe-defaults": {
         "import": "./dist/keyframeDefaults.js",
@@ -882,6 +928,10 @@
       "./runtime/protocol": {
         "import": "./dist/runtime/protocol.js",
         "types": "./dist/runtime/protocol.d.ts"
+      },
+      "./runtime/editing-port": {
+        "import": "./dist/runtime/editingPort.js",
+        "types": "./dist/runtime/editingPort.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
@@ -1086,12 +1136,12 @@
     "@fontsource/space-mono": "^5.2.9",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.0.10",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "gsap": "^3.15.0",
     "jsdom": "^29.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
     "esbuild": "^0.28.2"

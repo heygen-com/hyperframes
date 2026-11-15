@@ -20,7 +20,7 @@ import { countStudioManualEditSave } from "../components/editor/manualEditsDom";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { readProjectFileContent } from "../utils/studioFileHistory";
+import { editContextTarget, readProjectFileContent } from "../utils/studioFileHistory";
 
 import type { RecordEditInput } from "../utils/studioFileHistory";
 export type { RecordEditInput } from "../utils/studioFileHistory";
@@ -160,17 +160,7 @@ export function useDomEditPersist({
 
         await editHistory.recordEdit({
           ...history,
-          targets: [
-            {
-              file: targetPath,
-              ...(selection.id && { id: selection.id }),
-              ...(selection.hfId && { hfId: selection.hfId }),
-              ...(selection.selector && { selector: selection.selector }),
-              ...(selection.selectorIndex !== undefined && {
-                selectorIndex: selection.selectorIndex,
-              }),
-            },
-          ],
+          targets: [editContextTarget(targetPath, selection)],
           files: { [targetPath]: { before: originalContent, after: finalContent } },
         });
         return { patchData, patchedContent, finalContent };

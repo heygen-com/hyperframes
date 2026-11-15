@@ -5,7 +5,6 @@ import {
   existsSync,
   fsyncSync,
   linkSync,
-  mkdtempSync,
   mkdirSync,
   lstatSync,
   openSync,
@@ -24,6 +23,9 @@ import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { playlistLeavesItsFolder } from "./notMediaPayload.js";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -538,12 +540,12 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+/** Fetch bounded bytes while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
-export async function fetchPublicHttpsText(
+export async function fetchPublicHttpsBytes(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -572,7 +574,7 @@ export async function fetchPublicHttpsText(
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -622,7 +624,7 @@ export async function fetchPublicHttpsText(
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
@@ -636,6 +638,13 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {
@@ -787,6 +796,79 @@ function checksumMismatchError(
   );
 }
 
+const DEFAULT_MAX_DOWNLOAD_BYTES = 20 * 1024 ** 3;
+const DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC = 32 * 1024;
+const THROUGHPUT_WINDOW_SECONDS = 60;
+
+function integerFromEnv(name: string, fallback: number, minimum: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return fallback;
+  const value = Number(raw);
+  return Number.isSafeInteger(value) && value >= minimum ? value : fallback;
+}
+
+const maxDownloadBytes = (): number =>
+  integerFromEnv("HYPERFRAMES_MAX_DOWNLOAD_BYTES", DEFAULT_MAX_DOWNLOAD_BYTES, 1);
+
+const minDownloadBytesPerSec = (): number =>
+  integerFromEnv("HYPERFRAMES_MIN_DOWNLOAD_BYTES_PER_SEC", DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC, 0);
+
+function isCompressedEncoding(contentEncoding: string | null): boolean {
+  const encoding = contentEncoding?.trim().toLowerCase();
+  return Boolean(encoding) && encoding !== "identity";
+}
+
+function overByteLimitError(
+  maxBytes: number,
+  status: number,
+  telemetry: Partial<UrlDownloadTelemetry>,
+): UrlDownloadError {
+  return new UrlDownloadError(
+    "length_mismatch",
+    false,
+    `Download exceeded the ${maxBytes}-byte limit`,
+    status,
+    telemetry,
+  );
+}
+
+// One spare bucket so the summed span is never shorter than the window, which errs toward keeping
+// a download that runs right at the floor.
+class ThroughputWindow {
+  private readonly buckets = new Array<number>(THROUGHPUT_WINDOW_SECONDS + 1).fill(0);
+  private bytesInWindow = 0;
+  private currentSecond: number;
+
+  constructor(private readonly startedAtMs: number) {
+    this.currentSecond = Math.floor(startedAtMs / 1000);
+  }
+
+  record(byteCount: number, nowMs: number): void {
+    this.advanceTo(nowMs);
+    this.buckets[this.currentSecond % this.buckets.length]! += byteCount;
+    this.bytesInWindow += byteCount;
+  }
+
+  isBelow(minBytesPerSec: number, nowMs: number): boolean {
+    this.advanceTo(nowMs);
+    return (
+      nowMs - this.startedAtMs >= THROUGHPUT_WINDOW_SECONDS * 1000 &&
+      this.bytesInWindow < minBytesPerSec * THROUGHPUT_WINDOW_SECONDS
+    );
+  }
+
+  private advanceTo(nowMs: number): void {
+    const second = Math.floor(nowMs / 1000);
+    const expired = Math.min(second - this.currentSecond, this.buckets.length);
+    for (let step = 1; step <= expired; step += 1) {
+      const index = (this.currentSecond + step) % this.buckets.length;
+      this.bytesInWindow -= this.buckets[index]!;
+      this.buckets[index] = 0;
+    }
+    this.currentSecond = Math.max(second, this.currentSecond);
+  }
+}
+
 // Response protocol, streamed byte accounting, hashes, and payload validation
 // share one lifecycle so no validation can happen after publication.
 // fallow-ignore-next-line complexity
@@ -795,7 +877,7 @@ async function fetchToPartial(
   partialPath: string,
   controller: AbortController,
   options: UrlDownloadOptions,
-  onSizedBodyBytes: () => void,
+  onBodyBytes: (byteCount: number, sized: boolean) => void,
 ): Promise<PartialIntegrity> {
   const { response, finalUrl } = await fetchWithValidatedRedirects(url, controller);
   const finalIdentity = safeDownloadUrlIdentity(finalUrl);
@@ -860,9 +942,26 @@ async function fetchToPartial(
     }
     throw error;
   }
-  const contentEncoding = response.headers.get("content-encoding")?.trim().toLowerCase();
-  const expectedBytes =
-    !contentEncoding || contentEncoding === "identity" ? declaredLength : undefined;
+  const responseTelemetry = { finalHost: finalIdentity.host, status: response.status };
+  if (isCompressedEncoding(response.headers.get("content-encoding"))) {
+    await cancelResponseBody(response);
+    throw new UrlDownloadError(
+      "http_rejected",
+      false,
+      "Download response is compressed; only identity Content-Encoding is accepted",
+      response.status,
+      responseTelemetry,
+    );
+  }
+  const maxBytes = maxDownloadBytes();
+  if (declaredLength !== undefined && declaredLength > maxBytes) {
+    await cancelResponseBody(response);
+    throw overByteLimitError(maxBytes, response.status, {
+      ...responseTelemetry,
+      expectedBytes: declaredLength,
+    });
+  }
+  const expectedBytes = declaredLength;
 
   let receivedBytes = 0;
   const sha256 = createHash("sha256");
@@ -872,8 +971,18 @@ async function fetchToPartial(
   const inspector = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      if (declaredLength !== undefined) onSizedBodyBytes();
+      onBodyBytes(bytes.length, declaredLength !== undefined);
       receivedBytes += bytes.length;
+      if (receivedBytes > maxBytes) {
+        callback(
+          overByteLimitError(maxBytes, response.status, {
+            ...responseTelemetry,
+            expectedBytes,
+            receivedBytes,
+          }),
+        );
+        return;
+      }
       sha256.update(bytes);
       md5.update(bytes);
       if (prefixBytes < 1024) {
@@ -967,10 +1076,36 @@ async function fetchToPartial(
   };
 }
 
-function syncAndPublishPartial(
+async function publishWithoutClobber(
   partialPath: string,
   localPath: string,
-): Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused"> {
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  try {
+    linkSync(partialPath, localPath);
+    unlinkSync(partialPath);
+    return;
+  } catch (error) {
+    if (!cannotHardLink(error)) throw error;
+  }
+  const releaseLock = await acquireCachePathLock(localPath, timeoutMs, signal);
+  try {
+    if (lstatSync(localPath, { throwIfNoEntry: false })) {
+      throw Object.assign(new Error(`${localPath} already exists`), { code: "EEXIST" });
+    }
+    renameWithRetry(partialPath, localPath);
+  } finally {
+    releaseLock();
+  }
+}
+
+async function syncAndPublishPartial(
+  partialPath: string,
+  localPath: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused">> {
   // Windows rejects fsync on a read-only handle (EPERM); the partial is ours
   // and writable, so r+ preserves the same flush semantics cross-platform.
   const fd = openSync(partialPath, "r+");
@@ -980,11 +1115,10 @@ function syncAndPublishPartial(
     closeSync(fd);
   }
 
-  // A hard-link publish is atomic and no-clobber: unlike rename(), it cannot
-  // replace a path that another successful caller has already returned.
+  // Atomic and no-clobber: a hard link, or a rename under the cache path lock where
+  // the drive has no hard links, never replaces a path another caller already returned.
   try {
-    linkSync(partialPath, localPath);
-    unlinkSync(partialPath);
+    await publishWithoutClobber(partialPath, localPath, timeoutMs, signal);
     return "published";
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -1026,7 +1160,7 @@ async function runDownloadAttempt(
 ): Promise<string> {
   // A private, unguessable directory prevents symlink planting and keeps the
   // partial on the destination filesystem so the final rename stays atomic.
-  const attemptDir = mkdtempSync(join(dirname(localPath), ".hf-download-"));
+  const attemptDir = createStagingDir(dirname(localPath), ".hf-download-");
   const partialPath = join(attemptDir, "payload");
   const controller = new AbortController();
   let timedOut = false;
@@ -1050,14 +1184,45 @@ async function runDownloadAttempt(
     sizedBodyStarted = true;
     armTimeout();
   };
+  const minBytesPerSec = minDownloadBytesPerSec();
+  let throughput: ThroughputWindow | undefined;
+  let tooSlow = false;
+  let floorCheckId: ReturnType<typeof setTimeout> | undefined;
+  const checkThroughputFloor = (): void => {
+    if (throughput?.isBelow(minBytesPerSec, Date.now())) {
+      tooSlow = true;
+      controller.abort();
+      return;
+    }
+    floorCheckId = setTimeout(checkThroughputFloor, 1000);
+  };
+  const onBodyBytes = (byteCount: number, sized: boolean): void => {
+    if (sized) extendTimeout();
+    if (minBytesPerSec === 0) return;
+    if (!throughput) {
+      throughput = new ThroughputWindow(Date.now());
+      floorCheckId = setTimeout(checkThroughputFloor, 1000);
+    }
+    throughput.record(byteCount, Date.now());
+  };
   const identity = safeDownloadUrlIdentity(url);
 
   try {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
-    const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
-    let outcome = syncAndPublishPartial(partialPath, localPath);
+    const integrity = await fetchToPartial(url, partialPath, controller, options, onBodyBytes);
+    clearTimeout(floorCheckId);
+    if (await playlistLeavesItsFolder(partialPath, localPath)) {
+      throw new UrlDownloadError(
+        "invalid_payload",
+        false,
+        "Download is a playlist naming files outside its folder",
+        integrity.status,
+        integrity,
+      );
+    }
+    let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {
       let inspection: Awaited<ReturnType<typeof inspectExistingFile>>;
@@ -1128,6 +1293,21 @@ async function runDownloadAttempt(
       });
       throw classified;
     }
+    if (tooSlow) {
+      const classified = new UrlDownloadError(
+        "timeout",
+        true,
+        `Download too slow: under ${minBytesPerSec} bytes/s over the last ${THROUGHPUT_WINDOW_SECONDS}s`,
+      );
+      emitDownloadTelemetry(options, {
+        urlFingerprint: identity.urlFingerprint,
+        initialHost: identity.host,
+        attempt,
+        outcome: "attempt_failed",
+        failureKind: classified.kind,
+      });
+      throw classified;
+    }
     const classified = classifyDownloadFailure(error);
     emitDownloadTelemetry(options, {
       urlFingerprint: identity.urlFingerprint,
@@ -1140,6 +1320,7 @@ async function runDownloadAttempt(
     throw classified;
   } finally {
     clearTimeout(timeoutId);
+    clearTimeout(floorCheckId);
     signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
     rmSync(attemptDir, { recursive: true, force: true });

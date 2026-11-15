@@ -212,7 +212,9 @@ mock.module("../../htmlCompiler.js", () => ({
   resolveCompositionDurations: async () => [],
 }));
 
+const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
+  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,
@@ -264,7 +266,7 @@ function makeProbeInput(overrides: {
   };
 
   return {
-    projectDir: "/tmp/hf-probe-test-project",
+    projectDir: workDir,
     workDir: workDir,
     job: {
       id: "probe-test",
@@ -824,6 +826,54 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it.each(["take one.mp4", "café.mp4", "take%20one.mp4", "caf%C3%A9.mp4"])(
+    "mixes the sound of a clip whose src is written %s once, however the browser spells it",
+    async (name) => {
+      resetRetryMocks();
+      const timing = { start: 0, end: 5, duration: 5, mediaStart: 0, loop: false, volume: 1 };
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName: "video",
+          src: new URL(name, "http://127.0.0.1:0/").href,
+          hasAudio: true,
+          muted: false,
+          ...timing,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const { appendAutoDetectedVideoAudio } = await import("./extractVideosStage.js");
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.composition.videos.push({
+        id: "clip",
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: true,
+      });
+      input.composition.audios.push({
+        id: videoAudioId("clip"),
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      });
+
+      await runProbeStage({ ...input, measuresShownBoxes: true });
+      appendAutoDetectedVideoAudio(input.composition, [
+        { videoId: "clip", metadata: { hasAudio: true } },
+      ]);
+
+      expect(input.composition.videos[0]?.src).toBe(name);
+      expect(input.composition.audios.map((audio) => audio.id)).toEqual([videoAudioId("clip")]);
+    },
+  );
+
   it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
     resetRetryMocks();
     const media = (
@@ -1113,6 +1163,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs).toHaveLength(0);
   });
 
+  it("opens a page for a video larger than the canvas, and none for a film without one", async () => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    for (const measuresShownBoxes of [false, true]) {
+      capturedCfgs.length = 0;
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.compiled.html = `<video id="clip" src="clip.mp4" data-start="0" data-duration="5"></video>`;
+      await runProbeStage({ ...input, measuresShownBoxes });
+      expect(capturedCfgs.length > 0, `measuresShownBoxes ${measuresShownBoxes}`).toBe(
+        measuresShownBoxes,
+      );
+    }
+  });
+
   it("probes when a source child of existing media is mutated", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
@@ -1206,6 +1271,32 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfg.forceScreenshot).toBe(true);
     // Caller-owned cfg must not be mutated
     expect(input.cfg.forceScreenshot).toBe(false);
+  });
+
+  it("defers the probe's still-frame check and gives its session the render's memo and page hash", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const staticDedupMemo = {};
+    await runProbeStage({ ...makeProbeInput({}), staticDedupMemo });
+    const options = capturedOptions[0] as {
+      deferStaticDedup?: boolean;
+      staticDedupMemo?: object;
+      compositionHash?: string;
+    };
+    expect(options.deferStaticDedup).toBe(true);
+    expect(options.staticDedupMemo).toBe(staticDedupMemo);
+    expect(options.compositionHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("reports the deferred check's screenshots to the render's stall watcher when its session is reused", async () => {
+    capturedOptions.length = 0;
+    notedStaticDedupActivity.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    await runProbeStage(input);
+    const options = capturedOptions[0] as { onStaticDedupActivity?: () => void };
+    options.onStaticDedupActivity?.();
+    expect(notedStaticDedupActivity).toEqual([input.job]);
   });
 
   it("passes forceScreenshot:false through unchanged when neither cfg nor stage input forces it", async () => {

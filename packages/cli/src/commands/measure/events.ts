@@ -98,8 +98,8 @@ export default defineCommand({
       type: "string",
       description: "Split the frame into COLSxROWS cells, e.g. 6x10 (default with --map: 4x4)",
     },
-    start: { type: "string", description: "First second (default 0)" },
-    end: { type: "string", description: "Last second (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "First second (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second (default: the end)" },
     thr: {
       type: "string",
       description: "Mean grey-level change of an appear or a cut (default 5)",

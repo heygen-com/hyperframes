@@ -222,6 +222,21 @@ export function validateDistributedRenderConfig(
     }
   }
 
+  if (config.minParallelChunks !== undefined) {
+    if (!Number.isInteger(config.minParallelChunks) || config.minParallelChunks < 1) {
+      throw new InvalidConfigError(
+        "config.minParallelChunks",
+        `must be a positive integer; got ${config.minParallelChunks}`,
+      );
+    }
+    if (config.minParallelChunks > MAX_PARALLEL_CHUNKS_CEILING) {
+      throw new InvalidConfigError(
+        "config.minParallelChunks",
+        `must be <= ${MAX_PARALLEL_CHUNKS_CEILING}; got ${config.minParallelChunks}`,
+      );
+    }
+  }
+
   for (const field of ["workerTimeoutSeconds", "workerConcurrency"] as const) {
     const value = config[field];
     if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
@@ -246,8 +261,19 @@ export function validateDistributedRenderConfig(
     );
   }
 
+  const chromaSubsampling = (config as { chromaSubsampling?: unknown }).chromaSubsampling;
+  if (chromaSubsampling !== undefined && chromaSubsampling !== "420") {
+    throw new InvalidConfigError(
+      "config.chromaSubsampling",
+      `distributed mode encodes 4:2:0 only; got ${String(chromaSubsampling)}`,
+    );
+  }
+
   if (config.variables !== undefined) {
     validateVariablesPayload(config.variables);
+  }
+  if (config.strictVariables !== undefined && typeof config.strictVariables !== "boolean") {
+    throw new InvalidConfigError("config.strictVariables", "must be a boolean");
   }
   if (config.engineConfig !== undefined) {
     try {

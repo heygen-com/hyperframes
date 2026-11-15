@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,5 +54,33 @@ describe.skipIf(!HAS_FFMPEG)("appendVideoAudioFromProbe", () => {
 
     expect(composition.audios.map((audio) => audio.id)).toEqual(["a-audio"]);
     expect(readdirSync(join(dir, "compiled"))).toEqual([]);
+  });
+
+  it("does not probe a remote source outside the public HTTPS policy", async () => {
+    let requests = 0;
+    const server = createServer((_req, res) => {
+      requests += 1;
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const composition =
+        collectRenderMedia(`<div data-composition-id="root" data-start="0" data-duration="2">
+        <video id="r" src="http://127.0.0.1:${port}/clip.mp4" data-start="0" data-duration="2" data-has-audio="true"></video>
+      </div>`);
+      composition.audios.length = 0;
+
+      await appendVideoAudioFromProbe({
+        projectDir: dir,
+        compiledDir: join(dir, "compiled"),
+        composition,
+      });
+
+      expect(requests).toBe(0);
+      expect(composition.audios).toEqual([]);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

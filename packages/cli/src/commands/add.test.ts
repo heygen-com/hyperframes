@@ -38,6 +38,7 @@ const MANIFEST: RegistryManifest = {
     { name: "base-component", type: "hyperframes:component" },
     { name: "my-component", type: "hyperframes:component" },
     { name: "my-example", type: "hyperframes:example" },
+    { name: "example-dep-block", type: "hyperframes:block" },
   ],
 };
 
@@ -152,7 +153,14 @@ const EXAMPLE_ITEM: RegistryItem = {
   files: [{ path: "index.html", target: "index.html", type: "hyperframes:composition" }],
 };
 
+const EXAMPLE_DEP_BLOCK_ITEM: RegistryItem = {
+  ...BLOCK_ITEM,
+  name: "example-dep-block",
+  registryDependencies: ["my-example"],
+};
+
 const ITEM_BY_NAME: Record<string, RegistryItem> = {
+  "example-dep-block": EXAMPLE_DEP_BLOCK_ITEM,
   "my-block": BLOCK_ITEM,
   "deprecated-block": DEPRECATED_BLOCK_ITEM,
   "future-block": FUTURE_BLOCK_ITEM,
@@ -472,6 +480,21 @@ describe("runAdd (integration, mocked registry)", () => {
     }
   });
 
+  it("refuses a block that depends on an example, before writing anything", async () => {
+    const dir = tmp();
+    try {
+      writeRegistryConfig(dir);
+
+      await expect(
+        runAdd({ name: "example-dep-block", projectDir: dir, skipClipboard: true }),
+      ).rejects.toMatchObject({ code: "example-type" });
+      expect(existsSync(join(dir, "index.html"))).toBe(false);
+      expect(existsSync(join(dir, "compositions"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("throws AddError with code 'unknown-item' for a missing name", async () => {
     const dir = tmp();
     try {
@@ -583,7 +606,9 @@ describe("add command run() — several names", () => {
     const out = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(out.error.message).toContain(`Project folder not found: ${missing}`);
     expect(out.error.message).toContain("--dir is the project root");
-    expect(out.error.message).toContain("hyperframes init");
+    expect(out.error.message).toContain(
+      `Create one with \`hyperframes init ${JSON.stringify(missing)}\``,
+    );
     expect(existsSync(missing)).toBe(false);
   });
 

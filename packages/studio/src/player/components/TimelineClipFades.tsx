@@ -9,6 +9,7 @@ import {
   type KeyboardEvent,
   type PointerEvent,
 } from "react";
+import { matchesKey } from "./studioShortcuts";
 import {
   HF_AUDIO_FADE_IN_ATTR,
   HF_AUDIO_FADE_OUT_ATTR,
@@ -329,7 +330,7 @@ export function TimelineClipFades({
     if (dragging === null) return;
     const cancelOnWindowEscape = (e: globalThis.KeyboardEvent) => {
       const g = gesture.current;
-      if (e.key !== "Escape" || !g) return;
+      if (!matchesKey(e, "cancel") || !g) return;
       e.preventDefault();
       e.stopPropagation();
       gesture.current = null;

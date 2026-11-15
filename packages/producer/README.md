@@ -38,6 +38,13 @@ await startServer({ port: 8080 });
 // POST /render or /render/stream with projectDir, html, or previewUrl (public HTTPS only) and render options
 ```
 
+A browser request (one that carries an `Origin` or `Sec-Fetch-Site` header) is accepted
+only under an IP address, `localhost` or a `*.localhost` name, so a page that points its
+own domain at the server cannot start renders or lint. If browsers reach the server
+through a proxy name, list that name in `allowedHosts` or in the comma-separated
+`PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
+another service, are unaffected.
+
 Both HTTP routes accept optional `pageMotionBlur: "off"` to disable authored page
 motion blur. Omit it to preserve the composition's behavior. Other explicit values
 are rejected before a render starts. This is separate from engine sub-frame
@@ -56,6 +63,7 @@ are rejected before a render starts. This is separate from engine sub-frame
 | `format`            | `"mp4"`          | Output container — `"mp4"`, `"webm"`, `"mov"`, `"gif"`, `"png-sequence"`, or `"hls"`. See [Transparent Video Output](#transparent-video-output) and [HLS Output](#hls-output) below. |
 | `hlsSegmentSeconds` | `4`              | HLS target segment length in whole seconds. Ignored for every other format.                                                                                                          |
 | `videoFrameFormat`  | `"auto"`         | Source video frame extraction format — `"auto"`, `"jpg"`, or `"png"`. Use `"png"` for UI recordings, screen captures, and color-sensitive source videos.                             |
+| `chromaSubsampling` | `"420"`          | MP4 chroma, `"420"` or `"444"`. `"444"` encodes yuv444p from lossless PNG capture for text/UI masters; SDR MP4 and software encoder only. Many players cannot decode it.             |
 
 ## Transparent Video Output
 

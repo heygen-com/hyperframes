@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
-import { cpus, tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
@@ -52,7 +52,7 @@ describe.skipIf(!HAS_FFMPEG)("preparing the clips of a long mix", () => {
       { encoding: "utf-8" },
     );
     expect(tone.status).toBe(0);
-    const slots = Math.max(2, Math.floor(cpus().length / 2));
+    const slots = Math.max(2, Math.floor(availableParallelism() / 2));
     const count = Math.max(40, slots * 3);
     const clips = Array.from({ length: count }, (_, i) => {
       copyFileSync(join(projectDir, "a.wav"), join(projectDir, `a${i}.wav`));

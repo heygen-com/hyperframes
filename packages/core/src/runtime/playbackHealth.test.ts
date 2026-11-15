@@ -4,11 +4,13 @@ vi.mock("./bridge", () => ({ postRuntimeMessage: vi.fn() }));
 
 import { postRuntimeMessage } from "./bridge";
 import {
+  heldByMedia,
   notePlaybackFrame,
   noteDisplayScale,
   PLAYBACK_HEALTH,
   restartPlaybackHealth,
   type PlaybackHealthInput,
+  watchMediaFetches,
 } from "./playbackHealth";
 
 const posted = vi.mocked(postRuntimeMessage);
@@ -24,6 +26,8 @@ type Health = {
   frozenShare: number;
   gapP50Ms: number;
   gapP95Ms: number;
+  clockSource: string;
+  heldBy: unknown;
 } | null;
 const healths = (): Health[] =>
   posted.mock.calls.map(([message]) =>
@@ -48,6 +52,7 @@ function play(
       playing: true,
       hidden: false,
       waiting: false,
+      clock: "monotonic",
       layoutKey: "a",
       ...over,
     });
@@ -64,6 +69,7 @@ beforeEach(() => {
     playing: false,
     hidden: false,
     waiting: false,
+    clock: "monotonic",
     layoutKey: "a",
   });
   restartPlaybackHealth();
@@ -111,6 +117,59 @@ describe("playback health", () => {
     expect(waiting?.frozenShare).toBe(0);
     expect(waiting?.skippedShare).toBeLessThan(0.05);
     expect(waiting?.gapP95Ms).toBeLessThan(20);
+  });
+
+  it("names the element that last held play in the window, and none when nothing held it", () => {
+    const voice = { kind: "audio", readyState: 1, networkState: 2, fetchMs: 4000 } as const;
+    const clip = { kind: "video", readyState: 2, networkState: 2, fetchMs: null } as const;
+    play(1000, 3, { waiting: true, heldBy: clip });
+    play(4000 + 1000 / 60, 3, { waiting: true, heldBy: voice });
+    expect(healths().at(-1)?.heldBy).toEqual(voice);
+    restartPlaybackHealth();
+    posted.mockClear();
+    play(20_000, 6);
+    expect(healths().at(-1)?.heldBy).toBeNull();
+  });
+
+  it("times an element's fetch from its loadstart, else its resource timing, and says null for one never seen", () => {
+    const now = vi.spyOn(performance, "now").mockReturnValue(1000);
+    const stop = watchMediaFetches(document);
+    const voice = document.createElement("audio");
+    const clip = document.createElement("video");
+    document.body.append(voice, clip);
+    voice.dispatchEvent(new Event("loadstart"));
+    expect(heldByMedia(voice, 4500)).toEqual({
+      kind: "audio",
+      readyState: voice.readyState,
+      networkState: voice.networkState,
+      fetchMs: 3500,
+    });
+    expect(heldByMedia(clip, 4500)).toMatchObject({ kind: "video", fetchMs: null });
+    const early = document.createElement("audio");
+    Object.defineProperty(early, "currentSrc", { value: "http://film/voice.mp3" });
+    const entries = vi
+      .spyOn(performance, "getEntriesByName")
+      .mockImplementation((name) =>
+        name === "http://film/voice.mp3" ? [{ startTime: 500 } as PerformanceEntry] : [],
+      );
+    expect(heldByMedia(early, 4500).fetchMs).toBe(4000);
+    entries.mockRestore();
+    stop();
+    now.mockReturnValue(2000);
+    clip.dispatchEvent(new Event("loadstart"));
+    expect(heldByMedia(clip, 4500).fetchMs).toBeNull();
+    voice.remove();
+    clip.remove();
+    now.mockRestore();
+  });
+
+  it("says which clock the film's time came from", () => {
+    play(1000, 6);
+    expect(healths().at(-1)?.clockSource).toBe("monotonic");
+    play(7000, 2, { clock: "audio" });
+    expect(healths().at(-1)?.clockSource).toBe("audio");
+    play(9000, 2, { clock: "webaudio" });
+    expect(healths().at(-1)?.clockSource).toBe("webaudio");
   });
 
   it("reports a frozen picture as its own share and leaves the choppy rule alone", () => {

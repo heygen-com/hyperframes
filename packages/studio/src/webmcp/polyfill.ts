@@ -12,6 +12,7 @@
  * and so it lands in its own chunk rather than the entry bundle.
  */
 
+import type { WebModelContextInitOptions } from "@mcp-b/global";
 import { makeStudioDebugLogger } from "../utils/studioDebug";
 import { trackEvent } from "../telemetry/client";
 import { getModelContext, type ModelContext } from "./types";
@@ -24,8 +25,22 @@ const log = makeStudioDebugLogger("webmcp");
  */
 let pending: Promise<ModelContext | null> | null = null;
 
+/**
+ * Left to its defaults the package answers MCP messages from any origin, and from
+ * whatever page frames Studio. Only Studio's own page may be a client.
+ */
+function ownPageOnly(): WebModelContextInitOptions {
+  return {
+    transport: {
+      tabServer: { allowedOrigins: [window.location.origin] },
+      iframeServer: false,
+    },
+  };
+}
+
 async function importPolyfill(): Promise<ModelContext | null> {
   try {
+    window.__webModelContextOptions = ownPageOnly();
     await import("@mcp-b/global");
     const modelContext = getModelContext();
     if (!modelContext) {

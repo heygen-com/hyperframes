@@ -15,21 +15,45 @@ inputs:
     required: false
     default: 26d2ecd0cefba99f9d1ea92252a3a4f743a58df4c1c3cf9f8bbaaa40b1fca5b0
 
+  token:
+    description: Token for the GitHub API asset route.
+    required: false
+    default: ${{ github.token }}
+
 runs:
   using: composite
   steps:
+    - name: Restore the ffmpeg tarball
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ${{ runner.temp }}/ffmpeg-archive
+        key: ffmpeg-linux-${{ inputs.sha256 }}
     - name: Install ffmpeg
       shell: bash
       env:
         URL: ${{ inputs.release-url }}
         SHA256: ${{ inputs.sha256 }}
+        GH_TOKEN: ${{ inputs.token }}
       run: |
         set -euo pipefail
-        archive="$RUNNER_TEMP/${URL##*/}"
-        # Two attempts of at most 20 s keep the install under a minute.
-        curl -fsSL --retry 1 --retry-all-errors --retry-max-time 25 --connect-timeout 10 --max-time 20 \
-          --speed-limit 5000000 --speed-time 10 -o "$archive" "$URL"
-        sha256sum -c --quiet <<<"$SHA256  $archive"
+        name="${URL##*/}"
+        repo="$(sed -E 's#^https://github.com/([^/]+/[^/]+)/releases/download/.*#\1#' <<<"$URL")"
+        tag="$(sed -E 's#^.*/releases/download/([^/]+)/.*#\1#' <<<"$URL")"
+        dir="$RUNNER_TEMP/ffmpeg-archive"
+        archive="$dir/$name"
+        mkdir -p "$dir"
+        verified() { [ -f "$archive" ] && sha256sum -c --quiet <<<"$SHA256  $archive"; }
+        # github.com/releases/download answers 504 under load; the API asset route does not.
+        fetch() {
+          local id
+          id="$(gh api "repos/$repo/releases/tags/$tag" --jq ".assets[] | select(.name == \"$name\") | .id")"
+          gh api -H "Accept: application/octet-stream" "repos/$repo/releases/assets/$id" > "$archive"
+        }
+        for attempt in 1 2 3 4; do
+          verified && break
+          [ "$attempt" = 4 ] && { echo "ffmpeg download failed three times" >&2; exit 1; }
+          fetch || sleep $((attempt * 5))
+        done
         bin="$RUNNER_TEMP/ffmpeg-bin"
         mkdir -p "$bin"
         tar -xJf "$archive" -C "$bin" --strip-components=2 --wildcards '*/bin/ffmpeg' '*/bin/ffprobe'

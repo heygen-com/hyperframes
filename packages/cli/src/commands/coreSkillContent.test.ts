@@ -174,4 +174,19 @@ describe("media treatment routing documentation", () => {
       expect(template).not.toContain("run_in_background: true");
     }
   });
+
+  // DeltaVerdict D5: text an agent reads may name the person's skills command but never
+  // tell the agent to install, update or remove skills, even gated on consent.
+  it("leaves installing and updating skills to the person in new project instructions", () => {
+    for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+      const template = read("packages", "cli", "src", "templates", "_shared", file);
+      expect(template).toContain("do not run the install yourself");
+      expect(template).toContain("For the user:\n> `npx hyperframes skills update <name>`");
+      for (const line of template.split("\n").filter((l) => /skills (update|add)/.test(l))) {
+        expect(line, file).not.toMatch(
+          /\b(Run|run|Re-run|Install|Update|Repair|Reinstall)\b[^`]*`npx (hyperframes )?skills/,
+        );
+      }
+    }
+  });
 });

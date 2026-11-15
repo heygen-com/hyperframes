@@ -5,7 +5,7 @@ import {
   type AudioSignal,
 } from "@hyperframes/core/audio-analysis";
 import { ABSENT_DB, asSignal, levels, median, mixed, round } from "./signal.js";
-import type { Ambience, Entry, Music, MusicSegment, Piece } from "./types.js";
+import type { Ambience, Entry, Music, MusicSegment, Piece, StemSpan } from "./types.js";
 
 const HOP = 0.1;
 const CUT_DB = 25;
@@ -29,6 +29,11 @@ const TONAL_SHARE = 0.4;
 const DENSE_WINDOW = 2;
 const DENSE_SHARE = 0.5;
 const STEADY = 0.5;
+const ACTIVE_HOP = 0.25;
+const ACTIVE_DB = -45;
+const ACTIVE_GAP = 1;
+const SHORTEST_ACTIVE = 0.5;
+const PLAYS_THROUGH = 0.5;
 
 export interface MusicInput {
   /** Every pitched stem, by name: bass, guitar, piano, other. */
@@ -41,6 +46,34 @@ interface Run {
   start: number;
   end: number;
 }
+
+export function activeSpans(samples: Float32Array, sampleRate: number): Run[] {
+  const hop = Math.round(ACTIVE_HOP * sampleRate);
+  const spans: Run[] = [];
+  for (let a = 0; a < samples.length; a += hop) {
+    const b = Math.min(samples.length, a + hop);
+    let power = 0;
+    for (let i = a; i < b; i++) power += samples[i]! ** 2;
+    if (10 * Math.log10(power / (b - a) + 1e-12) <= ACTIVE_DB) continue;
+    const start = a / sampleRate;
+    const end = b / sampleRate;
+    const last = spans[spans.length - 1];
+    if (last && start - last.end < ACTIVE_GAP) last.end = end;
+    else spans.push({ start, end });
+  }
+  return spans
+    .filter((span) => span.end - span.start >= SHORTEST_ACTIVE)
+    .map((span) => ({ start: round(span.start), end: round(span.end) }));
+}
+
+function within(spans: readonly Run[], run: Run): Run[] {
+  return spans
+    .map((span) => ({ start: Math.max(span.start, run.start), end: Math.min(span.end, run.end) }))
+    .filter((span) => span.end - span.start > 0);
+}
+
+const covered = (spans: readonly Run[], run: Run) =>
+  within(spans, run).reduce((n, span) => n + span.end - span.start, 0) / (run.end - run.start);
 
 type Span = { quiet: boolean; start: number; end: number };
 
@@ -257,9 +290,9 @@ interface Heard {
   tonality: number;
 }
 
-const leading = (mix: Record<string, number>) =>
+const leading = (mix: Record<string, number>, through: (name: string) => boolean = () => true) =>
   Object.entries(mix)
-    .filter(([, share]) => share >= LEADING_SHARE)
+    .filter(([name, share]) => share >= LEADING_SHARE && through(name))
     .sort((a, b) => b[1] - a[1])
     .map(([name]) => name);
 
@@ -287,10 +320,11 @@ function pieceOf(
   return pieces.find((p) => alike(p, heard, SAME_PIECE, SAME_MIX));
 }
 
-function newPiece(id: number, heard: Heard): Known {
+function newPiece(id: number, heard: Heard, active: Record<string, Run[]>): Known {
+  const through = (name: string) => covered(active[name] ?? [], heard.run) >= PLAYS_THROUGH;
   return {
     id,
-    instruments: leading(heard.mix),
+    instruments: leading(heard.mix, through),
     bpm: heard.bpm,
     firstAt: round(heard.run.start),
     print: heard.print,
@@ -331,11 +365,32 @@ function energyCurve(
   return energy;
 }
 
+function stemsIn(active: Record<string, Run[]>, loudest: string[], run: Run): StemSpan[] {
+  return loudest.flatMap((name) =>
+    within(active[name] ?? [], run).map((span) => ({
+      name,
+      start: round(span.start),
+      end: round(span.end),
+    })),
+  );
+}
+
 export function readMusic(input: MusicInput): {
   music: Music;
   ambience: Ambience[];
   beats: number[];
 } {
+  const named = { ...input.stems, ...(input.drums ? { drums: input.drums } : {}) };
+  const active = Object.fromEntries(
+    Object.entries(named).map(([name, samples]) => [name, activeSpans(samples, input.sampleRate)]),
+  );
+  const loudest = Object.entries(named)
+    .map(
+      ([name, samples]) =>
+        [name, energyOf(samples, input.sampleRate, { start: 0, end: Infinity })] as const,
+    )
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
   const melodic = mixed(Object.values(input.stems));
   const db = levels(melodic, input.sampleRate, HOP, LEVEL_WINDOW);
   const duration = melodic.length / input.sampleRate;
@@ -375,7 +430,7 @@ export function readMusic(input: MusicInput): {
     let entry: Entry;
     if (piece) entry = previous?.piece === piece.id ? "resumes" : "returns";
     else {
-      piece = newPiece(pieces.length + 1, heard);
+      piece = newPiece(pieces.length + 1, heard, active);
       pieces.push(piece);
       entry = previous ? "new" : "start";
     }
@@ -386,6 +441,7 @@ export function readMusic(input: MusicInput): {
       entry,
       bpm: heard.bpm,
       fadeFrom: fadeFrom(db, run),
+      stems: stemsIn(active, loudest, run),
     });
   }
   return {

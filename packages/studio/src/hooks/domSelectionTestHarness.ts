@@ -63,7 +63,7 @@ export function makeSelection(label: string, element: HTMLElement): DomEditSelec
   };
 }
 
-/** Built as getDomLayerPatchTarget builds it: a bare class for an element with no id or hf-id. */
+/** Built as resolveDomLayerIdentity builds it: a bare class for an element with no id or hf-id. */
 export function stableSelectionFor(el: HTMLElement): DomEditSelection {
   const selector = buildStableSelector(el);
   return {

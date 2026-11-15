@@ -1,7 +1,7 @@
 # The arm64 Lambda video function's native ffmpeg, built on the Lambda Node 22 base it runs on:
 #   docker buildx build --platform linux/arm64 --target artifact --output type=local,dest=out packages/aws-lambda/image
 # The artifact stage depends on the check stage, so no tarball comes out of a build whose codecs fail.
-ARG BASE=public.ecr.aws/lambda/nodejs:22@sha256:d138eff445f6ea04c51091d8e6cbb064d5663e850cddfa62396061586f98b126
+ARG BASE=public.ecr.aws/lambda/nodejs:22@sha256:f571ad6becf9000980068fab79b9aac30c369fdd69817c0803f33ecaa9206834
 
 FROM ${BASE} AS build
 ENV SOURCE_DATE_EPOCH=1722643200

@@ -29,7 +29,7 @@ const riser = (at: number, length: number) => (t: number) =>
       (t > at + length ? 1 - (t - at - length) / 0.05 : 1);
 
 describe("findEffects", () => {
-  it("names a low boom, a short bright tick and a long riser, each once", () => {
+  it("measures distinct effects without assigning sound kinds", () => {
     const source = track(8, boom(1), click(3.2), riser(5, 1.2));
     const { events } = findEffects({
       sources: [{ samples: source }],
@@ -40,20 +40,30 @@ describe("findEffects", () => {
       speech: [],
     });
     expect(events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
-      [1, "boom"],
-      [3.2, "tick"],
-      [5.1, "riser"],
+      [1, "effect"],
+      [3.2, "effect"],
+      [5.1, "effect"],
     ]);
-    expect(events[0]).toMatchObject({ band: "low", count: 1, overMusicDb: null });
+    expect(events[0]).toMatchObject({
+      kind: "effect",
+      band: "low",
+      count: 1,
+      overMusicDb: null,
+      stem: null,
+      group: "S1",
+    });
+    expect(
+      events.every((event) => Number.isFinite(event.peakDb) && Number.isFinite(event.attackMs)),
+    ).toBe(true);
     expect(events[0]!.tail).toBeGreaterThan(0.6);
     expect(events[2]!.attackMs).toBeGreaterThan(600);
   });
 
   it.each([
-    ["starts", { start: 4.9, end: 5.5 }, ["boom", "tick"]],
-    ["peaks", { start: 5.8, end: 7 }, ["boom", "tick"]],
-    ["neither starts nor peaks", { start: 3.4, end: 4.9 }, ["boom", "tick", "riser"]],
-  ])("leaves out a sound that %s where its track plays music", (_, span, kinds) => {
+    ["starts", { start: 4.9, end: 5.5 }, [1, 3.2]],
+    ["peaks", { start: 5.8, end: 7 }, [1, 3.2]],
+    ["neither starts nor peaks", { start: 3.4, end: 4.9 }, [1, 3.2, 5.1]],
+  ])("leaves out a sound that %s where its track plays music", (_, span, times) => {
     const source = track(8, boom(1), click(3.2), riser(5, 1.2));
     const { events } = findEffects({
       sources: [{ samples: source, heldBy: [span] }],
@@ -63,7 +73,7 @@ describe("findEffects", () => {
       beats: [],
       speech: [],
     });
-    expect(events.map((e) => e.kind)).toEqual(kinds);
+    expect(events.map((e) => Math.round(e.t * 10) / 10)).toEqual(times);
   });
 
   it("groups the same sound and reports a quick run of it as one train", () => {
@@ -76,7 +86,7 @@ describe("findEffects", () => {
       beats: [],
       speech: [],
     });
-    expect(groups).toEqual([{ id: "S1", kind: "tick", count: 4 }]);
+    expect(groups).toEqual([{ id: "S1", count: 4 }]);
     expect(events.map((e) => [e.t, e.count])).toEqual([
       [1, 3],
       [4, 1],
@@ -95,7 +105,9 @@ describe("findEffects", () => {
       speech: [],
     });
     expect(result.drumHits).toBe(12);
-    expect(result.events.map((e) => e.kind)).toEqual(["boom"]);
+    expect(result.events.map((e) => [Math.round(e.t * 10) / 10, e.kind])).toEqual([
+      [6.2, "effect"],
+    ]);
     const speaking = track(4, boom(1));
     const muted = findEffects({
       sources: [{ samples: speaking }],
@@ -152,7 +164,7 @@ describe("findEffects", () => {
       beats: hits,
       speech: [],
     });
-    expect(events.map((e) => e.kind)).not.toContain("riser");
+    expect(events).toEqual([]);
     expect(drumHits).toBe(10);
   });
 
@@ -191,5 +203,41 @@ describe("findEffects", () => {
     expect(event!.peakDb).toBeGreaterThan(-6);
     expect(Math.abs(event!.overMusicDb! - (event!.peakDb - bedDb))).toBeLessThanOrEqual(1);
     expect(event!.riseDb).toBe(event!.overMusicDb);
+  });
+
+  it("leaves a sound that recurs in the drums while music plays to the music, and keeps rare or standout ones there and everything outside it", () => {
+    const kick =
+      (at: number, gain = 0.3) =>
+      (t: number) =>
+        t < at ? 0 : gain * Math.exp(-(t - at) / 0.08) * Math.sin(2 * Math.PI * 60 * (t - at));
+    const hits = Array.from({ length: 12 }, (_, i) => 0.5 + i * 0.5);
+    const drums = track(10, ...hits.map((at) => kick(at)), click(3.25), kick(8.5));
+    const { events, drumHits } = findEffects({
+      sources: [{ samples: drums, stem: "drums", playsIn: [{ start: 0, end: 7 }] }],
+      sampleRate: READ_RATE,
+      mix: drums,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    expect(events.map((e) => [Math.round(e.t * 10) / 10, e.stem])).toEqual([
+      [3.3, "drums"],
+      [8.5, "drums"],
+    ]);
+    expect(drumHits).toBe(12);
+  });
+
+  it("names the stem of a mixed track a sound came from", () => {
+    const piano = track(4, () => 0);
+    const other = track(4, boom(2));
+    const [event] = findEffects({
+      sources: [{ samples: other, parts: { piano, other } }],
+      sampleRate: READ_RATE,
+      mix: other,
+      music: null,
+      beats: [],
+      speech: [],
+    }).events;
+    expect(event!.stem).toBe("other");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatRead } from "./format.js";
 import { READ_VERSION } from "./types.js";
-import { readMusic } from "./music.js";
+import { activeSpans, readMusic } from "./music.js";
 import { READ_RATE } from "./signal.js";
 
 const chord = (hz: number[]) => (t: number) =>
@@ -214,6 +214,10 @@ describe("readMusic", () => {
       duration: 26,
       separation: "stems",
       stems: [],
+      stemsDir: null,
+      voiceFreeMix: null,
+      bpm: null,
+      description: null,
       transcript: null,
       voice: null,
       effects: null,
@@ -236,5 +240,30 @@ describe("readMusic", () => {
     expect(music.segments.map((s) => [Math.round(s.start), Math.round(s.end)])).toEqual([[0, 8]]);
     expect(ambience.map((a) => [Math.round(a.start), Math.round(a.end)])).toEqual([[9, 18]]);
     expect(music.breaks).toEqual([]);
+  });
+
+  it("finds where a stem is heard, closing short gaps and dropping blips", () => {
+    const stem = piano(10, [
+      [1, 4, C_MAJOR],
+      [4.6, 6, C_MAJOR],
+      [8.05, 8.2, C_MAJOR],
+    ]);
+    expect(activeSpans(stem, READ_RATE)).toEqual([{ start: 1, end: 6 }]);
+  });
+
+  it("says where each stem plays in a segment, and names as instruments only stems heard through most of it", () => {
+    const keys = piano(12, [[0, 12, C_MAJOR]]);
+    const bass = piano(12, [[8, 12, chord([110])]]);
+    const { music } = readMusic({
+      stems: { piano: keys, bass },
+      drums: null,
+      sampleRate: READ_RATE,
+    });
+    expect(music.segments).toHaveLength(1);
+    expect(music.pieces[0]!.instruments).toEqual(["piano"]);
+    expect(music.segments[0]!.stems).toEqual([
+      { name: "piano", start: expect.closeTo(0, 0), end: expect.closeTo(12, 0) },
+      { name: "bass", start: expect.closeTo(8, 0), end: expect.closeTo(12, 0) },
+    ]);
   });
 });

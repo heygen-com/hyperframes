@@ -141,6 +141,7 @@ const PROJECT_FILES = new Set([
   "assets/transcript.json",
   "transcript.json",
   "REVERSE.md",
+  ".hyperframes/credit-limit.json",
   "asset-descriptions.md",
   "extracted/page.html",
   "extracted/visible-text.txt",
@@ -884,8 +885,19 @@ export function checkComments(root, files, scope = { kind: "all" }) {
   return { failures: [...failures, ...blockFailures], warnings, examined };
 }
 
+function requireCheckAttrSource(root) {
+  const version = execFileSync("git", ["version"], { cwd: root, encoding: "utf8" }).trim();
+  const [major, minor] = (version.match(/(\d+)\.(\d+)/) ?? []).slice(1).map(Number);
+  if (major < 2 || (major === 2 && minor < 40)) {
+    throw new Error(
+      `The comment check reads attributes at a ref with \`git check-attr --source\`, which needs git 2.40 or newer; found "${version}".`,
+    );
+  }
+}
+
 export function generatedPaths(root, ref, paths) {
   if (paths.length === 0) return new Set();
+  requireCheckAttrSource(root);
   const attributes = execFileSync(
     "git",
     ["check-attr", `--source=${ref}`, "-z", "--stdin", "linguist-generated"],

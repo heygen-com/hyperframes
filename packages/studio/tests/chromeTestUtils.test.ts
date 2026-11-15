@@ -96,6 +96,28 @@ describe("launchTestChrome", () => {
     }
   });
 
+  it("kills and retries a launch that hangs after Chrome announced its DevTools address", async () => {
+    vi.useFakeTimers();
+    try {
+      const { browser } = fakeBrowser(async () => undefined);
+      const launch = vi
+        .fn()
+        .mockImplementationOnce(
+          ({ signal }: { signal?: AbortSignal }) =>
+            new Promise((_, reject) =>
+              signal?.addEventListener("abort", () => reject(new Error("Target closed"))),
+            ),
+        )
+        .mockResolvedValueOnce(browser);
+      const launched = launchTestChrome(launch);
+      await vi.advanceTimersByTimeAsync(20_000);
+      await expect(launched).resolves.toBe(browser);
+      expect(launch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not retry a launch that failed for another reason", async () => {
     const launch = vi.fn().mockRejectedValue(new Error("no such file"));
     await expect(launchTestChrome(launch)).rejects.toThrow("no such file");

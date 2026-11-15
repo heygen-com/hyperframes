@@ -51,6 +51,18 @@ describe("listSiteFiles / hashProjectDir", () => {
     expect(listSiteFiles(dir)).toEqual(["index.html"]);
   });
 
+  it("leaves env files out at every depth", () => {
+    const dir = project();
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, ".env"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env.local"), "KEY=1");
+    writeFileSync(join(dir, ".envrc"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env-local"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env_prod"), "KEY=1");
+    writeFileSync(join(dir, "sub", "environment.css"), "a{}");
+    expect(listSiteFiles(dir)).toEqual(["index.html", "sub/environment.css"]);
+  });
+
   it("does not loop on a folder that links back to an ancestor", () => {
     const dir = project();
     symlinkSync(dir, join(dir, "self"));

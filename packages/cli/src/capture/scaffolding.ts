@@ -39,7 +39,7 @@ export function loadEnvFile(startDir: string): void {
  * Generate the project scaffold files: index.html, meta.json, AGENTS.md, CLAUDE.md.
  *
  * Only creates files that don't already exist (index.html, meta.json).
- * Always (re)generates AGENTS.md + CLAUDE.md via agentPromptGenerator.
+ * (Re)generates AGENTS.md + CLAUDE.md via agentPromptGenerator, keeping ones capture did not write.
  */
 export async function generateProjectScaffold(
   outputDir: string,
@@ -72,7 +72,7 @@ export async function generateProjectScaffold(
   // Generate AGENTS.md + CLAUDE.md (AI agent instructions — always, regardless of API keys)
   try {
     const { generateAgentPrompt } = await import("./agentPromptGenerator.js");
-    generateAgentPrompt(
+    const kept = generateAgentPrompt(
       outputDir,
       url,
       tokens,
@@ -83,6 +83,7 @@ export async function generateProjectScaffold(
       catalogedAssets,
       detectedLibraries,
     );
+    for (const name of kept) warnings.push(`Kept the existing ${name}; capture did not write it.`);
     progress("agent", "AGENTS.md + CLAUDE.md generated");
   } catch (err) {
     warnings.push(`AGENTS.md/CLAUDE.md generation failed: ${err}`);

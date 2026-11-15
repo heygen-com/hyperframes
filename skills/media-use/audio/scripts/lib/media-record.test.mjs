@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
+import { AGENT_SOURCES, findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
 import { agentWritePath, recordInManifest, voicePaths, writtenAssets } from "./media-record.mjs";
 
 const noBgm = { bgm: null, bgmFields: { bgm_pending: false } };
@@ -221,4 +221,19 @@ test("a record never takes the id of a download still in flight", (t) => {
     readManifest(dir).map(({ id }) => id),
     ["bgm_002"],
   );
+});
+
+// An engine-written copy stays an agent source, or every rerun would write a numbered copy beside it
+// (AGENT_SOURCES, manifest.mjs); what says it is the person's own voice is the provider and intent.
+test("a recording line is recorded as your own recording, still an engine-written file", () => {
+  const [asset] = writtenAssets({
+    only: new Set(["tts"]),
+    lines: [{ id: "01", audio: "take.m4a" }],
+    voices: [{ id: "01", path: "assets/voice/01.wav", duration_s: 2, source: "recording" }],
+    ttsProvider: "recording",
+  });
+
+  assert.equal(asset.provider, "recording");
+  assert.equal(asset.intent, "your own recording");
+  assert.ok(AGENT_SOURCES.includes(asset.source));
 });

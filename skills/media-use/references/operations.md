@@ -48,19 +48,20 @@ scenedetect -i in.mp4 detect-adaptive list-scenes           # pip install scened
 
 ## Transforms with a quality choice (process)
 
-These have a local option AND a higher-quality HeyGen-CLI option. Run the local
-one for free/offline; use the HeyGen CLI when quality matters. Showing the user
-a **side-by-side** (local vs HeyGen) is the honest way to let them choose.
+These have a local option AND a higher-quality HeyGen option. Run the local
+one for free/offline; use HeyGen when quality matters: `media-use generate` on the
+sign-in alone, the rest through the `heygen` CLI. Showing the user a
+**side-by-side** (local vs HeyGen) is the honest way to let them choose.
 
-| Op                      | Local (free)                                       | HeyGen CLI (quality)        |
-| ----------------------- | -------------------------------------------------- | --------------------------- |
-| Background removal      | `hyperframes remove-background in.png` (u2net)     | `heygen background-removal` |
-| Upscale                 | `realesrgan-ncnn-vulkan -i in.png -o out.png -s 4` | n/a                         |
-| Lipsync (dub)           | n/a                                                | `heygen lipsync`            |
-| Translate               | n/a                                                | `heygen video-translate`    |
-| Clone a voice           | n/a                                                | `heygen voice clone create` |
-| Text to video           | n/a                                                | `heygen video-agent create` |
-| Clips from a long video | n/a                                                | `heygen ai-clipping`        |
+| Op                      | Local (free)                                       | HeyGen (quality)                                                                 |
+| ----------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Background removal      | `hyperframes remove-background in.png` (u2net)     | `hyperframes media-use generate --type cutout --video in.mp4`; stills stay local |
+| Upscale                 | `realesrgan-ncnn-vulkan -i in.png -o out.png -s 4` | n/a                                                                              |
+| Lipsync (dub)           | n/a                                                | `hyperframes media-use generate --type lipsync`                                  |
+| Translate               | n/a                                                | `heygen video-translate`                                                         |
+| Clone a voice           | n/a                                                | `heygen voice clone create`                                                      |
+| Text to video           | n/a                                                | `heygen video-agent create`                                                      |
+| Clips from a long video | n/a                                                | `heygen ai-clipping`                                                             |
 
 After any op: `resolve --from out.ext --type <type>` to register the derived
 asset (it records provenance and auto-promotes to the global cache).
@@ -125,7 +126,8 @@ npx hyperframes transcribe talk.mp4 --engine parakeet   # or --engine auto (defa
 
 VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers 25
 European languages, English included. For other languages, or when parakeet-mlx is not
-installed, transcribe.mjs falls back to `hyperframes transcribe`, which uses the
+installed, transcribe.mjs falls back to `hyperframes transcribe` (the CLI handed over as
+`HYPERFRAMES_CLI_ENTRY`, see `references/audio.md`), which uses the
 CLI's Parakeet when `models install parakeet` has run and whisper.cpp (99
 languages) otherwise. `--engine parakeet|whisper` forces one, except that a
 `--language` other than English runs whisper whenever it is installed, since

@@ -271,6 +271,56 @@ describe("inlineSubCompositions – #ID selector scoping divergence", () => {
     expect(scopedCss).toContain("display: flex");
   });
 
+  it.each([
+    [
+      "a named host",
+      '<div id="h" data-composition-id="scene" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+    [
+      "an anonymous host",
+      '<div id="h" data-composition-src="scene.html" data-start="0" data-duration="3"></div>',
+    ],
+  ])(
+    "styles the preserved root written as #root[data-composition-id] for %s",
+    (_name, hostHtml) => {
+      const { document } = parseHTML(
+        `<!DOCTYPE html><html><body><div data-composition-id="main">${hostHtml}</div></body></html>`,
+      );
+      const host = document.querySelector("#h")!;
+      const sceneHtml = `<template id="scene-template">
+  <div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3">
+    <h1 class="title">Hi</h1>
+    <style>#root[data-composition-id="scene"] { background: red; } #root[data-composition-id="scene"] .title { color: blue; } #root[data-composition-id="scene"]::before { content: "x"; }</style>
+  </div>
+</template>`;
+      const flattenInnerRoot = (innerRoot: Element): Element => {
+        const clone = innerRoot.cloneNode(true) as Element;
+        clone.removeAttribute("data-composition-id");
+        clone.removeAttribute("id");
+        clone.setAttribute("data-hf-authored-id", "root");
+        clone.setAttribute("data-hf-inner-root", "true");
+        return clone;
+      };
+
+      const result = inlineSubCompositions(document, [host], {
+        resolveHtml: () => sceneHtml,
+        parseHtml: (html) => parseHTML(html).document,
+        flattenInnerRoot,
+      });
+
+      const page = new JSDOM(document.documentElement.outerHTML).window.document;
+      const selectors = result.styles.flatMap((style) =>
+        [...style.css.matchAll(/([^{}]+)\{/g)].map((match) => match[1]!.trim()),
+      );
+      const [box, title, before] = selectors.map(
+        (selector) => page.querySelectorAll(selector.replaceAll("::before", "")).length,
+      );
+      expect(box).toBe(1);
+      expect(title).toBe(1);
+      expect(before).toBe(1);
+    },
+  );
+
   it("extracts <link> elements from sub-composition <head> with original rel and crossorigin", () => {
     const subCompWithLinks = `<!doctype html>
 <html><head>
@@ -896,6 +946,58 @@ describe("inlineSubCompositions – #3490 nested SVG id collisions", () => {
     const authoredMatch = sceneBRoot.querySelector('[data-hf-authored-id="shape"]');
     expect(authoredMatch).toBeTruthy();
     expect(authoredMatch).toBe(sceneBRoot.querySelector("symbol"));
+  });
+});
+
+describe("inlineSubCompositions – SVG ids in top-level scene clips", () => {
+  const portrait = (color: string) =>
+    `<svg><defs><linearGradient id="skin"><stop stop-color="${color}"/></linearGradient>` +
+    `<symbol id="portrait"><rect fill="${color}"/></symbol></defs>` +
+    `<rect class="face" fill="url(#skin)" clip-path="url(#shared)"/><use class="piece" href="#portrait"/></svg>`;
+  const compile = (clips: string) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <svg width="0" height="0"><clipPath id="shared"><circle r="40"/></clipPath></svg>
+      <div data-composition-id="main" data-start="0" data-duration="20">${clips}</div></body></html>`);
+    inlineSubCompositions(document, [], {
+      resolveHtml: () => null,
+      parseHtml: (html) => parseHTML(html).document,
+      hostIdentityMap: assignTestRuntimeCompositionIds([]),
+    });
+    return document;
+  };
+  // The first element with an id is what the browser resolves `url(#id)` and `href="#id"` to.
+  const resolved = (document: Document, value: string | null) =>
+    document.getElementById(value!.replace(/^url\(#|\)$|^#/g, ""));
+
+  // fails without the fix: the second scene's gradient and <use> resolved to the first scene's portrait.
+  it("gives each scene clip its own portrait when two scenes reuse the same SVG ids", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const [first, second] = [...document.querySelectorAll(".scene")];
+    for (const scene of [first!, second!]) {
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".face")!.getAttribute("fill"))),
+      ).toBe(true);
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".piece")!.getAttribute("href"))),
+      ).toBe(true);
+    }
+    expect(first!.querySelector("linearGradient")!.id).toBe("skin");
+    expect(first!.querySelector("symbol")!.id).toBe("portrait");
+  });
+
+  it("leaves a page-level definition the scenes share where it is", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const shared = document.getElementById("shared")!;
+    expect(shared.closest(".scene")).toBeNull();
+    for (const face of document.querySelectorAll(".face")) {
+      expect(face.getAttribute("clip-path")).toBe("url(#shared)");
+    }
   });
 });
 

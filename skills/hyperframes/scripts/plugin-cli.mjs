@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // Run from the user's project; locate the release from this installed file.
+import "./lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainModule } from "./lib/main-module.mjs";
@@ -29,8 +31,16 @@ export function pluginVersion(pluginRoot = root) {
     return manifest.version;
   }
   throw new Error(
-    "No HyperFrames plugin manifest found. Use the standalone skills installation instructions.",
+    "No HyperFrames plugin manifest found. This is a standalone skill install; run `npx hyperframes` directly.",
   );
+}
+
+// npm takes the package, bin links and .npmrc from the folder it starts in, so npx starts
+// in the home folder and the CLI moves into the project before it runs a command. A shared
+// folder such as the temp folder is no substitute, so there is no fallback.
+export function npmFolder(home = homedir(), pathExists = existsSync) {
+  if (home && pathExists(home)) return home;
+  throw new Error("Cannot find your home folder. Set HOME (USERPROFILE on Windows) and retry.");
 }
 
 export function invocation(
@@ -41,11 +51,14 @@ export function invocation(
     platform = process.platform,
     node = process.execPath,
     pathExists = existsSync,
+    cwd = process.cwd(),
+    npmCwd,
+    launcher = fileURLToPath(import.meta.url),
   } = {},
 ) {
   if (args[0] === "skills")
     throw new Error(
-      "Update HyperFrames through your agent's plugin manager; bundled skills are release-managed.",
+      "Bundled skills are release-managed; the person updates HyperFrames through their agent's plugin manager.",
     );
   const childEnv = {
     ...env,
@@ -56,10 +69,14 @@ export function invocation(
   };
   if (args[0] === "--script") {
     if (!args[1]) throw new Error("--script requires a Node script path.");
-    return { command: node, args: args.slice(1), env: childEnv };
+    // Helpers that call the CLI run it through this launcher, never a `hyperframes` from the project.
+    const env = { ...childEnv, HYPERFRAMES_CLI_ENTRY: launcher };
+    return { command: node, args: args.slice(1), env, cwd };
   }
   const cliArgs = ["--yes", `hyperframes@${version}`, ...args];
-  if (platform !== "win32") return { command: "npx", args: cliArgs, env: childEnv };
+  const cliEnv = { ...childEnv, HYPERFRAMES_PLUGIN_CWD: cwd };
+  const npxCwd = npmCwd ?? npmFolder();
+  if (platform !== "win32") return { command: "npx", args: cliArgs, env: cliEnv, cwd: npxCwd };
   const candidates = [
     env.npm_execpath && win32.join(win32.dirname(env.npm_execpath), "npx-cli.js"),
     win32.join(win32.dirname(node), "node_modules", "npm", "bin", "npx-cli.js"),
@@ -69,13 +86,14 @@ export function invocation(
     throw new Error(
       "Cannot find npx-cli.js. Install Node.js with npm or run from an npm environment.",
     );
-  return { command: node, args: [npx, ...cliArgs], env: childEnv };
+  return { command: node, args: [npx, ...cliArgs], env: cliEnv, cwd: npxCwd };
 }
 
 if (isMainModule(import.meta.url)) {
   try {
     const command = invocation(process.argv.slice(2));
     const result = spawnSync(command.command, command.args, {
+      cwd: command.cwd,
       env: command.env,
       stdio: "inherit",
       windowsHide: true,

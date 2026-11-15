@@ -17,6 +17,7 @@
  *   - `perfStages.audioProcessMs` is set whether or not the call ran.
  */
 
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Fps } from "@hyperframes/core";
 import {
@@ -31,6 +32,7 @@ import {
 import type { CompositionMetadata } from "../shared.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
 import { constrainAacTruePeak } from "../audioPadTrim.js";
 
 export interface AudioStageInput {
@@ -54,6 +56,8 @@ export interface AudioStageInput {
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
   log?: ProducerLogger;
+  /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
+  keepDeliverySource?: boolean;
 }
 
 export interface AudioStageResult {
@@ -61,6 +65,8 @@ export interface AudioStageResult {
   audioLoweredDb?: number;
   /** Always `join(workDir, MIXED_AUDIO_FILENAME)`. */
   audioOutputPath: string;
+  /** The PCM `audioOutputPath` encodes, when `keepDeliverySource` asked for it. */
+  deliverySourcePath?: string;
   /** True iff the audio mix actually produced a file. False when there are no audio elements. */
   hasAudio: boolean;
   /** Wall-clock ms for the audio mix phase. Zero-elements path is near-zero but always set. */
@@ -103,26 +109,59 @@ async function runAudioStageScoped(input: AudioStageInput): Promise<AudioStageRe
   const stageStart = Date.now();
   const pcmSourcePath = join(input.workDir, "audio-source.wav");
   const duration = (input.totalFrames * input.fps.den) / input.fps.num;
+  let deliverySourcePath: string | undefined;
   try {
     const result = await mixAudioForDelivery(input, duration, pcmSourcePath);
     let audioLoweredDb: number | undefined;
     if (result.hasAudio) {
       const guardStart = Date.now();
-      const peak = await constrainAacTruePeak({
-        audioPath: result.audioOutputPath,
-        sourcePath: pcmSourcePath,
-        targetDurationSeconds: duration,
-        signal: input.abortSignal,
-        timeoutMs: input.ffmpegProcessTimeout,
-      });
-      if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
-      audioLoweredDb = peak.loweredDb;
+      const guard = await guardDeliveryPeaks(
+        input,
+        result.audioOutputPath,
+        pcmSourcePath,
+        duration,
+      );
+      audioLoweredDb = guard.loweredDb;
       input.log?.info("[audio] phases", { ...result.audioPhaseMs, guard: Date.now() - guardStart });
+      if (input.keepDeliverySource && !guard.sourceStale && existsSync(pcmSourcePath)) {
+        deliverySourcePath = pcmSourcePath;
+      }
     }
-    return { ...result, audioLoweredDb, audioProcessMs: Date.now() - stageStart };
+    return {
+      ...result,
+      audioLoweredDb,
+      deliverySourcePath,
+      audioProcessMs: Date.now() - stageStart,
+    };
   } finally {
-    removeScratch(pcmSourcePath);
+    if (!deliverySourcePath) removeScratch(pcmSourcePath);
   }
+}
+
+async function guardDeliveryPeaks(
+  input: AudioStageInput,
+  audioPath: string,
+  sourcePath: string,
+  duration: number,
+): Promise<{ loweredDb?: number; sourceStale?: true }> {
+  const limited = await limitDeliveryPeaks({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+    warn: (message, details) => input.log?.warn?.(message, details),
+  });
+  if (!limited.success) throw encoderFailureError("Audio true-peak limit failed", limited);
+  const peak = await constrainAacTruePeak({
+    audioPath,
+    sourcePath,
+    targetDurationSeconds: duration,
+    signal: input.abortSignal,
+    timeoutMs: input.ffmpegProcessTimeout,
+  });
+  if (!peak.success) throw encoderFailureError("Audio true-peak check failed", peak);
+  return { loweredDb: peak.loweredDb, sourceStale: peak.sourceStale };
 }
 
 async function mixAudioForDelivery(

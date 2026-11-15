@@ -620,6 +620,15 @@ async function cropOutline(ctx, map) {
   return (await contentQuad(h)).map(map.toComp);
 }
 
+/** Holds each history reply back, so the next undo is pressed while this one's preview update runs. */
+function slowHistory(ms) {
+  const send = window.fetch;
+  window.fetch = (url, init) =>
+    /\/history\/step$/.test(String(url).split("?")[0])
+      ? send(url, init).then((r) => new Promise((ok) => setTimeout(() => ok(r), ms)))
+      : send(url, init);
+}
+
 /** Holds every save request `ms` before it is sent, so a later press lands while it is still in flight. */
 function slowSaves(ms) {
   const send = window.fetch;
@@ -1035,6 +1044,8 @@ export async function inStudio({ browser, spec, dir, files, url, evidence, shots
     await page.evaluateOnNewDocument(installWebMcpHost, "__editBench");
     await page.evaluateOnNewDocument(instrumentPage);
     if (spec.slowSaves) await page.evaluateOnNewDocument(slowSaves, spec.slowSaves);
+    if (process.env.HF_SLOW_HISTORY)
+      await page.evaluateOnNewDocument(slowHistory, Number(process.env.HF_SLOW_HISTORY));
     await page.evaluateOnNewDocument(frameSamplerScript);
     await page.goto(url);
     let pre = await openStudio(ctx);

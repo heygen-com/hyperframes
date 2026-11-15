@@ -2,18 +2,44 @@ import {
   closeSync,
   existsSync,
   openSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 
 const POLL_MS = 500;
 const UNREADABLE_LOCK_MS = 10_000;
 
 function lockPathFor(cachePath: string): string {
   return join(dirname(cachePath), `.lock-${basename(cachePath)}`);
+}
+
+export class CopyLockStalledError extends Error {
+  constructor(copy: string, stallMs: number) {
+    super(
+      `another process holds the copy of ${copy} and has made no progress for ${Math.round(stallMs / 1000)}s`,
+    );
+    this.name = "CopyLockStalledError";
+  }
+}
+
+function lastActivityMs(cachePath: string, lockPath: string): number {
+  const name = basename(cachePath);
+  const stem = basename(cachePath, extname(cachePath));
+  const mine = (file: string) =>
+    file === basename(lockPath) ||
+    (file.startsWith(".tmp-") && (file.endsWith(`-${name}`) || file.includes(`-.part-${stem}-`))) ||
+    file.startsWith(`.part-${stem}-`);
+  let newest = 0;
+  for (const file of readdirSync(dirname(cachePath))) {
+    if (!mine(file)) continue;
+    const changed = statSync(join(dirname(cachePath), file), { throwIfNoEntry: false })?.mtimeMs;
+    newest = Math.max(newest, changed ?? 0);
+  }
+  return newest;
 }
 
 function ownerIsAlive(lockPath: string): boolean {
@@ -47,10 +73,11 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** The right to make the copy at `cachePath`; null once another process finished it. Takes over a dead owner's lock. */
+/** The right to make the copy at `cachePath`; null once another process finished it; throws on a stalled live owner. */
 export async function acquireCopyLock(
   cachePath: string,
   signal: AbortSignal,
+  stallMs: number,
 ): Promise<(() => void) | null> {
   const lockPath = lockPathFor(cachePath);
   for (;;) {
@@ -66,7 +93,9 @@ export async function acquireCopyLock(
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
-    if (ownerIsAlive(lockPath)) await pause(POLL_MS, signal);
-    else rmSync(lockPath, { force: true });
+    if (!ownerIsAlive(lockPath)) rmSync(lockPath, { force: true });
+    else if (Date.now() - lastActivityMs(cachePath, lockPath) > stallMs)
+      throw new CopyLockStalledError(basename(cachePath), stallMs);
+    else await pause(POLL_MS, signal);
   }
 }

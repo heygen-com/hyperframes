@@ -50,4 +50,21 @@ describe.each(ROUTES)("%s /composition/*", (_route, register) => {
     expect(result.status).toBe(200);
     expect(result.text).toBe(`ASSET ${name}`);
   });
+
+  it("does not serve env files, Git data or the tools' own records", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-composition-route-"));
+    mkdirSync(join(dir, ".git"));
+    mkdirSync(join(dir, ".hyperframes"));
+    for (const name of [".env", ".envrc", ".env-local", ".git/config", ".hyperframes/x.json"]) {
+      writeFileSync(join(dir, name), "KEY=secret");
+    }
+    writeFileSync(join(dir, "logo.png"), "png");
+    const app = new Hono();
+    await register(app, { dir, name: "test-project", indexPath: join(dir, "index.html") });
+
+    for (const path of [".env", ".envrc", ".env-local", ".git/config", ".hyperframes/x.json"]) {
+      expect((await app.request(`/composition/${path}`)).status).toBe(404);
+    }
+    expect((await app.request("/composition/logo.png")).status).toBe(200);
+  });
 });

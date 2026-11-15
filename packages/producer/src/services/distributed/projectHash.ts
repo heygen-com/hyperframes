@@ -17,18 +17,23 @@ import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 // Bump when the hashed set changes so uploads cached under an older scheme are never reused.
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
+// Env files hold the author's keys; no composition loads one, so none is uploaded.
+const ENV_FILE = /^\.env([._-].*|rc)?$/i;
+
+const leftOut = (rel: string, name: string): boolean =>
+  (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) || ENV_FILE.test(name);
 
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
  * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, and a dangling symlink throws.
+ * does, env files are left out at every depth, and a dangling symlink throws.
  */
 export function listSiteFiles(projectDir: string): string[] {
   const files: string[] = [];
   const ancestors = new Set([realpathSync(projectDir)]);
   function walk(dir: string, rel: string): void {
     for (const name of readdirSync(dir).sort()) {
-      if (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) continue;
+      if (leftOut(rel, name)) continue;
       const full = join(dir, name);
       const relPath = rel === "" ? name : `${rel}/${name}`;
       let stat;

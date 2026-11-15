@@ -30,7 +30,7 @@ export class CubeLutParseError extends Error {
 
 const DEFAULT_DOMAIN_MIN: CubeLutVec3 = [0, 0, 0];
 const DEFAULT_DOMAIN_MAX: CubeLutVec3 = [1, 1, 1];
-export const DEFAULT_MAX_CUBE_LUT_SIZE = 64;
+export const DEFAULT_MAX_CUBE_LUT_SIZE = 65;
 
 function stripComment(line: string): string {
   let inQuote = false;
@@ -223,4 +223,39 @@ export function packCubeLutToRgba8(lut: CubeLut3D): PackedCubeLut2D {
   }
 
   return { width, height, data: packed };
+}
+
+export function fitCubeLutToTexture(lut: CubeLut3D, maxTextureSize: number): CubeLut3D {
+  if (!(maxTextureSize >= 4) || lut.size * lut.size <= maxTextureSize) return lut;
+  const size = Math.max(2, Math.floor(Math.sqrt(maxTextureSize)));
+  const data = new Float32Array(size * size * size * 3);
+  const last = lut.size - 1;
+  const at = (r: number, g: number, b: number, c: number): number =>
+    lut.data[((b * lut.size + g) * lut.size + r) * 3 + c] ?? 0;
+  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  for (let b = 0; b < size; b++) {
+    for (let g = 0; g < size; g++) {
+      for (let r = 0; r < size; r++) {
+        const pr = (r / (size - 1)) * last;
+        const pg = (g / (size - 1)) * last;
+        const pb = (b / (size - 1)) * last;
+        const r0 = Math.floor(pr);
+        const g0 = Math.floor(pg);
+        const b0 = Math.floor(pb);
+        const r1 = Math.min(last, r0 + 1);
+        const g1 = Math.min(last, g0 + 1);
+        const b1 = Math.min(last, b0 + 1);
+        for (let c = 0; c < 3; c++) {
+          const plane = (bi: number): number =>
+            lerp(
+              lerp(at(r0, g0, bi, c), at(r1, g0, bi, c), pr - r0),
+              lerp(at(r0, g1, bi, c), at(r1, g1, bi, c), pr - r0),
+              pg - g0,
+            );
+          data[((b * size + g) * size + r) * 3 + c] = lerp(plane(b0), plane(b1), pb - b0);
+        }
+      }
+    }
+  }
+  return { ...lut, size, data };
 }

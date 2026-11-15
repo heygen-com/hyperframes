@@ -70,8 +70,15 @@ import {
   isLibraryCopy,
   refuseSwapsReachedByRootScripts,
 } from "./inlineSubCompositions";
-import { isSafePath, resolveWithinProject } from "../safePath.js";
+import {
+  isPrivateFileUnder,
+  isSafePath,
+  isStudioPrivatePath,
+  isVcsOrSecretPath,
+  resolveWithinProject,
+} from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 
@@ -110,17 +117,30 @@ function isRelativeUrl(url: string): boolean {
   return !isNonRelativeUrl(url) && !isAbsolute(url);
 }
 
-const bundleReads = new AsyncLocalStorage<(filePath: string) => void>();
+interface BundleReadScope {
+  projectDir: string;
+  privateFiles: BundlePrivateFiles;
+  noteRead: (filePath: string) => void;
+}
+
+const bundleReads = new AsyncLocalStorage<BundleReadScope>();
 
 function noteRead(filePath: string): void {
-  bundleReads.getStore()?.(filePath);
+  bundleReads.getStore()?.noteRead(filePath);
+}
+
+function readAllowed(filePath: string): boolean {
+  const scope = bundleReads.getStore();
+  if (!scope) return true;
+  const isPrivate = scope.privateFiles === "studio" ? isStudioPrivatePath : isVcsOrSecretPath;
+  return !isPrivateFileUnder(scope.projectDir, filePath, isPrivate);
 }
 
 function safeReadFile(filePath: string): string | null {
   noteRead(filePath);
-  if (!existsSync(filePath)) return null;
+  if (!readAllowed(filePath) || !existsSync(filePath)) return null;
   try {
-    return readFileSync(filePath, "utf-8");
+    return readTextFile(filePath);
   } catch {
     return null;
   }
@@ -289,7 +309,7 @@ function inlineCssFile(
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
   noteRead(filePath);
-  if (!existsSync(filePath)) return null;
+  if (!readAllowed(filePath) || !existsSync(filePath)) return null;
   try {
     return readFileSync(filePath);
   } catch {
@@ -911,7 +931,15 @@ export interface BundleOptions {
   staticGuard?: boolean;
   /** Called once per build for each project file the build reads or looks for. */
   onRead?: (filePath: string) => void;
+  /**
+   * Project files the build never reads; a refused file keeps its authored reference. Git metadata and env files
+   * always; `"studio"` also refuses the app's records under `.hyperframes/`, as Studio's file routes do.
+   */
+  privateFiles?: BundlePrivateFiles;
 }
+
+/** Plain data, so the option crosses to a build thread and keys a shared build. */
+export type BundlePrivateFiles = "vcs-and-secrets" | "studio";
 
 /**
  * Bundle a project's index.html into a single self-contained HTML file.
@@ -1037,16 +1065,19 @@ function hoistCompositionScripts(
 }
 
 export function bundleToSingleHtml(projectDir: string, options?: BundleOptions): Promise<string> {
-  const bundle = () => bundleProject(projectDir, options);
   const onRead = options?.onRead;
-  if (!onRead) return bundle();
   const noted = new Set<string>();
-  const noteOnce = (filePath: string) => {
+  const noteRead = (filePath: string) => {
     if (noted.has(filePath)) return;
     noted.add(filePath);
-    onRead(filePath);
+    onRead?.(filePath);
   };
-  return bundleReads.run(noteOnce, bundle);
+  const scope: BundleReadScope = {
+    projectDir,
+    privateFiles: options?.privateFiles ?? "vcs-and-secrets",
+    noteRead,
+  };
+  return bundleReads.run(scope, () => bundleProject(projectDir, options));
 }
 
 // A <template> scene has no root or GSAP of its own: bundle it inside the index that mounts it, as render does.
@@ -1065,11 +1096,11 @@ function readMountedSceneShell(
 async function bundleProject(projectDir: string, options?: BundleOptions): Promise<string> {
   const entryFile = options?.entryFile ?? "index.html";
   const indexPath = resolveWithinProject(projectDir, entryFile);
-  if (!indexPath || !existsSync(indexPath)) {
+  if (!indexPath || !readAllowed(indexPath) || !existsSync(indexPath)) {
     throw new Error(`${entryFile} not found in project directory`);
   }
   noteRead(indexPath);
-  const entryHtml = readFileSync(indexPath, "utf-8");
+  const entryHtml = readTextFile(indexPath);
   const mountedShell = readMountedSceneShell(projectDir, entryFile, entryHtml);
   const sourceDir = mountedShell ? projectDir : dirname(indexPath);
   // Every mount of a sub-composition asks again for each of its url()s; isSafePath realpaths the whole chain.

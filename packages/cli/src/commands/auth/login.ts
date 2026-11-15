@@ -1,6 +1,5 @@
-import { failCommand, failUsage } from "../../utils/commandResult.js";
-import { envFlagEnabled, isAttendedTerminal, isCI } from "../../utils/attendedTerminal.js";
-import { isAgentDriven } from "../../telemetry/agent_runtime.js";
+import { failCommand, failUsage, requestCliExit } from "../../utils/commandResult.js";
+import { isCI, isRemoteOrHeadless } from "../../utils/attendedTerminal.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
@@ -70,7 +69,8 @@ export default defineCommand({
     },
     device: {
       type: "boolean",
-      description: "Use an attended device code (for SSH/headless terminals; never for CI).",
+      description:
+        "Use a device code approved in any browser (for SSH, headless or agent-run terminals; never for CI).",
     },
   },
   // fallow-ignore-next-line complexity
@@ -100,34 +100,11 @@ export default defineCommand({
   },
 });
 
-function isRemoteOrHeadless(): boolean {
-  const remoteEnvironment = [
-    "CODESPACES",
-    "GITHUB_CODESPACES",
-    "REMOTE_CONTAINERS",
-    "GITPOD_WORKSPACE_ID",
-    "container",
-  ].some(envFlagEnabled);
-  return Boolean(
-    process.env["SSH_CONNECTION"] ||
-    process.env["SSH_CLIENT"] ||
-    process.env["SSH_TTY"] ||
-    process.env["BROWSER"] === "none" ||
-    process.env["HF_NO_BROWSER"] === "1" ||
-    remoteEnvironment ||
-    (process.stdout.isTTY !== true && !agentShellOnThisMachine()),
-  );
-}
-
-function agentShellOnThisMachine(): boolean {
-  return !isCI() && isAgentDriven();
-}
-
-function assertAttendedDeviceFlow(): void {
-  if (!isAttendedTerminal()) {
+function assertDeviceFlowAllowed(): void {
+  if (isCI()) {
     console.error(
       c.error(
-        "`--device` requires an attended terminal and is disabled in CI. Use an API key or workload credential for automation.",
+        "`--device` needs a person to approve it and is disabled in CI. Use an API key or workload credential for automation.",
       ),
     );
     failUsage();
@@ -135,7 +112,7 @@ function assertAttendedDeviceFlow(): void {
 }
 
 async function runDeviceLogin(): Promise<void> {
-  assertAttendedDeviceFlow();
+  assertDeviceFlowAllowed();
   assertOAuthConfiguredOrExit();
   const { trackAuthLoginStarted, trackAuthLoginCompleted, trackAuthLoginFailed, identifyUser } =
     await import("../../telemetry/index.js");
@@ -191,7 +168,7 @@ async function runDeviceLogin(): Promise<void> {
   console.log(c.success(`✓ Signed in as ${identity}.`));
 }
 
-// The tokens this login just issued, never a resolved credential: an env credential would outrank them.
+// The tokens this login just issued, never a resolved credential: an env credential can outrank them.
 function issuedCredential(tokens: { access_token: string; refresh_token?: string }) {
   return {
     type: "oauth" as const,
@@ -221,6 +198,12 @@ async function runOAuthLogin(): Promise<void> {
   const { trackAuthLoginStarted, trackAuthLoginFailed } = await import("../../telemetry/index.js");
   trackAuthLoginStarted("oauth");
 
+  const recordCancel = (): void => {
+    trackAuthLoginFailed("oauth", "aborted");
+    requestCliExit(130);
+  };
+  process.once("SIGINT", recordCancel);
+
   let tokens;
   try {
     ({ tokens } = await startAuthorizationCodeFlow());
@@ -230,9 +213,15 @@ async function runOAuthLogin(): Promise<void> {
     // the user never completes the browser step (closed the tab / walked away).
     // That is the dominant non-error dropout, so split it from real failures
     // (IdP misconfig, network) instead of lumping everything as flow_error.
-    trackAuthLoginFailed("oauth", /timed out/i.test(message) ? "flow_timeout" : "flow_error");
+    const timedOut = /timed out/i.test(message);
+    trackAuthLoginFailed("oauth", timedOut ? "flow_timeout" : "flow_error");
     console.error(c.error(`Sign-in failed: ${message}`));
+    if (timedOut) {
+      console.error("Run `hyperframes auth login` again.");
+    }
     failCommand();
+  } finally {
+    process.off("SIGINT", recordCancel);
   }
 
   await reportIdentity(issuedCredential(tokens));

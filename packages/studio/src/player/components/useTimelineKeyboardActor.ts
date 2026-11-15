@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type FocusEvent, type KeyboardEvent, type RefObject } from "react";
+import { matchesKey } from "./studioShortcuts";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { RULER_H, TRACK_H, type TimelineRowGeometry } from "./timelineLayout";
 import {
@@ -24,24 +25,12 @@ type ClipPickupAction =
   | { kind: "focus" }
   | { kind: "consume" };
 
-function clipPickupKeyboardAction(event: {
-  key: string;
-  repeat: boolean;
-}): ClipPickupAction | null {
-  switch (event.key) {
-    case "ArrowUp":
-      return { kind: "move", step: -1 };
-    case "ArrowDown":
-      return { kind: "move", step: 1 };
-    case "Enter":
-      return { kind: event.repeat ? "focus" : "commit" };
-    case "Escape":
-      return { kind: "cancel" };
-    case " ":
-      return { kind: "consume" };
-    default:
-      return null;
-  }
+function clipPickupKeyboardAction(event: globalThis.KeyboardEvent): ClipPickupAction | null {
+  if (matchesKey(event, "pickupUp")) return { kind: "move", step: -1 };
+  if (matchesKey(event, "pickupDown")) return { kind: "move", step: 1 };
+  if (matchesKey(event, "pickupDrop")) return { kind: event.repeat ? "focus" : "commit" };
+  if (matchesKey(event, "cancel")) return { kind: "cancel" };
+  return matchesKey(event, "pickupClip") ? { kind: "consume" } : null;
 }
 
 export function handleClipPickupKeyboardEvent(

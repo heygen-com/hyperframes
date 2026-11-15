@@ -22,10 +22,14 @@ const CURRENT_DEFINITION = JSON.stringify({
 
 class FakeSFN {
   starts: CapturedStart[] = [];
+  describes = 0;
   definition = CURRENT_DEFINITION;
   async send(command: unknown): Promise<unknown> {
     const cmdName = (command as { constructor: { name: string } }).constructor.name;
-    if (cmdName === "DescribeStateMachineCommand") return { definition: this.definition };
+    if (cmdName === "DescribeStateMachineCommand") {
+      this.describes++;
+      return { definition: this.definition };
+    }
     if (cmdName === "StartExecutionCommand") {
       const input = (command as { input: { stateMachineArn: string; name: string; input: string } })
         .input;
@@ -66,6 +70,27 @@ afterEach(() => {
 });
 
 describe("renderToLambda", () => {
+  it("rejects a stale v1 SDK option before any AWS work", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    const staleOptions = {
+      projectDir,
+      bucketName: "test-bucket",
+      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      config: baseConfig,
+      planProtocol: "v1",
+      sfn: asSFNClient(sfn),
+      s3: asS3Client(s3),
+    };
+
+    await expect(renderToLambda(staleOptions)).rejects.toMatchObject({
+      name: "PLAN_PROTOCOL_UNSUPPORTED",
+    });
+    expect(sfn.describes).toBe(0);
+    expect(sfn.starts).toHaveLength(0);
+    expect(s3.ops).toHaveLength(0);
+  });
+
   it("returns a handle and starts a state-machine execution with the right input", async () => {
     const sfn = new FakeSFN();
     const s3 = new FakeS3();
@@ -104,29 +129,6 @@ describe("renderToLambda", () => {
       OutputS3Uri: "s3://test-bucket/renders/smoke-1/output.mp4",
       Config: baseConfig,
       PlanProtocol: "v2",
-    });
-  });
-
-  it("preserves explicit plan protocol v1 compatibility", async () => {
-    const sfn = new FakeSFN();
-    const s3 = new FakeS3();
-    const handle = await renderToLambda({
-      projectDir,
-      bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
-      config: baseConfig,
-      executionName: "smoke-v1",
-      planProtocol: "v1",
-      sfn: asSFNClient(sfn),
-      s3: asS3Client(s3),
-    });
-
-    expect(sfn.starts[0]?.input).toEqual({
-      ProjectS3Uri: handle.projectS3Uri,
-      PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-v1/",
-      OutputS3Uri: "s3://test-bucket/renders/smoke-v1/output.mp4",
-      Config: baseConfig,
-      PlanProtocol: "v1",
     });
   });
 

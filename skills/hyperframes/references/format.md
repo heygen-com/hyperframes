@@ -95,7 +95,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 - Bundled, so they resolve by name: Inter, Montserrat, Outfit, Nunito, Oswald, League Gothic, Archivo Black, Space Mono, IBM Plex Mono, JetBrains Mono, EB Garamond, Playfair Display, Source Code Pro, Noto Sans JP, Roboto, Open Sans, Lato, Poppins. Common system fonts (Helvetica, Arial, Times, Menlo and the like) are swapped for the nearest of these.
 - The bundle only has Latin text at a few weights per family (Inter: 400, 700, 900). The compiler still fetches each of these families from Google Fonts for the other weights and scripts, and caches the result in `~/.cache/hyperframes/fonts`.
-- Any other family needs `@font-face` in the file that uses it, or lint fails `font_family_without_font_face`: `src: url('assets/fonts/x.woff2')` for a file in the project (a capture's own fonts, or one you download there), or `local('Exact Name')` for a font installed on this machine.
+- Any other family needs `@font-face` in the file that uses it, or lint fails `font_family_without_font_face`: `src: url('assets/fonts/x.woff2')` for a file in the project (a capture's own fonts, or one you download there), A `local('Exact Name')`-only face draws the font installed on this machine; a cloud render has no copy of it (lint warns `font_face_local_only`), so ship the file instead when the video may render in the cloud.
 
 ## Timing and the timeline
 
@@ -146,7 +146,7 @@ Studio's Detach audio writes a muted `<video>` and an `<audio>` of the same file
 | `video_missing_muted`                                  | A timed `<video>` gets `data-has-audio="true"` or `muted`                                              |
 | `gsap_css_transform_conflict`                          | Set the start inside the tween (`gsap.fromTo`) instead of a CSS `transform`                            |
 | `gsap_animates_clip_element`                           | Animate a child of the `.clip`, or its `opacity`                                                       |
-| `video_nested_in_timed_element`                        | Time the `<video>` or its wrapper, not both                                                            |
+| `video_nested_in_timed_element`                        | Time the `<video>`; its wrapper stays untimed and gives it no timing                                   |
 | `media_missing_id`, `media_crossorigin_breaks_preview` | Give every `<audio>` an `id`; drop `crossorigin`                                                       |
 | `gsap_timeline_registered_before_async_build`          | Register the timeline at the end of the async callback                                                 |
 | `standalone_composition_wrapped_in_template`           | Only scene files use `<template>`                                                                      |

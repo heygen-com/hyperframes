@@ -1,6 +1,7 @@
 import {
   extractMediaMetadata,
   findHdrAutoPromotion,
+  gradingKeepsSdr,
   type HdrAutoPromotion,
 } from "@hyperframes/engine";
 import type { ProjectDir } from "./project.js";
@@ -13,6 +14,7 @@ export async function inspectHdrAutoPromotion(
   media: Pick<ProjectMedia, "videos" | "images">,
   extractMetadata: ExtractMetadata = extractMediaMetadata,
 ): Promise<HdrAutoPromotion | null> {
+  if (gradingKeepsSdr("auto", media)) return null;
   const assets: Array<{
     asset: string;
     colorSpace: Awaited<ReturnType<typeof extractMediaMetadata>>["colorSpace"];

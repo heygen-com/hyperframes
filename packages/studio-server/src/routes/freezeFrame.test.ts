@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "../helpers/mediaExtensions.js";
 import { Hono } from "hono";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -73,7 +75,14 @@ describe("freeze-frame route", () => {
       await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
-    expect(calls[0]?.slice(0, 5)).toEqual(["-y", "-ss", "2.5", "-i", join(dir, "media/talk.mp4")]);
+    expect(calls[0]?.slice(0, 7)).toEqual([
+      "-y",
+      "-ss",
+      "2.5",
+      ...MEDIA_INPUT_ARGS,
+      "-i",
+      join(dir, "media/talk.mp4"),
+    ]);
     expect(isAtomicTempPath(output)).toBe(true);
     const still = stillOf(output);
     expect(dirname(still)).toBe(join(dir, "assets/freeze"));
@@ -172,6 +181,22 @@ describe("freeze-frame route", () => {
     expect(still).not.toBe("");
     expect(freezeFiles(dir)).toEqual([]);
   });
+
+  it.skipIf(process.getuid?.() === 0)(
+    "removes the still it extracted when the write throws, as for a read-only page",
+    async () => {
+      const { dir, post } = setup(pngWriter([]));
+      chmodSync(join(dir, "index.html"), 0o444);
+      const res = await post({
+        path: "index.html",
+        expectedVersion: fileContentVersion(html),
+        target: { id: "talk" },
+        playhead: 2.5,
+      });
+      expect(res.status).toBe(500);
+      expect(freezeFiles(dir)).toEqual([]);
+    },
+  );
 
   it("keeps a traversal clip id inside assets/freeze, for the ffmpeg output and the still's src", async () => {
     const evil = html.replace('id="talk"', 'id="../../../../outside/frame"');

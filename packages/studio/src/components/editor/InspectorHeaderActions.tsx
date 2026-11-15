@@ -4,6 +4,8 @@ import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import type { DomEditSelection } from "./domEditingTypes";
 
 /** The action buttons in the inspector header: visibility, Ungroup (groups only), copy, clear. */
+import { keyHint, useStudioKeys } from "../../player/components/studioShortcuts";
+
 export function InspectorHeaderActions({
   element,
   copied,
@@ -53,7 +55,7 @@ export function InspectorHeaderActions({
             track("button", "Ungroup");
             onUngroup();
           }}
-          title="Ungroup (⌘⇧G)"
+          title={`Ungroup (${keyHint("ungroup", useStudioKeys())})`}
           className="flex h-6 items-center rounded-sm px-2 text-[11px] font-medium text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
         >
           Ungroup

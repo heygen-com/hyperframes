@@ -6,7 +6,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getMimeType } from "@hyperframes/studio-server";
+import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 
@@ -151,7 +151,11 @@ export function buildRangeResponse(
 
   const hasStart = match[1] !== "";
   const start = hasStart ? Number(match[1]) : Math.max(0, size - Number(match[2]));
-  const end = !hasStart ? last : match[2] !== "" ? Math.min(Number(match[2]), last) : last;
+  const end = !hasStart
+    ? last
+    : match[2] !== ""
+      ? Math.min(Number(match[2]), last)
+      : openRangeEnd(start, last, contentType);
   if (start > end || start > last) {
     return new Response(null, {
       status: 416,

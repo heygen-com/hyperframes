@@ -1,4 +1,5 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
+import { editContextTarget } from "../utils/studioFileHistory";
 import { useCallback } from "react";
 import { findUnsafeDomPatchValues } from "@hyperframes/core/studio-api/finite-mutation";
 import { FONT_EXT } from "../utils/mediaTypes";
@@ -181,15 +182,9 @@ export function useDomEditCommits({
                   targets: batches
                     .filter((batch) => Object.hasOwn(files, batch.sourceFile))
                     .flatMap((batch) =>
-                      batch.patches.map(({ target }) => ({
-                        file: batch.sourceFile,
-                        ...(target.id && { id: target.id }),
-                        ...(target.hfId && { hfId: target.hfId }),
-                        ...(target.selector && { selector: target.selector }),
-                        ...(target.selectorIndex !== undefined && {
-                          selectorIndex: target.selectorIndex,
-                        }),
-                      })),
+                      batch.patches.map(({ target }) =>
+                        editContextTarget(batch.sourceFile, target),
+                      ),
                     ),
                 });
               }

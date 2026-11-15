@@ -11,6 +11,15 @@ const sourceRetryRules: string[] = [];
 const cancelledReads: ReturnType<typeof vi.fn>[] = [];
 const canvasesAtTimestamps = vi.fn();
 const canvasSinks: unknown[] = [];
+const drawImage = vi.fn();
+const createImageBitmapMock = vi.fn();
+const fourKSample = () => ({
+  rotation: 0,
+  flipped: false,
+  toVideoFrame: () => ({ displayWidth: 3456, displayHeight: 2234, close: vi.fn() }),
+  drawWithFit: vi.fn(),
+  close: vi.fn(),
+});
 const getKeyPacket = vi.fn(async (_time: number) => null as { timestamp: number } | null);
 const input = {
   getPrimaryVideoTrack: vi.fn(),
@@ -37,11 +46,16 @@ vi.mock("mediabunny", () => ({
     getPrimaryVideoTrack = input.getPrimaryVideoTrack;
     dispose = input.dispose;
   },
-  CanvasSink: class {
+  // Each frame the canvas seam yields becomes one straight (unturned) sample of a 4K source.
+  VideoSampleSink: class {
     constructor() {
       canvasSinks.push(this);
     }
-    canvasesAtTimestamps = canvasesAtTimestamps;
+    async *samplesAtTimestamps(timestamps: AsyncIterable<number>) {
+      for await (const wrapped of canvasesAtTimestamps(timestamps)) {
+        yield wrapped === null ? null : fourKSample();
+      }
+    }
   },
   EncodedPacketSink: class {
     getKeyPacket = getKeyPacket;
@@ -89,10 +103,37 @@ beforeEach(() => {
   HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
     callback(new Blob(["frame"], { type: "image/jpeg" }));
   };
+  HTMLCanvasElement.prototype.getContext = (() => ({ drawImage })) as never;
+  vi.stubGlobal(
+    "createImageBitmap",
+    createImageBitmapMock.mockImplementation(async () => ({ close: vi.fn() })),
+  );
   input.getPrimaryVideoTrack.mockResolvedValue({
     getDisplayWidth: vi.fn(async () => 1080),
     getDisplayHeight: vi.fn(async () => 1920),
     getDurationFromMetadata: vi.fn(async () => 10),
+  });
+});
+
+describe("decodeVideoThumbnail frame scaling", () => {
+  it("never hands a full-size frame to a canvas draw: the browser crops and scales it to the strip's size", async () => {
+    recordDecodes([]);
+    await decodeVideoThumbnail(
+      { source, sourceStart: 0, sourceRangeDuration: 10, frameCount: 2 },
+      new AbortController().signal,
+    );
+
+    expect(createImageBitmapMock).toHaveBeenCalled();
+    for (const [, , , cropWidth, cropHeight, options] of createImageBitmapMock.mock.calls) {
+      expect(options.resizeWidth).toBeLessThan(cropWidth);
+      expect(options.resizeHeight).toBeLessThan(cropHeight);
+    }
+    // What lands on the canvas is the small bitmap, never a 4K frame.
+    for (const [image, , , width, height] of drawImage.mock.calls) {
+      expect(image).not.toHaveProperty("displayWidth");
+      expect(width).toBeLessThan(1000);
+      expect(height).toBeLessThan(1000);
+    }
   });
 });
 
@@ -701,20 +742,6 @@ describe("decodeVideoThumbnail's shared source", () => {
     HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
       callback(new Blob(["frame"], { type: "image/jpeg" }));
     };
-    await decodeVideoThumbnail(clip(6), signal);
-    expect(input.getPrimaryVideoTrack).toHaveBeenCalledTimes(1);
-    expect(dispose).not.toHaveBeenCalled();
-  });
-
-  it("keeps the reader when an offscreen frame will not encode", async () => {
-    const offscreen = { width: 1, height: 1, convertToBlob: () => Promise.reject(new Error("no")) };
-    canvasesAtTimestamps.mockImplementationOnce(async function* (
-      timestamps: AsyncIterable<number>,
-    ) {
-      for await (const _time of timestamps) yield { canvas: offscreen };
-    });
-    await expect(decodeVideoThumbnail(clip(0), signal)).rejects.toThrow("encode failed");
-    recordDecodes([]);
     await decodeVideoThumbnail(clip(6), signal);
     expect(input.getPrimaryVideoTrack).toHaveBeenCalledTimes(1);
     expect(dispose).not.toHaveBeenCalled();

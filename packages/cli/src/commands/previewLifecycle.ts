@@ -20,6 +20,7 @@ import {
   scanActiveServers,
   type ActiveServer,
 } from "../server/portUtils.js";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
 import { windowsLocalAppData } from "../utils/windowsAppData.js";
 import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
@@ -88,7 +89,12 @@ interface LifecycleDependencies {
 }
 
 function defaultStateHome(): string {
-  return process.env.XDG_STATE_HOME || windowsLocalAppData() || join(homedir(), ".local", "state");
+  return (
+    namedCacheDir("state") ||
+    process.env.XDG_STATE_HOME ||
+    windowsLocalAppData() ||
+    join(homedir(), ".local", "state")
+  );
 }
 
 function normalized(path: string): string {

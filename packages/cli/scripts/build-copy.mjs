@@ -104,6 +104,13 @@ async function main() {
   }
   mkdirSync(join(DIST, "commands"), { recursive: true });
 
+  // The bundled sharing modules resolve their policy and Unicode tables beside
+  // the CLI chunks, rather than from the share package's source directory.
+  copyDir(
+    join(REPO_ROOT, "packages", "share", "src", "sources", "contract"),
+    join(DIST, "contract"),
+  );
+
   const studioDist = resolve(CLI_ROOT, "..", "studio", "dist");
   await waitForStudioDist(studioDist);
   // Only the SPA studioServer.ts serves (index.html, /assets, /icons, /favicon.svg);
@@ -126,7 +133,7 @@ async function main() {
   // Skills bundled into the published CLI. Branches don't all carry the same
   // skills/ tree (it gets restructured), so each entry is existsSync-guarded:
   // a missing skill dir warns + skips instead of crashing the build.
-  for (const skill of ["hyperframes", "hyperframes-cli", "gsap", "media-use"]) {
+  for (const skill of ["hyperframes", "hyperframes-cli", "media-use"]) {
     const src = join(REPO_ROOT, "skills", skill);
     if (!existsSync(src)) {
       console.warn(`[build-copy] skill not found, skipping: skills/${skill}`);

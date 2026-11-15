@@ -8,7 +8,7 @@ import { TIMELINE_VIEWPORT_BUDGETS } from "../../player/lib/timelineViewportBudg
 import { CompositionThumbnail } from "../../player/components/CompositionThumbnail";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { renderPosterForNextOpen } from "../nle/PreviewPoster";
-import { mountCompositionsTab } from "./compositionsTabTestUtils";
+import { mountCompositionsTab, settleFrameToken } from "./compositionsTabTestUtils";
 
 class DecodingImage {
   onload: (() => void) | null = null;
@@ -247,7 +247,7 @@ describe("composition card thumbnails", () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalledWith("blob:frame-2");
   });
 
-  it("tell a hover preview how large it shows, so its videos are not copied at source size", () => {
+  it("tell a hover preview how large it shows, so its videos are not copied at source size", async () => {
     vi.useFakeTimers();
     try {
       const host = mount();
@@ -258,6 +258,8 @@ describe("composition card thumbnails", () => {
         );
       });
       act(() => vi.advanceTimersByTime(300));
+      renders.at(-1)!.answer(404); // the hover preview's frame-token request
+      await settleFrameToken();
       const frame = host.querySelector("iframe")!;
       const postMessage = vi.fn();
       Object.defineProperty(frame, "contentWindow", { value: { postMessage } });

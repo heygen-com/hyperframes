@@ -226,10 +226,7 @@ export function useAppHotkeys({
     const cb = cbRef.current;
     const key = event.key.toLowerCase();
     if (dispatchLinkShortcut(event, cb)) return;
-    if (event.metaKey || event.ctrlKey) {
-      dispatchModifierKey(event, key, cb);
-      return;
-    }
+    if (dispatchModifierKey(event, key, cb)) return;
     dispatchPlainKey(event, key, cb);
   }, []);
 

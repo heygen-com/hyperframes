@@ -481,4 +481,23 @@ describe("keyframes project compositions", () => {
 
     expect(collectCompositions(join(dir, "index.html"))).toHaveLength(1);
   });
+
+  it.each(["../outside.html", "OUTSIDE"])(
+    "does not read a data-composition-src outside the project (%s)",
+    (written) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-outside-src-"));
+      onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+      const project = join(dir, "project");
+      mkdirSync(project);
+      const outside = join(dir, "outside.html");
+      writeFileSync(outside, `<div data-composition-id="outside"></div>`);
+      const src = written === "OUTSIDE" ? outside : written;
+      writeFileSync(
+        join(project, "index.html"),
+        `<!doctype html><html><body><div data-composition-id="main" data-duration="4"><div data-composition-id="intro" data-composition-src="${src}"></div></div></body></html>`,
+      );
+
+      expect(collectCompositions(join(project, "index.html"))).toHaveLength(1);
+    },
+  );
 });

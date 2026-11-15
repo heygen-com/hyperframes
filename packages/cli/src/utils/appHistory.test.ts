@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -232,5 +233,16 @@ describe("addCatchUpNote", () => {
     expect(readFileSync(join(dir, "CLAUDE.md"), "utf8")).toBe("# My notes\n");
     expect(readFileSync(outside, "utf8")).toBe(older);
     addCatchUpNote(mkdtempSync(join(tmpdir(), "hf-note-")));
+  });
+});
+
+describe("app history under HYPERFRAMES_CACHE_DIR", () => {
+  it("keeps the seen record in the cache folder when it is set", () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-cache-"));
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    const dir = mkdtempSync(join(tmpdir(), "hf-project-"));
+    handedOverAt(dir, "2026-10-01T00:00:00Z");
+    expect(seenPath(dir).startsWith(join(cache, "catch-up"))).toBe(true);
+    expect(existsSync(seenPath(dir))).toBe(true);
   });
 });

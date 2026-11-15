@@ -61,6 +61,60 @@ describe("media-use authentication", () => {
     expect(await fs.readFile(join(fixture.dir, "credentials"), "utf8")).toContain("rotated");
   });
 
+  it("passes the login, not HEYGEN_API_KEY, when both are present", async () => {
+    await persistFreshOAuth({ access_token: "hf-access", refresh_token: "hf-refresh" });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    await withMediaAuthEnvironment(async (env) => {
+      expect(env.HEYGEN_ACCESS_TOKEN).toBe("hf-access");
+      expect(env.HEYGEN_API_KEY).toBeUndefined();
+    });
+  });
+
+  it("falls back to HEYGEN_API_KEY when the login cannot be refreshed", async () => {
+    await persistFreshOAuth({
+      access_token: "expired",
+      refresh_token: "hf-refresh",
+      expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    });
+    process.env["HEYGEN_API_KEY"] = "env-key";
+    const fetchMock = vi.fn(async () => new Response("invalid_grant", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await withMediaAuthEnvironment(async (env) => {
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(env.HEYGEN_API_KEY).toBe("env-key");
+      expect(env.HEYGEN_ACCESS_TOKEN).toBeUndefined();
+    });
+  });
+
+  it("still fails when the login cannot be refreshed and no env key is set", async () => {
+    await persistFreshOAuth({
+      access_token: "expired",
+      refresh_token: "hf-refresh",
+      expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("invalid_grant", { status: 400 })),
+    );
+    await expect(withMediaAuthEnvironment(() => undefined)).rejects.toMatchObject({
+      code: "REFRESH_FAILED",
+    });
+  });
+
+  it("gives a host gateway its own key even when a login is stored", async () => {
+    await persistFreshOAuth({ access_token: "hf-access", refresh_token: "hf-refresh" });
+    process.env["HEYGEN_API_BASE"] = "https://gateway.example";
+    process.env["HEYGEN_API_KEY"] = "gateway-key";
+    try {
+      await withMediaAuthEnvironment(async (env) => {
+        expect(env.HEYGEN_API_KEY).toBe("gateway-key");
+        expect(env.HEYGEN_ACCESS_TOKEN).toBeUndefined();
+      });
+    } finally {
+      delete process.env["HEYGEN_API_BASE"];
+    }
+  });
+
   it("refuses to send OAuth to a non-HeyGen media gateway", async () => {
     await persistFreshOAuth({ access_token: "hf-access", refresh_token: "hf-refresh" });
     process.env["HEYGEN_API_BASE"] = "https://gateway.example";

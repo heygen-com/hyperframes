@@ -128,6 +128,7 @@ export default defineCommand({
             fps: config.fps,
             quality: config.quality,
             workers: config.workers,
+            allowOutsideProjectAssets: true,
           });
           await producer.executeRenderJob(job, project.dir, outputPath);
           const elapsedMs = Date.now() - startTime;

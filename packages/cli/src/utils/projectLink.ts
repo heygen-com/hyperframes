@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
 interface ProjectLink {
   projectId: string;
@@ -10,8 +10,8 @@ interface ProjectLink {
 
 type ProjectLinks = Record<string, ProjectLink>;
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const PROJECTS_FILE = join(CONFIG_DIR, "projects.json");
+const configDir = () => hyperframesConfigDir();
+const projectsFile = () => seededConfigFile("projects.json");
 
 /** Read + parse a JSON object file, or null if it's missing, unreadable, or not an object. */
 function readJsonRecord(path: string): Record<string, unknown> | null {
@@ -34,7 +34,7 @@ function isProjectLink(value: unknown): value is ProjectLink {
 }
 
 function readProjectLinks(): ProjectLinks {
-  const record = readJsonRecord(PROJECTS_FILE);
+  const record = readJsonRecord(projectsFile());
   if (!record) return {};
   const links: ProjectLinks = {};
   for (const [path, value] of Object.entries(record)) {
@@ -47,8 +47,8 @@ function readProjectLinks(): ProjectLinks {
 
 function writeProjectLinks(links: ProjectLinks): void {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    writeFileSync(PROJECTS_FILE, `${JSON.stringify(links, null, 2)}\n`, { mode: 0o600 });
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    writeFileSync(projectsFile(), `${JSON.stringify(links, null, 2)}\n`, { mode: 0o600 });
   } catch {
     // Project links must never prevent local CLI commands from running.
   }

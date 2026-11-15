@@ -20,6 +20,7 @@ vi.mock("./state.js", () => ({
 }));
 vi.mock("./videoImage.js", () => ({
   pushVideoImage: vi.fn(async () => ({ imageUri: "repo@sha256:a", repositoryName: "hf-video" })),
+  videoRepositoryName: (stackName: string) => `${stackName}-video`,
 }));
 
 const { runDeploy } = await import("./deploy.js");

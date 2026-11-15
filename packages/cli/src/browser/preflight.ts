@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
 import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
@@ -95,9 +96,21 @@ async function readToolVersion(
     };
   } catch (error) {
     if (signal?.aborted) signal.throwIfAborted();
-    const status =
-      typeof error === "object" && error !== null && "status" in error ? error.status : undefined;
-    const exitDetail = typeof status === "number" ? ` (exit code ${status})` : "";
+    const field = (name: string) =>
+      typeof error === "object" && error !== null && name in error
+        ? (error as Record<string, unknown>)[name]
+        : undefined;
+    const status = field("status");
+    const code = field("code");
+    const killedBy = field("signal");
+    const exitDetail =
+      typeof status === "number"
+        ? ` (exit code ${status})`
+        : typeof code === "string"
+          ? ` (${code})`
+          : typeof killedBy === "string"
+            ? ` (signal ${killedBy})`
+            : "";
     return {
       ok: false,
       detail: `Failed to run "${binaryPath}" -version${exitDetail}.`,
@@ -295,6 +308,7 @@ async function chromeLaunchOutcome(
   }
   try {
     const { stdout } = await runCancellableProcess(executablePath, ["--version"], {
+      env: buildChromeLaunchEnv(),
       signal,
       timeoutMs: FIRST_LAUNCH_TIMEOUT_MS,
       maxBufferBytes: 64 * 1024,

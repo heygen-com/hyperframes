@@ -5,6 +5,7 @@ import type { PublishSdkSession } from "../utils/sdkCutover";
 import type { StudioEditInFlight } from "../utils/studioPendingEdits";
 import type { RuntimeTweenChange } from "./gsapRuntimePatch";
 import type { KeyframeUsageAction } from "../utils/keyframeUsage";
+import type { RecordEditInput } from "../utils/studioFileHistory";
 
 /** The file a selection's GSAP write goes to. */
 export function gsapWriteFile(
@@ -108,12 +109,7 @@ export interface GsapScriptCommitsParams {
   activeCompPath: string | null;
   previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   editHistory: {
-    recordEdit: (entry: {
-      label: string;
-      coalesceKey?: string;
-      coalesceMs?: number;
-      files: Record<string, { before: string; after: string }>;
-    }) => Promise<void>;
+    recordEdit: (entry: RecordEditInput) => Promise<void>;
   };
   reloadPreview: () => void;
   onCacheInvalidate: () => void;

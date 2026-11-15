@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readFileSync, renameSync, statSync } from
 import { isAbsolute, join, resolve } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { pinProjectRecord } from "../helpers/safePath.js";
-import { listProjectFiles } from "../helpers/projectSignature.js";
+import { listProjectFilesAsync } from "../helpers/projectSignature.js";
 import { readId } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
 import {
@@ -198,7 +198,9 @@ function dropArtifactsOfGoneRevisions(state: VideoState): void {
 
 async function fileHashes(dir: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
-  for (const { path } of listProjectFiles(dir).sort((a, b) => a.path.localeCompare(b.path))) {
+  for (const { path } of (await listProjectFilesAsync(dir)).sort((a, b) =>
+    a.path.localeCompare(b.path),
+  )) {
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(join(dir, path))) hash.update(chunk);
     files[path] = hash.digest("hex");

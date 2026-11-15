@@ -25,12 +25,13 @@ import {
   checkOutputResolutionCompatibility,
   type CanvasResolution,
 } from "@hyperframes/core";
-import type {
-  AudioElement,
-  ExtractedFrames,
-  ImageElement,
-  ParallelProgress,
-  VideoElement,
+import {
+  mediaIdPathSegment,
+  type AudioElement,
+  type ExtractedFrames,
+  type ImageElement,
+  type ParallelProgress,
+  type VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -47,6 +48,7 @@ export interface CompositionMetadata {
   videos: VideoElement[];
   audios: AudioElement[];
   images: ImageElement[];
+  gradedCanvas?: boolean;
   masterFxChain?: string;
   width: number;
   height: number;
@@ -161,6 +163,10 @@ export function writeCompiledArtifacts(
 
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
+    if (!isPathInside(outPath, compileDir)) {
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${srcPath}`);
+      continue;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, html, "utf-8");
   }
@@ -395,6 +401,17 @@ export function forgetWorkerPhases(job: object): void {
   workerPhasesByJob.delete(job);
 }
 
+const staticDedupActivityByJob = new WeakMap<object, number>();
+
+/** Counts a render's still-frame check screenshots; the capture stall watcher reads it as activity. */
+export function noteStaticDedupActivity(job: object): void {
+  staticDedupActivityByJob.set(job, (staticDedupActivityByJob.get(job) ?? 0) + 1);
+}
+
+export function staticDedupActivity(job: object): number {
+  return staticDedupActivityByJob.get(job) ?? 0;
+}
+
 export function describeWorkerPhases(job: object): string | undefined {
   const phases = workerPhasesByJob.get(job);
   if (!phases?.size) return undefined;
@@ -580,6 +597,11 @@ export function createMemorySampler(intervalMs: number = 250): MemorySampler {
 // One-time guard for the symlink→copy fallback notice below.
 let warnedSymlinkFallback = false;
 
+const copyCannotFix = (error: unknown): boolean =>
+  ["ENOSPC", "EDQUOT", "EEXIST", "ENOENT"].includes(
+    (error as NodeJS.ErrnoException | undefined)?.code ?? "",
+  );
+
 // Junctions avoid Windows symlink privileges. POSIX keeps its copy fallback.
 function tryWindowsFrameJunction(
   fileSystem: MaterializeFileSystem,
@@ -591,30 +613,20 @@ function tryWindowsFrameJunction(
     fileSystem.symlinkSync(src, dest, "junction");
     return true;
   } catch (error) {
-    const code =
-      error instanceof Error && "code" in error && typeof error.code === "string"
-        ? error.code
-        : undefined;
-    if (
-      ["EPERM", "EACCES", "UNKNOWN", "EINVAL", "ENOSYS", "EOPNOTSUPP", "ENOTSUP"].includes(
-        code ?? "",
-      )
-    ) {
-      return false;
-    }
-    throw error;
+    if (copyCannotFix(error)) throw error;
+    return false;
   }
 }
 
-// Create the symlink, degrading to a copy on Windows' no-symlink-privilege
-// errors (EPERM/EACCES, plus UNKNOWN), trying a Windows junction first.
-// Other symlink errors and non-capability junction errors propagate.
+// Create the symlink; a drive that refuses it, with any code, gets a Windows junction, then a copy.
+// A full disk, a missing source or an entry already at dest (stageExtractedFrameDir clears a stale one)
+// propagate: copying would not fix them.
 function linkOrCopyFrameDir(fileSystem: MaterializeFileSystem, src: string, dest: string): void {
   try {
     fileSystem.symlinkSync(src, dest, "dir");
   } catch (err) {
+    if (copyCannotFix(err)) throw err;
     const code = (err as NodeJS.ErrnoException | undefined)?.code;
-    if (code !== "EPERM" && code !== "EACCES" && code !== "UNKNOWN") throw err;
     if (tryWindowsFrameJunction(fileSystem, src, dest)) return;
     // Copying is measurably slower than symlinking, so surface the degrade once
     // — it explains a render that suddenly got heavier and saves a support
@@ -681,7 +693,7 @@ export function materializeExtractedFramesForCompiledDir(
     const resolvedOut = pathModule.resolve(ext.outputDir);
     if (isPathInside(resolvedOut, resolvedCompiledDir, { pathModule })) continue;
 
-    const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
+    const linkPath = pathModule.join(compiledFrameRoot, mediaIdPathSegment(ext.videoId));
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
       stageExtractedFrameDir(

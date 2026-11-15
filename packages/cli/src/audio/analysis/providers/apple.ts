@@ -1,10 +1,11 @@
+import { runsWithoutInstallPrompt } from "../../../utils/appleStubs.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
 import { AVAILABLE, runFile, unavailable, withWavFile } from "./shared.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 const SOUND_ANALYSIS = "/System/Library/Frameworks/SoundAnalysis.framework";
 const MUSIC_UNDERSTANDING_MACOS = 27;
@@ -62,7 +63,7 @@ function atLeastOneWindow(signal: AudioSignal): AudioSignal {
   };
 }
 
-const helperDir = () => join(homedir(), ".cache", "hyperframes", "audio-helpers");
+const helperDir = () => hyperframesCacheDir("audio-helpers");
 
 function helperPath(name: string, source: string): string {
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 12);
@@ -70,6 +71,7 @@ function helperPath(name: string, source: string): string {
 }
 
 async function hasSwiftCompiler(): Promise<boolean> {
+  if (!runsWithoutInstallPrompt("xcrun")) return false;
   try {
     await runFile("xcrun", ["--find", "swiftc"], { timeout: 30_000 });
     return true;

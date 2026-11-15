@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import {
   AmbiguousPreviewServerError,
   fetchStudioLint,
+  fetchLoopback,
   fetchStudioSelection,
   studioApiUrl,
   findPreviewServerForProject,
@@ -159,6 +162,27 @@ describe("studioSelectionClient", () => {
 
     expect(server?.port).toBe(5191);
     expect(fetchImpl).not.toHaveBeenCalledWith("http://127.0.0.1:5190/api/projects");
+  });
+
+  it("fetches from a loopback server that accepts the connection", async () => {
+    const server = createServer((_, res) => res.end("ok"));
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const response = await fetchLoopback(`http://127.0.0.1:${port}/api/projects`);
+      expect(await response.text()).toBe("ok");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("fails without fetching when nothing accepts the connection", async () => {
+    const server = createServer();
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const { port } = server.address() as AddressInfo;
+    await new Promise<void>((done) => server.close(() => done()));
+
+    await expect(fetchLoopback(`http://127.0.0.1:${port}/api/projects`)).rejects.toThrow();
   });
 
   it("builds a URL to the existing preview server's selection endpoint", () => {

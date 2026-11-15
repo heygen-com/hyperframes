@@ -69,8 +69,8 @@ describe("auth/client", () => {
   });
 
   it("apiBaseUrl honors HEYGEN_API_URL and strips trailing slash", () => {
-    process.env["HEYGEN_API_URL"] = "https://api.dev.heygen.com/";
-    expect(apiBaseUrl()).toBe("https://api.dev.heygen.com");
+    process.env["HEYGEN_API_URL"] = "https://api.example.test/";
+    expect(apiBaseUrl()).toBe("https://api.example.test");
   });
 
   it("buildAuthHeaders uses Bearer for oauth", () => {
@@ -306,5 +306,28 @@ describe("auth/client", () => {
       refreshable: false,
     });
     expect(captured["authorization"]).toBe("Bearer at_xyz");
+  });
+
+  it("turns a request that never got an answer into a named network failure", async () => {
+    const offline = (async () => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("getaddrinfo EAI_AGAIN api.test.example"), {
+          code: "EAI_AGAIN",
+        }),
+      });
+    }) as unknown as typeof fetch;
+    await expectRejectionMessage(makeClient(offline), (msg) =>
+      expect(msg).toMatch(/^Could not reach api\.test\.example: .*offline/),
+    );
+  });
+
+  it("bounds the account request so an unreachable host fails in seconds", async () => {
+    let signal: AbortSignal | null | undefined;
+    const capture = (async (_url: string, init?: RequestInit) => {
+      signal = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    await makeClient(capture).getCurrentUser(apiKeyCred());
+    expect(signal).toBeInstanceOf(AbortSignal);
   });
 });

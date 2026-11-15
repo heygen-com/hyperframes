@@ -56,6 +56,14 @@ function hintCode(err: HyperframesApiError): string | undefined {
  *     errors) so the user can recover without having to remember the
  *     render_id.
  */
+/** `code: ETIMEDOUT` for a failed fetch, whose own message is only "fetch failed"; the cause names why. */
+function networkCode(err: Error): string | undefined {
+  const code = (err.cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code)
+    ? `code: ${code}`
+    : undefined;
+}
+
 // fallow-ignore-next-line complexity
 export function reportApiError(
   stage: string,
@@ -75,23 +83,27 @@ export function reportApiError(
     const code = hintCode(err);
     const hint = code ? hints[code] : undefined;
     const title = `${stage} (HTTP ${err.status})`;
+    const message =
+      err.param && !err.message.includes(err.param)
+        ? `${err.message} (parameter: ${err.param})`
+        : err.message;
     // Priority: code-specific hint > caller suggestion > bare code
     // label > no third line. Code-specific hints win because they
     // address the specific failure mode; the caller suggestion is a
     // generic-context fallback.
     if (hint) {
-      errorBox(title, err.message, hint);
+      errorBox(title, message, hint);
     } else if (options.suggestion) {
-      errorBox(title, err.message, options.suggestion);
+      errorBox(title, message, options.suggestion);
     } else if (err.code) {
-      errorBox(title, err.message, `code: ${err.code}`);
+      errorBox(title, message, `code: ${err.code}`);
     } else {
-      errorBox(title, err.message);
+      errorBox(title, message);
     }
     failCommand();
   }
   if (err instanceof Error) {
-    errorBox(stage, err.message, options.suggestion);
+    errorBox(stage, err.message, options.suggestion ?? networkCode(err));
     failCommand();
   }
   errorBox(stage, String(err), options.suggestion);

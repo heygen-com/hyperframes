@@ -75,15 +75,15 @@ afterEach(() => {
 
 const REFUSED = "Protocol error (Page.captureScreenshot): Unable to capture screenshot";
 
-/** `refuseShot`: the screenshot call (1-based) Chrome refuses. */
-async function extract(expireScreenshot = false, refuseShot?: number) {
+/** `refuseShots`: the screenshot calls (1-based) Chrome refuses. */
+async function extract(expireScreenshot = false, refuseShots: number[] = []) {
   vi.useFakeTimers();
   const outputDir = mkdtempSync(join(tmpdir(), "hf-core-budget-"));
   mkdirSync(join(outputDir, "extracted"));
   const state = createPartialCaptureState({ url: "https://example.com", outputDir });
   let shots = 0;
   const screenshot = vi.fn(async () => {
-    if (++shots === refuseShot) throw new Error(REFUSED);
+    if (refuseShots.includes(++shots)) throw new Error(REFUSED);
     if (expireScreenshot) control.remaining = 0;
     return new Uint8Array(24);
   });
@@ -162,8 +162,8 @@ describe("core extraction screenshot budget", () => {
       expect(screenshot).not.toHaveBeenCalled();
     },
   );
-  it("names the screenshot Chrome refused and keeps the rest", async () => {
-    const { result, warnings } = await extract(false, 2);
+  it("names the screenshot Chrome refused twice and keeps the rest", async () => {
+    const { result, warnings } = await extract(false, [2, 3]);
     expect(result.screenshots).toEqual(["screenshots/scroll-000.png", "screenshots/full-page.png"]);
     expect(warnings).toContain(
       `2/3 requested screenshot files captured: could not capture screenshots/scroll-100.png (scrolled to 8920px): ${REFUSED}`,

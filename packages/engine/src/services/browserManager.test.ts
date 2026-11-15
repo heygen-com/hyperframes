@@ -81,11 +81,18 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const probing = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await probing;
 
-    expect(result.supported).toBe(false);
-    expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
-    expect(result.timedOut).toBe(true);
+      expect(result.supported).toBe(false);
+      expect(result.detail).toMatch(/returned 0 bytes after \d+ attempts in \d+ms/);
+      expect(result.timedOut).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports frames that are not a PNG as unsupported, not as a slow start", async () => {
@@ -102,10 +109,17 @@ describe("BeginFrame capability probe", () => {
       }),
     } as unknown as Browser;
 
-    const result = await _probeBeginFrameSupportForTests(browser, 120);
+    vi.useFakeTimers();
+    try {
+      const pending = _probeBeginFrameSupportForTests(browser, 120);
+      await vi.advanceTimersByTimeAsync(200);
+      const result = await pending;
 
-    expect(result.supported).toBe(false);
-    expect(result.timedOut).toBe(false);
+      expect(result.supported).toBe(false);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps trying a renderer that has not drawn its first surface yet, up to the probe deadline", async () => {
@@ -230,6 +244,17 @@ describe("BeginFrame capability probe", () => {
 describe("buildChromeArgs browser GPU mode", () => {
   const base = { width: 1920, height: 1080 };
 
+  // Windows ClearType otherwise paints red/blue fringes on glyph edges in every capture mode.
+  it.each(["beginframe", "screenshot", "drawelement"] as CaptureMode[])(
+    "always disables LCD text (%s)",
+    (captureMode) => {
+      expect(buildChromeArgs({ ...base, captureMode })).toContain("--disable-lcd-text");
+      expect(buildChromeArgs({ ...base, captureMode, platform: "win32" })).toContain(
+        "--disable-lcd-text",
+      );
+    },
+  );
+
   it("uses SwiftShader software GL by default for reproducible local renders", () => {
     const args = buildChromeArgs(base);
     expect(args).toContain("--enable-features=CanvasDrawElement");
@@ -256,6 +281,22 @@ describe("buildChromeArgs browser GPU mode", () => {
     expect(
       buildChromeArgs({ ...base, captureMode, platform: "linux" }, { browserGpuMode: "hardware" }),
     ).not.toContain("--disable-gpu-compositing");
+  });
+
+  // HF#7111: partial raster makes a frame's pixels depend on the frames drawn before it.
+  it.each(["software", "hardware"] as const)(
+    "disables partial raster for %s screenshot capture",
+    (browserGpuMode) => {
+      expect(buildChromeArgs({ ...base, captureMode: "screenshot" }, { browserGpuMode })).toContain(
+        "--disable-partial-raster",
+      );
+    },
+  );
+
+  it("leaves partial raster alone under BeginFrame control", () => {
+    expect(buildChromeArgs({ ...base, captureMode: "beginframe" })).not.toContain(
+      "--disable-partial-raster",
+    );
   });
 
   it("uses Metal-backed ANGLE for hardware browser GPU mode on macOS", () => {
@@ -638,6 +679,16 @@ describe("browser launch capture-mode contract", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("puts the browser behind the public-only proxy only on a restricted host", () => {
+    const fingerprint = () =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl: "http://localhost:4321" });
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "");
+    expect(fingerprint().publicOnly).toBeUndefined();
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    expect(fingerprint().publicOnly).toEqual({ pageServerHost: "localhost:4321" });
+    vi.unstubAllEnvs();
   });
 });
 
@@ -1610,22 +1661,28 @@ describe("browser pool", () => {
     _setPuppeteerForTests(undefined);
   });
 
-  it("keeps the launch diagnostic on stderr when a command emits JSON", async () => {
-    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
-    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const result = await acquireBrowser(["--no-sandbox"], poolCfg);
-      await result.release();
+  it.each([undefined, "1"])(
+    "emits the launch diagnostic only in debug mode (%s)",
+    async (debug) => {
+      vi.stubEnv("HF_DEBUG_RENDER", debug);
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const result = await acquireBrowser(["--no-sandbox"], poolCfg);
+        await result.release();
 
-      expect(stderr).toHaveBeenCalledWith(
-        expect.stringMatching(/^\[BrowserManager\] Browser launched/),
-      );
-      expect(stdout).not.toHaveBeenCalled();
-    } finally {
-      stdout.mockRestore();
-      stderr.mockRestore();
-    }
-  });
+        const launches = stderr.mock.calls.filter(([line]) =>
+          String(line).startsWith("[BrowserManager] Browser launched"),
+        );
+        expect(launches.length).toBe(debug ? 1 : 0);
+        expect(stdout).not.toHaveBeenCalled();
+      } finally {
+        stdout.mockRestore();
+        stderr.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    },
+  );
 
   it("sequential acquires with pool enabled return the same browser", async () => {
     const first = await acquireBrowser(["--no-sandbox"], poolCfg);
@@ -1836,5 +1893,9 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
 
     expect(result.captureMode).toBe("screenshot");
     expect(launch).toHaveBeenCalledTimes(3);
+    // HF#7111: this browser captures by screenshot, though its args were built for BeginFrame.
+    const fallbackArgs = launch.mock.lastCall?.[0]?.args;
+    expect(fallbackArgs).toContain("--disable-partial-raster");
+    expect(fallbackArgs).not.toContain("--enable-begin-frame-control");
   });
 });

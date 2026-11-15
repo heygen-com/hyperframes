@@ -32,7 +32,7 @@ import { c } from "../ui/colors.js";
 import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js";
 import { readOptionalString } from "../utils/pathArgs.js";
 import { projectCompositionFiles } from "../utils/mountedCompositions.js";
-import { readJsonFlag } from "../utils/jsonFlag.js";
+import { readJsonFileText, readJsonFlag } from "../utils/jsonFlag.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { analyzeMediaTreatment } from "./media-treatment-analysis.js";
@@ -460,6 +460,18 @@ function queryIncludingTemplates(root: Document | Element, selector: string): El
   return [];
 }
 
+function describeMediaInDocument(document: Document): string {
+  const media = queryIncludingTemplates(document, "video, img, canvas");
+  if (media.length === 0) return "The file has no <video>, <img> or <canvas> yet.";
+  const shown = media.slice(0, 5).map((element) => {
+    const tag = element.tagName.toLowerCase();
+    const id = element.getAttribute("id");
+    return id ? `${tag}#${id}` : `${tag}[src="${element.getAttribute("src") ?? ""}"]`;
+  });
+  const more = media.length > shown.length ? ` and ${media.length - shown.length} more` : "";
+  return `Media in the file: ${shown.join(", ")}${more}.`;
+}
+
 type MediaTarget = { element: Element; selectorIndex: number; tag: GradingSourceTag };
 
 function selectMediaElements(
@@ -473,7 +485,9 @@ function selectMediaElements(
   } catch {
     throw new Error(`Invalid selector: ${selector}`);
   }
-  if (matches.length === 0) throw new Error(`Selector did not match: ${selector}`);
+  if (matches.length === 0) {
+    throw new Error(`Selector did not match: ${selector}. ${describeMediaInDocument(document)}`);
+  }
   if (selectorIndex !== undefined && !matches[selectorIndex]) {
     throw new Error(`--selector-index ${selectorIndex} is outside ${matches.length} matches`);
   }
@@ -574,6 +588,7 @@ export function resolveMediaTreatmentSource(
 }
 
 function parseGrading(
+  projectDir: string,
   raw: string | undefined,
   apply: boolean,
   clear: boolean,
@@ -590,7 +605,9 @@ function parseGrading(
     throw new CliUsageError("Use --apply with --grading <json> or --clear");
   }
   if (raw === undefined) throw new CliUsageError("--apply requires --grading <json>");
-  return readJsonFlag("--grading", raw);
+  return readJsonFlag("--grading", raw, {
+    readFile: (path) => readJsonFileText(resolve(projectDir, path)),
+  });
 }
 
 function mutationVerb(action: "apply" | "clear", changed: boolean, dryRun: boolean): string {
@@ -710,7 +727,7 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const result = applyMediaTreatmentToHtml(readFileSync(filePath, "utf8"), {
     selector,
     selectorIndex,
-    grading: parseGrading(readOptionalString(args.grading), apply, clear, dryRun),
+    grading: parseGrading(project.dir, readOptionalString(args.grading), apply, clear, dryRun),
     clear,
   });
   const lintResult = await lintHyperframeHtml(result.html);

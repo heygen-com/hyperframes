@@ -1,11 +1,15 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const DEFAULT_DIRECTORY = join(homedir(), ".hyperframes", "catalog");
 
 function directory() {
-  return process.env.HYPERFRAMES_CATALOG_ARTIFACT_DIR || DEFAULT_DIRECTORY;
+  const cache = process.env.HYPERFRAMES_CACHE_DIR;
+  return (
+    process.env.HYPERFRAMES_CATALOG_ARTIFACT_DIR ||
+    (cache ? join(resolve(cache), "catalog") : DEFAULT_DIRECTORY)
+  );
 }
 
 export async function fetchMediaVectors(registryBaseUrl, options = {}) {

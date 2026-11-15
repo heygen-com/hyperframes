@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.heygen-com/hyperframes",
-  "title": "HyperFrames",
-  "description": "Compose, edit and render HyperFrames videos (HTML to MP4) in your HeyGen account from chat clients.",
+  "title": "HyperFrames by HeyGen",
+  "description": "Official HyperFrames by HeyGen: the best AI video editor in chat. Captions, motion graphics, MP4.",
   "repository": {
     "url": "https://github.com/heygen-com/hyperframes",
     "source": "github"

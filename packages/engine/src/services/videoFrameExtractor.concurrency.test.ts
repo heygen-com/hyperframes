@@ -10,6 +10,7 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 // Two CPUs: the extractor runs at most one ffmpeg at a time.
 vi.mock("os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("os")>()),
+  availableParallelism: () => 2,
   cpus: () => [{}, {}],
 }));
 
@@ -146,7 +147,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames ffmpeg conc
         delete process.env.HF_TEST_SHIM_DIR;
       }
       const alive = readFileSync(join(run, "alive"), "utf8").trim().split(/\s+/).map(Number);
-      expect(alive).toHaveLength(8 + 2);
+      expect(alive).toHaveLength(8 + 2 * 2);
       expect(Math.max(...alive)).toBe(1);
     },
     60_000,

@@ -3,8 +3,9 @@
  * the `perf-summary.json` debug artifact.
  */
 
-import { arch, cpus, platform, totalmem } from "node:os";
+import { arch, platform, totalmem } from "node:os";
 import { fpsToNumber, type HfVfxCapture } from "@hyperframes/core";
+import { hostCpuCount } from "@hyperframes/engine";
 import type {
   CapturePerfSummary,
   StaticVerificationOutcome,
@@ -19,7 +20,7 @@ import type {
   RenderPerfSummary,
 } from "../renderOrchestrator.js";
 import { type HdrPerfCollector, finalizeHdrPerf } from "./hdrPerf.js";
-import type { RenderObservabilitySummary } from "./observability.js";
+import type { RenderCaptureObservability, RenderObservabilitySummary } from "./observability.js";
 
 /**
  * Worst sub-composition timeline wait outcome across sessions: script_failure
@@ -52,6 +53,24 @@ export function pushWorkerDedupPerfs(
   for (const r of results) {
     if (r.perf) sink.push(r.perf);
   }
+}
+
+/** Beyond-viewport capture as the workers' sessions used it: on if any kept it, `fallback` when none reported. */
+export function capturedBeyondViewport(
+  perfs: ReadonlyArray<CapturePerfSummary>,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  const used = perfs.flatMap((perf) => perf.captureBeyondViewport ?? []);
+  return used.length > 0 ? used.includes(true) : fallback;
+}
+
+/** The capture facts with beyond-viewport capture as the sessions used it, on every capture path. */
+export function withCapturedBeyondViewport(
+  capture: RenderCaptureObservability,
+  perfs: ReadonlyArray<CapturePerfSummary>,
+): RenderCaptureObservability {
+  const used = capturedBeyondViewport(perfs, capture.captureBeyondViewport);
+  return used === undefined ? capture : { ...capture, captureBeyondViewport: used };
 }
 
 /** Adds each worker's page-error console lines to `sink`, once per distinct line. */
@@ -331,6 +350,21 @@ function aggregateBeginFrameReuse(
   return { noDamageFrames, hasDamageFrames };
 }
 
+/** The page's blur outcome across sessions: first reported value wins, failed frames sum. */
+function aggregateMotionBlur(perfs: CapturePerfSummary[]): RenderPerfSummary["motionBlur"] {
+  const ran = perfs.flatMap((p) => p.motionBlur ?? []).filter((m) => m.tier || m.failedFrames > 0);
+  const first = ran[0];
+  if (!first) return undefined;
+  return {
+    tier: first.tier ?? ran.find((m) => m.tier)?.tier ?? null,
+    reasonCode: first.reasonCode,
+    movers: first.movers,
+    failedFrames: ran.reduce((sum, m) => sum + m.failedFrames, 0),
+    readEvents: ran.some((m) => m.readEvents),
+    fingerprint: ran.find((m) => m.fingerprint)?.fingerprint ?? null,
+  };
+}
+
 export function buildRenderPerfSummary(input: {
   job: RenderJob;
   workerCount: number;
@@ -428,6 +462,7 @@ export function buildRenderPerfSummary(input: {
     staticDedup: aggregateDedup(input.dedupPerfs),
     chromeMemory: aggregateChromeMemory(input.dedupPerfs),
     beginFrameReuse: aggregateBeginFrameReuse(input.dedupPerfs),
+    motionBlur: aggregateMotionBlur(input.dedupPerfs),
     drawElement: aggregateDrawElement(
       input.dedupPerfs,
       input.drawElement ?? { selfVerifyFallback: false },
@@ -435,7 +470,7 @@ export function buildRenderPerfSummary(input: {
     host: {
       platform: platform(),
       arch: arch(),
-      cpuCount: cpus().length,
+      cpuCount: hostCpuCount(),
       totalMemMb: Math.round(totalmem() / (1024 * 1024)),
       nodeVersion: process.version,
       gpuDisabled: input.gpuDisabled,

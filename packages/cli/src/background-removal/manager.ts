@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { homedir, platform, arch } from "node:os";
+import { platform, arch } from "node:os";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
-export const MODELS_DIR = join(homedir(), ".cache", "hyperframes", "background-removal", "models");
+export const MODELS_DIR = hyperframesCacheDir("background-removal", "models");
 
 export const DEFAULT_MODEL = "u2net_human_seg" as const;
 export type ModelId = typeof DEFAULT_MODEL;

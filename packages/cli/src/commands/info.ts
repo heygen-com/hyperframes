@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 export const examples: Example[] = [
   ["Show project metadata", "hyperframes info"],
   ["Output as JSON", "hyperframes info --json"],
+  ["List the clips the render hears, on the film's clock", "hyperframes info --media --json"],
 ];
 import { join } from "node:path";
 import { parseHtml, CANVAS_DIMENSIONS } from "@hyperframes/core";
@@ -13,6 +14,7 @@ import {
   readCompositionSize,
 } from "@hyperframes/core/runtime/composition-length";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
+import { heardClips } from "../utils/projectMedia.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -61,6 +63,11 @@ export default defineCommand({
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
     json: { type: "boolean", description: "Output as JSON", default: false },
+    media: {
+      type: "boolean",
+      description: "Also list every clip the render hears, scenes included, on the film's clock",
+      default: false,
+    },
   },
   async run({ args }) {
     const project = resolveProject(args.dir);
@@ -90,6 +97,8 @@ export default defineCommand({
       .map(([t, count]) => `${count} ${t}`)
       .join(", ");
 
+    const heard = args.media ? await heardClips(project.dir) : undefined;
+
     if (args.json) {
       console.log(
         JSON.stringify(
@@ -103,6 +112,7 @@ export default defineCommand({
             tracks: tracks.size,
             types: typeCounts,
             size,
+            ...(heard ? { heard } : {}),
           }),
           null,
           2,
@@ -117,5 +127,9 @@ export default defineCommand({
     console.log(label("Elements", `${parsed.elements.length}${typeStr ? ` (${typeStr})` : ""}`));
     console.log(label("Tracks", `${tracks.size}`));
     console.log(label("Size", formatBytes(size)));
+    for (const clip of heard ?? []) {
+      const until = clip.end > 0 ? `${clip.end.toFixed(2)}s` : "its end";
+      console.log(label("Heard", `${clip.src} ${clip.start.toFixed(2)}s to ${until}`));
+    }
   },
 });

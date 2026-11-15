@@ -5,7 +5,7 @@
  * Auto-detects optimal worker count based on CPU/memory.
  */
 
-import { cpus, freemem } from "os";
+import { freemem } from "os";
 import { existsSync, mkdirSync, readdirSync } from "fs";
 import { copyFile, readFile } from "fs/promises";
 import { renameWithRetryAsync } from "@hyperframes/core/rename-retry";
@@ -31,7 +31,12 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { assertSwiftShader } from "../utils/assertSwiftShader.js";
 import { readWebGlVendorInfoFromCanvas } from "../utils/readWebGlVendorInfoFromCanvas.js";
 import { resolveHeadlessShellPath } from "./browserManager.js";
-import { getCgroupCpuLimit, getSystemTotalMb } from "./systemMemory.js";
+import {
+  getCgroupCpuLimit,
+  getSystemTotalMb,
+  hostCpuCount,
+  usableCpuCount,
+} from "./systemMemory.js";
 import {
   CaptureFailure,
   classifyCaptureFailure,
@@ -177,7 +182,7 @@ const ABSOLUTE_MAX_WORKERS = 24;
 // worker's SwiftShader compositor + the shader-blend thread pool, both of
 // which are themselves CPU-heavy.
 function defaultSafeMaxWorkers(): number {
-  return Math.max(6, Math.min(16, Math.floor(cpus().length / 8)));
+  return Math.max(6, Math.min(16, Math.floor(usableCpuCount() / 8)));
 }
 const MIN_FRAMES_PER_WORKER = 30;
 
@@ -324,7 +329,7 @@ export function computeWorkerSizing(
   requested?: number,
   config?: WorkerSizingConfig,
 ): WorkerSizing {
-  const cpuCount = cpus().length;
+  const cpuCount = usableCpuCount();
   // Use total memory instead of free memory — macOS reports misleadingly low
   // freemem() because it aggressively caches files in "inactive" memory that
   // is immediately reclaimable.
@@ -814,8 +819,22 @@ async function psnrForDiskSample(
   workerId: number,
   idx: number,
 ): Promise<number | null> {
+  const skipSample = (err: unknown): null => {
+    console.warn(
+      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
+        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  };
+  // Read apart from the compare: a frame file's ENOENT says nothing about ffmpeg.
+  let frame: Buffer;
   try {
-    return await psnrDb(await readFile(framePath), truth);
+    frame = await readFile(framePath);
+  } catch (err) {
+    return skipSample(err);
+  }
+  try {
+    return await psnrDb(frame, truth);
   } catch (err) {
     if (isFfmpegInfrastructureFailure(err)) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -828,11 +847,7 @@ async function psnrForDiskSample(
         { cause: err },
       );
     }
-    console.warn(
-      `[Parallel] drawElement disk self-verify sample skipped (worker ${workerId}, ` +
-        `frame ${idx}): ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
+    return skipSample(err);
   }
 }
 
@@ -923,7 +938,7 @@ async function executeWorkerTask(
     const launch = createCaptureSession(
       serverUrl,
       task.outputDir,
-      captureOptions,
+      { ...captureOptions, staticDedupFrameRange: { start: task.startFrame, end: task.endFrame } },
       createBeforeCaptureHook(),
       workerConfig,
     );
@@ -1287,7 +1302,7 @@ export function getSystemResources(): {
   recommendedWorkers: number;
 } {
   return {
-    cpuCores: cpus().length,
+    cpuCores: hostCpuCount(),
     totalMemoryMB: getSystemTotalMb(),
     freeMemoryMB: Math.round(freemem() / (1024 * 1024)),
     recommendedWorkers: calculateOptimalWorkers(1000),

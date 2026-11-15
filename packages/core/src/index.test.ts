@@ -12,6 +12,9 @@ describe("@hyperframes/core public API exports", () => {
       expect(core.CANVAS_DIMENSIONS["portrait-4k"]).toEqual({ width: 2160, height: 3840 });
       expect(core.CANVAS_DIMENSIONS.square).toEqual({ width: 1080, height: 1080 });
       expect(core.CANVAS_DIMENSIONS["square-4k"]).toEqual({ width: 2160, height: 2160 });
+      expect(core.CANVAS_DIMENSIONS["landscape-1440p"]).toEqual({ width: 2560, height: 1440 });
+      expect(core.CANVAS_DIMENSIONS["portrait-1440p"]).toEqual({ width: 1440, height: 2560 });
+      expect(core.CANVAS_DIMENSIONS["square-1440p"]).toEqual({ width: 1440, height: 1440 });
     });
 
     it("exports VALID_CANVAS_RESOLUTIONS derived from CANVAS_DIMENSIONS", () => {
@@ -22,6 +25,9 @@ describe("@hyperframes/core public API exports", () => {
         "portrait-4k",
         "square",
         "square-4k",
+        "landscape-1440p",
+        "portrait-1440p",
+        "square-1440p",
         "landscape-720p",
         "portrait-720p",
         "square-720p",
@@ -41,6 +47,12 @@ describe("@hyperframes/core public API exports", () => {
       expect(core.normalizeResolutionFlag("square-4k")).toBe("square-4k");
       expect(core.normalizeResolutionFlag("1080p-square")).toBe("square");
       expect(core.normalizeResolutionFlag("4k-square")).toBe("square-4k");
+      expect(core.normalizeResolutionFlag("1440p")).toBe("landscape-1440p");
+      expect(core.normalizeResolutionFlag("2k")).toBeUndefined();
+      expect(core.normalizeResolutionFlag("QHD")).toBe("landscape-1440p");
+      expect(core.normalizeResolutionFlag("1440p-portrait")).toBe("portrait-1440p");
+      expect(core.normalizeResolutionFlag("1440p-square")).toBe("square-1440p");
+      expect(core.normalizeResolutionFlag("portrait-1440p")).toBe("portrait-1440p");
       expect(core.normalizeResolutionFlag("8k")).toBeUndefined();
       expect(core.normalizeResolutionFlag(undefined)).toBeUndefined();
     });
@@ -51,6 +63,9 @@ describe("@hyperframes/core public API exports", () => {
       expect(core.isAspectAgnosticResolutionAlias("hd")).toBe(true);
       expect(core.isAspectAgnosticResolutionAlias("4k")).toBe(true);
       expect(core.isAspectAgnosticResolutionAlias("uhd")).toBe(true);
+      expect(core.isAspectAgnosticResolutionAlias("1440p")).toBe(true);
+      expect(core.isAspectAgnosticResolutionAlias("2k")).toBe(false);
+      expect(core.isAspectAgnosticResolutionAlias("qhd")).toBe(true);
       // Case-insensitive.
       expect(core.isAspectAgnosticResolutionAlias("1080P")).toBe(true);
       expect(core.isAspectAgnosticResolutionAlias("UHD")).toBe(true);
@@ -59,6 +74,7 @@ describe("@hyperframes/core public API exports", () => {
       expect(core.isAspectAgnosticResolutionAlias("portrait-1080p")).toBe(false);
       expect(core.isAspectAgnosticResolutionAlias("4k-square")).toBe(false);
       expect(core.isAspectAgnosticResolutionAlias("1080p-square")).toBe(false);
+      expect(core.isAspectAgnosticResolutionAlias("1440p-portrait")).toBe(false);
       // Canonical presets → false.
       expect(core.isAspectAgnosticResolutionAlias("landscape")).toBe(false);
       expect(core.isAspectAgnosticResolutionAlias("portrait")).toBe(false);

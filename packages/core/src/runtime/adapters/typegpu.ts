@@ -1,3 +1,4 @@
+import { wallClearInterval, wallSetInterval } from "../wallClock";
 import type { RuntimeDeterministicAdapter } from "../types";
 import {
   dispatchSeekEvent,
@@ -73,18 +74,18 @@ export const TYPEGPU_PRESENT_HEARTBEAT_MS = 250;
 export function createTypegpuAdapter(): RuntimeDeterministicAdapter {
   let forcedTime: number | null = null;
   let lastForcedTime = 0;
-  let presentHeartbeat: number | null = null;
+  let presentHeartbeat: ReturnType<typeof wallSetInterval> | null = null;
 
   const stopPresentHeartbeat = () => {
     if (presentHeartbeat === null) return;
-    window.clearInterval(presentHeartbeat);
+    wallClearInterval(presentHeartbeat);
     presentHeartbeat = null;
   };
 
   const startPresentHeartbeat = () => {
     if (presentHeartbeat !== null) return;
     if (!document.querySelector("[data-composition-id][data-requires-webgpu]")) return;
-    presentHeartbeat = window.setInterval(() => {
+    presentHeartbeat = wallSetInterval(() => {
       if (forcedTime === null) return;
       if (isSeekCompletionBarrierActive()) return;
       window.__hfTypegpuTime = forcedTime;

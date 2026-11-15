@@ -1,4 +1,5 @@
 import { postRuntimeMessage } from "./bridge";
+import { unproxiedSrc } from "./proxySrc";
 import { isAudioElement, isSourceElement } from "./domRealm";
 import { isRenderMode } from "./mediaProxy";
 import { RUNTIME_MEDIA_LOAD_FAILED, type MediaLoadStage } from "./protocol";
@@ -30,7 +31,7 @@ export function reportMediaLoadFailure(
   if (stages.has(stage)) return;
   stages.add(stage);
   reported.set(el, stages);
-  const asset = el.getAttribute("src") ?? "";
+  const asset = unproxiedSrc(el) ?? "";
   const details: Record<string, RuntimeJson> = {
     asset,
     elementId: el.id || null,

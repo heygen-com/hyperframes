@@ -62,7 +62,7 @@ export const GC_MARKER = ".hf-last-gc";
  * Current schema version. Bump it whenever extraction writes different frames for the same key,
  * or warm entries keep serving the old frames across a deploy. Each bump's commit says why.
  */
-export const SCHEMA_PREFIX = "hfcache-v8-";
+export const SCHEMA_PREFIX = "hfcache-v10-";
 
 /** Truncated hex chars of SHA-256 used for the entry directory name. */
 const KEY_HEX_CHARS = 16;

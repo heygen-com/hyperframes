@@ -59,15 +59,16 @@ the skill's bundled script, which calls the HeyGen v3 REST API directly and need
 no CLI provider plumbing:
 
 The script resolves a HeyGen credential the same way the CLI does — first source
-wins: a host-injected OAuth `$HEYGEN_ACCESS_TOKEN` → `$HEYGEN_API_KEY` →
-`$HYPERFRAMES_API_KEY` → a project `.env` (auto-loaded,
-walks up ≤5 dirs) → `~/.hyperframes/credentials` (isolated from heygen-cli;
+wins: a host-injected OAuth `$HEYGEN_ACCESS_TOKEN` → an unexpired login in
+`~/.hyperframes/credentials` → `$HEYGEN_API_KEY` → `$HYPERFRAMES_API_KEY` → a
+project `.env` (auto-loaded, walks up ≤5 dirs) → an API key saved in
+`~/.hyperframes/credentials` (isolated from heygen-cli;
 `$HYPERFRAMES_CONFIG_DIR` overrides the root; `HYPERFRAMES_ENV=dev` uses `dev/`). An OAuth login is sent as
 `Authorization: Bearer`; an API key as `X-Api-Key`; only OAuth includes
 `X-HeyGen-Source: cli`. The server decides HyperFrames eligibility and charges;
-explicit API keys use API billing. An expired or foreign OAuth session stops
-rather than selecting a saved API key, with a hint to run
-`npx hyperframes auth refresh`.
+explicit API keys use API billing. An expired or foreign OAuth session gives way
+to an env key; without one it stops rather than selecting a saved API key, with
+a hint to run `npx hyperframes auth refresh`.
 
 ```bash
 # Only needed if you haven't run `npx hyperframes auth login`:

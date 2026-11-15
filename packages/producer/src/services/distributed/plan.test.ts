@@ -62,6 +62,7 @@ import {
 import { buildSyntheticRenderJob } from "./shared.js";
 import { assemble } from "./assemble.js";
 import { constrainAacTruePeak } from "../render/audioPadTrim.js";
+import { limitDeliveryPeaks } from "../render/audioDeliveryLimit.js";
 
 function ffmpegOrThrow(args: string[]): void {
   const ffmpeg = spawnSync(getFfmpegBinary(), ["-nostdin", "-loglevel", "error", ...args]);
@@ -191,15 +192,18 @@ describe("distributed synthetic render job", () => {
     expect(job.config.variables).toEqual(variables);
   });
 
-  it("turns the page's capture motion blur off for the plan probe (R19)", () => {
-    const job = buildSyntheticRenderJob({
-      fps: { num: 30, den: 1 },
-      format: "mp4",
-      quality: "high",
-      hdrMode: "force-sdr",
-      entryFile: "index.html",
-    });
-    expect(job.config.pageMotionBlur).toBe("off");
+  it("leaves the page's own motion blur in charge for the plan probe, unless the config says off", () => {
+    const job = (pageMotionBlur?: "off") =>
+      buildSyntheticRenderJob({
+        fps: { num: 30, den: 1 },
+        format: "mp4",
+        quality: "high",
+        hdrMode: "force-sdr",
+        entryFile: "index.html",
+        pageMotionBlur,
+      });
+    expect(job().config.pageMotionBlur).toBeUndefined();
+    expect(job("off").config.pageMotionBlur).toBe("off");
   });
 
   it("keeps the production software-GPU launch on BeginFrame control", () => {
@@ -390,6 +394,34 @@ describe("resolveChunkPlan", () => {
     expect(result.effectiveChunkSize).toBe(240);
   });
 
+  describe("sized in one plan from a frame budget and a fan-out floor", () => {
+    // The workflow's budget is 1600 frames a chunk and its fan-out 4 chunks, up to a tier cap of 16.
+    const size = (totalFrames: number, cap = 16) =>
+      resolveChunkPlan(totalFrames, undefined, cap, 1600, 4).chunkCount;
+
+    it("adds chunks to a long film so each stays inside the budget", () => {
+      expect(size(10929)).toBe(7);
+      expect(
+        resolveChunkPlan(10929, undefined, 16, 1600, 4).effectiveChunkSize,
+      ).toBeLessThanOrEqual(1600);
+    });
+
+    it("keeps a short film at the fan-out instead of collapsing it to the budget", () => {
+      expect(size(1800)).toBe(4);
+      expect(size(6400)).toBe(4);
+    });
+
+    it("rejects a non-positive or non-integer floor", () => {
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 0)).toThrow(/minParallelChunks/);
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 2.5)).toThrow(/minParallelChunks/);
+    });
+
+    it("never goes past the cap, however long the film", () => {
+      expect(size(54000, 9)).toBe(9);
+      expect(size(1800, 2)).toBe(2);
+    });
+  });
+
   it("rejects non-positive totalFrames", () => {
     expect(() => resolveChunkPlan(0, 240, 16)).toThrow();
     expect(() => resolveChunkPlan(-1, 240, 16)).toThrow();
@@ -553,25 +585,27 @@ describe("resolveChunkPlan", () => {
 });
 
 describe("plan() and page motion blur (R19)", () => {
-  const planCaptureMode = async (html: string, name: string) => {
+  const planCaptureMode = async (html: string, name: string, pageMotionBlur?: "off") => {
     const dir = join(runRoot, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "index.html"), html, "utf-8");
     const planDir = join(runRoot, `${name}-plan`);
-    await plan(dir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
+    await plan(dir, { fps: 30, width: 320, height: 240, format: "mp4", pageMotionBlur }, planDir);
     const meta = JSON.parse(readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"));
     return { captureMode: meta.captureMode ?? null, forceScreenshot: meta.forceScreenshot ?? null };
   };
 
-  it("does not route a data-motion-blur composition through screenshot capture", async () => {
+  it("routes a data-motion-blur composition through screenshot capture unless the config says off", async () => {
     const blur = FIXTURE_HTML.replace(
       'data-composition-id="root"',
       'data-composition-id="root" data-motion-blur="on"',
     );
     const plain = await planCaptureMode(FIXTURE_HTML, "blur-plain");
     const blurred = await planCaptureMode(blur, "blur-on");
-    expect(blurred).toEqual(plain);
-  }, 30_000);
+    expect(blurred).toEqual({ captureMode: "screenshot", forceScreenshot: true });
+    expect(plain).toEqual({ captureMode: "beginframe", forceScreenshot: false });
+    expect(await planCaptureMode(blur, "blur-config-off", "off")).toEqual(plain);
+  }, 60_000);
 });
 
 describe("buildChunkSlices", () => {
@@ -848,6 +882,7 @@ describe("plan() — golden planDir + planHash determinism", () => {
       expect(a.chunkCount).toBe(b.chunkCount);
       expect(a.totalFrames).toBe(b.totalFrames);
       expect(Object.keys(b)).toEqual([
+        "reference_background",
         "planDir",
         "planProtocol",
         "planHash",
@@ -1071,7 +1106,7 @@ describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
         ["-nostdin", "-i", join(stitched, "audio.m4a"), "-af", "volumedetect", "-f", "null", "-"],
         { encoding: "utf-8" },
       );
-      expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThan(-1);
+      expect(Number(/max_volume: (-?[\d.]+) dB/.exec(volume.stderr)?.[1])).toBeLessThanOrEqual(-1);
 
       const withCfr = join(runRoot, "plan-stitch-cfr");
       await buildLocalExecutionPlan(project, { ...config, cfr: true }, withCfr, {
@@ -1252,17 +1287,29 @@ describe.skipIf(spawnSync(getFfmpegBinary(), ["-version"]).status !== 0)(
       expect(planned.chunkCount).toBe(1);
       const delivered = join(runRoot, "loudness-delivered.mp4");
       await assemble(planDir, [video], join(planDir, "audio.m4a"), delivered);
+      // Built as delivery is: the track read as 16-bit (the mixer does; noise encodes 0.4 dB hotter for it), float PCM
+      // fitted to the frames, then guardDeliveryPeaks: the peak limit, the whole-mix cut.
+      const referenceSource = join(runRoot, "loudness-reference-source.wav");
+      ffmpegOrThrow([
+        ...[
+          "-i",
+          join(project, "tone.wav"),
+          "-af",
+          "aformat=sample_fmts=s16,apad,atrim=0:3.033333",
+        ],
+        ...["-c:a", "pcm_f32le", "-y", referenceSource],
+      ]);
       const reference = join(runRoot, "loudness-reference.m4a");
-      const encoded = await encodeAac(join(project, "tone.wav"), reference, 91 / 30, {
-        timeout: 30_000,
-        filter: "apad,atrim=0:3.033333",
-      });
+      const encoded = await encodeAac(referenceSource, reference, 91 / 30, { timeout: 30_000 });
       expect(encoded.success, encoded.stderr).toBe(true);
-      const held = await constrainAacTruePeak({
+      const delivery = {
         audioPath: reference,
-        sourcePath: join(project, "tone.wav"),
+        sourcePath: referenceSource,
         targetDurationSeconds: 91 / 30,
-      });
+      };
+      const limited = await limitDeliveryPeaks({ ...delivery, timeoutMs: 60_000 });
+      expect(limited.success, limited.error).toBe(true);
+      const held = await constrainAacTruePeak(delivery);
       expect(held.success, held.error).toBe(true);
       const measure = (path: string) => {
         const result = spawnSync(
@@ -1622,4 +1669,74 @@ describe("plan() — webm format (distributed VP9)", () => {
     expect(caught).toBeInstanceOf(Error);
     expect((caught as Error).message).toMatch(/codec.*only valid for format="mp4"/);
   });
+});
+
+describe("plan() — template sub-composition entry", () => {
+  const TIMEOUT_MS = 30_000;
+  const INDEX_HTML = `<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div data-composition-id="root" data-width="320" data-height="240" data-duration="5">
+    <div id="sting" data-composition-id="sting" data-composition-src="compositions/sting.html" data-start="0" data-duration="3"></div>
+  </div>
+</body>
+</html>`;
+  const STING_TEMPLATE = `<template id="sting-template">
+  <div data-composition-id="sting" data-width="320" data-height="240" data-duration="3">
+    <p>sting</p>
+  </div>
+</template>`;
+
+  function writeMountedProject(name: string): string {
+    const dir = join(runRoot, name);
+    mkdirSync(join(dir, "compositions"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), INDEX_HTML, "utf-8");
+    writeFileSync(join(dir, "compositions", "sting.html"), STING_TEMPLATE, "utf-8");
+    return dir;
+  }
+
+  it(
+    "plans a template-wrapped sub-composition rendered alone with its own duration",
+    async () => {
+      const dir = writeMountedProject("template-entry-project");
+      const planDir = join(runRoot, "template-entry-plan");
+      mkdirSync(planDir, { recursive: true });
+      const result = await plan(
+        dir,
+        { fps: 30, width: 320, height: 240, format: "mp4", entryFile: "compositions/sting.html" },
+        planDir,
+      );
+      expect(result.totalFrames).toBe(90);
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
+    "rejects a template entry that index.html does not mount",
+    async () => {
+      const dir = writeMountedProject("template-entry-unmounted");
+      writeFileSync(join(dir, "compositions", "orphan.html"), STING_TEMPLATE, "utf-8");
+      const planDir = join(runRoot, "template-entry-unmounted-plan");
+      mkdirSync(planDir, { recursive: true });
+      let caught: unknown;
+      try {
+        await plan(
+          dir,
+          {
+            fps: 30,
+            width: 320,
+            height: 240,
+            format: "mp4",
+            entryFile: "compositions/orphan.html",
+          },
+          planDir,
+        );
+      } catch (err) {
+        caught = err;
+      }
+      expect((caught as Error).message).toMatch(/not mounted from index\.html/);
+    },
+    TIMEOUT_MS,
+  );
 });

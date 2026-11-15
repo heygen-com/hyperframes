@@ -7,10 +7,16 @@ inputs:
   engine:
     description: Build @hyperframes/engine.
     default: "false"
+  headless-shell:
+    description: Install chrome-headless-shell (path in the headless-shell-path output), the only build with BeginFrame.
+    default: "false"
 outputs:
   chrome-path:
     description: Path of the installed Chrome, when `chrome` is true.
     value: ${{ steps.chrome.outputs.chrome-path }}
+  headless-shell-path:
+    description: Path of chrome-headless-shell, when `headless-shell` is true.
+    value: ${{ steps.shell.outputs.path }}
 runs:
   using: composite
   steps:
@@ -27,6 +33,13 @@ runs:
         chrome-version: stable
     - shell: bash
       run: bash scripts/ci/install-workspace-dependencies.sh
+    - id: shell
+      if: inputs.headless-shell == 'true'
+      shell: bash
+      run: |
+        dir="$RUNNER_TEMP/headless-shell"
+        bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@stable --path "$dir"
+        echo "path=$(find "$dir" -type f -name chrome-headless-shell | head -n 1)" >> "$GITHUB_OUTPUT"
     - shell: bash
       run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
     - shell: bash

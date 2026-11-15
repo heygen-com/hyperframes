@@ -1,9 +1,17 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
 import { readAttr, extractScriptTextsAndSrcs } from "../utils";
 
+function inheritsLibrariesFromHost({ options, rawSource }: LintContext): boolean {
+  return (
+    options.isSubComposition === true || rawSource.trimStart().toLowerCase().startsWith("<template")
+  );
+}
+
 export const adapterRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   // missing_lottie_script
-  ({ tags, scripts }) => {
+  (ctx) => {
+    const { tags, scripts } = ctx;
+    if (inheritsLibrariesFromHost(ctx)) return [];
     const { texts, srcs } = extractScriptTextsAndSrcs(scripts);
 
     const hasLottieAttr = tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null);
@@ -26,7 +34,9 @@ export const adapterRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> 
   },
 
   // missing_three_script
-  ({ scripts }) => {
+  (ctx) => {
+    const { scripts } = ctx;
+    if (inheritsLibrariesFromHost(ctx)) return [];
     const { texts, srcs } = extractScriptTextsAndSrcs(scripts);
 
     const usesThree = texts.some((t) => /\bTHREE\./.test(t));

@@ -8,12 +8,14 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { fontShorthandFamilies } from "@hyperframes/parsers/composition";
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
+import { extractSfntFace } from "./sfntNames.js";
 import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
-import { parseHTML } from "linkedom";
+import { forgetPage, readPage, takePage } from "./pageTree.js";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
@@ -25,6 +27,7 @@ import {
   type FontDiagnostics,
   type FontDiagPath,
 } from "./fontDiagnostics.js";
+import { hyperframesCacheDir } from "../cacheDir.js";
 
 export type { FontDiagnostics };
 
@@ -211,7 +214,7 @@ export function normalizeSystemFontPrimaryFamilies(
   html: string,
   deterministicPrimary = "Inter",
 ): string {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const customProperties = collectFontFamilyCustomProperties(html);
   const replacePrimary: PrimaryReplacer = (value) =>
     systemPrimaryReplacement(value, deterministicPrimary, customProperties);
@@ -241,7 +244,9 @@ export function normalizeSystemFontPrimaryFamilies(
     changed = true;
   }
 
-  return changed ? document.toString() : html;
+  if (!changed) return html;
+  forgetPage();
+  return document.toString();
 }
 
 /** Surfaces font-family is declared on in served HTML. */
@@ -261,20 +266,6 @@ function collectCssCustomProperties(css: string, customProperties: Map<string, s
     if (!decl.prop.startsWith("--")) return;
     customProperties.set(decl.prop, decl.value);
   });
-}
-
-const FONT_SIZE_KEYWORD =
-  /^(?:xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger)$/i;
-const FONT_SIZE_TOKEN = /^(?:\d*\.?\d+[a-z%]+|(?:calc|min|max|clamp|var)\(.*\))(?:\/\S+)?$/i;
-
-function fontShorthandFamilies(value: string): string {
-  for (const token of value.matchAll(/(?:[^\s(]|\([^)]*\))+/g)) {
-    const size = token[0].split("/")[0] ?? "";
-    if (FONT_SIZE_KEYWORD.test(size) || FONT_SIZE_TOKEN.test(token[0])) {
-      return value.slice(token.index + token[0].length).trim();
-    }
-  }
-  return "";
 }
 
 function* iterateCssRootFontFamilyDeclarations(
@@ -318,7 +309,7 @@ function* iterateInlineStyleFontFamilyDeclarations(
  * `font-family: var(--font)`.
  */
 export function collectFontFamilyCustomProperties(html: string): Map<string, string> {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const customProperties = new Map<string, string>();
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
@@ -413,7 +404,7 @@ export function resolveFontFamilyDeclarationFamilies(
 export function* iterateFontFamilyDeclarations(
   html: string,
 ): Generator<FontFamilyDeclaration, void, void> {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
     yield* iterateCssFontFamilyDeclarations(styleEl.textContent ?? "");
@@ -699,6 +690,22 @@ function partitionWeightRuns(
   return runs;
 }
 
+function bundledWeightsWithin(
+  weight: string,
+  style: string,
+  covered: ReadonlySet<string>,
+): string[] {
+  const range = /^(\d+)\s+(\d+)$/.exec(weight.trim());
+  if (!range) return [];
+  const [low, high] = [Number(range[1]), Number(range[2])];
+  return [...covered].flatMap((key) => {
+    const [value, coveredStyle] = key.split(":");
+    return coveredStyle === style && Number(value) >= low && Number(value) <= high
+      ? [value ?? ""]
+      : [];
+  });
+}
+
 // Path 1: pre-bundled fonts via FONT_ALIASES — emit embedded faces,
 // then fetch from Google Fonts to fill missing weights and character subsets.
 async function bundledFamilyFaceRules(
@@ -755,6 +762,11 @@ async function bundledFamilyFaceRules(
     const last = run[run.length - 1];
     if (!first || !last) continue;
     const weight = run.length > 1 ? `${first.weight} ${last.weight}` : first.weight;
+    // The exact-weight bundled face (Latin only) wins over a range face: emit the range at each bundled weight too.
+    for (const exact of bundledWeightsWithin(weight, first.style, coveredWeights))
+      rules.push(
+        buildFontFaceRule(emitFamily, first.dataUri, exact, first.style, first.unicodeRange),
+      );
     rules.push(
       buildFontFaceRule(emitFamily, first.dataUri, weight, first.style, first.unicodeRange),
     );
@@ -791,15 +803,17 @@ async function systemFamilyFaceRules(
   lookupFamily: string,
   emitFamily: string,
   log: FontLogger,
+  byInnerName: boolean,
 ): Promise<string[] | null> {
-  const variants = locateSystemFontVariants(lookupFamily);
+  const variants = locateSystemFontVariants(lookupFamily, { byInnerName });
   if (variants.length === 0) return null;
   const rules: string[] = [];
   let totalBytes = 0;
   for (const variant of variants) {
-    const fontBuffer = readFileSync(variant.path);
+    const single = variant.face === undefined ? null : extractSfntFace(variant.path, variant.face);
+    const fontBuffer = single?.bytes ?? readFileSync(variant.path);
     totalBytes += fontBuffer.length;
-    const dataUri = await fontToDataUri(fontBuffer, variant.format);
+    const dataUri = await fontToDataUri(fontBuffer, single?.format ?? variant.format);
     rules.push(buildFontFaceRule(emitFamily, dataUri, variant.weight, variant.style));
   }
   if (totalBytes > SYSTEM_FONT_SIZE_LIMIT) {
@@ -838,7 +852,12 @@ async function resolveFamilyFaceRules(
   return (
     (await googleFamilyFaceRules(lookupFamily, emitFamily, optional, options, fontText)) ??
     (options.allowSystemFontCapture && !pageNamedThisFile(lookupFamily, options)
-      ? await systemFamilyFaceRules(lookupFamily, emitFamily, options.log)
+      ? await systemFamilyFaceRules(
+          lookupFamily,
+          emitFamily,
+          options.log,
+          options.systemFontsByInnerName,
+        )
       : null)
   );
 }
@@ -949,7 +968,7 @@ function declareLinkedFontFamilies(
 }
 
 function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const declared = new Map<string, DeclaredFontFamily>();
   const register: DeclaredFontRegister = (family, fontFaceRule) => {
     const key = normalizeFamilyName(family);
@@ -992,6 +1011,27 @@ function findDeclaredFamilyAlias(
     match = entry;
   }
   return match;
+}
+
+// Design exports name a family by class, `font-<Family>-<weight>`; serve all <Family> faces under that name.
+const WEIGHTED_CLASS_FAMILY = /^font-(.+)-[1-9]00$/i;
+
+async function resolveWeightedClassFamily(
+  authoredFamily: string,
+  optional: boolean,
+  options: InternalFontFetchOptions,
+  fontText?: string,
+): Promise<string[] | null> {
+  const family = WEIGHTED_CLASS_FAMILY.exec(authoredFamily)?.[1];
+  if (!family) return null;
+  return resolveFamilyFaceRules(
+    normalizeFamilyName(family),
+    family,
+    authoredFamily,
+    optional,
+    options,
+    fontText,
+  );
 }
 
 // Emits under the authored name instead of rewriting usages, as FONT_ALIASES does,
@@ -1069,7 +1109,8 @@ async function buildFontFaceCss(
         optional,
         options,
         fontText,
-      ));
+      )) ??
+      (await resolveWeightedClassFamily(originalCaseFamily, optional, options, fontText));
     options.diag.endFamily(Boolean(familyRules));
     if (familyRules) {
       rules.push(...familyRules);
@@ -1123,7 +1164,7 @@ function resolveFontCacheRoot(): string {
     lambdaFontCacheRoot ??= mkdtempSync(join(tmpdir(), "hyperframes-fonts-"));
     return lambdaFontCacheRoot;
   }
-  return join(homedir(), ".cache", "hyperframes", "fonts");
+  return hyperframesCacheDir("fonts");
 }
 
 // Chrome UA triggers woff2 responses from Google Fonts CSS API
@@ -1263,6 +1304,7 @@ interface InternalFontFetchOptions {
   failClosedFontFetch: boolean;
   fetchImpl: typeof fetch;
   allowSystemFontCapture: boolean;
+  systemFontsByInnerName: boolean;
   abortSignal?: AbortSignal;
   retryPolicy: FontFetchRetryPolicy;
   retryDeadlineMs: number;
@@ -1826,6 +1868,7 @@ export interface InjectDeterministicFontFacesOptions {
    * planning; tests may lower delays and timeouts without replacing timers.
    */
   fontFetchRetryPolicy?: Partial<FontFetchRetryPolicy>;
+  projectFontFamilies?: readonly string[];
   /**
    * When `true` (default for local renders), fonts that aren't resolved by
    * the bundled alias map or Google Fonts are located on the local filesystem,
@@ -1834,6 +1877,7 @@ export interface InjectDeterministicFontFacesOptions {
    * to contain the same fonts as the authoring machine.
    */
   allowSystemFontCapture?: boolean;
+  systemFontsByInnerName?: boolean;
 }
 
 // Keep the complete CSS request under the broadly supported ~2 KB URL limit.
@@ -1948,7 +1992,7 @@ function hasTextTransformKeyword(html: string, keyword: RegExp): boolean {
 }
 
 function extractGoogleFontsText(html: string): string | undefined {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const decodedBodyText = document.body?.textContent ?? "";
   const locales = collectLangAttributes(document);
 
@@ -2022,6 +2066,7 @@ export async function injectDeterministicFontFaces(
     failClosedFontFetch,
     fetchImpl,
     allowSystemFontCapture,
+    systemFontsByInnerName: options.systemFontsByInnerName === true,
     abortSignal: options.abortSignal,
     retryPolicy,
     retryDeadlineMs: Date.now() + retryPolicy.maxElapsedMs,
@@ -2030,6 +2075,8 @@ export async function injectDeterministicFontFaces(
   };
 
   const existingFaces = extractExistingFontFaces(html);
+  for (const family of options.projectFontFamilies ?? [])
+    existingFaces.add(normalizeFamilyName(family));
   const requestedFamilies = extractRequestedFontFamilies(html);
   const pendingFamilies = new Map<string, ResolvedFamily>();
 
@@ -2074,7 +2121,7 @@ export async function injectDeterministicFontFaces(
     return html;
   }
 
-  const { document } = parseHTML(html);
+  const document = takePage(html);
   const head = document.querySelector("head");
   if (!head) {
     return html;

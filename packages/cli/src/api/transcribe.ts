@@ -423,7 +423,6 @@ async function transcribeOnHeygen(
   try {
     const result = await transcribeWithHeygen(inputPath, join(dir, TRANSCRIPT_FILE), {
       diarize: options.speakers,
-      projectDir: dir,
       onStatus: options.onStatus,
     });
     return finishTranscript(result, "heygen", dir, sidecar);

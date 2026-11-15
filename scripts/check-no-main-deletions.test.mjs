@@ -68,3 +68,21 @@ test("the Chrome beat analyzer removal is explicitly scoped", () => {
     assert.match(ALLOWED_DELETIONS.get(path) ?? "", /TypeScript beat tracker/);
   assert.equal(ALLOWED_DELETIONS.has("packages/core/src/beats/beatDetection.ts"), false);
 });
+
+test("the Plan v1 cleanup allowlist is limited to samples and the rollout harness", () => {
+  for (const path of [
+    "examples/aws-lambda/sample-events/plan-v1.json",
+    "examples/gcp-cloud-run/sample-events/plan-v1.json",
+  ])
+    assert.match(ALLOWED_DELETIONS.get(path) ?? "", /no longer a supported cloud transport/);
+
+  assert.match(
+    ALLOWED_DELETIONS.get("packages/producer/src/plan-parity-harness.ts") ?? "",
+    /completed Plan v1-to-v2 rollout harness/,
+  );
+  assert.match(
+    ALLOWED_DELETIONS.get("examples/aws-lambda/scripts/_semantic-compare.sh") ?? "",
+    /completed Plan v1-to-v2 rollout harness/,
+  );
+  assert.equal(ALLOWED_DELETIONS.has("packages/producer/src/services/distributed/plan.ts"), false);
+});

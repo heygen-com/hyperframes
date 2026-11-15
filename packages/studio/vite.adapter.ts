@@ -24,6 +24,7 @@ import {
   openProjectHistory,
   historyCache,
   renderArtifactPaths,
+  originForListeningAddress,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import type { RegistryItem } from "@hyperframes/core/registry";
@@ -307,6 +308,11 @@ export function createViteAdapter(
     },
 
     runtimeUrl: "/api/runtime.js",
+    serverOrigin: () =>
+      originForListeningAddress(
+        server.httpServer?.address(),
+        server.config.server.https ? "https" : "http",
+      ),
 
     rendersDir: () => resolve(dataDir, "../renders"),
 
@@ -354,6 +360,7 @@ export function createViteAdapter(
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
+            allowOutsideProjectAssets: true,
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;

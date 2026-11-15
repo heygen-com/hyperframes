@@ -64,6 +64,7 @@ const capturedOnReorderShadow: { fn: ((targets: string[]) => void) | undefined }
 const domEditSelectionRef: { current: DomEditSelection | null } = { current: null };
 const domEditGroupSelectionsRef: { current: DomEditSelection[] } = { current: [] };
 const groupSelectionSpy = vi.fn();
+const ungroupSelectionSpy = vi.fn();
 const gsapCommitMutation = Object.assign(vi.fn(), { batch: vi.fn() });
 const neverParsed = new Promise<{ animations: GsapAnimation[] }>(() => undefined);
 const parsedFile = { current: neverParsed };
@@ -211,7 +212,7 @@ vi.mock("./useGsapScriptCommits", () => ({
 vi.mock("./useGroupCommits", () => ({
   useGroupCommits: () => ({
     groupSelection: (...args: unknown[]) => groupSelectionSpy(...args),
-    ungroupSelection: vi.fn(),
+    ungroupSelection: (...args: unknown[]) => ungroupSelectionSpy(...args),
   }),
 }));
 vi.mock("./useDomEditWiring", () => ({
@@ -500,6 +501,27 @@ describe("handleGroupSelection with audio in the selection", () => {
   it("still groups a selection of layout elements", async () => {
     await group([sel("div"), sel("span")]);
     expect(groupSelectionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("ungroups an opaque frame's group, read off its description, not the tag-only stand-in", async () => {
+    const { useDomEditSession } = await import("./useDomEditSession");
+    const wrapper = {
+      ...sel("div"),
+      handle: "0123456789abcdef:1",
+      dataAttributes: { "hf-group": "g" },
+    };
+    domEditSelectionRef.current = wrapper as DomEditSelection;
+    const captured: { fn?: () => void } = {};
+    function Probe() {
+      captured.fn = useDomEditSession(createSessionParams()).handleUngroupSelection;
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    act(() => root.render(<Probe />));
+    act(() => captured.fn?.());
+    act(() => root.unmount());
+    domEditSelectionRef.current = null;
+    expect(ungroupSelectionSpy).toHaveBeenCalledWith(wrapper);
   });
 });
 

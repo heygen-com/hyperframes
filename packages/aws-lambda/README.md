@@ -37,7 +37,7 @@ smoke flow; the SDK + CDK are the supported public surface for adopters.
                               │ pure functions over local paths
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ S3 bucket — v1 plan tar or v2 manifest/blobs + chunks + output  │
+│ S3 bucket — Plan v2 manifest/blobs + chunks + output            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -45,11 +45,11 @@ The handler downloads inputs from S3 into `/tmp`, calls the OSS primitive,
 uploads outputs back to S3, and returns a small JSON result that fits
 inside Step Functions' history budget (under 200 bytes per chunk).
 
-### Plan transport selection
+### Plan transport
 
-Plan v2 is the default for new renders. When `planProtocol` is omitted,
-`renderToLambda` sends an explicit `PlanProtocol: "v2"` so the SDK and the
-deployed state machine agree:
+Plan v2 is the only supported distributed plan transport.
+`renderToLambda` sends `PlanProtocol: "v2"` without requiring a protocol
+option:
 
 ```ts
 await renderToLambda({
@@ -63,8 +63,7 @@ only manifest-selected chunk artifacts, while the assembler fetches its
 own metadata and audio subset. Blobs are immutable SHA-256-addressed
 objects, verified on upload and download, and the manifest is published
 last. Unknown protocols and digest mismatches are terminal Step Functions
-errors. The monolithic v1 transport remains available as deprecated
-compatibility by passing `planProtocol: "v1"` explicitly.
+errors.
 
 #### Upgrade order
 
@@ -78,7 +77,7 @@ infrastructure upgrade. Before upgrading an application that calls
 3. Resume renders, then upgrade the application/SDK dependency.
 
 A site is a `sites/<id>/files.json` file list that an older stack cannot
-read, under either plan protocol. Before it uploads anything,
+read. Before it uploads anything,
 `renderToLambda` reads the state machine definition
 (`states:DescribeStateMachine`) and fails with `STACK_TOO_OLD` when the
 stack predates that format. If infrastructure cannot be redeployed first,

@@ -4,11 +4,12 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { removeScratch } from "@hyperframes/core/remove-scratch";
 import { dirname, join } from "node:path";
 import { getFfmpegBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const SAMPLE_RATE = 48_000;
 const FRAME_SAMPLES = 1024;
@@ -107,7 +108,7 @@ export async function encodeAac(
   if (!(await supportsSettsDuration())) {
     return encodeInOnePass(input, outputPath, { signal, timeout, filter });
   }
-  const dir = mkdtempSync(join(dirname(outputPath), ".aac-segments-"));
+  const dir = createStagingDir(dirname(outputPath), ".aac-segments-");
   try {
     const segments = planSegments(totalDuration, count).map((segment, k) => ({
       ...segment,

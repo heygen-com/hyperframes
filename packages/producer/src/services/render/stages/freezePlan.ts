@@ -14,7 +14,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join, relative, resolve } from "node:path";
 
 import type { Fps } from "@hyperframes/core";
-import type { ProresProfile } from "@hyperframes/engine";
+import {
+  REFERENCE_BACKGROUND_FIELD,
+  referenceBackgroundResult,
+  type ReferenceBackgroundResult,
+  type ProresProfile,
+} from "@hyperframes/engine";
 import type { RenderRequestOptions } from "../../../renderRequest.js";
 import { PLAN_PROTOCOL_V1 } from "../../distributed/planProtocol.js";
 import {
@@ -105,7 +110,7 @@ export interface LockedRenderConfig extends Pick<RenderRequestOptions, "pageMoti
   separateAudio?: true;
 }
 
-export interface CompositionMetadataJson {
+export interface CompositionMetadataJson extends Partial<ReferenceBackgroundResult> {
   durationSeconds: number;
   width: number;
   height: number;
@@ -414,6 +419,7 @@ export async function freezePlan(input: FreezePlanInput): Promise<FreezePlanResu
   });
 
   const planJson = {
+    ...referenceBackgroundResult(composition[REFERENCE_BACKGROUND_FIELD]),
     protocol: PLAN_PROTOCOL_V1,
     planHash,
     producerVersion,

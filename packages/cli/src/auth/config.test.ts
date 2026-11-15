@@ -27,16 +27,24 @@ describe("HyperFrames OAuth configuration", () => {
     expect(apiBaseUrl()).toBe("https://api.heygen.com");
   });
 
-  it("switches every default host together for development", () => {
+  it("keeps the default hosts and client under HYPERFRAMES_ENV=dev", () => {
+    const before = [resolveClientId(), authorizeEndpoint(), tokenEndpoint(), apiBaseUrl()];
     process.env["HYPERFRAMES_ENV"] = "dev";
-    expect(resolveClientId()).toBe("9QoaiwCZov9O0cAkC4OZbR4p");
-    expect(authorizeEndpoint()).toBe("https://api2.dev.heygen.com/v1/oauth/authorize");
-    expect(tokenEndpoint()).toBe("https://api2.dev.heygen.com/v1/oauth/token");
-    expect(revokeEndpoint()).toBe("https://api2.dev.heygen.com/v1/oauth/revoke");
+    expect([resolveClientId(), authorizeEndpoint(), tokenEndpoint(), apiBaseUrl()]).toEqual(before);
+    expect(revokeEndpoint()).toBe("https://api2.heygen.com/v1/oauth/revoke");
     expect(deviceAuthorizationEndpoint()).toBe(
-      "https://api2.dev.heygen.com/v1/oauth/device_authorization",
+      "https://api2.heygen.com/v1/oauth/device_authorization",
     );
-    expect(apiBaseUrl()).toBe("https://api.dev.heygen.com");
+  });
+
+  it("takes the client and hosts from the environment", () => {
+    process.env["HYPERFRAMES_ENV"] = "dev";
+    process.env["HYPERFRAMES_OAUTH_CLIENT_ID"] = "fake-client";
+    process.env["HYPERFRAMES_OAUTH_TOKEN_URL"] = "https://auth.example.test/token";
+    process.env["HEYGEN_API_URL"] = "https://api.example.test";
+    expect(resolveClientId()).toBe("fake-client");
+    expect(tokenEndpoint()).toBe("https://auth.example.test/token");
+    expect(apiBaseUrl()).toBe("https://api.example.test");
   });
 
   it("rejects a session after either its client or token server changes", () => {

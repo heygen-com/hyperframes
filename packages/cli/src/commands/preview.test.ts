@@ -1,4 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +23,7 @@ import {
   prebuildPreview,
   handlePreviewKillAll,
   handlePreviewList,
+  localStudioDir,
   previewHostAppError,
   previewLaunchMode,
   previewLaunchModeError,
@@ -407,6 +416,59 @@ describe("previewLaunchMode", () => {
   });
 });
 
+/** A project folder that carries its own @hyperframes/studio with a Vite config and binary. */
+function projectWithOwnStudio(): { project: string; studio: string; marker: string } {
+  const root = mkdtempSync(join(tmpdir(), "hf-preview-own-studio-"));
+  tempDirs.push(root);
+  const project = join(root, "project");
+  const studio = join(project, "node_modules", "@hyperframes", "studio");
+  const bin = join(project, "node_modules", ".bin");
+  const marker = join(root, "ran");
+  mkdirSync(studio, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(project, "package.json"), '{"name":"project"}');
+  writeFileSync(join(studio, "package.json"), '{"name":"@hyperframes/studio","version":"0.0.0"}');
+  writeFileSync(
+    join(studio, "vite.config.ts"),
+    `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "config");\nexport default {};\n`,
+  );
+  writeFileSync(join(bin, "vite"), `#!/bin/sh\necho bin > ${JSON.stringify(marker)}\n`);
+  chmodSync(join(bin, "vite"), 0o755);
+  return { project, studio: realpathSync(studio), marker };
+}
+
+describe("localStudioDir", () => {
+  const interactive = { background: false, foreground: false, interactive: true, devMode: false };
+
+  it("serves the bundled Studio when the project brings its own", () => {
+    const { project } = projectWithOwnStudio();
+    const dir = localStudioDir(project, {});
+    expect(dir).toBeNull();
+    expect(previewLaunchMode({ ...interactive, localStudio: dir !== null })).toBe("embedded");
+  });
+
+  it("ignores a Studio in a parent folder's node_modules", () => {
+    const { project } = projectWithOwnStudio();
+    const nested = join(project, "nested");
+    mkdirSync(nested);
+    writeFileSync(join(nested, "package.json"), '{"name":"nested"}');
+    expect(localStudioDir(nested, {})).toBeNull();
+  });
+
+  it("uses the project's Studio when the user opts in", () => {
+    const { project, studio } = projectWithOwnStudio();
+    const dir = localStudioDir(project, { HYPERFRAMES_LOCAL_STUDIO: "1" });
+    expect(dir).toBe(studio);
+    expect(previewLaunchMode({ ...interactive, localStudio: dir !== null })).toBe("local");
+  });
+
+  it("uses the project's Studio when it is the CLI's own", () => {
+    const { project, studio } = projectWithOwnStudio();
+    expect(localStudioDir(project, {}, studio)).toBe(studio);
+    expect(localStudioDir(project, {}, join(studio, "elsewhere"))).toBeNull();
+  });
+});
+
 describe("preview lifecycle JSON failures", () => {
   it.each([
     [
@@ -742,6 +804,20 @@ describe("studio dev-server spawns", () => {
 
     expect(spawn).toHaveBeenCalledOnce();
     expect(spawn.mock.calls[0]?.[2]).toMatchObject({ windowsHide: true });
+  });
+
+  it("runLocalStudioMode spawns nothing from a Studio the project brings", async () => {
+    const spawn = mockStudioSpawn();
+    vi.stubEnv("HYPERFRAMES_LOCAL_STUDIO", "");
+    const { project, marker } = projectWithOwnStudio();
+    try {
+      const { runLocalStudioMode } = await import("./preview.js");
+      await runLocalStudioMode(project, { json: true });
+      expect(spawn).not.toHaveBeenCalled();
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

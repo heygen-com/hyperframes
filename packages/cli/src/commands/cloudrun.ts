@@ -16,7 +16,6 @@ import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import { type CanvasResolution } from "@hyperframes/core";
@@ -32,6 +31,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { defaultCloudFps } from "../utils/compositionFps.js";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
+import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -267,10 +267,10 @@ export default defineCommand({
 // ── State helpers ─────────────────────────────────────────────────────────
 
 function stateDir(): string {
-  return join(homedir(), ".hyperframes");
+  return hyperframesConfigDir();
 }
 function statePath(): string {
-  return join(stateDir(), "cloudrun-state.json");
+  return seededConfigFile("cloudrun-state.json");
 }
 function writeState(state: StackState): void {
   mkdirSync(stateDir(), { recursive: true });

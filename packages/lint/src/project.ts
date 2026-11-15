@@ -1,8 +1,9 @@
 export { shouldBlockRender } from "./shouldBlockRender.js";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, extname, join, relative, resolve } from "node:path";
-import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { existsSync, readdirSync } from "node:fs";
+import { projectIgnore } from "./projectIgnore.js";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { isNonRelativeUrl, rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { spansOverlap } from "@hyperframes/parsers/time-spans";
 import {
   compositionOriginSeconds,
@@ -27,11 +28,15 @@ import {
   isRemoteOrInlineUrl,
   isUnresolvedAssetPlaceholder,
   isWithinProjectRoot,
+  localAbsoluteAssetFile,
   maskNonScannableRanges,
   readProjectFile,
+  resolveCompositionSrc,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
+  srcOnAnotherNetworkRoot,
+  readTextFile,
 } from "@hyperframes/parsers/asset-resolution";
 import { encodeUrlPath } from "@hyperframes/parsers";
 import {
@@ -87,6 +92,18 @@ export interface ProjectLintResult {
   totalErrors: number;
   totalWarnings: number;
   totalInfos: number;
+  unmountedCompositions?: string[];
+}
+
+/** The one line a run prints when it left unmounted compositions out. */
+export function unmountedNotice(count: number): string {
+  const skipped =
+    count === 1 ? "1 file in compositions/ is" : `${count} files in compositions/ are`;
+  return `${skipped} not mounted from index.html, so not checked; --include-unmounted adds them.`;
+}
+
+export interface ProjectLintOptions {
+  includeUnmounted?: boolean;
 }
 
 /**
@@ -138,7 +155,7 @@ function collectLocalStylesheets(
   return styles;
 }
 
-export function collectExternalStyles(
+function collectExternalStyles(
   projectDir: string,
   html: string,
   compSrcPath?: string,
@@ -157,12 +174,31 @@ export function collectExternalStyles(
 
 const MAX_EXTERNAL_SCRIPT_BYTES = 1_000_000;
 
+export function linkedSources(
+  projectDir: string,
+  html: string,
+  compSrcPath?: string,
+): Pick<
+  HyperframeLinterOptions,
+  "externalStyles" | "externalScripts" | "scriptsOutsideProjectUnread"
+> {
+  return {
+    externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+    ...collectExternalScripts(projectDir, html, compSrcPath),
+  };
+}
+
+function leavesProject(projectDir: string, path: string): boolean {
+  return !isNonRelativeUrl(path) && !isWithinProjectRoot(projectDir, resolve(projectDir, path));
+}
+
 function collectExternalScripts(
   projectDir: string,
   html: string,
   compSrcPath?: string,
-): NonNullable<HyperframeLinterOptions["externalScripts"]> {
+): Pick<HyperframeLinterOptions, "externalScripts" | "scriptsOutsideProjectUnread"> {
   const scripts: NonNullable<HyperframeLinterOptions["externalScripts"]> = [];
+  const scriptsOutsideProjectUnread: string[] = [];
   const { document } = parseHTML(html);
   for (const element of querySelectorAllIncludingTemplates(document, "script[src]")) {
     const src = element.getAttribute("src") ?? "";
@@ -174,7 +210,12 @@ function collectExternalScripts(
       (compSrcPath && staysInsideProjectRoot(path)
         ? resolveExistingLocalAsset(projectDir, path)
         : null);
-    if (!script) continue;
+    if (!script) {
+      if (leavesProject(projectDir, isAbsolute(path) ? path : besideFile)) {
+        scriptsOutsideProjectUnread.push(src);
+      }
+      continue;
+    }
     const read = readProjectFile(script.resolved);
     if (read.kind !== "file" || read.text.length > MAX_EXTERNAL_SCRIPT_BYTES) continue;
     const attrs = Array.from(element.attributes)
@@ -188,7 +229,7 @@ function collectExternalScripts(
       rootRelativePath: script.rootRelativePath,
     });
   }
-  return scripts;
+  return { externalScripts: scripts, scriptsOutsideProjectUnread };
 }
 
 function collectCssSources(projectDir: string, html: string, compSrcPath?: string): CssSource[] {
@@ -281,6 +322,7 @@ export async function lintProject(
   projectDir: string,
   entryFile?: string,
   hostOptions: Pick<HyperframeLinterOptions, "host" | "isSubComposition"> = {},
+  { includeUnmounted = false }: ProjectLintOptions = {},
 ): Promise<ProjectLintResult> {
   const indexPath = entryFile ? resolve(entryFile) : resolve(projectDir, "index.html");
   if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
@@ -293,18 +335,18 @@ export async function lintProject(
   let totalWarnings = 0;
   let totalInfos = 0;
 
-  const rootHtml = readFileSync(indexPath, "utf-8");
-  const projectFontFamilies = declaredProjectFontFamilies(
-    projectDir,
-    mountedSources(projectDir, rootHtml, rootCompSrcPath),
-  );
+  const rootHtml = readTextFile(indexPath);
+  const mounted = mountedSources(projectDir, rootHtml, rootCompSrcPath);
+  const mountedPaths = new Set(mounted.map((source) => source.compSrcPath));
+  const unmountedCompositions: string[] = [];
+  const unmountedSources: HtmlSource[] = [];
+  const projectFontFamilies = declaredProjectFontFamilies(projectDir, mounted);
   const rootResult = await lintHyperframeHtml(rootHtml, {
     ...hostOptions,
     filePath: indexPath,
     compSrcPath: rootFile,
-    externalStyles: collectExternalStyles(projectDir, rootHtml, rootCompSrcPath),
+    ...linkedSources(projectDir, rootHtml, rootCompSrcPath),
     projectFontFamilies,
-    externalScripts: collectExternalScripts(projectDir, rootHtml, rootCompSrcPath),
   });
   results.push({ file: rootFile, result: rootResult, contentHash: contentDigest(rootHtml) });
   totalErrors += rootResult.errorCount;
@@ -314,10 +356,12 @@ export async function lintProject(
   const allHtmlSources: HtmlSource[] = [{ html: rootHtml, compSrcPath: rootCompSrcPath }];
   const compositionsDir = resolve(projectDir, "compositions");
   if (!entryFile && existsSync(compositionsDir)) {
+    const ignored = projectIgnore(projectDir);
     const collectHtmlFiles = (dir: string, rel: string): string[] => {
       const out: string[] = [];
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+        if (ignored.ignores(`compositions/${relPath}${entry.isDirectory() ? "/" : ""}`)) continue;
         if (entry.isDirectory()) {
           // Registry components are source snippets, not independently mounted
           // sub-compositions. Linting every installed template here makes an
@@ -333,8 +377,13 @@ export async function lintProject(
     const files = collectHtmlFiles(compositionsDir, "").sort();
     for (const file of files) {
       const filePath = join(compositionsDir, file);
-      const html = readFileSync(filePath, "utf-8");
+      const html = readTextFile(filePath);
       const compSrcPath = `compositions/${file}`;
+      if (!includeUnmounted && !mountedPaths.has(compSrcPath)) {
+        unmountedSources.push({ html, compSrcPath });
+        if (!isSnippetFragment(html)) unmountedCompositions.push(compSrcPath);
+        continue;
+      }
       allHtmlSources.push({ html, compSrcPath });
       // Mountable fragments (figma component imports, registry snippets) are
       // not standalone compositions — composition-root rules don't apply.
@@ -346,9 +395,8 @@ export async function lintProject(
         filePath,
         isSubComposition: true,
         compSrcPath,
-        externalStyles: collectExternalStyles(projectDir, html, compSrcPath),
+        ...linkedSources(projectDir, html, compSrcPath),
         projectFontFamilies,
-        externalScripts: collectExternalScripts(projectDir, html, compSrcPath),
       });
       results.push({
         file: `compositions/${file}`,
@@ -369,7 +417,9 @@ export async function lintProject(
     ...lintTextureMaskAssetNotFound(projectDir, allHtmlSources),
     ...lintLinkedStylesheetAssets(projectDir, allHtmlSources),
     ...(!entryFile ? lintMultipleRootCompositions(projectDir) : []),
-    ...(!entryFile ? lintBlankRootWithStandaloneComposition(rootHtml, allHtmlSources) : []),
+    ...(!entryFile
+      ? lintBlankRootWithStandaloneComposition(rootHtml, [...allHtmlSources, ...unmountedSources])
+      : []),
     ...lintDuplicateAudioTracks(projectDir, rootHtml),
     ...lintMissingOrEmptySubComposition(projectDir, rootHtml),
     ...(await lintVideoMediaStartPastEof(projectDir, allHtmlSources)),
@@ -393,7 +443,7 @@ export async function lintProject(
     }
   }
 
-  return { results, totalErrors, totalWarnings, totalInfos };
+  return { results, totalErrors, totalWarnings, totalInfos, unmountedCompositions };
 }
 
 function lintBlankRootWithStandaloneComposition(
@@ -506,6 +556,7 @@ function lintAudioSrcNotFound(
       const rootRelative = compSrcPath
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
+      if (srcOnAnotherNetworkRoot(projectDir, rootRelative)) continue;
       if (!existsSync(resolveProjectRelativeSrc(rootRelative, projectDir))) {
         const safe = urlSafeSrcOf(projectDir, rootRelative);
         if (safe) urlSafe.set(src, safe);
@@ -565,7 +616,7 @@ function lintMissingLocalAsset(
         ? rewriteAssetPath(compSrcPath, src, (path) => existsSync(join(projectDir, path)))
         : src;
       const resolvedAsset = resolveExistingLocalAsset(projectDir, rootRelative);
-      if (resolvedAsset) continue;
+      if (resolvedAsset || localAbsoluteAssetFile(projectDir, rootRelative)) continue;
 
       const rawRoot = rawSrc.trim();
       const safe = urlSafeSrcOf(
@@ -611,6 +662,14 @@ function lintMissingLocalAsset(
   return findings;
 }
 
+function localCssUrl(match: RegExpMatchArray): string | undefined {
+  const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
+  // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
+  if (isUnresolvedAssetPlaceholder(rawUrl)) return undefined;
+  const url = cleanAssetUrl(rawUrl);
+  return url && !isRemoteOrInlineUrl(url) ? url : undefined;
+}
+
 function lintTextureMaskAssetNotFound(
   projectDir: string,
   htmlSources: HtmlSource[],
@@ -630,11 +689,8 @@ function lintTextureMaskAssetNotFound(
         matches = [...cssSource.content.matchAll(MASK_IMAGE_URL_RE)];
       }
       for (const match of matches) {
-        const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
-        // Placeholder check runs on the RAW value: cleanAssetUrl() splits on ?/# and would chop inside a ${...} token.
-        if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
-        const url = cleanAssetUrl(rawUrl);
-        if (!url || isRemoteOrInlineUrl(url)) continue;
+        const url = localCssUrl(match);
+        if (!url) continue;
 
         const candidates = resolveCssAssetCandidates(
           projectDir,
@@ -643,6 +699,8 @@ function lintTextureMaskAssetNotFound(
           cssSource.rootRelativePath,
         );
         if (candidates.some(existsSync)) continue;
+        const inPageCss = !cssSource.rootRelativePath;
+        if (inPageCss && localAbsoluteAssetFile(projectDir, url)) continue;
         missingByFile.set(file, (missingByFile.get(file) ?? new Set()).add(url));
       }
     }
@@ -699,10 +757,8 @@ function lintLinkedStylesheetAssets(
       root.walkDecls((declaration) => {
         if (/^(?:-webkit-)?mask-image$/i.test(declaration.prop)) return;
         for (const match of declaration.value.matchAll(CSS_URL_RE)) {
-          const rawUrl = match[1] ?? match[2] ?? match[3] ?? "";
-          if (isUnresolvedAssetPlaceholder(rawUrl)) continue;
-          const url = cleanAssetUrl(rawUrl);
-          if (!url || isRemoteOrInlineUrl(url) || url.startsWith("/")) continue;
+          const url = localCssUrl(match);
+          if (!url || url.startsWith("/")) continue;
           if (
             resolveCssAssetCandidates(projectDir, url, undefined, rootRelativePath).some(existsSync)
           )
@@ -740,7 +796,7 @@ function lintMultipleRootCompositions(projectDir: string): HyperframeLintFinding
     const rootCompositions: string[] = [];
     for (const file of rootHtmlFiles) {
       if (PAGES_OPENED_BESIDE_INDEX.has(file)) continue;
-      const content = readFileSync(join(projectDir, file), "utf-8");
+      const content = readTextFile(join(projectDir, file));
       if (/data-composition-id/i.test(content)) {
         rootCompositions.push(file);
       }
@@ -804,7 +860,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       const inner = { ...at, ...scope };
       const src = el.getAttribute("data-composition-src")?.trim();
       const file = src && !isUnresolvedAssetPlaceholder(src) && !isRemoteOrInlineUrl(src);
-      const filePath = file ? resolve(projectDir, src) : null;
+      const filePath = file ? resolveCompositionSrc(projectDir, src) : null;
       if (filePath && !at.mounting.includes(filePath)) {
         const read = readProjectFile(filePath);
         if (read.kind === "file")
@@ -873,8 +929,9 @@ function lintDuplicateAudioTracks(projectDir: string, rootHtml: string): Hyperfr
         findings.push({
           code: "duplicate_audio_track",
           severity: "warning",
-          message: `Multiple audible <audio>/<video> elements on track ${a.trackIndex} overlap (${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s, ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s). This causes layered audio playback.`,
-          fixHint: "Use non-overlapping time windows or different track indices.",
+          message: `Audible clips overlap on Studio track ${a.trackIndex}: ${a.src} at ${formatSeconds(a.start)}-${formatSeconds(a.end)}s and ${b.src} at ${formatSeconds(b.start)}-${formatSeconds(b.end)}s. Both play at once whatever their track (the render mixes every audible clip; data-track-index only picks the Studio lane), and Studio draws them over each other in that lane.`,
+          fixHint:
+            "If both should sound (a whoosh into a hit), give one its own data-track-index; the mix does not change. If one is a leftover duplicate, remove it or move it so the windows do not overlap.",
         });
       }
     }
@@ -922,7 +979,13 @@ function lintMissingOrEmptySubComposition(
       // nested sub-composition) — matches the resolution the renderer uses
       // in packages/producer/src/services/htmlCompiler.ts (parseSubCompositions
       // / assertSubCompositionsUsable).
-      const filePath = resolve(projectDir, srcPath);
+      const filePath = resolveCompositionSrc(projectDir, srcPath);
+      if (filePath === null) {
+        if (!checked.has(srcPath)) {
+          checked.set(srcPath, { srcPath, problem: "it is outside the project folder" });
+        }
+        continue;
+      }
 
       // Circular reference guard — same as assertSubCompositionsUsable.
       // Already-visited files were already checked (or are mid-walk); skip

@@ -1,6 +1,6 @@
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
-import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import {
   parseGsapScript,
@@ -735,6 +735,7 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
     const src = div.getAttribute("data-composition-src");
     if (!src) continue;
     const subPath = resolve(baseDir, src);
+    if (!isWithinProjectRoot(baseDir, subPath)) continue;
     const sub = readProjectFile(subPath);
     if (sub.kind !== "file") continue;
     const id = div.getAttribute("data-composition-id") ?? src;

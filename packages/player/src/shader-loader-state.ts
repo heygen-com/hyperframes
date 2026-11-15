@@ -71,6 +71,7 @@ export class ShaderLoaderState {
     }
     this._el.root.classList.remove("hfp-visible", "hfp-hiding");
     this._drawingAssets = false;
+    this._el.root.classList.remove("hfp-assets");
     this._flushHidden();
     this._el.fill.style.transform = "scaleX(0)";
     setRowValue(this._el.transitionRow, this._el.transitionValue, "");
@@ -94,6 +95,7 @@ export class ShaderLoaderState {
     // show; this path owns the label whenever it's the one drawing the panel.
     this._el.root.setAttribute("aria-label", "Preparing scene transitions");
     this._drawingAssets = false;
+    this._el.root.classList.remove("hfp-assets");
 
     const progress =
       typeof status.progress === "number" && Number.isFinite(status.progress) ? status.progress : 0;
@@ -143,8 +145,8 @@ export class ShaderLoaderState {
     this.show();
   }
 
-  /** Second reason to show the same overlay — reuses the shader-transition
-   *  panel's DOM rather than drawing a second one. */
+  /** Second reason to show the same overlay, in Desktop's loading look: the mark alone over the
+   *  blurred frame (styles.ts). The words stay as the accessible name, not on screen. */
   showAssetsLoading(
     title = "Loading assets",
     detail = "Waiting for images, video and fonts to finish loading.",
@@ -154,6 +156,7 @@ export class ShaderLoaderState {
     this._el.detail.textContent = detail;
     this._el.root.setAttribute("aria-label", title);
     this._drawingAssets = true;
+    this._el.root.classList.add("hfp-assets");
     this.show();
   }
 

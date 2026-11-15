@@ -222,6 +222,24 @@ describe("applyMediaTreatmentToHtml", () => {
     expect(result.html).toContain("data-color-grading=");
   });
 
+  it("says what media the file has when the selector matches none", () => {
+    expect(() => applyMediaTreatmentToHtml(VIDEO, { selector: "#prepared", grading: {} })).toThrow(
+      "Selector did not match: #prepared. Media in the file: video#hero.",
+    );
+    expect(() =>
+      applyMediaTreatmentToHtml(SEGMENTS, { selector: "#prepared", grading: {} }),
+    ).toThrow('video[src="a.mp4"], video[src="b.mp4"].');
+  });
+
+  it("says the file has no media yet when preparation added none", () => {
+    expect(() =>
+      applyMediaTreatmentToHtml("<!doctype html><html><body></body></html>", {
+        selector: "#prepared",
+        grading: {},
+      }),
+    ).toThrow("Selector did not match: #prepared. The file has no <video>, <img> or <canvas> yet.");
+  });
+
   it("treats every video a selector matches alike", () => {
     const result = applyMediaTreatmentToHtml(SEGMENTS, {
       selector: "video",
@@ -711,6 +729,35 @@ describe("applyMediaTreatmentToHtml", () => {
     } finally {
       log.mockRestore();
       error.mockRestore();
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reads a relative --grading file from the project, not from where the command runs", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-media-grading-rel-"));
+    mkdirSync(join(project, "assets"));
+    writeFileSync(join(project, "index.html"), VIDEO);
+    writeFileSync(join(project, "assets", "g.json"), '{"preset":"warm-daylight"}');
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await runCommand(mediaTreatmentCommand, {
+        rawArgs: [
+          "--project",
+          project,
+          "--selector",
+          "#hero",
+          "--grading",
+          "assets/g.json",
+          "--dry-run",
+          "--json",
+        ],
+      });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({
+        ok: true,
+        changed: true,
+      });
+    } finally {
+      log.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   });

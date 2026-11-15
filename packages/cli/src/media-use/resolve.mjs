@@ -32,7 +32,7 @@ import { probe as probeMedia } from "./lib/probe.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
-import { typesMatch } from "./lib/match.mjs";
+import { nameMatch, typesMatch } from "./lib/match.mjs";
 import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
 import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
@@ -56,8 +56,17 @@ import {
   flushHeygenFailureTracking,
   versionLessThan,
 } from "./lib/heygen-cli.mjs";
-import { BundledSfxAssetsError, inspectBundledSfxAssets } from "./lib/bundled-sfx-provider.mjs";
-import { OPENVERSE_SFX_PROVIDER } from "./lib/sfx-provider.mjs";
+import {
+  BUNDLED_SFX_RECOVERY_COMMAND,
+  BundledSfxAssetsError,
+  inspectBundledSfxAssets,
+} from "./lib/bundled-sfx-provider.mjs";
+import {
+  OPENVERSE_SFX_PROVIDER,
+  SFX_CONFIDENT_SCORE,
+  SFX_MIN_SCORE,
+  scoreMatch,
+} from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
 import {
   fetchMediaVectors,
@@ -89,6 +98,7 @@ const { values: args } = parseArgs({
     type: { type: "string", short: "t" },
     intent: { type: "string", short: "i" },
     entity: { type: "string", short: "e" },
+    variant: { type: "string" },
     project: { type: "string", short: "p", default: "." },
     adopt: { type: "boolean", default: false },
     candidates: { type: "boolean", default: false },
@@ -124,6 +134,8 @@ Options:
   --type, -t      Media type (required)
   --intent, -i    What you need (required)
   --entity, -e    Entity name for cache matching (optional)
+  --variant       With --type logo: the brand's other artwork, e.g. wordmark,
+                  mono, light, dark (default: the full-colour mark)
   --project, -p   Project directory (default: .)
   --adopt         Adopt all existing assets/ files into the manifest
   --candidates    List reusable assets (project + global cache) for --type; no
@@ -153,6 +165,7 @@ Options:
 const projectDir = resolve(args.project);
 const type = args.type;
 const intent = args.intent;
+const variant = args.variant || null;
 const entity = args.entity || null;
 
 if (args.adopt) {
@@ -345,8 +358,9 @@ function localizeImportedRecord(record, localPath) {
 }
 
 async function run() {
-  // A forced provider bypasses reuse and pins the provider cascade.
-  const forced = !!args.provider;
+  // A forced provider bypasses reuse and pins the provider cascade; so does a variant,
+  // since reuse is keyed on the intent and would hand back the default artwork.
+  const forced = !!args.provider || !!variant;
 
   // 1. project manifest — exact-prompt match
   const projectHit = forced ? null : findByPrompt(projectDir, intent, type);
@@ -371,7 +385,8 @@ async function run() {
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
     const recorded = latestRecordFor(projectDir, existingAsset.relativePath);
-    if (recorded) return result(recorded, "cached");
+    const match = nameMatch(intent, existingAsset.name, recorded?.provenance?.prompt);
+    if (recorded) return result(recorded, "cached", match);
     const id = nextId(projectDir, type);
     const record = {
       id,
@@ -383,7 +398,7 @@ async function run() {
     };
     appendRecord(projectDir, record);
     regenerateIndex(projectDir);
-    return result(record, "existing");
+    return result(record, "existing", match);
   }
 
   // 2. global cache — exact-prompt or entity match
@@ -422,6 +437,7 @@ async function run() {
   const localOnly = args["local-only"];
   const ctx = {
     entity,
+    variant,
     projectDir,
     localOnly,
     provider: args.provider,
@@ -535,7 +551,9 @@ async function run() {
           ? "no brand spec found — add a frame.md or design.md (colors/font/logo) to this project. Run the HyperFrames design flow to create one; brand tokens are read locally for deterministic rendering."
           : args.provider
             ? `provider "${args.provider}" could not resolve ${type}: "${intent}"${localOnly ? " (--local-only skips network providers; drop it or the --provider override)" : ""}`
-            : `no provider could resolve ${type}: "${intent}"`;
+            : type === "sfx" && !localOnly
+              ? `no sound effect matched "${intent}": HeyGen sound search (min score ${SFX_MIN_SCORE}), Openverse and the bundled library had nothing. Try other words for the sound.`
+              : `no provider could resolve ${type}: "${intent}"`;
     if (args.json) {
       console.log(
         JSON.stringify({
@@ -582,10 +600,10 @@ async function run() {
     ...(searchResult.metadata?.transparent != null && {
       transparent: searchResult.metadata.transparent,
     }),
-    ...(entity && { entity }),
+    ...(entity && !variant && { entity }),
     provenance: {
       provider: searchResult.metadata?.provider || "unknown",
-      prompt: intent,
+      prompt: variant ? `${intent} [${variant}]` : intent,
       // Keep auth method sparse for non-HeyGen providers.
       ...heygenAuthMethodFor(searchResult.metadata?.provider),
       ...searchResult.metadata?.provenance,
@@ -596,11 +614,11 @@ async function run() {
   regenerateIndex(projectDir);
   // Promote fetched assets into the global cache for reuse.
   try {
-    cachePut(fullPath, record);
+    if (!variant) cachePut(fullPath, record);
   } catch {
     // promotion is best-effort; a resolve still succeeds locally
   }
-  return result(record, searchResult.source || "search");
+  return result(record, searchResult.source || "search", searchResult.match);
 }
 
 function mergeSmartAdjust(block) {
@@ -1144,7 +1162,13 @@ function printDoctor(checks) {
     const freePath = heygenChecks.has(check.name)
       ? " — free-usage path: bgm/image/voice/avatar-video"
       : "";
-    const fix = check.ok || !check.fix ? "" : ` — fix: ${check.fix}`;
+    // Repairing a skill is the person's step, so that fix is addressed to them, not to the agent.
+    const fix =
+      check.ok || !check.fix
+        ? ""
+        : check.fix === BUNDLED_SFX_RECOVERY_COMMAND
+          ? ` — For the user: \`${check.fix}\` repairs it`
+          : ` — fix: ${check.fix}`;
     console.log(`${prefix} ${check.detail}${freePath}${fix}`);
   }
 }
@@ -1259,7 +1283,9 @@ async function reuseGlobal(shaArg) {
     process.exit(2);
   }
   if (!rec) {
-    console.error(`error: no reusable global asset matches sha "${shaArg}"`);
+    console.error(
+      `error: no reusable global asset matches sha "${shaArg}". --reuse takes a sha from \`resolve --candidates\`; to skip the caches, pass --provider <name> instead`,
+    );
     process.exit(1);
   }
   // Do not import an asset under the wrong type.
@@ -1283,7 +1309,31 @@ async function reuseGlobal(shaArg) {
   await result(imported, "reused-explicit");
 }
 
-async function result(record, source) {
+function warnLowConfidence(record, match) {
+  if (!match?.low_confidence) return;
+  const why =
+    "min_score" in match
+      ? `search score ${match.score ?? "missing"}, under the ${SFX_CONFIDENT_SCORE} a good match reaches`
+      : match.resolved_for
+        ? `found by its file name, resolved earlier for "${match.resolved_for}"`
+        : `found by its file name, sharing ${match.matched_words.length} of ${match.intent_words} words`;
+  console.error(
+    `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+  );
+}
+
+// A reused record gets back the advisory its first resolve gave, rebuilt from its provenance.
+function recordedMatch(record) {
+  const kept = record.provenance ?? {};
+  if (record.type === "sfx" && kept.provider === "heygen.audio.sounds")
+    return scoreMatch(kept.score);
+  if (kept.adopted && record.path)
+    return nameMatch(intent, basename(record.path, extname(record.path)), kept.prompt);
+  return undefined;
+}
+
+async function result(record, source, match = recordedMatch(record)) {
+  warnLowConfidence(record, match);
   const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
   // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
   if (provider === OPENVERSE_SFX_PROVIDER)
@@ -1321,6 +1371,7 @@ async function result(record, source) {
         ...record,
         ...(grading || {}),
         ...(grading && { grading }),
+        ...(match && { match }),
         _source: source,
       }),
     );

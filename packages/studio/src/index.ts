@@ -5,7 +5,18 @@ export * from "./ui";
 export { EditorShell } from "./components/EditorShell";
 export type { EditorShellProps } from "./components/EditorShell";
 export { NLEPreview } from "./components/nle/NLEPreview";
-export { DEFAULT_SHORTCUT_SECTIONS } from "./player/components/studioShortcuts";
+export {
+  DEFAULT_SHORTCUT_SECTIONS,
+  DEFAULT_STUDIO_KEYS,
+  buildShortcutSections,
+  getStudioKeys,
+  setStudioKeys,
+  studioKeyClash,
+  useStudioKeys,
+} from "./player/components/studioShortcuts";
+export { formatCombo, matchCombo, parseCombo } from "./player/components/studioCombo";
+export type { Combo } from "./player/components/studioCombo";
+export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
 export type { LinkShortcutCallbacks } from "./hooks/linkShortcuts";
@@ -271,7 +282,12 @@ export { useMarqueeGestures } from "./components/editor/marqueeCommit";
 export type { MarqueeGestures, MarqueeGesturesDeps } from "./components/editor/marqueeCommit";
 export { MarqueeOverlay } from "./components/editor/MarqueeOverlay";
 export type { MarqueeOverlayProps } from "./components/editor/MarqueeOverlay";
-export type { Rect as MarqueeRect } from "./utils/marqueeGeometry";
+export type {
+  Rect as MarqueeRect,
+  MarqueeBand,
+  MarqueeSelectionMode,
+} from "./utils/marqueeGeometry";
+export { resolveMarqueeMode } from "./utils/marqueeGeometry";
 
 export { buildStudioTools } from "./webmcp/useStudioAgentTools";
 export type { StudioAgentToolsDeps } from "./webmcp/useStudioAgentTools";

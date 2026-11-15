@@ -618,6 +618,7 @@ describe("authored Google font stylesheet", () => {
     expect(result).toContain(b64(LOCAL_FONT_BYTES));
     expect(systemFontLocator.locateSystemFontVariants).toHaveBeenCalledWith(
       "Hf Authored Fail Test",
+      { byInnerName: false },
     );
   });
 });

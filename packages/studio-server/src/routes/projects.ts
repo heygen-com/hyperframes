@@ -43,7 +43,7 @@ export function registerProjectRoutes(api: Hono, adapter: StudioApiAdapter): voi
   api.get("/projects/:id/signature", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
-    return c.json({ signature: resolveProjectSignature(adapter, project.dir) });
+    return c.json({ signature: await resolveProjectSignature(adapter, project.dir) });
   });
 
   // Project file tree

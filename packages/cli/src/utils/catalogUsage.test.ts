@@ -119,6 +119,25 @@ describe("summarizeCatalogUsage", () => {
     ).toEqual(["inner", "outer"]);
   });
 
+  // The render refuses a mount outside the project, so a walk must not read one either.
+  it("does not follow a mount that leaves the project", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-catalog-outside-"));
+    try {
+      const project = join(dir, "project");
+      mkdirSync(join(project, "compositions"), { recursive: true });
+      writeFileSync(join(dir, "outside.html"), subCompDoc("outside", "compositions/kept.html"));
+      writeFileSync(join(project, "compositions", "kept.html"), subCompDoc("kept"));
+      writeFileSync(join(project, "index.html"), entryDoc("../outside.html"));
+      writeFileSync(
+        join(project, "hyperframes.json"),
+        JSON.stringify({ registry: "https://example.test", registryItems: [BLOCK("kept")] }),
+      );
+      expect(summarizeCatalogUsage(project, join(project, "index.html")).usedBlocks).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   // A cyclic project must not wedge a render that already produced a video.
   it("terminates on a mount cycle", () => {
     expect(

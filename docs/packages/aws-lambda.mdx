@@ -58,6 +58,12 @@ All three phases must fit the configured per-invocation Lambda timeout, at most 
 
 The handler uses `@sparticuz/chromium` by default, with a build-time fallback for bundling `chrome-headless-shell` directly when needed.
 
+### Page network restriction
+
+The handler sets `PRODUCER_RESTRICT_PAGE_NETWORK=true` unless the function already sets it, so a rendered page reaches only its own project files and public internet addresses. Loopback, private, link-local and IPv6 addresses are refused for anything the page loads. An asset on a VPC-only host or behind private DNS is missing from the video.
+
+Keep it on when you render compositions you did not write. To turn it off, set `PRODUCER_RESTRICT_PAGE_NETWORK=false` in the function's environment.
+
 ## Using the SDK
 
 After deploying the AWS resources, use the SDK from Node:
@@ -89,16 +95,15 @@ const progress = await getRenderProgress({ executionArn: handle.executionArn });
 console.log(progress.status, progress.overallProgress, progress.costs.displayCost);
 ```
 
-Plan v2 is the default because workers fetch manifest-selected
-content-addressed artifacts. The SDK sends explicit v2 when `planProtocol` is
-omitted. Deprecated v1 compatibility remains available by passing
-`planProtocol: "v1"`.
+Plan v2 is the only supported distributed plan transport. Workers fetch
+manifest-selected content-addressed artifacts, and the SDK sends explicit v2
+without requiring a protocol option.
 
 <Warning>
   For an existing installation, pause new renders and drain active Step
   Functions executions. Redeploy the Lambda handler and SAM/CDK state machine
   from the same package version before upgrading the application SDK. Older
-  infrastructure may default omission to v1 or lack v2 support.
+  infrastructure may lack the Plan v2-only request and locator contract.
 </Warning>
 
 `renderToLambda()` validates the distributed render config before starting the Step Functions execution, so invalid dimensions, formats, chunk sizes, or payload sizes fail synchronously.

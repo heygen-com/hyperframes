@@ -9,6 +9,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -126,6 +127,16 @@ function parseColumns(value: unknown): number | undefined {
   return parsed;
 }
 
+function parseTimeoutMs(value: unknown): number {
+  const raw = readOptionalString(value);
+  if (!raw) return DEFAULT_RENDER_READY_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new CliUsageError("--timeout must be a positive integer number of milliseconds");
+  }
+  return parsed;
+}
+
 function defaultCompareCols(cellCount: number): number {
   return Math.max(1, Math.min(MAX_COLUMNS, Math.ceil(Math.sqrt(cellCount))));
 }
@@ -160,9 +171,7 @@ export function parseCompareArgs(
     atSeconds: parseAtSeconds(args.at),
     cols: parseColumns(args.cols),
     json: args.json === true,
-    timeoutMs:
-      Number.parseInt(readOptionalString(args.timeout) ?? "", 10) ||
-      DEFAULT_RENDER_READY_TIMEOUT_MS,
+    timeoutMs: parseTimeoutMs(args.timeout),
   };
 }
 
@@ -364,7 +373,7 @@ async function renderCompareSheet(parsed: ParsedCompareArgs): Promise<CompareSuc
       renderReadyTimedOut = renderReadyTimedOut || rendered.renderReadyTimedOut;
     }
 
-    mkdirSync(dirname(parsed.outPath), { recursive: true });
+    makeOutputFolder(dirname(parsed.outPath));
     await createContactSheet(framePaths, parsed.outPath, {
       cols: parsed.cols ?? defaultCompareCols(framePaths.length),
       maxImages: framePaths.length,

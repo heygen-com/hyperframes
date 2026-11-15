@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { VideoSourceExtractionError } from "../services/videoFrameExtractor.js";
 import { redactUrlQueriesInError, urlInputArgs } from "./urlInput.js";
 
@@ -30,6 +30,20 @@ describe("urlInputArgs", () => {
 
   it("gives ffprobe only the options its 4.0 build accepts", () => {
     expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual(verifyAndReconnect);
+  });
+
+  it("limits what an https input may open to HTTPS on a render service", () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    try {
+      expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual([
+        ...verifyAndReconnect,
+        "-protocol_whitelist",
+        "https,tls,tcp",
+      ]);
+      expect(urlInputArgs("/plan/compiled/bg.mp4", { caBundles: [] })).toEqual([]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("adds nothing for local paths and plain http", () => {

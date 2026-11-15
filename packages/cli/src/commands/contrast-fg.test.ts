@@ -47,10 +47,10 @@ describe("resolveForegroundColor", () => {
     ).toEqual([0, 255, 0, 1]);
   });
 
-  it("falls back to `color` when fill is a gradient/pattern reference", () => {
+  it("never reads `color` for a gradient/pattern fill: the glyphs are not painted with it", () => {
     expect(
-      resolveForegroundColor({ isSvgText: true, fill: 'url("#grad")', color: "rgb(0, 255, 0)" }),
-    ).toEqual([0, 255, 0, 1]);
+      resolveForegroundColor({ isSvgText: true, fill: 'url("#grad")', color: "rgb(0, 0, 0)" }),
+    ).toBeNull();
   });
 
   it("never crashes on garbage fill values", () => {

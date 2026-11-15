@@ -1,7 +1,7 @@
 import { createRuntimeStartTimeResolver } from "./runtime/startResolver.js";
 import { isRuntimeElementVisibleAt } from "./runtime/timeline.js";
 import type { RuntimeTimelineLike } from "./runtime/types.js";
-import { STUDIO_PREVIEW_MARK_META } from "./studioPreviewMark.js";
+import { defersMediaIn } from "./studioPreviewMark.js";
 
 /** A composition is "ready" once every declared input settles, not just once
  * its duration is known. Each input returns null (nothing to wait on) or a
@@ -67,7 +67,6 @@ function isActiveAtFirstFrame(
           currentTime: 0,
           compositionDuration: Number.POSITIVE_INFINITY,
           canonicalFps: 30,
-          exportRenderSeek: false,
           timelineRegistry,
           resolver,
         })
@@ -104,8 +103,8 @@ export function scanPendingCompositionAssets(
     timelineRegistry: runtimeWindow?.__timelines,
     includeAuthoredTimingAttrs: true,
   });
-  // Studio's preview buffers a clip off the first frame only once it comes due, as with a lazy image.
-  const defersMedia = doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+  // Studio's preview and the player buffer a clip off the first frame only once it comes due, as with a lazy image.
+  const defersMedia = defersMediaIn(doc);
   const pendingMedia = Array.from(doc.querySelectorAll("video, audio"))
     .filter(isRealmHtmlMediaElement)
     .filter((el) =>

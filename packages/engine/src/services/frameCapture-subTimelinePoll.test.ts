@@ -10,7 +10,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { Page } from "puppeteer-core";
 import { parseHTML } from "linkedom";
 import { AUTHORED_SOURCE_BEGIN, AUTHORED_SOURCE_END } from "@hyperframes/core";
-import { authorScriptsMayRegisterTimelines, pollSubCompositionTimelines } from "./frameCapture.js";
+import type { CaptureSession } from "./frameCapture.js";
+import {
+  authorScriptsMayRegisterTimelines,
+  pollSubCompositionTimelines,
+  recordFailedRequest,
+} from "./frameCapture.js";
 
 // A function argument is the author-script scan; these tests model pages whose scripts may register.
 function makeMockPage(evaluateResults: (expr: string) => unknown): Page {
@@ -308,5 +313,46 @@ describe("authorScriptsMayRegisterTimelines", () => {
   it("does not wait on a host that opted out or is in the skipped list", async () => {
     const html = `<body><div data-composition-id="x" data-no-timeline></div><script>window.__timelines["x"] = tl</script></body>`;
     expect(await scan(html)).toBe(false);
+  });
+});
+
+describe("a script request the page cancelled", () => {
+  const failedScript = (url: string, errorText: string) => ({
+    resourceType: () => "script" as const,
+    url: () => url,
+    method: () => "GET",
+    failure: () => ({ errorText }),
+  });
+  const newSession = () =>
+    ({
+      scriptLoadFailures: [],
+      pageErrors: [],
+      browserConsoleBuffer: [],
+    }) as unknown as CaptureSession;
+
+  it("is not a load failure: a timeline that registers after the grace still ends the wait ready", async () => {
+    const session = newSession();
+    recordFailedRequest(session, failedScript("http://localhost/other.js", "net::ERR_ABORTED"));
+    expect(session.scriptLoadFailures).toEqual([]);
+
+    const started = Date.now();
+    const page = makeMockPage((expr) =>
+      expr.includes("__hfForceTimelineRebind") ? undefined : Date.now() - started > 150,
+    );
+    const outcome = await pollSubCompositionTimelines(page, 60_000, {
+      intervalMs: 10,
+      getScriptLoadFailures: () => session.scriptLoadFailures,
+      scriptFailureGraceMs: 50,
+    });
+    expect(outcome).toBe("ready");
+  });
+
+  it("still counts a script the network refused", () => {
+    const session = newSession();
+    recordFailedRequest(
+      session,
+      failedScript("http://localhost/a.js", "net::ERR_CONNECTION_RESET"),
+    );
+    expect(session.scriptLoadFailures).toEqual(["http://localhost/a.js"]);
   });
 });

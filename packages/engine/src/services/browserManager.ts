@@ -8,6 +8,7 @@
 
 import { explainChromeLaunchFailure } from "./chromeStartup.js";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import {
   inAgentSandbox,
   machServiceDenied,
@@ -17,7 +18,7 @@ import {
 } from "./sandboxLaunch.js";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -29,8 +30,16 @@ import {
   isManagedChromeDir,
   pickSharedShell,
 } from "./chromeHostCeiling.js";
-import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
+import { DEFAULT_CONFIG, resolveRestrictPageNetwork, type EngineConfig } from "../config.js";
+import {
+  browserProxyArgs,
+  createPublicOnlyProfile,
+  logRefusal,
+  startCaptureProxy,
+} from "./publicNetwork/captureProxy.js";
+import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
+import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -46,6 +55,8 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -64,17 +75,19 @@ interface WebGlProbeInfo {
   renderer: string;
 }
 
+export const SOFTWARE_WEBGL_RENDERER_TOKENS: readonly string[] = [
+  "swiftshader",
+  "llvmpipe",
+  "lavapipe",
+  "softpipe",
+  "mesa offscreen",
+  "microsoft basic render driver",
+  "software rasterizer",
+];
+
 function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
   const renderer = rendererInfo.trim().toLowerCase();
-  return (
-    renderer.includes("swiftshader") ||
-    renderer.includes("llvmpipe") ||
-    renderer.includes("lavapipe") ||
-    renderer.includes("softpipe") ||
-    renderer.includes("mesa offscreen") ||
-    renderer.includes("microsoft basic render driver") ||
-    renderer.includes("software rasterizer")
-  );
+  return SOFTWARE_WEBGL_RENDERER_TOKENS.some((token) => renderer.includes(token));
 }
 
 async function getPuppeteer(): Promise<PuppeteerNode> {
@@ -123,7 +136,7 @@ async function probeHardwareWebGlInfo(
       args: withHyperframesBrowserMarker(options.args),
       defaultViewport: { width: 64, height: 64 },
       executablePath: options.executablePath,
-      env: options.env,
+      env: buildChromeLaunchEnv(options.env),
       timeout: options.browserTimeout,
       waitForInitialPage: false,
     };
@@ -271,7 +284,7 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = join(homedir(), ".cache", "hyperframes", "chrome", "chrome-headless-shell");
+  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
   return (
     findManagedHeadlessShell(ours) ??
@@ -338,9 +351,11 @@ const BEGINFRAME_ONLY_FLAGS = new Set([
   "--enable-surface-synchronization",
 ]);
 
-function stripBeginFrameFlags(args: string[]): string[] {
+function stripBeginFrameFlags(args: readonly string[]): string[] {
   return args.filter((a) => !BEGINFRAME_ONLY_FLAGS.has(a));
 }
+
+const WHOLE_TILE_RASTER_FLAG = "--disable-partial-raster";
 
 /**
  * Probe the complete HeadlessExperimental.beginFrame runtime contract.
@@ -675,15 +690,13 @@ const VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER = [
   "VK_LOADER_DRIVERS_DISABLE",
 ];
 
-function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.ProcessEnv | undefined {
-  if (fingerprint.withoutWaylandDisplay) return envWithoutWaylandDisplay();
+function launchEnv(fingerprint: Readonly<BrowserLaunchFingerprint>): NodeJS.ProcessEnv {
+  if (fingerprint.withoutWaylandDisplay) return buildChromeLaunchEnv(envWithoutWaylandDisplay());
+  const env = buildChromeLaunchEnv();
   const swiftShader = fingerprint.args.some(
     (arg) => arg === "--use-angle=swiftshader" || arg === "--use-vulkan=swiftshader",
   );
-  const overriding = VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER.filter((name) => name in process.env);
-  if (!swiftShader || overriding.length === 0) return undefined;
-  const env = { ...process.env };
-  for (const name of overriding) delete env[name];
+  if (swiftShader) for (const name of VULKAN_VARS_THAT_OVERRIDE_SWIFTSHADER) delete env[name];
   return env;
 }
 
@@ -849,7 +862,7 @@ function logResolvedBrowserGpuMode(resolved: "hardware" | "software", reason: st
 
 type BrowserLaunchConfig = Partial<
   Pick<EngineConfig, "browserTimeout" | "protocolTimeout" | "chromePath" | "forceScreenshot">
-> & { withoutWaylandDisplay?: boolean };
+> & { withoutWaylandDisplay?: boolean; pageServerUrl?: string };
 
 function createBrowserLaunchFingerprint(
   chromeArgs: string[],
@@ -882,6 +895,11 @@ function createBrowserLaunchFingerprint(
     browserTimeoutMs: launchConfig.browserTimeout,
     protocolTimeoutMs: launchConfig.protocolTimeout,
     requestedCaptureMode,
+    publicOnly: resolveRestrictPageNetwork()
+      ? {
+          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+        }
+      : undefined,
   };
 }
 
@@ -909,6 +927,24 @@ async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): 
   }
 }
 
+async function publicOnlyNetwork(pageServerHost: string | undefined) {
+  const proxy = await startCaptureProxy(null, logRefusal);
+  try {
+    const userDataDir = await createPublicOnlyProfile("hf-render-profile-");
+    return {
+      args: browserProxyArgs(proxy.url, pageServerHost),
+      userDataDir,
+      async close() {
+        await proxy.close();
+        await removeTreeBestEffortAsync(userDataDir);
+      },
+    };
+  } catch (error) {
+    await proxy.close();
+    throw error;
+  }
+}
+
 // fallow-ignore-next-line complexity
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
@@ -917,16 +953,25 @@ async function launchBrowser(
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
-  const launch = (args: readonly string[]) =>
-    launchInsideSandbox(ppt, {
-      ...ownedLaunchOptions(),
-      headless: true,
-      args: withHyperframesBrowserMarker(args),
-      defaultViewport: null,
-      executablePath: fingerprint.executablePath,
-      env,
-      timeout: fingerprint.browserTimeoutMs,
-      protocolTimeout: fingerprint.protocolTimeoutMs,
+  const network = fingerprint.publicOnly
+    ? await publicOnlyNetwork(fingerprint.publicOnly.pageServerHost)
+    : undefined;
+  const browserArgs = network ? [...fingerprint.args, ...network.args] : fingerprint.args;
+  const launch = (args: readonly string[]) => {
+    let attempted = args;
+    return launchWithChromeSandboxFallback(args, (launchArgs) => {
+      attempted = launchArgs;
+      return launchInsideSandbox(ppt, {
+        ...ownedLaunchOptions(),
+        headless: true,
+        args: withHyperframesBrowserMarker(launchArgs),
+        defaultViewport: null,
+        userDataDir: network?.userDataDir,
+        executablePath: fingerprint.executablePath,
+        env,
+        timeout: fingerprint.browserTimeoutMs,
+        protocolTimeout: fingerprint.protocolTimeoutMs,
+      });
     }).catch(async (error: unknown) => {
       const remediation =
         process.platform === "darwin" &&
@@ -934,10 +979,11 @@ async function launchBrowser(
       if (remediation) throw new Error(remediation, { cause: error });
       const defaults = await ppt.defaultArgs({
         headless: true,
-        args: withHyperframesBrowserMarker(args),
+        args: withHyperframesBrowserMarker(attempted),
       });
-      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults);
+      throw await explainChromeLaunchFailure(error, fingerprint.executablePath, defaults, { env });
     });
+  };
   const probe = (target: Browser, timeoutMs?: number) =>
     probeBeginFrameSupport(target, timeoutMs).catch((error) => ({
       supported: true,
@@ -946,15 +992,16 @@ async function launchBrowser(
       timedOut: false,
     }));
   try {
-    browser = await launch(fingerprint.args);
+    browser = await launch(browserArgs);
 
     const browserVersion = await browser.version().catch(() => "unknown");
     const gpuFlags = fingerprint.args.filter(
       (a) => a.startsWith("--use-gl=") || a.startsWith("--use-angle="),
     );
-    console.error(
-      `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
-    );
+    if (process.env.HF_DEBUG_RENDER === "1")
+      console.error(
+        `[BrowserManager] Browser launched (${browserVersion}, ${captureMode}, gl=${gpuFlags.join(" ") || "default"}, headlessShell=${!!fingerprint.executablePath}, platform=${process.platform})`,
+      );
 
     if (captureMode === "beginframe") {
       let result = await probe(browser);
@@ -964,7 +1011,7 @@ async function launchBrowser(
             `${result.detail}; retrying once with a longer budget.`,
         );
         await closeBrowserAfterFailedProbe(browser);
-        browser = await launch(fingerprint.args);
+        browser = await launch(browserArgs);
         result = await probe(browser, BEGINFRAME_PROBE_RETRY_TIMEOUT_MS);
       }
       if (!result.supported) {
@@ -975,13 +1022,15 @@ async function launchBrowser(
             `${result.detail}; falling back to screenshot mode.`,
         );
         captureMode = "screenshot";
-        browser = await launch(stripBeginFrameFlags([...fingerprint.args]));
+        browser = await launch([...stripBeginFrameFlags(browserArgs), WHOLE_TILE_RASTER_FLAG]);
       }
     }
 
+    if (network) browser.once("disconnected", () => void network.close());
     return { browser, captureMode };
   } catch (error) {
     await browser?.close().catch(() => {});
+    await network?.close();
     throw error;
   }
 }
@@ -1057,13 +1106,19 @@ let _cachedVramMb: number | null = null;
 function probeNvidiaVramMb(): number | null {
   if (_cachedVramMb !== null) return _cachedVramMb;
   try {
+    const nvidiaSmi = findTrustedExecutable("nvidia-smi");
+    if (!nvidiaSmi) return null;
     // Synchronous, runs once per process (cached). ~50ms on typical systems.
-    const out = execSync("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", {
-      timeout: 3000,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    }).trim();
+    const out = execFileSync(
+      nvidiaSmi,
+      ["--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+      {
+        timeout: 3000,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    ).trim();
     const mb = parseInt(out.split("\n")[0] ?? "", 10);
     if (Number.isFinite(mb) && mb > 0) {
       _cachedVramMb = mb;
@@ -1099,6 +1154,7 @@ export interface BuildChromeArgsOptions {
   platform?: NodeJS.Platform;
   /** The composition declares `data-requires-webgpu`; forces the WebGPU flag even in "software" mode. */
   requiresWebGpu?: boolean;
+  sandbox?: boolean;
 }
 
 const CANVAS_DRAW_ELEMENT_FEATURE_FLAG = "--enable-features=CanvasDrawElement";
@@ -1137,8 +1193,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
   // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
   // headless-shell guidance.
   const chromeArgs = [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(options.sandbox),
     "--disable-dev-shm-usage",
     softwareWebGpu
       ? `${CANVAS_DRAW_ELEMENT_FEATURE_FLAG},Vulkan`
@@ -1147,6 +1202,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
     "--ignore-gpu-blocklist",
     ...getBrowserGpuArgs(browserGpuMode, platform),
     "--font-render-hinting=none",
+    "--disable-lcd-text",
     "--force-color-profile=srgb",
     "--force-device-scale-factor=1",
     `--window-size=${options.width},${options.height}`,
@@ -1169,7 +1225,6 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
     "--disable-domain-reliability",
     "--disable-print-preview",
     "--no-pings",
-    "--no-zygote",
     // Memory — scale GPU budget to available system RAM
     `--force-gpu-mem-available-mb=${getGpuMemBudgetMb()}`,
     "--disk-cache-size=268435456",
@@ -1230,6 +1285,8 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
       "--disable-image-animation-resync",
       "--enable-surface-synchronization",
     );
+  } else {
+    chromeArgs.push(WHOLE_TILE_RASTER_FLAG);
   }
 
   if (gpuDisabled) {
@@ -1296,10 +1353,13 @@ export async function assertWebGpuAdapterAvailable(
         return await Promise.race([
           probe(),
           new Promise<false>((resolve) => {
-            timer = setTimeout(() => {
-              expired = true;
-              resolve(false);
-            }, timeoutMs);
+            timer = (globalThis.window?.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(
+              () => {
+                expired = true;
+                resolve(false);
+              },
+              timeoutMs,
+            );
           }),
         ]);
       } catch {

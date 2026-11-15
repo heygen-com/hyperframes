@@ -14,10 +14,10 @@ import * as clack from "../ui/prompts.js";
 import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
-import { fetchRegistryManifest } from "../registry/remote.js";
+import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
-import { finishCommand } from "../utils/commandResult.js";
+import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
@@ -226,15 +226,17 @@ export default defineCommand({
     if (args.type === "block") typeFilter = "hyperframes:block";
     else if (args.type === "component") typeFilter = "hyperframes:component";
     else if (args.type) {
-      console.error(`Invalid --type: "${args.type}". Use "block" or "component".`);
-      finishCommand(1);
+      throw new CliUsageError(`Invalid --type: "${args.type}". Use "block" or "component".`);
     }
 
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
-    const manifest = await fetchRegistryManifest(config.registry);
-    const entries = manifest?.items ?? [];
-    const artifactRevision = manifest?.catalogArtifact?.revision;
+    const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      return finishCommand(1);
+    });
+    const entries = manifest.items;
+    const artifactRevision = manifest.catalogArtifact?.revision;
     const catalog = entries.filter((e) => e.type !== "hyperframes:example");
     const registryNames = new Set(catalog.map((e) => e.name));
     const filtered = typeFilter ? catalog.filter((e) => e.type === typeFilter) : catalog;

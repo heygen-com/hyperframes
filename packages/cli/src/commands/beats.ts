@@ -96,9 +96,16 @@ function report(file: string, result: MusicBeatAnalysis, json: boolean): void {
   );
 }
 
+function answerNoBeats(rel: string, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: true, track: rel, file: null, count: 0, bpm: null }, null, 2));
+  } else {
+    console.log(c.dim(`No beats in ${rel}; nothing written.`));
+  }
+}
+
 async function analyzeFile(audioPath: string, json: boolean): Promise<void> {
   const result = await analyzeMusicFromSignal(await decode(audioPath));
-  if (result.beatTimes.length === 0) fail(`No beats detected in ${audioPath}.`);
   if (json) {
     console.log(
       JSON.stringify(
@@ -113,6 +120,10 @@ async function analyzeFile(audioPath: string, json: boolean): Promise<void> {
         2,
       ),
     );
+    return;
+  }
+  if (result.beatTimes.length === 0) {
+    console.log(c.dim(`No beats in ${audioPath}.`));
     return;
   }
   console.log(
@@ -153,9 +164,7 @@ export default defineCommand({
 
     const result = await analyzeMusicFromSignal(await decode(audioPath));
     // The Studio ignores a 0-beat file (treats it as a stale seed), so don't write one.
-    if (result.beatTimes.length === 0) {
-      fail(`No beats detected in ${rel} — nothing written. (Track may be silent/ambient.)`);
-    }
+    if (result.beatTimes.length === 0) return answerNoBeats(rel, Boolean(args.json));
 
     const outPath = join(project.dir, "beats", `${rel}.json`);
     if (!isSafePath(project.dir, outPath))

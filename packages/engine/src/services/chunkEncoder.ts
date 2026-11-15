@@ -13,7 +13,6 @@ import {
   existsSync,
   ftruncateSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -26,6 +25,7 @@ import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import {
   type GpuEncoder,
   getCachedGpuEncoder,
+  getCachedNvencPresets,
   getGpuEncoderName,
   buildVideoToolboxRateControlArgs,
   mapPresetForGpuEncoder,
@@ -49,6 +49,7 @@ import type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.typ
 import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -57,6 +58,8 @@ export const ENCODER_PRESETS = {
   standard: { preset: "medium", quality: 18, codec: "h264" as const },
   high: { preset: "fast", quality: 15, codec: "h264" as const },
 };
+
+export type ChromaSubsampling = "420" | "444";
 
 export interface EncoderPreset {
   preset: string;
@@ -159,6 +162,7 @@ export function getEncoderPreset(
   format: "mp4" | "webm" | "mov" = "mp4",
   hdr?: { transfer: HdrTransfer },
   proresProfile: ProresProfile = "4444",
+  chromaSubsampling: ChromaSubsampling = "420",
 ): EncoderPreset {
   const base = ENCODER_PRESETS[quality];
   if (format === "webm") {
@@ -182,7 +186,7 @@ export function getEncoderPreset(
       hdr,
     };
   }
-  return { ...base, pixelFormat: "yuv420p" };
+  return { ...base, pixelFormat: chromaSubsampling === "444" ? "yuv444p" : "yuv420p" };
 }
 
 // Re-export GPU utilities so existing consumers that import from chunkEncoder still work.
@@ -284,6 +288,7 @@ export function buildEncoderArgs(
   inputArgs: string[],
   outputPath: string,
   gpuEncoder: GpuEncoder = null,
+  nvencPresets?: ReadonlySet<string>,
 ): string[] {
   const {
     fps,
@@ -320,7 +325,7 @@ export function buildEncoderArgs(
 
       switch (gpuEncoder) {
         case "nvenc":
-          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset));
+          args.push("-preset", mapPresetForGpuEncoder("nvenc", preset, nvencPresets));
           if (bitrate) args.push("-b:v", bitrate);
           else args.push("-cq", String(quality));
           break;
@@ -620,7 +625,8 @@ export async function encodeFramesFromDir(
 
   const inputPath = frameSequencePath(framesDir, framePattern);
   const inputArgs = ["-framerate", fpsToFfmpegArg(options.fps), "-i", inputPath];
-  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder);
+  const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+  const args = buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder, nvencPresets);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   let framesRead = 0;
   const result = await runFfmpeg(args, {
@@ -761,7 +767,7 @@ export async function encodeFramesChunkedConcat(
   mkdirSync(dirname(outputPath), { recursive: true });
   // Keep intermediates under the caller-owned output directory for its existing
   // cleanup/debug policy, but never reuse another invocation's chunk files.
-  const chunkDir = mkdtempSync(join(dirname(outputPath), "chunk-encode-"));
+  const chunkDir = createStagingDir(dirname(outputPath), "chunk-encode-");
   const chunkPaths: string[] = [];
 
   for (let i = 0; i < chunkCount; i++) {
@@ -796,7 +802,8 @@ export async function encodeFramesChunkedConcat(
     ];
     let gpuEncoder: GpuEncoder = null;
     if (options.useGpu) gpuEncoder = await getCachedGpuEncoder();
-    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder);
+    const nvencPresets = gpuEncoder === "nvenc" ? await getCachedNvencPresets() : undefined;
+    const args = buildEncoderArgs(options, inputArgs, chunkPath, gpuEncoder, nvencPresets);
     const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
     let framesRead = 0;
     const processResult = await runFfmpeg(args, {

@@ -23,6 +23,7 @@ function text(body, contentType = "text/plain") {
 
 const PROJECT_PATH = `/api/projects/${PROJECT_ID}`;
 const GET_RESPONSES = new Map([
+  ["/api/share/bootstrap", json({ csrf: "s".repeat(43) })],
   [
     "/api/projects",
     json({ projects: [{ id: PROJECT_ID, dir: "/tmp/smoke-test", title: "Smoke test" }] }),

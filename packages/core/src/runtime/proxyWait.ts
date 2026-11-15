@@ -1,3 +1,4 @@
+import { wallSetTimeout } from "./wallClock";
 import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
@@ -12,9 +13,15 @@ function withoutRetryFlag(href: string): string {
   return url.href;
 }
 
-function askHeaders(atPlayhead: boolean): Record<string, string> {
+function askHeaders(
+  atPlayhead: boolean,
+  background: boolean,
+  onAsk?: () => void,
+): Record<string, string> {
+  onAsk?.();
   const headers: Record<string, string> = { Range: "bytes=0-0" };
   if (atPlayhead) headers[PREVIEW_PROXY_PRIORITY_HEADER] = "1";
+  else if (background) headers[PREVIEW_PROXY_PRIORITY_HEADER] = "0";
   return headers;
 }
 
@@ -32,11 +39,13 @@ export async function waitForServedProxy(
   live: () => boolean,
   onProgress?: (fraction: number) => void,
   atPlayhead: () => boolean = () => false,
+  background = false,
+  onAsk?: () => void,
 ): Promise<boolean> {
   let failed = 0;
   let ask = href;
   while (live()) {
-    const headers = askHeaders(atPlayhead());
+    const headers = askHeaders(atPlayhead(), background, onAsk);
     const res = await fetch(ask, { headers, cache: "no-store" }).catch(() => null);
     ask = withoutRetryFlag(href);
     void res?.body?.cancel().catch(() => {});
@@ -45,7 +54,7 @@ export async function waitForServedProxy(
     if (!pending && res?.ok) return true;
     if (!pending && ++failed > MAX_FAILED_ASKS) return false;
     const seconds = Math.min(Number(res?.headers.get("Retry-After")) || 2, 30);
-    await new Promise((resolveWait) => setTimeout(resolveWait, seconds * 1000));
+    await new Promise((resolveWait) => wallSetTimeout(resolveWait, seconds * 1000));
   }
   return false;
 }

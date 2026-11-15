@@ -2,7 +2,12 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getVariables, readDeclaredDefaults, resetUnknownEnumWarnings } from "./getVariables";
+import {
+  getDeclaredVariableSources,
+  getVariables,
+  readDeclaredDefaults,
+  resetUnknownEnumWarnings,
+} from "./getVariables";
 
 const VARIABLES_ATTR = "data-composition-variables";
 
@@ -449,5 +454,37 @@ describe("css variable injection (figma brand-token chain)", () => {
     const { getVariables } = await import("./getVariables");
     document.body.innerHTML = `<div ${VARIABLES_ATTR}='[{"id":"figma:brand","type":"color","label":"b","default":"#445566"}]'></div>`;
     expect(getVariables()["figma:brand"]).toBe("#445566");
+  });
+});
+
+describe("getDeclaredVariableSources", () => {
+  afterEach(() => {
+    setDeclared(null);
+    document.body.innerHTML = "";
+    (window as Window & { __hfVariablesByComp?: unknown }).__hfVariablesByComp = undefined;
+  });
+
+  it("lists <html> first, then every other declarer in document order", () => {
+    setDeclared("[1]");
+    document.body.innerHTML = `<div ${VARIABLES_ATTR}="[2]"></div><p ${VARIABLES_ATTR}="[3]"></p>`;
+    expect(getDeclaredVariableSources()).toEqual(["[1]", "[2]", "[3]"]);
+  });
+
+  it("is empty when nothing declares variables", () => {
+    expect(getDeclaredVariableSources()).toEqual([]);
+  });
+
+  it("leaves out a sub-composition's declaration, which has its own scope", () => {
+    setDeclared("[1]");
+    document.body.innerHTML = `<div data-composition-id="sub"><span ${VARIABLES_ATTR}="[9]"></span></div>`;
+    (window as Window & { __hfVariablesByComp?: unknown }).__hfVariablesByComp = { sub: {} };
+    expect(getDeclaredVariableSources()).toEqual(["[1]"]);
+  });
+
+  it("is the scope getVariables merges, so a later declarer's default wins", () => {
+    setDeclared(JSON.stringify([{ id: "a", type: "string", label: "A", default: "html" }]));
+    document.body.innerHTML = `<div ${VARIABLES_ATTR}='${JSON.stringify([{ id: "a", type: "string", label: "A", default: "div" }])}'></div>`;
+    expect(getVariables()).toEqual({ a: "div" });
+    expect(getDeclaredVariableSources()).toHaveLength(2);
   });
 });

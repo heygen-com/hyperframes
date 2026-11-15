@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   once: vi.fn(),
   launch: vi.fn(),
 }));
-vi.mock("./captureProxy.js", () => ({
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine/public-network")>()),
   startCaptureProxy: async () => ({ url: "http://127.0.0.1:4567", close: mocks.proxyClose }),
 }));
 vi.mock("../browser/launch.js", () => ({

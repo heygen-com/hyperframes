@@ -4,6 +4,8 @@
  * Keeps constructor boilerplate out of the web component class body.
  */
 
+import { PLAYER_FRAME_ATTR } from "@hyperframes/core/studio-preview-mark";
+
 // Cached Constructable Stylesheet shared across all player instances.
 let _sharedSheet: CSSStyleSheet | null = null;
 
@@ -49,6 +51,7 @@ export function createCompositionIframe(): {
   iframe.allow = "autoplay; fullscreen";
   iframe.referrerPolicy = "no-referrer";
   iframe.title = "HyperFrames Composition";
+  iframe.setAttribute(PLAYER_FRAME_ATTR, "");
 
   container.appendChild(iframe);
   return { container, iframe };

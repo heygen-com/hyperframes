@@ -27,16 +27,19 @@ export default defineCommand({
   },
   args: {
     video: videoArg,
-    roi: { ...roiArg, description: "The mouth, x,y,w,h in the video's pixels", required: true },
-    start: { type: "string", description: "First second (default 0)" },
-    end: { type: "string", description: "Last second (default: the end)" },
+    roi: { ...roiArg, description: "The mouth, x,y,w,h in the video's pixels (required)" },
+    start: { type: "string", alias: ["from"], description: "First second (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second (default: the end)" },
     "max-lag-ms": { type: "string", description: "Lags searched each way (default 400)" },
     json: jsonArg,
   },
   async run({ args }) {
     await runMeasure(() => {
       if (args.roi === undefined)
-        throw new Fix("--roi is required", "--roi x,y,w,h round the mouth");
+        throw new Fix(
+          "--roi is required: sync reads the mouth's motion",
+          "--roi x,y,w,h round the mouth; `hyperframes measure face <video>` finds the face",
+        );
       const { info, roi } = videoAndRoi(args.video, args.roi);
       const [start, end] = window(info, args.start, args.end);
       return {

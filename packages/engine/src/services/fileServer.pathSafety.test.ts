@@ -61,3 +61,27 @@ describe("fileServer path containment", () => {
     expect(await response.text()).toContain("<html>");
   });
 });
+
+describe("fileServer private project files", () => {
+  it.each(["/.env", "/.Env.local", "/.git/config", "/%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-private-"));
+      fs.mkdirSync(path.join(projectDir, ".git"));
+      fs.writeFileSync(path.join(projectDir, ".env"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, ".Env.local"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, ".git", "config"), "SECRET=1");
+      fs.writeFileSync(path.join(projectDir, "asset.txt"), "ok");
+      const server = await createFileServer({ headScripts: [], bodyScripts: [], projectDir });
+      try {
+        const response = await fetch(`${server.url}${requestPath}`);
+        expect(response.status).toBe(404);
+        expect(await response.text()).not.toContain("SECRET");
+        expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+      } finally {
+        server.close();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
