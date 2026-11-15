@@ -563,7 +563,12 @@ export {
   pipeLaunchClosedOnMac,
   sandboxDeniedRemediation,
 } from "./services/sandboxLaunch.js";
-export { launchWithChromeSandboxFallback } from "./services/chromeSandbox.js";
+export {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+  type ChromeSandboxHost,
+} from "./services/chromeSandbox.js";
 export {
   VariablesInvalidError,
   type VariablesIssue,
