@@ -34,14 +34,13 @@ const ITEMS = [
   },
 ];
 
-/** The item with GSAP inlined, its <template> unwrapped and its variables set before it runs. */
-function itemHtml(path: string, variables: Record<string, string>): string {
-  const stub = `<script>window.__hyperframes = { getVariables: () => (${JSON.stringify(variables)}) };</script>`;
+/** The item with GSAP inlined and its <template> unwrapped. */
+function itemHtml(path: string): string {
   const html = readFileSync(
     new URL(`../../../../registry/${path}`, import.meta.url),
     "utf8",
   ).replace(/<script src="https:[^"]*gsap[^"]*"><\/script>/, `<script>${gsapScript}</script>`);
-  return stub + html.replace(/<\/?template>/g, "");
+  return html.replace(/<\/?template>/g, "");
 }
 
 describe.runIf(executablePath)(
@@ -60,7 +59,13 @@ describe.runIf(executablePath)(
     async function spanTexts(item: (typeof ITEMS)[number]): Promise<string[]> {
       const page = await browser.newPage();
       try {
-        await page.setContent(itemHtml(item.path, { [item.variable]: TEXT }));
+        await page.evaluate(
+          (variables) => {
+            Object.assign(window, { __hyperframes: { getVariables: () => variables } });
+          },
+          { [item.variable]: TEXT },
+        );
+        await page.setContent(itemHtml(item.path));
         return await page.$$eval(item.spans, (spans) =>
           spans.map((span) => (span.textContent ?? "").replace(/\s/g, " ")),
         );
