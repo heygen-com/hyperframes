@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /**
- * The one rule for finding a helper program by name. A project can come from anyone, so a program
- * is taken only from an absolute PATH entry outside the working directory and its project, or a
+ * The one rule for finding a helper program by name. A project folder can come from anyone, so a
+ * program comes only from an absolute PATH entry outside the working directory's project, or a
  * fixed install dir. Only an override the person sets in their own environment may point into it.
  */
 
@@ -27,36 +27,37 @@ function contains(parent: string, child: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
-const PROJECT_MARKERS = ["package.json", ".git"];
+const PROJECT_MARKERS = [".git", "package.json", "node_modules", "hyperframes.json"];
 
-// Package runners put every ancestor's node_modules/.bin on PATH. Home and above are never the project.
-function projectFoldersAbove(cwd: string, home: string): string[] {
+function projectRoot(cwd: string, home: string): string {
+  let root = cwd;
+  for (let dir = cwd; dirname(dir) !== dir && !contains(dir, home); dir = dirname(dir)) {
+    if (PROJECT_MARKERS.some((marker) => existsSync(join(dir, marker)))) root = dir;
+  }
+  return root;
+}
+
+function ancestorNodeModules(cwd: string): string[] {
   const folders: string[] = [];
-  let outermost: string | undefined;
   for (let dir = dirname(cwd); ; dir = dirname(dir)) {
     folders.push(comparable(join(dir, "node_modules")));
-    const isRoot = dirname(dir) === dir;
-    if (isRoot) break;
-    const belowHome = !contains(dir, home);
-    if (belowHome && PROJECT_MARKERS.some((marker) => existsSync(join(dir, marker)))) {
-      outermost = dir;
-    }
+    if (dirname(dir) === dir) return folders;
   }
-  return outermost ? [...folders, outermost] : folders;
 }
 
 function trustRule(): (dir: string) => boolean {
   const cwd = comparable(process.cwd());
   const home = comparable(homedir());
-  const above = projectFoldersAbove(cwd, home);
   // From the home folder (or above it) every per-user install dir is inside; skip only the folder.
   const fromHome = contains(cwd, home);
+  const project = fromHome ? cwd : projectRoot(cwd, home);
+  // `npm run` puts every ancestor's node_modules/.bin on PATH, at and above home too.
+  const nodeModules = ancestorNodeModules(cwd);
   return (dir) => {
     if (!dir || !isAbsolute(dir)) return false;
     const target = comparable(dir);
-    if (target === cwd) return false;
-    if (above.some((folder) => contains(folder, target))) return false;
-    return fromHome || !contains(cwd, target);
+    if (target === cwd || nodeModules.some((folder) => contains(folder, target))) return false;
+    return fromHome || !contains(project, target);
   };
 }
 

@@ -1190,3 +1190,53 @@ describe("createFileServer private project files", () => {
     },
   );
 });
+
+describe("createFileServer tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])(
+    "answers %s with 404 from either root and still serves prepared assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-records-"));
+      const compiledDir = mkdtempSync(join(tmpdir(), "hf-fs-records-compiled-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const root of [projectDir, compiledDir]) {
+          mkdirSync(join(root, ".hyperframes", "prepared-assets"), { recursive: true });
+          for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+            writeFileSync(join(root, ".hyperframes", name), "PRIVATE_RECORD");
+          }
+        }
+        writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+        symlinkSync(
+          join(projectDir, ".hyperframes", "app-history.jsonl"),
+          join(projectDir, "linked-history.json"),
+        );
+        const server = await createFileServer({
+          projectDir,
+          compiledDir,
+          preHeadScripts: [],
+          headScripts: [],
+          bodyScripts: [],
+        });
+        try {
+          const response = await fetch(`${server.url}/${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("PRIVATE_RECORD");
+          const prepared = await fetch(`${server.url}/.hyperframes/prepared-assets/clip.txt`);
+          expect(await prepared.text()).toBe("prepared");
+        } finally {
+          server.close();
+        }
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+        rmSync(compiledDir, { recursive: true, force: true });
+      }
+    },
+  );
+});

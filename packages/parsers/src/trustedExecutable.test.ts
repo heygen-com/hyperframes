@@ -54,6 +54,12 @@ describe("isTrustedDirectory", () => {
   });
 });
 
+/** Makes `dir` the home folder, so a marker in a folder above the temp folder cannot move the project root. */
+function homeAt(dir: string): void {
+  vi.stubEnv("HOME", dir);
+  vi.stubEnv("USERPROFILE", dir);
+}
+
 describe("isTrustedDirectory from a subfolder of a project", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -64,6 +70,7 @@ describe("isTrustedDirectory from a subfolder of a project", () => {
   // node_modules/.bin a package runner adds for the project root stayed ahead of system folders.
   it("drops every ancestor's node_modules and the folders of the project above", () => {
     const root = tempDir("hf-trusted-tree-");
+    homeAt(root);
     const project = join(root, "project");
     const sub = join(project, "video");
     const venv = join(project, ".venv", "bin");
@@ -87,6 +94,7 @@ describe("isTrustedDirectory from a subfolder of a project", () => {
     "drops a project folder that does not exist yet, named through a link",
     () => {
       const root = tempDir("hf-trusted-link-");
+      homeAt(root);
       const project = join(root, "project");
       const sub = join(project, "video");
       mkdirSync(sub, { recursive: true });
@@ -117,6 +125,7 @@ describe("isTrustedDirectory from a subfolder of a project", () => {
     "never finds a helper in the project when run from its subfolder through a package runner",
     () => {
       const root = tempDir("hf-trusted-runner-");
+      homeAt(root);
       const project = join(root, "project");
       const sub = join(project, "video");
       const tools = join(root, "tools");
@@ -168,6 +177,48 @@ describe("findTrustedExecutable", () => {
       expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
       expect(findTrustedExecutable("probe")).toBeUndefined();
       expect(existsSync(marker)).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "run from a subfolder, skips the project's node_modules/.bin and every folder inside the project",
+    () => {
+      const project = tempDir("hf-trusted-project-");
+      const tools = tempDir("hf-trusted-tools-");
+      const bin = join(project, "node_modules", ".bin");
+      const scenes = join(project, "scenes", "intro");
+      mkdirSync(bin, { recursive: true });
+      mkdirSync(scenes, { recursive: true });
+      writeFileSync(join(project, "package.json"), "{}");
+      for (const dir of [bin, project, tools])
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      vi.spyOn(process, "cwd").mockReturnValue(scenes);
+      vi.stubEnv("PATH", [bin, project, tools, "/usr/bin", "/bin"].join(delimiter));
+
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+      expect(trustedPathDirs()).not.toContain(bin);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "in a monorepo, skips the repository's hoisted node_modules/.bin as well as the package's",
+    () => {
+      const repo = tempDir("hf-trusted-repo-");
+      const tools = tempDir("hf-trusted-tools-");
+      const pkg = join(repo, "packages", "film");
+      const hoisted = join(repo, "node_modules", ".bin");
+      const local = join(pkg, "node_modules", ".bin");
+      const cwd = join(pkg, "scenes");
+      for (const dir of [hoisted, local, cwd]) mkdirSync(dir, { recursive: true });
+      mkdirSync(join(repo, ".git"));
+      writeFileSync(join(pkg, "package.json"), "{}");
+      for (const dir of [hoisted, local, tools])
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      vi.spyOn(process, "cwd").mockReturnValue(cwd);
+      vi.stubEnv("PATH", [local, hoisted, tools].join(delimiter));
+
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+      expect(trustedPathDirs()).toEqual([tools]);
     },
   );
 

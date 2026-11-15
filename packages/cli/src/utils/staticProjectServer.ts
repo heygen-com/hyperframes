@@ -2,7 +2,7 @@ import { createServer, request as httpRequest, type Server, type ServerResponse 
 import { Duplex } from "node:stream";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
@@ -332,7 +332,7 @@ export async function serveStaticProjectHtml(
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
-      if (isPrivateFileUnder(root, filePath, isVcsOrSecretPath)) continue;
+      if (isPrivateFileUnder(root, filePath, isStudioPrivatePath)) continue;
       if (existsSync(filePath)) {
         if (proxyRequest) {
           void serveProxyRequest(
