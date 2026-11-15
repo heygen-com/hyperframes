@@ -274,10 +274,12 @@ describe("cloud/download", () => {
         fetchImpl: makeBytesFetch(new Uint8Array([7])),
         replaceLink: true,
       });
+      const downloaded = readFileSync(alias);
+      const written = lstatSync(alias);
       expect(readFileSync(target, "utf8")).toBe("keep");
-      expect(lstatSync(alias).isFile()).toBe(true);
-      expect(statSync(alias).mode & 0o111).toBe(0);
-      expect(readFileSync(alias)).toEqual(Buffer.from([7]));
+      expect(written.isFile()).toBe(true);
+      expect(written.mode & 0o111).toBe(0);
+      expect(downloaded).toEqual(Buffer.from([7]));
     },
   );
 
