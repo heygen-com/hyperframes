@@ -395,7 +395,7 @@ describe("openCommandFor", () => {
       "hyperframes open .",
     );
     expect(openCommandFor(join(work, "films", "a"), work)).toBe(
-      `hyperframes open ${join("films", "a")}`,
+      process.platform === "win32" ? 'hyperframes open "films\\a"' : "hyperframes open films/a",
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
   });
