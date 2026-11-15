@@ -300,7 +300,11 @@ export {
 } from "./services/videoFrameExtractor.js";
 export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
-export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
+export {
+  directorySizeBytes,
+  gcExtractionCache,
+  privateCacheRoot,
+} from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,
