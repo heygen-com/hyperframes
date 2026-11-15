@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 
-/** Build a sub-composition page: hf-id pin, build, runtime and import map, and the files it names. */
 export interface BuildJob {
   kind: "build";
   projectDir: string;
@@ -14,7 +13,6 @@ export interface BuildJob {
   gsapBaseUrl?: string;
 }
 
-/** Finish a page the host transformed: hf-ids, Studio's augmentations, then the request's variables. */
 export interface FinishJob {
   kind: "finish";
   html: string;
@@ -29,7 +27,6 @@ export interface FinishJob {
 export type SubCompositionJob = BuildJob | FinishJob;
 type Result<J> = J extends BuildJob ? { html: string; references: string[] } | null : string;
 
-/** A sub-composition page that did not build within its deadline. */
 export class SubCompositionDeadlineError extends Error {
   constructor(compPath: string) {
     super(`${compPath} took too long to build`);
@@ -37,7 +34,6 @@ export class SubCompositionDeadlineError extends Error {
   }
 }
 
-/** A request's page gets this long; one still parsing then is ended with its worker. */
 export const SUB_COMPOSITION_DEADLINE_MS = 30_000;
 
 interface Pending {
@@ -102,9 +98,8 @@ function replace(from: Worker, failed?: Error): void {
   for (const [id, job] of pending) next.postMessage({ id, job: job.job });
 }
 
-/** `job` on the build worker, refused with SubCompositionDeadlineError once `deadline` (performance.now() time)
- * passes; the request thread stays free meanwhile. Only the job the worker is running ends it: a queued job past its
- * deadline is dropped, and its result ignored. @param compPath names the page in the refusal */
+/** `job` on the build worker, refused past `deadline` (performance.now() time). Only the running job's deadline ends
+ * the worker; a queued job past its own is dropped. @param compPath names the page in the refusal */
 export function runOffThread<J extends SubCompositionJob>(
   job: J,
   deadline: number,
@@ -127,8 +122,7 @@ export function runOffThread<J extends SubCompositionJob>(
   });
 }
 
-/** `work`, refused with SubCompositionDeadlineError once `deadline` (performance.now() time) passes; the work itself
- * goes on, as nothing can end it. @param compPath names the page in the refusal */
+/** `work`, refused past `deadline`; the work itself goes on, as nothing can end it. */
 export function withinDeadline<T>(
   work: Promise<T>,
   deadline: number,

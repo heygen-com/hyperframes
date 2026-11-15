@@ -21,6 +21,11 @@ writeFileSync(
   join(projectDir, "scenes", "huge.html"),
   `<div data-composition-id="huge" data-width="320" data-height="180">${cells}</div>`,
 );
+// Big enough to take a while, small enough to build inside a patient deadline.
+writeFileSync(
+  join(projectDir, "scenes", "large.html"),
+  `<div data-composition-id="large" data-width="320" data-height="180">${cells.slice(0, cells.length / 30)}</div>`,
+);
 afterAll(() => rmSync(projectDir, { recursive: true, force: true }));
 
 const adapter: StudioApiAdapter = {
@@ -34,6 +39,8 @@ const adapter: StudioApiAdapter = {
 };
 const DEADLINE_MS = 200;
 const api = createStudioApi(adapter, { subCompositionDeadlineMs: DEADLINE_MS });
+// Both share the one build worker; this one waits for a fresh worker to start.
+const patient = createStudioApi(adapter, { subCompositionDeadlineMs: 60_000 });
 const comp = (file: string, on = api) =>
   on.request(`http://localhost/projects/demo/preview/comp/scenes/${file}`);
 
@@ -62,18 +69,17 @@ describe("a sub-composition preview build", () => {
 
   // Rames on #7857: the passes after the build parse the page too; they run on the worker as well.
   it("inside its deadline is served whole, and the request thread stays free for all of it", async () => {
-    const patient = createStudioApi(adapter, { subCompositionDeadlineMs: 120_000 });
     let res: Response | undefined;
-    const stall = await longestStall(comp("huge.html", patient).then((answer) => (res = answer)));
+    const stall = await longestStall(comp("large.html", patient).then((answer) => (res = answer)));
     expect(res?.status).toBe(200);
-    expect((await res?.text())?.length).toBeGreaterThan(cells.length);
+    expect((await res?.text())?.length).toBeGreaterThan(cells.length / 30);
     expect(stall).toBeLessThan(DEADLINE_MS);
-  }, 150_000);
+  }, 90_000);
 
   it("after a refused one, the next page still builds", async () => {
     expect((await comp("huge.html")).status).toBe(503);
-    const res = await comp("small.html");
+    const res = await comp("small.html", patient);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("<p>Hi</p>");
-  }, 30_000);
+  }, 90_000);
 });

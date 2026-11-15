@@ -78,7 +78,6 @@ export function recordPreviewReferences(projectDir: string, html: string): void 
   for (const path of previewReferences(html)) recordPreviewRead(projectDir, path);
 }
 
-/** The project files `html` names, as recordPreviewReferences records them; pure, so a build worker can run it. */
 export function previewReferences(html: string): Set<string> {
   const named = new Set<string>();
   const add = (reference: string) => {
