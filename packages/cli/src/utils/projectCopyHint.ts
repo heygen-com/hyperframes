@@ -2,18 +2,13 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { executableIn, pathEntries, trustedPathDirs } from "@hyperframes/parsers/ff-binaries";
 import { originalPath } from "./windowsExeSearch.js";
 
-/** `found` relative to `cwd`, with a leading `./` when it is inside; `undefined` when it is on another drive. */
 function shownPath(cwd: string, found: string): string | undefined {
   const rel = relative(cwd, found);
   if (isAbsolute(rel)) return undefined;
   return rel === ".." || rel.startsWith(`..${sep}`) ? rel : `.${sep}${rel}`;
 }
 
-/**
- * A copy of `name` in a PATH folder the trusted rule skipped, relative to the working directory:
- * `./node_modules/.bin/sam` in the project, or `../node_modules/.bin/sam` when an npm or pnpm
- * script runs from a subfolder.
- */
+/** A copy of `name` in a PATH folder the trusted rule skipped, as `./…` or `../…` from the working directory. */
 export function skippedProjectCopy(name: string, pathValue = originalPath()): string | undefined {
   const trusted = new Set(trustedPathDirs(pathValue));
   const cwd = process.cwd();
