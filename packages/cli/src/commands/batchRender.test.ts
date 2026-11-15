@@ -147,7 +147,6 @@ describe("prepareBatchRender", () => {
   it.each([
     { template: join("renders", "{name}.mp4"), name: "../escaped" },
     { template: join("renders", "v{name}.mp4"), name: "/../../escaped" },
-    { template: "{name}.mp4", name: "../escaped" },
   ])("refuses a row value that leaves the folder of $template", ({ template, name }) => {
     const batchPath = writeJson("rows.json", JSON.stringify([{ name }]));
     const error = expectBatchError(
@@ -163,6 +162,34 @@ describe("prepareBatchRender", () => {
       "Batch output outside --output folder",
     );
     expect(error.message).toMatch(/Row 0 resolves to/);
+  });
+
+  it("keeps a backslash in a row value or file name on every platform", () => {
+    const batchPath = writeJson("rows.json", '[{"name":"a\\\\b"}]');
+    const outDir = join(tmpDir, "renders\\");
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: `${outDir}{name}.mp4`,
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+    expect(prepared.rows[0]?.outputPath).toBe(resolve(`${outDir}a\\b.mp4`));
+  });
+
+  it("lets the rows name the whole path when the template starts with a placeholder", () => {
+    const elsewhere = join(tmpDir, "elsewhere", "launch.mp4");
+    const batchPath = writeJson("rows.json", JSON.stringify([{ path: elsewhere }]));
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: "{path}",
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+    expect(prepared.rows[0]?.outputPath).toBe(resolve(elsewhere));
   });
 
   it("rejects output collisions before rendering", () => {

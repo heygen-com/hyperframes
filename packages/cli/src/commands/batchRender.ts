@@ -155,17 +155,18 @@ export function resolveOutputTemplate(
   );
 }
 
-function folderBeforeFirstPlaceholder(template: string): string {
-  const prefix = template.slice(0, Math.max(0, template.search(PLACEHOLDER_RE)));
-  return prefix === "" || /[/\\]$/.test(prefix) ? resolve(prefix) : dirname(resolve(prefix));
+function folderOfPrefix(prefix: string): string {
+  return prefix.endsWith("/") || prefix.endsWith(sep) ? resolve(prefix) : dirname(resolve(prefix));
 }
 
 function checkOutputsInsideTemplateFolder(rows: readonly PreparedBatchRow[], template: string) {
-  if (template.search(PLACEHOLDER_RE) < 0) return;
-  const folder = folderBeforeFirstPlaceholder(template);
+  const firstPlaceholder = template.search(PLACEHOLDER_RE);
+  if (firstPlaceholder <= 0) return;
+  const folder = folderOfPrefix(template.slice(0, firstPlaceholder));
   for (const row of rows) {
     const rel = relative(folder, row.outputPath);
-    if (rel !== "" && rel.split(/[/\\]/)[0] !== ".." && !isAbsolute(rel)) continue;
+    const outside = rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+    if (!outside) continue;
     throw new BatchRenderInputError(
       "Batch output outside --output folder",
       `Row ${row.index} resolves to ${row.outputPath}, outside ${folder}.`,
