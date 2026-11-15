@@ -34,21 +34,32 @@ interface ReceivedRecord {
   listed: unknown;
 }
 
-function recordFileAt(dir: string): boolean {
+type RecordKind = "absent" | "file" | "other" | "unknown";
+
+function recordKind(dir: string): RecordKind {
+  const path = join(dir, RECEIVED_RECORD);
+  let found;
   try {
-    return statSync(join(dir, RECEIVED_RECORD)).isFile();
+    found = lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOTDIR" ? "absent" : "unknown";
+  }
+  if (!found) return "absent";
+  try {
+    return statSync(path).isFile() ? "file" : "other";
   } catch {
-    return false;
+    return "other";
   }
 }
 
 function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
-  if (!ownFolder && !recordFileAt(dir)) return null;
+  const kind = recordKind(dir);
+  if (kind === "absent" || (kind === "unknown" && !ownFolder)) return null;
+  if (kind !== "file") return { listed: undefined };
   try {
     return { listed: JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return ownFolder && (code === "ENOENT" || code === "ENOTDIR") ? null : { listed: undefined };
+  } catch {
+    return { listed: undefined };
   }
 }
 
@@ -161,10 +172,22 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
 }
 
 function listedUnder(record: ReceivedRecord): string[] {
+  const entries = (record.listed as unknown[]).map(String);
   const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/`.normalize("NFC") : "";
-  return (record.listed as unknown[])
-    .map(String)
-    .filter((entry) => entry.normalize("NFC").startsWith(prefix))
+  const folder = prefix ? fileIdentity(join(record.root, record.projectDirFromRoot)) : null;
+  const identities = new Map<string, string | null>();
+  const inFolderOnDisk = (path: string) => {
+    for (let dir = dirname(path); folder && dir.length > record.root.length; dir = dirname(dir)) {
+      if (!identities.has(dir)) identities.set(dir, fileIdentity(dir));
+      if (identities.get(dir) === folder) return true;
+    }
+    return false;
+  };
+  return entries
+    .filter(
+      (entry) =>
+        entry.normalize("NFC").startsWith(prefix) || inFolderOnDisk(join(record.root, entry)),
+    )
     .map((entry) => join(record.root, entry));
 }
 
