@@ -9,6 +9,7 @@ import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
+import { previewUnderFrameToken } from "../lib/frameToken";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -43,6 +44,7 @@ interface PlayerProps {
   suppressLoadingOverlay?: boolean;
   loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
+  sandboxOrigin?: "opaque";
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -164,6 +166,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       style,
       suppressLoadingOverlay,
       noLoadTimeout,
+      sandboxOrigin,
       ...host
     },
     ref,
@@ -219,14 +222,19 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      void loadPlayerModule().then(() => {
+      const srcUrl = new URL(previewSource, window.location.origin);
+      applyPreviewVariablesToUrl(srcUrl);
+      const plainSrc = srcUrl.pathname + srcUrl.search;
+      const opaque = sandboxOrigin === "opaque";
+
+      void Promise.all([
+        loadPlayerModule(),
+        opaque ? previewUnderFrameToken(plainSrc) : plainSrc,
+      ]).then(([, src]) => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
-        const srcUrl = new URL(previewSource, window.location.origin);
-        applyPreviewVariablesToUrl(srcUrl);
-        const src = srcUrl.pathname + srcUrl.search;
         const retryPreview = () => {
           retryCountRef.current += 1;
           const retryUrl = new URL(src, window.location.origin);
@@ -344,6 +352,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.setAttribute("shader-loading", "player");
         player.setAttribute("low-power-idle", "");
         player.toggleAttribute("no-load-timeout", noLoadTimeout === true);
+        player.toggleAttribute("sandbox-origin", opaque);
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";
