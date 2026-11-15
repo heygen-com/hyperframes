@@ -50,7 +50,11 @@ test("no dispatched workflow checks out a ref its inputs choose", () => {
     return Object.entries(doc.jobs ?? {}).flatMap(([name, job]) =>
       (job.steps ?? [])
         .filter((step) => step.uses?.startsWith("actions/checkout@"))
-        .filter((step) => /\binputs\.|github\.event\.inputs\./.test(String(step.with?.ref ?? "")) || inputs.includes("ref"))
+        .filter(
+          (step) =>
+            /\binputs\.|github\.event\.inputs\./.test(String(step.with?.ref ?? "")) ||
+            inputs.includes("ref"),
+        )
         .map(() => `${file} ${name}`),
     );
   });
