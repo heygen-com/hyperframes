@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   isEnvOrGitPath,
   isPrivateCompositionFile,
@@ -103,7 +103,7 @@ describe("recordReceivedFiles", () => {
   const lock = (root: string) => `${record(root)}.lock`;
   const listed = (root: string) => JSON.parse(readFileSync(record(root), "utf-8")).files;
   function project(): string {
-    dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-received-lock-")));
+    dir = mkdtempSync(join(tmpdir(), "hf-received-lock-"));
     mkdirSync(join(dir, ".hyperframes"));
     writeFileSync(record(dir), JSON.stringify({ files: ["hyperframes.json"] }));
     return dir;
@@ -129,6 +129,15 @@ describe("recordReceivedFiles", () => {
     recordReceivedFiles(root, ["mine.html"]);
     await new Promise((resolve) => other.once("exit", resolve));
     expect(listed(root)).toEqual(["hyperframes.json", "mine.html", "theirs.html"]);
+  });
+
+  it("takes a project folder however its path is spelled", () => {
+    const root = join(project(), "Project");
+    mkdirSync(root);
+    const respelled = join(dirname(root), "project");
+    const spelled = existsSync(respelled) ? respelled : root;
+    expect(recordReceivedFiles(spelled, ["mine.html"])).toEqual(["mine.html"]);
+    expect(listed(root)).toEqual(["mine.html"]);
   });
 
   it("takes over a lock left behind for more than ten seconds", () => {

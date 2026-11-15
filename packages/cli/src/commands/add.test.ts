@@ -1,7 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { runCommand as runCittyCommand, type CommandDef } from "citty";
 import {
-  chmodSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -34,6 +33,20 @@ import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 // already false under test (dev mode / no PostHog key), so a real call would
 // be indistinguishable from no call at all.
 vi.mock("../telemetry/events.js", () => ({ trackRegistryItemAdded: vi.fn() }));
+
+// A write that fails on every platform: publishing the file whose target ends with `failing` throws.
+const failingWrite = vi.hoisted(() => ({ failing: null as string | null }));
+vi.mock("../registry/publication.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../registry/publication.js")>();
+  return {
+    ...actual,
+    publishRegistryFile: (...args: Parameters<typeof actual.publishRegistryFile>) => {
+      if (failingWrite.failing && args[1].endsWith(failingWrite.failing))
+        throw new Error(`could not write ${args[1]}`);
+      return actual.publishRegistryFile(...args);
+    },
+  };
+});
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -895,14 +908,13 @@ describe("installs from the registry a received hyperframes.json names", () => {
   it("takes back what a failed install listed but never wrote", async () => {
     writeConfig(uniqueBase());
     receive(["hyperframes.json"]);
-    mkdirSync(join(dir, "compositions"));
-    chmodSync(join(dir, "compositions"), 0o555);
+    failingWrite.failing = "base-component.css";
     try {
       await expect(
         runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true }),
       ).rejects.toThrow(AddError);
     } finally {
-      chmodSync(join(dir, "compositions"), 0o755);
+      failingWrite.failing = null;
     }
     expect(listed()).toEqual(["hyperframes.json"]);
   });
@@ -942,14 +954,13 @@ describe("installs from the registry a received hyperframes.json names", () => {
   it("keeps a failed install's files that are on disk listed", async () => {
     writeConfig(uniqueBase());
     receive(["hyperframes.json"]);
-    mkdirSync(join(dir, "compositions", "components"), { recursive: true });
-    chmodSync(join(dir, "compositions"), 0o555);
+    failingWrite.failing = "dep-block.html";
     try {
       await expect(
         runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true }),
       ).rejects.toThrow(AddError);
     } finally {
-      chmodSync(join(dir, "compositions"), 0o755);
+      failingWrite.failing = null;
     }
     expect(listed()).toEqual([
       "compositions/components/base-component/base-component.css",

@@ -15,7 +15,7 @@ import {
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 import { mkdirWithinProject } from "@hyperframes/core";
-import { publishRegistryFile, registryTargetPath } from "../registry/publication.js";
+import { publishRegistryFile, registryRoot, registryTargetPath } from "../registry/publication.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
 
@@ -73,7 +73,7 @@ function takeRecordLock(lock: string): void {
 }
 
 function changeReceivedRecord(projectDir: string, change: (files: Set<string>) => boolean): void {
-  const root = realpathSync(projectDir);
+  const root = registryRoot(projectDir);
   const lock = registryTargetPath(root, RECEIVED_RECORD_LOCK);
   mkdirWithinProject(root, dirname(lock));
   takeRecordLock(lock);
