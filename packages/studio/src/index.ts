@@ -45,6 +45,7 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export { previewEditingClient, previewFrameOpaque } from "./player/lib/previewChannel";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {
   PlaybackHealth,
