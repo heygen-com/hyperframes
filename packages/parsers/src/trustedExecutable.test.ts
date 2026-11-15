@@ -46,6 +46,70 @@ describe("isTrustedDirectory", () => {
   });
 });
 
+describe("isTrustedDirectory from a subfolder of a project", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  // fails without the fix: only folders inside the working directory were dropped, so the
+  // node_modules/.bin a package runner adds for the project root stayed ahead of system folders.
+  it("drops every ancestor's node_modules and the folders of the project above", () => {
+    const root = tempDir("hf-trusted-tree-");
+    const project = join(root, "project");
+    const sub = join(project, "video");
+    const venv = join(project, ".venv", "bin");
+    mkdirSync(join(sub, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(project, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(venv, { recursive: true });
+    writeFileSync(join(project, "package.json"), "{}");
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+    expect(isTrustedDirectory(join(sub, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(join(project, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(join(root, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(venv)).toBe(false);
+    expect(isTrustedDirectory(project)).toBe(false);
+    expect(isTrustedDirectory(join(root, "tools"))).toBe(true);
+  });
+
+  it("keeps the per-user install dirs when the home folder itself holds a package.json or .git", () => {
+    const home = tempDir("hf-trusted-home-");
+    const sub = join(home, "films", "launch", "video");
+    mkdirSync(sub, { recursive: true });
+    mkdirSync(join(home, ".git"));
+    writeFileSync(join(home, "package.json"), "{}");
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+    expect(isTrustedDirectory(join(home, ".local", "bin"))).toBe(true);
+    expect(isTrustedDirectory(join(home, ".bun", "bin"))).toBe(true);
+    expect(isTrustedDirectory(join(home, "node_modules", ".bin"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "never finds a helper in the project when run from its subfolder through a package runner",
+    () => {
+      const root = tempDir("hf-trusted-runner-");
+      const project = join(root, "project");
+      const sub = join(project, "video");
+      const tools = join(root, "tools");
+      const subBin = join(sub, "node_modules", ".bin");
+      const projectBin = join(project, "node_modules", ".bin");
+      for (const dir of [subBin, projectBin, tools]) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      }
+      vi.spyOn(process, "cwd").mockReturnValue(sub);
+      vi.stubEnv("PATH", [subBin, projectBin, tools, "/usr/bin", "/bin"].join(delimiter));
+
+      expect(trustedPathDirs()).toEqual([tools, "/usr/bin", "/bin"]);
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+    },
+  );
+});
+
 function tempDir(prefix: string): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
   onTestFinished(() => rmSync(dir, { recursive: true, force: true }));

@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /**
- * The one rule for finding a helper program by name. A project folder can come from anyone, so a
- * program is taken only from an absolute PATH entry outside the working directory, or a fixed
- * install dir. Only an override the person sets in their own environment may point into it.
+ * The one rule for finding a helper program by name. A project can come from anyone, so a program
+ * is taken only from an absolute PATH entry outside the working directory and its project, or a
+ * fixed install dir. Only an override the person sets in their own environment may point into it.
  */
 
 function comparable(path: string): string {
@@ -23,14 +23,42 @@ function contains(parent: string, child: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 
+const PROJECT_MARKERS = ["package.json", ".git"];
+
+// Package runners put every ancestor's node_modules/.bin on PATH. Home and above are never the project.
+function projectFoldersAbove(cwd: string, home: string): string[] {
+  const folders: string[] = [];
+  let outermost: string | undefined;
+  for (let dir = dirname(cwd); ; dir = dirname(dir)) {
+    folders.push(comparable(join(dir, "node_modules")));
+    const isRoot = dirname(dir) === dir;
+    if (isRoot) break;
+    const belowHome = !contains(dir, home);
+    if (belowHome && PROJECT_MARKERS.some((marker) => existsSync(join(dir, marker)))) {
+      outermost = dir;
+    }
+  }
+  return outermost ? [...folders, outermost] : folders;
+}
+
+function trustRule(): (dir: string) => boolean {
+  const cwd = comparable(process.cwd());
+  const home = comparable(homedir());
+  const above = projectFoldersAbove(cwd, home);
+  // From the home folder (or above it) every per-user install dir is inside; skip only the folder.
+  const fromHome = contains(cwd, home);
+  return (dir) => {
+    if (!dir || !isAbsolute(dir)) return false;
+    const target = comparable(dir);
+    if (target === cwd) return false;
+    if (above.some((folder) => contains(folder, target))) return false;
+    return fromHome || !contains(cwd, target);
+  };
+}
+
 /** Whether a program in `dir` may be run without the person naming it. */
 export function isTrustedDirectory(dir: string): boolean {
-  if (!dir || !isAbsolute(dir)) return false;
-  const target = comparable(dir);
-  const cwd = comparable(process.cwd());
-  if (target === cwd) return false;
-  // From the home folder (or above it) every per-user install dir is inside; skip only the folder.
-  return contains(cwd, comparable(homedir())) || !contains(cwd, target);
+  return trustRule()(dir);
 }
 
 /** Whether `file` is an absolute path in a folder {@link isTrustedDirectory} accepts. */
@@ -46,7 +74,8 @@ function expandHome(dir: string): string {
 /** The PATH folders a helper program may come from, in PATH order. */
 export function trustedPathDirs(pathValue = process.env.PATH ?? ""): string[] {
   const entries = pathValue.split(delimiter).map(expandHome);
-  return [...new Set(entries.filter((dir) => isTrustedDirectory(dir)))];
+  const trusted = trustRule();
+  return [...new Set(entries.filter((dir) => trusted(dir)))];
 }
 
 function windowsExtensions(): string[] {
