@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
-import { logRefusal, startCaptureProxy } from "./captureProxy.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { logRefusal, onRenderRefusal, startCaptureProxy } from "./captureProxy.js";
 import { NonPublicHostError } from "./publicNetwork.js";
 
 const { resolveAddress } = vi.hoisted(() => ({ resolveAddress: vi.fn() }));
@@ -60,6 +61,34 @@ describe("capture proxy", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     logRefusal("carrier-grade");
     expect(warn.mock.calls).toEqual([["[CaptureProxy:REFUSED] class=carrier-grade"]]);
+  });
+
+  it("hands each refusal to subscribers in the context the render started the proxy in", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    resolveAddress.mockRejectedValue(new NonPublicHostError("refused", "private"));
+    const renderContext = new AsyncLocalStorage<string>();
+    const seen: [string, string | undefined][] = [];
+    const unsubscribe = onRenderRefusal((c) => seen.push([c, renderContext.getStore()]));
+    try {
+      const proxy = await renderContext.run("render-a", () =>
+        startCaptureProxy(undefined, logRefusal),
+      );
+      proxies.push(proxy);
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = request(proxy.url, { path: "http://inside.example.com/" }, (res) => {
+          res.resume();
+          res.on("end", () => resolve(res.statusCode!));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      expect(status).toBe(403);
+      expect(seen).toEqual([["private", "render-a"]]);
+    } finally {
+      unsubscribe();
+    }
+    logRefusal("private");
+    expect(seen).toHaveLength(1);
   });
 
   it("reports nothing for a refusal that is not about the address", async () => {

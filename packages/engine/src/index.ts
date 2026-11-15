@@ -429,6 +429,8 @@ export {
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
+export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
+export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {
   runFfmpeg,
   formatFfmpegError,
