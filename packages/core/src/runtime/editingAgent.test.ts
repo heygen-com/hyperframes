@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
+const H = "0123456789abcdef:1";
 
 function frameWindow(): Window {
   const iframe = document.createElement("iframe");
@@ -109,6 +111,20 @@ describe("installEditingAgent", () => {
     }
   });
 
+  it("never hands off in a document its server answered to another site", () => {
+    const mark = document.createElement("meta");
+    mark.name = PREVIEW_FOR_ANOTHER_SITE_META;
+    document.head.appendChild(mark);
+    try {
+      post(parent, CONNECT);
+      expect(handoff).not.toHaveBeenCalled();
+    } finally {
+      mark.remove();
+    }
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
+  });
+
   it("stops listening for a connect once disposed", () => {
     agent.dispose();
     post(parent, CONNECT);
@@ -142,7 +158,14 @@ describe("installEditingAgent", () => {
           "set-loop-start",
           "computed-styles",
           "elements-at-point",
+          "pointer-targets",
           "describe",
+          "ancestors",
+          "query",
+          "geometry",
+          "layers",
+          "draft",
+          "gesture-start",
         ],
       },
     });
@@ -235,11 +258,13 @@ describe("installEditingAgent", () => {
       { x: "1", y: 1 },
       { x: 1, y: Infinity },
       { x: 1, y: 2, z: 3 },
-    ].map((params, index) => [
-      { v: 1, id: 30 + index, kind: "elements-at-point", params },
-      30 + index,
-      "invalid-params",
-    ]),
+    ].flatMap((params, index) =>
+      (["elements-at-point", "pointer-targets"] as const).map((kind, k) => [
+        { v: 1, id: 30 + index * 2 + k, kind, params },
+        30 + index * 2 + k,
+        "invalid-params",
+      ]),
+    ),
     ...[
       {},
       { handles: [] },
@@ -260,6 +285,96 @@ describe("installEditingAgent", () => {
       40 + index,
       "invalid-params",
     ]),
+    ...[
+      { handle: "0123456789abcdef:1" },
+      { handle: "1", properties: ["color"] },
+      { handle: 1, properties: ["color"] },
+      { handle: "0123456789abcdef:1", selector: "p", properties: ["color"] },
+      { handle: "0123456789abcdef:1", properties: ["color;"] },
+    ].map((params, index) => [
+      { v: 1, id: 70 + index, kind: "computed-styles", params },
+      70 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { handles: [] },
+      { handles: ["1"] },
+      { handles: Array(257).fill("0123456789abcdef:1") },
+    ].map((params, index) => [
+      { v: 1, id: 80 + index, kind: "ancestors", params },
+      80 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { selector: "" },
+      { selector: 1 },
+      { selector: "p".repeat(2001) },
+      { selector: "p", x: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 90 + index, kind: "query", params },
+      90 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { handles: [] },
+      { handles: ["1"] },
+      { handles: [1] },
+      { handles: Array(257).fill("0123456789abcdef:1") },
+      { handles: ["0123456789abcdef:1"], extra: 1 },
+      { children: "0123456789abcdef:1" },
+      { handles: ["0123456789abcdef:1"], children: undefined },
+      { handles: ["0123456789abcdef:1"], children: null },
+      { handles: ["0123456789abcdef:1"], children: true },
+      { handles: ["0123456789abcdef:1"], children: ["0123456789abcdef:1"] },
+      { handles: ["0123456789abcdef:1"], children: "0123456789abcdef:0" },
+    ].map((params, index) => [
+      { v: 1, id: 100 + index, kind: "geometry", params },
+      100 + index,
+      "invalid-params",
+    ]),
+    ...[
+      { group: null },
+      { group: "0123456789abcdef:0" },
+      { group: ["0123456789abcdef:1"] },
+      { group: "0123456789abcdef:1", max: 5 },
+      { scope: "0123456789abcdef:1" },
+      { offset: -1 },
+      { offset: 1.5 },
+      { offset: "2" },
+    ].map((params, index) => [
+      { v: 1, id: 130 + index, kind: "layers", params },
+      130 + index,
+      "invalid-params",
+    ]),
+    ...[
+      {},
+      { drafts: [] },
+      { drafts: Array(257).fill({ handle: H, end: "keep" }) },
+      { drafts: [{ handle: "1", end: "keep" }] },
+      { drafts: [{ handle: H, end: "drop" }] },
+      { drafts: [{ handle: H, end: "keep", translate: null }] },
+      { drafts: [{ handle: H, translate: null }] },
+      { drafts: [{ handle: H, translate: { x: 1 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: "1", y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: Infinity, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
+      { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
+      { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+    ].map((params, index) => [
+      { v: 1, id: 150 + index, kind: "draft", params },
+      150 + index,
+      "invalid-params",
+    ]),
+    ...[{}, { handles: [] }, { handles: ["1"] }, { handles: Array(257).fill(H) }].map(
+      (params, index) => [
+        { v: 1, id: 170 + index, kind: "gesture-start", params },
+        170 + index,
+        "invalid-params",
+      ],
+    ),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },

@@ -131,6 +131,7 @@ export interface RenderPlan {
   renderTarget: string;
   fps: Fps;
   quality: RenderQuality;
+  qualityPreset: keyof typeof QUALITY_ALIASES;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
   /** Which resolution step provided authoringSkill: an explicit --skill flag, or the project's own config. */
@@ -638,6 +639,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     renderTarget,
     fps,
     quality,
+    qualityPreset: qualityRaw as keyof typeof QUALITY_ALIASES,
     authoringSkill,
     invalidAuthoringSkill,
     authoringSkillSource,

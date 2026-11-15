@@ -28,7 +28,7 @@ export interface EditingElementHit {
 }
 
 /**
- * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value keeps only its header.
+ * An element as plain data, cut at the MAX_ELEMENT_* limits; a `data:` value over its limit keeps only its header.
  * `truncated` says something was cut, so the description is not safe to write back to source.
  */
 export interface EditingElementDescription extends EditingElementHit {
@@ -52,12 +52,18 @@ export interface EditingElementDescription extends EditingElementHit {
   truncated: boolean;
 }
 
+export interface EditingElementMatch {
+  handle: EditingElementHandle;
+  source: EditingElementSource;
+}
+
 export const MAX_ELEMENT_ENTRIES = 256;
 export const MAX_ELEMENT_TEXT = 10_000;
 export const MAX_ELEMENT_VALUE = 2_000;
 export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
+export const MAX_QUERY_MATCHES = 2_048;
 
 // fallow-ignore-next-line complexity
 function escapeCssIdentifier(value: string): string {

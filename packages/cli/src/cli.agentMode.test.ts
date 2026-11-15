@@ -231,8 +231,13 @@ describe("agent-mode contract", () => {
       ["snapshot --frames -3", "--frames must be a positive integer"],
       ["compare a.html", "need 2+ paths"],
       ["compare a.html b.html --cols 0", "--cols must be"],
+      ["compare a.html b.html --timeout abc", "--timeout must be a positive integer"],
+      ["compare a.html b.html --timeout -1", "--timeout must be a positive integer"],
       ["grade-compare --for frame.png", "Exactly one of --grades or --luts"],
+      ["catalog --type widget", 'Invalid --type: "widget". Use "block" or "component".'],
       ["check --range 5,1", "Invalid --range"],
+      ["check --samples ten", "Invalid --samples"],
+      ["check --tolerance=-1", "Invalid --tolerance"],
       ["normalize-audio --target music --tolerance=-1", "--tolerance must be"],
       ["media-treatment --capabilities --all --capability x", "--all or --capability"],
     ])("`%s` exits 2 with a usage_error envelope", async (args, message) => {

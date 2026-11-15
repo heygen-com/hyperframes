@@ -47,16 +47,23 @@ export const InstallCommand = ({ command, item }) => {
      * The ` --vars '<json>'` suffix for a query value, or "" when nothing usable is in it.
      *
      * Keeps variable-id keys with string, finite number or boolean values, and
-     * escapes `'` so the JSON stays one shell argument.
+     * escapes `'` so the JSON stays one shell argument in bash and zsh.
+     *
+     * `edited` lists the ids the reader set on this page. Any other string came
+     * with the link, from whoever shared it, and the command may be pasted into
+     * fish, PowerShell or cmd.exe, which quote differently. So such a string is
+     * kept only when it is short and holds nothing those shells read as syntax.
      */
-    function varsArgument(raw) {
+    function varsArgument(raw, edited = []) {
       if (!raw) return "";
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
       const kept = Object.entries(parsed).filter(([id, value]) => {
         if (!/^[A-Za-z_][\w-]*$/.test(id)) return false;
         if (typeof value === "number") return Number.isFinite(value);
-        return typeof value === "string" || typeof value === "boolean";
+        if (typeof value === "boolean") return true;
+        if (typeof value !== "string") return false;
+        return edited.includes(id) || (value.length <= 200 && /^[A-Za-z0-9 .,:_#+\-/@()?]*$/.test(value));
       });
       if (kept.length === 0) return "";
       return ` --vars '${JSON.stringify(Object.fromEntries(kept)).replace(/'/g, "'\\''")}'`;
@@ -65,7 +72,13 @@ export const InstallCommand = ({ command, item }) => {
 
     const read = () => {
       try {
-        setTuned(varsArgument(new URLSearchParams(window.location.search).get(`vars-${item}`)));
+        const edited = window.__hfEditedVars?.[item];
+        setTuned(
+          varsArgument(
+            new URLSearchParams(window.location.search).get(`vars-${item}`),
+            Array.isArray(edited) ? edited : [],
+          ),
+        );
       } catch {
         // A hand-edited link should leave the plain command, not break it.
         setTuned("");
@@ -115,7 +128,7 @@ export const InstallCommand = ({ command, item }) => {
 
   return (
     <div className="hf-install-command not-prose my-4 flex items-stretch overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
-      <code className="flex-1 overflow-x-auto whitespace-nowrap border-r border-zinc-200 px-4 py-3 font-mono text-sm text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">
+      <code className="flex-1 border-r border-zinc-200 px-4 py-3 font-mono text-sm text-zinc-800 dark:border-zinc-800 dark:text-zinc-100">
         {fullCommand}
       </code>
       <button

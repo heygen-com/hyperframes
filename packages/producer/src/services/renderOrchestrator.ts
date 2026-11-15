@@ -155,6 +155,7 @@ import {
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
@@ -3477,11 +3478,6 @@ async function executeRenderPipeline(input: {
     compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
-    // Before the video layer may close the probe page; no box means full size, as before.
-    const shownBoxes =
-      largerThanCanvas.length > 0 && probeSession?.isInitialized
-        ? await measureLocalShownBoxes(probeSession.page, largerThanCanvas, job.config.fps, log)
-        : undefined;
     job.strictVariablesChecked = probeResult.strictVariablesChecked;
     lastBrowserConsole = probeResult.lastBrowserConsole;
     let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
@@ -3499,6 +3495,17 @@ async function executeRenderPipeline(input: {
       totalFrames,
       fps: fpsToNumber(job.config.fps),
     });
+    // Before the video layer may close the probe page; no box means full size, as before.
+    const shownBoxes =
+      largerThanCanvas.length > 0 && probeSession?.isInitialized
+        ? await measureLocalShownBoxes(
+            probeSession.page,
+            largerThanCanvas,
+            job.config.fps,
+            probeResult.duration,
+            log,
+          )
+        : undefined;
 
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;
@@ -3614,6 +3621,7 @@ async function executeRenderPipeline(input: {
           log,
           composition,
           skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
+          audioDownloadDir: audioWorkDir(workDir),
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.

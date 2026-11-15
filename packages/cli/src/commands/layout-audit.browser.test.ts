@@ -731,6 +731,36 @@ it("excludes text marked data-layout-allow-caption-zone from geometry candidates
   expect(candidates.map((candidate) => candidate.selector)).toEqual(["#copy"]);
 });
 
+it("groups text into reading blocks, caption layers included, for the safe-zone check", () => {
+  document.body.innerHTML = `
+      <div id="root" data-composition-id="main" data-width="1080" data-height="1920">
+        <h1 id="title">Big <span id="word">title</span></h1>
+        <p id="sticker" data-layout-allow-safe-zone>Follow</p>
+        <div id="captions" class="caption-layer"><span id="w1">Hello</span><span id="w2">world</span></div>
+      </div>
+    `;
+  installGeometry(
+    {
+      root: rect({ left: 0, top: 0, width: 1080, height: 1920 }),
+      text: rect({ left: 100, top: 1500, width: 300, height: 80 }),
+    },
+    { word: { display: "inline" } },
+  );
+  installAuditScript();
+
+  const candidates = runGeometryCandidates({
+    text: false,
+    media: false,
+    blocks: true,
+    tolerance: 2,
+  });
+
+  expect(candidates.map(({ kind, selector, text }) => ({ kind, selector, text }))).toEqual([
+    { kind: "block", selector: "#title", text: "Big title" },
+    { kind: "block", selector: "#captions", text: "Hello world" },
+  ]);
+});
+
 it("scans body-level composition siblings and includes a media boundary root", () => {
   document.body.innerHTML = `
     <canvas id="boundary" data-composition-id="background" data-width="640" data-height="360"></canvas>
@@ -1426,7 +1456,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       ["flags", "", true],
       ["clears", "data-layout-allow-overflow", false],
     ])(
-      "%s a graded video's canvas overflowing a clipping wrapper, per the video's own flag",
+      "%s a graded video's canvas overflowing a clipping wrapper by the video's selector and flag",
       (_, flag, flagged) => {
         document.body.innerHTML = `
           <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -1446,7 +1476,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         installAuditScript();
 
         const overflow = runAudit().filter((issue) => issue.code === "container_overflow");
-        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#art"] : []);
+        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#clip"] : []);
       },
     );
 
@@ -4160,6 +4190,7 @@ declare global {
     __hyperframesGeometryCandidates?: (options: {
       text: boolean;
       media: boolean;
+      blocks?: boolean;
       tolerance: number;
     }) => GeometryCandidateResult[];
   }
@@ -4168,6 +4199,7 @@ declare global {
 function runGeometryCandidates(options: {
   text: boolean;
   media: boolean;
+  blocks?: boolean;
   tolerance: number;
 }): GeometryCandidateResult[] {
   const collector = window.__hyperframesGeometryCandidates;

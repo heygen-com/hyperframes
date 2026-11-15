@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -253,10 +253,7 @@ async function timed<T>(step: string, run: () => Promise<T>): Promise<T> {
     spent.set(step, (spent.get(step) ?? 0) + performance.now() - started);
   }
 }
-beforeEach(() => {
-  spent.clear();
-  testStarted = performance.now();
-  budgetRanOut = 0;
+function resetCapture(): void {
   capture.scripts = [];
   capture.calls = 0;
   capture.retriedWithWorkers = [];
@@ -265,6 +262,26 @@ beforeEach(() => {
   capture.workerCount = 4;
   capture.blocked = 0;
   capture.probeMs = 0;
+}
+// A worker's first render pays a one-time start-up cost: tens of ms on an idle host, up to 6 s on a loaded CI
+// runner. One finished render here pays it outside the tests, so each test's 5 s covers only its own rule.
+beforeAll(async () => {
+  resetCapture();
+  vi.useFakeTimers({
+    toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+  });
+  capture.scripts = [{ firstFrameAfterMs: 1_000, frameEveryMs: 1_000 }];
+  const outcome = startRender();
+  await runFor(60_000, outcome);
+  await settled(outcome);
+  vi.useRealTimers();
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+beforeEach(() => {
+  spent.clear();
+  testStarted = performance.now();
+  budgetRanOut = 0;
+  resetCapture();
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
   });

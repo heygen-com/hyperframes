@@ -2,8 +2,8 @@
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
  * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
- * remounted client is served too; a connect from anything else is ignored. Earlier ports stay
- * open: a client may take any one of them, and a disposed client closes its own.
+ * remounted client is served too; any other connect, or any in a page served to another site, is
+ * ignored. Earlier ports stay open: a client may take any of them; a disposed one closes its own.
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
@@ -20,8 +20,19 @@ import {
   type EditingResult,
 } from "./editingPort";
 import type { ClipNode } from "./clipTree";
-import { describeHandles, elementsAtPoint } from "./editingHandles";
-import { getLogicalOpacity } from "../studioPreviewMark";
+import {
+  ancestorHandles,
+  describeHandles,
+  elementForHandle,
+  elementsAtPoint,
+  queryElements,
+} from "./editingHandles";
+import { elementGeometry } from "./editingGeometry";
+import { pointerTargetsAt } from "./editingTargets";
+import { layersOf } from "./editingLayers";
+import { drawDrafts } from "./editingDraft";
+import { gestureStart } from "./editingGestureStart";
+import { getLogicalOpacity, servedToAnotherSite } from "../studioPreviewMark";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -57,8 +68,12 @@ const HANDLERS: Handlers = {
     setLoopStart(seconds);
     return { applied: true };
   },
-  "computed-styles": ({ selector, properties }) => {
-    const element = document.querySelector(selector);
+  "computed-styles": (params) => {
+    const { properties } = params;
+    const element =
+      "handle" in params
+        ? elementForHandle(params.handle)
+        : document.querySelector(params.selector);
     if (!element) return { styles: null };
     const computed = window.getComputedStyle(element);
     const styles: Record<string, string> = {};
@@ -70,7 +85,14 @@ const HANDLERS: Handlers = {
     return { styles };
   },
   "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
+  "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
   describe: ({ handles }) => ({ elements: describeHandles(handles) }),
+  ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
+  query: ({ selector }) => queryElements(selector),
+  geometry: ({ handles, children }) => elementGeometry(handles, children),
+  layers: ({ group, offset }) => layersOf(group, offset),
+  draft: ({ drafts }) => drawDrafts(drafts),
+  "gesture-start": ({ handles }) => gestureStart(handles),
 };
 
 function serve(port: MessagePort): void {
@@ -122,7 +144,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const data = event.data;
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
-    if (data.v !== EDITING_PROTOCOL_VERSION) return;
+    if (data.v !== EDITING_PROTOCOL_VERSION || servedToAnotherSite(document)) return;
     const channel = new MessageChannel();
     const port = channel.port1;
     ports.add(port);

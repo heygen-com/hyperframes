@@ -16,7 +16,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-const SKILLS_DIR = dirname(fileURLToPath(import.meta.url));
+const SKILLS_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "skills");
 
 function pythonScripts(dir) {
   const found = [];

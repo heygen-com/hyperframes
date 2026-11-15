@@ -14,7 +14,7 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
-import { resolve, relative } from "node:path";
+import { join, resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
@@ -24,11 +24,13 @@ import {
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_REGISTRY_URL,
+  isPublicRegistry,
   prepareItem,
   publishItem,
   resolveItemsByTag,
   type PreparedItem,
 } from "../registry/index.js";
+import { registryRoot } from "../registry/publication.js";
 import { resolveItemWithDependencies } from "../registry/resolver.js";
 import { InvalidVariableValuesError } from "../registry/variableDefaults.js";
 import {
@@ -37,12 +39,19 @@ import {
 } from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
+  PROJECT_CONFIG_FILENAME,
   loadProjectConfig,
   projectConfigPath,
+  readProjectConfigWithStatus,
   recordProjectRegistryItems,
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import {
+  forgetReceivedFiles,
+  receivedFiles,
+  recordReceivedFiles,
+} from "../utils/privateProjectFile.js";
 import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
@@ -294,6 +303,34 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
   }
 }
 
+// A registry that a received hyperframes.json names serves files that came from its sender; a config that cannot be
+// read is not proven to be the person's own.
+function fromReceivedRegistry(projectDir: string, registry: string): boolean {
+  if (readProjectConfigWithStatus(projectDir).status === "unreadable") return true;
+  return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
+}
+
+const PLAIN_WRITES = { guard: (_: string, write: () => void) => write(), undo: () => {} };
+
+// Lists each file as received just before it is written; undo() takes back what this install listed that is not on disk.
+function receivedWrites(root: string): typeof PLAIN_WRITES {
+  const listedHere: string[] = [];
+  return {
+    guard(destPath: string, write: () => void) {
+      listedHere.push(
+        ...recordReceivedFiles(root, [relative(root, destPath).split(sep).join("/")]),
+      );
+      write();
+    },
+    undo() {
+      forgetReceivedFiles(
+        root,
+        listedHere.filter((path) => !existsSync(join(root, path))),
+      );
+    },
+  };
+}
+
 // Install a topologically-ordered plan (dependencies first, requested item
 // last). Every item is fetched and checked before any is written, so a refusal
 // or failed fetch anywhere in the plan writes nothing. Returns all written paths.
@@ -305,6 +342,7 @@ async function installAll(
   requestedName: string,
   variableValues: Record<string, unknown> | null,
   installDirs: string[],
+  received: boolean,
 ): Promise<{
   written: string[];
   preserved: string[];
@@ -315,6 +353,7 @@ async function installAll(
   const preserved: string[] = [];
   let variablesApplied: string[] = [];
   let variablesUnknown: string[] = [];
+  const writes = received ? receivedWrites(registryRoot(destDir)) : PLAIN_WRITES;
   try {
     const prepared: PreparedItem[] = [];
     for (const planItem of installPlan) {
@@ -331,7 +370,7 @@ async function installAll(
       );
     }
     for (const [i, planItem] of installPlan.entries()) {
-      const result = publishItem(prepared[i]!);
+      const result = publishItem(prepared[i]!, writes.guard);
       written.push(...result.written);
       preserved.push(...result.preserved);
       if (planItem.name === requestedName) {
@@ -340,6 +379,7 @@ async function installAll(
       }
     }
   } catch (err) {
+    writes.undo();
     if (isProjectRootMissing(err)) throw err;
     if (err instanceof InvalidVariableValuesError) throw new AddError(err.message, "invalid-vars");
     throw new AddError(describeInstallFailure(err, baseUrl), "install-failed");
@@ -449,6 +489,7 @@ export async function addToProject(
     item.name,
     variableValues,
     [config.paths.blocks, config.paths.components, config.paths.assets],
+    fromReceivedRegistry(projectDir, config.registry),
   );
 
   // Report what landed, not what was asked for: a failed install throws above,
@@ -566,7 +607,7 @@ export default defineCommand({
     if (!existsSync(projectDir)) {
       failCaught(
         new Error(
-          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init <dir>\`.`,
+          `Project folder not found: ${projectDir}. --dir is the project root, not where the block lands (that is its compositions/ folder), and it must already exist. Create one with \`hyperframes init ${JSON.stringify(args.dir)}\`.`,
         ),
         json,
         c.error,

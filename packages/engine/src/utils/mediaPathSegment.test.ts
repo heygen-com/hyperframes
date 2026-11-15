@@ -24,6 +24,22 @@ describe("mediaIdPathSegment", () => {
     },
   );
 
+  it.each([
+    ["s12-vb1", "s12-vB1"],
+    ["clip", "CLIP"],
+    ["Intro", "INTRO"],
+    ["caf\u00e9", "cafe\u0301"],
+  ])("never lets %j and %j share a folder on a case-insensitive disk", (a, b) => {
+    const fold = (segment: string) => segment.normalize("NFC").toLowerCase();
+    expect(fold(mediaIdPathSegment(a))).not.toBe(fold(mediaIdPathSegment(b)));
+  });
+
+  it("names an id with capitals by a digest of its exact text", () => {
+    const segment = mediaIdPathSegment("s12-vB1");
+    expect(segment).toMatch(/^s12-vB1~[0-9a-f]{12}$/);
+    expect(mediaIdPathSegment("s12-Vb1")).not.toBe(segment);
+  });
+
   it("keeps distinct unsafe ids apart", () => {
     expect(mediaIdPathSegment("a/b")).not.toBe(mediaIdPathSegment("a\\b"));
     expect(mediaIdPathSegment("a/b")).not.toBe("a_b");

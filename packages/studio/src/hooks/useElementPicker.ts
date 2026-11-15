@@ -4,7 +4,7 @@ import {
   resolveSourceFile,
   applyPatch,
   applyPatchByTarget,
-  findTagByTarget,
+  readTagSnippetByTarget,
   type PatchOperation,
 } from "../utils/sourcePatcher";
 import {
@@ -554,7 +554,9 @@ function patchByHfId(
   ownFile: string,
   op: PatchOperation,
 ): SourcePatch | null {
-  const matches = Object.keys(files).filter((file) => findTagByTarget(files[file] ?? "", { hfId }));
+  const matches = Object.keys(files).filter(
+    (file) => readTagSnippetByTarget(files[file] ?? "", { hfId }) !== undefined,
+  );
   const path = matches.includes(ownFile) ? ownFile : matches.length === 1 ? matches[0] : undefined;
   const before = path ? files[path] : undefined;
   return path && before ? { path, before, after: applyPatchByTarget(before, { hfId }, op) } : null;

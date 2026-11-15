@@ -38,7 +38,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { escapesAssetRoot } from "../../../utils/paths.js";
-import type { ChromaSubsampling, EngineConfig } from "@hyperframes/engine";
+import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
@@ -56,6 +56,15 @@ import {
   dropMediaOutsideProject,
   preflightCompositionAssetMediaTypes,
 } from "../../assetMediaType.js";
+
+function animatedGifCacheDir(extractCacheDir: string | undefined): string | undefined {
+  try {
+    const root = extractCacheDir && privateCacheRoot(extractCacheDir);
+    return root ? join(root, "animated-gif") : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface CompileStageInput {
   projectDir: string;
@@ -249,9 +258,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     variables: input.variables,
     urlByAbsentLocalPath: input.urlByAbsentLocalPath,
     pageMotionBlur: input.pageMotionBlur,
-    animatedGifCacheDir: cfg.extractCacheDir
-      ? join(cfg.extractCacheDir, "animated-gif")
-      : undefined,
+    animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
     allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
   });
@@ -377,9 +384,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
-  if (!job.config.allowOutsideProjectAssets) {
-    dropMediaOutsideProject({ projectDir, workDir, composition, log });
-  }
+  dropMediaOutsideProject({
+    projectDir,
+    workDir,
+    composition,
+    log,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+  });
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),

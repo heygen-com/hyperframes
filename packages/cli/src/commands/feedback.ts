@@ -22,6 +22,8 @@ import { isUnattended } from "../utils/attendedTerminal.js";
 import { parseFeedbackRating } from "../utils/feedbackRating.js";
 import { feedbackEmail, parseFeedbackSource } from "../utils/feedbackSource.js";
 import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
+import type { LeftOutReference } from "../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
 
 export const examples: Example[] = [
   ["Submit render feedback", 'hyperframes feedback --rating 8 --comment "fast but font missing"'],
@@ -121,7 +123,12 @@ async function publishRepro(dir: string): Promise<string | undefined> {
   spinner.start("Publishing minimal repro...");
   try {
     const leftOut: string[] = [];
-    const archive = createPublishArchive(dir, (warning) => leftOut.push(warning));
+    const references: LeftOutReference[] = [];
+    const archive = createPublishArchive(dir, (warning, reference) => {
+      leftOut.push(warning);
+      references.push(reference);
+    });
+    trackUploadLeftOut("feedback", references);
     const published = await publishProjectArchive(dir, { archive });
     spinner.stop(c.success("Repro published"));
     for (const warning of leftOut) clack.log.warn(c.warn(warning));

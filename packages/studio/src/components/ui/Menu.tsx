@@ -47,7 +47,7 @@ const VIEWPORT_MARGIN = 8;
 export function floatingMotion(openDuration: "duration-open" | "duration-tooltip") {
   return cn(
     "origin-[var(--transform-origin)] outline-hidden",
-    "transition-[opacity,transform] ease-out-quint",
+    "transition-[opacity,scale] ease-out-quint",
     openDuration,
     "data-[ending-style]:duration-close data-[ending-style]:ease-in",
     "data-[starting-style]:[opacity:var(--popup-enter-opacity)]",
@@ -71,8 +71,8 @@ export const POPUP_LAYER = "z-200";
 const menuPopup = cn(popupSurface, "min-w-36 p-1 shadow-menu");
 
 /** One row. `data-highlighted` is set by keyboard and pointer alike, so the seen row is the Enter row. */
-const itemBase = cn(
-  "flex cursor-default select-none items-center justify-between gap-6 rounded-[calc(var(--radius-lg)+6px)] px-2 py-1.5",
+export const menuItemBase = cn(
+  "flex cursor-default select-none items-center justify-between gap-6 rounded-[calc(var(--radius-lg)-4px)] px-2 py-1.5",
   "text-step-11 whitespace-nowrap text-text-1",
   "outline-hidden transition-colors ease-out-quint duration-hover",
   "data-[highlighted]:bg-hover data-[highlighted]:text-text-0",
@@ -210,7 +210,10 @@ interface MenuItemProps extends StyledProps<typeof BaseMenu.Item> {
 /** One action. `disabled` items are skipped by the arrow keys, not just dimmed. */
 export function MenuItem({ shortcut, tone, className, children, ...props }: MenuItemProps) {
   return (
-    <BaseMenu.Item className={cn(itemBase, tone === "danger" && itemDanger, className)} {...props}>
+    <BaseMenu.Item
+      className={cn(menuItemBase, tone === "danger" && itemDanger, className)}
+      {...props}
+    >
       <span className="truncate">{children}</span>
       {shortcut ? <MenuShortcut>{shortcut}</MenuShortcut> : null}
     </BaseMenu.Item>
@@ -229,7 +232,7 @@ interface MenuRadioItemProps extends StyledProps<typeof BaseMenu.RadioItem> {
 /** One choice in a `MenuRadioGroup`. The dot renders only while it is checked. */
 export function MenuRadioItem({ className, children, ...props }: MenuRadioItemProps) {
   return (
-    <BaseMenu.RadioItem className={cn(itemBase, className)} {...props}>
+    <BaseMenu.RadioItem className={cn(menuItemBase, className)} {...props}>
       <span className="truncate">{children}</span>
       {/* Fixed box so a checked and an unchecked row keep the same width. */}
       <span className="flex size-3 shrink-0 items-center justify-center">
@@ -246,7 +249,7 @@ export function MenuCheckboxItem({
   ...props
 }: StyledProps<typeof BaseMenu.CheckboxItem>) {
   return (
-    <BaseMenu.CheckboxItem className={cn(itemBase, className)} {...props}>
+    <BaseMenu.CheckboxItem className={cn(menuItemBase, className)} {...props}>
       <span className="truncate">{children}</span>
       <span className="flex size-3 shrink-0 items-center justify-center text-accent-ink">
         <BaseMenu.CheckboxItemIndicator>✓</BaseMenu.CheckboxItemIndicator>

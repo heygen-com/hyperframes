@@ -22,16 +22,18 @@
       "packages/producer/**"
     ],
     "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"],
-    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"]
+    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"],
+    "scripts/check-skill-python-encoding.test.mjs": ["skills/**/*.py"]
   },
   "runners": [
     {
       "cwd": ".",
-      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --import ./packages/cli/scripts/test-home.mjs --test \"${SKILLS_TESTS[@]}\"",
+      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/check-skill-python-encoding.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --import ./packages/cli/scripts/test-home.mjs --test \"${SKILLS_TESTS[@]}\"",
       "tests": [
         "skills/**/*.test.mjs",
         "packages/cli/src/media-use/**/*.test.mjs",
         "scripts/check-media-use-copy-parity.test.mjs",
+        "scripts/check-skill-python-encoding.test.mjs",
         "scripts/creator-editing-capabilities.test.mjs"
       ],
       "sources": {},

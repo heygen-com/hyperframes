@@ -4,6 +4,6 @@
   "private": true,
   "dependencies": {
     "@sparticuz/chromium": "148.0.0",
-    "puppeteer-core": "25.11.0"
+    "puppeteer-core": "25.13.0"
   }
 }

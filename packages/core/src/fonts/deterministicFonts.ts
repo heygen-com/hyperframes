@@ -15,7 +15,7 @@ import { fontShorthandFamilies } from "@hyperframes/parsers/composition";
 import { FONT_ALIAS_MAP, resolveAliasDisplayName } from "./aliases.js";
 import { extractSfntFace } from "./sfntNames.js";
 import { locateSystemFontVariants, SYSTEM_FONT_SIZE_LIMIT } from "./systemFontLocator.js";
-import { parseHTML } from "linkedom";
+import { forgetPage, readPage, takePage } from "./pageTree.js";
 import postcss, { type AtRule, type Declaration, type Rule } from "postcss";
 import { EMBEDDED_FONT_DATA } from "./fontData.generated.js";
 import { fontToDataUri } from "./fontCompression.js";
@@ -214,7 +214,7 @@ export function normalizeSystemFontPrimaryFamilies(
   html: string,
   deterministicPrimary = "Inter",
 ): string {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const customProperties = collectFontFamilyCustomProperties(html);
   const replacePrimary: PrimaryReplacer = (value) =>
     systemPrimaryReplacement(value, deterministicPrimary, customProperties);
@@ -244,7 +244,9 @@ export function normalizeSystemFontPrimaryFamilies(
     changed = true;
   }
 
-  return changed ? document.toString() : html;
+  if (!changed) return html;
+  forgetPage();
+  return document.toString();
 }
 
 /** Surfaces font-family is declared on in served HTML. */
@@ -307,7 +309,7 @@ function* iterateInlineStyleFontFamilyDeclarations(
  * `font-family: var(--font)`.
  */
 export function collectFontFamilyCustomProperties(html: string): Map<string, string> {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const customProperties = new Map<string, string>();
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
@@ -402,7 +404,7 @@ export function resolveFontFamilyDeclarationFamilies(
 export function* iterateFontFamilyDeclarations(
   html: string,
 ): Generator<FontFamilyDeclaration, void, void> {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
 
   for (const styleEl of Array.from(document.querySelectorAll("style"))) {
     yield* iterateCssFontFamilyDeclarations(styleEl.textContent ?? "");
@@ -966,7 +968,7 @@ function declareLinkedFontFamilies(
 }
 
 function collectDeclaredFontFamilies(html: string): DeclaredFontFamilies {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const declared = new Map<string, DeclaredFontFamily>();
   const register: DeclaredFontRegister = (family, fontFaceRule) => {
     const key = normalizeFamilyName(family);
@@ -1990,7 +1992,7 @@ function hasTextTransformKeyword(html: string, keyword: RegExp): boolean {
 }
 
 function extractGoogleFontsText(html: string): string | undefined {
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   const decodedBodyText = document.body?.textContent ?? "";
   const locales = collectLangAttributes(document);
 
@@ -2119,7 +2121,7 @@ export async function injectDeterministicFontFaces(
     return html;
   }
 
-  const { document } = parseHTML(html);
+  const document = takePage(html);
   const head = document.querySelector("head");
   if (!head) {
     return html;

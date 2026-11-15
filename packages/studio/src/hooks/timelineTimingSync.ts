@@ -30,6 +30,7 @@ import {
   type StudioProjectFileWriter,
 } from "../utils/studioFileMutationCoordinator";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import { moveLiveTweens } from "../utils/gsapLiveRetime";
 
 export async function readFileContent(projectId: string, targetPath: string): Promise<string> {
@@ -40,7 +41,9 @@ export async function readFileContent(projectId: string, targetPath: string): Pr
     `/api/projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(targetPath)}`,
   );
   if (!response.ok) {
-    throw new Error(`Failed to read ${targetPath}`);
+    throw await createStudioSaveHttpError(response, `Failed to read ${targetPath}`, {
+      path: targetPath,
+    });
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {

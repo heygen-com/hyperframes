@@ -395,9 +395,24 @@ describe("openCommandFor", () => {
       "hyperframes open .",
     );
     expect(openCommandFor(join(work, "films", "a"), work)).toBe(
-      `hyperframes open ${join("films", "a")}`,
+      process.platform === "win32" ? 'hyperframes open "films\\a"' : "hyperframes open films/a",
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
+  });
+
+  it("spells a Windows folder so PowerShell and Git Bash run no part of its name", () => {
+    const work = resolve("work");
+    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+    expect(openCommandFor(join(work, "$(calc)&calc"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+  });
+
+  it("has no Windows stop command for a folder with no safe spelling", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(join(work, "$(calc)&calc"), 3002, work, "win32")).toBeNull();
   });
 
   it("names the matching `preview --stop` the same way", () => {

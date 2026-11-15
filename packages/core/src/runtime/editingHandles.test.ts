@@ -3,8 +3,10 @@ import { installEditingAgent } from "./editingAgent";
 import { trackedHandleCount } from "./editingHandles";
 import {
   EDITING_ELEMENT_HANDLE,
+  MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
+  MAX_QUERY_MATCHES,
   type EditingElementDescription,
   type EditingElementHit,
 } from "./editingPort";
@@ -155,7 +157,7 @@ describe("element handles over the editing port", () => {
     }
   });
 
-  it("cuts long values, keeps only a data: header, and leaves script and style text out", async () => {
+  it("cuts long values, keeps only a long data: value's header, and leaves script and style text out", async () => {
     const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
     document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">
       <img src="data:image/png;base64,${"A".repeat(5000)}"><style>.a{color:red}</style>
@@ -173,6 +175,16 @@ describe("element handles over the editing port", () => {
 
     const style = await describeOne(card.querySelector("style")!);
     expect(style).toMatchObject({ text: "", children: [], truncated: false });
+
+    const icon = `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>`;
+    document.body.innerHTML = `<img>`;
+    const iconImg = document.querySelector("img")!;
+    iconImg.setAttribute("src", icon);
+    iconImg.style.setProperty("background", `url('${icon}')`);
+    const small = await describeOne(iconImg);
+    expect(small.attributes).toEqual([["src", icon]]);
+    expect(small.inlineStyles.background).toContain("data:image/svg+xml,");
+    expect(small.truncated).toBe(false);
 
     document.body.innerHTML = `<p>data: 42 users, up 3%</p>`;
     const dataText = await describeOne(document.querySelector("p")!);
@@ -200,5 +212,64 @@ describe("element handles over the editing port", () => {
         count: 3,
       },
     ]);
+  });
+
+  it("names a handle's ancestors parent first, up to the document element, and null once removed", async () => {
+    document.body.innerHTML = `<section id="s"><div class="g"><p id="p">A</p></div></section>`;
+    const p = document.querySelector("p")!;
+    const { handle } = await describeOne(p);
+    const reply = await ask<never>("ancestors", { handles: [handle, handle] });
+    const [chain, again] = (reply.result as unknown as { ancestors: string[][] }).ancestors;
+    expect(again).toEqual(chain);
+    const tags = (await describeHandles(chain!)).map((entry) => entry?.tag);
+    expect(tags).toEqual(["div", "section", "body", "html"]);
+
+    p.remove();
+    const gone = await ask<never>("ancestors", { handles: [handle] });
+    expect(gone.result).toEqual({ ancestors: [null] });
+  });
+
+  it("stops an ancestor chain at what one describe takes", async () => {
+    document.body.innerHTML = "<div>".repeat(MAX_DESCRIBE_HANDLES + 5) + "<p>deep</p>";
+    const { handle } = await describeOne(document.querySelector("p")!);
+    const reply = await ask<never>("ancestors", { handles: [handle] });
+    const [chain] = (reply.result as unknown as { ancestors: string[][] }).ancestors;
+    expect(chain).toHaveLength(MAX_DESCRIBE_HANDLES);
+    const [top] = await describeHandles([chain!.at(-1)!]);
+    expect(top!.parent).not.toBeNull();
+  });
+
+  it("answers a query with each match's handle and source, in document order", async () => {
+    document.body.innerHTML = `<p class="t" id="a"></p>
+      <div data-composition-file="cards.html"><p class="t" id="b"></p></div>`;
+    const reply = await ask<never>("query", { selector: ".t" });
+    const { matches, truncated } = reply.result as unknown as {
+      matches: Array<{ handle: string; source: { file: string | null } }>;
+      truncated: boolean;
+    };
+    expect(truncated).toBe(false);
+    expect(matches.map((match) => match.source.file)).toEqual([null, "cards.html"]);
+    const described = await describeHandles(matches.map((match) => match.handle));
+    expect(described.map((entry) => entry?.id)).toEqual(["a", "b"]);
+    expect((await ask<never>("query", { selector: "p[" })).error).toMatchObject({ code: "failed" });
+  });
+
+  it("caps a query's matches and says so", async () => {
+    document.body.innerHTML = "<i></i>".repeat(MAX_QUERY_MATCHES + 1);
+    const { result } = await ask<never>("query", { selector: "i" });
+    const { matches, truncated } = result as unknown as { matches: unknown[]; truncated: boolean };
+    expect(matches).toHaveLength(MAX_QUERY_MATCHES);
+    expect(truncated).toBe(true);
+  });
+
+  it("reads computed styles for the element a handle names, and null once it is removed", async () => {
+    document.body.innerHTML = `<p class="t" style="color: rgb(1, 2, 3)"></p><p class="t" style="color: rgb(4, 5, 6)"></p>`;
+    const second = document.querySelectorAll("p")[1]!;
+    const { handle } = await describeOne(second);
+    const styles = (properties: string[]) =>
+      ask<never>("computed-styles", { handle, properties }).then((reply) => reply.result);
+    expect(await styles(["color"])).toEqual({ styles: { color: "rgb(4, 5, 6)" } });
+    second.remove();
+    expect(await styles(["color"])).toEqual({ styles: null });
   });
 });

@@ -105,6 +105,12 @@ resource "google_cloud_run_v2_service" "render" {
         value = google_storage_bucket.render.name
       }
 
+      env {
+        # Render pages reach only their own project server and public addresses.
+        name  = "PRODUCER_RESTRICT_PAGE_NETWORK"
+        value = var.restrict_page_network ? "true" : "false"
+      }
+
       startup_probe {
         http_get {
           path = "/healthz"

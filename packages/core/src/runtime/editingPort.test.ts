@@ -67,7 +67,14 @@ describe("createEditingPortClient", () => {
           "set-loop-start",
           "computed-styles",
           "elements-at-point",
+          "pointer-targets",
           "describe",
+          "ancestors",
+          "query",
+          "geometry",
+          "layers",
+          "draft",
+          "gesture-start",
         ],
       });
     } finally {

@@ -139,11 +139,16 @@ export function useTimelineSelectionPreviewSync({
           : [];
     const currentIds = currentSelections
       .map((selection) =>
-        resolveTimelineIdForSelection(selection, timelineElements, activeCompPath),
+        resolveTimelineIdForSelection(selection, timelineElements, activeCompPath, true),
       )
       .filter((id): id is string => Boolean(id));
     const currentAnchor = currentDomEditSelection
-      ? resolveTimelineIdForSelection(currentDomEditSelection, timelineElements, activeCompPath)
+      ? resolveTimelineIdForSelection(
+          currentDomEditSelection,
+          timelineElements,
+          activeCompPath,
+          true,
+        )
       : null;
 
     if (selectedIds.length === 0) {

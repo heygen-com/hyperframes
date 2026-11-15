@@ -63,6 +63,7 @@ import {
 } from "@hyperframes/parsers";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
 import { cliSourced } from "../utils/sourceTag.js";
+import { shellArg } from "../utils/shellArg.js";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -1028,6 +1029,8 @@ export default defineCommand({
         await keepSkillsCurrent(destDir);
       }
 
+      const shownName = shellArg(name);
+      const cdLine = shownName === null ? "go into the project folder" : `cd ${shownName}`;
       console.log();
       console.log("Get started:");
       console.log();
@@ -1044,7 +1047,7 @@ export default defineCommand({
       console.log();
       console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
-        `     ${c.accent(`cd ${name}`)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
+        `     ${c.accent(cdLine)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
       );
       console.log();
       console.log(`  ${c.accent("3.")} Try a starter prompt:`);
@@ -1056,13 +1059,13 @@ export default defineCommand({
       );
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run dev")}`);
       console.log();
       console.log(`  ${c.accent("5.")} Check the composition:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run check")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run check")}`);
       console.log();
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run render")}`);
       console.log();
       console.log(`  ${c.dim(`Full docs: ${cliSourced("https://hyperframes.heygen.com")}`)}`);
       return;

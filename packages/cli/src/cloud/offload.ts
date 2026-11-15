@@ -33,6 +33,13 @@ import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg
 import { probeAudio } from "../audio/analysis/decode.js";
 import { formatBytes } from "../ui/format.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
+import {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  MEDIA_INPUT_ARGS,
+  startsAsMediaPlaylist,
+  VIDEO_EXTS,
+} from "@hyperframes/studio-server/outside-file";
 import { type PlayedSegment, planTrim } from "./offloadTrim.js";
 import {
   archiveKey,
@@ -69,39 +76,6 @@ const ACCEPTED: Record<string, { contentType: string; maxBytes: number }> = {
   ".wav": { contentType: "audio/wav", maxBytes: AUDIO_MAX_BYTES },
   ".mp3": { contentType: "audio/mpeg", maxBytes: AUDIO_MAX_BYTES },
 };
-
-const VIDEO_EXTS = new Set([
-  ".mp4",
-  ".m4v",
-  ".mov",
-  ".webm",
-  ".mkv",
-  ".avi",
-  ".mpg",
-  ".mpeg",
-  ".ts",
-  ".m2ts",
-  ".mts",
-  ".flv",
-  ".wmv",
-  ".ogv",
-  ".3gp",
-]);
-const AUDIO_EXTS = new Set([
-  ".wav",
-  ".mp3",
-  ".m4a",
-  ".aac",
-  ".ogg",
-  ".oga",
-  ".opus",
-  ".flac",
-  ".aif",
-  ".aiff",
-  ".wma",
-]);
-// Still images the API refuses; converted to PNG unless animated.
-const CONVERTIBLE_IMAGE_EXTS = new Set([".gif", ".avif", ".bmp", ".tif", ".tiff"]);
 
 /** Visually lossless re-encodes for media the asset API refuses or caps. Quality lives here. */
 const REENCODE_PRESETS = {
@@ -200,6 +174,7 @@ export type GifPrep = (
     outputSrcPrefix: string;
     cacheDir: string;
     sourceAssets: Map<string, string>;
+    assetRoot: string;
   },
 ) => Promise<{ html: string; preparedGifs: Array<{ sourceSrc: string; outputPath: string }> }>;
 
@@ -266,6 +241,7 @@ async function probeVideo(path: string): Promise<VideoProbe> {
     "stream=codec_name,pix_fmt,color_primaries,color_transfer,color_space:stream_tags",
     "-of",
     "json",
+    ...MEDIA_INPUT_ARGS,
     "--",
     path,
   ]);
@@ -314,10 +290,16 @@ async function segmentArgs(
   segments: PlayedSegment[] | undefined,
   media: "audio" | "image" | "video",
 ): Promise<string[]> {
-  if (media === "image") return [...decoder, "-i", sourcePath];
+  if (media === "image") return [...decoder, ...MEDIA_INPUT_ARGS, "-i", sourcePath];
   const audio = await keptAudio(sourcePath, media);
   const cuts = segments?.length ? segments : [undefined];
-  const inputs = cuts.flatMap((s) => [...decoder, ...seekArgs(s), "-i", sourcePath]);
+  const inputs = cuts.flatMap((s) => [
+    ...decoder,
+    ...seekArgs(s),
+    ...MEDIA_INPUT_ARGS,
+    "-i",
+    sourcePath,
+  ]);
   const video = media === "video";
   return [
     ...inputs,
@@ -326,7 +308,7 @@ async function segmentArgs(
 }
 
 async function keptAudio(sourcePath: string, media: "audio" | "video"): Promise<number | null> {
-  const audio = (await probeAudio(sourcePath))?.audioStream ?? null;
+  const audio = (await probeAudio(sourcePath, MEDIA_INPUT_ARGS))?.audioStream ?? null;
   if (media === "audio" && audio === null) {
     throw new Error("the file has no audio track ffmpeg can decode");
   }
@@ -381,7 +363,15 @@ async function durationSeconds(sourcePath: string): Promise<number | null> {
   const ffprobe = findFFprobe();
   if (!ffprobe) return null;
   const { stdout } = await execFileAsync(ffprobe, [
-    ...["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", sourcePath],
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    ...MEDIA_INPUT_ARGS,
+    "--",
+    sourcePath,
   ]);
   const value = Number(stdout.trim());
   return Number.isFinite(value) && value > 0 ? value : null;
@@ -471,6 +461,7 @@ async function isAnimatedImage(path: string): Promise<boolean> {
       "stream=nb_frames",
       "-of",
       "csv=p=0",
+      ...MEDIA_INPUT_ARGS,
       "--",
       path,
     ]);
@@ -495,6 +486,7 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
     "stream=r_frame_rate,avg_frame_rate",
     "-of",
     "csv=p=0",
+    ...MEDIA_INPUT_ARGS,
     "--",
     sourcePath,
   ]);
@@ -520,6 +512,7 @@ async function hasVideoStream(sourcePath: string): Promise<boolean> {
       "stream=codec_type",
       "-of",
       "csv=p=0",
+      ...MEDIA_INPUT_ARGS,
       "--",
       sourcePath,
     ]);
@@ -630,14 +623,19 @@ function readHead(file: StagedFile): Buffer {
   }
 }
 
+function mediaFileKind(path: string, file: StagedFile): MediaKind | null {
+  const kind = mediaKind(path);
+  return kind && !startsAsMediaPlaylist(readHead(file)) ? kind : null;
+}
+
 async function planFile(
   ctx: OffloadContext,
   path: string,
   file: StagedFile,
 ): Promise<FilePlan | null> {
-  let kind = mediaKind(path);
   const size = stagedSize(file);
-  if (!kind || size < OFFLOAD_MIN_BYTES) return null;
+  let kind = size < OFFLOAD_MIN_BYTES ? null : mediaFileKind(path, file);
+  if (!kind) return null;
   const ext = extname(path).toLowerCase();
   const accepted = ACCEPTED[ext];
   // The API reads the stored bytes, not the name: a file whose bytes differ from its extension is re-encoded.
@@ -768,6 +766,7 @@ async function prepareEntryGifs(
     outputSrcPrefix: posix.relative(posix.dirname(entryPath), GIF_PREFIX),
     cacheDir: hyperframesCacheDir("animated-gif"),
     sourceAssets,
+    assetRoot: outputDir,
   });
   if (result.preparedGifs.length === 0) return;
   fileMap.set(entryPath, Buffer.from(result.html, "utf-8"));

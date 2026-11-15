@@ -8,6 +8,7 @@ import { createProjectConfig } from "./projectConfig.js";
 import { isCI } from "./attendedTerminal.js";
 import { isAgentDriven } from "../telemetry/agent_runtime.js";
 import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
+import { shellArg } from "./shellArg.js";
 
 // The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
 const list = (name: string): string[] =>
@@ -246,18 +247,28 @@ function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void 
   };
 }
 
-function shownDir(dir: string, cwd: string): string {
-  const shown = relative(cwd, dir) || ".";
-  return /\s/.test(shown) ? JSON.stringify(shown) : shown;
+function shownDir(dir: string, cwd: string, platform: NodeJS.Platform): string | null {
+  return shellArg(relative(cwd, dir) || ".", platform);
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */
-export function openCommandFor(dir: string, cwd = process.cwd()): string {
-  return `hyperframes open ${shownDir(dir, cwd)}`;
+export function openCommandFor(
+  dir: string,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? "hyperframes open from the project folder" : `hyperframes open ${shown}`;
 }
 
-export function previewStopCommandFor(dir: string, port: number, cwd = process.cwd()): string {
-  return `hyperframes preview ${shownDir(dir, cwd)} --stop --port ${port}`;
+export function previewStopCommandFor(
+  dir: string,
+  port: number,
+  cwd = process.cwd(),
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  const shown = shownDir(dir, cwd, platform);
+  return shown === null ? null : `hyperframes preview ${shown} --stop --port ${port}`;
 }
 
 /** Spotlight's copies of an app with this bundle id; an updater's hidden leftover (`.X.app.installing-…`) is none. */
@@ -309,7 +320,7 @@ export function desktopHint(
 ): string | null {
   if (insideHostApp(env) || !someoneToTell(env, tty)) return null;
   if (ready && (installed ?? desktopInstalled({ platform, env }))) {
-    const open = openCommandFor(dir);
+    const open = openCommandFor(dir, process.cwd(), platform);
     const how =
       preview === "background"
         ? `${open} (this stops the background preview)`

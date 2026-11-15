@@ -5,15 +5,18 @@
  */
 import {
   buildStableSelector,
+  MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_POINT_STACK,
+  MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
   readElementSource,
   type EditingElementDescription,
   type EditingElementHandle,
   type EditingElementHit,
+  type EditingElementMatch,
   type EditingElementSource,
 } from "./editingElement";
 
@@ -31,7 +34,7 @@ const collected = new FinalizationRegistry<number>((n) => {
 });
 let lastNumber = 0;
 
-function handleFor(element: Element): EditingElementHandle {
+export function handleFor(element: Element): EditingElementHandle {
   let n = numbers.get(element);
   if (n === undefined) {
     n = ++lastNumber;
@@ -43,7 +46,7 @@ function handleFor(element: Element): EditingElementHandle {
 }
 
 /** The live element in this document behind `handle`, else null. */
-function elementForHandle(handle: EditingElementHandle): Element | null {
+export function elementForHandle(handle: EditingElementHandle): Element | null {
   const [handleLoad, count] = handle.split(":");
   if (handleLoad !== loadId()) return null;
   const n = Number(count);
@@ -84,12 +87,12 @@ const NO_TEXT = new Set(["script", "style"]);
 
 type Cut = { truncated: boolean };
 
-/** A `dataUrl` value starting `data:` keeps only its header; text is cut by length alone. */
+/** A value over `limit` is cut: a `dataUrl` one starting `data:` to its header, any other by length. */
 function cut(value: string, limit: number, state: Cut, dataUrl = false): string {
+  if (value.length <= limit) return value;
+  state.truncated = true;
   const header = dataUrl && value.startsWith("data:") ? value.slice(0, value.indexOf(",") + 1) : "";
-  const kept = header || value.slice(0, limit);
-  if (kept.length < value.length) state.truncated = true;
-  return kept.slice(0, limit);
+  return (header || value).slice(0, limit);
 }
 
 function renderedText(element: Element, state: Cut): string {
@@ -148,7 +151,7 @@ function children(element: Element, state: Cut): EditingElementDescription["chil
   return out;
 }
 
-function hit(element: Element): EditingElementHit {
+export function elementHit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
@@ -161,7 +164,7 @@ function describeElement(element: Element): EditingElementDescription {
   const selector = buildStableSelector(element);
   const state: Cut = { truncated: false };
   return {
-    ...hit(element),
+    ...elementHit(element),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
     id: element.id || null,
     selector: selector ?? null,
@@ -177,7 +180,7 @@ function describeElement(element: Element): EditingElementDescription {
 }
 
 export function elementsAtPoint(x: number, y: number): EditingElementHit[] {
-  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(hit);
+  return document.elementsFromPoint(x, y).slice(0, MAX_POINT_STACK).map(elementHit);
 }
 
 export function describeHandles(
@@ -187,4 +190,31 @@ export function describeHandles(
     const element = elementForHandle(handle);
     return element ? describeElement(element) : null;
   });
+}
+
+export function ancestorHandles(
+  requested: readonly EditingElementHandle[],
+): Array<EditingElementHandle[] | null> {
+  return requested.map((handle) => {
+    const element = elementForHandle(handle);
+    if (!element) return null;
+    const chain: EditingElementHandle[] = [];
+    let node = element.parentElement;
+    for (; node && chain.length < MAX_DESCRIBE_HANDLES; node = node.parentElement) {
+      chain.push(handleFor(node));
+    }
+    return chain;
+  });
+}
+
+export function queryElements(selector: string): {
+  matches: EditingElementMatch[];
+  truncated: boolean;
+} {
+  const matches: EditingElementMatch[] = [];
+  for (const element of document.querySelectorAll(selector)) {
+    if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
+    matches.push({ handle: handleFor(element), source: readElementSource(element) });
+  }
+  return { matches, truncated: false };
 }

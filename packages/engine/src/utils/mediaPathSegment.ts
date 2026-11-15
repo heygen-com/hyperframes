@@ -10,10 +10,19 @@ const READABLE_MAX_BYTES = 64;
  * form plus a digest of the whole id, so the two namespaces never meet.
  */
 export function mediaIdPathSegment(id: string): string {
-  if (PLAIN_SEGMENT.test(id) && !GENERATED_SUFFIX.test(id)) return id;
+  if (
+    PLAIN_SEGMENT.test(id) &&
+    !GENERATED_SUFFIX.test(id) &&
+    survivesCaseAndUnicodeFoldingOnMacAndWindowsDisks(id)
+  )
+    return id;
   const readable = truncateUtf8(id.replace(/[/\\:]/g, "_"), READABLE_MAX_BYTES);
   const digest = createHash("sha256").update(id).digest("hex").slice(0, 12);
   return `${readable}~${digest}`;
+}
+
+function survivesCaseAndUnicodeFoldingOnMacAndWindowsDisks(id: string): boolean {
+  return id === id.toLowerCase() && id === id.normalize("NFC");
 }
 
 function truncateUtf8(text: string, maxBytes: number): string {
