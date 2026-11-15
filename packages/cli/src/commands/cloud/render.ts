@@ -115,8 +115,7 @@ const VALID_RESOLUTION = ["1080p", "4k"] as const;
 const VALID_ASPECT_RATIO = ["16:9", "9:16", "1:1"] as const;
 // Mirrors the binary-byte max_bytes contract used by direct asset uploads.
 const DIRECT_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
-// Files left in the zip are counted at their own size; the margin covers the zip's own records.
-const ZIP_BUDGET_BYTES = Math.floor(DIRECT_UPLOAD_LIMIT_BYTES * 0.95);
+const ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS = Math.floor(DIRECT_UPLOAD_LIMIT_BYTES * 0.95);
 const ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES = 150 * 1024 * 1024;
 const LARGEST_FILE_COUNT = 10;
 
@@ -833,7 +832,7 @@ async function offloadMedia(
       upload,
       entryPath,
       variablesText,
-      zipBudgetBytes: ZIP_BUDGET_BYTES,
+      zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
     });

@@ -180,7 +180,7 @@ describe("cloud render --dry-run of an imported project", () => {
 });
 
 describe("cloud render --dry-run with heavy media", () => {
-  it("sends media in the zip when the project fits, with no uploads, and leaves unused media out", () => {
+  it("sends every file in the zip when the project fits, with no uploads", () => {
     const dir = writeComposition(1920, 1080);
     writeFileSync(
       join(dir, "index.html"),
@@ -220,7 +220,11 @@ describe("cloud render --dry-run with heavy media", () => {
     };
     // One zip is faster than any per-file upload, so media leaves it only when the zip would not fit.
     expect(archive.offloaded_media).toEqual([]);
-    expect(archive.largest_files.map((file) => file.path)).toEqual(["clip.mp4", "index.html"]);
+    expect(archive.largest_files.map((file) => file.path)).toEqual([
+      "clip.mp4",
+      "unused-take.mp4",
+      "index.html",
+    ]);
   });
 });
 

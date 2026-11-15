@@ -2696,9 +2696,9 @@ Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private record
 under `.hyperframes/` are always left out, even when a rule re-includes them, and
 each one is reported as left out with the reason `private`.
 
-Media no page names is left out of the zip. When the rest is over the upload
-limit, the largest media files the project names by path go up first as HeyGen
-assets, just enough for the rest to fit, and the zip's copy of each HTML, CSS,
+When the zip would be over the upload limit, media no page, script or variable
+names is left out first, then the largest media files the project names by path
+go up as HeyGen assets, just enough for the rest to fit, and the zip's copy of each HTML, CSS,
 script and JSON file points at the asset URL instead; your project files are not changed.
 Asset URLs are public and unsigned: anyone who has one can fetch the
 media. Uploads are cached by content, so a re-render uploads only what changed.

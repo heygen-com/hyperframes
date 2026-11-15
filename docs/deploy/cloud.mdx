@@ -59,7 +59,7 @@ hyperframes cloud render --resolution 4k
 
 ## Check what will upload
 
-Media no page names is left out of the archive. When the rest fits under the 200 MB project archive limit, it is sent as one zip; when it does not, the largest media files the project names by path upload first as HeyGen assets, eight at a time, just enough for the rest to fit, and are referenced by public, unsigned URL. Uploads are cached, so re-rendering uploads only new or changed media. Media is streamed from disk as it uploads, so a large file never has to fit in memory; editing one while the command is preparing it stops the run. Inspect what will upload before starting a render:
+When the project fits under the 200 MB project archive limit, it is sent as one zip. When it does not, media no page, script or variable names is left out first, then the largest media files the project names by path upload as HeyGen assets, eight at a time, just enough for the rest to fit, and are referenced by public, unsigned URL. Uploads are cached, so re-rendering uploads only new or changed media. Media is streamed from disk as it uploads, so a large file never has to fit in memory; editing one while the command is preparing it stops the run. Inspect what will upload before starting a render:
 
 ```bash
 hyperframes cloud render --dry-run

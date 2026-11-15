@@ -298,15 +298,42 @@ describe("offloadHeavyMedia", () => {
       };
     };
 
-    it("uploads nothing when the files a page uses fit, and leaves unused media out", async () => {
-      const { upload, zipped } = await offload(11 * 1024);
+    it("uploads nothing and keeps every file when the zip fits", async () => {
+      const { upload, zipped } = await offload(14 * 1024);
       expect(upload).not.toHaveBeenCalled();
       expect(zipped).toEqual(
-        [1, 2, 3, 4]
-          .map((kib) => `assets/clip-${kib}.mp4`)
-          .concat("index.html")
+        ["assets/unused-take.mp4", "index.html"]
+          .concat([1, 2, 3, 4].map((kib) => `assets/clip-${kib}.mp4`))
           .sort(),
       );
+    });
+
+    it("leaves unused media out before uploading anything", async () => {
+      const { upload, zipped } = await offload(11 * 1024);
+      expect(upload).not.toHaveBeenCalled();
+      expect(zipped).not.toContain("assets/unused-take.mp4");
+    });
+
+    it("keeps frames a script loads by a built path when the zip fits", async () => {
+      const dir = project({
+        "index.html": html(
+          `<script>for (let i = 1; i <= 3; i++) new Image().src = "frames/frame_" + i + ".png";</script>`,
+        ),
+        ...Object.fromEntries([1, 2, 3].map((i) => [`frames/frame_${i}.png`, sized("f.png", 1)])),
+      });
+      const fileMap = stagePublishFiles(dir, OFFLOAD_MIN_BYTES);
+      await offloadHeavyMedia(dir, fileMap, {
+        apiBaseUrl: "https://api.example",
+        upload: fakeUpload(),
+        cachePath: cachePath(),
+        zipBudgetBytes: 190 * 1024 * 1024,
+      });
+      expect([...fileMap.keys()].sort()).toEqual([
+        "frames/frame_1.png",
+        "frames/frame_2.png",
+        "frames/frame_3.png",
+        "index.html",
+      ]);
     });
 
     it("uploads the largest files first, only until the rest fits", async () => {
