@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ipv4HostClass, isBlockedNetworkHost } from "./networkPolicy.js";
 
 describe("special-use network list", () => {
@@ -26,4 +26,28 @@ describe("IPv4 host class", () => {
     ["8.8.8.8", "public"],
     ["100.128.0.1", "public"],
   ])("%s is %s", (ip, hostClass) => expect(ipv4HostClass(ip)).toBe(hostClass));
+});
+
+describe("operator ranges", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("adds the operator's networks to the list and classes them as private", () => {
+    expect(isBlockedNetworkHost("192.160.83.14")).toBe(false);
+    vi.stubEnv("PRODUCER_NON_PUBLIC_CIDRS", "192.160.0.0/16, 2600:1f00::/24");
+    expect(isBlockedNetworkHost("192.160.83.14")).toBe(true);
+    expect(ipv4HostClass("192.160.83.14")).toBe("private");
+    expect(isBlockedNetworkHost("2600:1f00::1")).toBe(true);
+    expect(isBlockedNetworkHost("192.161.0.1")).toBe(false);
+  });
+
+  it.each(["192.160.0.0", "192.160.0.0/33", "not-a-network/8"])(
+    "refuses every address under a malformed setting %s",
+    (range) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("PRODUCER_NON_PUBLIC_CIDRS", range);
+      expect(isBlockedNetworkHost("8.8.8.8")).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("PRODUCER_NON_PUBLIC_CIDRS"));
+      warn.mockRestore();
+    },
+  );
 });
