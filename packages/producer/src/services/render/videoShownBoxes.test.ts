@@ -70,6 +70,11 @@ describe("shownBoxTimes", () => {
     expect(shownBoxTimes([video("a", 2 ** 53, 2 ** 54)], fps, 10)).toEqual([]);
     expect(shownBoxTimes([video("a", Number.NaN, 1)], fps, 10)).toEqual([]);
   });
+
+  it("puts every video's strides on one grid, so many offset videos add only their own first and last frames", () => {
+    const offset = Array.from({ length: 1000 }, (_, i) => video(`v${i}`, i / 1000, 10));
+    expect(shownBoxTimes(offset, fps, 10).length).toBeLessThanOrEqual(10 / 0.25 + 2 * 1000);
+  });
 });
 
 describe("measureLocalShownBoxes", () => {
