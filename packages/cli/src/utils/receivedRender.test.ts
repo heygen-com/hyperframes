@@ -182,6 +182,18 @@ describe("outsideAssetsAllowed", () => {
     expect(line).toContain(`${file} ${SOMEONE_ELSE}`);
   });
 
+  it("refuses outside files when an outer record lists received HTML under an empty nested record", () => {
+    root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+    write(join(root, "outside", "pic.png"), SIGNATURES.png);
+    const dir = join(root, "sub");
+    write(join(dir, "index.html"), `<img src="../outside/pic.png">`);
+    write(join(dir, ".hyperframes", "received-files.json"), received());
+    write(join(root, ".hyperframes", "received-files.json"), received("sub/index.html"));
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+  });
+
   it("keeps outside files when the record lists no files", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
