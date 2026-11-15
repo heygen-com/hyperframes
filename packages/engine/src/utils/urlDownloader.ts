@@ -24,7 +24,7 @@ import { resolveRestrictPageNetwork } from "../config.js";
 import {
   assertPublicHostname,
   NonPublicHostError,
-  publicRequest,
+  resolvePublicAddress,
 } from "../services/publicNetwork/publicNetwork.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
@@ -227,7 +227,7 @@ function isRetryableNetworkCause(error: unknown): boolean {
   return (
     RETRYABLE_NETWORK_CODES.has(code) ||
     code.startsWith("UND_ERR_") ||
-    /fetch failed|network|socket|connection reset|terminated|\bDNS\b/i.test(message)
+    /fetch failed|network|socket|connection reset|terminated/i.test(message)
   );
 }
 
@@ -454,6 +454,12 @@ const MAX_REDIRECTS = 5;
 
 const NON_PUBLIC_ADDRESS_CODE = "HF_NON_PUBLIC_ADDRESS";
 
+function nonPublicAddressError(): Error {
+  return Object.assign(new Error("host resolves to a non-public address"), {
+    code: NON_PUBLIC_ADDRESS_CODE,
+  });
+}
+
 /** Resolves a host and refuses to connect when any answer is a non-public address. */
 const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
@@ -462,29 +468,49 @@ const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
       answers.length === 0 ||
       answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))
     ) {
-      const refused = Object.assign(new Error("host resolves to a non-public address"), {
-        code: NON_PUBLIC_ADDRESS_CODE,
-      });
-      return callback(refused, "", 0);
+      return callback(nonPublicAddressError(), "", 0);
     }
     if (options.all) return callback(null, answers as never);
     return callback(null, answers[0]!.address, answers[0]!.family);
   });
 };
 
+/** The capture proxy's resolver: IPv4 answers only, every one public, and the checked address is dialled. */
+const capturePolicyLookup: LookupFunction = (hostname, options, callback) => {
+  resolvePublicAddress(hostname).then(
+    (address) =>
+      options.all ? callback(null, [{ address, family: 4 }]) : callback(null, address, 4),
+    (error: unknown) =>
+      callback(
+        error instanceof NonPublicHostError ? nonPublicAddressError() : (error as Error),
+        "",
+        0,
+      ),
+  );
+};
+
 type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
-let undiciTransport: Promise<DownloadFetch> | undefined;
+const undiciTransports = new Map<LookupFunction, Promise<DownloadFetch>>();
+
+function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
+  let transport = undiciTransports.get(lookup);
+  if (!transport) {
+    transport = import("undici").then(({ Agent, fetch: undiciFetch }) => {
+      const dispatcher = new Agent({ connect: { lookup } });
+      return (target, options) =>
+        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+    });
+    undiciTransports.set(lookup, transport);
+  }
+  return transport;
+}
+
 const fetchPublic: DownloadFetch = async (url, init) => {
-  if (resolveRestrictPageNetwork()) return publicRequest(url, init);
+  if (resolveRestrictPageNetwork()) return (await undiciTransport(capturePolicyLookup))(url, init);
   // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
   if (fetchGoesThroughEnvProxy()) return fetch(url, init);
-  undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
-    const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
-    return (target, options) =>
-      undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
-  });
-  return (await undiciTransport)(url, init);
+  return (await undiciTransport(publicOnlyLookup))(url, init);
 };
 
 let downloadFetch: DownloadFetch = fetchPublic;
@@ -495,7 +521,6 @@ export function _setDownloadFetchForTests(replacement?: DownloadFetch): void {
 }
 
 function refusedNonPublicAddress(error: unknown): boolean {
-  if (error instanceof NonPublicHostError) return true;
   for (let depth = 0; error && depth < 4; depth += 1) {
     if (typeof error === "object" && "code" in error && error.code === NON_PUBLIC_ADDRESS_CODE) {
       return true;

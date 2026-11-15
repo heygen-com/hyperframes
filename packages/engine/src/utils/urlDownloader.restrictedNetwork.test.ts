@@ -1,17 +1,18 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { isIP, type LookupFunction } from "node:net";
+import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
+import { connect, isIP, type AddressInfo, type LookupFunction } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PassThrough } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { gzipSync } from "node:zlib";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   lookup: vi.fn(),
   resolve4: vi.fn(),
   execFile: vi.fn(),
-  request: vi.fn(),
-  undiciFetch: vi.fn(),
+  serverPort: 0,
+  dialFailure: undefined as string | undefined,
 }));
 
 vi.mock("node:dns", async (importOriginal) => {
@@ -32,73 +33,56 @@ vi.mock("node:child_process", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:child_process")>()),
   execFile: mocks.execFile,
 }));
-vi.mock("node:https", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:https")>()),
-  request: mocks.request,
-}));
-vi.mock("undici", () => ({
-  Agent: class {
-    constructor(readonly options: { connect: { lookup: LookupFunction } }) {}
-  },
-  fetch: mocks.undiciFetch,
-}));
-
-import { downloadToTemp, UrlDownloadError } from "./urlDownloader.js";
-
-type Route = { status: number; headers?: Record<string, string>; body?: string };
-let routes: Record<string, Route> = {};
-const BODY = "\u0000\u0001asset-bytes";
-
-function route(url: string): Route {
-  const found = routes[url];
-  if (!found) throw new Error(`no route for ${url}`);
-  return found;
-}
-
-/** The pinned capture transport: answers by the URL the request names. */
-function serveCaptureTransport(): void {
-  mocks.request.mockImplementation(
-    (
-      options: { path: string; headers: Record<string, string> },
-      callback: (incoming: PassThrough) => void,
-    ) => {
-      const {
-        status,
-        headers = {},
-        body = "",
-      } = route(`https://${options.headers.host}${options.path}`);
-      return Object.assign(new EventEmitter(), {
-        destroy: vi.fn(),
-        end: () => {
-          const incoming = Object.assign(new PassThrough(), { statusCode: status, headers });
-          callback(incoming);
-          incoming.end(body);
+// The downloader's own lookup decides; an approved dial then lands on the local test server in clear text.
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici")>();
+  class Agent extends actual.Agent {
+    constructor(options: { connect: { lookup: LookupFunction } }) {
+      super({
+        connect: (target, callback) => {
+          const dial = (error: Error | null) => {
+            if (error) return callback(error, null);
+            if (mocks.dialFailure) {
+              const failure = Object.assign(new Error(`connect ${mocks.dialFailure}`), {
+                code: mocks.dialFailure,
+              });
+              return callback(failure, null);
+            }
+            const socket = connect(mocks.serverPort, "127.0.0.1");
+            socket.once("connect", () => callback(null, socket));
+            socket.once("error", (socketError) => callback(socketError, null));
+          };
+          const host = target.hostname.replace(/^\[|\]$/g, "");
+          if (isIP(host)) return dial(null);
+          options.connect.lookup(host, {}, (error) => dial(error));
         },
       });
-    },
-  );
-}
+    }
+  }
+  return { ...actual, Agent };
+});
 
-/** The default transport: runs the connect lookup for a name, as undici does, and skips it for an IP literal. */
-function serveDefaultTransport(): void {
-  mocks.undiciFetch.mockImplementation(
-    async (
-      target: string,
-      init: { dispatcher: { options: { connect: { lookup: LookupFunction } } } },
-    ) => {
-      const hostname = new URL(target).hostname;
-      if (!isIP(hostname.replace(/^\[|\]$/g, ""))) {
-        await new Promise<void>((resolve, reject) =>
-          init.dispatcher.options.connect.lookup(hostname, {}, (error) =>
-            error ? reject(new TypeError("fetch failed", { cause: error })) : resolve(),
-          ),
-        );
-      }
-      const { status, headers, body } = route(target);
-      return new Response(body ?? null, { status, headers });
-    },
-  );
-}
+import { downloadToTemp, fetchPublicHttpsText, UrlDownloadError } from "./urlDownloader.js";
+
+type Route = { status: number; headers?: Record<string, string>; body?: string | Buffer };
+let routes: Record<string, Route | "drop"> = {};
+let received: Array<{ url: string; headers: IncomingHttpHeaders }> = [];
+const BODY = "\u0000\u0001asset-bytes";
+let server: Server;
+
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    const url = `https://${req.headers.host}${req.url}`;
+    received.push({ url, headers: req.headers });
+    const found = routes[url];
+    if (found === "drop") return req.socket.destroy();
+    if (!found) return res.writeHead(599).end();
+    res.writeHead(found.status, found.headers).end(found.body ?? "");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  mocks.serverPort = (server.address() as AddressInfo).port;
+});
+afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
 function answers(ipv4: string[], ipv6: string[] = []): void {
   const all = [
@@ -123,8 +107,8 @@ function tempDir(): string {
 beforeEach(() => {
   vi.resetAllMocks();
   routes = {};
-  serveCaptureTransport();
-  serveDefaultTransport();
+  received = [];
+  mocks.dialFailure = undefined;
   mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
     callback(new Error("Command failed"), "", "ENOTFOUND");
     return Object.assign(new EventEmitter(), { kill: vi.fn() });
@@ -145,8 +129,7 @@ describe("downloads on a render service follow the capture proxy's address rule"
     await expect(downloadToTemp("https://[2606:4700:4700::1111]/a.png", tempDir())).rejects.toThrow(
       /not permitted/,
     );
-    expect(mocks.undiciFetch).not.toHaveBeenCalled();
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(received).toEqual([]);
   });
 
   it("refuses a name that has only IPv6 answers", async () => {
@@ -155,8 +138,7 @@ describe("downloads on a render service follow the capture proxy's address rule"
     await expect(
       downloadToTemp("https://v6only.assets-cdn.com/a.png", tempDir()),
     ).rejects.toBeInstanceOf(UrlDownloadError);
-    expect(mocks.undiciFetch).not.toHaveBeenCalled();
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(received).toEqual([]);
   });
 
   it("refuses a redirect hop to an IPv6 literal", async () => {
@@ -172,7 +154,7 @@ describe("downloads on a render service follow the capture proxy's address rule"
       kind: "http_rejected",
       message: "Download redirect target is not permitted",
     });
-    expect(mocks.request).toHaveBeenCalledTimes(1);
+    expect(received.map((request) => request.url)).toEqual(["https://cdn.assets-public.com/a.png"]);
   });
 
   it.each([
@@ -190,32 +172,110 @@ describe("downloads on a render service follow the capture proxy's address rule"
       routes["https://assets.private-cdn.com/a.png"] = { status: 200, body: BODY };
       await expect(
         downloadToTemp("https://assets.private-cdn.com/a.png", tempDir()),
-      ).rejects.toMatchObject({ kind: "http_rejected", message: "Download URL is not permitted" });
+      ).rejects.toMatchObject({
+        kind: "http_rejected",
+        retryable: false,
+        message: "Download URL is not permitted",
+      });
       expect(viaEnvProxy).not.toHaveBeenCalled();
-      expect(mocks.undiciFetch).not.toHaveBeenCalled();
-      expect(mocks.request).not.toHaveBeenCalled();
+      expect(received).toEqual([]);
     },
   );
 
-  it("downloads from a public IPv4 host by dialling the checked address", async () => {
+  it("downloads from a public IPv4 host after checking its answers", async () => {
     answers(["93.184.216.34"], ["2606:2800:220:1:248:1893:25c8:1946"]);
     routes["https://cdn.assets-public.com/a.png"] = { status: 200, body: BODY };
     const path = await downloadToTemp("https://cdn.assets-public.com/a.png", tempDir());
     expect(readFileSync(path, "utf8")).toBe(BODY);
-    expect(mocks.request.mock.calls[0]?.[0]).toMatchObject({
-      hostname: "93.184.216.34",
-      servername: "cdn.assets-public.com",
-    });
+    expect(mocks.resolve4).toHaveBeenCalledWith("cdn.assets-public.com");
+    expect(mocks.lookup).not.toHaveBeenCalled();
+  });
+
+  it("sends a User-Agent and Accept header", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://upload.media-wiki-host.org/a.png"] = { status: 200, body: BODY };
+    await downloadToTemp("https://upload.media-wiki-host.org/a.png", tempDir());
+    expect(received[0]?.headers["user-agent"]).toBeTruthy();
+    expect(received[0]?.headers.accept).toBe("*/*");
+  });
+
+  it("unpacks a gzip text response", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://cdn.assets-public.com/app.js"] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync("console.log('hello');"),
+    };
+    await expect(
+      fetchPublicHttpsText("https://cdn.assets-public.com/app.js", { maxBytes: 1024 }),
+    ).resolves.toBe("console.log('hello');");
+  });
+
+  it("stops a gzip text response whose unpacked size passes the cap", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://cdn.assets-public.com/bomb.js"] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync(Buffer.alloc(8 * 1024 * 1024)),
+    };
+    await expect(
+      fetchPublicHttpsText("https://cdn.assets-public.com/bomb.js", { maxBytes: 64 * 1024 }),
+    ).rejects.toMatchObject({ kind: "length_mismatch", retryable: false });
+  });
+
+  it("refuses a compressed asset download, as the default transport does", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://cdn.assets-public.com/a.png"] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync(BODY),
+    };
+    await expect(
+      downloadToTemp("https://cdn.assets-public.com/a.png", tempDir()),
+    ).rejects.toMatchObject({ kind: "http_rejected", retryable: false });
+  });
+
+  it("retries a gzip-encoded 5xx like any 5xx", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://cdn.assets-public.com/a.png"] = {
+      status: 503,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync("busy"),
+    };
+    await expect(
+      downloadToTemp("https://cdn.assets-public.com/a.png", tempDir()),
+    ).rejects.toMatchObject({ kind: "http_transient", retryable: true });
+    expect(received).toHaveLength(2);
+  });
+
+  it.each(["EHOSTUNREACH", "ENETUNREACH"])(
+    "retries an unreachable address (%s) as a network failure",
+    async (code) => {
+      answers(["93.184.216.34"]);
+      mocks.dialFailure = code;
+      await expect(
+        downloadToTemp(`https://${code.toLowerCase()}.assets-public.com/a.png`, tempDir()),
+      ).rejects.toMatchObject({ kind: "network", retryable: true });
+      expect(mocks.resolve4).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it("retries a connection dropped mid-response as a network failure", async () => {
+    answers(["93.184.216.34"]);
+    routes["https://cdn.assets-public.com/a.png"] = "drop";
+    await expect(
+      downloadToTemp("https://cdn.assets-public.com/a.png", tempDir()),
+    ).rejects.toMatchObject({ kind: "network", retryable: true });
+    expect(received).toHaveLength(2);
   });
 });
 
 describe("downloads with the render-service setting off", () => {
-  it("keep the default transport, which accepts a public IPv6 literal", async () => {
+  it("keep the default lookup, and accept a public IPv6 literal", async () => {
     vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "");
     routes["https://[2606:4700:4700::1111]/a.png"] = { status: 200, body: BODY };
     const path = await downloadToTemp("https://[2606:4700:4700::1111]/a.png", tempDir());
     expect(readFileSync(path, "utf8")).toBe(BODY);
-    expect(mocks.undiciFetch).toHaveBeenCalledOnce();
-    expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.resolve4).not.toHaveBeenCalled();
   });
 });
