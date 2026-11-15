@@ -2993,6 +2993,26 @@ export function shouldDiscardProbeSessionForPageSideCompositing(args: {
   return args.hasProbeSession && args.usePageSideCompositing;
 }
 
+// Every published @hyperframes/shader-transitions build adds this canvas once its page-side compositor installs.
+const PAGE_SIDE_COMPOSITOR_CANVAS_ID = "__hf-page-side-compositor";
+
+/** Loads the page with the page-side stub and reports whether its shader-transitions build installed the compositor. */
+export async function pageInstallsShaderCompositor(
+  open: () => Promise<CaptureSession>,
+  session = { initializeSession, closeCaptureSession },
+): Promise<boolean> {
+  const probe = await open();
+  try {
+    await session.initializeSession(probe);
+    return await probe.page.evaluate(
+      (id) => document.getElementById(id) !== null,
+      PAGE_SIDE_COMPOSITOR_CANVAS_ID,
+    );
+  } finally {
+    await session.closeCaptureSession(probe);
+  }
+}
+
 /**
  * Main render pipeline
  */
@@ -4657,7 +4677,7 @@ async function executeRenderPipeline(input: {
     // path so the palette encoder can preserve transparency. HDR content still
     // forces the layered path (HDR layers need per-layer alpha + native HDR raw
     // frame compositing in Node; that's out of scope for this opt-in).
-    const usePageSideCompositingForTransitions =
+    let usePageSideCompositingForTransitions =
       (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
@@ -4678,6 +4698,30 @@ async function executeRenderPipeline(input: {
           "[Render] Recreating capture session so page-side compositing pre-head script is loaded.",
         );
       }
+      // The composition's own shader-transitions build decides whether it can composite in this
+      // browser; a build that cannot leaves the blend to the Node-side layered path.
+      try {
+        usePageSideCompositingForTransitions = await pageInstallsShaderCompositor(() =>
+          createCaptureSession(activeFileServer.url, framesDir, buildPrepCaptureOptions(), null, {
+            ...cfg,
+            forceScreenshot: true,
+          }),
+        );
+      } catch (error) {
+        assertNotAborted();
+        // The capture stage opens its own session and owns retrying or failing it.
+        log.warn("[Render] Shader compositor check failed; keeping page-side compositing.", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (!usePageSideCompositingForTransitions) {
+        log.warn(
+          "[Render] The page's shader-transitions build cannot composite in this browser; " +
+            "shader transitions blend on the Node-side layered path.",
+        );
+      }
+    }
+    if (usePageSideCompositingForTransitions) {
       captureForceScreenshot = resolveCaptureForceScreenshotForPageSideCompositing({
         forceScreenshot: captureForceScreenshot,
         usePageSideCompositing: true,
