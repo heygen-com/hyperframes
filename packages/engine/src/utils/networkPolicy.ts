@@ -47,19 +47,30 @@ function operatorRanges(): BlockList | "malformed" {
   operatorRangesFor = raw;
   operatorRangeList = parseRanges(raw);
   if (operatorRangeList === "malformed") {
-    console.warn(`[hyperframes] ${OPERATOR_RANGES_ENV}="${raw}" is not a list like 192.160.0.0/16; every address is refused.`);
+    console.warn(
+      `[hyperframes] ${OPERATOR_RANGES_ENV}="${raw}" is not a list like 192.160.0.0/16; every address is refused.`,
+    );
   }
   return operatorRangeList;
 }
 
 function parseRanges(raw: string): BlockList | "malformed" {
   const list = new BlockList();
-  for (const range of raw.split(",").map((part) => part.trim()).filter(Boolean)) {
+  for (const range of raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)) {
     const [network = "", bits] = range.split("/");
     const family = isIP(network);
     const prefix = Number(bits);
     const max = family === 4 ? 32 : 128;
-    if (family === 0 || bits === undefined || !Number.isInteger(prefix) || prefix < 0 || prefix > max) {
+    if (
+      family === 0 ||
+      bits === undefined ||
+      !Number.isInteger(prefix) ||
+      prefix < 0 ||
+      prefix > max
+    ) {
       return "malformed";
     }
     list.addSubnet(network, prefix, family === 4 ? "ipv4" : "ipv6");

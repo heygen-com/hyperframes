@@ -40,11 +40,14 @@ describe("operator ranges", () => {
     expect(isBlockedNetworkHost("192.161.0.1")).toBe(false);
   });
 
-  it.each(["192.160.0.0", "192.160.0.0/33", "not-a-network/8"])("refuses every address under a malformed setting %s", (range) => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.stubEnv("PRODUCER_NON_PUBLIC_CIDRS", range);
-    expect(isBlockedNetworkHost("8.8.8.8")).toBe(true);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("PRODUCER_NON_PUBLIC_CIDRS"));
-    warn.mockRestore();
-  });
+  it.each(["192.160.0.0", "192.160.0.0/33", "not-a-network/8"])(
+    "refuses every address under a malformed setting %s",
+    (range) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.stubEnv("PRODUCER_NON_PUBLIC_CIDRS", range);
+      expect(isBlockedNetworkHost("8.8.8.8")).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("PRODUCER_NON_PUBLIC_CIDRS"));
+      warn.mockRestore();
+    },
+  );
 });
