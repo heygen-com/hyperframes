@@ -1,12 +1,14 @@
 import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 import {
   cssUrlMatches,
+  fontFaceBlockMatches,
   hasBackgroundImageDeclaration,
   importRuleMatches,
   localFontFaceUrlMatches,
   remoteBackgroundUrlMatches,
   remoteFontFaceUrlMatches,
   replaceMatches,
+  styleBlockMatches,
 } from "@hyperframes/parsers/css-url-scans";
 // fallow-ignore-file code-duplication complexity
 /**
@@ -1885,12 +1887,10 @@ function projectStylesheetFontFamilies(html: string, projectDir: string): string
  */
 // fallow-ignore-next-line complexity
 function collectFontFaceUrls(html: string): Set<string> {
-  const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
   const urlSet = new Set<string>();
 
-  let styleMatch: RegExpExecArray | null;
-  while ((styleMatch = styleBlockRe.exec(html)) !== null) {
-    const cssText = styleMatch[1] ?? "";
+  for (const { parts } of styleBlockMatches(html)) {
+    const cssText = parts[1];
     // Depth-tracking scanner to correctly handle @font-face blocks that
     // contain nested braces (e.g. unicode-range fallback rules).
     let i = 0;
@@ -1979,20 +1979,14 @@ async function embedLocalFontFaces(
   log: ProducerLogger = defaultLogger,
 ): Promise<string> {
   const { fontToDataUri: toDataUri } = await import("@hyperframes/core/fonts/embed");
-  const styleBlockRe = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-  const fontFaceRe = /@font-face\s*\{([^}]*)\}/gi;
   let result = html;
   const embeddedPaths = new Set<string>();
   const dataUriByAbsolutePath = new Map<string, string>();
   const fileBackedAbsolutePaths = new Set<string>();
 
-  let styleMatch: RegExpExecArray | null;
-  while ((styleMatch = styleBlockRe.exec(html)) !== null) {
-    const cssText = styleMatch[1] ?? "";
-    const ffRe = new RegExp(fontFaceRe.source, fontFaceRe.flags);
-    let ffMatch: RegExpExecArray | null;
-    while ((ffMatch = ffRe.exec(cssText)) !== null) {
-      const block = ffMatch[1] ?? "";
+  for (const { parts: style } of styleBlockMatches(html)) {
+    for (const { parts: face } of fontFaceBlockMatches(style[1])) {
+      const block = face[1];
       for (const { parts } of localFontFaceUrlMatches(block)) {
         const localPath = parts[1];
         if (!localPath || embeddedPaths.has(localPath)) continue;
