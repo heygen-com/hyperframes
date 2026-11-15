@@ -1674,6 +1674,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       absoluteSourcePath: string,
       at: number,
       box?: { width: number; height: number },
+      startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
     ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
@@ -1939,6 +1940,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         join(projectDir, "clip.mp4"),
         12.34,
         undefined,
+        expect.any(Function),
       );
 
       expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
@@ -1950,7 +1952,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
-    it("makes at most four stills at once and answers 503 once 32 more wait", async () => {
+    it("makes at most four new stills at once, and serves a finished still without waiting", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
       const stillPath = join(projectDir, "still.jpg");
@@ -1958,12 +1960,23 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       const finishers: Array<() => void> = [];
       let running = 0;
       let mostRunning = 0;
-      const resolveStillMock = vi.fn(async () => {
-        mostRunning = Math.max(mostRunning, ++running);
-        await new Promise<void>((resolve) => finishers.push(resolve));
-        running--;
-        return stillPath;
-      });
+      const resolveStillMock = vi.fn(
+        async (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          if (at === 99) return stillPath;
+          return startUncachedStill!(async () => {
+            mostRunning = Math.max(mostRunning, ++running);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            running--;
+            return stillPath;
+          });
+        },
+      );
       const { registerPreviewRoutes: register } = await loadPreviewModule({
         resolveStillImpl: resolveStillMock,
       });
@@ -1971,17 +1984,19 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       register(app, createAdapter(projectDir));
       const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
 
-      const accepted = Array.from({ length: 36 }, (_, i) => app.request(`${url}${i}`));
-      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(4));
-      const refused = await app.request(`${url}99`);
-      expect(refused.status).toBe(503);
-      expect(refused.headers.get("Retry-After")).toBe("2");
+      const made = Array.from({ length: 40 }, (_, i) => app.request(`${url}${i}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const finished = await app.request(`${url}99`);
+      expect(finished.status).toBe(200);
+      expect(finishers).toHaveLength(4);
 
-      while (resolveStillMock.mock.calls.length < 36 || finishers.length > 0) {
+      let ended = 0;
+      while (ended < 40) {
         await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
         finishers.shift()?.();
+        ended++;
       }
-      for (const res of await Promise.all(accepted)) expect(res.status).toBe(200);
+      for (const res of await Promise.all(made)) expect(res.status).toBe(200);
       expect(mostRunning).toBe(4);
     });
 

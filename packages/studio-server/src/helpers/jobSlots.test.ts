@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createJobSlots, JobSlotsFullError } from "./jobSlots.js";
+import { createJobSlots, JobAbandonedError } from "./jobSlots.js";
 
 const gate = () => {
   let open: () => void = () => {};
@@ -8,19 +8,18 @@ const gate = () => {
 };
 
 describe("createJobSlots", () => {
-  it("refuses a job once the slots and the queue are full", async () => {
-    const run = createJobSlots(1, 1);
+  it("queues jobs past the limit and runs them as slots free", async () => {
+    const run = createJobSlots(1);
     const first = gate();
     const running = run(() => first.opened);
-    const queued = run(async () => "queued");
-    await expect(run(async () => "third")).rejects.toBeInstanceOf(JobSlotsFullError);
+    const queued = [run(async () => "second"), run(async () => "third")];
     first.open();
     await running;
-    await expect(queued).resolves.toBe("queued");
+    await expect(Promise.all(queued)).resolves.toEqual(["second", "third"]);
   });
 
   it("drops a queued job whose request went away, and frees its place", async () => {
-    const run = createJobSlots(1, 1);
+    const run = createJobSlots(1);
     const first = gate();
     const running = run(() => first.opened);
     const gone = new AbortController();
@@ -29,7 +28,7 @@ describe("createJobSlots", () => {
       started = true;
     }, gone.signal);
     gone.abort();
-    await expect(abandoned).rejects.toBeDefined();
+    await expect(abandoned).rejects.toBeInstanceOf(JobAbandonedError);
     const next = run(async () => "next");
     first.open();
     await running;

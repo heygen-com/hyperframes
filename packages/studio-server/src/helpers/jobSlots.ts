@@ -1,26 +1,25 @@
-export class JobSlotsFullError extends Error {
+export class JobAbandonedError extends Error {
   constructor() {
-    super("job queue full");
-    this.name = "JobSlotsFullError";
+    super("job abandoned before it started");
+    this.name = "JobAbandonedError";
   }
 }
 
-/** Runs at most `limit` jobs at once with `maxWaiting` more queued; a waiter whose signal aborts leaves the queue. */
-export function createJobSlots(limit: number, maxWaiting: number) {
+/** Runs at most `limit` jobs at once; a waiter whose signal aborts leaves the queue without starting. */
+export function createJobSlots(limit: number) {
   let running = 0;
   const waiting: Array<() => void> = [];
 
   const acquire = (signal?: AbortSignal) =>
     new Promise<void>((resolve, reject) => {
-      if (signal?.aborted) return reject(signal.reason);
+      if (signal?.aborted) return reject(new JobAbandonedError());
       if (running < limit) {
         running++;
         return resolve();
       }
-      if (waiting.length >= maxWaiting) return reject(new JobSlotsFullError());
       const leave = () => {
         waiting.splice(waiting.indexOf(start), 1);
-        reject(signal?.reason);
+        reject(new JobAbandonedError());
       };
       const start = () => {
         signal?.removeEventListener("abort", leave);

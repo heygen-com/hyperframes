@@ -1150,6 +1150,7 @@ export function resolveStill(
   absoluteSourcePath: string,
   atSeconds: number,
   box?: PreviewProxyBox,
+  startUncachedStill: (make: () => Promise<string>) => Promise<string> = (make) => make(),
 ): Promise<string> {
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
@@ -1158,7 +1159,7 @@ export function resolveStill(
   if (existsSync(cachePath)) return Promise.resolve(cachePath);
   const shared = stillsInFlight.get(cachePath);
   if (shared) return shared;
-  const made = makeStill(source, at, box, cachePath).finally(() =>
+  const made = startUncachedStill(() => makeStill(source, at, box, cachePath)).finally(() =>
     stillsInFlight.delete(cachePath),
   );
   stillsInFlight.set(cachePath, made);
