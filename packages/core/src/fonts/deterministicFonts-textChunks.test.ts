@@ -1,0 +1,104 @@
+// @vitest-environment node
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  _clearGoogleFontCssCacheForTests,
+  injectDeterministicFontFaces,
+} from "./deterministicFonts.js";
+
+let cacheDir: string;
+let prevCacheEnv: string | undefined;
+
+beforeAll(() => {
+  prevCacheEnv = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+  cacheDir = mkdtempSync(join(tmpdir(), "hf-font-chunks-"));
+  process.env.HYPERFRAMES_FONT_CACHE_DIR = cacheDir;
+});
+
+afterAll(() => {
+  if (prevCacheEnv === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+  else process.env.HYPERFRAMES_FONT_CACHE_DIR = prevCacheEnv;
+  rmSync(cacheDir, { recursive: true, force: true });
+});
+
+beforeEach(() => _clearGoogleFontCssCacheForTests());
+
+// 600 distinct CJK ideographs encode to ~5.4 KB, past one text= request's budget.
+const CJK = Array.from({ length: 600 }, (_, index) => String.fromCodePoint(0x4e00 + index)).join(
+  "",
+);
+const PAGE = `<!doctype html><html><head><style>
+  h1 { font-family: "Hf Chunk Test", serif; }
+</style></head><body><h1>${CJK}</h1></body></html>`;
+
+// Google answers a text= request with one face per weight and no unicode-range.
+function googleFetch(): { fetchImpl: typeof fetch; cssUrls: URL[] } {
+  const cssUrls: URL[] = [];
+  const fetchImpl = (async (input: unknown) => {
+    const url = new URL(String(input));
+    if (url.pathname === "/css2") {
+      cssUrls.push(url);
+      const id = cssUrls.length;
+      return new Response(
+        `@font-face { font-family: 'Hf Chunk Test'; font-style: normal; font-weight: 400;
+  src: url(https://fonts.gstatic.com/l/font?kit=chunk${id}) format('woff2'); }`,
+        { status: 200 },
+      );
+    }
+    if (url.hostname === "fonts.gstatic.com") {
+      return new Response(`BYTES-${url.searchParams.get("kit")}`, { status: 200 });
+    }
+    return new Response("", { status: 404 });
+  }) as unknown as typeof fetch;
+  return { fetchImpl, cssUrls };
+}
+
+function codePointsOf(range: string): Set<number> {
+  const points = new Set<number>();
+  for (const part of range.split(",")) {
+    const [start, end] = part.trim().replace(/^U\+/i, "").split("-");
+    const from = Number.parseInt(start!, 16);
+    const to = end === undefined ? from : Number.parseInt(end, 16);
+    for (let point = from; point <= to; point += 1) points.add(point);
+  }
+  return points;
+}
+
+describe("Google Fonts text= past one request's budget", () => {
+  it("never requests the whole family: every CSS request carries a bounded text=", async () => {
+    const { fetchImpl, cssUrls } = googleFetch();
+    await injectDeterministicFontFaces(PAGE, { fetchImpl, allowSystemFontCapture: false });
+
+    expect(cssUrls.length).toBeGreaterThan(1);
+    for (const url of cssUrls) {
+      const text = url.searchParams.get("text");
+      expect(text).not.toBeNull();
+      expect(encodeURIComponent(text!).length).toBeLessThanOrEqual(1_700);
+    }
+    const requested = new Set(cssUrls.flatMap((url) => [...url.searchParams.get("text")!]));
+    for (const character of CJK) expect(requested.has(character)).toBe(true);
+  });
+
+  it("gives each request's face the codepoints it was asked for, so faces never shadow each other", async () => {
+    const { fetchImpl, cssUrls } = googleFetch();
+    const html = await injectDeterministicFontFaces(PAGE, {
+      fetchImpl,
+      allowSystemFontCapture: false,
+    });
+
+    const faces = html
+      .split("@font-face")
+      .slice(1)
+      .filter((block) => block.includes("Hf Chunk Test"));
+    expect(faces.length).toBe(cssUrls.length);
+    const owners = new Map<number, number>();
+    faces.forEach((face) => {
+      const range = /unicode-range:\s*([^;}]+)/.exec(face)?.[1];
+      expect(range).toBeDefined();
+      for (const point of codePointsOf(range!)) owners.set(point, (owners.get(point) ?? 0) + 1);
+    });
+    for (const character of CJK) expect(owners.get(character.codePointAt(0)!)).toBe(1);
+  });
+});

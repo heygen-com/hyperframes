@@ -1648,6 +1648,67 @@ function declaredFaceFamily(block: string): string | undefined {
   return found?.[1];
 }
 
+/** Page text split into runs that each fit one `text=` request; `[undefined]` when there is none. */
+function pageTextChunks(fontText: string | undefined): (string | undefined)[] {
+  if (!fontText) return [undefined];
+  const chunks: string[] = [];
+  let chunk = "";
+  let encodedLength = 0;
+  for (const character of fontText) {
+    const size = encodeURIComponent(character).length;
+    if (chunk && encodedLength + size > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) {
+      chunks.push(chunk);
+      chunk = "";
+      encodedLength = 0;
+    }
+    chunk += character;
+    encodedLength += size;
+  }
+  chunks.push(chunk);
+  return chunks;
+}
+
+function unicodeRangeOf(text: string): string {
+  const points = [...new Set(Array.from(text, (character) => character.codePointAt(0)!))].sort(
+    (a, b) => a - b,
+  );
+  const hex = (point: number) => point.toString(16).toUpperCase().padStart(4, "0");
+  const ranges: string[] = [];
+  for (let start = 0; start < points.length; ) {
+    let end = start;
+    while (end + 1 < points.length && points[end + 1] === points[end]! + 1) end += 1;
+    ranges.push(
+      start === end ? `U+${hex(points[start]!)}` : `U+${hex(points[start]!)}-${hex(points[end]!)}`,
+    );
+    start = end + 1;
+  }
+  return ranges.join(", ");
+}
+
+/**
+ * One request per chunk. Each response holds at most its chunk's glyphs, so with several chunks
+ * every face claims exactly its chunk's codepoints; same-weight faces would otherwise shadow each other.
+ */
+async function fetchTextChunks(
+  chunks: readonly (string | undefined)[],
+  urlFor: (text: string | undefined) => string,
+  fetchUrl: (url: string) => Promise<{ faces: GoogleFontFace[]; status?: number }>,
+): Promise<{ faces: GoogleFontFace[]; status?: number }> {
+  const urls = chunks.map(urlFor);
+  if (new Set(urls).size === 1) return fetchUrl(urls[0]!);
+  const faces: GoogleFontFace[] = [];
+  let status: number | undefined;
+  for (const [index, url] of urls.entries()) {
+    const result = await fetchUrl(url);
+    const range = unicodeRangeOf(chunks[index]!);
+    faces.push(
+      ...result.faces.map((face) => ({ ...face, unicodeRange: range })),
+    );
+    status ??= result.status;
+  }
+  return { faces, status };
+}
+
 // fallow-ignore-next-line complexity
 async function fetchGoogleFont(
   familyName: string,
@@ -1662,7 +1723,6 @@ async function fetchGoogleFont(
   // authored CSS still matches it.
   const googleFamilyName = familyName.replace(/\+/g, " ");
   const encodedFamily = encodeURIComponent(googleFamilyName);
-  const textParam = fontText ? `&text=${encodeURIComponent(fontText)}` : "";
   // Bundled families need the full supplement, including italics a page's
   // link may omit. Other families need the authored URL to preserve axes
   // such as optical size instead of replacing them with a weight-only face.
@@ -1672,7 +1732,8 @@ async function fetchGoogleFont(
     : options.authoredStylesheets.get(normalizedFamily);
   // `text=` asks Google for only the characters on the page. A CJK family
   // without it is a hundred files, and the compile's font budget is 20s.
-  const defaultUrl = `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${textParam}`;
+  const defaultUrl = (text: string | undefined) =>
+    `https://fonts.googleapis.com/css2?family=${encodedFamily}:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700${text ? `&text=${encodeURIComponent(text)}` : ""}`;
   const fetchStylesheet = (url: string, urlSource: FontAttemptDiag["urlSource"]) =>
     fetchGoogleFontStylesheet(
       googleFamilyName,
@@ -1680,19 +1741,23 @@ async function fetchGoogleFont(
       options,
       options.diag.startAttempt(path, urlSource, /[?&]text=/.test(url) ? "present" : "absent"),
     );
+  const fetchPageText = (
+    urlFor: (text: string | undefined) => string,
+    urlSource: FontAttemptDiag["urlSource"],
+  ) => fetchTextChunks(pageTextChunks(fontText), urlFor, (url) => fetchStylesheet(url, urlSource));
   if (!authoredStylesheet) {
-    return (await fetchStylesheet(defaultUrl, "default")).faces;
+    return (await fetchPageText(defaultUrl, "default")).faces;
   }
   const faces: GoogleFontFace[] = [];
   const outcomes: string[] = [];
   for (const url of authoredStylesheet) {
-    const result = await fetchStylesheet(withPageText(url, fontText), "authored");
+    const result = await fetchPageText((text) => withPageText(url, text), "authored");
     faces.push(...result.faces);
     if (result.faces.length === 0)
       outcomes.push(result.status ? `http_${result.status}` : "no_faces");
   }
   if (faces.length > 0) return faces;
-  const fallback = (await fetchStylesheet(defaultUrl, "default")).faces;
+  const fallback = (await fetchPageText(defaultUrl, "default")).faces;
   options.log.warn(
     `[Compiler] google_font_link_fallback family="${familyName}" link_outcomes=${outcomes.join(",")} ` +
       `fallback_faces=${fallback.length}`,
@@ -1997,7 +2062,7 @@ function extractGoogleFontsText(html: string): string | undefined {
   const locales = collectLangAttributes(document);
 
   // Intentional over-approximation: raw html includes base64, scripts, and
-  // class names, but they collapse in the Set and the budget gate catches bloat.
+  // class names, but they collapse in the Set; text past one request is split, never dropped.
   const uniqueCharacters = new Set<string>();
   const seen = new Set<string>();
   for (const text of [html, decodedBodyText]) {
@@ -2012,10 +2077,7 @@ function extractGoogleFontsText(html: string): string | undefined {
   if (hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE))
     addFullSizeKanaVariants(uniqueCharacters);
 
-  const fontText = [...uniqueCharacters].join("");
-  return encodeURIComponent(fontText).length <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH
-    ? fontText
-    : undefined;
+  return [...uniqueCharacters].join("") || undefined;
 }
 
 function resolveFontFetchRetryPolicy(
