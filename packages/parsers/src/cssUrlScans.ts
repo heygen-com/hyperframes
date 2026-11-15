@@ -1,4 +1,4 @@
-// Forward scans that find what the CSS `url(` regex in each doc comment finds, in linear time.
+// Forward scans that find what the CSS regex in each doc comment finds, in linear time.
 
 /** One match as `matchAll` reports it: where it starts, then the full text and each group. */
 export interface ScanMatch<G extends Array<string | undefined>> {
@@ -394,3 +394,143 @@ export const remoteFontFaceUrlMatches = (source: string) =>
 /** Matches of `/url\(["']?(?!data:|file:|https?:\/\/)([^"')]+)["']?\)/gi`. */
 export const localFontFaceUrlMatches = (source: string) =>
   fontFaceUrlMatches(source, localHead(source));
+
+type BareOrQuotedParts = [
+  double: string | undefined,
+  single: string | undefined,
+  bare: string | undefined,
+];
+type BareOrQuotedArgument = { end: number; groups: BareOrQuotedParts };
+
+function bareOrQuotedFinders(source: string) {
+  return {
+    ws: finder(source, /\S/g),
+    quote: { '"': finder(source, /"/g), "'": finder(source, /'/g) } as Record<string, Finder>,
+    bareEnd: finder(source, /[\s"')]/g),
+    quotedClose: finder(source, /\S/g),
+    bareClose: finder(source, /\S/g),
+  };
+}
+type BareOrQuotedFinders = ReturnType<typeof bareOrQuotedFinders>;
+
+/** `\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)` from `start`. */
+function bareOrQuotedArgument(
+  source: string,
+  start: number,
+  f: BareOrQuotedFinders,
+): BareOrQuotedArgument | null {
+  const w = f.ws(start);
+  const quote = source[w]!;
+  if (isQuote(quote)) {
+    const e = f.quote[quote]!(w + 1);
+    if (e === w + 1 || e === source.length) return null;
+    const body = source.slice(w + 1, e);
+    const z = f.quotedClose(e + 1);
+    const groups: BareOrQuotedParts =
+      quote === '"' ? [body, undefined, undefined] : [undefined, body, undefined];
+    return source[z] === ")" ? { end: z + 1, groups } : null;
+  }
+  const e = f.bareEnd(w);
+  const z = e === w ? -1 : f.bareClose(e);
+  return source[z] === ")"
+    ? { end: z + 1, groups: [undefined, undefined, source.slice(w, e)] }
+    : null;
+}
+
+/** Matches of `/\burl\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi`. */
+export function* bareOrQuotedCssUrlMatches(
+  source: string,
+): Generator<ScanMatch<BareOrQuotedParts>> {
+  const opener = /\burl\(/gi;
+  const f = bareOrQuotedFinders(source);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const arg = bareOrQuotedArgument(source, open.index + 4, f);
+    if (!arg) continue;
+    yield { index: open.index, parts: [source.slice(open.index, arg.end), ...arg.groups] };
+    opener.lastIndex = arg.end;
+  }
+}
+
+/** The last `url(…)` that matches before each nondecreasing limit, as a backtracking `[^;{}]*` finds it. */
+function lastUrlBefore(source: string) {
+  const f = bareOrQuotedFinders(source);
+  let acceptedArg: BareOrQuotedArgument | null = null;
+  const nextUrl = firstAccepted(source, finder(source, /url\(/gi), (i) => {
+    acceptedArg = bareOrQuotedArgument(source, i + 4, f);
+    return acceptedArg !== null;
+  });
+  let last: { at: number; arg: BareOrQuotedArgument } | null = null;
+  let next = nextUrl(0);
+  let nextArg = acceptedArg as BareOrQuotedArgument | null;
+  return (limit: number) => {
+    while (next < limit && nextArg) {
+      last = { at: next, arg: nextArg };
+      next = nextUrl(next + 1);
+      nextArg = acceptedArg;
+    }
+    return last;
+  };
+}
+
+/** Matches of `/\b(?:-webkit-)?mask-image\s*:\s*[^;{}]*url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi`. */
+export function* maskImageUrlMatches(source: string): Generator<ScanMatch<BareOrQuotedParts>> {
+  const opener = /\b(?:-webkit-)?mask-image/gi;
+  const ws = finder(source, /\S/g);
+  const valueEnd = finder(source, /[;{}]/g);
+  const urlBefore = lastUrlBefore(source);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const colon = ws(opener.lastIndex);
+    const value = source[colon] === ":" ? ws(colon + 1) : -1;
+    const url = value < 0 ? null : urlBefore(valueEnd(value));
+    if (!url || url.at < value) continue;
+    const { end, groups } = url.arg;
+    yield { index: open.index, parts: [source.slice(open.index, end), ...groups] };
+    opener.lastIndex = end;
+  }
+}
+
+/** Matches of `/<style\b[^>]*>([\s\S]*?)<\/style>/gi`. */
+export function* styleBlockMatches(source: string): Generator<ScanMatch<[css: string]>> {
+  const opener = /<style\b/gi;
+  const tagEnd = finder(source, />/g);
+  const closer = finder(source, /<\/style>/gi);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const body = tagEnd(open.index + 6) + 1;
+    const close = body > source.length ? source.length : closer(body);
+    if (close === source.length) return;
+    yield {
+      index: open.index,
+      parts: [source.slice(open.index, close + 8), source.slice(body, close)],
+    };
+    opener.lastIndex = close + 8;
+  }
+}
+
+/** Matches of `/@font-face\s*\{([^}]*)\}/gi`. */
+export function* fontFaceBlockMatches(source: string): Generator<ScanMatch<[body: string]>> {
+  const opener = /@font-face/gi;
+  const ws = finder(source, /\S/g);
+  const brace = finder(source, /\}/g);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const w = ws(open.index + 10);
+    const close = source[w] === "{" ? brace(w + 1) : source.length;
+    if (close === source.length) continue;
+    yield {
+      index: open.index,
+      parts: [source.slice(open.index, close + 1), source.slice(w + 1, close)],
+    };
+    opener.lastIndex = close + 1;
+  }
+}
+
+/** Matches of `/\/\*[\s\S]*?\*\//g`. */
+export function* blockCommentMatches(source: string): Generator<ScanMatch<[]>> {
+  const opener = /\/\*/g;
+  const closer = finder(source, /\*\//g);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const close = closer(open.index + 2);
+    if (close === source.length) return;
+    yield { index: open.index, parts: [source.slice(open.index, close + 2)] };
+    opener.lastIndex = close + 2;
+  }
+}

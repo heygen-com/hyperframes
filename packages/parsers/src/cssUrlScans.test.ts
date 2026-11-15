@@ -1,7 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
+  bareOrQuotedCssUrlMatches,
+  blockCommentMatches,
   cssImportMatches,
+  fontFaceBlockMatches,
+  maskImageUrlMatches,
+  styleBlockMatches,
   cssUrlMatches,
   hasBackgroundImageDeclaration,
   importRuleMatches,
@@ -34,6 +39,14 @@ const SCANS: Array<[Scan, RegExp]> = [
   ],
   [remoteFontFaceUrlMatches, /url\(["']?(https?:\/\/[^"')]+)["']?\)/gi],
   [localFontFaceUrlMatches, /url\(["']?(?!data:|file:|https?:\/\/)([^"')]+)["']?\)/gi],
+  [bareOrQuotedCssUrlMatches, /\burl\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi],
+  [
+    maskImageUrlMatches,
+    /\b(?:-webkit-)?mask-image\s*:\s*[^;{}]*url\(\s*(?:"([^"]+)"|'([^']+)'|([^"')\s]+))\s*\)/gi,
+  ],
+  [styleBlockMatches, /<style\b[^>]*>([\s\S]*?)<\/style>/gi],
+  [fontFaceBlockMatches, /@font-face\s*\{([^}]*)\}/gi],
+  [blockCommentMatches, /\/\*[\s\S]*?\*\//g],
 ];
 const BACKGROUND_IMAGE_DECL =
   /(?:^|;|\{)\s*background(?:-image)?\s*:[^;}]*(?:\bgradient\s*\(|url\s*\()/i;
@@ -93,6 +106,21 @@ const TOKENS = [
   "\\",
   "-",
   "/x.png",
+  "mask-image:",
+  'url("")',
+  "url('' )",
+  "-WEBKIT-mask-image",
+  "a-webkit-mask-image :",
+  "<style",
+  "<STYLE x>",
+  ">",
+  "</style>",
+  "</STYLE>",
+  "@font-face",
+  "@FONT-FACE {",
+  "/*",
+  "*/",
+  "/*/",
 ];
 
 function pages(count: number): string[] {
@@ -163,6 +191,12 @@ describe("CSS url scans", () => {
     "url(http://",
     "url(a",
     " ",
+    "mask-image:url(",
+    "mask-image:",
+    "<style",
+    "<style>",
+    "@font-face{",
+    "/* ",
   ])("finish a 1 MB page of unclosed %j in well under a second", (unit) => {
     const page = unit.repeat(Math.floor(1_000_000 / unit.length));
     const started = performance.now();
