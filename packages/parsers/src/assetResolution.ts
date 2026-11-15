@@ -235,7 +235,10 @@ export function resolveProjectRelativeSrc(
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
-  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+  // Another computer's share is never looked at: on Windows that look alone signs in to it.
+  if (isAbsolute(cleanSrc) && !namesAnotherNetworkRoot(baseDir, cleanSrc) && existsSync(cleanSrc)) {
+    return cleanSrc;
+  }
 
   const candidates = new Set<string>();
   for (const variant of decodeUrlPathVariants(cleanSrc)) {
