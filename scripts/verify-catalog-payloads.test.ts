@@ -9,6 +9,7 @@ import {
   declaresWebgpu,
   itemsFromDiff,
   withoutAbortedMedia,
+  withoutMissingCaptionOverrides,
   parsePayload,
   remainingFailures,
   withoutWebgpuAbsence,
@@ -91,6 +92,26 @@ describe("withoutAbortedMedia", () => {
     ];
     const aborted = "request failed: https://cdn.example/x.mp4 (net::ERR_ABORTED)";
     assert.deepEqual(withoutAbortedMedia([aborted, ...kept]), kept);
+  });
+});
+
+describe("withoutMissingCaptionOverrides", () => {
+  it("drops the runtime's missing caption-overrides.json and keeps every other failure", () => {
+    const url = "http://localhost:4000/caption-overrides.json";
+    const miss = [
+      `404 GET ${url}`,
+      `console.error: Failed to load resource: the server responded with a status of 404 (Not Found) (${url})`,
+      `request failed: ${url} (net::ERR_ABORTED)`,
+    ];
+    const kept = [
+      `500 GET ${url}`,
+      `request failed: ${url} (net::ERR_NAME_NOT_RESOLVED)`,
+      "404 GET http://localhost:4000/public/catalog/caption-overrides.json.png",
+      "404 GET http://localhost:4000/assets/caption-overrides.json",
+      "console.error: Failed to load resource: the server responded with a status of 404 (Not Found) (http://localhost:4000/x.png)",
+      "console.error: [HyperFrames] Invalid caption-overrides.json: expected an array",
+    ];
+    assert.deepEqual(withoutMissingCaptionOverrides([...miss, ...kept]), kept);
   });
 });
 
