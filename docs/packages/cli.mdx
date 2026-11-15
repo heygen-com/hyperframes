@@ -2706,6 +2706,14 @@ it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
+Before uploading, the command also names every file it carries from outside the
+project folder: each file a composition points at, and each project file that is
+a link to a file outside the project. It prints the list and carries on. Under
+`--json`, the result lists them as `outside_files`, with the same `file`,
+`reference`, `path` and `levels_up` fields, and each is printed as a
+`{"event":"outside_file",…}` line on stderr. For a project link, `file` and
+`reference` are the link's own path.
+
 Render parameters mirror local `hyperframes render` where they overlap:
 
 | Flag                   | Default                     | Description                                                                                                                                     |
