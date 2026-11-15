@@ -43,6 +43,7 @@ describe("installEditingAgent", () => {
     delete window.__hfStartupError;
     delete window.__hfWaitForSeekCompletion;
     delete window.__hf;
+    Reflect.deleteProperty(window, "__hfPreviewErrors");
   });
 
   const connectedPort = (): MessagePort => {
@@ -166,6 +167,7 @@ describe("installEditingAgent", () => {
           "layers",
           "draft",
           "gesture-start",
+          "console-errors",
         ],
       },
     });
@@ -207,6 +209,9 @@ describe("installEditingAgent", () => {
       "invalid-params",
     ],
     [{ v: 1, id: 16, kind: "computed-styles", params: { selector: "p" } }, 16, "invalid-params"],
+    [{ v: 1, id: 160, kind: "console-errors", params: {} }, 160, "invalid-params"],
+    [{ v: 1, id: 161, kind: "console-errors", params: { from: -1 } }, 161, "invalid-params"],
+    [{ v: 1, id: 162, kind: "console-errors", params: { from: 1.5 } }, 162, "invalid-params"],
     [
       { v: 1, id: 17, kind: "computed-styles", params: { selector: "", properties: [] } },
       17,
@@ -388,6 +393,62 @@ describe("installEditingAgent", () => {
     const reply = await ask(connectedPort(), request);
     expect(reply).toMatchObject({ v: 1, id, ok: false, error: { code } });
     expect(setLoopStart).not.toHaveBeenCalled();
+  });
+
+  describe("console errors", () => {
+    const errorsFrom = async (port: MessagePort, from: number) =>
+      (await ask(port, { v: 1, id: 30, kind: "console-errors", params: { from } })).result;
+    let logged: unknown[][];
+    beforeEach(() => {
+      logged = [];
+      vi.spyOn(console, "error").mockImplementation((...args) => void logged.push(args));
+    });
+    afterEach(() => {
+      agent.dispose();
+      vi.restoreAllMocks();
+    });
+
+    it("starts from what the page raised before it was asked, then keeps what follows", async () => {
+      Reflect.set(window, "__hfPreviewErrors", ["Uncaught Error: early"]);
+      const port = connectedPort();
+      expect(await errorsFrom(port, 0)).toEqual({
+        errors: ["Uncaught Error: early"],
+        truncated: false,
+      });
+
+      console.error("GSAP target", new Error("not found"), 3);
+      console.error("GET /favicon.ico 404");
+      window.dispatchEvent(new ErrorEvent("error", { message: "Uncaught TypeError: x" }));
+
+      expect(await errorsFrom(port, 1)).toEqual({
+        errors: ["GSAP target not found 3", "Uncaught TypeError: x"],
+        truncated: false,
+      });
+      expect(logged).toHaveLength(2);
+    });
+
+    it("sends a long list in pages", async () => {
+      const raised = Array.from({ length: 2_050 }, (_, i) => `e${i}`);
+      Reflect.set(window, "__hfPreviewErrors", raised);
+      const port = connectedPort();
+      const first = (await errorsFrom(port, 0)) as { errors: string[]; truncated: boolean };
+      expect(first.errors).toHaveLength(2_048);
+      expect(first.truncated).toBe(true);
+      expect(await errorsFrom(port, 2_048)).toEqual({
+        errors: ["e2048", "e2049"],
+        truncated: false,
+      });
+    });
+
+    it("leaves the page's console alone until asked, and puts it back when disposed", async () => {
+      const own = console.error;
+      const port = connectedPort();
+      expect(console.error).toBe(own);
+      await errorsFrom(port, 0);
+      expect(console.error).not.toBe(own);
+      agent.dispose();
+      expect(console.error).toBe(own);
+    });
   });
 
   it("answers computed styles for the element a selector names", async () => {

@@ -43,6 +43,10 @@ export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
 export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
+export function previewConsoleErrorText(args: readonly unknown[]): string | null {
+  const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+  return text.includes("favicon") ? null : text;
+}
 
 export const refusedPreviewMessage = (status: number) =>
   `The preview page could not be loaded (HTTP ${status}).`;
