@@ -160,9 +160,7 @@ describe("auth/store", () => {
     });
     const result = await readStore(path);
     expect(result.source).toBe("file_legacy");
-    expect(result.credentials.api_key).toBe(
-      FAKE_SK_V2_KEY,
-    );
+    expect(result.credentials.api_key).toBe(FAKE_SK_V2_KEY);
   });
 
   it("still rejects plaintext that contains a space (not a credential shape)", async () => {

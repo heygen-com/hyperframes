@@ -3,7 +3,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readTrackedPaths } from "./check-tracked-artifacts.mjs";
 
-const KEY_SHAPES = [/sk_V2_[A-Za-z0-9]+_[A-Za-z0-9]{8,}_[A-Za-z0-9]{24,}/g, /\bhg_[A-Za-z0-9]{24,}/g];
+const KEY_SHAPES = [
+  /sk_V2_[A-Za-z0-9]+_[A-Za-z0-9]{8,}_[A-Za-z0-9]{24,}/g,
+  /\bhg_[A-Za-z0-9]{24,}/g,
+];
 const MAX_SCANNED_BYTES = 4 * 1024 * 1024;
 
 function looksRandom(value) {
@@ -50,7 +53,7 @@ function main() {
   }
   console.error("Values shaped like a live HeyGen API key are tracked by Git:");
   for (const hit of hits) console.error(`- ${hit}`);
-  console.error("Build test keys at runtime from obvious filler, such as \"x\".repeat(32).");
+  console.error('Build test keys at runtime from obvious filler, such as "x".repeat(32).');
   process.exitCode = 1;
 }
 
