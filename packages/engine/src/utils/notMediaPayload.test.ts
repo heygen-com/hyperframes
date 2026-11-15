@@ -19,6 +19,15 @@ function writeFixture(name: string, contents: string | Buffer): string {
   return filePath;
 }
 
+function writeTree(files: Record<string, string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "hf-playlist-tree-"));
+  for (const [name, contents] of Object.entries(files)) {
+    mkdirSync(join(dir, name, ".."), { recursive: true });
+    writeFileSync(join(dir, name), contents);
+  }
+  return join(dir, Object.keys(files)[0]!);
+}
+
 describe("isNotMediaPayload", () => {
   it.each([
     ["doctype", "<!DOCTYPE html>\n<html><body></body></html>"],
@@ -203,15 +212,6 @@ describe("playlistLeavesItsFolder", () => {
     expect(await isNotMediaPayload(file)).toBe(true);
   });
 
-  function writeTree(files: Record<string, string>): string {
-    const dir = mkdtempSync(join(tmpdir(), "hf-playlist-tree-"));
-    for (const [name, contents] of Object.entries(files)) {
-      mkdirSync(join(dir, name, ".."), { recursive: true });
-      writeFileSync(join(dir, name), contents);
-    }
-    return join(dir, Object.keys(files)[0]!);
-  }
-
   it("refuses a list whose nested list names a file outside the top folder", async () => {
     const master = writeTree({
       "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
@@ -264,6 +264,22 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
   const outside = "../outside/secret.mp4";
   // Cut at ffmpeg's 4095-byte line limit this names the outside file; whole, it walks back in.
   const cutLine = "./".repeat((4095 - outside.length) / 2) + outside + "/../../proj/seg.ts";
+  // Each 0xFF is one byte to ffmpeg, so the cut lands after the outside name, not inside it.
+  const tagStart = Buffer.concat([
+    Buffer.from('#EXT-X-MAP:X="'),
+    Buffer.alloc(40, 0xff),
+    Buffer.from('",URI="'),
+  ]);
+  const tagPad = 4095 - tagStart.length - outside.length;
+  const notUtf8Line = Buffer.concat([
+    tagStart,
+    Buffer.from(
+      "./".repeat(Math.floor(tagPad / 2)) +
+        (tagPad % 2 ? "/" : "") +
+        outside +
+        '/../../proj/seg.ts"',
+    ),
+  ]);
 
   it.each([
     ["a segment after a bare carriage return", `${head}#EXTINF:1,\r${outside}\n#EXT-X-ENDLIST\n`],
@@ -283,6 +299,14 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
       ]),
     ],
     ["a segment line longer than ffmpeg reads", `${head}#EXTINF:1,\n${cutLine}\n#EXT-X-ENDLIST\n`],
+    [
+      "a long tag line with bytes that are not UTF-8",
+      Buffer.concat([
+        Buffer.from(head),
+        notUtf8Line,
+        Buffer.from("\n#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n"),
+      ]),
+    ],
   ])("refuses %s", async (_name, contents) => {
     const root = mkdtempSync(join(tmpdir(), "hf-playlist-ffprobe-"));
     mkdirSync(join(root, "proj"));
@@ -299,6 +323,36 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
     });
     expect(probe.stderr).toMatch(/outside\/secret\.mp4' for reading/);
   });
+
+  it("refuses a nested name it cannot read, and keeps one that does not exist", async () => {
+    const list = (entry: string) => `${head}#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
+    const unreadable = writeTree({ "clip.m3u8": list("sub"), "sub/seg.ts": "segment" });
+    expect(await playlistLeavesItsFolder(unreadable)).toBe(true);
+    const missing = writeTree({ "clip.m3u8": list("gone.ts") });
+    expect(await playlistLeavesItsFolder(missing)).toBe(false);
+    const tooLong = writeTree({ "clip.m3u8": list("a".repeat(5000)) });
+    expect(await playlistLeavesItsFolder(tooLong)).toBe(false);
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "reads a nested list whose name is not UTF-8 by its bytes",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-playlist-bytes-"));
+      const name = Buffer.concat([Buffer.from("in"), Buffer.from([0xff]), Buffer.from(".m3u8")]);
+      writeFileSync(Buffer.from(`${root}/${name.toString("latin1")}`, "latin1"), list(outside));
+      const top = Buffer.concat([
+        Buffer.from("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n"),
+        name,
+        Buffer.from("\n"),
+      ]);
+      writeFileSync(join(root, "clip.m3u8"), top);
+      expect(await playlistLeavesItsFolder(join(root, "clip.m3u8"))).toBe(true);
+
+      function list(entry: string): string {
+        return `${head}#EXTINF:1,\n${entry}\n#EXT-X-ENDLIST\n`;
+      }
+    },
+  );
 
   it("keeps a list with the same tags naming files beside it", async () => {
     const list = `${head}#EXT-X-MAP:URI=init.mp4\r#EXT-X-KEY:METHOD=AES-128,URI="k\\ey.bin"\r${tail}`;
