@@ -1044,6 +1044,8 @@ describe("a copy sized to how large the video shows", () => {
 describe("preview quality: lighter copies of heavy files", () => {
   const HEAVY = { width: 3840, height: 2160, bitDepth: 8, bitrate: 10_000_000 };
   const LIGHT = { width: 1280, height: 720, bitDepth: 8, bitrate: 10_000_000 };
+  // Heavy at a lower level's box, not oversized for the full 2048x1218 box.
+  const MID = { width: 2560, height: 1440, bitDepth: 8, bitrate: 10_000_000 };
 
   // A framed page showing a 1920x1080 stage at full size on a 1x screen: a 2048x1218 box.
   async function stage(facts: Record<string, typeof HEAVY>, codecMap?: Record<string, unknown>) {
@@ -1193,17 +1195,133 @@ describe("preview quality: lighter copies of heavy files", () => {
     });
   });
 
-  it("changes nothing at full quality", async () => {
-    const { video, setPreviewQuality, maybeProxyProactively } = await stage({
-      "/video.mp4": HEAVY,
+  it("changes nothing at full quality for a file not oversized for its box, 10-bit included", async () => {
+    const { video, maybeProxyProactively } = await stage({
+      "/mid.mp4": MID,
+      "/ten-bit.mp4": { ...MID, bitDepth: 10 },
     });
-    const el = video();
-    maybeProxyProactively(el);
-    setPreviewQuality(1);
+    const els = [video("/mid.mp4"), video("/ten-bit.mp4")];
+    for (const el of els) maybeProxyProactively(el);
     await settle();
 
-    expect(isProxied(el)).toBe(false);
+    expect(els.map(isProxied)).toEqual([false, false]);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe("at full quality, a file with at least twice the pixels it shows", () => {
+    async function waitingForItsCopy(answer: () => Response) {
+      vi.useFakeTimers();
+      let copyAsks = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (!String(url).includes("hf-proxy")) return new Response("x", { status: 206 });
+          copyAsks += 1;
+          return answer();
+        }),
+      );
+      const staged = await stage({ "/video.mp4": HEAVY });
+      const proxySrc = await import("./proxySrc");
+      const preload = await import("./preloadMedia");
+      const el = staged.video();
+      staged.maybeProxyProactively(el);
+      await vi.advanceTimersByTimeAsync(0);
+      return { ...staged, el, proxySrc, preload, asks: () => copyAsks };
+    }
+    const making = () => new Response(null, { status: 202, headers: { "Retry-After": "2" } });
+
+    it("never loads the file while its copy is made, and plays a copy at the shown box", async () => {
+      let made = false;
+      const { el, proxySrc } = await waitingForItsCopy(() =>
+        made ? new Response("x", { status: 206 }) : making(),
+      );
+
+      expect(el.hasAttribute("src")).toBe(false);
+      expect(proxySrc.unproxiedSrc(el)).toBe("/video.mp4");
+
+      made = true;
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(params(el).get("hf-proxy-box")).toBe("2048x1218");
+      expect(params(el).get("hf-proxy-light")).toBe("1");
+      expect(proxySrc.unproxiedSrc(el)).toBe("/video.mp4");
+    });
+
+    it("is not given its file back as its clip comes due", async () => {
+      const { el, preload } = await waitingForItsCopy(making);
+
+      preload.giveBackWhenDue(el);
+
+      expect(el.hasAttribute("src")).toBe(false);
+    });
+
+    type Prepare = (
+      el: HTMLVideoElement,
+      proxySrc: typeof import("./proxySrc"),
+      proactively: (el: HTMLMediaElement) => void,
+    ) => void;
+    async function copyFailsAfter(prepare: Prepare) {
+      vi.useFakeTimers();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          String(url).includes("hf-proxy")
+            ? new Response(null, { status: 500 })
+            : new Response("x", { status: 206 }),
+        ),
+      );
+      const staged = await stage({ "/video.mp4": HEAVY });
+      const proxySrc = await import("./proxySrc");
+      const el = staged.video();
+      prepare(el, proxySrc, staged.maybeProxyProactively);
+      await vi.advanceTimersByTimeAsync(60_000);
+      return { el, proxySrc };
+    }
+
+    it("stays held until due when its copy fails, as it was before the copy", async () => {
+      const { el, proxySrc } = await copyFailsAfter((el, proxySrc, proactively) => {
+        proactively(el);
+        proxySrc.recordOpenedAtInPoint(el, "/video.mp4", null, true);
+        el.removeAttribute("src");
+      });
+
+      expect(el.getAttribute("src")).toBeNull();
+      expect(proxySrc.isHeldUntilDue(el)).toBe(true);
+    });
+
+    it("keeps its idle hold when its copy fails", async () => {
+      const { el, proxySrc } = await copyFailsAfter((el, proxySrc, proactively) => {
+        proxySrc.recordOpenedAtInPoint(el, "/video.mp4", "/video.mp4", true);
+        proactively(el);
+      });
+
+      expect(el.getAttribute("src")).toBe("/video.mp4");
+      expect(proxySrc.holdsWhenIdle(el)).toBe(true);
+    });
+
+    it("gets its file back when the copy cannot be made", async () => {
+      const { el, asks } = await waitingForItsCopy(() => new Response(null, { status: 500 }));
+
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(asks()).toBe(4);
+      expect(el.getAttribute("src")).toBe("/video.mp4");
+    });
+
+    it("waits for the lower level's copy instead, still not loading the file, when the level drops", async () => {
+      const { el, setPreviewQuality } = await waitingForItsCopy(making);
+
+      setPreviewQuality(0.5);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      const boxes = vi
+        .mocked(fetch)
+        .mock.calls.map(([url]) =>
+          new URL(String(url), document.baseURI).searchParams.get("hf-proxy-box"),
+        );
+      expect(boxes.at(-1)).toBe("1024x724");
+      expect(el.hasAttribute("src")).toBe(false);
+    });
   });
 
   it("swaps a heavy file Chrome can play to a copy at the shown box times the level", async () => {
@@ -1229,7 +1347,7 @@ describe("preview quality: lighter copies of heavy files", () => {
   });
 
   it("puts the original back at full quality", async () => {
-    const { video, setPreviewQuality } = await stage({ "/video.mp4": HEAVY });
+    const { video, setPreviewQuality } = await stage({ "/video.mp4": MID });
     const el = video();
     setPreviewQuality(0.5);
     await settle();
@@ -1245,7 +1363,10 @@ describe("preview quality: lighter copies of heavy files", () => {
   });
 
   it("lets go of a held still when the original has no src to put back", async () => {
-    const { video, setPreviewQuality, setProxyDisplayScale } = await stage({ "/video.mp4": HEAVY });
+    // Heavy below Full by its bit depth alone, so Full puts the original back at any shown size.
+    const { video, setPreviewQuality, setProxyDisplayScale } = await stage({
+      "/video.mp4": { ...LIGHT, bitDepth: 10 },
+    });
     const el = video();
     el.removeAttribute("src");
     el.append(Object.assign(document.createElement("source"), { src: "/video.mp4" }));

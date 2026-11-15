@@ -91,7 +91,8 @@
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
-  function uniqueSelectorFor(element) {
+  function uniqueSelectorFor(subject) {
+    const element = authoredElement(subject);
     const preferred = selectorFor(element);
     try {
       if (document.querySelectorAll(preferred).length === 1) return preferred;

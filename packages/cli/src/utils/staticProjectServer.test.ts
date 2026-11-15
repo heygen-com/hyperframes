@@ -690,3 +690,23 @@ describe("serveStaticProjectHtml when a sandbox refuses listen()", () => {
     });
   });
 });
+
+describe("serveStaticProjectHtml private project files", () => {
+  it.each([".env", ".env.local", ".git/config", "%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-private-"));
+      mkdirSync(join(dir, ".git"));
+      writeFileSync(join(dir, ".env"), "SECRET=1");
+      writeFileSync(join(dir, ".env.local"), "SECRET=1");
+      writeFileSync(join(dir, ".git", "config"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});

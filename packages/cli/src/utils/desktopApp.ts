@@ -8,6 +8,7 @@ import { createProjectConfig } from "./projectConfig.js";
 import { isCI } from "./attendedTerminal.js";
 import { isAgentDriven } from "../telemetry/agent_runtime.js";
 import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
+import { shellArg } from "./shellArg.js";
 
 // The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
 const list = (name: string): string[] =>
@@ -247,8 +248,7 @@ function leaveIntent(dir: string, cta?: string, doc?: "storyboard"): () => void 
 }
 
 function shownDir(dir: string, cwd: string): string {
-  const shown = relative(cwd, dir) || ".";
-  return /\s/.test(shown) ? JSON.stringify(shown) : shown;
+  return shellArg(relative(cwd, dir) || ".");
 }
 
 /** The `hyperframes open` line for a project, relative to where the person is. */

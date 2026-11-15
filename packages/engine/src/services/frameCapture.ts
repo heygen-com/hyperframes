@@ -1583,7 +1583,11 @@ export async function createCaptureSession(
   );
 
   const withoutWaylandDisplay = await captureWithoutWaylandDisplay(resolvedGpuMode);
-  const browserLease = await acquireBrowser(chromeArgs, { ...config, withoutWaylandDisplay });
+  const browserLease = await acquireBrowser(chromeArgs, {
+    ...config,
+    withoutWaylandDisplay,
+    pageServerUrl: serverUrl,
+  });
   return constructCaptureSessionWithRollback({
     browserLease,
     serverUrl,

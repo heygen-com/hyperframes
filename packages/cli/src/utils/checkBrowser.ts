@@ -869,6 +869,9 @@ function runtimeInfoFindingCode(text: string): string | null {
     : "media_proxy_fallback";
 }
 
+const READ_PIXELS_STALL =
+  /^\[\.WebGL-[^\]]*\]GL Driver Message \([^)]*\): GPU stall due to ReadPixels/;
+
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: RuntimeClock): void {
   followSampleTimeMarkers(page, clock.at);
   page.on("console", (message) => {
@@ -885,6 +888,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
         line: location.lineNumber,
       });
     } else if (type === "warn") {
+      if (READ_PIXELS_STALL.test(text)) return;
       const location = message.location();
       const webGpuFailure = isWebGpuRuntimeFailure(text);
       pushRuntimeDraft(drafts, {

@@ -192,6 +192,19 @@ For larger workloads, the `@hyperframes/producer/distributed` entry exposes the
 three rendering activities—`plan`, `renderChunk`, and `assemble`. Your
 orchestrator remains responsible for dispatch, retries, storage, and networking.
 
+A service that renders projects from other people should set
+`PRODUCER_RESTRICT_PAGE_NETWORK=true`. The render browser can then reach only its own
+project server and public IPv4 addresses: everything else it sends, from pages, frames,
+workers, WebSockets and WebRTC alike, goes through a local proxy that checks every
+address a name resolves to and connects to the address it checked. A refused request
+fails like any other unreachable asset. Leave it unset for local renders that load
+assets from your own machine or network.
+
+If your network routes a range that is not a private one, such as a cluster's pod range,
+add it with `PRODUCER_NON_PUBLIC_CIDRS`, a comma-separated list like `192.160.0.0/16`. Asset
+downloads and the render browser then refuse those addresses too. A malformed entry
+refuses every address rather than being skipped, and logs a warning.
+
 ## Related topics
 
 <CardGroup cols={2}>

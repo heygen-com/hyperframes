@@ -3,10 +3,10 @@ export const swappedElements = new WeakMap<Element, string | null>();
 
 /** Media elements the runtime opened at their in-point: the src the author wrote, the one written in its
  * place (null while the clip is held with no src until it is due), and whether it is held again when idle. */
-const openedAtInPoint = new WeakMap<
-  Element,
-  { authored: string; written: string | null; holdsWhenIdle: boolean }
->();
+type InPointRecord = { authored: string; written: string | null; holdsWhenIdle: boolean };
+const openedAtInPoint = new WeakMap<Element, InPointRecord>();
+export const inPointOf = (el: Element) => openedAtInPoint.get(el);
+export const heldForCopy = new WeakMap<Element, InPointRecord | undefined>();
 
 export function recordOpenedAtInPoint(
   el: Element,

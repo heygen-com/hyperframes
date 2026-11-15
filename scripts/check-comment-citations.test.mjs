@@ -9,7 +9,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { PROBE, checkComments } from "./check-comment-citations.mjs";
+import { PROBE, checkComments, generatedPaths } from "./check-comment-citations.mjs";
 
 const CHECKER = fileURLToPath(new URL("./check-comment-citations.mjs", import.meta.url));
 
@@ -1012,4 +1012,32 @@ test("a TypeScript private field is code, not a standalone comment", (t) => {
     "src/subject.ts": ["  #countLabel = 0; // count label", "  countLabel = 1;", ""].join("\n"),
   });
   assert.deepEqual(warnings, []);
+});
+
+test("a git too old for check-attr --source is named, not hidden behind EPIPE", (t) => {
+  const bin = mkdtempSync(path.join(tmpdir(), "old-git-"));
+  t.after(() => rmSync(bin, { recursive: true, force: true }));
+  const git = path.join(bin, "git");
+  writeFileSync(
+    git,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = version ]; then echo "git version 2.39.5"; exit 0; fi',
+      'echo "error: unknown option \\`source=HEAD\'" >&2',
+      "exit 129",
+      "",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+  const savedPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${savedPath}`;
+  t.after(() => {
+    process.env.PATH = savedPath;
+  });
+  const paths = Array.from({ length: 20_000 }, (_, i) => `packages/core/src/file-${i}.ts`);
+
+  assert.throws(
+    () => generatedPaths(bin, "HEAD", paths),
+    /needs git 2\.40 or newer; found "git version 2\.39\.5"/,
+  );
 });

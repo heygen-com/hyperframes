@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { renameWithRetry, renameWithRetryAsync } from "./renameWithRetry.js";
+import { catchHeldRename, renameWithRetry, renameWithRetryAsync } from "./renameWithRetry.js";
 
 function failing(code: string, times: number) {
   let calls = 0;
@@ -86,5 +86,21 @@ describe("renameWithRetry", () => {
       }),
     ).toThrow(/EPERM/);
     expect(copied).toEqual([]);
+  });
+});
+
+describe("catchHeldRename", () => {
+  it("hands back the first hold, even one a caller swallowed, and rides later holds out as before", async () => {
+    const rename = failing("EBUSY", 2);
+    const held = await catchHeldRename(async () => {
+      try {
+        renameWithRetry("a", "b", { platform: "win32", rename: rename.fn });
+      } catch {
+        // a route that answers a failed write itself
+      }
+      renameWithRetry("a", "b", { platform: "win32", rename: rename.fn });
+    });
+    expect(held).toMatchObject({ code: "EBUSY" });
+    expect(rename.calls()).toBe(3);
   });
 });

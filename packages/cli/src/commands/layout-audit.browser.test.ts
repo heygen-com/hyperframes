@@ -1456,7 +1456,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
       ["flags", "", true],
       ["clears", "data-layout-allow-overflow", false],
     ])(
-      "%s a graded video's canvas overflowing a clipping wrapper, per the video's own flag",
+      "%s a graded video's canvas overflowing a clipping wrapper by the video's selector and flag",
       (_, flag, flagged) => {
         document.body.innerHTML = `
           <div id="root" data-composition-id="main" data-width="1920" data-height="1080">
@@ -1476,7 +1476,7 @@ describe("layout-audit.browser coordinate-frame findings", () => {
         installAuditScript();
 
         const overflow = runAudit().filter((issue) => issue.code === "container_overflow");
-        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#art"] : []);
+        expect(overflow.map((issue) => issue.selector)).toEqual(flagged ? ["#clip"] : []);
       },
     );
 

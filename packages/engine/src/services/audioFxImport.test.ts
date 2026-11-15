@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 const execSync = vi.hoisted(() => vi.fn(() => ""));
+const execFileSync = vi.hoisted(() => vi.fn(() => ""));
 vi.mock("child_process", async (importActual) => ({
   ...(await importActual<typeof import("child_process")>()),
   execSync,
+  execFileSync,
 }));
 
 describe("importing the engine", () => {
@@ -11,5 +13,6 @@ describe("importing the engine", () => {
     await import("./audioFxRender.js");
     await import("../index.js");
     expect(execSync).not.toHaveBeenCalled();
+    expect(execFileSync).not.toHaveBeenCalled();
   }, 60_000);
 });

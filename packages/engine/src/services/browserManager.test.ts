@@ -680,6 +680,16 @@ describe("browser launch capture-mode contract", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("puts the browser behind the public-only proxy only on a restricted host", () => {
+    const fingerprint = () =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl: "http://localhost:4321" });
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "");
+    expect(fingerprint().publicOnly).toBeUndefined();
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    expect(fingerprint().publicOnly).toEqual({ pageServerHost: "localhost:4321" });
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("resolveBrowserGpuMode", () => {

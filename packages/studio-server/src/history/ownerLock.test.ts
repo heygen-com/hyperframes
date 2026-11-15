@@ -95,7 +95,8 @@ function withoutHardLinks(code = "ENOTSUP"): void {
 }
 
 describe("takeHistoryOwnership on a drive without hard links", () => {
-  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES"])(
+  // fails without the fix: EISDIR (Windows on a Google Drive folder) and EXDEV threw instead.
+  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES", "EISDIR", "EXDEV"])(
     "takes the lock when linking fails with %s",
     async (code) => {
       withoutHardLinks(code);

@@ -5,7 +5,11 @@ import { isIP, type Socket } from "node:net";
 import { request as httpRequest, type IncomingMessage, type ClientRequest } from "node:http";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { connect as tlsConnect } from "node:tls";
-import { isBlockedNetworkHost } from "@hyperframes/engine/network-policy";
+import {
+  ipv4HostClass,
+  isBlockedNetworkHost,
+  type NonPublicIPv4Class,
+} from "../../utils/networkPolicy.js";
 import {
   captureUpstreamProxy,
   connectAuthority,
@@ -21,19 +25,40 @@ export function isPublicIPv4(address: string): boolean {
   return isIP(address) === 4 && !isBlockedNetworkHost(address);
 }
 
+const PUBLIC_IPV4 = "Capture requires a public IPv4 address";
+const PUBLIC_HOSTNAME = "Capture requires a public hostname";
+const PUBLIC_DNS = "Capture DNS returned a non-public address";
+
+export type RefusedHostClass = NonPublicIPv4Class | "internal-name" | "ipv6";
+
+export class NonPublicHostError extends Error {
+  constructor(
+    message: string,
+    readonly hostClass: RefusedHostClass,
+  ) {
+    super(message);
+  }
+}
+
+function refusedIPv4Class(address: string): RefusedHostClass {
+  const hostClass = ipv4HostClass(address);
+  return hostClass === "public" ? "reserved" : hostClass;
+}
+
 export function assertPublicHostname(hostname: string): string {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   if (isIP(host) === 4) {
-    if (!isPublicIPv4(host)) throw new Error("Capture requires a public IPv4 address");
+    if (!isPublicIPv4(host)) throw new NonPublicHostError(PUBLIC_IPV4, refusedIPv4Class(host));
     return host;
   }
+  if (host.startsWith("[")) throw new NonPublicHostError(PUBLIC_HOSTNAME, "ipv6");
   if (
     !host.includes(".") ||
     !/^[a-z0-9.-]+$/.test(host) ||
     /(?:^|\.)(?:localhost|local|internal|home|lan|test|invalid|example)$/.test(host) ||
     host.split(".").some((label) => !label || label.startsWith("-") || label.endsWith("-"))
   ) {
-    throw new Error("Capture requires a public hostname");
+    throw new NonPublicHostError(PUBLIC_HOSTNAME, "internal-name");
   }
   return host;
 }
@@ -44,9 +69,9 @@ export async function resolvePublicAddress(hostname: string): Promise<string> {
   if (isIP(host) === 4) return host;
   const answers = await resolveIPv4(host);
   const first = answers[0];
-  if (!first || !answers.every(isPublicIPv4)) {
-    throw new Error("Capture DNS returned a non-public address");
-  }
+  if (!first) throw new Error(PUBLIC_DNS);
+  const refused = answers.find((answer) => !isPublicIPv4(answer));
+  if (refused) throw new NonPublicHostError(PUBLIC_DNS, refusedIPv4Class(refused));
   return first;
 }
 

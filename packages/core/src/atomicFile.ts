@@ -9,10 +9,22 @@ type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeS
 
 // Codes a volume without hard links (FAT, exFAT, some network shares, Android app data) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
-const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR", "EACCES"]);
+const NO_HARD_LINKS = new Set([
+  "EPERM",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+  "ENOSYS",
+  "EXDEV",
+  "EISDIR",
+  "EACCES",
+]);
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
 const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
+
+export function cannotHardLink(error: unknown): boolean {
+  return NO_HARD_LINKS.has(errorCode(error));
+}
 
 /** A fresh temp sibling for a write that publishes `filePath`. 13 bytes, so a 242-byte name still fits. */
 export function atomicTempPath(filePath: string): string {
@@ -48,10 +60,19 @@ export function replaceFileAtomically(
   operations: SiblingFileSystem & Pick<typeof fs, "renameSync"> = fs,
 ): void {
   traceWrite(filePath, content);
+  refuseReadOnly(filePath);
   // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
   publishSibling(filePath, content, mode, operations, (tempPath) =>
     renameWithRetry(tempPath, filePath, { rename: operations.renameSync }),
   );
+}
+
+export function refuseReadOnly(filePath: string): void {
+  try {
+    fs.accessSync(filePath, fs.constants.W_OK);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
 }
 
 /** Create a file that must not exist yet (EEXIST otherwise); readers never see it empty or partial. */
@@ -64,7 +85,7 @@ export function createFileAtomically(
     try {
       operations.linkSync(tempPath, filePath);
     } catch (error) {
-      if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
+      if (!cannotHardLink(error)) throw error;
       createDirectly(filePath, content, operations);
     }
     try {

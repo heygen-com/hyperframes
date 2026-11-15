@@ -6,7 +6,7 @@
  */
 
 import { isBlockedNetworkHost } from "@hyperframes/engine";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 import { fetchLocalPageUrl } from "./localPage.js";
 import { ensureCaptureDirSync, writeCaptureFileSync } from "./captureFile.js";
 import { join, extname } from "node:path";

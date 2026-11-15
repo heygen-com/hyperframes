@@ -23,7 +23,9 @@ import { isBlockedNetworkHost } from "./networkPolicy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { playlistLeavesItsFolder } from "./notMediaPayload.js";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -538,12 +540,12 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+/** Fetch bounded bytes while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
-export async function fetchPublicHttpsText(
+export async function fetchPublicHttpsBytes(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -572,7 +574,7 @@ export async function fetchPublicHttpsText(
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -622,7 +624,7 @@ export async function fetchPublicHttpsText(
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
@@ -636,6 +638,13 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {
@@ -967,10 +976,36 @@ async function fetchToPartial(
   };
 }
 
-function syncAndPublishPartial(
+async function publishWithoutClobber(
   partialPath: string,
   localPath: string,
-): Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused"> {
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  try {
+    linkSync(partialPath, localPath);
+    unlinkSync(partialPath);
+    return;
+  } catch (error) {
+    if (!cannotHardLink(error)) throw error;
+  }
+  const releaseLock = await acquireCachePathLock(localPath, timeoutMs, signal);
+  try {
+    if (lstatSync(localPath, { throwIfNoEntry: false })) {
+      throw Object.assign(new Error(`${localPath} already exists`), { code: "EEXIST" });
+    }
+    renameWithRetry(partialPath, localPath);
+  } finally {
+    releaseLock();
+  }
+}
+
+async function syncAndPublishPartial(
+  partialPath: string,
+  localPath: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+): Promise<Extract<UrlDownloadTelemetryOutcome, "published" | "race_reused">> {
   // Windows rejects fsync on a read-only handle (EPERM); the partial is ours
   // and writable, so r+ preserves the same flush semantics cross-platform.
   const fd = openSync(partialPath, "r+");
@@ -980,11 +1015,10 @@ function syncAndPublishPartial(
     closeSync(fd);
   }
 
-  // A hard-link publish is atomic and no-clobber: unlike rename(), it cannot
-  // replace a path that another successful caller has already returned.
+  // Atomic and no-clobber: a hard link, or a rename under the cache path lock where
+  // the drive has no hard links, never replaces a path another caller already returned.
   try {
-    linkSync(partialPath, localPath);
-    unlinkSync(partialPath);
+    await publishWithoutClobber(partialPath, localPath, timeoutMs, signal);
     return "published";
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -1057,7 +1091,16 @@ async function runDownloadAttempt(
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
     const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
-    let outcome = syncAndPublishPartial(partialPath, localPath);
+    if (await playlistLeavesItsFolder(partialPath, localPath)) {
+      throw new UrlDownloadError(
+        "invalid_payload",
+        false,
+        "Download is a playlist naming files outside its folder",
+        integrity.status,
+        integrity,
+      );
+    }
+    let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {
       let inspection: Awaited<ReturnType<typeof inspectExistingFile>>;

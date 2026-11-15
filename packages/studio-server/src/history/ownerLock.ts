@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { linkSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { uptime } from "node:os";
 import { join } from "node:path";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { cannotHardLink, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export class HistoryBusyError extends Error {
   constructor(
@@ -16,7 +16,6 @@ export class HistoryBusyError extends Error {
 }
 
 const WINDOWS_BUSY = new Set(["EPERM", "EBUSY", "EACCES"]);
-const NO_HARD_LINKS = new Set(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES"]);
 const TAKING_MS = 2_000;
 const BOOT_SLACK_MS = 60_000;
 
@@ -116,9 +115,8 @@ function claim(file: string): boolean {
     try {
       linkSync(draft, file);
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code ?? "";
-      if (code === "EEXIST") return false;
-      if (!NO_HARD_LINKS.has(code)) throw error;
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+      if (!cannotHardLink(error)) throw error;
       return createExclusively(file);
     }
     return recordOwnership(file);

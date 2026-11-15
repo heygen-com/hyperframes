@@ -1133,3 +1133,33 @@ describe("createFileServer colour-tagged PNGs", () => {
     }
   });
 });
+
+describe("createFileServer private project files", () => {
+  it.each(["/.env", "/.ENV.local", "/.env.production", "/.git/config", "/%2egit/HEAD", "/.envrc"])(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-private-"));
+      try {
+        writeEmptyIndex(projectDir);
+        mkdirSync(join(projectDir, ".git"));
+        for (const name of [".env", ".ENV.local", ".env.production", ".envrc"]) {
+          writeFileSync(join(projectDir, name), "SECRET=1");
+        }
+        writeFileSync(join(projectDir, ".git", "config"), "SECRET=1");
+        writeFileSync(join(projectDir, ".git", "HEAD"), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        symlinkSync(join(projectDir, ".env"), join(projectDir, "linked.txt"));
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          const linked = await fetch(`${server.url}/linked.txt`);
+          expect(linked.status).toBe(404);
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
