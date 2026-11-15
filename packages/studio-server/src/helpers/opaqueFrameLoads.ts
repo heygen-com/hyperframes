@@ -1,9 +1,15 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
+import { getMimeType } from "./mime.js";
 
-const GRANTED_LOADS = new Map([
-  ["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }],
-  ["script", { path: /\.m?js$/i, type: /^text\/javascript\b/ }],
+const ANY_FILE_THE_PREVIEW_SERVES = /./;
+const GRANTED_TYPES = new Map([
+  ["font", /^font\//],
+  ["script", /^text\/javascript\b/],
+  ["image", /^image\//],
+  ["video", /^video\//],
+  ["audio", /^audio\//],
+  ["empty", ANY_FILE_THE_PREVIEW_SERVES],
 ]);
 const TOKEN_SEGMENT = /^~([\w-]{43})$/;
 
@@ -16,10 +22,10 @@ interface OpaqueFrameLoad {
 }
 
 function opaqueFrameLoadGranted(load: OpaqueFrameLoad): boolean {
-  const grant = load.origin === "null" ? GRANTED_LOADS.get(load.dest ?? "") : undefined;
-  if (!grant?.path.test(load.pathname)) return false;
+  const type = load.origin === "null" ? GRANTED_TYPES.get(load.dest ?? "") : undefined;
+  if (!type?.test(getMimeType(load.pathname))) return false;
   const keepsStoredContentType = load.status === 304;
-  return keepsStoredContentType || grant.type.test(load.contentType ?? "");
+  return keepsStoredContentType || type.test(load.contentType ?? "");
 }
 
 export function createFrameTokens() {
