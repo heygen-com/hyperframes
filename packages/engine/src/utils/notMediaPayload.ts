@@ -85,7 +85,7 @@ function byteOrderMarkLength(head: Buffer): number {
 }
 
 /** Read up to `bytes` (default {@link SNIFF_BYTES}) from the front of the file. */
-async function readHead(filePath: string, bytes = SNIFF_BYTES): Promise<Buffer> {
+async function readHead(filePath: string, bytes = SNIFF_BYTES, position = 0): Promise<Buffer> {
   const fh = await openFile(filePath, "r");
   try {
     const buf = Buffer.alloc(bytes);
@@ -93,7 +93,7 @@ async function readHead(filePath: string, bytes = SNIFF_BYTES): Promise<Buffer> 
     // Looped because a single read can come back short on NFS/FUSE and on
     // FIFOs, which would truncate the window mid-prefix.
     while (filled < buf.length) {
-      const { bytesRead } = await fh.read(buf, filled, buf.length - filled, filled);
+      const { bytesRead } = await fh.read(buf, filled, buf.length - filled, position + filled);
       if (bytesRead === 0) break;
       filled += bytesRead;
     }
@@ -160,15 +160,62 @@ const HTTP_URL = /^https?:\/\//i;
 const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
 const DRIVE_PATH = /^[a-z]:[\\/]/i;
 
+// ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it.
+const MAX_HLS_LINE_BYTES = 4095;
+const ATTRIBUTE_GAP = /[\t\n\v\f\r ,]/;
+
+/** Every name an HLS list can open, read as ffmpeg's hls demuxer reads it and also as written. */
+function hlsEntries(body: string): string[] {
+  return body
+    .replaceAll("\0", "\n")
+    .split(/[\r\n]/)
+    .flatMap((raw) => {
+      const cut = Buffer.from(raw).subarray(0, MAX_HLS_LINE_BYTES).toString();
+      return [...new Set([raw, cut])].flatMap((whole) => {
+        const line = whole.replace(/[\t\v\f ]+$/, "");
+        if (line.startsWith("#")) return attributeUris(line);
+        return line ? [line, line.trim()] : [];
+      });
+    });
+}
+
+/** `URI=` values of a tag, split as ffmpeg's `ff_parse_key_value` splits them. */
+function attributeUris(line: string): string[] {
+  const uris: string[] = [];
+  let at = line.indexOf(":") + 1;
+  while (at > 0 && at < line.length) {
+    while (at < line.length && ATTRIBUTE_GAP.test(line[at]!)) at++;
+    const equals = line.indexOf("=", at);
+    if (equals < 0) break;
+    const [value, next] = attributeValue(line, equals + 1);
+    if (line.slice(at, equals).toUpperCase() === "URI") uris.push(value);
+    at = next;
+  }
+  return uris;
+}
+
+/** A quoted value drops its quotes and the backslash before any character; a bare one ends at a space or comma. */
+function attributeValue(line: string, at: number): [string, number] {
+  if (line[at] !== '"') {
+    let end = at;
+    while (end < line.length && !ATTRIBUTE_GAP.test(line[end]!)) end++;
+    return [line.slice(at, end), end];
+  }
+  let value = "";
+  let index = at + 1;
+  for (; index < line.length && line[index] !== '"'; index++) {
+    if (line[index] === "\\") {
+      if (index + 1 >= line.length) break;
+      index++;
+    }
+    value += line[index];
+  }
+  return [value, line[index] === '"' ? index + 1 : index];
+}
+
 function playlistEntries(text: string): string[] | undefined {
   const body = text.replace(/^\uFEFF/, "").trimStart();
-  if (body.startsWith("#EXTM3U")) {
-    return body.split(/\r?\n/).flatMap((raw) => {
-      const line = raw.trim();
-      const uris = [...line.matchAll(/URI="([^"]*)"/gi)].map((match) => match[1]!);
-      return line && !line.startsWith("#") ? [line, ...uris] : uris;
-    });
-  }
+  if (body.startsWith("#EXTM3U")) return hlsEntries(body);
   if (/^ffconcat\s+version/i.test(body)) {
     return body.split(/\r?\n/).flatMap((raw) => {
       const match = /^\s*file\s+(.*)$/.exec(raw);
@@ -212,8 +259,32 @@ export async function playlistLeavesItsFolder(
   return listLeaves(resolve(filePath), placed, dirname(placed), new Set(), 0);
 }
 
-async function startsAsPlaylist(path: string): Promise<boolean> {
-  const head = (await readHead(path))
+const MAX_ID3_TAGS = 16;
+
+function isId3Header(head: Buffer): boolean {
+  return (
+    head.length === 10 &&
+    head.toString("latin1", 0, 3) === "ID3" &&
+    head[3] !== 0xff &&
+    head[4] !== 0xff &&
+    head.subarray(6).every((byte) => byte < 0x80)
+  );
+}
+
+/** Where the text starts: ffmpeg skips leading ID3v2 tags before it probes or parses a file. -1 past {@link MAX_ID3_TAGS}. */
+async function textStart(path: string): Promise<number> {
+  let offset = 0;
+  for (let tags = 0; tags <= MAX_ID3_TAGS; tags++) {
+    const head = await readHead(path, 10, offset);
+    if (!isId3Header(head)) return offset;
+    const size = (head[6]! << 21) | (head[7]! << 14) | (head[8]! << 7) | head[9]!;
+    offset += 10 + size + (head[5]! & 0x10 ? 10 : 0);
+  }
+  return -1;
+}
+
+async function startsAsPlaylist(path: string, start: number): Promise<boolean> {
+  const head = (await readHead(path, SNIFF_BYTES, start))
     .toString("utf8")
     .replace(/^\uFEFF/, "")
     .trimStart();
@@ -229,19 +300,32 @@ async function listLeaves(
   depth: number,
 ): Promise<boolean> {
   try {
-    if (!(await startsAsPlaylist(readPath))) return false;
+    const start = await textStart(readPath);
+    if (start < 0) return true;
+    if (!(await startsAsPlaylist(readPath, start))) return false;
     if (depth >= MAX_PLAYLIST_DEPTH) return true;
     if (seen.has(path)) return false;
     seen.add(path);
-    const body = await readHead(readPath, MAX_PLAYLIST_BYTES + 1);
-    if (body.length > MAX_PLAYLIST_BYTES) return true;
-    for (const entry of playlistEntries(body.toString("utf8")) ?? []) {
-      if (await entryLeaves(entry, dirname(path), folder, seen, depth)) return true;
-    }
-    return false;
+    return await listedEntriesLeave(readPath, start, path, folder, seen, depth);
   } catch {
     return false;
   }
+}
+
+async function listedEntriesLeave(
+  readPath: string,
+  start: number,
+  path: string,
+  folder: string,
+  seen: Set<string>,
+  depth: number,
+): Promise<boolean> {
+  const body = await readHead(readPath, MAX_PLAYLIST_BYTES + 1, start);
+  if (body.length > MAX_PLAYLIST_BYTES) return true;
+  for (const entry of playlistEntries(body.toString("utf8")) ?? []) {
+    if (await entryLeaves(entry, dirname(path), folder, seen, depth)) return true;
+  }
+  return false;
 }
 
 async function entryLeaves(

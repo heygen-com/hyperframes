@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
   fingerprintElementId,
@@ -250,5 +252,65 @@ describe("playlistLeavesItsFolder", () => {
     ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
   ])("keeps %s", async (_name, contents) => {
     expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
+  });
+});
+
+describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
+  const FFPROBE_8 = /^ffprobe version n?8\./.test(
+    spawnSync(getFfprobeBinary(), ["-version"], { encoding: "utf-8" }).stdout ?? "",
+  );
+  const head = "#EXTM3U\n#EXT-X-TARGETDURATION:1\n";
+  const tail = "#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n";
+  const outside = "../outside/secret.mp4";
+  // Cut at ffmpeg's 4095-byte line limit this names the outside file; whole, it walks back in.
+  const cutLine = "./".repeat((4095 - outside.length) / 2) + outside + "/../../proj/seg.ts";
+
+  it.each([
+    ["a segment after a bare carriage return", `${head}#EXTINF:1,\r${outside}\n#EXT-X-ENDLIST\n`],
+    ["a segment after a NUL", `${head}#EXTINF:1,\0${outside}\n#EXT-X-ENDLIST\n`],
+    ["an unquoted map URI", `${head}#EXT-X-MAP:URI=${outside}\n${tail}`],
+    ["a backslash-escaped map URI", `${head}#EXT-X-MAP:URI=".\\./outside/secret.mp4"\n${tail}`],
+    [
+      "an unquoted rendition URI",
+      `#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=a,NAME=a,URI=${outside}\n` +
+        '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="a"\nv.m3u8\n',
+    ],
+    [
+      "a list behind an ID3 tag",
+      Buffer.concat([
+        Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]),
+        Buffer.from(`${head}#EXTINF:1,\n${outside}\n#EXT-X-ENDLIST\n`),
+      ]),
+    ],
+    ["a segment line longer than ffmpeg reads", `${head}#EXTINF:1,\n${cutLine}\n#EXT-X-ENDLIST\n`],
+  ])("refuses %s", async (_name, contents) => {
+    const root = mkdtempSync(join(tmpdir(), "hf-playlist-ffprobe-"));
+    mkdirSync(join(root, "proj"));
+    mkdirSync(join(root, "outside"));
+    writeFileSync(join(root, "outside", "secret.mp4"), "outside media");
+    writeFileSync(join(root, "proj", "v.m3u8"), head + tail);
+    writeFileSync(join(root, "proj", "clip.m3u8"), contents);
+
+    expect(await playlistLeavesItsFolder(join(root, "proj", "clip.m3u8"))).toBe(true);
+    if (!FFPROBE_8) return;
+    const probe = spawnSync(getFfprobeBinary(), ["-loglevel", "debug", "-i", "clip.m3u8"], {
+      cwd: join(root, "proj"),
+      encoding: "utf-8",
+    });
+    expect(probe.stderr).toMatch(/outside\/secret\.mp4' for reading/);
+  });
+
+  it("keeps a list with the same tags naming files beside it", async () => {
+    const list = `${head}#EXT-X-MAP:URI=init.mp4\r#EXT-X-KEY:METHOD=AES-128,URI="k\\ey.bin"\r${tail}`;
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", list))).toBe(false);
+  });
+
+  it("refuses a file behind more ID3 tags than it skips", async () => {
+    const tag = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0]);
+    const file = writeFixture(
+      "clip.m3u8",
+      Buffer.concat([...Array(17).fill(tag), Buffer.from(head)]),
+    );
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
   });
 });
