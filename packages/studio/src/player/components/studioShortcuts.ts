@@ -6,7 +6,7 @@ import {
   formatCombo,
   matchCombo,
   parseCombo,
-} from "./studioCombo";
+} from "@hyperframes/core/key-combo";
 
 import { DEFAULT_STUDIO_KEYS, type StudioKeyAction, type StudioKeys } from "./studioKeyDefaults";
 

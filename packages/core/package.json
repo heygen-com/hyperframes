@@ -152,6 +152,18 @@
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
     },
+    "./key-combo": {
+      "bun": "./src/keyCombo.ts",
+      "node": "./dist/keyCombo.js",
+      "import": "./src/keyCombo.ts",
+      "types": "./src/keyCombo.ts"
+    },
+    "./typing-target": {
+      "bun": "./src/typingTarget.ts",
+      "node": "./dist/typingTarget.js",
+      "import": "./src/typingTarget.ts",
+      "types": "./src/typingTarget.ts"
+    },
     "./studio-preview-mark": {
       "bun": "./src/studioPreviewMark.ts",
       "node": "./dist/studioPreviewMark.js",
@@ -739,6 +751,14 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./key-combo": {
+        "import": "./dist/keyCombo.js",
+        "types": "./dist/keyCombo.d.ts"
+      },
+      "./typing-target": {
+        "import": "./dist/typingTarget.js",
+        "types": "./dist/typingTarget.d.ts"
       },
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",

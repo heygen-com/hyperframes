@@ -1,9 +1,4 @@
-export {
-  matchCombo,
-  parseCombo,
-  type Combo,
-  type ComboEvent,
-} from "./player/components/studioCombo";
+export { matchCombo, parseCombo, type Combo, type ComboEvent } from "@hyperframes/core/key-combo";
 export {
   DEFAULT_STUDIO_KEYS,
   type StudioKeyAction,
