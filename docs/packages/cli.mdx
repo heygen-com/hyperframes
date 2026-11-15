@@ -2691,9 +2691,11 @@ authenticating, uploading, or starting anything. If you are over, add only
 paths you have verified are unneeded to `.hyperframesignore`.
 
 A file outside the project folder that a composition points at is copied into
-the zip only if it is an image, video, audio, font, CSS or JS file, judged by
-its extension. Any other outside file (a Lottie `.json`, a `.pdf`, a file with
-no extension), one in a private location (env files, Git data, hidden, system
+the zip only if it is an image, video, audio, font or CSS file, judged by its
+extension. A `.ts` or `.mts` file counts as video only when its first bytes are
+an MPEG transport stream, so TypeScript source is not copied. Any other outside
+file (a script, a Lottie `.json`, a `.pdf`, a file with no extension), one in a
+private location (env files, Git data, hidden, system
 and app-data folders), and one reached from a file that came in with an
 imported project are left out, with a warning naming each. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
