@@ -3624,17 +3624,9 @@ export async function settlePostSeekDomUpdates(
       const vt = root.__HF_VIRTUAL_TIME__;
       if (!vt || typeof vt.drainAnimationFrames !== "function") return empty;
 
-      const armRealTimeout =
-        typeof vt.originalSetTimeout === "function"
-          ? (cb: () => void, ms: number) => {
-              vt.originalSetTimeout?.(cb, ms);
-            }
-          : (cb: () => void, ms: number) => {
-              setTimeout(cb, ms);
-            };
       let expired = false;
       const deadline = new Promise<void>((resolve) =>
-        armRealTimeout(() => {
+        (vt.originalSetTimeout ?? setTimeout)(() => {
           expired = true;
           resolve();
         }, budgetMs),
