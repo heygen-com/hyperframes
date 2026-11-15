@@ -591,6 +591,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
+      - run: bash scripts/ci/install-pinned-headless-shell.sh
       - run: bun run --filter '@hyperframes/{core,engine}' test
 
   test-cli:
@@ -729,6 +730,7 @@ jobs:
       - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
       - run: bun run --cwd packages/core build
       - run: bun run --filter @hyperframes/engine build
+      - run: bash scripts/ci/install-pinned-headless-shell.sh
       - run: bun run producer:test:${{ matrix.lane }}
 
   # Tests under skills/**/*.test.mjs are bare `node --test` files with only
