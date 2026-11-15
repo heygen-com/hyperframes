@@ -70,8 +70,7 @@ export const POPUP_LAYER = "z-200";
 
 const menuPopup = cn(popupSurface, "min-w-36 p-1 shadow-menu");
 
-/** One row. `data-highlighted` is set by keyboard and pointer alike, so the seen row is the Enter row.
- * Its corner is the panel's minus the panel's p-1 inset, so the two curves run parallel. */
+/** One row. `data-highlighted` is set by keyboard and pointer alike, so the seen row is the Enter row. */
 const itemBase = cn(
   "flex cursor-default select-none items-center justify-between gap-6 rounded-[calc(var(--radius-lg)-4px)] px-2 py-1.5",
   "text-step-11 whitespace-nowrap text-text-1",
