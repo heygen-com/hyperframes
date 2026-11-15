@@ -92,10 +92,6 @@ function buildPrompt(
     .slice(0, 10)
     .map((hex) => `${hex} (${inferColorRole(hex)})`)
     .join(", ");
-  const fontSummary =
-    tokens.fonts.length > 0
-      ? `${tokens.fonts.length} ${tokens.fonts.length === 1 ? "family" : "families"}, named in \`extracted/tokens.json\``
-      : "none detected";
 
   // Build the data inventory table rows
   // Helper: find all contact sheet pages for a given base name. Matches the
@@ -204,7 +200,6 @@ function buildPrompt(
   // Brand summary — just the essentials
   const brandLines: string[] = [];
   brandLines.push(`- **Colors**: ${colorSummary || "see tokens.json"}`);
-  brandLines.push(`- **Fonts**: ${fontSummary}`);
 
   return `# ${title}
 
