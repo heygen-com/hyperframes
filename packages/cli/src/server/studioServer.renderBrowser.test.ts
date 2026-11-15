@@ -163,7 +163,13 @@ describe("Studio render of a received composition", () => {
       files: ["scene.html"],
       allowed: false,
     },
-    { name: "the person's own entry", extra: {}, files: ["other.html"], allowed: true },
+    {
+      name: "a record listing a file the render never opens",
+      extra: {},
+      files: ["other.html"],
+      allowed: false,
+    },
+    { name: "a record listing no files", extra: {}, files: [], allowed: true },
     { name: "no received-files record", extra: {}, files: undefined, allowed: true },
   ])("brings in outside files for $name: $allowed", async ({ extra, files, allowed }) => {
     mocks.resolveRenderBrowser.mockResolvedValue({

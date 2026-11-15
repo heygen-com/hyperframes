@@ -590,7 +590,12 @@ describe("renderLocal browser GPU config", () => {
 
   it.each([
     { name: "a received entry", files: ["index.html"], allowed: false },
-    { name: "the person's own entry", files: ["assets/in.png"], allowed: true },
+    {
+      name: "a record listing a file the render never opens",
+      files: ["assets/in.png"],
+      allowed: false,
+    },
+    { name: "a record listing no files", files: [], allowed: true },
     { name: "no received-files record", files: undefined, allowed: true },
   ])("brings in outside files for $name: $allowed", async ({ files, allowed }) => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-render-received-"));

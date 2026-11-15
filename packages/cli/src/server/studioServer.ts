@@ -668,7 +668,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
-          const allowOutsideProjectAssets = await outsideAssetsAllowed(
+          const allowOutsideProjectAssets = outsideAssetsAllowed(
             opts.project.dir,
             opts.composition,
             (line) => console.warn(`[studio] ${line}`),

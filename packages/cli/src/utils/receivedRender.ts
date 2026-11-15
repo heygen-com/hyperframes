@@ -1,17 +1,14 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
-import { runRenderSetupWorker } from "./cancellableProcess.js";
-import { loadProducer } from "./producer.js";
-import { linksOutside, receivedFiles, receivedRecordStatus } from "./privateProjectFile.js";
+import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
 const MAX_SCANNED_FILES = 500;
-const COMPILER_READS_TIMEOUT_MS = 60_000;
 
 interface Reference {
   raw: string;
@@ -106,7 +103,10 @@ function readHead(file: string): { text: string; whole: boolean } | null {
     const size = statSync(file).size;
     const buffer = Buffer.alloc(Math.min(size, MAX_SCANNED_BYTES));
     const read = readSync(fd, buffer, 0, buffer.length, 0);
-    return { text: buffer.toString("utf-8", 0, read), whole: size <= MAX_SCANNED_BYTES };
+    return {
+      text: buffer.toString("utf-8", 0, read),
+      whole: size <= MAX_SCANNED_BYTES,
+    };
   } catch {
     return null;
   } finally {
@@ -170,7 +170,11 @@ function scanFile(found: OutsideReferences, file: string, projectDir: string): s
 
 // Names the references outside the project in the entry and the compositions and stylesheets it pulls in; only the notice reads it.
 function outsideReferences(projectDir: string, entryFile: string): OutsideReferences {
-  const found: OutsideReferences = { assets: new Set(), compositions: new Set(), complete: true };
+  const found: OutsideReferences = {
+    assets: new Set(),
+    compositions: new Set(),
+    complete: true,
+  };
   const visited = new Set<string>();
   const pending = [resolve(projectDir, entryFile)];
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
@@ -198,89 +202,23 @@ function refusedReferences(found: OutsideReferences): string {
   return parts.join("");
 }
 
-function projectRelative(projectDir: string, realProjectDir: string | null, path: string): string {
-  const rel = relative(projectDir, path);
-  const inside = rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
-  return (inside || realProjectDir === null ? rel : relative(realProjectDir, path))
-    .split(sep)
-    .join("/");
-}
-
-/** The project files a render of this composition reads: the render compiler's own composition traversal, plus every file the bundler reads or looks for. */
-export async function compilerReadsInProcess(
-  projectDir: string,
-  entryFile: string,
-): Promise<string[]> {
-  const { renderCompositionFiles } = await loadProducer();
-  const reads = renderCompositionFiles(projectDir, resolve(projectDir, entryFile));
-  const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  await bundleToSingleHtml(projectDir, {
-    entryFile,
-    runtime: "placeholder",
-    inlineAssets: false,
-    staticGuard: false,
-    onRead: (path) => reads.push(path),
-  });
-  const realProjectDir = realOrNull(projectDir);
-  return reads.map((path) => projectRelative(projectDir, realProjectDir, path));
-}
-
-// Out of process with a deadline: a build that fails or runs long cannot say what it reads.
-async function compilerReads(projectDir: string, entryFile: string): Promise<string[] | null> {
-  try {
-    const reads = await runRenderSetupWorker<unknown>(
-      "render-reads",
-      { projectDir, entryFile },
-      { timeoutMs: COMPILER_READS_TIMEOUT_MS, maxBufferBytes: 16 * 1024 * 1024 },
-    );
-    return Array.isArray(reads) ? reads.map(String) : null;
-  } catch {
-    return null;
-  }
-}
-
-function receivedAmong(projectDir: string, paths: string[]): string[] {
-  const isReceived = receivedFiles(projectDir);
-  return [...new Set(paths)].filter((path) => {
-    try {
-      return isReceived(path);
-    } catch {
-      return true;
-    }
-  });
-}
-
-/** False when the received-files record cannot be read, or the compiler reads a received file, or cannot say what it reads, to build this composition; `warn` then says why and names the references outside the project it refuses. */
-export async function outsideAssetsAllowed(
+/** False when the project's received-files record lists any file, or cannot be read: the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
+export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
   warn: (line: string) => void,
-): Promise<boolean> {
+): boolean {
   const absProjectDir = resolve(projectDir);
   const record = receivedRecordStatus(absProjectDir);
   if (record === null || record.listedCount === 0) return true;
-  const entry = entryFile ?? "index.html";
+  const refused = refusedReferences(outsideReferences(absProjectDir, entryFile ?? "index.html"));
   if (record.listedCount === null) {
-    const refused = refusedReferences(outsideReferences(absProjectDir, entry));
     warn(
       `Could not read ${record.path}, so the render treats the project as received and reads nothing outside it.${refused}`,
     );
-    return false;
-  }
-  const reads = await compilerReads(absProjectDir, entry);
-  const received = reads === null ? null : receivedAmong(absProjectDir, reads);
-  if (received !== null && received.length === 0) return true;
-  const found = outsideReferences(absProjectDir, entry);
-  const refused = refusedReferences(found);
-  if (received === null) {
-    warn(
-      `Could not tell which files ${entry} reads, so the render reads nothing outside the project.${refused}`,
-    );
   } else if (refused !== "") {
-    const [first, ...others] = received;
-    const who = others.length === 0 ? first : `${first} and ${others.length} more file(s)`;
     warn(
-      `${who} came from someone else, so the render reads nothing outside the project.${refused}`,
+      `This project has files that came from someone else (listed in ${record.path}), so the render reads nothing outside it.${refused}`,
     );
   }
   return false;

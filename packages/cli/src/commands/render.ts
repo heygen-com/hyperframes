@@ -1149,10 +1149,8 @@ async function executeLocalRender(
     process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
   }
   const producer = await loadProducer();
-  const allowOutsideProjectAssets = await outsideAssetsAllowed(
-    projectDir,
-    options.entryFile,
-    (line) => console.warn(c.warn(`  ${line}`)),
+  const allowOutsideProjectAssets = outsideAssetsAllowed(projectDir, options.entryFile, (line) =>
+    console.warn(c.warn(`  ${line}`)),
   );
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true

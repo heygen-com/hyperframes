@@ -210,7 +210,7 @@ function tsxLoaderFromCliInstall(): string {
 }
 
 export async function runRenderSetupWorker<T>(
-  mode: "browser" | "browser-install" | "lint" | "orphan-cleanup" | "render-reads",
+  mode: "browser" | "browser-install" | "lint" | "orphan-cleanup",
   input: unknown,
   options: CancellableProcessOptions,
 ): Promise<T> {

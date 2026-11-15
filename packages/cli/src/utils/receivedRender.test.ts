@@ -49,18 +49,20 @@ function project(record?: string): string {
 
 const received = (...files: string[]) => JSON.stringify({ files });
 
-async function decide(dir: string, entry?: string) {
+const SOMEONE_ELSE = "This project has files that came from someone else";
+
+function decide(dir: string, entry?: string) {
   const warn = vi.fn();
-  const allowed = await outsideAssetsAllowed(dir, entry, warn);
+  const allowed = outsideAssetsAllowed(dir, entry, warn);
   return { allowed, warn, line: String(warn.mock.calls[0]?.[0] ?? "") };
 }
 
 describe("outsideAssetsAllowed", () => {
-  it("refuses outside files for a received entry and names every reference it leaves out", async () => {
-    const { allowed, warn, line } = await decide(project(received("index.html")));
+  it("refuses outside files for a received entry and names every reference it leaves out", () => {
+    const { allowed, warn, line } = decide(project(received("index.html")));
     expect(allowed).toBe(false);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(line).toContain("index.html came from someone else");
+    expect(line).toContain(SOMEONE_ELSE);
     for (const ref of [
       "../outside/secret.js",
       "../outside/pic.png",
@@ -73,76 +75,77 @@ describe("outsideAssetsAllowed", () => {
     expect(line).not.toContain("cdn.example");
   });
 
-  it("refuses outside files when the own entry plays a received composition, and names it", async () => {
+  it("refuses outside files when the own entry plays a received composition, and names it", () => {
     const dir = project(received("compositions/scene.html"));
     for (const entry of ["compositions/scene.html", undefined]) {
-      const { allowed, line } = await decide(dir, entry);
+      const { allowed, line } = decide(dir, entry);
       expect(allowed).toBe(false);
-      expect(line).toContain("compositions/scene.html came from someone else");
+      expect(line).toContain(SOMEONE_ELSE);
     }
   });
 
-  it("refuses outside files when a linked stylesheet was received", async () => {
-    const { allowed, line } = await decide(project(received("style.css")));
+  it("refuses outside files when a linked stylesheet was received", () => {
+    const { allowed, line } = decide(project(received("style.css")));
     expect(allowed).toBe(false);
-    expect(line).toContain("style.css came from someone else");
+    expect(line).toContain(SOMEONE_ELSE);
   });
 
-  it("refuses outside files when a stylesheet @imports a received stylesheet", async () => {
+  it("refuses outside files when a stylesheet @imports a received stylesheet", () => {
     const dir = project(received("theme.css"));
     write(join(dir, "style.css"), `@import "theme.css";\nbody { color: red; }`);
     write(join(dir, "theme.css"), `body { background: url(../outside/bg.png); }`);
-    const { allowed } = await decide(dir);
+    const { allowed } = decide(dir);
     expect(allowed).toBe(false);
   });
 
-  it("refuses outside files when a received composition sits past the scan limit", async () => {
+  it("refuses outside files when a received composition sits past the scan limit", () => {
     const dir = project(received("compositions/scene.html"));
     write(
       join(dir, "index.html"),
       `<p>${"a".repeat(2_200_000)}</p><div data-composition-src="compositions/scene.html"></div>`,
     );
-    const { allowed, line } = await decide(dir);
+    const { allowed, line } = decide(dir);
     expect(allowed).toBe(false);
-    expect(line).toContain("compositions/scene.html came from someone else");
+    expect(line).toContain(SOMEONE_ELSE);
   });
 
-  it("keeps outside files when the received file is one the render never opens", async () => {
-    const { allowed, warn } = await decide(project(received("unused.html")));
-    expect(allowed).toBe(true);
-    expect(warn).not.toHaveBeenCalled();
+  it("refuses outside files whenever the record lists a file, even one the render never opens", () => {
+    const { allowed, line } = decide(project(received("unused.html")));
+    expect(allowed).toBe(false);
+    expect(line).toContain(SOMEONE_ELSE);
+    expect(line).toContain("../outside/secret.js");
   });
 
-  it("keeps outside files when the record lists no files", async () => {
-    expect((await decide(project(received()))).allowed).toBe(true);
+  it("keeps outside files when the record lists no files", () => {
+    expect(decide(project(received())).allowed).toBe(true);
   });
 
-  it("keeps outside files for a project with no received-files record", async () => {
-    const { allowed, warn } = await decide(project());
+  it("keeps outside files for a project with no received-files record", () => {
+    const { allowed, warn } = decide(project());
     expect(allowed).toBe(true);
     expect(warn).not.toHaveBeenCalled();
   });
 
   it.runIf(process.platform !== "win32")(
     "renders an owned project with a symlink loop normally",
-    async () => {
+    () => {
       const dir = project();
       symlinkSync("loop", join(dir, "loop"));
       write(
         join(dir, "index.html"),
         `<link rel="stylesheet" href="loop/a.css"><a href="loop">x</a>`,
       );
-      expect((await decide(dir)).allowed).toBe(true);
+      expect(decide(dir).allowed).toBe(true);
       write(join(dir, ".hyperframes", "received-files.json"), received("unused.html"));
-      await expect(decide(dir)).resolves.toMatchObject({ allowed: true });
+      expect(() => decide(dir)).not.toThrow();
     },
   );
 
   it.each(["{not json", "", "{}"])(
     "refuses outside files and names the record when it cannot be read: %j",
-    async (record) => {
+    (record) => {
       const dir = project(record);
-      const { allowed, warn, line } = await decide(dir);
+      const { allowed, warn, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(line).toContain(
@@ -152,39 +155,33 @@ describe("outsideAssetsAllowed", () => {
     },
   );
 
-  it("says the render stops on a composition outside the project", async () => {
+  it("says the render stops on a composition outside the project", () => {
     const dir = project(received("index.html"));
     write(join(dir, "..", "outside", "shared.html"), "<div></div>");
     write(join(dir, "index.html"), `<div data-composition-src="../outside/shared.html"></div>`);
-    const { allowed, line } = await decide(dir);
+    const { allowed, line } = decide(dir);
     expect(allowed).toBe(false);
     expect(line).toContain("stops on the compositions ../outside/shared.html");
   });
 
   it.runIf(process.platform !== "win32")(
     "skips a stylesheet it cannot read instead of failing",
-    async () => {
+    () => {
       const dir = project(received("index.html"));
       write(join(dir, "locked.css"), "body { background: url(../outside/bg.png); }");
       chmodSync(join(dir, "locked.css"), 0o000);
       write(join(dir, "index.html"), `<link href="locked.css"><img src="../outside/pic.png">`);
-      const { allowed, line } = await decide(dir);
+      const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain("../outside/pic.png");
     },
   );
 
-  it("refuses outside files when the compiler cannot say what it reads", async () => {
-    const { allowed, line } = await decide(project(received("index.html")), "missing.html");
-    expect(allowed).toBe(false);
-    expect(line).toContain("Could not tell which files missing.html reads");
-  });
-
-  it("scans a long unclosed url( run in linear time", async () => {
+  it("scans a long unclosed url( run in linear time", () => {
     const dir = project("{not json");
     write(join(dir, "style.css"), "url(".repeat(1_000_000));
     const started = performance.now();
-    await decide(dir);
+    decide(dir);
     expect(performance.now() - started).toBeLessThan(5_000);
   });
 
@@ -199,12 +196,14 @@ describe("outsideAssetsAllowed", () => {
         files: { "compositions/scene.html": scene("received-scene") },
         src: "/compositions/scene.html",
         receivedFile: "compositions/scene.html",
+        consumed: "received-scene-marker",
       },
       {
         name: "a percent-encoded reference",
         files: { "compositions/my scene.html": scene("received-scene") },
         src: "compositions/my%20scene.html",
         receivedFile: "compositions/my scene.html",
+        consumed: "received-scene-marker",
       },
       {
         name: "a nested reference resolved from the project root",
@@ -216,6 +215,61 @@ describe("outsideAssetsAllowed", () => {
         },
         src: "compositions/outer.html",
         receivedFile: "compositions/inner.html",
+        consumed: "received-scene-marker",
+      },
+      {
+        name: "an owned scene's received stylesheet",
+        files: {
+          "compositions/scene.html":
+            `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+            `<link rel="stylesheet" href="scene.css"><p>received-scene-marker</p><img src="../../outside/pic.png"></div></template>`,
+          "compositions/scene.css": "body { color: red; }",
+        },
+        src: "compositions/scene.html",
+        receivedFile: "compositions/scene.css",
+        consumed: "scene.css",
+      },
+      {
+        name: "a received stylesheet of an owned scene nested in an owned scene",
+        files: {
+          "compositions/outer.html":
+            `<template><div data-composition-id="outer" data-width="320" data-height="180" data-duration="1">` +
+            `<div data-composition-src="compositions/scene.html"></div></div></template>`,
+          "compositions/scene.html":
+            `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+            `<link rel="stylesheet" href="scene.css"><p>received-scene-marker</p><img src="../../outside/pic.png"></div></template>`,
+          "compositions/scene.css": "body { color: red; }",
+        },
+        src: "compositions/outer.html",
+        receivedFile: "compositions/scene.css",
+        consumed: "scene.css",
+      },
+      {
+        name: "an owned scene's received script",
+        files: {
+          "compositions/scene.html":
+            `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+            `<script src="scene.js"></script><p>received-scene-marker</p><img src="../../outside/pic.png"></div></template>`,
+          "compositions/scene.js": "window.sceneLoaded = true;",
+        },
+        src: "compositions/scene.html",
+        receivedFile: "compositions/scene.js",
+        consumed: "scene.js",
+      },
+      {
+        name: "a received script of an owned scene nested in an owned scene",
+        files: {
+          "compositions/outer.html":
+            `<template><div data-composition-id="outer" data-width="320" data-height="180" data-duration="1">` +
+            `<div data-composition-src="compositions/scene.html"></div></div></template>`,
+          "compositions/scene.html":
+            `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+            `<script src="scene.js"></script><p>received-scene-marker</p><img src="../../outside/pic.png"></div></template>`,
+          "compositions/scene.js": "window.sceneLoaded = true;",
+        },
+        src: "compositions/outer.html",
+        receivedFile: "compositions/scene.js",
+        consumed: "scene.js",
       },
     ])("refuses outside files for $name the render compiler reads", async (probe) => {
       const dir = project(received(probe.receivedFile));
@@ -230,11 +284,11 @@ describe("outsideAssetsAllowed", () => {
         allowOutsideProjectAssets: true,
       });
       const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
-      expect(rendered).toContain("received-scene-marker");
+      expect(rendered).toContain(probe.consumed);
 
-      const { allowed, line } = await decide(dir);
+      const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
-      expect(line).toContain(`${probe.receivedFile} came from someone else`);
+      expect(line).toContain(SOMEONE_ELSE);
       expect(line).toContain("../../outside/pic.png");
     });
   });
