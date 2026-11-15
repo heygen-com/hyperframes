@@ -77,11 +77,7 @@ export interface HandlerOptions {
   artifactTtlMs?: number;
   /** Max renders that execute simultaneously. Queued requests wait FIFO. Default: 2. */
   maxConcurrentRenders?: number;
-  /**
-   * Extra host names a browser may use to reach the routes, such as a reverse proxy's public
-   * name. IP addresses, `localhost` and `*.localhost` are always allowed. Merged with the
-   * comma-separated PRODUCER_ALLOWED_HOSTS environment variable.
-   */
+  /** Extra browser-facing host names (e.g. a proxy's); merged with PRODUCER_ALLOWED_HOSTS. */
   allowedHosts?: readonly string[];
 }
 
@@ -1026,8 +1022,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 /**
  * True when a browser sent the request from a page on another origin. The browser's own
  * Sec-Fetch-Site verdict wins when present, so a same-origin page behind a proxy that rewrites
- * Host is still served once its name is allowed (see isDisallowedBrowserHost, which runs first);
- * older browsers fall back to comparing Origin with Host.
+ * Host is still served; older browsers fall back to comparing Origin with Host.
  */
 function isCrossOriginBrowserRequest(c: Context): boolean {
   const fetchSite = c.req.header("sec-fetch-site");
@@ -1041,7 +1036,6 @@ function isCrossOriginBrowserRequest(c: Context): boolean {
   }
 }
 
-/** The lower-case host name of a Host header or origin host, without port; null when unparseable. */
 function hostnameOf(host: string): string | null {
   try {
     return new URL(`http://${host}`).hostname.toLowerCase();
@@ -1050,11 +1044,7 @@ function hostnameOf(host: string): string | null {
   }
 }
 
-/**
- * A page that rebinds its own DNS name to this server reaches it under that name, so a browser
- * may only use names an outside page cannot rebind: IP addresses, `localhost`, `*.localhost`,
- * and the names the operator lists.
- */
+/** A rebound page arrives under its own DNS name; IP literals and localhost can't be rebound. */
 function isAllowedBrowserHostname(hostname: string | null, allowed: ReadonlySet<string>): boolean {
   if (!hostname) return false;
   if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
@@ -1072,12 +1062,7 @@ function allowedHostnames(options: HandlerOptions): Set<string> {
   return names;
 }
 
-/**
- * True when a browser sent the request under a host name, or from an origin, that is not
- * allowed. Requests without Origin or Sec-Fetch-Site (curl, server-to-server) pass. A page's
- * POST always carries Origin, so every route that starts work or returns an output token is
- * covered; a plain-http page's same-origin GET may carry neither header.
- */
+/** Header-less callers (curl, services) pass; a page's POST always carries Origin. */
 function isDisallowedBrowserHost(c: Context, allowed: ReadonlySet<string>): boolean {
   const origin = c.req.header("origin");
   if (!origin && !c.req.header("sec-fetch-site")) return false;
