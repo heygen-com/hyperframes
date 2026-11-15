@@ -590,6 +590,18 @@ describe("installEditingAgent", () => {
       }
     });
 
+    it("still forwards the keyup of a key held while the watch list changes", async () => {
+      const port = connectedPort();
+      await watch(port, ["k"]);
+      const seen = collect(port);
+      press("keydown", { key: "k", code: "KeyK" });
+      await vi.waitFor(() => expect(seen).toEqual([forwarded("keydown", "k", "KeyK")]));
+      expect(await watch(port, ["k", "j"], 2)).toMatchObject({ result: { watching: 2 } });
+      const after = collect(port);
+      press("keyup", { key: "k", code: "KeyK" });
+      expect(await received(port, after)).toEqual([forwarded("keyup", "k", "KeyK")]);
+    });
+
     it("stops on an empty list and when disposed", async () => {
       const port = connectedPort();
       await watch(port, ["k"]);

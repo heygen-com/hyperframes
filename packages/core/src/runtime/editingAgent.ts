@@ -125,7 +125,10 @@ function listenForKeys(on: boolean): void {
 
 function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
   if (combos.length === 0) keyWatches.delete(port);
-  else keyWatches.set(port, { combos: combos.map((text) => parseCombo(text)!), down: new Set() });
+  else {
+    const down = keyWatches.get(port)?.down ?? new Set<string>();
+    keyWatches.set(port, { combos: combos.map((text) => parseCombo(text)!), down });
+  }
   listenForKeys(keyWatches.size > 0);
   return { watching: combos.length };
 }
