@@ -534,3 +534,42 @@ export function* blockCommentMatches(source: string): Generator<ScanMatch<[]>> {
     opener.lastIndex = close + 2;
   }
 }
+
+/** Matches of `/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi`. */
+export function* stylesheetLinkMatches(source: string): Generator<ScanMatch<[]>> {
+  const opener = /<link\b/gi;
+  const tagEnd = finder(source, />/g);
+  const rel = finder(source, /\brel=["']stylesheet["']/gi);
+  for (let open = opener.exec(source); open; open = opener.exec(source)) {
+    const end = tagEnd(open.index + 5);
+    if (end === source.length) return;
+    if (rel(open.index + 5) > end) continue;
+    yield { index: open.index, parts: [source.slice(open.index, end + 1)] };
+    opener.lastIndex = end + 1;
+  }
+}
+
+/** Matches of `/([^{}]+)\{([^}]*)\}/g`. */
+export function* cssRuleMatches(
+  source: string,
+): Generator<ScanMatch<[selector: string, declarations: string]>> {
+  const ruleStart = finder(source, /[^{}]/g);
+  const brace = finder(source, /[{}]/g);
+  const close = finder(source, /\}/g);
+  for (let at = 0; at < source.length; ) {
+    const start = ruleStart(at);
+    const open = brace(start);
+    if (source[open] !== "{") {
+      at = open + 1;
+      continue;
+    }
+    const end = close(open + 1);
+    if (end === source.length) return;
+    const selector = source.slice(start, open);
+    yield {
+      index: start,
+      parts: [source.slice(start, end + 1), selector, source.slice(open + 1, end)],
+    };
+    at = end + 1;
+  }
+}

@@ -4,6 +4,7 @@ import {
   bareOrQuotedCssUrlMatches,
   blockCommentMatches,
   cssImportMatches,
+  cssRuleMatches,
   fontFaceBlockMatches,
   maskImageUrlMatches,
   styleBlockMatches,
@@ -16,6 +17,7 @@ import {
   remoteFontFaceUrlMatches,
   replaceMatches,
   sceneCssUrlMatches,
+  stylesheetLinkMatches,
   urlHashRefMatches,
   type ScanMatch,
 } from "./cssUrlScans";
@@ -47,6 +49,8 @@ const SCANS: Array<[Scan, RegExp]> = [
   [styleBlockMatches, /<style\b[^>]*>([\s\S]*?)<\/style>/gi],
   [fontFaceBlockMatches, /@font-face\s*\{([^}]*)\}/gi],
   [blockCommentMatches, /\/\*[\s\S]*?\*\//g],
+  [stylesheetLinkMatches, /<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi],
+  [cssRuleMatches, /([^{}]+)\{([^}]*)\}/g],
 ];
 const BACKGROUND_IMAGE_DECL =
   /(?:^|;|\{)\s*background(?:-image)?\s*:[^;}]*(?:\bgradient\s*\(|url\s*\()/i;
@@ -121,6 +125,12 @@ const TOKENS = [
   "/*",
   "*/",
   "/*/",
+  "<link",
+  "<LINK ",
+  ' rel="stylesheet"',
+  "REL='STYLESHEET'",
+  "xrel='stylesheet'",
+  "rel=\"stylesheet'",
 ];
 
 function pages(count: number): string[] {
@@ -197,6 +207,9 @@ describe("CSS url scans", () => {
     "<style>",
     "@font-face{",
     "/* ",
+    "<link ",
+    "a",
+    "{a",
   ])("finish a 1 MB page of unclosed %j in well under a second", (unit) => {
     const page = unit.repeat(Math.floor(1_000_000 / unit.length));
     const started = performance.now();
