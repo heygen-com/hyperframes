@@ -9,8 +9,21 @@ describe("special-use network list", () => {
   it.each(["192.0.66.108", "192.0.1.1", "192.0.3.1"])("leaves public %s reachable", (ip) =>
     expect(isBlockedNetworkHost(ip)).toBe(false),
   );
-  it.each(["64:ff9b::a00:1", "64:ff9b::7f00:1", "64:ff9b:1::1"])("blocks NAT64 %s", (ip) =>
+  it.each([
+    "64:ff9b::a00:1",
+    "64:ff9b::7f00:1",
+    "64:ff9b::10.0.0.1",
+    "64:ff9b::a9fe:a9fe",
+    "64:ff9b:1::808:808",
+    "::ffff:10.0.0.1",
+    "::ffff:a9fe:a9fe",
+    "::ffff:127.0.0.1",
+  ])("blocks %s: the IPv4 address it carries is not public", (ip) =>
     expect(isBlockedNetworkHost(ip)).toBe(true),
+  );
+  it.each(["64:ff9b::808:808", "64:ff9b::8.8.8.8", "::ffff:8.8.8.8", "::ffff:808:808"])(
+    "leaves %s reachable: it carries a public IPv4 address (DNS64 answers look like this)",
+    (ip) => expect(isBlockedNetworkHost(ip)).toBe(false),
   );
 });
 

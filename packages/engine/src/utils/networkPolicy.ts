@@ -83,17 +83,32 @@ function inOperatorRange(address: string, family: "ipv4" | "ipv6"): boolean {
   return ranges === "malformed" || ranges.check(address, family);
 }
 
+const MAPPED_OR_NAT64_IPV6 = new BlockList();
+MAPPED_OR_NAT64_IPV6.addSubnet("::ffff:0:0", 96, "ipv6");
+MAPPED_OR_NAT64_IPV6.addSubnet("64:ff9b::", 96, "ipv6");
+
+function embeddedIPv4(address: string): string | undefined {
+  const tail = address.slice(address.lastIndexOf(":") + 1);
+  if (isIP(tail) === 4) return tail;
+  const [head = "", rest] = address.split("::");
+  const left = head ? head.split(":") : [];
+  const right = rest ? rest.split(":") : [];
+  const groups = [...left, ...Array(8 - left.length - right.length).fill("0"), ...right];
+  if (groups.length !== 8) return undefined;
+  const [high, low] = groups.slice(6).map((group) => parseInt(group, 16));
+  if (!Number.isInteger(high) || !Number.isInteger(low)) return undefined;
+  return [high! >> 8, high! & 255, low! >> 8, low! & 255].join(".");
+}
+
 const NON_PUBLIC_IPV6_ADDRESSES = new BlockList();
 for (const [network, prefix] of [
   ["::", 128],
   ["::1", 128],
-  ["::ffff:0:0", 96],
   ["fc00::", 7],
   ["fe80::", 10],
   ["fec0::", 10],
   ["ff00::", 8],
   ["2001:db8::", 32],
-  ["64:ff9b::", 96],
   ["64:ff9b:1::", 48],
 ] as const) {
   NON_PUBLIC_IPV6_ADDRESSES.addSubnet(network, prefix, "ipv6");
@@ -115,6 +130,10 @@ export function isBlockedNetworkHost(hostname: string): boolean {
   const addressType = isIP(h);
   if (addressType === 0) return false;
   if (inOperatorRange(h, addressType === 4 ? "ipv4" : "ipv6")) return true;
+  if (addressType === 6 && MAPPED_OR_NAT64_IPV6.check(h, "ipv6")) {
+    const ipv4 = embeddedIPv4(h);
+    return ipv4 === undefined || isBlockedNetworkHost(ipv4);
+  }
   return addressType === 4
     ? NON_PUBLIC_IPV4_ADDRESSES.check(h, "ipv4")
     : NON_PUBLIC_IPV6_ADDRESSES.check(h, "ipv6");
