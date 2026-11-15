@@ -24,6 +24,11 @@ Studio hosts can now run the preview on its own sealed origin with the sandboxOr
 
 ## Fixes
 
+- **Engine:** Remote downloads get an absolute deadline and stop before the disk fills ([e1043659d](https://github.com/heygen-com/hyperframes/commit/e1043659d4490fde8458063a9585c30478464c8d), [#7827](https://github.com/heygen-com/hyperframes/pull/7827)).
+- **CLI:** The audio caches never write or read through links in .hyperframes ([9701f0639](https://github.com/heygen-com/hyperframes/commit/9701f0639c3614f4fb33f2a83973adafd179ef08), [#7825](https://github.com/heygen-com/hyperframes/pull/7825)).
+- **Parsers:** Helper programs never come from the project a subfolder sits in ([96cc8cb85](https://github.com/heygen-com/hyperframes/commit/96cc8cb85242fc72bb2e1371048d733cb4993c68), [#7845](https://github.com/heygen-com/hyperframes/pull/7845)).
+- **CLI:** A project .env key is used only when nothing is saved ([de1ce6898](https://github.com/heygen-com/hyperframes/commit/de1ce68988a6cce48a73a67a8d2c2b7fb4603bad), [#7848](https://github.com/heygen-com/hyperframes/pull/7848)).
+- **CLI:** Keep project text and other computers' shares out of render and upload notices ([70d60ce03](https://github.com/heygen-com/hyperframes/commit/70d60ce03719030bda362d6c7107a9fa350c6090), [#7849](https://github.com/heygen-com/hyperframes/pull/7849)).
 - **Studio:** GSAP keyframe and 3D previews stop throwing on a sealed preview ([39dc1e232](https://github.com/heygen-com/hyperframes/commit/39dc1e232d242cdecf9ad782483587b288cc1392), [#7833](https://github.com/heygen-com/hyperframes/pull/7833)).
 - Snapshot escapes composition text in its output; stills sweep the transcode cache ([a2f926708](https://github.com/heygen-com/hyperframes/commit/a2f926708901f1fc52c18888db103cd768537824), [#7832](https://github.com/heygen-com/hyperframes/pull/7832)).
 - Render, capture and bundling refuse the app's .hyperframes records ([962ddb7c5](https://github.com/heygen-com/hyperframes/commit/962ddb7c543519be17f6085a9c105d29d5886ecc), [#7828](https://github.com/heygen-com/hyperframes/pull/7828)).
