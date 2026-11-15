@@ -78,8 +78,9 @@ function contentKey(el: Element): string {
 // drag-to-edit targeting.
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
-  let id = toHfId(fnv1a(key));
-  let dup = 0;
+  const resume = resumeAt(assigned);
+  let dup = resume.get(key) ?? 0;
+  let id = toHfId(fnv1a(dup ? `${key}#${dup}` : key));
   while (assigned.has(id)) {
     dup += 1;
     // Graceful fallback instead of a hard throw: rehashing only fails to find a
@@ -92,8 +93,18 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
     }
     id = toHfId(fnv1a(`${key}#${dup}`));
   }
+  if (dup <= 10000) resume.set(key, dup);
   assigned.add(id);
   return id;
+}
+
+// Ids are only ever added to `assigned`, so a duplicate index taken once is taken for good: the next twin of a content
+// key resumes at the index the last one got, and a run of N identical elements probes O(N) ids, not O(N²).
+const RESUME = new WeakMap<Set<string>, Map<string, number>>();
+function resumeAt(assigned: Set<string>): Map<string, number> {
+  let found = RESUME.get(assigned);
+  if (!found) RESUME.set(assigned, (found = new Map()));
+  return found;
 }
 
 /**
