@@ -27,12 +27,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Dispatch on the ref to render: the run then checks out that ref and writes only that ref's cache.
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to render (branch / tag / SHA)."
-        required: false
-        default: ""
 
 concurrency:
   group: windows-render-${{ github.ref }}
@@ -98,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
       - uses: ./.github/actions/preflight
 
   render-windows:
@@ -125,7 +121,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           lfs: true
 
       - name: Show platform info
@@ -459,7 +455,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
           # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
           lfs: ${{ matrix.process_tests == true }}
 

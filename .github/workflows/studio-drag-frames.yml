@@ -9,11 +9,9 @@ env:
 # Measures drag smoothness on a runner with nothing else on it. The bench measures a blank page per case
 # in the same run, and the box only counts as quiet if that control dropped no frame anywhere.
 on:
+  # Dispatch on the ref to measure: the run then checks out that ref and writes only that ref's cache.
   workflow_dispatch:
     inputs:
-      ref:
-        description: Commit, branch or tag to measure
-        default: main
       filter:
         description: Case ids to run (a regular expression)
         default: "^(move|resize|rotate|crop)-(none|tween)-px-r0-root-z100$"
@@ -34,13 +32,11 @@ jobs:
       matrix:
         run: [1, 2, 3, 4, 5]
     env:
-      BENCH_REF: ${{ inputs.ref || 'main' }}
       BENCH_FILTER: ${{ inputs.filter || '^(move|resize|rotate|crop)-(none|tween)-px-r0-root-z100$' }}
       BENCH_GRID: ${{ inputs.grid || 'pr' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ env.BENCH_REF }}
           lfs: true
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
