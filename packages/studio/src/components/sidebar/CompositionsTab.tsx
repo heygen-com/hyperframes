@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { studioApiFetch } from "../../utils/studioApiFetch";
+import { fetchFrameToken } from "../../player/lib/frameToken";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useThumbnailLease } from "../../hooks/useThumbnailLease";
 import {
@@ -72,13 +72,9 @@ function useFreshFrameToken(projectId: string, wanted: boolean): string | null |
   useEffect(() => {
     if (!wanted) return setKnown(undefined);
     let live = true;
-    void studioApiFetch(buildProjectApiPath(projectId, "/frame-token"))
-      .then((res) => (res.ok ? res.json() : null))
-      .then((body: { token?: unknown } | null) =>
-        typeof body?.token === "string" ? body.token : null,
-      )
-      .catch(() => null)
-      .then((token) => live && setKnown({ token }));
+    void fetchFrameToken(buildProjectApiPath(projectId, "/frame-token")).then(
+      (token) => live && setKnown({ token }),
+    );
     return () => {
       live = false;
     };

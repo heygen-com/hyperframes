@@ -58,6 +58,7 @@ interface NLEPreviewProps extends Pick<
   /** Draws the picture edge to edge in this box, without Studio's inset band. */
   fillBox?: boolean;
   compositionSizeHint?: PreviewCompositionSize;
+  sandboxOrigin?: "opaque";
 }
 
 export function getPreviewPlayerKey({
@@ -92,6 +93,7 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
   fillBox,
   compositionSizeHint,
+  sandboxOrigin,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -487,6 +489,7 @@ export const NLEPreview = memo(function NLEPreview({
                 onLoad={() => {}}
                 portrait={portrait}
                 suppressLoadingOverlay
+                sandboxOrigin={sandboxOrigin}
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
@@ -509,6 +512,7 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}
+                  sandboxOrigin={sandboxOrigin}
                   style={
                     directUrl?.includes("/components/")
                       ? { position: "absolute", inset: 0, zIndex: 1 }
@@ -528,6 +532,7 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay
                   noLoadTimeout
+                  sandboxOrigin={sandboxOrigin}
                   style={SHADOW_IFRAME_STYLE}
                 />
               ),

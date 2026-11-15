@@ -1,8 +1,24 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { _setDownloadFetchForTests, downloadToTemp, UrlDownloadError } from "./urlDownloader.js";
+
+const fakeDisk = vi.hoisted(() => {
+  const state: { freeBytes?: (path: string) => number | undefined } = {};
+  return state;
+});
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  return {
+    ...actual,
+    statfsSync: (path: string) => {
+      const freeBytes = fakeDisk.freeBytes?.(path);
+      return freeBytes === undefined ? actual.statfsSync(path) : { bavail: freeBytes, bsize: 1 };
+    },
+  };
+});
 
 const stubFetch = (replacement: unknown): void =>
   _setDownloadFetchForTests(replacement as Parameters<typeof _setDownloadFetchForTests>[0]);
@@ -10,6 +26,7 @@ const stubFetch = (replacement: unknown): void =>
 const dirs: string[] = [];
 
 afterEach(() => {
+  fakeDisk.freeBytes = undefined;
   vi.unstubAllEnvs();
   _setDownloadFetchForTests();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -130,4 +147,88 @@ describe("downloadToTemp's byte limit", () => {
       expect(readFileSync(path, "utf8")).toBe(MEDIA);
     },
   );
+});
+
+const MiB = 1024 ** 2;
+
+function bytesUnder(dir: string): number {
+  return readdirSync(dir, { withFileTypes: true }).reduce((total, entry) => {
+    const path = join(dir, entry.name);
+    return total + (entry.isDirectory() ? bytesUnder(path) : statSync(path).size);
+  }, 0);
+}
+
+/** Reports `capacity` minus what is written under `dir` as free space there; returns the lowest seen. */
+function fakeVolume(dir: string, capacity: number): { lowestFree: () => number } {
+  let lowest = capacity;
+  fakeDisk.freeBytes = (path) => {
+    if (!path.startsWith(dir)) return undefined;
+    const free = capacity - bytesUnder(dir);
+    lowest = Math.min(lowest, free);
+    return free;
+  };
+  return { lowestFree: () => lowest };
+}
+
+function mibBody(chunks: number | "endless", declare: boolean): Response {
+  let sent = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(MiB).fill(0x61));
+      sent += 1;
+      if (chunks !== "endless" && sent === chunks) controller.close();
+    },
+  });
+  const headers =
+    declare && chunks !== "endless" ? { "content-length": `${chunks * MiB}` } : undefined;
+  return new Response(body, { headers });
+}
+
+const lowDisk = {
+  kind: "filesystem",
+  retryable: false,
+  message: `Download stopped: it would leave less than ${32 * MiB} bytes free on the download volume`,
+};
+
+describe("downloadToTemp's free-space guard", () => {
+  it("refuses parallel declared bodies that together would cut into the free-space minimum", async () => {
+    vi.stubEnv("HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES", `${32 * MiB}`);
+    const dir = tempDir();
+    const volume = fakeVolume(dir, 96 * MiB);
+    const fetchMock = vi.fn(async () => mibBody(40, true));
+    stubFetch(fetchMock);
+
+    const results = await Promise.allSettled(
+      [1, 2, 3].map((n) => downloadToTemp(`https://cdn.example/large-${n}.mp4`, dir, 30_000)),
+    );
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const refusals = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    expect(refusals).toEqual([expect.objectContaining(lowDisk), expect.objectContaining(lowDisk)]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(readdirSync(dir)).toHaveLength(1);
+    expect(volume.lowestFree()).toBeGreaterThanOrEqual(32 * MiB);
+  });
+
+  it("stops parallel endless bodies with no Content-Length before the volume fills", async () => {
+    vi.stubEnv("HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES", `${32 * MiB}`);
+    vi.stubEnv("HYPERFRAMES_MAX_DOWNLOAD_BYTES", `${128 * MiB}`);
+    const dir = tempDir();
+    const volume = fakeVolume(dir, 96 * MiB);
+    const fetchMock = vi.fn(async () => mibBody("endless", false));
+    stubFetch(fetchMock);
+
+    const results = await Promise.allSettled(
+      [1, 2, 3].map((n) => downloadToTemp(`https://cdn.example/endless-${n}.mp4`, dir, 30_000)),
+    );
+
+    expect(results).toEqual(
+      [1, 2, 3].map(() => ({ status: "rejected", reason: expect.objectContaining(lowDisk) })),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(volume.lowestFree()).toBeGreaterThan(0);
+  });
 });

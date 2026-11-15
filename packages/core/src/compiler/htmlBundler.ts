@@ -928,7 +928,7 @@ export interface BundleOptions {
   onRead?: (filePath: string) => void;
   /**
    * Project files the build never reads; a refused file keeps its authored reference. Git metadata and env files
-   * always; `"studio"` also refuses the app's records under `.hyperframes/`, as Studio's file routes do.
+   * always; `"studio"`, the default, also refuses the app's records under `.hyperframes/`, as every file server does.
    */
   privateFiles?: BundlePrivateFiles;
 }
@@ -1069,7 +1069,7 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
   };
   const scope: BundleReadScope = {
     projectDir,
-    privateFiles: options?.privateFiles ?? "vcs-and-secrets",
+    privateFiles: options?.privateFiles ?? "studio",
     noteRead,
   };
   return bundleReads.run(scope, () => bundleProject(projectDir, options));

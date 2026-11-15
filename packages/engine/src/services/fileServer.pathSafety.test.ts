@@ -85,3 +85,51 @@ describe("fileServer private project files", () => {
     },
   );
 });
+
+describe("fileServer tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])(
+    "answers %s with 404 from either root and still serves prepared assets",
+    async (requestPath) => {
+      const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-records-"));
+      const compiledDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-records-compiled-"));
+      for (const root of [projectDir, compiledDir]) {
+        fs.mkdirSync(path.join(root, ".hyperframes", "prepared-assets"), { recursive: true });
+        for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+          fs.writeFileSync(path.join(root, ".hyperframes", name), "PRIVATE_RECORD");
+        }
+      }
+      fs.writeFileSync(
+        path.join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"),
+        "prepared",
+      );
+      fs.symlinkSync(
+        path.join(projectDir, ".hyperframes", "app-history.jsonl"),
+        path.join(projectDir, "linked-history.json"),
+      );
+      const server = await createFileServer({
+        headScripts: [],
+        bodyScripts: [],
+        projectDir,
+        compiledDir,
+      });
+      try {
+        const response = await fetch(`${server.url}/${requestPath}`);
+        expect(response.status).toBe(404);
+        expect(await response.text()).not.toContain("PRIVATE_RECORD");
+        const prepared = await fetch(`${server.url}/.hyperframes/prepared-assets/clip.txt`);
+        expect(await prepared.text()).toBe("prepared");
+      } finally {
+        server.close();
+        fs.rmSync(projectDir, { recursive: true, force: true });
+        fs.rmSync(compiledDir, { recursive: true, force: true });
+      }
+    },
+  );
+});

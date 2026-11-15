@@ -2034,6 +2034,33 @@ describe("resolveStill", () => {
     60_000,
   );
 
+  it.skipIf(!canStill)(
+    "sweeps the cache when it makes a still, so stills alone cannot grow it without bound",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill, CACHE_DIR_NAME } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+      const cacheDir = join(projectDir, CACHE_DIR_NAME);
+      mkdirSync(cacheDir, { recursive: true });
+      const idle = join(cacheDir, `${"a".repeat(64)}.jpg`);
+      writeFileSync(idle, "old still");
+      const longAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+      utimesSync(idle, longAgo, longAgo);
+
+      const made = await resolveStill(projectDir, clip, 1);
+
+      expect(existsSync(made)).toBe(true);
+      expect(existsSync(idle)).toBe(false);
+    },
+    60_000,
+  );
+
   async function stillSetup() {
     const spy = createSpawnSpy();
     const { resolveStill } = await loadModule(spy.spawn, FFMPEG_PATH);

@@ -81,6 +81,26 @@ software WebGPU may use SwiftShader, but it must also create a device. The check
 releases its temporary device; the composition still creates its own device
 with any features or limits its renderer needs.
 
+## Remote media downloads
+
+The engine downloads remote `https://` video, audio, image, and font sources
+into the render's work directory before it uses them. Each download has these
+limits, and an environment variable changes each one:
+
+| Limit | Default | Environment variable |
+| --- | --- | --- |
+| Largest file | 8 GiB | `HYPERFRAMES_MAX_DOWNLOAD_BYTES` |
+| Longest download, however fast data arrives | 30 minutes | `HYPERFRAMES_MAX_DOWNLOAD_MS` |
+| Slowest average speed over a minute | 32 KiB/s | `HYPERFRAMES_MIN_DOWNLOAD_BYTES_PER_SEC` |
+| Free space left on the download volume | 512 MiB | `HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES` |
+
+Sizes are in bytes and the time limit is in milliseconds. A speed or free-space
+value of `0` turns that check off.
+
+A download that passes one of these limits stops with an error. The free-space
+check counts the declared sizes of all downloads running at the same time, so
+parallel downloads cannot fill the volume together.
+
 ## What else the package exposes
 
 | Surface | Use it for |
