@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
@@ -99,9 +100,26 @@ async function readAt(fh: FileHandle, bytes: number, position: number): Promise<
   return buf.subarray(0, filled);
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file. */
-async function readHead(filePath: string): Promise<Buffer> {
-  const fh = await openFile(filePath, "r");
+const OPEN_WITHOUT_WAITING = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0);
+
+/** Opens without waiting on a FIFO or device, and gives null for one. A folder opens, and reading it fails as before. */
+async function openRegular(path: string | Buffer): Promise<FileHandle | null> {
+  const fh = await openFile(path, OPEN_WITHOUT_WAITING);
+  try {
+    const stats = await fh.stat();
+    if (stats.isFile() || stats.isDirectory()) return fh;
+  } catch (error) {
+    await fh.close().catch(() => {});
+    throw error;
+  }
+  await fh.close().catch(() => {});
+  return null;
+}
+
+/** Read up to {@link SNIFF_BYTES} from the front of the file; null when it is not a regular file. */
+async function readHead(filePath: string): Promise<Buffer | null> {
+  const fh = await openRegular(filePath);
+  if (!fh) return null;
   try {
     return await readAt(fh, SNIFF_BYTES, 0);
   } finally {
@@ -139,9 +157,8 @@ function startsWithDocumentByte(head: Buffer): boolean {
  */
 export async function isNotMediaPayload(filePath: string): Promise<boolean> {
   try {
-    return (
-      startsWithDocumentByte(await readHead(filePath)) || (await playlistLeavesItsFolder(filePath))
-    );
+    const head = await readHead(filePath);
+    return !head || startsWithDocumentByte(head) || (await playlistLeavesItsFolder(filePath));
   } catch {
     return false;
   }
@@ -316,7 +333,8 @@ function startsAsPlaylist(head: Buffer): boolean {
 
 /** The list's text as latin1, null when the file is not a list, true when it must be refused unread. One open. */
 async function readList(path: string): Promise<string | null | true> {
-  const fh = await openFile(Buffer.from(path, "latin1"), "r");
+  const fh = await openRegular(Buffer.from(path, "latin1"));
+  if (!fh) return true;
   try {
     const first = await readAt(fh, SNIFF_BYTES, 0);
     const start = await textStart(fh, first);

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -370,5 +370,24 @@ describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
       Buffer.concat([...Array(17).fill(tag), Buffer.from(head)]),
     );
     expect(await playlistLeavesItsFolder(file)).toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("a FIFO with no writer", () => {
+  function fifoBeside(list?: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-playlist-fifo-"));
+    execFileSync("mkfifo", [join(dir, "pipe.mp4")]);
+    if (list === undefined) return join(dir, "pipe.mp4");
+    writeFileSync(join(dir, "clip.m3u8"), list);
+    return join(dir, "clip.m3u8");
+  }
+
+  it("is refused as media without waiting for a writer", async () => {
+    expect(await isNotMediaPayload(fifoBeside())).toBe(true);
+  });
+
+  it("is refused when a list names it, without waiting for a writer", async () => {
+    const list = fifoBeside("#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\npipe.mp4\n");
+    expect(await playlistLeavesItsFolder(list)).toBe(true);
   });
 });
