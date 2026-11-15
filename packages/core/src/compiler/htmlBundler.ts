@@ -42,6 +42,7 @@ import {
   splitUrlSuffix,
 } from "@hyperframes/parsers/asset-paths";
 import {
+  blockCommentMatches,
   cssImportMatches,
   cssUrlMatches,
   rawCssUrlMatches,
@@ -152,26 +153,21 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
-const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+const COMMENT_PLACEHOLDER_RE = /\/\*__hf_c\d+__\*\//g;
 
 function withCommentsStripped<T>(
   css: string,
   fn: (stripped: string) => T,
 ): { result: T; restore: (s: string) => string } {
-  const comments: string[] = [];
-  const stripped = css.replace(CSS_COMMENT_RE, (m) => {
-    const idx = comments.length;
-    comments.push(m);
-    return `/*__hf_c${idx}__*/`;
+  const comments = new Map<string, string>();
+  const stripped = replaceMatches(css, blockCommentMatches(css), (m) => {
+    const placeholder = `/*__hf_c${comments.size}__*/`;
+    comments.set(placeholder, m);
+    return placeholder;
   });
   const result = fn(stripped);
-  const restore = (s: string) => {
-    let out = s;
-    for (let i = 0; i < comments.length; i++) {
-      out = out.replace(`/*__hf_c${i}__*/`, comments[i]!);
-    }
-    return out;
-  };
+  const restore = (s: string) =>
+    s.replace(COMMENT_PLACEHOLDER_RE, (placeholder) => comments.get(placeholder) ?? placeholder);
   return { result, restore };
 }
 
