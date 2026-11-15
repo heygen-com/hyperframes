@@ -722,13 +722,14 @@ function localizeCssEntry(ctx: ExternalAssetContext, entryPath: string, content:
   }
 }
 
-/** Staged pages the video plays, as the renderer mounts them; null (check every page) when one is not staged. */
+/** Staged pages played from `entry`, as the renderer mounts them; null (check every page) when one is not staged. */
 function filmPagesOf(
   absProjectDir: string,
   fileContents: Map<string, StagedFile>,
+  entry: string,
 ): Set<string> | null {
   const pages = new Set<string>();
-  const queue = ["index.html"];
+  const queue = [entry];
   for (const page of queue) {
     if (pages.has(page)) continue;
     const file = fileContents.get(page);
@@ -753,6 +754,7 @@ export function localizeExternalAssets(
   onDiskMinBytes = Infinity,
   onLeftOut?: OnLeftOut,
   onOutsideFile?: OnOutsideFile,
+  entry = "index.html",
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -764,7 +766,7 @@ export function localizeExternalAssets(
     onLeftOut,
     onOutsideFile,
     received: receivedFiles(absProjectDir),
-    filmPages: filmPagesOf(absProjectDir, fileContents),
+    filmPages: filmPagesOf(absProjectDir, fileContents, entry),
   };
 
   for (const [entryPath, content] of [...fileContents.entries()]) {
@@ -834,12 +836,16 @@ function walkedFileLeftOut(
   return null;
 }
 
-/** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
+/**
+ * {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk.
+ * `entry` is the archive key of the page that will render.
+ */
 export function stagePublishFiles(
   projectDir: string,
   onDiskMinBytes: number,
   onLeftOut?: OnLeftOut,
   onOutsideFile?: OnOutsideFile,
+  entry = "index.html",
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
@@ -876,7 +882,14 @@ export function stagePublishFiles(
   }
 
   composeNamesInText(fileContents, filePaths);
-  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut, onOutsideFile);
+  localizeExternalAssets(
+    absProjectDir,
+    fileContents,
+    onDiskMinBytes,
+    onLeftOut,
+    onOutsideFile,
+    entry,
+  );
   return fileContents;
 }
 

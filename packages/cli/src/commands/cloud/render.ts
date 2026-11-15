@@ -790,12 +790,18 @@ function stageProjectFiles(
   onOutsideFile: OnOutsideFile,
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut, onOutsideFile);
     const entryPath = archiveKey(
       relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
         "\\",
         "/",
       ),
+    );
+    const fileMap = stagePublishFiles(
+      project.dir,
+      OFFLOAD_MIN_BYTES,
+      onLeftOut,
+      onOutsideFile,
+      entryPath,
     );
     if (!fileMap.has(entryPath)) {
       throw new Error(
