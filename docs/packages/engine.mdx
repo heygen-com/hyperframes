@@ -90,16 +90,23 @@ limits, and an environment variable changes each one:
 | Limit | Default | Environment variable |
 | --- | --- | --- |
 | Largest file | 8 GiB | `HYPERFRAMES_MAX_DOWNLOAD_BYTES` |
-| Longest download, however fast data arrives | 30 minutes | `HYPERFRAMES_MAX_DOWNLOAD_MS` |
+| Longest single attempt, however fast data arrives | 30 minutes | `HYPERFRAMES_MAX_DOWNLOAD_MS` |
 | Slowest average speed over a minute | 32 KiB/s | `HYPERFRAMES_MIN_DOWNLOAD_BYTES_PER_SEC` |
 | Free space left on the download volume | 512 MiB | `HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES` |
 
 Sizes are in bytes and the time limit is in milliseconds. A speed or free-space
 value of `0` turns that check off.
 
-A download that passes one of these limits stops with an error. The free-space
-check counts the declared sizes of all downloads running at the same time, so
-parallel downloads cannot fill the volume together.
+A download that passes one of these limits stops with an error. The time limit
+applies to each attempt: a stalled or too-slow attempt that is retried starts a
+new 30 minutes, while an attempt stopped by the time limit is not retried.
+
+The free-space check counts the declared sizes of all downloads running at the
+same time in this process, so parallel downloads in one render cannot fill the
+volume together. Separate render processes on one host see each other's writes
+only when they measure free space again, every 4 MiB received. On a shared host
+that evicts workloads below a free-disk threshold, set
+`HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES` above that threshold.
 
 ## What else the package exposes
 
