@@ -1,8 +1,16 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { chromeMajorCeiling, exceedsChromeCeiling, shellStarts } from "./chromeHostCeiling.js";
+import {
+  PINNED_SHELL_DIGESTS,
+  chromeMajorCeiling,
+  exceedsChromeCeiling,
+  headlessShellDigest,
+  isPinnedHeadlessShell,
+  managedChromeVersion,
+  shellStarts,
+} from "./chromeHostCeiling.js";
 
 describe("chromeMajorCeiling", () => {
   it.each([
@@ -38,6 +46,68 @@ describe.skipIf(process.platform === "win32")("shellStarts", () => {
       expect(Date.now() - started).toBeLessThan(3000);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("isPinnedHeadlessShell", () => {
+  function shellFolder(): { folder: string; shell: string } {
+    const folder = mkdtempSync(join(tmpdir(), "hf-pinned-shell-"));
+    mkdirSync(join(folder, "locales"));
+    writeFileSync(join(folder, "chrome-headless-shell"), "the build");
+    writeFileSync(join(folder, "libEGL.so"), "a library it loads");
+    writeFileSync(join(folder, "locales", "en-US.pak"), "strings");
+    return { folder, shell: join(folder, "chrome-headless-shell") };
+  }
+
+  it("has digests for every build a host may be given", () => {
+    for (const version of [
+      managedChromeVersion("linux"),
+      managedChromeVersion("darwin", "21.6.0"),
+    ]) {
+      expect(PINNED_SHELL_DIGESTS[version]?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("uses a shell only while every file in its folder matches a pinned build", () => {
+    const { folder, shell } = shellFolder();
+    const pinned = PINNED_SHELL_DIGESTS[managedChromeVersion("linux")] as string[];
+    try {
+      pinned.push(headlessShellDigest(folder) ?? "");
+      expect(isPinnedHeadlessShell(shell)).toBe(true);
+      // Chrome's own logs may appear while it runs.
+      writeFileSync(join(folder, "chrome_debug.log"), "log");
+      expect(isPinnedHeadlessShell(shell)).toBe(true);
+      // The library beside the shell changes, size kept: still refused.
+      writeFileSync(join(folder, "libEGL.so"), "a library it LOADS");
+      expect(isPinnedHeadlessShell(shell)).toBe(false);
+    } finally {
+      pinned.pop();
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a pinned folder once a file is added to it", () => {
+    const { folder, shell } = shellFolder();
+    const pinned = PINNED_SHELL_DIGESTS[managedChromeVersion("linux")] as string[];
+    try {
+      pinned.push(headlessShellDigest(folder) ?? "");
+      writeFileSync(join(folder, "libvulkan.so.1"), "planted");
+      expect(isPinnedHeadlessShell(shell)).toBe(false);
+    } finally {
+      pinned.pop();
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("refuses a folder with a link in it", () => {
+    const { folder, shell } = shellFolder();
+    try {
+      symlinkSync(join(folder, "libEGL.so"), join(folder, "libGLESv2.so"));
+      expect(headlessShellDigest(folder)).toBeUndefined();
+      expect(isPinnedHeadlessShell(shell)).toBe(false);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
     }
   });
 });

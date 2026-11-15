@@ -8,7 +8,7 @@ Full HTML-to-video rendering pipeline: capture frames with Chrome's BeginFrame A
 npm install @hyperframes/producer
 ```
 
-**Requirements:** Node.js >= 22, Chrome/Chromium (auto-downloaded), FFmpeg
+**Requirements:** Node.js >= 22, FFmpeg, and the pinned `chrome-headless-shell`: run `npx hyperframes browser ensure` once, or name a browser in `PRODUCER_HEADLESS_SHELL_PATH`. A cached browser is used only when its files match the pinned build. HDR capture needs a full Chrome named in `HYPERFRAMES_BROWSER_PATH`.
 
 ## Usage
 

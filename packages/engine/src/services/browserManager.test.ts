@@ -10,6 +10,12 @@ import type { Browser, Page, PuppeteerNode } from "puppeteer-core";
 
 import type { CaptureMode } from "./browserLeasePool.js";
 import { managedChromeVersion } from "./chromeHostCeiling.js";
+
+const BROWSER_VARS = [
+  "HYPERFRAMES_BROWSER_PATH",
+  "PRODUCER_HEADLESS_SHELL_PATH",
+  "PUPPETEER_EXECUTABLE_PATH",
+] as const;
 import { resolveConfig } from "../config.js";
 
 import {
@@ -963,16 +969,54 @@ describe("resolveBrowserGpuMode", () => {
     });
   });
 
-  it("finds no full Chrome, without throwing, when its cache cannot be read", () => {
+  it("starts HDR capture only in a full Chrome the environment names, never a cached one", () => {
     const home = mkdtempSync(join(tmpdir(), "hf-full-chrome-cache-"));
-    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    const names = ["HOME", "USERPROFILE", ...BROWSER_VARS] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
     try {
-      mkdirSync(join(home, ".cache", "puppeteer"), { recursive: true });
-      writeFileSync(join(home, ".cache", "puppeteer", "chrome"), "not a folder");
+      const cached = join(
+        home,
+        ".cache",
+        "puppeteer",
+        "chrome",
+        "linux-150.0.1.1",
+        "chrome-linux64",
+      );
+      mkdirSync(cached, { recursive: true });
+      writeFileSync(join(cached, "chrome"), "a cached full Chrome");
+      for (const name of BROWSER_VARS) delete process.env[name];
       Object.assign(process.env, { HOME: home, USERPROFILE: home });
       expect(resolveFullChromePath()).toBeUndefined();
+      process.env.HYPERFRAMES_BROWSER_PATH = join(cached, "chrome");
+      expect(resolveFullChromePath()).toBe(join(cached, "chrome"));
     } finally {
-      Object.assign(process.env, saved);
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to start a browser it has not verified, and says how to get one", async () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-no-verified-browser-"));
+    const names = ["HOME", "USERPROFILE", "HYPERFRAMES_CACHE_DIR", ...BROWSER_VARS] as const;
+    const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      for (const name of BROWSER_VARS) delete process.env[name];
+      Object.assign(process.env, {
+        HOME: home,
+        USERPROFILE: home,
+        HYPERFRAMES_CACHE_DIR: join(home, "hf"),
+      });
+      await expect(acquireBrowser([], { enableBrowserPool: false })).rejects.toThrow(
+        /npx hyperframes browser ensure.*PRODUCER_HEADLESS_SHELL_PATH/,
+      );
+    } finally {
+      for (const name of names) {
+        if (saved[name] === undefined) delete process.env[name];
+        else process.env[name] = saved[name];
+      }
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -1154,7 +1198,23 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
     os.release = () => process.env.HF_TEST_OS_RELEASE;
     require("node:module").syncBuiltinESMExports();
   }
-  import(process.env.HF_TEST_MODULE_URL).then(({ resolveHeadlessShellPath }) => {
+  // Unless a case asks for the real check, a cached shell that is a non-empty file counts as a pinned build.
+  const { readdirSync, statSync } = require("node:fs");
+  const { join } = require("node:path");
+  const list = (dir) => { try { return readdirSync(dir); } catch { return []; } };
+  const isShell = (path) => { try { return statSync(path).isFile() && statSync(path).size > 0; } catch { return false; } };
+  const trust = !process.env.HF_TEST_TRUST_FAKE_SHELLS ? Promise.resolve() : import(process.env.HF_TEST_CEILING_URL)
+    .then(({ PINNED_SHELL_DIGESTS, headlessShellDigest }) => {
+      const cache = join(require("node:os").homedir(), ".cache");
+      for (const root of [join(cache, "hyperframes", "chrome", "chrome-headless-shell"), join(cache, "puppeteer", "chrome-headless-shell")])
+        for (const version of list(root))
+          for (const name of list(join(root, version))) {
+            const folder = join(root, version, name);
+            if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
+            try { PINNED_SHELL_DIGESTS["152.0.7977.30"].push(headlessShellDigest(folder)); } catch {}
+          }
+    });
+  trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
     process.stdout.write(resolveHeadlessShellPath({}) ?? "");
   });
 `;
@@ -1162,14 +1222,17 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
 /** Runs resolveHeadlessShellPath in a subprocess with a faked platform/arch/os.release. */
 function resolveHeadlessShellInSubprocess(
   env: NodeJS.ProcessEnv,
-  fakes: { platform?: string; arch?: string; osRelease?: string } = {},
+  fakes: { platform?: string; arch?: string; osRelease?: string; realPinCheck?: boolean } = {},
 ): string {
   const moduleUrl = new URL("./browserManager.ts", import.meta.url).href;
+  const { PUPPETEER_EXECUTABLE_PATH: _runnerBrowser, ...rest } = env;
   return execFileSync("bun", ["--eval", RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT], {
     encoding: "utf8",
     env: {
-      ...env,
+      ...rest,
       HF_TEST_MODULE_URL: moduleUrl,
+      HF_TEST_CEILING_URL: new URL("./chromeHostCeiling.ts", import.meta.url).href,
+      ...(fakes.realPinCheck ? {} : { HF_TEST_TRUST_FAKE_SHELLS: "1" }),
       ...(fakes.platform ? { HF_TEST_PLATFORM: fakes.platform } : {}),
       ...(fakes.arch ? { HF_TEST_ARCH: fakes.arch } : {}),
       ...(fakes.osRelease ? { HF_TEST_OS_RELEASE: fakes.osRelease } : {}),
@@ -1184,6 +1247,7 @@ describe("resolveHeadlessShellPath", () => {
   // A runner may export either var (the Windows job sets HYPERFRAMES_BROWSER_PATH); each case sets its own.
   beforeEach(() => {
     delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+    delete process.env.PUPPETEER_EXECUTABLE_PATH;
     delete process.env.HYPERFRAMES_BROWSER_PATH;
   });
 
@@ -1240,6 +1304,7 @@ describe("resolveHeadlessShellPath", () => {
       const binary = join(dir, "chrome-headless-shell");
       writeFileSync(binary, "");
       delete process.env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete process.env.PUPPETEER_EXECUTABLE_PATH;
       process.env.HYPERFRAMES_BROWSER_PATH = binary;
 
       expect(resolveHeadlessShellPath({})).toBe(binary);
@@ -1307,6 +1372,7 @@ describe("resolveHeadlessShellPath", () => {
 
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, {
           platform: hostPlatform,
@@ -1347,6 +1413,7 @@ describe("resolveHeadlessShellPath", () => {
 
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, {
           platform: hostPlatform,
@@ -1371,6 +1438,7 @@ describe("resolveHeadlessShellPath", () => {
       writeFileSync(binary, "shell");
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
 
       expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe("");
@@ -1405,6 +1473,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
 
       expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe(
@@ -1440,6 +1509,7 @@ describe("resolveHeadlessShellPath", () => {
         shell("99.0.6533.123", "#!/bin/sh\nexit 0\n");
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
 
         expect(resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" })).toBe(
@@ -1450,6 +1520,39 @@ describe("resolveHeadlessShellPath", () => {
       }
     },
   );
+
+  it("never resolves a cached shell whose folder is not a pinned build", () => {
+    const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-unpinned-"));
+    try {
+      for (const cache of [["hyperframes", "chrome"], ["puppeteer"]]) {
+        const folder = join(
+          home,
+          ".cache",
+          ...cache,
+          "chrome-headless-shell",
+          "linux-152.0.7977.30",
+        );
+        mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
+        writeFileSync(
+          join(folder, "chrome-headless-shell-linux64", "chrome-headless-shell"),
+          "swapped",
+        );
+      }
+      const env = { ...process.env, HOME: home, USERPROFILE: home };
+      delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
+      delete env.HYPERFRAMES_BROWSER_PATH;
+      const stdout = resolveHeadlessShellInSubprocess(env, {
+        platform: "linux",
+        arch: "x64",
+        realPinCheck: true,
+      });
+
+      expect(stdout).not.toContain(home);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 
   it("reuses chrome-headless-shell from the HyperFrames-managed cache", () => {
     const home = mkdtempSync(join(tmpdir(), "hyperframes-engine-browser-cache-"));
@@ -1473,6 +1576,7 @@ describe("resolveHeadlessShellPath", () => {
       // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1506,6 +1610,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1540,6 +1645,7 @@ describe("resolveHeadlessShellPath", () => {
         chmodSync(lockedDir, 0o000);
         const env = { ...process.env, HOME: home, USERPROFILE: home };
         delete env.PRODUCER_HEADLESS_SHELL_PATH;
+        delete env.PUPPETEER_EXECUTABLE_PATH;
         delete env.HYPERFRAMES_BROWSER_PATH;
         const stdout = resolveHeadlessShellInSubprocess(env, { platform: "linux", arch: "x64" });
 
@@ -1571,6 +1677,7 @@ describe("resolveHeadlessShellPath", () => {
       }
       const env = { ...process.env, HOME: home, USERPROFILE: home };
       delete env.PRODUCER_HEADLESS_SHELL_PATH;
+      delete env.PUPPETEER_EXECUTABLE_PATH;
       delete env.HYPERFRAMES_BROWSER_PATH;
       const stdout = resolveHeadlessShellInSubprocess(env, {
         platform: "darwin",

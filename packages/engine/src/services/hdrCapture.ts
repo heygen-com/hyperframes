@@ -243,7 +243,7 @@ export async function launchHdrBrowser(
   const chromePath = resolveFullChromePath();
   if (!chromePath) {
     throw new Error(
-      "[HDR] No Chrome binary found. Install: npx @puppeteer/browsers install chrome@stable",
+      "[HDR] Name a full Chrome in HYPERFRAMES_BROWSER_PATH: HDR capture does not start a cached browser.",
     );
   }
 

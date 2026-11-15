@@ -37,6 +37,28 @@ import { managedChromeVersion } from "./manager.js";
 
 const CHROME_VERSION = managedChromeVersion();
 
+// The browsers here are stand-in files: a non-empty one counts as the pinned build unless a case refuses it. Mocked
+// before each case so it reads the case's own (possibly mocked) node:fs.
+const pinCheck = { refuse: false };
+beforeEach(() => {
+  vi.doMock("@hyperframes/engine/chrome-host-ceiling", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@hyperframes/engine/chrome-host-ceiling")>();
+    const { statSync } = await import("node:fs");
+    const standIn = (path: string) => {
+      try {
+        const stat = statSync(path, { throwIfNoEntry: false });
+        return stat?.isFile() === true && stat.size > 0;
+      } catch {
+        return false;
+      }
+    };
+    return {
+      ...actual,
+      isPinnedHeadlessShell: (path: string) => !pinCheck.refuse && standIn(path),
+    };
+  });
+});
+
 // Use `path.join` so the fake paths line up with whatever separator Node's
 // real `path.join` produces in `manager.ts` on the host running the test
 // (forward slashes on Linux/macOS, backslashes on Windows CI). Hardcoded
@@ -314,6 +336,7 @@ describe("findBrowser — cache resolution", () => {
     });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -502,7 +525,9 @@ describe("findBrowser — cache resolution", () => {
       executablePath: redownloadedBinary,
       source: "download",
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary unusable"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Cached binary missing or not the pinned build"),
+    );
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
@@ -568,6 +593,24 @@ describe("findBrowser — cache resolution", () => {
       expect(readFileSync(liveBinary, "utf8")).toBe("new");
       expect(readFileSync(otherVersion, "utf8")).toBe("other");
     } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a download that is not the pinned build", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) =>
+        writeStagedInstall(cacheDir, buildId, "other build"),
+    });
+    pinCheck.refuse = true;
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      await expect(ensureBrowser({ force: true })).rejects.toThrow(
+        /not the build this version pins/,
+      );
+    } finally {
+      pinCheck.refuse = false;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -1531,6 +1574,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1632,6 +1676,7 @@ describe("downloadBrowser — too little disk for the browser", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1808,6 +1853,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
     Object.defineProperty(process, "platform", {
       value: "darwin",
