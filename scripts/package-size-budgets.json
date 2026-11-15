@@ -21,7 +21,7 @@
   },
   "@hyperframes/inspector": {
     "packed": 880000,
-    "unpacked": 3722000
+    "unpacked": 3790000
   },
   "@hyperframes/lint": {
     "packed": 191022,
@@ -29,7 +29,7 @@
   },
   "@hyperframes/parsers": {
     "packed": 208000,
-    "unpacked": 885314
+    "unpacked": 900000
   },
   "@hyperframes/player": {
     "packed": 159000,
