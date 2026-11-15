@@ -35,10 +35,7 @@ export async function oversizedVideos(
   return videos.filter((_, index) => sized[index]);
 }
 
-/**
- * Each video's first and last frame before `duration` and every stride between, in seconds, ascending.
- * The strides sit on one grid shared by every video, so the count follows `duration`, not the video count.
- */
+/** Each video's first and last frame before `duration`, and the one stride grid all videos share between. */
 export function shownBoxTimes(
   videos: readonly VideoElement[],
   fps: { num: number; den: number },
