@@ -128,7 +128,10 @@ test("agents keep clips that never overlap on one lane, and no doc teaches a lan
   assert.match(lanes, /Scenes and full-frame sections, back to back: one lane/);
   assert.match(lanes, /Every sound effect: one lane/);
   assert.match(lanes, /never on a new lane of its own/);
-  assert.match(await read(ENTRY_SKILL), /clips that never overlap share one: `references\/format\.md`/);
+  assert.match(
+    await read(ENTRY_SKILL),
+    /clips that never overlap share one: `references\/format\.md`/,
+  );
   assert.match(await read("skills/hyperframes/references/sound.md"), /every effect on one lane/);
   assert.doesNotMatch(
     await read("skills/hyperframes/references/overlays.md"),
