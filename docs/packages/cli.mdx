@@ -116,7 +116,8 @@ Some commands add their own fields next to `error`, such as `findings` from
 **The project `.env`.** The `.env` in the current directory sets only the CLI's own
 settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
 vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
-other key in the file is ignored, and one line on stderr names them.
+other key in the file is ignored, and one line on stderr names them. A HeyGen key from the `.env` is used only
+when no login or API key is saved (see [`auth`](#hyperframes-auth)).
 
 **Flags, not prompts.** A missing required flag fails immediately with a usage
 example rather than waiting for input. These commands can ask questions on a TTY:
@@ -2586,9 +2587,13 @@ First match wins:
 
 1. `HEYGEN_ACCESS_TOKEN` (an OAuth token a host app injects; never refreshed or saved)
 2. Your `hyperframes auth login` session in `~/.hyperframes/credentials`. An expired session is refreshed first.
-3. `HEYGEN_API_KEY`
+3. `HEYGEN_API_KEY` set in your environment
 4. `HYPERFRAMES_API_KEY` (a HyperFrames alias for the same thing)
 5. An API key saved with `hyperframes auth login --api-key`
+6. A `HEYGEN_API_KEY` or `HYPERFRAMES_API_KEY` from the project `.env`, only when nothing is saved
+
+A project `.env` key never replaces an expired session or a saved key. When the CLI
+uses one, it prints a line on stderr that names the `.env` file.
 
 A signed-in session wins over an API key in the environment. The environment key
 is used instead when HeyGen refuses to refresh the session, or when `HEYGEN_API_URL` or
@@ -2655,7 +2660,7 @@ hyperframes auth logout --yes            # no prompt
 
 | Variable              | Description                                      |
 | --------------------- | ------------------------------------------------ |
-| `HEYGEN_API_KEY`      | API key, used when no session is signed in. Wins over a key saved with `--api-key`. |
+| `HEYGEN_API_KEY`      | API key, used when no session is signed in. Wins over a key saved with `--api-key`. A project `.env` key is used only when nothing is saved. |
 | `HYPERFRAMES_API_KEY` | Alias for `HEYGEN_API_KEY`.                      |
 | `HEYGEN_ACCESS_TOKEN` | OAuth token from a host app; used first, never refreshed. |
 | `HEYGEN_API_URL`      | API base URL (default `https://api.heygen.com`). |
