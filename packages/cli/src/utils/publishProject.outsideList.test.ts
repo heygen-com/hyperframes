@@ -113,4 +113,21 @@ describe("the notice that names them", () => {
       outsideFilesNotice([{ file: "a.html", reference: "/x.png", path: "../x.png", levels_up: 1 }]),
     ).toMatch(/^Uploading 1 file from outside/);
   });
+
+  it("prints names and paths from the project without their control characters", () => {
+    const notice = outsideFilesNotice([
+      {
+        file: "scène\u001b[2K.html",
+        reference: "../a.png",
+        path: "../a\u009b31m\u007f.png",
+        levels_up: 1,
+      },
+    ]);
+    expect(notice).toBe(
+      [
+        "Uploading 1 file from outside the project folder:",
+        "  ../a\\x9b31m\\x7f.png (referenced by scène\\x1b[2K.html)",
+      ].join("\n"),
+    );
+  });
 });

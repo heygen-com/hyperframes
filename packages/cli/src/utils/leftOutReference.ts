@@ -1,8 +1,15 @@
 import { isAbsolute, relative } from "node:path";
-import { type LeftOutReason, leftOutWarning } from "@hyperframes/studio-server/outside-file";
+import {
+  type LeftOutReason,
+  leftOutWarning as leftOutText,
+} from "@hyperframes/studio-server/outside-file";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
+import { terminalText } from "./terminalText.js";
 
-export { type LeftOutReason, leftOutWarning };
+export type { LeftOutReason };
+
+export const leftOutWarning = (file: string, reference: string, reason: LeftOutReason): string =>
+  terminalText(leftOutText(file, reference, reason));
 
 /** One file an upload left out. `path` is from the project folder; `levels_up` is null on another drive. */
 export interface LeftOutReference {
@@ -44,7 +51,9 @@ export function leftOutReference(
 export function outsideFilesNotice(references: OutsideFileReference[]): string {
   const count = references.length === 1 ? "1 file" : `${references.length} files`;
   const lines = references.map(({ file, reference, path }) =>
-    file === reference ? `  ${path} (linked from ${file})` : `  ${path} (referenced by ${file})`,
+    terminalText(
+      file === reference ? `  ${path} (linked from ${file})` : `  ${path} (referenced by ${file})`,
+    ),
   );
   return [`Uploading ${count} from outside the project folder:`, ...lines].join("\n");
 }
