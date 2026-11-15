@@ -2,8 +2,8 @@
  * Chain resolver for HyperFrames credentials. First usable source wins:
  *   1. `HEYGEN_ACCESS_TOKEN` env (an OAuth token a host app injects)
  *   2. The stored login: fresh, or expired with a refresh token
- *   3. `HEYGEN_API_KEY` env, then `HYPERFRAMES_API_KEY`
- *   4. The API key saved in `~/.hyperframes/credentials`
+ *   3. `HEYGEN_API_KEY` env, then `HYPERFRAMES_API_KEY`, unless only a project `.env` set it
+ *   4. The API key saved in `~/.hyperframes/credentials`, then a project `.env` key
  *
  * The env key goes first for a host app's gateway, and once HeyGen refused to refresh the login.
  * A broken store gives way to an env key, else surfaces `ErrInvalidStore`. A saved API key
@@ -14,6 +14,7 @@ import { isHeaderSafe, readStore } from "./store.js";
 import { ErrInvalidStore, ErrLoginExpired, ErrNotConfigured, isAuthError } from "./errors.js";
 import { assertOAuthIdentity } from "./config.js";
 import { apiBaseUrl } from "./client.js";
+import { setByProjectEnv } from "../utils/dotEnv.js";
 
 type EnvSource = "env" | "env_alias" | "env_oauth";
 type CredentialSource = EnvSource | "file_json" | "file_legacy";
@@ -53,6 +54,10 @@ export interface ResolveOptions {
 }
 
 export async function resolveCredential(opts: ResolveOptions = {}): Promise<ResolvedCredential> {
+  return noteProjectKey(await resolveFromSources(opts));
+}
+
+async function resolveFromSources(opts: ResolveOptions): Promise<ResolvedCredential> {
   const now = (opts.now ?? (() => new Date()))();
 
   const envKey = envApiKey();
@@ -86,7 +91,34 @@ async function fromStore(
     credentials.oauth && boundToThisClient(credentials.oauth)
       ? pickOAuth(credentials.oauth, now, fileSource)
       : null;
-  return login ?? envKey ?? storedApiKey(credentials, fileSource);
+  return login ?? apiKeyWithoutLogin(credentials, fileSource, envKey);
+}
+
+function apiKeyWithoutLogin(
+  credentials: Awaited<ReturnType<typeof readStore>>["credentials"],
+  source: CredentialSource,
+  envKey: ApiKeyCredential | undefined,
+): ApiKeyCredential {
+  const savedKey = credentials.oauth ? undefined : credentials.api_key;
+  if (envKey && !(savedKey && fromProjectEnv(envKey))) return envKey;
+  return storedApiKey(credentials, source);
+}
+
+const fromProjectEnv = (credential: ResolvedCredential): boolean => {
+  const name = envCredentialVar(credential.source);
+  return credential.type === "api_key" && name !== undefined && setByProjectEnv(name);
+};
+
+let projectKeyNoted = false;
+
+function noteProjectKey(credential: ResolvedCredential): ResolvedCredential {
+  if (!projectKeyNoted && fromProjectEnv(credential)) {
+    projectKeyNoted = true;
+    process.stderr.write(
+      `[hyperframes] Using ${envCredentialVar(credential.source)} from this folder's .env: uploads and renders go to that key's HeyGen account.\n`,
+    );
+  }
+  return credential;
 }
 
 function storedApiKey(
@@ -155,11 +187,12 @@ export async function afterRefreshFailure(
   const key = envApiKey();
   if (!key) throw err;
   loginRefreshFailed = true;
-  return key;
+  return noteProjectKey(key);
 }
 
 export function _resetLoginRefreshFailureForTests(): void {
   loginRefreshFailed = false;
+  projectKeyNoted = false;
 }
 
 function headerSafeEnv(name: string): string | undefined {

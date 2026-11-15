@@ -4,8 +4,8 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
 // the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
-// $HYPERFRAMES_API_KEY (or a nearby .env) → the API key saved in
-// ~/.hyperframes/credentials. An expired login gives way to an env key but
+// $HYPERFRAMES_API_KEY → the API key saved in ~/.hyperframes/credentials →
+// a key a nearby .env set. An expired login gives way to an env key but
 // never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
 // $HEYGEN_API_BASE moves every request to that host, as it does for the
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
@@ -79,6 +79,9 @@ const PROJECT_ENV_KEYS = new Set([
   "DO_NOT_TRACK",
 ]);
 
+const projectEnvValues = new Map();
+let projectKeyNoted = false;
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
@@ -98,7 +101,10 @@ export function loadEnvFromDir(startDir) {
           const end = val.indexOf(q, 1);
           val = end > 0 ? val.slice(1, end) : val.slice(1);
         }
-        if (PROJECT_ENV_KEYS.has(key) && !(key in process.env)) process.env[key] = val;
+        if (PROJECT_ENV_KEYS.has(key) && !(key in process.env)) {
+          process.env[key] = val;
+          projectEnvValues.set(key, val);
+        }
       }
       return;
     }
@@ -124,11 +130,20 @@ function resolveCredential() {
   if (!heygenOwnBase()) return null;
   const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
-  const envKey = process.env.HEYGEN_API_KEY || process.env.HYPERFRAMES_API_KEY;
+  const envName = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find((name) => process.env[name]);
+  const envKey = envName && process.env[envName];
+  const fromProject = envKey !== undefined && projectEnvValues.get(envName) === envKey;
   const stored = storedCredential();
   // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
   if (stored?.headers && "Authorization" in stored.headers) return stored;
-  return envKey ? { headers: { "X-Api-Key": envKey } } : stored;
+  if (!envKey || (fromProject && stored?.headers)) return stored;
+  if (fromProject && !projectKeyNoted) {
+    projectKeyNoted = true;
+    process.stderr.write(
+      `[hyperframes] Using ${envName} from this folder's .env: generated media goes to that key's HeyGen account.\n`,
+    );
+  }
+  return { headers: { "X-Api-Key": envKey } };
 }
 
 // The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true } | { unreadable } | null.

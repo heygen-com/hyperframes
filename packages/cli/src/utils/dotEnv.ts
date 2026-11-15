@@ -95,9 +95,19 @@ export function applyDotEnv(
     const [key, value] = entry;
     if (!key || key.toUpperCase() === FEEDBACK_EMAIL_ENV) continue;
     if (allowed !== undefined && !allowed.has(key)) ignored.push(key);
-    else if (!(key in env)) env[key] = value;
+    else if (!(key in env)) {
+      env[key] = value;
+      if (allowed !== undefined && env === process.env) projectEnvValues.set(key, value);
+    }
   }
   return ignored;
+}
+
+const projectEnvValues = new Map<string, string>();
+
+export function setByProjectEnv(name: string): boolean {
+  const value = process.env[name];
+  return value !== undefined && projectEnvValues.get(name) === value;
 }
 
 export function loadProjectDotEnv(

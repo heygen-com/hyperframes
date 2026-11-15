@@ -161,6 +161,34 @@ test("a live login wins over HEYGEN_API_KEY; an expired one gives way to it", ()
   });
 });
 
+test("a key only a project .env set gives way to the saved API key, and is named when used", () => {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
+    const write = process.stderr.write;
+    const notes = [];
+    process.stderr.write = (line) => notes.push(String(line));
+    try {
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      writeFileSync(join(project, ".env"), "HEYGEN_API_KEY=hg_project\n");
+      loadEnvFromDir(project);
+      writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "saved-wallet" } });
+      assert.deepEqual(notes, []);
+      rmSync(join(dir, "credentials"));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_project" } });
+      heygenCredential();
+      assert.deepEqual(notes, [
+        "[hyperframes] Using HEYGEN_API_KEY from this folder's .env: generated media goes to that key's HeyGen account.\n",
+      ]);
+    } finally {
+      process.stderr.write = write;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+});
+
 test("heygenAuthMethod returns api_key for an env API key, without tagging headers", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";
