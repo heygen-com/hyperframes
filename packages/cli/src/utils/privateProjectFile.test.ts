@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -102,7 +103,7 @@ describe("recordReceivedFiles", () => {
   const lock = (root: string) => `${record(root)}.lock`;
   const listed = (root: string) => JSON.parse(readFileSync(record(root), "utf-8")).files;
   function project(): string {
-    dir = mkdtempSync(join(tmpdir(), "hf-received-lock-"));
+    dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-received-lock-")));
     mkdirSync(join(dir, ".hyperframes"));
     writeFileSync(record(dir), JSON.stringify({ files: ["hyperframes.json"] }));
     return dir;
@@ -116,6 +117,7 @@ describe("recordReceivedFiles", () => {
       "-e",
       `const fs = require("node:fs");
        const files = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).files;
+       process.stdout.write("read");
        setTimeout(() => {
          fs.writeFileSync(process.argv[1], JSON.stringify({ files: [...files, "theirs.html"] }));
          fs.rmSync(process.argv[2]);
@@ -123,7 +125,7 @@ describe("recordReceivedFiles", () => {
       record(root),
       lock(root),
     ]);
-    await new Promise((resolve) => other.once("spawn", resolve));
+    await new Promise((resolve) => other.stdout.once("data", resolve));
     recordReceivedFiles(root, ["mine.html"]);
     await new Promise((resolve) => other.once("exit", resolve));
     expect(listed(root)).toEqual(["hyperframes.json", "mine.html", "theirs.html"]);

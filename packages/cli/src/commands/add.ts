@@ -14,7 +14,7 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
-import { resolve, relative, sep } from "node:path";
+import { join, resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
@@ -42,6 +42,7 @@ import {
   PROJECT_CONFIG_FILENAME,
   loadProjectConfig,
   projectConfigPath,
+  readProjectConfigWithStatus,
   recordProjectRegistryItems,
   createProjectConfig,
 } from "../utils/projectConfig.js";
@@ -302,28 +303,29 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
   }
 }
 
-// A registry that a received hyperframes.json names serves files that came from its sender.
+// A registry that a received hyperframes.json names serves files that came from its sender; a config that cannot be
+// read is not proven to be the person's own.
 function fromReceivedRegistry(projectDir: string, registry: string): boolean {
+  if (readProjectConfigWithStatus(projectDir).status === "unreadable") return true;
   return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
 }
 
 const PLAIN_WRITES = { guard: (_: string, write: () => void) => write(), undo: () => {} };
 
-// Lists each file as received just before it is written; undo() takes back what this install listed but never wrote.
+// Lists each file as received just before it is written; undo() takes back what this install listed that is not on disk.
 function receivedWrites(root: string): typeof PLAIN_WRITES {
   const listedHere: string[] = [];
-  const landed = new Set<string>();
   return {
     guard(destPath: string, write: () => void) {
-      const path = relative(root, destPath).split(sep).join("/");
-      listedHere.push(...recordReceivedFiles(root, [path]));
+      listedHere.push(
+        ...recordReceivedFiles(root, [relative(root, destPath).split(sep).join("/")]),
+      );
       write();
-      landed.add(path);
     },
     undo() {
       forgetReceivedFiles(
         root,
-        listedHere.filter((path) => !landed.has(path)),
+        listedHere.filter((path) => !existsSync(join(root, path))),
       );
     },
   };

@@ -930,6 +930,33 @@ describe("installs from the registry a received hyperframes.json names", () => {
     expect(listed()).toEqual(["hyperframes.json"]);
   });
 
+  it("counts a hyperframes.json it cannot parse as received, not as the person's own", async () => {
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", tmp());
+    writeFileSync(join(dir, "hyperframes.json"), "{ not json");
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(listed()).toEqual(["compositions/my-block.html"]);
+  });
+
+  it("keeps a failed install's files that are on disk listed", async () => {
+    writeConfig(uniqueBase());
+    receive(["hyperframes.json"]);
+    mkdirSync(join(dir, "compositions", "components"), { recursive: true });
+    chmodSync(join(dir, "compositions"), 0o555);
+    try {
+      await expect(
+        runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true }),
+      ).rejects.toThrow(AddError);
+    } finally {
+      chmodSync(join(dir, "compositions"), 0o755);
+    }
+    expect(listed()).toEqual([
+      "compositions/components/base-component/base-component.css",
+      "hyperframes.json",
+    ]);
+  });
+
   it("leaves a record it cannot read as it is", async () => {
     writeConfig(uniqueBase());
     mkdirSync(join(dir, ".hyperframes"));
