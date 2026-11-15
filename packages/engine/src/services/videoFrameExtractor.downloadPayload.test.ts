@@ -17,11 +17,18 @@ vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
   },
 }));
 
-const probed = vi.hoisted(() => ({ paths: [] as string[] }));
+const probed = vi.hoisted(() => ({
+  paths: [] as string[],
+  signals: [] as (AbortSignal | undefined)[],
+}));
 vi.mock("../utils/ffprobe.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../utils/ffprobe.js")>();
   return {
     ...actual,
+    runFfprobe: (path: string, args: string[], signal?: AbortSignal) => {
+      probed.signals.push(signal);
+      return actual.runFfprobe(path, args, signal);
+    },
     extractMediaMetadata: (path: string) => {
       probed.paths.push(path);
       return actual.extractMediaMetadata(path);
@@ -56,10 +63,11 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     return path;
   }
 
-  function render(main: string, beside: string[] = []) {
+  function render(main: string, beside: string[] = [], signal?: AbortSignal) {
     served.main = main;
     served.beside = beside;
     probed.paths = [];
+    probed.signals = [];
     const outputDir = join(dir, `render-${++renders}`);
     mkdirSync(outputDir, { recursive: true });
     const video: VideoElement = {
@@ -67,11 +75,12 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
       src: "https://cdn.example.com/clip.mp4",
       ...{ start: 0, end: 1, mediaStart: 0, loop: false, hasAudio: false },
     };
-    return extractAllVideoFrames([video], dir, {
-      fps: 30,
-      outputDir,
-      collectProbeFailures: true,
-    });
+    return extractAllVideoFrames(
+      [video],
+      dir,
+      { fps: 30, outputDir, collectProbeFailures: true },
+      signal,
+    );
   }
 
   function framesOf(result: Awaited<ReturnType<typeof render>>): Buffer[] {
@@ -119,6 +128,14 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
       expect.objectContaining({ videoId: "clip", kind: "invalid_media", retryable: false }),
     ]);
     expect(probed.paths).toEqual([]);
+  });
+
+  it("on a render service the download's format check runs under the render's cancel signal", async () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const cancel = new AbortController();
+    const result = await render(mp4, [], cancel.signal);
+    expect(result.errors).toEqual([]);
+    expect(probed.signals[0]).toBe(cancel.signal);
   });
 
   it.each([
