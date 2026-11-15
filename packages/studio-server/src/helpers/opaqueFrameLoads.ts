@@ -2,15 +2,14 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
 
-// The runtime shares the frame with the composition and fetches its captions, sub-compositions, grades and audio
-// itself, so `empty` (fetch and XHR) covers every file the preview route serves.
+const ANY_FILE_THE_PREVIEW_SERVES = /./;
 const GRANTED_TYPES = new Map([
   ["font", /^font\//],
   ["script", /^text\/javascript\b/],
   ["image", /^image\//],
   ["video", /^video\//],
   ["audio", /^audio\//],
-  ["empty", /./],
+  ["empty", ANY_FILE_THE_PREVIEW_SERVES],
 ]);
 const TOKEN_SEGMENT = /^~([\w-]{43})$/;
 
