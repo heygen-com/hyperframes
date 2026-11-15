@@ -574,7 +574,8 @@ describe.skipIf(process.getuid === undefined)("privateCacheRoot", () => {
     process.env.TMPDIR = sharedTmp;
   });
   afterEach(() => {
-    process.env.TMPDIR = savedTmpdir;
+    if (savedTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmpdir;
     rmSync(sharedTmp, { recursive: true, force: true });
   });
   const uid = () => process.getuid!();
