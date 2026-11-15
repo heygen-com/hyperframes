@@ -15,6 +15,7 @@ import {
 } from "@hyperframes/core/runtime/composition-length";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { heardClips } from "../utils/projectMedia.js";
+import { terminalText } from "../utils/terminalText.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";
@@ -129,7 +130,9 @@ export default defineCommand({
     console.log(label("Size", formatBytes(size)));
     for (const clip of heard ?? []) {
       const until = clip.end > 0 ? `${clip.end.toFixed(2)}s` : "its end";
-      console.log(label("Heard", `${clip.src} ${clip.start.toFixed(2)}s to ${until}`));
+      console.log(
+        label("Heard", `${terminalText(clip.src)} ${clip.start.toFixed(2)}s to ${until}`),
+      );
     }
   },
 });
