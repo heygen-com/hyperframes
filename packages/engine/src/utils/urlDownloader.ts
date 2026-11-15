@@ -20,6 +20,12 @@ import dns from "node:dns";
 import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 import { type LookupFunction } from "node:net";
 import { isBlockedNetworkHost } from "./networkPolicy.js";
+import { resolveRestrictPageNetwork } from "../config.js";
+import {
+  assertPublicHostname,
+  NonPublicHostError,
+  publicRequest,
+} from "../services/publicNetwork/publicNetwork.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -221,7 +227,7 @@ function isRetryableNetworkCause(error: unknown): boolean {
   return (
     RETRYABLE_NETWORK_CODES.has(code) ||
     code.startsWith("UND_ERR_") ||
-    /fetch failed|network|socket|connection reset|terminated/i.test(message)
+    /fetch failed|network|socket|connection reset|terminated|\bDNS\b/i.test(message)
   );
 }
 
@@ -240,8 +246,18 @@ export function assertPublicHttpsUrl(url: string): void {
   if (parsed.protocol !== "https:") {
     throw new Error(`[URLDownloader] Only HTTPS URLs are permitted in compositions`);
   }
-  if (isBlockedNetworkHost(parsed.hostname)) {
+  if (isBlockedNetworkHost(parsed.hostname) || refusedByRestrictedNetwork(parsed.hostname)) {
     throw new Error("[URLDownloader] URL targets a private/reserved address and is not permitted");
+  }
+}
+
+function refusedByRestrictedNetwork(hostname: string): boolean {
+  if (!resolveRestrictPageNetwork()) return false;
+  try {
+    assertPublicHostname(hostname);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -460,6 +476,7 @@ type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 let undiciTransport: Promise<DownloadFetch> | undefined;
 const fetchPublic: DownloadFetch = async (url, init) => {
+  if (resolveRestrictPageNetwork()) return publicRequest(url, init);
   // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
   if (fetchGoesThroughEnvProxy()) return fetch(url, init);
   undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
@@ -478,6 +495,7 @@ export function _setDownloadFetchForTests(replacement?: DownloadFetch): void {
 }
 
 function refusedNonPublicAddress(error: unknown): boolean {
+  if (error instanceof NonPublicHostError) return true;
   for (let depth = 0; error && depth < 4; depth += 1) {
     if (typeof error === "object" && "code" in error && error.code === NON_PUBLIC_ADDRESS_CODE) {
       return true;
