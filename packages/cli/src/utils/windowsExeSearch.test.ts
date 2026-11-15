@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -141,6 +150,33 @@ describe("searchOnlyTrustedFolders", () => {
     expect(existsSync(env.PATH ?? "")).toBe(false);
     expect(env.PATH?.startsWith(project)).toBe(false);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "a helper started by bare name never runs a same-named file from the project folder",
+    () => {
+      const { project, outside } = inProject();
+      const marker = join(outside[1]!, "ran");
+      mkdirSync(join(project, "bin"));
+      for (const dir of [project, join(project, "bin")]) {
+        writeFileSync(join(dir, "hf-planted-helper"), `#!/bin/sh\necho ran > "${marker}"\n`, {
+          mode: 0o755,
+        });
+      }
+      const raw: NodeJS.ProcessEnv = { PATH: [".", "", "bin", outside[0]].join(delimiter) };
+      const run = (env: NodeJS.ProcessEnv) =>
+        spawnSync("hf-planted-helper", [], { cwd: project, env, stdio: "ignore" });
+
+      expect(run(raw).status).toBe(0);
+      expect(existsSync(marker)).toBe(true);
+      rmSync(marker);
+
+      const env = { ...raw };
+      searchOnlyTrustedFolders(env, process.platform);
+
+      expect((run(env).error as NodeJS.ErrnoException | undefined)?.code).toBe("ENOENT");
+      expect(existsSync(marker)).toBe(false);
+    },
+  );
 
   it("adds no PATH when there was none", () => {
     inProject();
