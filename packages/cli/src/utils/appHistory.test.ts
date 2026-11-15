@@ -1,8 +1,10 @@
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -18,6 +20,7 @@ import {
   CATCH_UP_NOTE,
   filesChangedSince,
   markSeen,
+  noteHandoff,
   readAppTurns,
   readSeen,
   seenPath,
@@ -53,8 +56,22 @@ function project(lines: string[] = []): string {
 const turn = (at: string, asked: string) =>
   JSON.stringify({ at, engine: "claude", asked, did: "Done.", files: ["index.html"] });
 
+// A seen record written before the history was marked.
 const handedOverAt = (dir: string, at: string) =>
   markSeen(dir, { at: Date.parse(at), checked: Date.parse(at) });
+
+// What the desktop app does after a turn: one more line on the history.
+const appended = (dir: string, at: string, asked: string) =>
+  appendFileSync(history(dir), `${turn(at, asked)}\n`);
+
+const asked = (dir: string, now?: number) =>
+  unseenTurns(dir, readSeen(dir), now).turns.map((t) => t.asked);
+
+// What catch-up does once it has shown the turns.
+function lookedAt(dir: string): void {
+  const seen = readSeen(dir);
+  markSeen(dir, { ...seen, history: unseenTurns(dir, seen).history ?? seen.history });
+}
 
 // The seen record lives in the person's home: each test gets its own.
 beforeEach(() => {
@@ -100,11 +117,95 @@ describe("app history", () => {
 
   it("shows only the turns after the hand-off or the newest one shown, and none without a hand-off", () => {
     const dir = project([turn("2026-01-01T10:00:00Z", "old"), turn("2026-01-01T11:00:00Z", "new")]);
-    expect(unseenTurns(dir, readSeen(dir).at)).toEqual([]);
+    expect(unseenTurns(dir, readSeen(dir)).turns).toEqual([]);
     handedOverAt(dir, "2026-01-01T09:00:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at).map((t) => t.asked)).toEqual(["old", "new"]);
+    expect(asked(dir)).toEqual(["old", "new"]);
     handedOverAt(dir, "2026-01-01T10:30:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at).map((t) => t.asked)).toEqual(["new"]);
+    expect(asked(dir)).toEqual(["new"]);
+  });
+
+  it("marks where the history ends once a record from before the mark is read", () => {
+    const dir = project([turn("2026-01-01T10:00:00Z", "shown"), ""]);
+    handedOverAt(dir, "2026-01-01T09:00:00Z");
+    lookedAt(dir);
+    appended(dir, "2026-01-01T08:00:00Z", "next");
+    expect(asked(dir)).toEqual(["next"]);
+  });
+
+  it("shows only lines the app appends after the hand-off, never ones the project came with", () => {
+    const dir = project([
+      turn("2026-01-01T08:00:00Z", "before"),
+      turn("2099-01-01T00:00:00Z", "shipped"),
+      "",
+    ]);
+    expect(noteHandoff(dir, Date.parse("2026-01-01T09:00:00Z"))).toBe(true);
+    utimesSync(history(dir), new Date("2099-06-01"), new Date("2099-06-01"));
+    const later = Date.parse("2100-01-01T00:00:00Z");
+    expect(asked(dir, later)).toEqual([]);
+    expect(appHistoryNotice(dir, [])).toBeNull();
+    appended(dir, "2026-01-01T10:00:00Z", "real");
+    expect(asked(dir, later)).toEqual(["real"]);
+    expect(appHistoryNotice(dir, [])).toContain("1 chat turn");
+  });
+
+  it("starts at the first line the app writes when the project had no history at the hand-off", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-app-history-"));
+    noteHandoff(dir);
+    expect(readSeen(dir).history).toEqual({ file: "", size: 0 });
+    mkdirSync(join(dir, ".hyperframes"));
+    appended(dir, "2026-01-01T10:00:00Z", "first");
+    expect(asked(dir)).toEqual(["first"]);
+  });
+
+  it("shows a line the app was still writing once it is whole, and each line once", () => {
+    const dir = project();
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T10:00:00Z", "a");
+    appendFileSync(history(dir), turn("2026-01-01T11:00:00Z", "b").slice(0, 20));
+    expect(asked(dir)).toEqual(["a"]);
+    lookedAt(dir);
+    appendFileSync(history(dir), `${turn("2026-01-01T11:00:00Z", "b").slice(20)}\n`);
+    expect(asked(dir)).toEqual(["b"]);
+  });
+
+  it("shows nothing from a history replaced or cut short after the hand-off, until the next one", () => {
+    const dir = project([turn("2026-01-01T08:00:00Z", "before"), ""]);
+    noteHandoff(dir);
+    const planted = join(dir, "planted.jsonl");
+    writeFileSync(planted, `${turn("2026-01-01T10:00:00Z", "planted")}\n`);
+    renameSync(planted, history(dir));
+    expect(asked(dir)).toEqual([]);
+    expect(appHistoryNotice(dir, [])).toBeNull();
+
+    noteHandoff(dir);
+    appended(dir, "2026-01-01T11:00:00Z", "real");
+    expect(asked(dir)).toEqual(["real"]);
+    writeFileSync(history(dir), "");
+    expect(asked(dir)).toEqual([]);
+  });
+
+  it("finds its place again by the last line shown after the app trims the history", () => {
+    const dir = project();
+    noteHandoff(dir);
+    for (const n of ["1", "2", "3", "4"]) appended(dir, `2026-01-01T1${n}:00:00Z`, n);
+    lookedAt(dir);
+    appended(dir, "2026-01-01T15:00:00Z", "5");
+    // The app keeps the newer half, written whole to a new file.
+    const kept = readFileSync(history(dir), "utf8").split("\n").filter(Boolean).slice(2);
+    const trimmed = join(dir, "trimmed.jsonl");
+    writeFileSync(trimmed, `${kept.join("\n")}\n`);
+    renameSync(trimmed, history(dir));
+    appended(dir, "2026-01-01T16:00:00Z", "6");
+    expect(asked(dir)).toEqual(["5", "6"]);
+  });
+
+  it("reads the new history the app starts after setting the marked one aside", () => {
+    const dir = project([turn("2099-01-01T00:00:00Z", "shipped"), ""]);
+    noteHandoff(dir);
+    renameSync(history(dir), join(dir, ".hyperframes", "app-history.set-aside-2026-01-01.jsonl"));
+    expect(asked(dir)).toEqual([]);
+    appended(dir, "2026-01-01T10:00:00Z", "mine");
+    expect(asked(dir)).toEqual(["mine"]);
   });
 
   it("never reads a record through a link, nor through a linked folder", (context) => {
@@ -132,8 +233,7 @@ describe("app history", () => {
       turn("2099-01-01T00:00:00Z", "planted"),
     ]);
     handedOverAt(dir, "2026-01-01T09:00:00Z");
-    const now = Date.parse("2026-06-01T00:00:00Z");
-    expect(unseenTurns(dir, readSeen(dir).at, now).map((t) => t.asked)).toEqual(["real"]);
+    expect(asked(dir, Date.parse("2026-06-01T00:00:00Z"))).toEqual(["real"]);
   });
 
   it("never takes a seen record a cloned project ships for a hand-off", () => {

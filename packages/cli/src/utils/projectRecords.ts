@@ -5,6 +5,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readSync,
   unlinkSync,
 } from "node:fs";
@@ -32,35 +33,73 @@ function recordsDir(projectDir: string, create = false): string | null {
   }
 }
 
-/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. The file is opened first and
+/** The last `maxBytes` of a plain file, where they start, its size, and which file it is ("dev:ino"). */
+export interface PlainBytes {
+  bytes: Buffer;
+  start: number;
+  size: number;
+  file: string;
+}
+
+/** The last `maxBytes` of a plain file; null for a link, a device, or a missing file. The file is opened first and
  * read only when `lstat` then finds the same plain file at the path, so this holds where O_NOFOLLOW doesn't exist
  * (Windows), and nothing path-based follows the check. */
-export function readPlainFile(path: string, maxBytes: number): string {
+function readPlainBytes(path: string, maxBytes: number): PlainBytes | null {
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
   } catch {
-    return "";
+    return null;
   }
   try {
-    const stats = fstatSync(fd);
-    const named = lstatSync(path);
+    const stats = fstatSync(fd, { bigint: true });
+    const named = lstatSync(path, { bigint: true });
     if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
-      return "";
-    const length = Math.min(stats.size, maxBytes);
-    const buffer = Buffer.alloc(length);
-    readSync(fd, buffer, 0, length, stats.size - length);
-    return buffer.toString("utf8");
+      return null;
+    const size = Number(stats.size);
+    const start = Math.max(0, size - maxBytes);
+    const bytes = Buffer.alloc(size - start);
+    readSync(fd, bytes, 0, bytes.length, start);
+    return { bytes, start, size, file: `${stats.dev}:${stats.ino}` };
   } catch {
-    return "";
+    return null;
   } finally {
     closeSync(fd);
   }
 }
 
+/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. */
+export function readPlainFile(path: string, maxBytes: number): string {
+  return readPlainBytes(path, maxBytes)?.bytes.toString("utf8") ?? "";
+}
+
 export function readRecord(projectDir: string, name: string, maxBytes: number): string {
+  return readRecordBytes(projectDir, name, maxBytes)?.bytes.toString("utf8") ?? "";
+}
+
+export function readRecordBytes(
+  projectDir: string,
+  name: string,
+  maxBytes: number,
+): PlainBytes | null {
   const dir = recordsDir(projectDir);
-  return dir ? readPlainFile(join(dir, name), maxBytes) : "";
+  return dir ? readPlainBytes(join(dir, name), maxBytes) : null;
+}
+
+/** Which file ("dev:ino") each record with one name holds, by name; empty without a real .hyperframes folder. */
+export function recordFiles(projectDir: string): Map<string, string> {
+  const dir = recordsDir(projectDir);
+  const files = new Map<string, string>();
+  if (!dir) return files;
+  try {
+    for (const name of readdirSync(dir)) {
+      const stats = lstatSync(join(dir, name), { bigint: true });
+      if (stats.isFile() && stats.nlink === 1n) files.set(name, `${stats.dev}:${stats.ino}`);
+    }
+  } catch {
+    // A folder or record gone mid-read: what was listed is all there is.
+  }
+  return files;
 }
 
 /** When a record last changed; 0 when it is missing or not a plain file. */
