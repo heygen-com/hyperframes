@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
-import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes/engine";
+import type {
+  CaptureOptions,
+  CaptureSession,
+  EngineConfig,
+  ExtractedFrames,
+} from "@hyperframes/engine";
 import {
   DEFAULT_CONFIG,
   DrawElementCaptureError,
@@ -32,6 +37,7 @@ import {
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
   MAX_TRANSIENT_CAPTURE_RETRIES,
+  pageInstallsShaderCompositor,
   resolveCaptureForceScreenshotForPageSideCompositing,
   resolveRenderWorkDirPrefix,
   shouldDiscardProbeSessionForPageSideCompositing,
@@ -1651,6 +1657,50 @@ describe("resolveCaptureForceScreenshotForPageSideCompositing", () => {
         usePageSideCompositing: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("pageInstallsShaderCompositor", () => {
+  // A page whose shader-transitions build added (or did not add) its compositor canvas.
+  const pageWith = (ids: string[]) =>
+    ({
+      page: {
+        evaluate: async (fn: (id: string) => boolean, id: string) => {
+          vi.stubGlobal("document", {
+            getElementById: (x: string) => (ids.includes(x) ? {} : null),
+          });
+          try {
+            return fn(id);
+          } finally {
+            vi.unstubAllGlobals();
+          }
+        },
+      },
+    }) as unknown as CaptureSession;
+  const lifecycle = () => ({
+    initializeSession: vi.fn(async () => {}),
+    closeCaptureSession: vi.fn(async () => {}),
+  });
+
+  it("answers from the canvas every published shader-transitions build adds once it composites", async () => {
+    const hooks = lifecycle();
+    expect(
+      await pageInstallsShaderCompositor(
+        async () => pageWith(["__hf-page-side-compositor"]),
+        hooks,
+      ),
+    ).toBe(true);
+    expect(await pageInstallsShaderCompositor(async () => pageWith([]), hooks)).toBe(false);
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the page when it fails to load", async () => {
+    const hooks = lifecycle();
+    hooks.initializeSession.mockRejectedValueOnce(new Error("page never ready"));
+    await expect(pageInstallsShaderCompositor(async () => pageWith([]), hooks)).rejects.toThrow(
+      "page never ready",
+    );
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(1);
   });
 });
 
