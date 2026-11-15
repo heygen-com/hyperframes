@@ -1,4 +1,6 @@
 import { Hono, type Context, type Next } from "hono";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
@@ -47,12 +49,27 @@ const fromAnotherSite = (c: Context) => {
 
 const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
+async function markPreviewForAnotherSite(c: Context) {
+  if (c.res.status !== 200 || !c.res.headers.get("content-type")?.startsWith("text/html")) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  headers.delete("etag");
+  const marked = injectTagsAtHeadStart(
+    await c.res.text(),
+    `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`,
+  );
+  c.res = undefined;
+  c.res = new Response(marked, { status: 200, headers });
+}
+
 const sandboxPreviewForAnotherSiteOrCapture =
   (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
     await next();
     c.header("Vary", "Sec-Fetch-Site", { append: true });
-    if (fromAnotherSite(c) || (sandboxCaptures && isThumbnailCapture(c)))
+    const anotherSite = fromAnotherSite(c);
+    if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
       c.header("Content-Security-Policy", "sandbox allow-scripts");
+    if (anotherSite) await markPreviewForAnotherSite(c);
   };
 
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {

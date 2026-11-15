@@ -67,6 +67,30 @@ describe.each(routes)("%s", (_name, path, type) => {
   );
 });
 
+describe("a preview document answered to another site", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const documents = routes.filter(([, , type]) => type === "text/html");
+
+  it.each(documents)("%s is marked so its runtime offers no editing port", async (_n, path) => {
+    const res = await get(path, "cross-site");
+    const body = await res.text();
+    expect(body).toContain(MARK);
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(res.headers.get("etag")).toBeNull();
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it.each(documents)("%s stays unmarked for the Studio's own pages", async (_n, path) => {
+    const res = await get(path, "same-origin");
+    expect(await res.text()).not.toContain(MARK);
+  });
+
+  it("leaves a file that is not a document as served", async () => {
+    const res = await get("/projects/demo/preview/icon.svg", "cross-site");
+    expect(await res.text()).not.toContain(MARK);
+  });
+});
+
 describe("a revalidated preview", () => {
   it("still names Sec-Fetch-Site in Vary and carries the sandbox on a 304", async () => {
     const first = await get("/projects/demo/preview", "same-origin");

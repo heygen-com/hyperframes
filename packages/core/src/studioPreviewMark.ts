@@ -6,6 +6,11 @@ export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
 export const PREVIEW_VIDEO_SOURCE_ATTR = "data-hf-preview-video-source";
 export const PREVIEW_VIDEO_CANVAS_ATTR = "data-hf-preview-video-canvas";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
+export const PREVIEW_FOR_ANOTHER_SITE_META = "hyperframes-preview-for-another-site";
+
+export function servedToAnotherSite(doc: Document): boolean {
+  return doc.querySelector(`meta[name="${PREVIEW_FOR_ANOTHER_SITE_META}"]`) !== null;
+}
 
 export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
   const overlay = el.previousElementSibling;
