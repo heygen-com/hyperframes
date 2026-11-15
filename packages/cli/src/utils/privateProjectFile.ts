@@ -61,7 +61,7 @@ function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {
   }
 }
 
-export function fileIdentity(path: string): string | null {
+function fileIdentity(path: string): string | null {
   try {
     const stat = lstatSync(path, { bigint: true });
     return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;

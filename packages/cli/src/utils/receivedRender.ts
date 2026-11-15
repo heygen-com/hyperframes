@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
-import { fileIdentity, linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
+import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
@@ -274,9 +274,32 @@ function isMediaFontOrImage(path: string): boolean {
 const ALIAS_WALK_MAX_ENTRIES = 20_000;
 const ALIAS_WALK_MAX_MS = 2_000;
 
-function aliasIdentity(path: string, isLink: boolean): string | null {
-  const target = isLink ? realOrNull(path) : path;
-  return target === null ? null : fileIdentity(target);
+interface Target {
+  identity: string;
+  isDirectory: boolean;
+}
+
+const NOTHING_THERE = new Set(["ENOENT", "ENOTDIR", "ELOOP"]);
+
+// What a path reaches with links followed; "missing" when nothing can be read through it, null when its identity is unknown.
+function targetOf(path: string): Target | "missing" | null {
+  try {
+    const stat = statSync(path, { bigint: true });
+    if (stat.ino === 0n) return null;
+    return { identity: `${stat.dev}:${stat.ino}`, isDirectory: stat.isDirectory() };
+  } catch (error) {
+    return NOTHING_THERE.has((error as NodeJS.ErrnoException).code ?? "") ? "missing" : null;
+  }
+}
+
+function receivedIdentities(listed: string[]): Set<string> | null {
+  const identities = new Set<string>();
+  for (const path of listed) {
+    const target = targetOf(path);
+    if (target === null || target === "missing" || target.isDirectory) return null;
+    identities.add(target.identity);
+  }
+  return identities;
 }
 
 function listDir(dir: string): Dirent[] | null {
@@ -287,11 +310,28 @@ function listDir(dir: string): Dirent[] | null {
   }
 }
 
-function receivedAlias(dir: string, entry: Dirent, received: ReadonlySet<string>): string | null {
+const isMediaName = (path: string) => MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined;
+
+// A linked folder is checked when it leads to a folder inside the project, which the walk lists under its own name.
+function linkedFolderChecked(path: string, realProjectDir: string): boolean {
+  const real = realOrNull(path);
+  return real !== null && isPathInside(real, realProjectDir);
+}
+
+// The entry's path when it reaches a received file under a name that is not media; undefined when that cannot be told.
+function receivedAlias(
+  dir: string,
+  entry: Dirent,
+  received: ReadonlySet<string>,
+  realProjectDir: string,
+): string | null | undefined {
   const path = join(dir, entry.name);
-  if (MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined) return null;
-  const identity = aliasIdentity(path, entry.isSymbolicLink());
-  return identity !== null && received.has(identity) ? path : null;
+  if (isMediaName(path) && !entry.isSymbolicLink()) return null;
+  const target = targetOf(path);
+  if (target === "missing") return null;
+  if (target === null) return undefined;
+  if (target.isDirectory) return linkedFolderChecked(path, realProjectDir) ? null : undefined;
+  return !isMediaName(path) && received.has(target.identity) ? path : null;
 }
 
 function walkBudget(): (entries: number) => boolean {
@@ -303,21 +343,38 @@ function walkBudget(): (entries: number) => boolean {
   };
 }
 
-// Project files whose own identity, or whose link target's, is a received file's, under a name that is not media; null when the walk could not finish.
+interface AliasWalk {
+  received: ReadonlySet<string>;
+  realProjectDir: string;
+  pending: string[];
+  aliases: string[];
+}
+
+// Queues the folder's subfolders and records its aliases; false when an entry cannot be checked.
+function walkListing(walk: AliasWalk, dir: string, listing: Dirent[]): boolean {
+  for (const entry of listing) {
+    if (entry.isDirectory()) {
+      walk.pending.push(join(dir, entry.name));
+      continue;
+    }
+    const alias = receivedAlias(dir, entry, walk.received, walk.realProjectDir);
+    if (alias === undefined) return false;
+    if (alias !== null) walk.aliases.push(alias);
+  }
+  return true;
+}
+
+// Project files that reach a received file, links followed, under a name that is not media; null when the walk could not check every file, including one through a linked folder that leads outside the project.
 function nonMediaAliases(projectDir: string, received: ReadonlySet<string>): string[] | null {
   const withinBudget = walkBudget();
-  const aliases: string[] = [];
-  const pending = [projectDir];
-  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+  const realProjectDir = realOrNull(projectDir) ?? projectDir;
+  const walk: AliasWalk = { received, realProjectDir, pending: [projectDir], aliases: [] };
+  for (let dir = walk.pending.pop(); dir !== undefined; dir = walk.pending.pop()) {
     const listing = listDir(dir);
     if (listing === null || !withinBudget(listing.length)) return null;
-    for (const entry of listing) {
-      const alias = entry.isDirectory() ? null : receivedAlias(dir, entry, received);
-      if (entry.isDirectory()) pending.push(join(dir, entry.name));
-      if (alias !== null) aliases.push(alias);
-    }
+    if (!walkListing(walk, dir, listing)) return null;
   }
-  return aliases;
+  return walk.aliases;
 }
 
 interface Refusal {
@@ -335,13 +392,14 @@ function receivedRefusal(
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
+  if (record.listed.length === 0) return null;
   const nonMedia = record.listed.find((path) => !isMediaFontOrImage(path));
   if (nonMedia !== undefined) {
     const reason = `${shown(nonMedia)} came from someone else and is not a media, font or image file, ${READS_NOTHING_OUTSIDE}`;
     return { reason, alwaysWarn: false };
   }
-  const received = new Set(record.listed.flatMap((path) => fileIdentity(path) ?? []));
-  const aliases = nonMediaAliases(projectDir, received);
+  const received = receivedIdentities(record.listed);
+  const aliases = received === null ? null : nonMediaAliases(projectDir, received);
   if (aliases === null) {
     const reason = `Could not check every project file for another name of a received file, ${READS_NOTHING_OUTSIDE}`;
     return { reason, alwaysWarn: true };

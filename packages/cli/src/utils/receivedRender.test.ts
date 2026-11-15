@@ -199,6 +199,16 @@ describe("outsideAssetsAllowed", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
 
+  it("keeps outside files for an empty record in a project with very many files", () => {
+    const dir = project(received());
+    const many = join(dir, "node_modules");
+    mkdirSync(many);
+    for (let i = 0; i <= 20_000; i++) writeFileSync(join(many, `f${i}`), "");
+    const { allowed, warn } = decide(dir);
+    expect(allowed).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it("keeps outside files for a project with no received-files record", () => {
     const { allowed, warn } = decide(project());
     expect(allowed).toBe(true);
@@ -404,13 +414,15 @@ describe("outsideAssetsAllowed", () => {
   });
 
   describe("another name for a received media file", () => {
-    const MEDIA_PAGE = Buffer.concat([
-      SIGNATURES.png,
-      Buffer.from(
-        `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
-          `<p>received-scene-marker</p><img src="../outside/pic.png"></div></template>`,
-      ),
-    ]);
+    const mediaPage = (outsideRef: string) =>
+      Buffer.concat([
+        SIGNATURES.png,
+        Buffer.from(
+          `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+            `<p>received-scene-marker</p><img src="${outsideRef}"></div></template>`,
+        ),
+      ]);
+    const MEDIA_PAGE = mediaPage("../outside/pic.png");
 
     function aliasProject(makeAlias: (target: string, alias: string) => void, alias: string) {
       const dir = project(received("assets/scene.png"));
@@ -439,6 +451,68 @@ describe("outsideAssetsAllowed", () => {
       expect(allowed).toBe(false);
       expect(line).toContain("scene.html is another name for a file that came from someone else");
     });
+
+    async function compiledPage(dir: string) {
+      const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
+        allowOutsideProjectAssets: true,
+      });
+      const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
+      return { rendered, outside: [...compiled.externalAssets.values()] };
+    }
+
+    function playScene(dir: string, src: string): void {
+      write(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1">` +
+          `<div data-composition-src="${src}"></div></div>`,
+      );
+    }
+
+    it.runIf(process.platform !== "win32")(
+      "refuses outside files when the received name is a link and an HTML link reaches the same file",
+      async () => {
+        const dir = project(received("assets/scene.png"));
+        write(join(dir, "media", "real.png"), MEDIA_PAGE);
+        symlinkSync(join(dir, "media", "real.png"), join(dir, "assets", "scene.png"));
+        symlinkSync(join(dir, "media", "real.png"), join(dir, "scene.html"));
+        playScene(dir, "scene.html");
+        const { rendered, outside } = await compiledPage(dir);
+        expect(rendered).toContain("received-scene-marker");
+        expect(outside).toContainEqual(expect.stringMatching(/[\\/]outside[\\/]pic\.png$/));
+
+        const { allowed, line } = decide(dir);
+        expect(allowed).toBe(false);
+        expect(line).toContain("scene.html is another name for a file that came from someone else");
+      },
+    );
+
+    it.runIf(process.platform !== "win32")(
+      "refuses outside files when a linked folder leading outside the project holds the received file",
+      async () => {
+        const dir = project(received("pages/scene.png"));
+        const shared = join(dir, "..", "shared");
+        write(join(shared, "scene.png"), mediaPage("assets/../../outside/pic.png"));
+        symlinkSync("scene.png", join(shared, "scene.html"));
+        symlinkSync(shared, join(dir, "pages"));
+        playScene(dir, "pages/scene.html");
+        const { rendered, outside } = await compiledPage(dir);
+        expect(rendered).toContain("received-scene-marker");
+        expect(outside).toContainEqual(expect.stringMatching(/[\\/]outside[\\/]pic\.png$/));
+
+        const { allowed, line } = decide(dir);
+        expect(allowed).toBe(false);
+        expect(line).toContain("Could not check every project file");
+      },
+    );
+
+    it.runIf(process.platform !== "win32")(
+      "keeps outside files when a linked folder stays inside the project",
+      () => {
+        const dir = project(received("assets/in.png"));
+        symlinkSync(join(dir, "assets"), join(dir, "pictures"));
+        expect(decide(dir).allowed).toBe(true);
+      },
+    );
 
     it("keeps outside files when the other name is also a media name", () => {
       const dir = project(received("assets/scene.png"));
