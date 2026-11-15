@@ -58,13 +58,19 @@ import {
   readMetadataCache,
   readStoredFinalFrame,
   resolvePlayableVideoDuration,
+  runFfprobe,
   videoStartOnMediaTimeline,
   writeMetadataCache,
   type MediaProbeCacheEntry,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import { inputAlphaOpaqueWarning, probeInputAlphaPlane } from "../utils/alphaPlaneProbe.js";
-import { redactUrlQueriesInError, urlInputArgs } from "../utils/urlInput.js";
+import {
+  redactUrlQueriesInError,
+  selfContainedFormatArgs,
+  urlInputArgs,
+} from "../utils/urlInput.js";
+import { assertMediaPayload, NotMediaPayloadError } from "../utils/notMediaPayload.js";
 import {
   analyzeCompositionHdr,
   isHdrColorSpace as isHdrColorSpaceUtil,
@@ -319,6 +325,18 @@ export interface ExtractionOptions {
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
+
+/** A downloaded video passes the not-media sniff, and on a render service opens only as a self-contained container, before anything reads it as media. */
+async function assertDownloadedVideoIsMedia(
+  path: string,
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await assertMediaPayload(path, videoId);
+  const formatLimit = selfContainedFormatArgs();
+  if (formatLimit.length === 0) return;
+  await runFfprobe(path, [...formatLimit, "-show_entries", "format=format_name"], signal);
+}
 
 export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
@@ -646,6 +664,14 @@ export function classifyVideoExtractionError(error: unknown): VideoSourceExtract
       "internal",
       false,
       "Video source download failed internally",
+      diagnostic,
+    );
+  }
+  if (error instanceof NotMediaPayloadError) {
+    return new VideoSourceExtractionError(
+      "invalid_media",
+      false,
+      "Video source is a text document, not media",
       diagnostic,
     );
   }
@@ -2267,6 +2293,7 @@ export async function extractAllVideoFrames(
           () => recordTransientRetries(1),
           { onTelemetry: writeUrlDownloadTelemetry },
         );
+        await assertDownloadedVideoIsMedia(videoPath, video.id, signal);
       }
 
       if (!existsSync(videoPath)) {
