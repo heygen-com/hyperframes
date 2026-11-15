@@ -6,10 +6,10 @@
 // so it needs Node's fetch classes, which keep them.
 import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioApi } from "./createStudioApi";
-import { previewAllowedHostsFromEnv } from "./helpers/requestIdentity";
+import { previewAllowedHostsFromEnv, wildcardBindHostAllowed } from "./helpers/requestIdentity";
 import { stubAdapter } from "./routes/stubAdapter.test-helpers";
 
 const tempDirs: string[] = [];
@@ -292,5 +292,34 @@ describe("previewAllowedHostsFromEnv", () => {
   it("is empty when the variable is unset or blank", () => {
     expect(previewAllowedHostsFromEnv({})).toEqual([]);
     expect(previewAllowedHostsFromEnv({ HYPERFRAMES_PREVIEW_ALLOWED_HOSTS: "  " })).toEqual([]);
+  });
+});
+
+describe("wildcardBindHostAllowed", () => {
+  it("allows loopback names and this machine's interface addresses", () => {
+    expect(wildcardBindHostAllowed("localhost:3003")).toBe(true);
+    expect(wildcardBindHostAllowed("127.0.0.1")).toBe(true);
+    const address = Object.values(networkInterfaces())
+      .flatMap((entries) => entries ?? [])
+      .find((entry) => entry.family === "IPv4")?.address;
+    if (address) expect(wildcardBindHostAllowed(`${address}:3003`)).toBe(true);
+  });
+
+  it("refuses other names unless they are listed", () => {
+    expect(wildcardBindHostAllowed("rebound.example:3003")).toBe(false);
+    expect(wildcardBindHostAllowed("")).toBe(false);
+    expect(wildcardBindHostAllowed(undefined)).toBe(false);
+    expect(wildcardBindHostAllowed("demo.tunnels.example", ["demo.tunnels.example"])).toBe(true);
+  });
+
+  it("ignores the preview bind setting", () => {
+    const saved = process.env["HYPERFRAMES_PREVIEW_HOST"];
+    process.env["HYPERFRAMES_PREVIEW_HOST"] = "rebound.example";
+    try {
+      expect(wildcardBindHostAllowed("rebound.example")).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env["HYPERFRAMES_PREVIEW_HOST"];
+      else process.env["HYPERFRAMES_PREVIEW_HOST"] = saved;
+    }
   });
 });
