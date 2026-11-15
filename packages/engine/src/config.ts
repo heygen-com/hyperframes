@@ -819,6 +819,14 @@ export function resolvePageNavigationTimeout(): number {
   return Number.isFinite(parsed) ? parsed : DEFAULT_CONFIG.pageNavigationTimeout;
 }
 
+/**
+ * `PRODUCER_RESTRICT_PAGE_NETWORK=true`: the render page may reach only its own server and public addresses.
+ * A property of the host (a shared render service), not of one render, so it stays out of EngineConfig snapshots.
+ */
+export function resolveRestrictPageNetwork(): boolean {
+  return process.env.PRODUCER_RESTRICT_PAGE_NETWORK === "true";
+}
+
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
   const env = (key: string): string | undefined => process.env[key];
   const envNum = (key: string, fallback: number): number => {

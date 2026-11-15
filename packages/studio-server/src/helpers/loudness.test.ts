@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import {
   absoluteLoudnessPlan,
   absoluteOutcome,
@@ -36,7 +37,13 @@ describe("audioTags playback offsets", () => {
     expect(tag).toBeDefined();
     if (!tag) throw new Error("missing video");
     const args = loudnessMeasureArgs("talk.mp4", tag, 0);
-    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "4", "-t", "4"]);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual([
+      "-ss",
+      "4",
+      "-t",
+      "4",
+      ...MEDIA_INPUT_ARGS,
+    ]);
   });
 
   it("preserves the selected in-point when writing the matched gain", () => {

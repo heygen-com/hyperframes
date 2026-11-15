@@ -25,6 +25,7 @@ import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { playlistLeavesItsFolder } from "./notMediaPayload.js";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -539,12 +540,12 @@ async function fetchWithValidatedRedirects(
   }
 }
 
-/** Fetch bounded UTF-8 text while applying the downloader's redirect and SSRF policy to every hop. */
+/** Fetch bounded bytes while applying the downloader's redirect and SSRF policy to every hop. */
 // fallow-ignore-next-line complexity
-export async function fetchPublicHttpsText(
+export async function fetchPublicHttpsBytes(
   url: string,
   options: PublicHttpsTextOptions,
-): Promise<string> {
+): Promise<Uint8Array> {
   const timeoutMs = options.timeoutMs ?? 15_000;
   if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
     throw new RangeError("maxBytes must be a positive safe integer");
@@ -573,7 +574,7 @@ export async function fetchPublicHttpsText(
       await cancelResponseBody(response);
       throw classifyHttpFailure(response.status);
     }
-    if (!response.body) return "";
+    if (!response.body) return new Uint8Array();
 
     let declaredLength: number | undefined;
     try {
@@ -623,7 +624,7 @@ export async function fetchPublicHttpsText(
         { expectedBytes, receivedBytes },
       );
     }
-    return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
+    return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
   } catch (error) {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Text fetch cancelled");
@@ -637,6 +638,13 @@ export async function fetchPublicHttpsText(
     options.signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
   }
+}
+
+export async function fetchPublicHttpsText(
+  url: string,
+  options: PublicHttpsTextOptions,
+): Promise<string> {
+  return new TextDecoder().decode(await fetchPublicHttpsBytes(url, options));
 }
 
 interface PartialIntegrity {
@@ -1083,6 +1091,15 @@ async function runDownloadAttempt(
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
     const integrity = await fetchToPartial(url, partialPath, controller, options, extendTimeout);
+    if (await playlistLeavesItsFolder(partialPath, localPath)) {
+      throw new UrlDownloadError(
+        "invalid_payload",
+        false,
+        "Download is a playlist naming files outside its folder",
+        integrity.status,
+        integrity,
+      );
+    }
     let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {

@@ -1,3 +1,4 @@
+import { replaceBlockComments } from "../linearScans";
 import postcss from "postcss";
 import { styleRoot } from "../styleRoots";
 import { gsapCallOffset, containingCallOffset, gsapRunsWhenScriptRuns } from "../scriptPositions";
@@ -239,7 +240,7 @@ function collectStaticCssVariableDefinitions(
   ];
   const definitionPattern = /(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm;
   for (const source of sources) {
-    const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, " ");
+    const withoutComments = replaceBlockComments(source, " ");
     for (const match of withoutComments.matchAll(definitionPattern)) {
       if (match[1]) definitions.add(match[1]);
     }

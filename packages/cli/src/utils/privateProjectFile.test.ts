@@ -1,12 +1,24 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isEnvOrGitPath, isPrivateCompositionFile } from "./privateProjectFile.js";
+import { isEnvOrGitPath, isPrivateCompositionFile, receivedFiles } from "./privateProjectFile.js";
+
+const zeroFileIds = vi.hoisted(() => ({ on: false }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const lstatSync = ((path: string, options?: { bigint?: boolean }) => {
+    const stat = actual.lstatSync(path, options as never);
+    return zeroFileIds.on ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
+  }) as typeof actual.lstatSync;
+  return { ...actual, default: { ...actual, lstatSync }, lstatSync };
+});
 
 let dir: string | undefined;
 
 afterEach(() => {
+  zeroFileIds.on = false;
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
 });
@@ -52,4 +64,21 @@ describe("isPrivateCompositionFile", () => {
       expect(isPrivateCompositionFile(dir, join(dir, "assets", "logo.png"))).toBe(true);
     },
   );
+});
+
+describe("receivedFiles", () => {
+  it("matches no file by identity on a drive that reports no file ids", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-"));
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, "theirs.html"), "");
+    writeFileSync(join(dir, "mine.html"), "");
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["theirs.html"] }),
+    );
+    zeroFileIds.on = true;
+    const received = receivedFiles(dir);
+    expect(received("theirs.html")).toBe(true);
+    expect(received("mine.html")).toBe(false);
+  });
 });

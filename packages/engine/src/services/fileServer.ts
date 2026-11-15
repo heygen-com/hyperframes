@@ -11,6 +11,7 @@ import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 
 const MIME_TYPES: Record<string, string> = {
@@ -98,9 +99,11 @@ function resolveContainedPaths(
 ): { projectPath: string; compiledPath: string | null } | null {
   const projectPath = join(projectDir, relativePath);
   if (!isWithinProjectRoot(projectDir, projectPath)) return null;
+  if (isPrivateFileUnder(projectDir, projectPath, isVcsOrSecretPath)) return null;
   if (!compiledDir) return { projectPath, compiledPath: null };
   const compiledPath = join(compiledDir, relativePath);
   if (!isWithinProjectRoot(compiledDir, compiledPath)) return null;
+  if (isPrivateFileUnder(compiledDir, compiledPath, isVcsOrSecretPath)) return null;
   return { projectPath, compiledPath };
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import { parseHTML } from "linkedom";
 import {
   applyFreezeFrameToHtml,
@@ -68,6 +69,7 @@ describe("freezeExtractArgs", () => {
       "-y",
       "-ss",
       "7.2",
+      ...MEDIA_INPUT_ARGS,
       "-i",
       "/p/a.mp4",
       "-frames:v",

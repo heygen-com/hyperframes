@@ -13,7 +13,7 @@
   },
   "@hyperframes/engine": {
     "packed": 490452,
-    "unpacked": 1620913
+    "unpacked": 1643000
   },
   "@hyperframes/gcp-cloud-run": {
     "packed": 49412,
@@ -32,7 +32,7 @@
     "unpacked": 885314
   },
   "@hyperframes/player": {
-    "packed": 166688,
+    "packed": 159000,
     "unpacked": 541601
   },
   "@hyperframes/producer": {
@@ -56,7 +56,7 @@
     "unpacked": 26703858
   },
   "@hyperframes/studio-server": {
-    "packed": 168500,
+    "packed": 172000,
     "unpacked": 654000
   }
 }

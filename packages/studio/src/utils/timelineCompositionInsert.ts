@@ -49,7 +49,9 @@ async function insertTimelineComposition(input: {
     },
   );
   if (!response.ok) {
-    throw await createStudioSaveHttpError(response, "Failed to add composition to timeline");
+    throw await createStudioSaveHttpError(response, "Failed to add composition to timeline", {
+      path: input.targetPath,
+    });
   }
   return (await response.json()) as TimelineCompositionInsertionResult;
 }
