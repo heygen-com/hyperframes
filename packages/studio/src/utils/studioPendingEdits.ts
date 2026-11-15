@@ -1,5 +1,5 @@
 import { StudioFileConflictError, type StudioSaveDrainResult } from "./studioSaveDiagnostics";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 const STUDIO_FLUSH_PENDING_EDITS_EVENT = "hf-studio-flush-pending-edits";
 

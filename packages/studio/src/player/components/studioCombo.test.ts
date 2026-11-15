@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatCombo, matchCombo, parseCombo } from "./studioCombo";
+import { formatCombo, matchCombo, parseCombo } from "@hyperframes/core/key-combo";
 import {
   getStudioKey,
   getStudioKeys,
