@@ -231,10 +231,19 @@ describe("offloadHeavyMedia", () => {
     });
     let inFlight = 0;
     let peak = 0;
+    let started = 0;
+    let parked: (() => void)[] = [];
+    // Uploads wait until eight are in flight or every file has started, so the peak never depends on timing.
     const upload = vi.fn(async (file: UploadableFile) => {
       inFlight += 1;
+      started += 1;
       peak = Math.max(peak, inFlight);
-      await new Promise((r) => setTimeout(r, 20));
+      const turn = new Promise<void>((resolve) => parked.push(resolve));
+      if (inFlight === 8 || started === clips.length) {
+        for (const go of parked) go();
+        parked = [];
+      }
+      await turn;
       inFlight -= 1;
       return { asset_id: file.filename, url: `https://assets.example/${file.filename}` };
     });
