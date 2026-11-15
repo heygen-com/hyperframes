@@ -54,6 +54,8 @@ describe("operator ranges", () => {
     expect(ipv4HostClass("192.160.83.14")).toBe("private");
     expect(isBlockedNetworkHost("2600:1f00::1")).toBe(true);
     expect(isBlockedNetworkHost("192.161.0.1")).toBe(false);
+    expect(isBlockedNetworkHost("::ffff:192.160.83.14")).toBe(true);
+    expect(isBlockedNetworkHost("64:ff9b::c0a0:530e")).toBe(true);
   });
 
   it.each(["192.160.0.0", "192.160.0.0/33", "not-a-network/8"])(
