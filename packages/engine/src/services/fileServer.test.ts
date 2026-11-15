@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
+import { get as httpGet } from "node:http";
 import { createFileServer } from "./fileServer.js";
 
 describe("file server media responses", () => {
@@ -59,5 +60,120 @@ describe("file server listener", () => {
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
+  });
+});
+
+function getWithHost(url: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    httpGet(url, { headers: { host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolveGet({ status: res.statusCode ?? 0, body }));
+    }).on("error", rejectGet);
+  });
+}
+
+async function withProject(
+  options: { hostname?: string },
+  run: (server: Awaited<ReturnType<typeof createFileServer>>) => Promise<void>,
+): Promise<void> {
+  const projectDir = mkdtempSync(join(tmpdir(), "hf-engine-host-"));
+  try {
+    writeFileSync(
+      join(projectDir, "index.html"),
+      "<html><head></head><body>composition</body></html>",
+    );
+    writeFileSync(join(projectDir, "scene.html"), "<html><head></head><body>scene</body></html>");
+    writeFileSync(join(projectDir, "asset.txt"), "project-file");
+    const server = await createFileServer({ projectDir, ...options });
+    try {
+      await run(server);
+    } finally {
+      server.close();
+    }
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
+  }
+}
+
+describe("file server request Host", () => {
+  it.each(["/", "/index.html", "/asset.txt"])(
+    "refuses %s to a page name that is not loopback",
+    async (path) => {
+      await withProject({}, async (server) => {
+        const res = await getWithHost(`${server.url}${path}`, `rebound.example:${server.port}`);
+        expect(res.status).toBe(403);
+        expect(res.body).not.toContain("composition");
+        expect(res.body).not.toContain("project-file");
+      });
+    },
+  );
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])(
+    "answers the capture browser on %s",
+    async (name) => {
+      await withProject({}, async (server) => {
+        const res = await getWithHost(`${server.url}/asset.txt`, `${name}:${server.port}`);
+        expect(res.status).toBe(200);
+        expect(res.body).toBe("project-file");
+      });
+    },
+  );
+
+  it("answers the hostname it was bound to and still refuses other names", async () => {
+    const external = firstExternalIpv4();
+    if (!external) return;
+    await withProject({ hostname: external }, async (server) => {
+      const own = await fetch(`http://${external}:${server.port}/asset.txt`);
+      expect(await own.text()).toBe("project-file");
+      const rebound = await getWithHost(
+        `http://${external}:${server.port}/asset.txt`,
+        `rebound.example:${server.port}`,
+      );
+      expect(rebound.status).toBe(403);
+    });
+  });
+
+  it("answers this machine's own address on a wildcard bind and refuses other names", async () => {
+    const external = firstExternalIpv4();
+    if (!external) return;
+    await withProject({ hostname: "0.0.0.0" }, async (server) => {
+      const own = await fetch(`http://${external}:${server.port}/asset.txt`);
+      expect(await own.text()).toBe("project-file");
+      const rebound = await getWithHost(
+        `${server.url}/asset.txt`,
+        `rebound.example:${server.port}`,
+      );
+      expect(rebound.status).toBe(403);
+    });
+  });
+});
+
+describe("file server page editing agent", () => {
+  it.each(["index.html", "scene.html"])(
+    "marks %s so its runtime offers a framing site no editing port",
+    async (name) => {
+      await withProject({}, async (server) => {
+        const res = await fetch(`${server.url}/${name}`);
+        expect(res.status).toBe(200);
+        expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
+      });
+    },
+  );
+});
+
+describe("file server IPv6 wildcard bind", () => {
+  it("answers loopback and refuses other names when bound to ::", async () => {
+    await withProject({ hostname: "::" }, async (server) => {
+      expect((await getWithHost(`${server.url}/asset.txt`, `[::1]:${server.port}`)).status).toBe(
+        200,
+      );
+      const rebound = await getWithHost(
+        `${server.url}/asset.txt`,
+        `rebound.example:${server.port}`,
+      );
+      expect(rebound.status).toBe(403);
+    });
   });
 });

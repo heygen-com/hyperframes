@@ -10,7 +10,10 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { readFileSync, openSync, fstatSync, closeSync, statSync, constants } from "node:fs";
 import { join, extname } from "node:path";
+import { hostname as machineName, networkInterfaces } from "node:os";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 
@@ -107,6 +110,37 @@ function resolveContainedPaths(
   return { projectPath, compiledPath };
 }
 
+const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
+
+function nameInHost(host: string): string {
+  const bracketed = /^\[([^\]]+)\]/.exec(host);
+  return (bracketed ? bracketed[1] : host.split(":")[0])?.toLowerCase() ?? "";
+}
+
+function isLoopbackName(name: string): boolean {
+  return name === "localhost" || name === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(name);
+}
+
+function thisMachinesNames(): Set<string> {
+  const names = new Set([machineName().toLowerCase()]);
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) names.add(entry.address.toLowerCase());
+  }
+  return names;
+}
+
+/** Loopback, the bound name, or on a wildcard bind this machine's own addresses: never a name a page can point here. */
+function hostAllowedFor(bound: string): (host: string | undefined) => boolean {
+  const boundName = bound.replace(/^\[|\]$/g, "").toLowerCase();
+  const wildcard = boundName === "0.0.0.0" || boundName === "::";
+  return (host) => {
+    const name = host ? nameInHost(host) : "";
+    if (name === "") return false;
+    if (isLoopbackName(name) || name === boundName) return true;
+    return wildcard && thisMachinesNames().has(name);
+  };
+}
+
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
   const {
     projectDir,
@@ -120,6 +154,12 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [];
 
   const app = new Hono();
+  const hostAllowed = hostAllowedFor(hostname);
+
+  app.use(async function refuseHostNotServedHere(c, next) {
+    if (hostAllowed(c.req.header("host") ?? new URL(c.req.url).host)) return next();
+    return c.text("Forbidden: unknown host", 403);
+  });
 
   app.get("/*", (c) => {
     let requestPath = c.req.path;
@@ -146,7 +186,9 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         relativePath === "index.html"
           ? injectScriptsIntoHtml(rawHtml, headScripts, bodyScripts, stripEmbeddedRuntime)
           : rawHtml;
-      return c.text(html, 200, { "Content-Type": contentType });
+      return c.text(injectTagsAtHeadStart(html, OFFER_NO_FRAMING_SITE_AN_EDITING_PORT), 200, {
+        "Content-Type": contentType,
+      });
     }
 
     return new Response(content, {
